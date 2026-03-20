@@ -101,7 +101,7 @@ pub(crate) fn materialize_workflow_step_output_value(
         3 => {
             // Step 3 can receive output from either generate-skill or benchmark-skill.
             // generate-skill: { status: "generated", skipped?: true, call_trace: [...] }
-            // benchmark-skill: { status: "benchmarked", benchmark_status, benchmark_path, tag, ... }
+            // benchmark-skill: { status: "complete"|"partial"|"skipped", benchmark_path?, call_trace }
             let status = structured_output
                 .get("status")
                 .and_then(|s| s.as_str())
@@ -156,8 +156,8 @@ pub(crate) fn materialize_workflow_step_output_value(
                         })?;
                     Ok(())
                 }
-                "benchmarked" => {
-                    // benchmark-skill output
+                "complete" | "partial" | "skipped" => {
+                    // benchmark-skill output — status carries the outcome directly
                     log::info!(
                         "event=benchmark_skill_complete operation=materialize_output status=processing skill={}",
                         skill_root.display()
@@ -166,19 +166,11 @@ pub(crate) fn materialize_workflow_step_output_value(
                         serde_json::from_value::<GenerateSkillOutput>(structured_output.clone())
                             .map_err(|e| format!("invalid benchmark skill output: {}", e))?;
 
-                    let valid_statuses = ["complete", "partial", "skipped"];
-                    if !valid_statuses.contains(&parsed.benchmark_status.as_str()) {
-                        return Err(format!(
-                            "structured_output.benchmark_status must be one of {:?} but got '{}'",
-                            valid_statuses, parsed.benchmark_status
-                        ));
-                    }
-
                     // If the agent emitted an intermediate "partial" StructuredOutput but the
                     // run completed successfully, check whether benchmark.json actually landed
                     // on disk. If it did, the benchmark finished — upgrade to "complete" so the
                     // frontend doesn't treat the premature partial signal as a failure.
-                    let effective_status = if parsed.benchmark_status == "partial" {
+                    let effective_status = if parsed.status == "partial" {
                         if let Some(ref bench_path) = parsed.benchmark_path {
                             let benchmark_json = skill_root.join(bench_path).join("benchmark.json");
                             if benchmark_json.exists() {
@@ -194,24 +186,24 @@ pub(crate) fn materialize_workflow_step_output_value(
                                     skill_root.display(),
                                     benchmark_json.display()
                                 );
-                                parsed.benchmark_status.clone()
+                                parsed.status.clone()
                             }
                         } else {
-                            parsed.benchmark_status.clone()
+                            parsed.status.clone()
                         }
                     } else {
                         if let Some(ref bench_path) = parsed.benchmark_path {
                             let benchmark_json = skill_root.join(bench_path).join("benchmark.json");
                             if !benchmark_json.exists() {
                                 log::warn!(
-                                    "event=benchmark_file_missing operation=materialize_output status=warning skill={} benchmark_status={} path={}",
+                                    "event=benchmark_file_missing operation=materialize_output status=warning skill={} status={} path={}",
                                     skill_root.display(),
-                                    parsed.benchmark_status,
+                                    parsed.status,
                                     benchmark_json.display()
                                 );
                             }
                         }
-                        parsed.benchmark_status.clone()
+                        parsed.status.clone()
                     };
 
                     let meta = serde_json::json!({
@@ -231,7 +223,7 @@ pub(crate) fn materialize_workflow_step_output_value(
                     Ok(())
                 }
                 _ => Err(format!(
-                    "structured_output.status must be 'generated', 'rewritten', or 'benchmarked' but got '{}'",
+                    "structured_output.status must be 'generated', 'rewritten', or 'complete'|'partial'|'skipped' but got '{}'",
                     status
                 )),
             }

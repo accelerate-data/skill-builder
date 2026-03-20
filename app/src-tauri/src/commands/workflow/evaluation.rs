@@ -640,6 +640,98 @@ pub fn preview_step_reset(
     Ok(result)
 }
 
+/// Remove incomplete iteration directories (those missing `benchmark.json`)
+/// under `{workspace_path}/{skill_name}/evals/workspace/`.
+///
+/// Returns the number of directories removed. Errors during removal are logged
+/// as warnings and do not propagate — callers should never be blocked by cleanup.
+pub fn clean_incomplete_iterations(workspace_path: &str, skill_name: &str) -> u32 {
+    let evals_dir = Path::new(workspace_path)
+        .join(skill_name)
+        .join("evals")
+        .join("workspace");
+
+    if !evals_dir.is_dir() {
+        return 0;
+    }
+
+    let entries = match std::fs::read_dir(&evals_dir) {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!(
+                "event=clean_incomplete_iterations operation=read_dir skill={} error={}",
+                skill_name,
+                e
+            );
+            return 0;
+        }
+    };
+
+    let mut removed = 0u32;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if !name_str.starts_with("iteration-") || !entry.path().is_dir() {
+            continue;
+        }
+        if entry.path().join("benchmark.json").exists() {
+            continue;
+        }
+        log::info!(
+            "event=clean_incomplete_iteration operation=remove skill={} path={}",
+            skill_name,
+            entry.path().display()
+        );
+        if let Err(e) = std::fs::remove_dir_all(entry.path()) {
+            log::warn!(
+                "event=clean_incomplete_iteration operation=remove_failed skill={} path={} error={}",
+                skill_name,
+                entry.path().display(),
+                e
+            );
+        } else {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+/// Scan all skill directories under `workspace_path` and clean incomplete
+/// iterations for each. Called during app startup reconciliation.
+pub fn clean_all_incomplete_iterations(workspace_path: &str) -> u32 {
+    let workspace = Path::new(workspace_path);
+    if !workspace.is_dir() {
+        return 0;
+    }
+
+    let entries = match std::fs::read_dir(workspace) {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!(
+                "event=clean_all_incomplete_iterations operation=read_workspace error={}",
+                e
+            );
+            return 0;
+        }
+    };
+
+    let mut total_removed = 0u32;
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let skill_name = entry.file_name().to_string_lossy().to_string();
+        total_removed += clean_incomplete_iterations(workspace_path, &skill_name);
+    }
+    if total_removed > 0 {
+        log::info!(
+            "event=clean_all_incomplete_iterations operation=summary removed={}",
+            total_removed
+        );
+    }
+    total_removed
+}
+
 #[derive(serde::Serialize)]
 pub struct LatestBenchmarkResult {
     pub iteration: u32,
@@ -735,6 +827,120 @@ pub fn read_latest_benchmark(
         iteration,
         data: value,
     }))
+}
+
+#[cfg(test)]
+mod clean_iterations_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn removes_incomplete_iteration() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let evals_dir = tmp.path().join("my-skill").join("evals").join("workspace");
+
+        // Create complete iteration
+        let iter1 = evals_dir.join("iteration-1");
+        fs::create_dir_all(&iter1).unwrap();
+        fs::write(iter1.join("benchmark.json"), "{}").unwrap();
+
+        // Create incomplete iteration (no benchmark.json)
+        let iter2 = evals_dir.join("iteration-2");
+        fs::create_dir_all(&iter2).unwrap();
+        fs::write(iter2.join("some-partial-output.txt"), "partial").unwrap();
+
+        let removed = clean_incomplete_iterations(workspace, "my-skill");
+        assert_eq!(removed, 1);
+        assert!(iter1.exists(), "complete iteration should be preserved");
+        assert!(!iter2.exists(), "incomplete iteration should be removed");
+    }
+
+    #[test]
+    fn preserves_all_complete_iterations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let evals_dir = tmp.path().join("my-skill").join("evals").join("workspace");
+
+        for i in 1..=3 {
+            let iter = evals_dir.join(format!("iteration-{}", i));
+            fs::create_dir_all(&iter).unwrap();
+            fs::write(iter.join("benchmark.json"), "{}").unwrap();
+        }
+
+        let removed = clean_incomplete_iterations(workspace, "my-skill");
+        assert_eq!(removed, 0);
+        for i in 1..=3 {
+            assert!(evals_dir.join(format!("iteration-{}", i)).exists());
+        }
+    }
+
+    #[test]
+    fn handles_mixed_complete_and_incomplete() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let evals_dir = tmp.path().join("my-skill").join("evals").join("workspace");
+
+        // iteration-1: complete
+        let iter1 = evals_dir.join("iteration-1");
+        fs::create_dir_all(&iter1).unwrap();
+        fs::write(iter1.join("benchmark.json"), "{}").unwrap();
+
+        // iteration-2: incomplete
+        let iter2 = evals_dir.join("iteration-2");
+        fs::create_dir_all(&iter2).unwrap();
+
+        // iteration-3: complete
+        let iter3 = evals_dir.join("iteration-3");
+        fs::create_dir_all(&iter3).unwrap();
+        fs::write(iter3.join("benchmark.json"), "{}").unwrap();
+
+        // iteration-4: incomplete
+        let iter4 = evals_dir.join("iteration-4");
+        fs::create_dir_all(&iter4).unwrap();
+
+        let removed = clean_incomplete_iterations(workspace, "my-skill");
+        assert_eq!(removed, 2);
+        assert!(iter1.exists());
+        assert!(!iter2.exists());
+        assert!(iter3.exists());
+        assert!(!iter4.exists());
+    }
+
+    #[test]
+    fn returns_zero_when_no_evals_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
+
+        let removed = clean_incomplete_iterations(workspace, "my-skill");
+        assert_eq!(removed, 0);
+    }
+
+    #[test]
+    fn clean_all_scans_multiple_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+
+        // skill-a: one incomplete
+        let evals_a = tmp.path().join("skill-a").join("evals").join("workspace");
+        let iter_a = evals_a.join("iteration-1");
+        fs::create_dir_all(&iter_a).unwrap();
+
+        // skill-b: one complete, one incomplete
+        let evals_b = tmp.path().join("skill-b").join("evals").join("workspace");
+        let iter_b1 = evals_b.join("iteration-1");
+        fs::create_dir_all(&iter_b1).unwrap();
+        fs::write(iter_b1.join("benchmark.json"), "{}").unwrap();
+        let iter_b2 = evals_b.join("iteration-2");
+        fs::create_dir_all(&iter_b2).unwrap();
+
+        let removed = clean_all_incomplete_iterations(workspace);
+        assert_eq!(removed, 2);
+        assert!(!iter_a.exists());
+        assert!(iter_b1.exists());
+        assert!(!iter_b2.exists());
+    }
 }
 
 #[cfg(test)]

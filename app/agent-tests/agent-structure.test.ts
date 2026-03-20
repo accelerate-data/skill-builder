@@ -238,10 +238,11 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/call_trace/);
   });
 
-  it("benchmark-skill returns benchmarked status with benchmark_status", () => {
+  it("benchmark-skill returns collapsed status field", () => {
     const content = fs.readFileSync(resolveAgentPath("benchmark-skill"), "utf8");
-    expect(content).toMatch(/status.*benchmarked/);
-    expect(content).toMatch(/benchmark_status/);
+    expect(content).toMatch(/status.*complete/);
+    expect(content).toMatch(/status.*skipped/);
+    expect(content).not.toMatch(/benchmark_status/);
   });
 
   it("rewrite-skill returns rewritten status", () => {

@@ -762,8 +762,7 @@ fn test_materialize_step3_benchmark_complete() {
     std::fs::write(bench_dir.join("benchmark.json"), "{}").unwrap();
 
     let payload = serde_json::json!({
-        "status": "benchmarked",
-        "benchmark_status": "complete",
+        "status": "complete",
         "benchmark_path": "evals/workspace/iteration-1"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
@@ -785,8 +784,7 @@ fn test_materialize_step3_partial_with_benchmark_json_upgrades_to_complete() {
     std::fs::write(bench_dir.join("benchmark.json"), "{}").unwrap();
 
     let payload = serde_json::json!({
-        "status": "benchmarked",
-        "benchmark_status": "partial",
+        "status": "partial",
         "benchmark_path": "evals/workspace/iteration-1"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
@@ -806,8 +804,7 @@ fn test_materialize_step3_partial_without_benchmark_json_stays_partial() {
     let skill_root = tmp.path().join("my-skill");
     // No benchmark.json on disk — partial stays partial
     let payload = serde_json::json!({
-        "status": "benchmarked",
-        "benchmark_status": "partial",
+        "status": "partial",
         "benchmark_path": "evals/workspace/iteration-1"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
@@ -828,21 +825,7 @@ fn test_materialize_step3_rejects_wrong_status() {
     });
     let err =
         materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
-    assert!(err.contains("must be 'generated', 'rewritten', or 'benchmarked'"));
-}
-
-#[test]
-fn test_materialize_step3_rejects_invalid_benchmark_status() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-
-    let invalid = serde_json::json!({
-        "status": "benchmarked",
-        "benchmark_status": "unknown"
-    });
-    let err_invalid =
-        materialize_workflow_step_output_value(&skill_root, 3, &invalid).unwrap_err();
-    assert!(err_invalid.contains("benchmark_status must be one of"));
+    assert!(err.contains("must be 'generated', 'rewritten', or 'complete'|'partial'|'skipped'"));
 }
 
 #[test]

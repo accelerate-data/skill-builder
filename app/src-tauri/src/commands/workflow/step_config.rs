@@ -128,10 +128,9 @@ pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde
             "type": "json_schema",
             "schema": {
                 "type": "object",
-                "required": ["status", "benchmark_status"],
+                "required": ["status"],
                 "properties": {
-                    "status": { "type": "string", "const": "benchmarked" },
-                    "benchmark_status": {
+                    "status": {
                         "type": "string",
                         "enum": ["complete", "partial", "skipped"]
                     },
