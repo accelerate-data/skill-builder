@@ -76,7 +76,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/settings/settings.spec.ts` | `@settings` |
 | `e2e/workflow/workflow-smoke.spec.ts` | `@workflow` |
 | `e2e/workflow/workflow-gate.spec.ts` | `@workflow` |
-| `e2e/workflow/display-items.spec.ts` | `@workflow-agent` |
+| `e2e/workflow/display-items.spec.ts` | `@workflow` |
 | `e2e/refine/refine.spec.ts` | `@refine` |
 | `e2e/skills-library/skills-library.spec.ts` | `@skills` |
 | `e2e/github-import/github-import.spec.ts` | `@skills` |
