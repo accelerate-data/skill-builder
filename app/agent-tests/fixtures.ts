@@ -595,19 +595,10 @@ This skill guides data engineers in building dbt models for pet store analytics 
   );
 }
 
-// validation: generation fixture + validation logs
+// validation: generation fixture (validate-skill now uses normal text output, no materialized files)
 export function createFixtureValidation(dir: string, skillName: string) {
   createFixtureGeneration(dir, skillName);
   writeSessionJson(dir, skillName, "validation");
-  const contextDir = path.join(dir, skillName, "context");
-  fs.writeFileSync(
-    path.join(contextDir, "agent-validation-log.md"),
-    `# Validation Log: Pet Store Analytics\n\n**Overall Score**: 82/100\n`
-  );
-  fs.writeFileSync(
-    path.join(contextDir, "test-skill.md"),
-    `# Test Skill Results: Pet Store Analytics\n\n**Status**: PARTIAL PASS\n`
-  );
 }
 
 // Agent smoke fixture: fully answered clarifications for confirm-decisions tests

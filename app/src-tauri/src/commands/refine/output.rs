@@ -32,76 +32,13 @@ pub(crate) fn cleanup_skill_snapshot(workspace_skill_root: &Path) {
     }
 }
 
-// ─── Output materialization ──────────────────────────────────────────────────
-
-pub(crate) fn materialize_refine_validation_output_value(
-    workspace_skill_root: &Path,
-    structured_output: &serde_json::Value,
-) -> Result<(), String> {
-    let payload = structured_output
-        .as_object()
-        .ok_or_else(|| "structured_output must be a JSON object".to_string())?;
-
-    let status = payload
-        .get("status")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "structured_output.status must be a string".to_string())?;
-    if status != "validation_complete" {
-        return Err(format!(
-            "structured_output.status must be 'validation_complete' but got '{}'",
-            status
-        ));
-    }
-
-    let require_markdown = |field: &str| -> Result<&str, String> {
-        let value = payload
-            .get(field)
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| format!("structured_output.{} must be a string", field))?;
-        if value.trim().is_empty() {
-            return Err(format!("structured_output.{} must not be empty", field));
-        }
-        Ok(value)
-    };
-
-    let validation_log = require_markdown("validation_log_markdown")?;
-    let test_results = require_markdown("test_results_markdown")?;
-
-    let context_dir = workspace_skill_root.join("context");
-    std::fs::create_dir_all(&context_dir).map_err(|e| {
-        format!(
-            "Failed to create context directory '{}': {}",
-            context_dir.display(),
-            e
-        )
-    })?;
-
-    let validation_path = context_dir.join("agent-validation-log.md");
-    std::fs::write(&validation_path, validation_log).map_err(|e| {
-        format!(
-            "Failed to write validation log '{}': {}",
-            validation_path.display(),
-            e
-        )
-    })?;
-
-    let test_path = context_dir.join("test-skill.md");
-    std::fs::write(&test_path, test_results).map_err(|e| {
-        format!(
-            "Failed to write test results '{}': {}",
-            test_path.display(),
-            e
-        )
-    })?;
-
-    Ok(())
-}
+// ─── Output finalization ────────────────────────────────────────────────────
 
 pub(crate) fn finalize_refine_run_inner(
     skill_name: &str,
     skills_path: &str,
     workspace_path: &str,
-    structured_output: Option<&serde_json::Value>,
+    _structured_output: Option<&serde_json::Value>,
 ) -> Result<RefineFinalizeResult, String> {
     let skill_root = Path::new(skills_path).join(skill_name);
     let workspace_skill_root = Path::new(workspace_path).join(skill_name);
@@ -111,17 +48,6 @@ pub(crate) fn finalize_refine_run_inner(
             skill_name,
             skill_root.display()
         ));
-    }
-
-    if let Some(payload) = structured_output {
-        let is_validation_output = payload
-            .get("status")
-            .and_then(|v| v.as_str())
-            .map(|s| s == "validation_complete")
-            .unwrap_or(false);
-        if is_validation_output {
-            materialize_refine_validation_output_value(&workspace_skill_root, payload)?;
-        }
     }
 
     // Clean up any stale skill snapshot left by a prior rewrite→benchmark cycle
@@ -190,24 +116,6 @@ pub fn clean_benchmark_snapshot(
     let workspace_skill_root = Path::new(&workspace_path).join(&skill_name);
     cleanup_skill_snapshot(&workspace_skill_root);
     Ok(())
-}
-
-#[tauri::command]
-pub fn materialize_refine_validation_output(
-    skill_name: String,
-    workspace_path: String,
-    structured_output: serde_json::Value,
-) -> Result<(), String> {
-    log::info!(
-        "[materialize_refine_validation_output] skill={}",
-        skill_name
-    );
-    let workspace_skill_root = Path::new(&workspace_path).join(&skill_name);
-    materialize_refine_validation_output_value(&workspace_skill_root, &structured_output)
-        .map_err(|e| {
-            log::error!("[materialize_refine_validation_output] skill={} error={}", skill_name, e);
-            e
-        })
 }
 
 #[tauri::command]

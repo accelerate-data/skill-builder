@@ -61,7 +61,6 @@ vi.mock("@/lib/tauri", () => ({
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
   sendRefineMessage: vi.fn().mockResolvedValue("agent-1"),
   finalizeRefineRun: vi.fn().mockResolvedValue({ files: [], diff: null }),
-  materializeRefineValidationOutput: vi.fn().mockResolvedValue(undefined),
   getSkillHistory: vi.fn().mockResolvedValue([]),
   readLatestBenchmark: vi.fn().mockResolvedValue(null),
 }));
