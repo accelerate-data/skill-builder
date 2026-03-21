@@ -79,7 +79,7 @@ export function ResearchStepComplete(props: Props) {
       ) : (
         <>
           <ScrollArea className="min-h-0 flex-1">
-            <div className="pr-4">
+            <div className="flex min-h-full min-w-0 flex-col pr-4">
               <ResearchSummaryCard
                 researchPlan={researchPlanContent}
                 clarificationsData={clarData}

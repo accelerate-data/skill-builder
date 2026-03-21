@@ -457,12 +457,12 @@ export function ResearchSummaryCard({
   }
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-4">
+    <div className="flex h-full w-full min-w-0 flex-col gap-4 overflow-hidden">
       {/* Summary Card */}
       {summaryCard}
 
-      {/* Clarifications — read-only, fixed height */}
-      <div className="rounded-lg border shadow-sm" style={{ height: "min(600px, 60vh)" }}>
+      {/* Clarifications — read-only, fills remaining space */}
+      <div className="min-h-0 flex-1 overflow-hidden rounded-lg border shadow-sm">
         <ClarificationsEditor
           data={clarificationsData}
           onChange={() => {}}
