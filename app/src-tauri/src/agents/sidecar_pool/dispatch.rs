@@ -217,7 +217,11 @@ impl SidecarPool {
             let mut lines = stderr_reader.lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 let result = AssertUnwindSafe(async {
-                    log::trace!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
+                    if line.contains("[sidecar:hook]") {
+                        log::debug!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
+                    } else {
+                        log::trace!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
+                    }
                 })
                 .catch_unwind()
                 .await;
