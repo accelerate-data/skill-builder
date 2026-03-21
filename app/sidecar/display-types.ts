@@ -67,6 +67,8 @@ export interface DisplayItem {
   subagentItems?: DisplayItem[];
   subagentMetrics?: SubagentMetrics;
   subagentStatus?: SubagentStatus;
+  /** Final conclusion text returned when the sub-agent completes. */
+  subagentConclusion?: string;
   /** Name of the last tool invoked by a background sub-agent (from task_progress). */
   lastToolName?: string;
 
@@ -102,4 +104,4 @@ export interface DisplayItemEnvelope {
 // Version tag for structural sync tests
 // ---------------------------------------------------------------------------
 
-export const DISPLAY_TYPES_VERSION = 3;
+export const DISPLAY_TYPES_VERSION = 4;

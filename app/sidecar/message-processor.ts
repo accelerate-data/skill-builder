@@ -347,6 +347,7 @@ export class MessageProcessor {
               ...subagentItem,
               subagentStatus: isError ? "error" : "complete",
               subagentItems: childItems.length > 0 ? childItems : undefined,
+              ...(resultContent.trim().length > 0 && { subagentConclusion: resultContent }),
             };
             this.subagentByToolUseId.delete(toolUseId);
             this.subagentMap.delete(toolUseId);
