@@ -48,8 +48,8 @@ export class StreamSession {
   private abortState: ReturnType<typeof createAbortState> | null = null;
   /** SDK session ID captured from messages — used for resume after cancel. */
   private sdkSessionId: string | null = null;
-  /** Active conversation iterator — stored so cancelTurn() can force-return it. */
-  private activeConversation: AsyncIterable<unknown> | null = null;
+  /** Active SDK Query object — stored so cancelTurn() can call interrupt()/close(). */
+  private activeQuery: { interrupt(): Promise<void>; close(): void } | null = null;
 
   constructor(
     sessionId: string,
@@ -137,19 +137,23 @@ export class StreamSession {
       this.pendingQuestion = null;
     }
 
-    // Abort the controller — the SDK will stop processing.
-    if (this.abortState && !this.abortState.abortController.signal.aborted) {
-      this.abortState.abortController.abort();
+    // Send interrupt to the SDK child process. interrupt() communicates
+    // directly with the subprocess (a separate OS process), so it works
+    // even when the main thread's for-await loop is blocked waiting for
+    // the next SDK message during a long tool execution.
+    if (this.activeQuery) {
+      this.activeQuery.interrupt().catch((err) => {
+        process.stderr.write(
+          `[stream-session] interrupt() failed, falling back to close(): ${err}\n`,
+        );
+        // close() is synchronous and forcefully kills the child process.
+        this.activeQuery?.close();
+      });
     }
 
-    // Force-return the conversation async iterator so the for-await loop
-    // exits immediately instead of waiting for the next SDK message.
-    if (this.activeConversation) {
-      const iter = this.activeConversation as AsyncIterableIterator<unknown>;
-      if (typeof iter.return === "function") {
-        iter.return(undefined).catch(() => {});
-      }
-      this.activeConversation = null;
+    // Also abort the controller as a secondary signal.
+    if (this.abortState && !this.abortState.abortController.signal.aborted) {
+      this.abortState.abortController.abort();
     }
 
     // If the generator is parked waiting for a message, unblock it
@@ -191,16 +195,13 @@ export class StreamSession {
    */
   close(): void {
     this.closed = true;
+    // Forcefully kill the SDK child process.
+    if (this.activeQuery) {
+      this.activeQuery.close();
+      this.activeQuery = null;
+    }
     if (this.abortState && !this.abortState.abortController.signal.aborted) {
       this.abortState.abortController.abort();
-    }
-    // Force-return the conversation iterator so for-await exits immediately.
-    if (this.activeConversation) {
-      const iter = this.activeConversation as AsyncIterableIterator<unknown>;
-      if (typeof iter.return === "function") {
-        iter.return(undefined).catch(() => {});
-      }
-      this.activeConversation = null;
     }
     if (this.pendingQuestion) {
       this.pendingQuestion.reject(new Error("Stream session closed while waiting for user input"));
@@ -440,8 +441,10 @@ export class StreamSession {
       options,
     });
 
-    // Store the conversation iterator so cancelTurn() can force-terminate it.
-    this.activeConversation = conversation;
+    // Store the Query object so cancelTurn() can call interrupt() and
+    // close() can call close() — both communicate with the SDK child
+    // process directly, bypassing the event loop.
+    this.activeQuery = conversation as unknown as { interrupt(): Promise<void>; close(): void };
 
     try {
       let sdkReadyEmitted = false;
@@ -544,7 +547,7 @@ export class StreamSession {
 
     process.stderr.write(`[stream-session] Session ${this.sessionId} ended\n`);
     this.abortState = null;
-    this.activeConversation = null;
+    this.activeQuery = null;
   }
 
   private async emitMockTurn(
