@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -47,6 +47,10 @@ const MarkdownPreview = memo(function MarkdownPreview({ content, filename }: { c
 });
 
 export function PreviewPanel() {
+  const [drawerWidth, setDrawerWidth] = useState(920);
+  const [dragging, setDragging] = useState(false);
+  const pendingWidthRef = useRef<number | null>(null);
+  const rafIdRef = useRef<number | null>(null);
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const activeFileTab = useRefineStore((s) => s.activeFileTab);
   const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
@@ -60,6 +64,56 @@ export function PreviewPanel() {
   const gitDiffFile = gitDiff?.files.find((file) => normalizeDiffPath(file.path) === activeFileTab);
   const hasDiff = !!gitDiffFile;
 
+  const clampWidth = useCallback((width: number) => {
+    if (typeof window === "undefined") return width;
+    const maxWidth = Math.min(1200, Math.floor(window.innerWidth * 0.9));
+    return Math.min(maxWidth, Math.max(560, width));
+  }, []);
+
+  const onResizeStart = useCallback(() => {
+    setDragging(true);
+  }, []);
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    const onMouseMove = (e: MouseEvent) => {
+      pendingWidthRef.current = clampWidth(window.innerWidth - e.clientX);
+      if (rafIdRef.current === null) {
+        rafIdRef.current = requestAnimationFrame(() => {
+          if (pendingWidthRef.current !== null) {
+            setDrawerWidth(pendingWidthRef.current);
+            pendingWidthRef.current = null;
+          }
+          rafIdRef.current = null;
+        });
+      }
+    };
+
+    const onMouseUp = () => {
+      setDragging(false);
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      if (pendingWidthRef.current !== null) {
+        setDrawerWidth(pendingWidthRef.current);
+        pendingWidthRef.current = null;
+      }
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
+  }, [clampWidth, dragging]);
+
   return (
     <Dialog
       open={!!selectedModifiedFile}
@@ -69,8 +123,28 @@ export function PreviewPanel() {
     >
       <DialogContent
         showCloseButton={false}
-        className="left-auto right-0 top-0 h-screen max-w-[min(920px,100vw)] translate-x-0 translate-y-0 gap-0 rounded-none border-l border-r-0 border-t-0 border-b-0 p-0 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
+        className={`left-auto right-0 top-0 h-screen translate-x-0 translate-y-0 gap-0 rounded-none border-l border-r-0 border-t-0 border-b-0 p-0 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right ${dragging ? "select-none" : ""}`}
+        style={{ width: `${drawerWidth}px`, maxWidth: "90vw" }}
       >
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize file viewer"
+          tabIndex={0}
+          data-testid="refine-file-view-resize-handle"
+          className="absolute left-0 top-0 bottom-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors duration-150 hover:bg-primary/30 before:absolute before:-left-1 before:-right-1 before:top-0 before:bottom-0 before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onMouseDown={onResizeStart}
+          onKeyDown={(e) => {
+            const step = 32;
+            if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              setDrawerWidth((prev) => clampWidth(prev + step));
+            } else if (e.key === "ArrowRight") {
+              e.preventDefault();
+              setDrawerWidth((prev) => clampWidth(prev - step));
+            }
+          }}
+        />
         <DialogHeader className="border-b px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
