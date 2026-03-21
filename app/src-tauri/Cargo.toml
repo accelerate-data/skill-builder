@@ -23,7 +23,7 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 tokio = { version = "1", features = ["full"] }
 rusqlite = { version = "0.39", features = ["bundled"] }
 notify = "8"
-zip = "2"
+zip = "8"
 chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
 thiserror = "2"
