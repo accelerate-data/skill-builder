@@ -44,7 +44,7 @@ describe("resolveStepTemplate", () => {
     expect(resolveStepTemplate("skill-content-researcher:detailed-research")).toBe(
       "step1-detailed-research",
     );
-    expect(resolveStepTemplate("confirm-decisions")).toBe(
+    expect(resolveStepTemplate("skill-content-researcher:confirm-decisions")).toBe(
       "step2-confirm-decisions",
     );
     expect(resolveStepTemplate("skill-creator:generate-skill")).toBe("step3-generate-skill");

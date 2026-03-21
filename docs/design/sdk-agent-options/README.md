@@ -55,7 +55,7 @@ Scope:
 
 ### `agent`
 
-- Workflow sets `agent_name` from prompt template phase (`research-orchestrator`, `confirm-decisions`, etc.).
+- Workflow sets `agent_name` from prompt template phase (`skill-content-researcher:research-orchestrator`, `skill-content-researcher:confirm-decisions`, etc.).
 - Refine sets `agent_name` to refine agent.
 - Answer evaluator sets `agent_name` to `answer-evaluator`.
 - `start_agent` accepts optional `agent_name` from caller (Test passes explicit agent names).
@@ -162,11 +162,11 @@ Decision candidate: **keep** (`effort` configurable, `fallbackModel` derived).
 
 - Set only for agents with strict JSON response contracts.
 - Contract-set coverage includes:
-  - Workflow JSON-contract agents: `research-orchestrator`, `detailed-research`
+  - Workflow JSON-contract agents: `skill-content-researcher:research-orchestrator`, `skill-content-researcher:detailed-research`, `skill-content-researcher:confirm-decisions`
   - Answer evaluator flow (`answer-evaluator`) via explicit `answer_evaluator_output_format()`
   - Direct `start_agent` contract paths: `_feedback`, `validate-skill`
 - Contract-unset coverage includes:
-  - Workflow non-contract agents: `confirm-decisions`, `generate-skill`
+  - Workflow non-contract agents: `skill-creator:generate-skill`
   - Refine conversational flow: `rewrite-skill`
   - Test conversational/text agents: `test-plan-with`, `test-plan-without`, `test-evaluator`
 

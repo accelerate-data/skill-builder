@@ -100,7 +100,7 @@ fn test_get_step_output_files_unknown_step() {
 fn test_step_config_canonical_agent_names() {
     assert_eq!(get_step_config(0).unwrap().agent_name, "skill-content-researcher:research-orchestrator");
     assert_eq!(get_step_config(1).unwrap().agent_name, "skill-content-researcher:detailed-research");
-    assert_eq!(get_step_config(2).unwrap().agent_name, "confirm-decisions");
+    assert_eq!(get_step_config(2).unwrap().agent_name, "skill-content-researcher:confirm-decisions");
     assert_eq!(get_step_config(3).unwrap().agent_name, "skill-creator:generate-skill");
 }
 
@@ -114,7 +114,10 @@ fn test_step_config_canonical_required_plugins() {
         get_step_config(1).unwrap().required_plugins,
         vec!["skill-content-researcher"]
     );
-    assert!(get_step_config(2).unwrap().required_plugins.is_empty());
+    assert_eq!(
+        get_step_config(2).unwrap().required_plugins,
+        vec!["skill-content-researcher"]
+    );
     assert_eq!(
         get_step_config(3).unwrap().required_plugins,
         vec!["skill-creator"]
@@ -125,7 +128,7 @@ fn test_step_config_canonical_required_plugins() {
 fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
     assert!(workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").is_some());
     assert!(workflow_output_format_for_agent("skill-content-researcher:detailed-research").is_some());
-    assert!(workflow_output_format_for_agent("confirm-decisions").is_some());
+    assert!(workflow_output_format_for_agent("skill-content-researcher:confirm-decisions").is_some());
     assert!(workflow_output_format_for_agent("skill-creator:generate-skill").is_some());
 }
 
@@ -1015,21 +1018,26 @@ fn test_package_skill_missing_dir() {
 
 #[test]
 fn test_resolve_prompts_dir_dev_mode() {
-    // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has agent-sources/agents/
+    // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has bundled agents/plugins.
     let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())
-        .map(|p| p.join("agent-sources").join("agents"));
+        .map(|p| p.join("agent-sources"));
     assert!(dev_path.is_some());
-    let agents_dir = dev_path.unwrap();
+    let agent_sources_dir = dev_path.unwrap();
+    let agents_dir = agent_sources_dir.join("agents");
+    let plugin_agents_dir = agent_sources_dir
+        .join("plugins")
+        .join("skill-content-researcher")
+        .join("agents");
     assert!(
         agents_dir.is_dir(),
         "Repo root agent-sources/agents/ should exist"
     );
     // Verify flat agent files exist (no subdirectories)
     assert!(
-        agents_dir.join("confirm-decisions.md").exists(),
-        "agent-sources/agents/confirm-decisions.md should exist"
+        plugin_agents_dir.join("confirm-decisions.md").exists(),
+        "agent-sources/plugins/skill-content-researcher/agents/confirm-decisions.md should exist"
     );
     assert!(
         agents_dir.join("answer-evaluator.md").exists(),

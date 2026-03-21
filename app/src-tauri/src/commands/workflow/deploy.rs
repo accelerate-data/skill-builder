@@ -227,8 +227,8 @@ pub fn ensure_workspace_prompts_sync(
     Ok(())
 }
 
-/// Re-deploy only the bundled agents to `.claude/agents/`, preserving
-/// other contents of the `.claude/` directory (skills, agents, etc.).
+/// Re-deploy only the bundled agents/plugins under `.claude/`, preserving
+/// other contents of the `.claude/` directory (skills, custom agents, etc.).
 pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> Result<(), String> {
     let (agents_dir, _) = resolve_prompt_source_dirs(app_handle);
     let plugins_dir = resolve_bundled_plugins_dir(app_handle);
@@ -241,7 +241,8 @@ pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> R
     Ok(())
 }
 
-/// Copy agent .md files from flat bundled agent source to <workspace>/.claude/agents/.
+/// Copy top-level agent .md files from flat bundled agent source to
+/// <workspace>/.claude/agents/.
 /// agent-sources/agents/{name}.md → .claude/agents/{name}.md
 pub(crate) fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<(), String> {
     let claude_agents_dir = Path::new(workspace_path).join(".claude").join("agents");

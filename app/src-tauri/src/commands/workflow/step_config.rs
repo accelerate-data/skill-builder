@@ -6,7 +6,7 @@ pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
     let tools: &[&str] = match agent_name {
         "skill-content-researcher:research-orchestrator" => &["Read", "Skill"],
         "skill-content-researcher:detailed-research" => &["Read", "Agent"],
-        "confirm-decisions" => &["Read"],
+        "skill-content-researcher:confirm-decisions" => &["Read"],
         "answer-evaluator" => &["Read"],
         "skill-creator:validate-skill" => &["Read", "Glob", "Grep"],
         "skill-creator:generate-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill"],
@@ -32,7 +32,7 @@ pub fn resolve_model_id(shorthand: &str) -> String {
 /// |------|-------|---------|--------|
 /// | 0 | skill-content-researcher:research-orchestrator | skill-content-researcher | plugin agents/ |
 /// | 1 | skill-content-researcher:detailed-research | skill-content-researcher | plugin agents/ |
-/// | 2 | confirm-decisions | — | .claude/agents/ |
+/// | 2 | skill-content-researcher:confirm-decisions | skill-content-researcher | plugin agents/ |
 /// | 3 | skill-creator:generate-skill | skill-creator | plugin agents/ |
 pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
@@ -63,7 +63,7 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             })
         }
         2 => {
-            let agent = "confirm-decisions";
+            let agent = "skill-content-researcher:confirm-decisions";
             Ok(StepConfig {
                 step_id: 2,
                 name: "Confirm Decisions".to_string(),
@@ -72,7 +72,7 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 allowed_tools: tools_for_agent(agent),
                 max_turns: 100,
                 agent_name: agent.to_string(),
-                required_plugins: vec![],
+                required_plugins: vec!["skill-content-researcher".to_string()],
             })
         }
         3 => {
@@ -175,7 +175,7 @@ pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde
                 "additionalProperties": true
             }
         })),
-        "confirm-decisions" => Some(serde_json::json!({
+        "skill-content-researcher:confirm-decisions" => Some(serde_json::json!({
             "type": "json_schema",
             "schema": {
                 "type": "object",

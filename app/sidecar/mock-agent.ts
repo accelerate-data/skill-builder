@@ -17,8 +17,8 @@ const MOCK_SCENARIO = process.env.MOCK_SCENARIO ?? "default";
  *
  * Plugin-hosted agents use qualified names (e.g., `skill-creator:generate-skill`,
  * `skill-content-researcher:research-orchestrator`,
- * `skill-content-researcher:detailed-research`). Shared agents like
- * `confirm-decisions` use bare names.
+ * `skill-content-researcher:detailed-research`,
+ * `skill-content-researcher:confirm-decisions`).
  */
 /** @internal Exported for testing only. */
 export function resolveStepTemplate(
@@ -35,7 +35,7 @@ export function resolveStepTemplate(
 
   // Exact matches first
   if (agentName === "skill-content-researcher:detailed-research") return "step1-detailed-research";
-  if (agentName === "confirm-decisions") return "step2-confirm-decisions";
+  if (agentName === "skill-content-researcher:confirm-decisions") return "step2-confirm-decisions";
   if (agentName === "skill-creator:generate-skill") return "step3-generate-skill";
   if (agentName === "skill-creator:rewrite-skill") return "rewrite-skill";
   if (agentName === "skill-creator:benchmark-skill") return "benchmark-skill";

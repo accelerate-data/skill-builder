@@ -6,7 +6,6 @@ import { AGENTS_DIR, PLUGINS_DIR, REPO_ROOT } from "./helpers";
 /** Top-level agents deployed to .claude/agents/ */
 const EXPECTED_AGENTS = [
   "answer-evaluator",
-  "confirm-decisions",
 ];
 
 /** Plugin-hosted agents: agent name → plugin path relative to PLUGINS_DIR */
@@ -17,6 +16,7 @@ const PLUGIN_AGENTS: Record<string, string> = {
   "validate-skill": "skill-creator/agents/validate-skill.md",
   "research-orchestrator": "skill-content-researcher/agents/research-orchestrator.md",
   "detailed-research": "skill-content-researcher/agents/detailed-research.md",
+  "confirm-decisions": "skill-content-researcher/agents/confirm-decisions.md",
 };
 
 /** Resolve the .md file path for any agent (top-level or plugin). */
@@ -218,7 +218,7 @@ describe("Agent output contracts (backend protocol alignment)", () => {
 
   it("confirm-decisions returns version/metadata/decisions shape", () => {
     const content = fs.readFileSync(
-      path.join(AGENTS_DIR, "confirm-decisions.md"),
+      resolveAgentPath("confirm-decisions"),
       "utf8"
     );
     // Backend uses additionalProperties: false — only version, metadata, decisions allowed at top level
