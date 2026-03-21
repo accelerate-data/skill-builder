@@ -1032,8 +1032,8 @@ fn test_resolve_prompts_dir_dev_mode() {
         "agent-sources/agents/confirm-decisions.md should exist"
     );
     assert!(
-        agents_dir.join("validate-skill.md").exists(),
-        "agent-sources/agents/validate-skill.md should exist"
+        agents_dir.join("answer-evaluator.md").exists(),
+        "agent-sources/agents/answer-evaluator.md should exist"
     );
 }
 

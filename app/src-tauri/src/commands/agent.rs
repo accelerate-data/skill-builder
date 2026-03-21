@@ -187,18 +187,8 @@ mod tests {
     }
 
     #[test]
-    fn test_output_format_for_validate_skill_agent() {
-        let fmt = output_format_for_agent("my-skill", Some("validate-skill"));
-        assert!(fmt.is_some());
-        let schema = fmt.expect("schema");
-        assert_eq!(
-            schema["schema"]["properties"]["status"]["const"],
-            "validation_complete"
-        );
-    }
-
-    #[test]
     fn test_output_format_is_unset_for_non_contract_agent_names() {
+        assert!(output_format_for_agent("my-skill", Some("validate-skill")).is_none());
         assert!(output_format_for_agent("my-skill", Some("confirm-decisions")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-plan-with")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-plan-without")).is_none());
