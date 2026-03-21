@@ -1,0 +1,181 @@
+name: PR Policy
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  docs-build:
+    name: docs-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs dependencies
+        working-directory: docs
+        run: npm install
+
+      - name: Build user-guide site
+        working-directory: docs
+        run: npm run build
+
+  agents-structural:
+    name: agents-structural
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect relevant changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            agents:
+              - 'agent-sources/**'
+              - 'app/sidecar/**'
+              - 'app/e2e/fixtures/agent-responses/**'
+
+      - name: Setup Node.js
+        if: steps.changes.outputs.agents == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "lts/*"
+          cache: "npm"
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install npm dependencies
+        if: steps.changes.outputs.agents == 'true'
+        working-directory: app
+        run: npm ci --prefer-offline --ignore-scripts
+
+      - name: Run agent structural tests
+        if: steps.changes.outputs.agents == 'true'
+        working-directory: app
+        run: npm run test:agents:structural
+
+      - name: Skip (no relevant changes)
+        if: steps.changes.outputs.agents != 'true'
+        run: echo "No agent-related changes detected — skipping."
+
+  instruction-docs-lint:
+    name: instruction-docs-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect relevant changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            docs:
+              - 'AGENTS.md'
+              - 'CLAUDE.md'
+              - '.claude/**'
+              - '**/*.md'
+
+      - name: Lint instruction docs
+        if: steps.changes.outputs.docs == 'true'
+        run: bash app/scripts/lint-agent-docs.sh
+
+      - name: Markdownlint
+        if: steps.changes.outputs.docs == 'true'
+        run: npx markdownlint-cli2 "**/*.md" "#node_modules" "#app/node_modules" "#docs/node_modules"
+
+      - name: Skip (no relevant changes)
+        if: steps.changes.outputs.docs != 'true'
+        run: echo "No markdown/instruction-doc changes detected — skipping."
+
+  repo-map-audit:
+    name: repo-map-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check for structural changes requiring repo-map.json update
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          STRUCTURAL_DIRS=(
+            "app/src-tauri/src/commands/"
+            "app/src/stores/"
+            "app/src/pages/"
+            "app/src/components/"
+            "app/src/lib/"
+            "app/src/hooks/"
+          )
+
+          structural_changed=false
+          for dir in "${STRUCTURAL_DIRS[@]}"; do
+            if git diff --name-only --diff-filter=ADR "$BASE_SHA" "$HEAD_SHA" -- "$dir" | grep -q .; then
+              structural_changed=true
+              echo "Structural change detected in $dir"
+            fi
+          done
+
+          if [ "$structural_changed" = true ]; then
+            if git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- repo-map.json | grep -q .; then
+              echo "repo-map.json was updated — audit passed."
+            else
+              echo "::error::Structural files were added, removed, or renamed but repo-map.json was not updated."
+              echo "Update repo-map.json to reflect the current codebase. See AGENTS.md for details."
+              exit 1
+            fi
+          else
+            echo "No structural changes detected — audit passed."
+          fi
+
+  test-manifest-audit:
+    name: test-manifest-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes requiring TEST_MANIFEST.md update
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          mapped_changed=false
+          if git diff --name-only --diff-filter=ADR "$BASE_SHA" "$HEAD_SHA" -- "app/src-tauri/src/commands/" | grep -q .; then
+            mapped_changed=true
+            echo "Rust command file added/removed/renamed."
+          fi
+          if git diff --name-only --diff-filter=ADR "$BASE_SHA" "$HEAD_SHA" -- "app/e2e/" | grep -q .; then
+            mapped_changed=true
+            echo "E2E spec added/removed/renamed."
+          fi
+
+          if [ "$mapped_changed" = true ]; then
+            if git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- TEST_MANIFEST.md | grep -q .; then
+              echo "TEST_MANIFEST.md was updated — audit passed."
+            else
+              echo "::error::Rust command or E2E spec files were added/removed but TEST_MANIFEST.md was not updated."
+              echo "Update TEST_MANIFEST.md to reflect the current test mappings. See AGENTS.md for details."
+              exit 1
+            fi
+          else
+            echo "No mapped file changes detected — audit passed."
+          fi
