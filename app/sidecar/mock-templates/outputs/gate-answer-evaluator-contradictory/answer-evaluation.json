@@ -1,0 +1,20 @@
+{
+  "verdict": "mixed",
+  "answered_count": 8,
+  "empty_count": 1,
+  "vague_count": 1,
+  "contradictory_count": 2,
+  "total_count": 9,
+  "reasoning": "Most answers are clear, but Q1 contradicts itself (claims daily focus while also requesting advanced edge cases with equal priority), Q2 targets beginners which conflicts with Q7 requesting full working examples with test harnesses (advanced-level content). Q8 is unanswered.",
+  "per_question": [
+    { "question_id": "Q1", "verdict": "contradictory", "reason": "Answer selects choice A (common daily workflows) but the free-text answer adds 'also include advanced edge cases with equal priority', which contradicts choice A and aligns with choice C instead.", "contradicts": "Q1 (self-contradictory: choice vs free-text)" },
+    { "question_id": "Q2", "verdict": "contradictory", "reason": "Targeting beginners (choice A) conflicts with Q7 which requests full working examples with test harnesses — content that assumes intermediate-to-advanced expertise.", "contradicts": "Q7" },
+    { "question_id": "Q3", "verdict": "clear", "reason": null, "contradicts": null },
+    { "question_id": "Q4", "verdict": "clear", "reason": null, "contradicts": null },
+    { "question_id": "Q5", "verdict": "vague", "reason": "Organizing entirely by tool requires knowing which tools to cover, but no specific tools are named. This answer needs concrete tool choices to be actionable.", "contradicts": null },
+    { "question_id": "Q6", "verdict": "clear", "reason": null, "contradicts": null },
+    { "question_id": "Q7", "verdict": "clear", "reason": null, "contradicts": null },
+    { "question_id": "Q8", "verdict": "not_answered", "reason": "This question is still unanswered. Testing guidance scope affects skill structure significantly.", "contradicts": null },
+    { "question_id": "Q9", "verdict": "clear", "reason": null, "contradicts": null }
+  ]
+}
