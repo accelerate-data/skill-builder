@@ -124,4 +124,58 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
     // Dialog should close after successful deletion
     await expect(page.getByRole("heading", { name: "Delete Skill" })).not.toBeVisible();
   });
+
+  test("redirect routes send /skills to settings import and /refine to dashboard refine", async ({ page }) => {
+    await reloadWithOverrides(page, {
+      ...WORKSPACE_OVERRIDES,
+      list_skills: [
+        {
+          name: "test-skill",
+          purpose: "domain",
+          current_step: null,
+          status: "completed",
+          last_modified: null,
+          tags: [],
+          author_login: null,
+          author_avatar: null,
+          intake_json: null,
+        },
+      ],
+    });
+
+    await page.goto("/skills");
+    await expect(page).toHaveURL(/\/settings\?tab=skills/);
+
+    await page.goto("/refine");
+    await expect(page).toHaveURL(/\/\?tab=refine/);
+    await expect(page.getByText("Select a skill")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("dashboard skill menu can open Refine directly", async ({ page }) => {
+    await reloadWithOverrides(page, {
+      ...WORKSPACE_OVERRIDES,
+      list_skills: [
+        {
+          name: "test-skill",
+          purpose: "domain",
+          current_step: null,
+          status: "completed",
+          last_modified: null,
+          tags: [],
+          author_login: null,
+          author_avatar: null,
+          intake_json: null,
+        },
+      ],
+    });
+
+    const skillRow = page.getByText("test-skill").first();
+    await skillRow.hover();
+    await page.getByLabel("More actions").click({ force: true });
+    await page.getByRole("menuitem", { name: "Refine" }).click();
+
+    await expect(page).toHaveURL(/\/\?tab=refine/);
+    await expect(page.getByRole("tab", { name: "Refine", exact: true })).toHaveAttribute("data-state", "active");
+    await expect(page.getByTestId("refine-chat-input")).toBeVisible({ timeout: 10_000 });
+  });
 });

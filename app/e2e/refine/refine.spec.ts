@@ -12,7 +12,7 @@
  * indicator / agent turn element.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { simulateAgentRun, simulateAgentError } from "../helpers/agent-simulator";
+import { emitTauriEvent, simulateAgentRun, simulateAgentError } from "../helpers/agent-simulator";
 import { navigateToRefineWithSkill } from "../helpers/refine-helpers";
 
 /**
@@ -226,5 +226,50 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
 
     // Turn 2 clears the stale turn 1 patch immediately, so diff mode is disabled
     await expect(diffToggle).toBeDisabled();
+  });
+
+  test("tab-switch guard blocks leaving refine while agent is running", async ({ page }) => {
+    await navigateToRefineWithSkill(page);
+
+    const input = page.getByTestId("refine-chat-input");
+    await input.fill("keep refining");
+    await page.getByTestId("refine-send-button").click();
+
+    await getAgentId(page);
+
+    await page.getByRole("tab", { name: "Overview" }).click();
+    await expect(page.getByRole("heading", { name: "Agent Running" })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("A refine agent is still running. Switching tabs will abandon it.")).toBeVisible();
+
+    await page.getByRole("button", { name: "Stay" }).click();
+    await expect(page.getByRole("heading", { name: "Agent Running" })).not.toBeVisible();
+    await expect(page.getByRole("tab", { name: "Refine", exact: true })).toHaveAttribute("data-state", "active");
+    await expect(page.getByTestId("refine-chat-input")).toBeVisible();
+
+    await page.getByRole("tab", { name: "Overview" }).click();
+    await expect(page.getByRole("heading", { name: "Agent Running" })).toBeVisible({ timeout: 5_000 });
+    await page.getByRole("button", { name: "Leave" }).click();
+
+    await expect(page.getByRole("heading", { name: "Agent Running" })).not.toBeVisible();
+    await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("data-state", "active");
+  });
+
+  test("close-requested shows the refine abandonment dialog while agent is running", async ({ page }) => {
+    await navigateToRefineWithSkill(page);
+
+    const input = page.getByTestId("refine-chat-input");
+    await input.fill("trigger close guard");
+    await page.getByTestId("refine-send-button").click();
+
+    await getAgentId(page);
+
+    await emitTauriEvent(page, "close-requested", null);
+    await expect(page.getByRole("heading", { name: "Agents Still Running" })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("One or more agents are still running. Closing now will stop them.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Stay" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Close Anyway" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Stay" }).click();
+    await expect(page.getByRole("heading", { name: "Agents Still Running" })).not.toBeVisible();
   });
 });
