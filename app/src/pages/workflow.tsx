@@ -10,6 +10,7 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { FeedbackDialog } from "@/components/feedback-dialog";
 import { getWorkflowStepUrl } from "@/lib/help-urls";
+import { teardownWorkflowSession } from "@/lib/workflow-teardown";
 import { cn } from "@/lib/utils";
 import type { WorkflowStep } from "@/stores/workflow-store";
 import { useSkillStore } from "@/stores/skill-store";
@@ -36,7 +37,6 @@ import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
-  endWorkflowSession,
   getDisabledSteps,
   navigateBackToStepDb,
 } from "@/lib/tauri";
@@ -208,20 +208,7 @@ export default function WorkflowPage() {
   // because the user is still in the workflow.
   const handleStepSwitchLeave = useCallback(() => {
     const targetStep = pendingStepSwitch;
-    const store = useWorkflowStore.getState();
-    const { currentStep: step, steps: curSteps } = store;
-    if (curSteps[step]?.status === "in_progress") {
-      store.updateStepStatus(step, "pending");
-    }
-    store.setRunning(false);
-    store.setGateLoading(false);
-    useAgentStore.getState().clearRuns();
-
-    const sessionId = store.workflowSessionId;
-    if (sessionId) {
-      endWorkflowSession(sessionId).catch((e) => console.warn("[workflow] non-fatal: op=endWorkflowSession err=%s", e));
-      useWorkflowStore.setState({ workflowSessionId: null });
-    }
+    teardownWorkflowSession({ logPrefix: "workflow", clearSessionId: true });
 
     setPendingStepSwitch(null);
     setCurrentStep(targetStep!);
@@ -439,12 +426,7 @@ export default function WorkflowPage() {
           : undefined}
         onReset={() => {
           if (resetTarget !== null) {
-            const sessionId = useWorkflowStore.getState().workflowSessionId;
-            if (sessionId) {
-              endWorkflowSession(sessionId).catch((e) => console.warn("[workflow] non-fatal: op=endWorkflowSession err=%s", e));
-              useWorkflowStore.setState({ workflowSessionId: null });
-            }
-            useAgentStore.getState().clearRuns();
+            teardownWorkflowSession({ logPrefix: "workflow", clearSessionId: true });
             if (resetTarget === 0) {
               resetToStep(0);
             } else {
