@@ -7,6 +7,7 @@ Each work stream gets a team lead (spawned via `Task`). Provide: worktree path, 
 Team leads coordinate within their stream — spawning sub-agents for parallel tasks, not writing code themselves.
 
 ### Rules
+
 - **Test deliberately, not blindly.** Before writing any test code:
   1. Read existing tests for files you changed — understand what's already covered
   2. Update tests that broke due to your changes

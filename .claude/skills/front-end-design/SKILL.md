@@ -25,6 +25,7 @@ Drive from design intent first, then execute with tokenized styles, accessible i
 - Extract concrete goals: target user action, page purpose, content hierarchy, and device constraints.
 
 For this repo, align with:
+
 - `app/src/styles/globals.css`
 - `.claude/rules/frontend-design.md`
 
