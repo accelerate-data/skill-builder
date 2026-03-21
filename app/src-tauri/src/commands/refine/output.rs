@@ -2,11 +2,52 @@ use std::path::Path;
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::Db;
-use crate::types::{RefineDiff, RefineFinalizeResult};
+use crate::types::{RefineDiff, RefineFileDiff, RefineFinalizeResult, SkillFileContent};
 
 use super::content::get_skill_content_inner;
 use super::diff::get_refine_diff_for_commit_range_inner;
 use super::resolve_skills_path;
+
+fn is_mock_agents_enabled() -> bool {
+    matches!(std::env::var("MOCK_AGENTS").as_deref(), Ok("true"))
+}
+
+fn build_mock_refine_patch(skill_name: &str, file: &SkillFileContent) -> String {
+    let repo_relative_path = format!("{}/{}", skill_name, file.path);
+    let line_count = file.content.lines().count();
+    let header = format!(
+        "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -0,0 +1,{line_count} @@\n",
+        path = repo_relative_path
+    );
+    let body = file
+        .content
+        .lines()
+        .map(|line| format!("+{}\n", line))
+        .collect::<String>();
+    format!("{}{}", header, body)
+}
+
+fn build_mock_refine_diff(skill_name: &str, files: &[SkillFileContent]) -> RefineDiff {
+    let diff_files = files
+        .iter()
+        .map(|file| RefineFileDiff {
+            path: format!("{}/{}", skill_name, file.path),
+            status: "modified".to_string(),
+            diff: build_mock_refine_patch(skill_name, file),
+        })
+        .collect::<Vec<_>>();
+
+    let insertions = files.iter().map(|file| file.content.lines().count()).sum::<usize>();
+
+    RefineDiff {
+        stat: format!(
+            "{} file(s) changed, {} insertion(s)(+), 0 deletion(s)(-)",
+            diff_files.len(),
+            insertions
+        ),
+        files: diff_files,
+    }
+}
 
 // ─── Snapshot cleanup ────────────────────────────────────────────────────────
 
@@ -96,6 +137,16 @@ pub(crate) fn finalize_refine_run_inner(
     };
 
     let files = get_skill_content_inner(skill_name, skills_path)?;
+    let diff = if is_mock_agents_enabled() && diff.files.is_empty() && !files.is_empty() {
+        log::info!(
+            "[finalize_refine_run] mock fallback diff generated skill={} files={}",
+            skill_name,
+            files.len()
+        );
+        build_mock_refine_diff(skill_name, &files)
+    } else {
+        diff
+    };
 
     Ok(RefineFinalizeResult {
         files,

@@ -688,6 +688,53 @@ fn test_finalize_refine_run_ignores_structured_output() {
         .exists());
 }
 
+#[test]
+fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
+    let prev_mock_agents = std::env::var("MOCK_AGENTS").ok();
+    std::env::set_var("MOCK_AGENTS", "true");
+
+    let skills_dir = tempdir().unwrap();
+    let workspace_dir = tempdir().unwrap();
+    crate::git::ensure_repo(skills_dir.path()).unwrap();
+
+    let skill_dir = skills_dir.path().join("my-skill");
+    std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n\nMock rewrite output\n").unwrap();
+    std::fs::write(
+        skill_dir.join("references/checklist.md"),
+        "# Checklist\n\n- Verify modified files UI\n",
+    )
+    .unwrap();
+    crate::git::commit_all(skills_dir.path(), "initial").unwrap();
+    std::fs::write(skills_dir.path().join("README.md"), "top-level docs").unwrap();
+    crate::git::commit_all(skills_dir.path(), "unrelated repo change").unwrap();
+
+    let result = finalize_refine_run_inner(
+        "my-skill",
+        skills_dir.path().to_str().unwrap(),
+        workspace_dir.path().to_str().unwrap(),
+        None,
+    )
+    .unwrap();
+
+    assert!(result.commit_sha.is_some());
+    assert_eq!(result.files.len(), 2);
+    assert_eq!(result.diff.files.len(), 2);
+    assert!(result
+        .diff
+        .files
+        .iter()
+        .all(|file| file.status == "modified"));
+    assert!(result.diff.files[0].path.starts_with("my-skill/"));
+    assert!(result.diff.files[0].diff.contains("diff --git"));
+    assert!(result.diff.stat.contains("2 file(s) changed"));
+
+    match prev_mock_agents {
+        Some(value) => std::env::set_var("MOCK_AGENTS", value),
+        None => std::env::remove_var("MOCK_AGENTS"),
+    }
+}
+
 // ===== build_refine_prompt tests =====
 
 #[test]
