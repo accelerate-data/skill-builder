@@ -34,10 +34,10 @@ export const AgentTurnInline = memo(function AgentTurnInline({ agentId }: AgentT
   }
 
   return (
-    <div data-agent-id={agentId} className="flex min-w-0 w-full flex-col overflow-hidden">
+    <div data-agent-id={agentId} className="flex min-w-0 w-full flex-col gap-2 overflow-hidden">
       <DisplayItemList items={displayItems} />
       {status === "running" && displayItems.length > 0 && (
-        <div className="flex items-center gap-1.5 py-1 text-muted-foreground">
+        <div className="flex items-center gap-1.5 py-1 text-muted-foreground/80">
           <Loader2 className="size-3 animate-spin" />
         </div>
       )}

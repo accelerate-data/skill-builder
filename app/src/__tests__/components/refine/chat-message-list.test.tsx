@@ -64,6 +64,7 @@ describe("ChatMessageList", () => {
     expect(screen.getByText("Agent")).toBeInTheDocument();
     expect(screen.getByText("tighten the intro")).toBeInTheDocument();
     expect(screen.getByTestId("agent-turn-agent-1")).toBeInTheDocument();
+    expect(screen.getByTestId("refine-agent-turn-block")).toBeInTheDocument();
   });
 
   it("renders pending refine questions inline and submits answers", async () => {

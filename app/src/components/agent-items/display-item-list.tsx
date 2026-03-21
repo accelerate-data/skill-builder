@@ -78,7 +78,7 @@ export const DisplayItemList = memo(function DisplayItemList({
   if (groups.length === 0) return null;
 
   return (
-    <div className="flex min-w-0 w-full flex-col gap-0.5 overflow-hidden">
+    <div className="flex min-w-0 w-full flex-col gap-2 overflow-hidden">
       {groups.map((group) => (
         <div key={group.key} className="min-w-0 w-full animate-message-in">
           <VisualGroupRenderer group={group} depth={depth} />

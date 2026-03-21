@@ -84,11 +84,15 @@ export function ChatMessageList({
 
           if (msg.role === "agent" && msg.agentId) {
             return (
-              <div key={msg.id} className="flex min-w-0 w-full flex-col gap-2 overflow-hidden">
+              <div
+                key={msg.id}
+                data-testid="refine-agent-turn-block"
+                className="flex min-w-0 w-full flex-col gap-2 overflow-hidden"
+              >
                 <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                   Agent
                 </div>
-                <div className="min-w-0 overflow-hidden rounded-lg border border-border/25 bg-card/15 px-4 py-3">
+                <div className="min-w-0 overflow-hidden px-1 py-1">
                   <AgentTurnInline agentId={msg.agentId} />
                 </div>
               </div>
