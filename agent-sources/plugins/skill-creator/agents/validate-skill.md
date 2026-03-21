@@ -58,7 +58,7 @@ Before scoring quality, locate and read `plugins/skill-creator/skills/skill-crea
 
 1. **Parameter Guard**: If `SKILL.md` does not exist in `{skill_output_dir}`, report "No SKILL.md found" and stop.
 
-2. **Scope recommendation guard**: If `metadata.scope_recommendation == true` in `{context_dir}/clarifications.json`, report "Scope recommendation is active. Resolve scope before validating." and stop.
+2. **Scope recommendation guard**: Read `{context_dir}/clarifications.json` (use `limit: 50` — only the metadata is needed). If `metadata.scope_recommendation == true`, report "Scope recommendation is active. Resolve scope before validating." and stop.
 
 3. **Contradictory inputs guard**: If `metadata.contradictory_inputs == true` in `{context_dir}/decisions.json`, report "Contradictory inputs detected. Resolve contradictions before validating." and stop. `metadata.contradictory_inputs == "revised"` is NOT a block — proceed normally.
 

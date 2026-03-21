@@ -40,7 +40,7 @@ Before each step, write one short status line (≤ 10 words). Write it before to
 ## Step 1: Read inputs
 
 Read `{workspace_dir}/user-context.md`.
-Read `{context_dir}/clarifications.json`. Parse the JSON.
+Read `{context_dir}/clarifications.json`. Parse the JSON. If the Read tool returns a "maximum allowed tokens" error, re-read the file in two halves using the `offset` and `limit` parameters (e.g. first `limit: 200`, then `offset: 200`) and concatenate the results before parsing.
 
 If either file is missing or the JSON is malformed, return immediately:
 

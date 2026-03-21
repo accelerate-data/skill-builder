@@ -40,7 +40,7 @@ Do not write any files in this agent.
 ### Step 1: Read user context and clarifications
 
 Read `{workspace_dir}/user-context.md`.
-Read `{context_dir}/clarifications.json`. Parse the JSON.
+Read `{context_dir}/clarifications.json`. Parse the JSON. If the Read tool returns a "maximum allowed tokens" error, re-read the file in two halves using the `offset` and `limit` parameters (e.g. first `limit: 200`, then `offset: 200`) and concatenate the results before parsing.
 
 If either file is missing or the JSON is malformed, return immediately:
 

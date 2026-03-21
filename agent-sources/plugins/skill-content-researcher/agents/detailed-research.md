@@ -39,7 +39,7 @@ Do not write any files in this agent.
 ### Phase 0: Read inputs
 
 Read `{workspace_dir}/user-context.md`.
-Read `{context_dir}/clarifications.json`. Parse the JSON.
+Read `{context_dir}/clarifications.json`. Parse the JSON. If the Read tool returns a "maximum allowed tokens" error, re-read the file in two halves using the `offset` and `limit` parameters (e.g. first `limit: 200`, then `offset: 200`) and concatenate the results before parsing.
 Read `{workspace_dir}/answer-evaluation.json`. Parse the JSON. If missing, see Error Handling.
 
 If `user-context.md` or `clarifications.json` is missing or the JSON is malformed, return immediately:

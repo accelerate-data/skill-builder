@@ -81,7 +81,7 @@ if `metadata.contradictory_inputs == "revised"` then treat it as authoritative a
 
 ### No contradictions
 
-If `metadata.contradictory_inputs` is absent (the normal case), read `{context_dir}/clarifications.json`.
+If `metadata.contradictory_inputs` is absent (the normal case), read `{context_dir}/clarifications.json`. If the Read tool returns a "maximum allowed tokens" error, re-read the file in two halves using the `offset` and `limit` parameters (e.g. first `limit: 200`, then `offset: 200`) and concatenate the results before parsing.
 
 If `metadata.scope_recommendation == true` in the parsed `clarifications.json`.
 
