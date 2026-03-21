@@ -235,10 +235,13 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/call_trace/);
   });
 
-  it("benchmark-skill returns collapsed status field", () => {
+  it("benchmark-skill returns a prose completion summary", () => {
     const content = fs.readFileSync(resolveAgentPath("benchmark-skill"), "utf8");
-    expect(content).toMatch(/status.*complete/);
-    expect(content).toMatch(/status.*skipped/);
+    expect(content).toMatch(/Return a short natural-language summary, not JSON/i);
+    expect(content).toMatch(/report it as complete/i);
+    expect(content).toMatch(/report it as partial/i);
+    expect(content).toMatch(/skipped cases/i);
+    expect(content).toMatch(/evals\/workspace\/\{iteration\}/);
     expect(content).not.toMatch(/benchmark_status/);
   });
 
