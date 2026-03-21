@@ -427,6 +427,36 @@ pub async fn close_refine_session(
 }
 
 #[tauri::command]
+pub async fn cancel_refine_turn(
+    session_id: String,
+    sessions: tauri::State<'_, RefineSessionManager>,
+    pool: tauri::State<'_, SidecarPool>,
+) -> Result<(), String> {
+    let skill_name = {
+        let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
+        let session = map
+            .get_mut(&session_id)
+            .ok_or_else(|| format!("Session not found: {}", session_id))?;
+
+        if !session.stream_started {
+            return Ok(());
+        }
+
+        session.stream_started = false;
+        session.skill_name.clone()
+    };
+
+    if let Err(err) = pool.send_stream_end(&skill_name, &session_id).await {
+        log::warn!(
+            "[cancel_refine_turn] Failed to send stream_end for skill '{}': {}",
+            skill_name,
+            err
+        );
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn answer_refine_question(
     session_id: String,
     agent_id: String,

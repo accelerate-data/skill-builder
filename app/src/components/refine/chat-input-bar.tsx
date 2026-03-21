@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FlaskConical, RefreshCw, SendHorizontal, ShieldCheck, X } from "lucide-react";
+import { FlaskConical, RefreshCw, SendHorizontal, ShieldCheck, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -64,6 +64,7 @@ interface ChatInputBarProps {
     targetFiles?: string[],
     command?: RefineCommand,
   ) => void;
+  onCancel?: () => void;
   isRunning: boolean;
   availableFiles: string[];
   prefilledValue?: string;
@@ -71,15 +72,13 @@ interface ChatInputBarProps {
 
 export function ChatInputBar({
   onSend,
+  onCancel,
   isRunning,
   availableFiles,
   prefilledValue,
 }: ChatInputBarProps) {
   const [text, setText] = useState("");
   const [targetFiles, setTargetFiles] = useState<string[]>([]);
-  const [activeCommand, setActiveCommand] = useState<
-    RefineCommand | undefined
-  >();
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [showCommandPicker, setShowCommandPicker] = useState(false);
   const [pickerValue, setPickerValue] = useState("");
@@ -104,6 +103,7 @@ export function ChatInputBar({
   }, [pickerValue]);
 
   const pickerOpen = showFilePicker || showCommandPicker;
+  const parsedCommand = useMemo(() => normalizeSlashCommand(text).command, [text]);
 
   // Item values for the currently open picker (used for arrow key cycling)
   const pickerItems = useMemo(() => {
@@ -129,8 +129,7 @@ export function ChatInputBar({
   }, [pickerOpen]);
 
   const handleSend = useCallback(() => {
-    const { command: parsedCommand, normalizedText } = normalizeSlashCommand(text);
-    const command = activeCommand ?? parsedCommand;
+    const { command, normalizedText } = normalizeSlashCommand(text);
     if (!normalizedText && !command) return;
     onSend(
       normalizedText,
@@ -139,8 +138,7 @@ export function ChatInputBar({
     );
     setText("");
     setTargetFiles([]);
-    setActiveCommand(undefined);
-  }, [text, targetFiles, activeCommand, onSend]);
+  }, [text, targetFiles, onSend]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -186,8 +184,19 @@ export function ChatInputBar({
     textareaRef.current?.focus();
   }, []);
 
-  const selectCommand = useCallback((command: RefineCommand) => {
-    setActiveCommand(command);
+  const setInlineCommand = useCallback((command?: RefineCommand) => {
+    setText((prev) => {
+      const trimmedStart = prev.trimStart();
+      const leadingWhitespace = prev.slice(0, prev.length - trimmedStart.length);
+      const current = normalizeSlashCommand(trimmedStart);
+      const remainder = current.normalizedText ? ` ${current.normalizedText}` : "";
+
+      if (!command) {
+        return `${leadingWhitespace}${current.normalizedText}`;
+      }
+
+      return `${leadingWhitespace}/${command}${remainder || " "}`;
+    });
     setShowCommandPicker(false);
     textareaRef.current?.focus();
   }, []);
@@ -220,7 +229,6 @@ export function ChatInputBar({
           const parsed = showCommandPicker ? normalizeSlashCommand(text) : null;
           if (
             showCommandPicker
-            && !activeCommand
             && parsed
             && (parsed.command !== undefined || parsed.normalizedText !== text.trim())
           ) {
@@ -259,7 +267,7 @@ export function ChatInputBar({
         setPickerValue(availableFiles[0] ?? "");
         pickerValueRef.current = availableFiles[0] ?? "";
       }
-      if (e.key === "/" && !activeCommand && !showCommandPicker) {
+      if (e.key === "/" && !showCommandPicker) {
         setShowCommandPicker(true);
         setPickerValue(COMMANDS[0]?.value ?? "");
         pickerValueRef.current = COMMANDS[0]?.value ?? "";
@@ -269,9 +277,8 @@ export function ChatInputBar({
       handleSend,
       selectFile,
       applyCommandFromPicker,
-      selectCommand,
+      parsedCommand,
       availableFiles,
-      activeCommand,
       showFilePicker,
       showCommandPicker,
       pickerOpen,
@@ -284,16 +291,16 @@ export function ChatInputBar({
   }, []);
 
   const removeCommand = useCallback(() => {
-    setActiveCommand(undefined);
-  }, []);
+    setInlineCommand(undefined);
+  }, [setInlineCommand]);
 
-  const hasBadges = targetFiles.length > 0 || activeCommand;
+  const hasBadges = targetFiles.length > 0;
 
   return (
     <div className="flex flex-col gap-2 border-t px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         {COMMANDS.map((cmd) => {
-          const isActive = activeCommand === cmd.value;
+          const isActive = parsedCommand === cmd.value;
           return (
             <Button
               key={cmd.value}
@@ -307,7 +314,7 @@ export function ChatInputBar({
                 if (isActive) {
                   removeCommand();
                 } else {
-                  selectCommand(cmd.value);
+                  setInlineCommand(cmd.value);
                 }
               }}
               className="gap-1.5"
@@ -320,22 +327,6 @@ export function ChatInputBar({
       </div>
       {hasBadges && (
         <div className="flex flex-wrap gap-1">
-          {activeCommand && (
-            <Badge
-              data-testid="refine-command-badge"
-              variant="default"
-              className="gap-1 text-xs"
-            >
-              /{activeCommand}
-              <button
-                type="button"
-                onClick={removeCommand}
-                className="ml-0.5 hover:text-destructive"
-              >
-                <X className="size-3" />
-              </button>
-            </Badge>
-          )}
           {targetFiles.map((f) => (
             <Badge key={f} variant="secondary" className="gap-1 text-xs">
               @{f}
@@ -359,8 +350,8 @@ export function ChatInputBar({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder={
-              activeCommand
-                ? `Describe what to ${activeCommand}...`
+              parsedCommand
+                ? `Describe what to ${parsedCommand}...`
                 : "Describe what to change..."
             }
             disabled={isRunning}
@@ -426,10 +417,13 @@ export function ChatInputBar({
         <Button
           data-testid="refine-send-button"
           size="icon"
-          onClick={handleSend}
-          disabled={isRunning || (!text.trim() && !activeCommand)}
+          type="button"
+          onClick={isRunning ? onCancel : handleSend}
+          disabled={isRunning ? !onCancel : !text.trim()}
+          aria-label={isRunning ? "Cancel current run" : "Send refine message"}
+          title={isRunning ? "Cancel current run" : "Send refine message"}
         >
-          <SendHorizontal className="size-4" />
+          {isRunning ? <Square className="size-4 fill-current" /> : <SendHorizontal className="size-4" />}
         </Button>
       </div>
     </div>

@@ -12,6 +12,7 @@ function normalizeDiffPath(path: string): string {
 
 interface ChatPanelProps {
   onSend: (text: string, targetFiles?: string[], command?: RefineCommand) => void;
+  onCancel?: () => void;
   isRunning: boolean;
   hasSkill: boolean;
   availableFiles: string[];
@@ -23,6 +24,7 @@ interface ChatPanelProps {
 
 export function ChatPanel({
   onSend,
+  onCancel,
   isRunning,
   hasSkill,
   availableFiles,
@@ -104,6 +106,7 @@ export function ChatPanel({
       )}
       <ChatInputBar
         onSend={onSend}
+        onCancel={onCancel}
         isRunning={isRunning || sessionExhausted || !!scopeBlocked}
         availableFiles={availableFiles}
         prefilledValue={pendingInitialMessage ?? undefined}

@@ -411,6 +411,9 @@ export const startRefineSession = (skillName: string, workspacePath: string) =>
 export const closeRefineSession = (sessionId: string) =>
   invoke<void>("close_refine_session", { sessionId })
 
+export const cancelRefineTurn = (sessionId: string) =>
+  invoke<void>("cancel_refine_turn", { sessionId })
+
 export const answerRefineQuestion = (
   sessionId: string,
   agentId: string,

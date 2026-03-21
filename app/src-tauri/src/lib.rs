@@ -344,6 +344,7 @@ pub fn run() {
             commands::refine::start_refine_session,
             commands::refine::send_refine_message,
             commands::refine::answer_refine_question,
+            commands::refine::cancel_refine_turn,
             commands::refine::close_refine_session,
             commands::refine::output::finalize_refine_run,
             commands::refine::output::clean_benchmark_snapshot,

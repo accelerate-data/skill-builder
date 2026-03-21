@@ -22,6 +22,7 @@ vi.mock("@/components/refine/chat-message-list", () => ({
 vi.mock("@/components/refine/chat-input-bar", () => ({
   ChatInputBar: (props: {
     onSend: (text: string) => void;
+    onCancel?: () => void;
     isRunning: boolean;
     availableFiles: string[];
     prefilledValue?: string;
@@ -37,6 +38,7 @@ vi.mock("@/components/refine/chat-input-bar", () => ({
 
 const defaultProps = {
   onSend: vi.fn(),
+  onCancel: vi.fn(),
   isRunning: false,
   hasSkill: true,
   availableFiles: ["SKILL.md", "references/glossary.md"],
@@ -49,6 +51,7 @@ function renderPanel(overrides?: Partial<typeof defaultProps> & { scopeBlocked?:
 describe("ChatPanel", () => {
   beforeEach(() => {
     defaultProps.onSend.mockReset();
+    defaultProps.onCancel.mockReset();
     messageListState.messages = [];
     inputBarState.props = null;
     useRefineStore.setState({
@@ -86,6 +89,7 @@ describe("ChatPanel", () => {
     expect(messageListState.messages).toHaveLength(1);
     expect(inputBarState.props).toMatchObject({
       onSend: defaultProps.onSend,
+      onCancel: defaultProps.onCancel,
       isRunning: false,
       availableFiles: defaultProps.availableFiles,
       prefilledValue: undefined,
@@ -136,6 +140,7 @@ describe("ChatPanel", () => {
     renderPanel({ isRunning: true });
 
     expect(inputBarState.props).toMatchObject({
+      onCancel: defaultProps.onCancel,
       isRunning: true,
     });
   });

@@ -20,6 +20,7 @@ import {
   startRefineSession,
   sendRefineMessage,
   answerRefineQuestion,
+  cancelRefineTurn,
   closeRefineSession,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
@@ -267,6 +268,23 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     [selectedSkill, workspacePath, preferredModel],
   );
 
+  const handleCancel = useCallback(async () => {
+    const store = useRefineStore.getState();
+    if (!store.sessionId || !store.isRunning) {
+      return;
+    }
+
+    try {
+      await cancelRefineTurn(store.sessionId);
+    } catch (err) {
+      console.error("[workspace-refine] Failed to cancel refine turn:", err);
+      toast.error("Failed to cancel current run", {
+        cause: err,
+        context: { operation: "workspace_refine_cancel" },
+      });
+    }
+  }, []);
+
   // --- Benchmark prompt callbacks ---
   const handleBenchmarkConfirm = useCallback(() => {
     console.log("[workspace-refine] benchmark confirmed");
@@ -449,11 +467,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     <div className="flex h-full flex-col">
       <div className="min-h-0 w-full flex-1 overflow-hidden">
         <div className="h-full">
-          <ChatPanel
-            onSend={handleSend}
-            isRunning={isRunning}
-            hasSkill={!!selectedSkill}
-            availableFiles={availableFiles}
+      <ChatPanel
+        onSend={handleSend}
+        onCancel={handleCancel}
+        isRunning={isRunning}
+        hasSkill={!!selectedSkill}
+        availableFiles={availableFiles}
             scopeBlocked={scopeBlocked}
             onBenchmarkConfirm={handleBenchmarkConfirm}
             onBenchmarkSkip={handleBenchmarkSkip}

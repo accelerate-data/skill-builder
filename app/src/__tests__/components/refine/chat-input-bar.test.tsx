@@ -9,6 +9,7 @@ beforeAll(() => {
 
 const defaultProps = {
   onSend: vi.fn(),
+  onCancel: vi.fn(),
   isRunning: false,
   availableFiles: ["SKILL.md", "references/glossary.md"],
 };
@@ -21,6 +22,7 @@ function renderBar(overrides?: Partial<typeof defaultProps>) {
 describe("ChatInputBar", () => {
   beforeEach(() => {
     defaultProps.onSend.mockReset();
+    defaultProps.onCancel.mockReset();
   });
 
   it("sends generic text as refine with no command", async () => {
@@ -50,13 +52,14 @@ describe("ChatInputBar", () => {
     );
   });
 
-  it("selects validate from the visible action button", async () => {
+  it("writes validate into the prompt from the visible action button", async () => {
     const user = userEvent.setup();
     renderBar();
 
     await user.click(screen.getByTestId("refine-action-validate"));
 
-    expect(screen.getByTestId("refine-command-badge")).toHaveTextContent("/validate");
+    expect(screen.queryByTestId("refine-command-badge")).not.toBeInTheDocument();
+    expect(screen.getByTestId("refine-chat-input")).toHaveValue("/validate ");
   });
 
   it("sends with the active explicit command", async () => {
@@ -177,5 +180,16 @@ describe("ChatInputBar", () => {
     expect(text).toContain("tighten this");
     expect(targetFiles).toEqual(["SKILL.md"]);
     expect(command).toBeUndefined();
+  });
+
+  it("replaces send with cancel while running", async () => {
+    const user = userEvent.setup();
+    renderBar({ isRunning: true });
+
+    const button = screen.getByRole("button", { name: "Cancel current run" });
+    await user.click(button);
+
+    expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
+    expect(defaultProps.onSend).not.toHaveBeenCalled();
   });
 });
