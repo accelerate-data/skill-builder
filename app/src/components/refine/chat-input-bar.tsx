@@ -173,16 +173,21 @@ export function ChatInputBar({
     textareaRef.current?.focus();
   }, []);
 
-  const selectCommand = useCallback((command: RefineCommand) => {
-    setActiveCommand(command);
-    // Remove the / trigger from text
+  const applyCommandFromPicker = useCallback((command: RefineCommand) => {
     setText((prev) => {
       const slashIdx = prev.lastIndexOf("/");
+      const nextValue = `/${command} `;
       if (slashIdx >= 0) {
-        return prev.slice(0, slashIdx) + prev.slice(slashIdx + 1);
+        return prev.slice(0, slashIdx) + nextValue;
       }
-      return prev;
+      return `${prev}${prev.endsWith(" ") || prev.length === 0 ? "" : " "}${nextValue}`;
     });
+    setShowCommandPicker(false);
+    textareaRef.current?.focus();
+  }, []);
+
+  const selectCommand = useCallback((command: RefineCommand) => {
+    setActiveCommand(command);
     setShowCommandPicker(false);
     textareaRef.current?.focus();
   }, []);
@@ -228,7 +233,7 @@ export function ChatInputBar({
           const current = pickerValueRef.current;
           if (showCommandPicker) {
             const cmd = COMMANDS.find((c) => c.value === current);
-            if (cmd) selectCommand(cmd.value);
+            if (cmd) applyCommandFromPicker(cmd.value);
           } else if (showFilePicker && current) {
             const file = availableFiles.find((f) => f === current);
             if (file) selectFile(file);
@@ -263,6 +268,7 @@ export function ChatInputBar({
     [
       handleSend,
       selectFile,
+      applyCommandFromPicker,
       selectCommand,
       availableFiles,
       activeCommand,
@@ -377,7 +383,7 @@ export function ChatInputBar({
                       className="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[selected]:bg-accent data-[selected]:text-accent-foreground"
                       onMouseDown={(e) => {
                         e.preventDefault(); // keep focus on textarea
-                        selectCommand(cmd.value);
+                        applyCommandFromPicker(cmd.value);
                       }}
                     >
                       <cmd.icon className="size-3.5" />

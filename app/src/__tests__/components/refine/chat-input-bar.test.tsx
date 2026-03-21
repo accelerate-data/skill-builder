@@ -138,6 +138,25 @@ describe("ChatInputBar", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("writes the slash command into the prompt when selected from the picker", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    const input = screen.getByTestId("refine-chat-input");
+    await user.type(input, "/");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("option", { name: "Validate skill" }),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("option", { name: "Validate skill" }));
+
+    expect(screen.queryByTestId("refine-command-badge")).not.toBeInTheDocument();
+    expect(input).toHaveValue("/validate ");
+  });
+
   it("supports selecting targeted files", async () => {
     const user = userEvent.setup();
     renderBar();
