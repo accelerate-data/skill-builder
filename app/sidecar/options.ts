@@ -1,6 +1,14 @@
-import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import type { HookInput, Options } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 import type { MessageProcessor } from "./message-processor.js";
+
+/**
+ * Subagent lifecycle counter driven by SDK SubagentStart/SubagentStop hooks.
+ * Exported for test access only — callers must not mutate directly.
+ */
+export interface SubagentCounter {
+  readonly count: number;
+}
 
 /**
  * Environment variables safe to forward to the SDK child process.
@@ -105,20 +113,76 @@ export function buildQueryOptions(
       ? { promptSuggestions: config.promptSuggestions }
       : {}),
     ...(stderr ? { stderr } : {}),
-    ...(processorRef ? {
-      hooks: {
-        Stop: [{
-          hooks: [async () => {
-            const subagents = processorRef.current?.activeSubagentCount ?? 0;
-            const bgTasks = processorRef.current?.pendingBackgroundTaskCount ?? 0;
-            const total = subagents + bgTasks;
-            if (total > 0) {
-              return { continue: false, reason: `${total} agent(s) still running` };
-            }
-            return { continue: true };
-          }],
-        }],
-      },
-    } : {}),
+    ...(processorRef ? buildHooks(processorRef) : {}),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Hook helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Build SubagentStart, SubagentStop, and Stop hooks.
+ *
+ * Subagent counting is driven entirely by the SDK's SubagentStart/SubagentStop
+ * hook events — NOT by MessageProcessor's display-item tracking.
+ * Background-task counting still reads processorRef (not a hook event).
+ *
+ * Returns a `{ hooks, _subagentCounter }` object. `_subagentCounter` is
+ * exposed exclusively for unit-test inspection.
+ */
+export function buildHooks(
+  processorRef: { current: MessageProcessor | null },
+) {
+  const counter: { count: number } = { count: 0 };
+
+  const hooks = {
+    SubagentStart: [{
+      hooks: [async (input: HookInput) => {
+        counter.count += 1;
+        const { agent_id, agent_type } = input as HookInput & { agent_id?: string; agent_type?: string };
+        console.error(
+          "[sidecar:hook] event=SubagentStart agent_id=%s agent_type=%s hook_subagent_count=%d",
+          agent_id ?? "unknown",
+          agent_type ?? "unknown",
+          counter.count,
+        );
+        return { hookSpecificOutput: { hookEventName: "SubagentStart" as const } };
+      }],
+    }],
+    SubagentStop: [{
+      hooks: [async (input: HookInput) => {
+        counter.count = Math.max(0, counter.count - 1);
+        const { agent_id, agent_type } = input as HookInput & { agent_id?: string; agent_type?: string };
+        console.error(
+          "[sidecar:hook] event=SubagentStop agent_id=%s agent_type=%s hook_subagent_count=%d",
+          agent_id ?? "unknown",
+          agent_type ?? "unknown",
+          counter.count,
+        );
+        return {};
+      }],
+    }],
+    Stop: [{
+      hooks: [async () => {
+        const subagents = counter.count;
+        const bgTasks = processorRef.current?.pendingBackgroundTaskCount ?? 0;
+        const total = subagents + bgTasks;
+        const decision = total > 0 ? "block" : "approve";
+        console.error(
+          "[sidecar:hook] event=Stop decision=%s hook_subagents=%d bg_tasks=%d total=%d",
+          decision,
+          subagents,
+          bgTasks,
+          total,
+        );
+        if (total > 0) {
+          return { decision: "block" as const, reason: `${total} agent(s) still running` };
+        }
+        return { decision: "approve" as const };
+      }],
+    }],
+  };
+
+  return { hooks, _subagentCounter: counter as SubagentCounter };
 }

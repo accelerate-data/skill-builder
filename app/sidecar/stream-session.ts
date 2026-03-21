@@ -4,6 +4,7 @@ import { buildQueryOptions } from "./options.js";
 import { createAbortState, linkExternalSignal } from "./shutdown.js";
 import { emitSystemEvent, discoverInstalledPlugins, selectPluginPaths } from "./run-agent.js";
 import { MessageProcessor } from "./message-processor.js";
+import { ResultGate } from "./result-gate.js";
 
 /** Sentinel used to close the async generator cleanly. */
 const CLOSE_SENTINEL = Symbol("close");
@@ -171,6 +172,9 @@ export class StreamSession {
 
     const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler, processorRef);
 
+    // Gate run_result emission until all subagents/background tasks finish.
+    const gate = new ResultGate(processor);
+
     // Build the async generator that feeds messages to the SDK
     const self = this;
     async function* messageGenerator() {
@@ -253,12 +257,19 @@ export class StreamSession {
         // through the "task" classifier category → processTaskEvent.
         const items = processor.process(msg);
         for (const item of items) {
-          onMessage(this.currentRequestId, item as Record<string, unknown>);
+          gate.emit(
+            item as Record<string, unknown>,
+            (m) => onMessage(this.currentRequestId, m),
+          );
         }
+        gate.tryFlush((m) => onMessage(this.currentRequestId, m));
 
         // turn_complete is now emitted by MessageProcessor.processAssistantMessage
         // when stop_reason is set and not "tool_use". No raw SDK field inspection here.
       }
+
+      // Safety net: emit any deferred run_result when the SDK loop exits.
+      gate.flush((m) => onMessage(this.currentRequestId, m));
 
       // Emit a shutdown run_result for aborted streaming runs (guard in case
       // the SDK itself emitted a result before the abort was processed).

@@ -4,6 +4,7 @@ import { runMockAgent } from "./mock-agent.js";
 import { buildQueryOptions } from "./options.js";
 import { createAbortState, linkExternalSignal } from "./shutdown.js";
 import { MessageProcessor } from "./message-processor.js";
+import { ResultGate } from "./result-gate.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -108,6 +109,9 @@ export async function runAgentRequest(
 
   const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler, processorRef);
 
+  // Gate run_result emission until all subagents/background tasks finish.
+  const gate = new ResultGate(processor);
+
   // Emit plugins passed to the SDK as a system event so it appears in the JSONL transcript.
   const pluginsToLog = (options as Record<string, unknown>).plugins as unknown[] | undefined;
   onMessage({
@@ -145,9 +149,13 @@ export async function runAgentRequest(
       // through the "task" classifier category → processTaskEvent.
       const items = processor.process(raw);
       for (const item of items) {
-        onMessage(item as Record<string, unknown>);
+        gate.emit(item as Record<string, unknown>, onMessage);
       }
+      gate.tryFlush(onMessage);
     }
+
+    // Safety net: emit any deferred run_result when the SDK loop exits.
+    gate.flush(onMessage);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (state.abortController.signal.aborted) {

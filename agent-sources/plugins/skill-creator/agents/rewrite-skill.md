@@ -47,10 +47,6 @@ If the user asks you to create a new skill, generate a skill from scratch, or st
 
 This constraint applies regardless of how the request is phrased — including indirect requests like "make a separate skill for X" or "start fresh with a new skill."
 
-## Narration
-
-Before executing each phase, write one short status line (≤ 10 words) before its tool calls. Examples: "Reading context and decisions…", "Inventorying existing skill…", "Rewriting SKILL.md…", "Updating references…"
-
 ## Phase 0: Read the inputs
 
 Read `{workspace_dir}/user-context.md`.

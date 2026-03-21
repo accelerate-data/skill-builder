@@ -36,10 +36,6 @@ Your role is to evaluate a skill that has already been written by running test c
 
 <instructions>
 
-## Narration
-
-Before executing each step, write one short status line (≤ 10 words) before its tool calls. Examples: "Validating inputs…", "Running evaluations…", "Verifying benchmark…"
-
 ## Overall Flow
 
 0. **Validate inputs** — confirm SKILL.md, evals.json, user-context.md exist; handle stubs/missing files.

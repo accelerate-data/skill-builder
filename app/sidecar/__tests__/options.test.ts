@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildQueryOptions } from "../options.js";
+import { buildQueryOptions, buildHooks } from "../options.js";
 import type { SidecarConfig } from "../config.js";
 
 function makeConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
@@ -254,7 +254,7 @@ describe("buildQueryOptions", () => {
     expect(opts).not.toHaveProperty("hooks");
   });
 
-  it("includes Stop hook when processorRef is provided", () => {
+  it("includes Stop, SubagentStart, and SubagentStop hooks when processorRef is provided", () => {
     const processorRef = { current: null };
     const opts = buildQueryOptions(
       makeConfig(),
@@ -266,74 +266,87 @@ describe("buildQueryOptions", () => {
     expect(opts).toHaveProperty("hooks");
     const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
     expect(hooks).toHaveProperty("Stop");
+    expect(hooks).toHaveProperty("SubagentStart");
+    expect(hooks).toHaveProperty("SubagentStop");
   });
 
-  it("Stop hook returns continue:false when activeSubagentCount > 0", async () => {
-    const fakeProcessor = { activeSubagentCount: 2, pendingBackgroundTaskCount: 0 };
-    const processorRef = { current: fakeProcessor as never };
-    const opts = buildQueryOptions(
-      makeConfig(),
-      new AbortController(),
-      [],
-      undefined,
-      processorRef,
-    );
-    const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
-    const stopMatchers = hooks.Stop as Array<{ hooks: Array<(...args: unknown[]) => Promise<unknown>> }>;
-    const hookFn = stopMatchers[0].hooks[0];
-    const result = await hookFn();
-    expect(result).toEqual({ continue: false, reason: "2 agent(s) still running" });
-  });
+  describe("buildHooks", () => {
+    // Helper types for hook extraction
+    type HookFn = (...args: unknown[]) => Promise<unknown>;
+    type HookMatcher = { hooks: HookFn[] };
 
-  it("Stop hook returns continue:false when pendingBackgroundTaskCount > 0", async () => {
-    const fakeProcessor = { activeSubagentCount: 0, pendingBackgroundTaskCount: 3 };
-    const processorRef = { current: fakeProcessor as never };
-    const opts = buildQueryOptions(
-      makeConfig(),
-      new AbortController(),
-      [],
-      undefined,
-      processorRef,
-    );
-    const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
-    const stopMatchers = hooks.Stop as Array<{ hooks: Array<(...args: unknown[]) => Promise<unknown>> }>;
-    const hookFn = stopMatchers[0].hooks[0];
-    const result = await hookFn();
-    expect(result).toEqual({ continue: false, reason: "3 agent(s) still running" });
-  });
+    function makeHooks(bgTasks = 0) {
+      const fakeProcessor = { pendingBackgroundTaskCount: bgTasks };
+      const processorRef = { current: fakeProcessor as never };
+      const result = buildHooks(processorRef);
+      const hooks = result.hooks as Record<string, HookMatcher[]>;
+      return {
+        subagentStart: hooks.SubagentStart[0].hooks[0],
+        subagentStop: hooks.SubagentStop[0].hooks[0],
+        stop: hooks.Stop[0].hooks[0],
+        counter: result._subagentCounter,
+      };
+    }
 
-  it("Stop hook sums both active subagents and background tasks", async () => {
-    const fakeProcessor = { activeSubagentCount: 1, pendingBackgroundTaskCount: 2 };
-    const processorRef = { current: fakeProcessor as never };
-    const opts = buildQueryOptions(
-      makeConfig(),
-      new AbortController(),
-      [],
-      undefined,
-      processorRef,
-    );
-    const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
-    const stopMatchers = hooks.Stop as Array<{ hooks: Array<(...args: unknown[]) => Promise<unknown>> }>;
-    const hookFn = stopMatchers[0].hooks[0];
-    const result = await hookFn();
-    expect(result).toEqual({ continue: false, reason: "3 agent(s) still running" });
-  });
+    it("SubagentStart increments the hook counter", async () => {
+      const { subagentStart, counter } = makeHooks();
+      expect(counter.count).toBe(0);
+      await subagentStart({ hook_event_name: "SubagentStart", agent_id: "a1", agent_type: "general" });
+      expect(counter.count).toBe(1);
+      await subagentStart({ hook_event_name: "SubagentStart", agent_id: "a2", agent_type: "general" });
+      expect(counter.count).toBe(2);
+    });
 
-  it("Stop hook returns continue:true when both counts are 0", async () => {
-    const fakeProcessor = { activeSubagentCount: 0, pendingBackgroundTaskCount: 0 };
-    const processorRef = { current: fakeProcessor as never };
-    const opts = buildQueryOptions(
-      makeConfig(),
-      new AbortController(),
-      [],
-      undefined,
-      processorRef,
-    );
-    const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
-    const stopMatchers = hooks.Stop as Array<{ hooks: Array<(...args: unknown[]) => Promise<unknown>> }>;
-    const hookFn = stopMatchers[0].hooks[0];
-    const result = await hookFn();
-    expect(result).toEqual({ continue: true });
+    it("SubagentStop decrements the hook counter", async () => {
+      const { subagentStart, subagentStop, counter } = makeHooks();
+      await subagentStart({ hook_event_name: "SubagentStart", agent_id: "a1", agent_type: "general" });
+      await subagentStart({ hook_event_name: "SubagentStart", agent_id: "a2", agent_type: "general" });
+      expect(counter.count).toBe(2);
+      await subagentStop({ hook_event_name: "SubagentStop", agent_id: "a1", agent_type: "general" });
+      expect(counter.count).toBe(1);
+    });
+
+    it("SubagentStop does not decrement below zero", async () => {
+      const { subagentStop, counter } = makeHooks();
+      expect(counter.count).toBe(0);
+      await subagentStop({ hook_event_name: "SubagentStop", agent_id: "a1", agent_type: "general" });
+      expect(counter.count).toBe(0);
+    });
+
+    it("Stop hook blocks when hook-counted subagents are active", async () => {
+      const { subagentStart, stop } = makeHooks();
+      await subagentStart({ hook_event_name: "SubagentStart", agent_id: "a1", agent_type: "general" });
+      await subagentStart({ hook_event_name: "SubagentStart", agent_id: "a2", agent_type: "general" });
+      const result = await stop();
+      expect(result).toEqual({ decision: "block", reason: "2 agent(s) still running" });
+    });
+
+    it("Stop hook blocks when only background tasks are active", async () => {
+      const { stop } = makeHooks(3);
+      const result = await stop();
+      expect(result).toEqual({ decision: "block", reason: "3 agent(s) still running" });
+    });
+
+    it("Stop hook sums hook subagents and background tasks", async () => {
+      const { subagentStart, stop } = makeHooks(2);
+      await subagentStart({ hook_event_name: "SubagentStart", agent_id: "a1", agent_type: "general" });
+      const result = await stop();
+      expect(result).toEqual({ decision: "block", reason: "3 agent(s) still running" });
+    });
+
+    it("Stop hook approves when no subagents or background tasks", async () => {
+      const { stop } = makeHooks(0);
+      const result = await stop();
+      expect(result).toEqual({ decision: "approve" });
+    });
+
+    it("Stop hook approves after all subagents stop", async () => {
+      const { subagentStart, subagentStop, stop } = makeHooks();
+      await subagentStart({ hook_event_name: "SubagentStart", agent_id: "a1", agent_type: "general" });
+      await subagentStop({ hook_event_name: "SubagentStop", agent_id: "a1", agent_type: "general" });
+      const result = await stop();
+      expect(result).toEqual({ decision: "approve" });
+    });
   });
 
   it("env contains only allowlisted vars plus ANTHROPIC_API_KEY", () => {
