@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import type { RefineMessage } from "@/stores/refine-store";
 import { AgentTurnInline } from "./agent-turn-inline";
 import { BenchmarkPromptInline } from "./benchmark-prompt-inline";
@@ -39,7 +38,7 @@ export function ChatMessageList({ messages, onBenchmarkConfirm, onBenchmarkSkip 
 
   return (
     <ScrollArea className="h-0 flex-1">
-      <div className="mx-auto flex min-w-0 w-full max-w-4xl flex-col gap-5 overflow-x-hidden px-4 py-5">
+      <div className="mx-auto flex min-w-0 w-full max-w-4xl flex-col gap-4 overflow-x-hidden px-4 pb-5 pt-3">
         {messages.map((msg) => {
           if (msg.role === "user") {
             return (
@@ -47,7 +46,7 @@ export function ChatMessageList({ messages, onBenchmarkConfirm, onBenchmarkSkip 
                 <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                   Request
                 </div>
-                <div className="rounded-lg border bg-muted/45 px-4 py-3">
+                <div className="rounded-lg border border-border/45 bg-muted/20 px-4 py-3">
                   {(msg.command || (msg.targetFiles && msg.targetFiles.length > 0)) && (
                     <div className="mb-2 flex flex-wrap gap-1.5">
                       {msg.command && (
@@ -79,12 +78,11 @@ export function ChatMessageList({ messages, onBenchmarkConfirm, onBenchmarkSkip 
 
           if (msg.role === "agent" && msg.agentId) {
             return (
-              <div key={msg.id} className="flex min-w-0 w-full flex-col gap-2 overflow-hidden">
-                <Separator />
+              <div key={msg.id} className="flex min-w-0 w-full flex-col gap-2 overflow-hidden border-t border-border/35 pt-3">
                 <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                   Agent
                 </div>
-                <div className="min-w-0 overflow-hidden rounded-lg border bg-card/60 px-4 py-3">
+                <div className="min-w-0 overflow-hidden rounded-lg border border-border/45 bg-card/35 px-4 py-3">
                   <AgentTurnInline agentId={msg.agentId} />
                 </div>
               </div>

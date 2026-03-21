@@ -51,8 +51,8 @@ export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles, scopeBl
         </div>
       )}
       {modifiedFiles.length > 0 && (
-        <div className="border-b px-4 py-3">
-          <div data-testid="refine-modified-files" className="mx-auto max-w-4xl rounded-lg border bg-card/50 px-4 py-3">
+        <div className="border-b px-4 py-2.5">
+          <div data-testid="refine-modified-files" className="mx-auto max-w-4xl rounded-lg border border-border/45 bg-card/25 px-4 py-3">
             <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Changed in this run
             </div>

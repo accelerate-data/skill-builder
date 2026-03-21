@@ -37,7 +37,7 @@ const MarkdownPreview = memo(function MarkdownPreview({ content, filename }: { c
   return (
     <>
       {parsed.frontmatter && <SkillFrontmatterHeader frontmatter={parsed.frontmatter} />}
-      <div className="markdown-body compact max-w-none overflow-hidden p-4 pb-8">
+      <div className="markdown-body compact max-w-none overflow-hidden break-words p-4 pb-8 [&_*]:break-words">
         <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={markdownComponents}>
           {parsed.body}
         </ReactMarkdown>
@@ -69,18 +69,18 @@ export function PreviewPanel() {
     >
       <DialogContent
         showCloseButton={false}
-        className="left-auto right-0 top-0 h-screen max-w-[min(720px,100vw)] translate-x-0 translate-y-0 gap-0 rounded-none border-l border-r-0 border-t-0 border-b-0 p-0 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
+        className="left-auto right-0 top-0 h-screen max-w-[min(920px,100vw)] translate-x-0 translate-y-0 gap-0 rounded-none border-l border-r-0 border-t-0 border-b-0 p-0 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
       >
         <DialogHeader className="border-b px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <DialogTitle className="flex min-w-0 items-center gap-1.5 text-base">
+              <DialogTitle className="flex min-w-0 items-start gap-1.5 text-base">
                 <FileText className="size-4 shrink-0 text-muted-foreground" />
-                <span className="truncate" data-testid="refine-file-view-title">
+                <span className="break-words text-left leading-6" data-testid="refine-file-view-title">
                   {selectedModifiedFile ?? activeFileTab}
                 </span>
               </DialogTitle>
-              <DialogDescription className="mt-1 text-xs">
+              <DialogDescription className="mt-1 break-words text-xs">
                 Inspect the selected file without leaving the refine transcript.
               </DialogDescription>
             </div>
