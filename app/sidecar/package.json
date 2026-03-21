@@ -9,7 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.80"
+    "@anthropic-ai/claude-agent-sdk": "^0.2.81"
   },
   "devDependencies": {
     "@types/node": "^22",
