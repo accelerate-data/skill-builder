@@ -142,10 +142,10 @@ describe("WorkspaceRefine", () => {
     });
 
     expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
-    expect(screen.queryByTestId("preview-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("preview-panel")).toBeInTheDocument();
   });
 
-  it("renders the file view when a modified file is selected", async () => {
+  it("keeps the chat panel mounted when a modified file is selected", async () => {
     const skill = makeSkill("my-skill");
     refineStoreState.selectedModifiedFile = "SKILL.md";
 
@@ -153,7 +153,7 @@ describe("WorkspaceRefine", () => {
       renderRefine(skill);
     });
 
-    expect(screen.queryByTestId("chat-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
     expect(screen.getByTestId("preview-panel")).toBeInTheDocument();
   });
 

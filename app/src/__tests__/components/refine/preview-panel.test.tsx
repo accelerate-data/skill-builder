@@ -39,16 +39,15 @@ describe("PreviewPanel", () => {
   it("shows a prompt when no modified file is selected", () => {
     render(<PreviewPanel />);
 
-    expect(screen.getByTestId("refine-file-view-empty")).toBeInTheDocument();
-    expect(screen.getByText("Select a modified file to view it here")).toBeInTheDocument();
+    expect(screen.queryByTestId("refine-file-view")).not.toBeInTheDocument();
   });
 
   it("shows loading state while files are loading", () => {
-    setStoreState({ isLoadingFiles: true });
+    setStoreState({ isLoadingFiles: true, selectedModifiedFile: "SKILL.md" });
 
     render(<PreviewPanel />);
 
-    expect(screen.queryByTestId("refine-file-view-empty")).not.toBeInTheDocument();
+    expect(screen.getByTestId("refine-file-view")).toBeInTheDocument();
   });
 
   it("renders the selected file content as markdown", () => {
@@ -64,7 +63,7 @@ describe("PreviewPanel", () => {
     expect(screen.getByTestId("markdown-preview")).toHaveTextContent("# My Skill");
   });
 
-  it("returns to chat mode when the back button is clicked", async () => {
+  it("closes the viewer when the close button is clicked", async () => {
     const user = userEvent.setup();
     setStoreState({
       skillFiles: SKILL_FILES,
@@ -74,7 +73,7 @@ describe("PreviewPanel", () => {
 
     render(<PreviewPanel />);
 
-    await user.click(screen.getByTestId("refine-file-view-back"));
+    await user.click(screen.getByTestId("refine-file-view-close"));
 
     expect(useRefineStore.getState().selectedModifiedFile).toBeNull();
   });

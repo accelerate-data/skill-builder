@@ -51,28 +51,33 @@ export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles, scopeBl
         </div>
       )}
       {modifiedFiles.length > 0 && (
-        <div data-testid="refine-modified-files" className="border-b px-3 py-2">
-          <div className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            Modified files
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {modifiedFiles.map((filename) => (
-              <Button
-                key={filename}
-                type="button"
-                size="xs"
-                variant="outline"
-                className="max-w-full justify-start rounded-full"
-                data-testid={`refine-modified-file-pill-${filename}`}
-                onClick={() => {
-                  setActiveFileTab(filename);
-                  setSelectedModifiedFile(filename);
-                }}
-              >
-                <FileText className="size-3" />
-                <span className="truncate">{filename}</span>
-              </Button>
-            ))}
+        <div className="border-b px-4 py-3">
+          <div data-testid="refine-modified-files" className="mx-auto max-w-4xl rounded-lg border bg-card/50 px-4 py-3">
+            <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Changed in this run
+            </div>
+            <div className="mb-3 text-sm text-muted-foreground">
+              Open a file to inspect the final preview or git diff without leaving the conversation.
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {modifiedFiles.map((filename) => (
+                <Button
+                  key={filename}
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  className="max-w-full justify-start rounded-full bg-background/80"
+                  data-testid={`refine-modified-file-pill-${filename}`}
+                  onClick={() => {
+                    setActiveFileTab(filename);
+                    setSelectedModifiedFile(filename);
+                  }}
+                >
+                  <FileText className="size-3" />
+                  <span className="truncate">{filename}</span>
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
       )}

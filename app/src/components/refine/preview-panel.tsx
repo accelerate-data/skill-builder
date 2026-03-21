@@ -3,10 +3,17 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
-import { ArrowLeft, FileText, GitCompare } from "lucide-react";
+import { FileText, GitCompare } from "lucide-react";
 import { markdownComponents } from "@/components/markdown-link";
 import { SkillFrontmatterHeader } from "@/components/skill-frontmatter-header";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isSkillFile, parseFrontmatter } from "@/lib/frontmatter";
@@ -49,75 +56,81 @@ export function PreviewPanel() {
   const setDiffMode = useRefineStore((s) => s.setDiffMode);
   const setSelectedModifiedFile = useRefineStore((s) => s.setSelectedModifiedFile);
 
-  if (isLoadingFiles) {
-    return (
-      <div className="flex flex-col gap-3 p-4">
-        <Skeleton className="h-8 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  if (!selectedModifiedFile) {
-    return (
-      <div data-testid="refine-file-view-empty" className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Select a modified file to view it here
-      </div>
-    );
-  }
-
   const activeFile = skillFiles.find((f) => f.filename === activeFileTab);
   const gitDiffFile = gitDiff?.files.find((file) => normalizeDiffPath(file.path) === activeFileTab);
   const hasDiff = !!gitDiffFile;
 
   return (
-    <div data-testid="refine-file-view" className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b px-4 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            data-testid="refine-file-view-back"
-            onClick={() => setSelectedModifiedFile(null)}
-          >
-            <ArrowLeft className="size-3.5" />
-            Back
-          </Button>
-          <div className="flex min-w-0 items-center gap-1.5 text-sm">
-            <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate" data-testid="refine-file-view-title">{selectedModifiedFile}</span>
+    <Dialog
+      open={!!selectedModifiedFile}
+      onOpenChange={(open) => {
+        if (!open) setSelectedModifiedFile(null);
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        className="left-auto right-0 top-0 h-screen max-w-[min(720px,100vw)] translate-x-0 translate-y-0 gap-0 rounded-none border-l border-r-0 border-t-0 border-b-0 p-0 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
+      >
+        <DialogHeader className="border-b px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <DialogTitle className="flex min-w-0 items-center gap-1.5 text-base">
+                <FileText className="size-4 shrink-0 text-muted-foreground" />
+                <span className="truncate" data-testid="refine-file-view-title">
+                  {selectedModifiedFile ?? activeFileTab}
+                </span>
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-xs">
+                Inspect the selected file without leaving the refine transcript.
+              </DialogDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                data-testid="refine-diff-toggle"
+                variant="outline"
+                size="sm"
+                disabled={!hasDiff}
+                onClick={() => setDiffMode(!diffMode)}
+                className="gap-1.5"
+              >
+                <GitCompare className="size-3.5" />
+                {diffMode ? "Preview" : "Diff"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="refine-file-view-close"
+                onClick={() => setSelectedModifiedFile(null)}
+              >
+                Close
+              </Button>
+            </div>
           </div>
+        </DialogHeader>
+        <div data-testid="refine-file-view" className="min-h-0 flex-1">
+          {isLoadingFiles ? (
+            <div className="flex flex-col gap-3 p-4">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-64 w-full" />
+            </div>
+          ) : diffMode && gitDiffFile ? (
+            <GitPatchView patch={gitDiffFile.diff} />
+          ) : diffMode ? (
+            <div data-testid="git-patch-empty" className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              No git diff is available for this file.
+            </div>
+          ) : activeFile ? (
+            <ScrollArea className="h-full">
+              <MarkdownPreview content={activeFile.content} filename={activeFile.filename} />
+            </ScrollArea>
+          ) : (
+            <div data-testid="refine-preview-missing-file" className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              This file is only available in the git diff.
+            </div>
+          )}
         </div>
-        <Button
-          data-testid="refine-diff-toggle"
-          variant="outline"
-          size="sm"
-          disabled={!hasDiff}
-          onClick={() => setDiffMode(!diffMode)}
-          className="ml-2 gap-1.5"
-        >
-          <GitCompare className="size-3.5" />
-          {diffMode ? "Preview" : "Diff"}
-        </Button>
-      </div>
-      <div className="min-h-0 flex-1">
-        {diffMode && gitDiffFile ? (
-          <GitPatchView patch={gitDiffFile.diff} />
-        ) : diffMode ? (
-          <div data-testid="git-patch-empty" className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            No git diff is available for this file.
-          </div>
-        ) : activeFile ? (
-          <ScrollArea className="h-full">
-            <MarkdownPreview content={activeFile.content} filename={activeFile.filename} />
-          </ScrollArea>
-        ) : (
-          <div data-testid="refine-preview-missing-file" className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            This file is only available in the git diff.
-          </div>
-        )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

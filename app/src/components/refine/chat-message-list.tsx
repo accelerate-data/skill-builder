@@ -39,39 +39,54 @@ export function ChatMessageList({ messages, onBenchmarkConfirm, onBenchmarkSkip 
 
   return (
     <ScrollArea className="h-0 flex-1">
-      <div className="flex min-w-0 w-full flex-col gap-3 overflow-x-hidden p-4">
+      <div className="mx-auto flex min-w-0 w-full max-w-4xl flex-col gap-5 overflow-x-hidden px-4 py-5">
         {messages.map((msg) => {
           if (msg.role === "user") {
             return (
-              <div key={msg.id} className="flex flex-col items-end gap-1">
-                {(msg.command || (msg.targetFiles && msg.targetFiles.length > 0)) && (
-                  <div className="flex gap-1">
-                    {msg.command && (
-                      <Badge variant="default" className="text-xs">
-                        /{msg.command}
-                      </Badge>
-                    )}
-                    {msg.targetFiles?.map((f) => (
-                      <Badge key={f} variant="outline" className="text-xs">
-                        {f}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                {msg.userText && (
-                  <div className="max-w-[80%] break-words rounded-2xl bg-primary px-4 py-2 text-primary-foreground">
-                    {msg.userText}
-                  </div>
-                )}
+              <div key={msg.id} className="flex w-full flex-col gap-2">
+                <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  Request
+                </div>
+                <div className="rounded-lg border bg-muted/45 px-4 py-3">
+                  {(msg.command || (msg.targetFiles && msg.targetFiles.length > 0)) && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {msg.command && (
+                        <Badge variant="secondary" className="text-xs font-medium">
+                          /{msg.command}
+                        </Badge>
+                      )}
+                      {msg.targetFiles?.map((f) => (
+                        <Badge key={f} variant="outline" className="max-w-full text-xs">
+                          {f}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  {msg.userText && (
+                    <div className="break-words text-sm leading-6 text-foreground">
+                      {msg.userText}
+                    </div>
+                  )}
+                  {!msg.userText && msg.command && (
+                    <div className="text-sm leading-6 text-muted-foreground">
+                      Command-only refine request.
+                    </div>
+                  )}
+                </div>
               </div>
             );
           }
 
           if (msg.role === "agent" && msg.agentId) {
             return (
-              <div key={msg.id} className="flex min-w-0 w-full flex-col gap-1 overflow-hidden">
+              <div key={msg.id} className="flex min-w-0 w-full flex-col gap-2 overflow-hidden">
                 <Separator />
-                <AgentTurnInline agentId={msg.agentId} />
+                <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  Agent
+                </div>
+                <div className="min-w-0 overflow-hidden rounded-lg border bg-card/60 px-4 py-3">
+                  <AgentTurnInline agentId={msg.agentId} />
+                </div>
               </div>
             );
           }

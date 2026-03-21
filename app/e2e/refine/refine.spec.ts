@@ -68,7 +68,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await expect(page.getByText("Rewriting skill with improved structure...").last()).toBeVisible();
   });
 
-  test("happy path: select skill, send message, open modified file, and return to chat", async ({ page }) => {
+  test("happy path: select skill, send message, open modified file, and close the side viewer", async ({ page }) => {
     await navigateToRefineWithSkill(page);
 
     // --- 1. Verify skill loaded ---
@@ -143,7 +143,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await skillPill.click();
     await expect(page.getByTestId("refine-file-view")).toBeVisible();
     await expect(page.getByTestId("refine-file-view-title")).toContainText("SKILL.md");
-    await expect(page.getByTestId("refine-chat-input")).not.toBeVisible();
+    await expect(page.getByTestId("refine-chat-input")).toBeVisible();
 
     // --- 9. Toggle diff mode inside the file view ---
     const diffToggle = page.getByTestId("refine-diff-toggle");
@@ -151,10 +151,11 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await diffToggle.click();
     await expect(diffToggle).toContainText("Preview");
 
-    // --- 10. Return to the chat ---
-    await page.getByTestId("refine-file-view-back").click();
+    // --- 10. Close the side viewer ---
+    await page.getByTestId("refine-file-view-close").click();
     await expect(page.getByTestId("refine-chat-input")).toBeVisible();
     await expect(page.getByText("add a quick-start section")).toBeVisible();
+    await expect(page.getByTestId("refine-file-view")).not.toBeVisible();
   });
 
   test("agent error mid-refine: error renders, chat usable, diff preserved", async ({ page }) => {
@@ -209,7 +210,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await expect(diffToggle).toBeEnabled();
     await diffToggle.click();
     await expect(page.getByTestId("git-patch-line-added").filter({ hasText: "## Quick Start" })).toBeVisible();
-    await page.getByTestId("refine-file-view-back").click();
+    await page.getByTestId("refine-file-view-close").click();
 
     // --- Turn 2 (error): Agent fails before modifying files ---
     // Swap send_refine_message mock to return a new agent ID
@@ -295,7 +296,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await expect(page.getByTestId("git-patch-view")).toContainText("Updated definition");
     await expect(page.getByTestId("refine-file-view-title")).toContainText("references/glossary.md");
 
-    await page.getByTestId("refine-file-view-back").click();
+    await page.getByTestId("refine-file-view-close").click();
     await page.getByTestId("refine-modified-file-pill-SKILL.md").click();
     await expect(page.getByTestId("refine-file-view-title")).toContainText("SKILL.md");
   });

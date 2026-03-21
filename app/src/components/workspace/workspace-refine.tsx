@@ -75,7 +75,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const selectedSkill = useRefineStore((s) => s.selectedSkill);
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const previewRevision = useRefineStore((s) => s.previewRevision);
-  const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const isRunning = useRefineStore((s) => s.isRunning);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
 
@@ -400,21 +399,18 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 w-full flex-1 overflow-hidden">
-        {selectedModifiedFile ? (
+        <div className="h-full">
+          <ChatPanel
+            onSend={handleSend}
+            isRunning={isRunning}
+            hasSkill={!!selectedSkill}
+            availableFiles={availableFiles}
+            scopeBlocked={scopeBlocked}
+            onBenchmarkConfirm={handleBenchmarkConfirm}
+            onBenchmarkSkip={handleBenchmarkSkip}
+          />
           <PreviewPanel key={previewRevision} />
-        ) : (
-          <div className="h-full">
-            <ChatPanel
-              onSend={handleSend}
-              isRunning={isRunning}
-              hasSkill={!!selectedSkill}
-              availableFiles={availableFiles}
-              scopeBlocked={scopeBlocked}
-              onBenchmarkConfirm={handleBenchmarkConfirm}
-              onBenchmarkSkip={handleBenchmarkSkip}
-            />
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Status bar */}
