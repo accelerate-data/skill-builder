@@ -72,7 +72,7 @@
     "promptfoo": "^0.120.27",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4",
+    "vite": "^8.0.1",
     "vitest": "^4.0.18"
   },
   "overrides": {
