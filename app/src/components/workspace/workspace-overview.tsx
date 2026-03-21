@@ -6,8 +6,7 @@ import SkillDialog from "@/components/skill-dialog";
 import { BenchmarkOverviewCard } from "@/components/workspace/benchmark-overview-card";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getSkillHistory, readLatestBenchmark } from "@/lib/tauri";
-import type { BenchmarkData } from "@/components/benchmark-summary-card";
-import type { SkillSummary, ImportedSkill, Purpose, SkillCommit } from "@/lib/types";
+import type { BenchmarkData, SkillSummary, ImportedSkill, Purpose, SkillCommit } from "@/lib/types";
 import { PURPOSE_LABELS } from "@/lib/types";
 
 interface WorkspaceOverviewProps {

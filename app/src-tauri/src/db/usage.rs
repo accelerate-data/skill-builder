@@ -465,6 +465,7 @@ pub fn get_recent_workflow_sessions(
     }
 }
 
+#[cfg(test)]
 pub fn get_session_agent_runs(
     conn: &Connection,
     session_id: &str,

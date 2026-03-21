@@ -233,6 +233,66 @@ export interface WorkflowSessionRecord {
   completed_at: string | null
 }
 
+interface BenchmarkExpectation {
+  text: string;
+  passed: boolean;
+  evidence?: string;
+}
+
+interface BenchmarkRunResult {
+  pass_rate: number;
+  passed: number;
+  failed: number;
+  total: number;
+  time_seconds?: number;
+  tokens?: number;
+  tool_calls?: number;
+  errors?: number;
+}
+
+interface BenchmarkRun {
+  eval_id: number;
+  eval_name?: string;
+  configuration: string;
+  run_number: number;
+  result: BenchmarkRunResult;
+  expectations?: BenchmarkExpectation[];
+  notes?: string | string[];
+}
+
+interface BenchmarkStat {
+  mean: number;
+  stddev: number;
+  min: number;
+  max: number;
+}
+
+export interface BenchmarkConfigSummary {
+  pass_rate: BenchmarkStat;
+  time_seconds?: BenchmarkStat;
+  tokens?: BenchmarkStat;
+}
+
+export interface BenchmarkDelta {
+  pass_rate: string;
+  time_seconds?: string;
+  tokens?: string;
+}
+
+interface BenchmarkMetadata {
+  skill_name?: string;
+  timestamp?: string;
+  evals_run?: number[];
+  runs_per_configuration?: number;
+}
+
+export interface BenchmarkData {
+  metadata?: BenchmarkMetadata;
+  runs?: BenchmarkRun[];
+  run_summary?: Record<string, BenchmarkConfigSummary | BenchmarkDelta>;
+  notes?: string | string[];
+}
+
 export interface UsageSummary {
   total_cost: number
   total_runs: number

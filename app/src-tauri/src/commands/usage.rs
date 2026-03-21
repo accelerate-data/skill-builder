@@ -158,19 +158,6 @@ pub fn get_recent_workflow_sessions(
 }
 
 #[tauri::command]
-pub fn get_session_agent_runs(
-    db: tauri::State<'_, Db>,
-    session_id: String,
-) -> Result<Vec<AgentRunRecord>, String> {
-    log::info!("[get_session_agent_runs] session=[REDACTED]");
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_session_agent_runs] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    crate::db::get_session_agent_runs(&conn, &session_id)
-}
-
-#[tauri::command]
 pub fn get_agent_runs(
     db: tauri::State<'_, Db>,
     hide_cancelled: bool,

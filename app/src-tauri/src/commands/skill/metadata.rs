@@ -3,20 +3,6 @@ use std::fs;
 use std::path::Path;
 
 #[tauri::command]
-pub fn update_skill_tags(
-    skill_name: String,
-    tags: Vec<String>,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
-    log::info!("[update_skill_tags] skill={} tags={:?}", skill_name, tags);
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[update_skill_tags] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    crate::db::set_skill_tags(&conn, &skill_name, &tags)
-}
-
-#[tauri::command]
 pub fn get_all_tags(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
     log::info!("[get_all_tags]");
     let conn = db.0.lock().map_err(|e| {
@@ -24,19 +10,6 @@ pub fn get_all_tags(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
         e.to_string()
     })?;
     crate::db::get_all_tags(&conn)
-}
-
-#[tauri::command]
-pub fn get_installed_skill_names(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
-    log::info!("[get_installed_skill_names]");
-    let conn = db.0.lock().map_err(|e| {
-        log::error!(
-            "[get_installed_skill_names] Failed to acquire DB lock: {}",
-            e
-        );
-        e.to_string()
-    })?;
-    crate::db::get_all_installed_skill_names(&conn)
 }
 
 #[tauri::command]
@@ -65,17 +38,6 @@ pub fn release_lock(
         e.to_string()
     })?;
     crate::db::release_skill_lock(&conn, &skill_name, &instance.id)
-}
-
-#[tauri::command]
-pub fn get_locked_skills(db: tauri::State<'_, Db>) -> Result<Vec<crate::types::SkillLock>, String> {
-    log::info!("[get_locked_skills]");
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_locked_skills] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    crate::db::reclaim_dead_locks(&conn)?;
-    crate::db::get_all_skill_locks(&conn)
 }
 
 /// Returns skill names locked by a different live instance (excludes our own locks).

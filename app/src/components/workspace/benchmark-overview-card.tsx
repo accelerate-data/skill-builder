@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import { markdownComponents } from "@/components/markdown-link";
-import type { BenchmarkData, BenchmarkConfigSummary, BenchmarkDelta } from "@/components/benchmark-summary-card";
+import type { BenchmarkData, BenchmarkConfigSummary, BenchmarkDelta } from "@/lib/types";
 
 interface BenchmarkOverviewCardProps {
   benchmarkData: BenchmarkData;
