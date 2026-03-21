@@ -162,6 +162,36 @@ fn migrate_context_from_skills_path(workspace_path: &str, skills_path: &str) {
     }
 }
 
+/// Remove stale `skill-snapshot` directories left by prior benchmark runs
+/// that were interrupted by crash, cancellation, or error.
+/// Non-fatal by design: startup must continue even if cleanup fails.
+fn cleanup_stale_snapshots(workspace_path: &str) {
+    let base = Path::new(workspace_path);
+    let entries = match fs::read_dir(base) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let snapshot_dir = entry.path().join("skill-snapshot");
+        if snapshot_dir.is_dir() {
+            match fs::remove_dir_all(&snapshot_dir) {
+                Ok(()) => log::info!(
+                    "[init_workspace] cleaned up stale snapshot at {}",
+                    snapshot_dir.display()
+                ),
+                Err(e) => log::warn!(
+                    "[init_workspace] failed to clean up stale snapshot at {}: {}",
+                    snapshot_dir.display(),
+                    e
+                ),
+            }
+        }
+    }
+}
+
 /// Initialize the workspace directory on app startup.
 /// Creates `<data_dir>/workspace` if it doesn't exist, updates settings,
 /// and deploys bundled agents to `.claude/`.
@@ -226,6 +256,9 @@ pub fn init_workspace(
 
     // Clean up stale root-level files from pre-reorganization layout
     migrate_workspace_layout(&workspace_path);
+
+    // Remove stale benchmark snapshots left by interrupted runs
+    cleanup_stale_snapshots(&workspace_path);
 
     // One-time git upgrade: if skills_path has content but no .git, init + snapshot
     {
@@ -471,5 +504,39 @@ mod tests {
             !legacy_context.exists(),
             "legacy context should stay removed after repeated migration"
         );
+    }
+
+    // --- cleanup_stale_snapshots tests ---
+
+    #[test]
+    fn test_cleanup_stale_snapshots_removes_skill_snapshot_dirs() {
+        let workspace = tempfile::tempdir().unwrap();
+        let skill_a = workspace.path().join("skill-a");
+        let skill_b = workspace.path().join("skill-b");
+
+        // skill-a has a stale snapshot
+        let snapshot_a = skill_a.join("skill-snapshot");
+        fs::create_dir_all(snapshot_a.join("sub")).unwrap();
+        fs::write(snapshot_a.join("sub/SKILL.md"), "old").unwrap();
+
+        // skill-b has no snapshot
+        fs::create_dir_all(&skill_b).unwrap();
+
+        cleanup_stale_snapshots(workspace.path().to_str().unwrap());
+
+        assert!(!snapshot_a.exists(), "stale snapshot should be removed");
+        assert!(skill_a.exists(), "skill dir itself should remain");
+        assert!(skill_b.exists(), "unrelated skill dir should remain");
+    }
+
+    #[test]
+    fn test_cleanup_stale_snapshots_noop_when_no_snapshots() {
+        let workspace = tempfile::tempdir().unwrap();
+        let skill_dir = workspace.path().join("my-skill");
+        fs::create_dir_all(skill_dir.join("references")).unwrap();
+
+        cleanup_stale_snapshots(workspace.path().to_str().unwrap());
+
+        assert!(skill_dir.join("references").exists(), "non-snapshot dirs should remain");
     }
 }
