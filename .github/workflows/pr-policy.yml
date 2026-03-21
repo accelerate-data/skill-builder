@@ -95,7 +95,7 @@ jobs:
 
       - name: Markdownlint
         if: steps.changes.outputs.docs == 'true'
-        run: npx markdownlint-cli2 "AGENTS.md" "CLAUDE.md" ".claude/**/*.md"
+        run: npx markdownlint-cli2 "AGENTS.md" "CLAUDE.md" ".claude/**/*.md" "agent-sources/**/*.md"
 
       - name: Skip (no relevant changes)
         if: steps.changes.outputs.docs != 'true'
