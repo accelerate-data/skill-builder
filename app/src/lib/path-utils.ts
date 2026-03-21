@@ -10,3 +10,13 @@ export function joinPath(...segments: string[]): string {
     .filter(Boolean)
     .join("/");
 }
+
+/**
+ * Strip the first path segment from a diff path (e.g. "a/SKILL.md" → "SKILL.md").
+ * Git diff paths typically include a prefix directory; this normalizes them
+ * to the relative workspace path.
+ */
+export function normalizeDiffPath(path: string): string {
+  const parts = path.split("/");
+  return parts.length > 1 ? parts.slice(1).join("/") : path;
+}

@@ -1,14 +1,10 @@
-import { AlertTriangle, FileText } from "lucide-react";
+import { AlertTriangle, CircleSlash, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { normalizeDiffPath } from "@/lib/path-utils";
 import { useRefineStore } from "@/stores/refine-store";
 import type { RefineCommand, RefineMessage, RefineQuestionResponse } from "@/stores/refine-store";
 import { ChatMessageList } from "./chat-message-list";
 import { ChatInputBar } from "./chat-input-bar";
-
-function normalizeDiffPath(path: string): string {
-  const parts = path.split("/");
-  return parts.length > 1 ? parts.slice(1).join("/") : path;
-}
 
 interface ChatPanelProps {
   onSend: (text: string, targetFiles?: string[], command?: RefineCommand) => void;
@@ -63,15 +59,12 @@ export function ChatPanel({
         </div>
       )}
       {modifiedFiles.length > 0 && (
-        <div className="border-b px-4 py-2.5">
-          <div data-testid="refine-modified-files" className="mx-auto max-w-4xl rounded-lg border border-border/45 bg-card/25 px-4 py-3">
-            <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Changed in this run
-            </div>
-            <div className="mb-3 text-sm text-muted-foreground">
-              Open a file to inspect the final preview or git diff without leaving the conversation.
-            </div>
-            <div className="flex flex-wrap gap-2">
+        <div className="border-b px-4 py-2">
+          <div data-testid="refine-modified-files" className="mx-auto flex max-w-4xl items-center gap-3">
+            <span className="shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Changed
+            </span>
+            <div className="flex flex-wrap gap-1.5">
               {modifiedFiles.map((filename) => (
                 <Button
                   key={filename}
@@ -100,7 +93,8 @@ export function ChatPanel({
         onQuestionSubmit={onQuestionSubmit}
       />
       {sessionExhausted && (
-        <div className="border-t bg-muted px-3 py-2 text-center text-sm text-muted-foreground">
+        <div className="flex items-center justify-center gap-2 border-t bg-muted px-3 py-2 text-sm text-muted-foreground">
+          <CircleSlash className="size-3.5 shrink-0" />
           This refine session has reached its limit. Select the skill again to start a new session.
         </div>
       )}

@@ -8,16 +8,11 @@ interface AgentTurnInlineProps {
   agentId: string;
 }
 
-function formatCost(cost: number): string {
-  return `$${cost.toFixed(4)}`;
-}
-
 export const AgentTurnInline = memo(function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
-  const { displayItems, status, totalCost } = useAgentStore(
+  const { displayItems, status } = useAgentStore(
     useShallow((s) => ({
       displayItems: s.runs[agentId]?.displayItems,
       status: s.runs[agentId]?.status,
-      totalCost: s.runs[agentId]?.totalCost,
     })),
   );
 
@@ -39,11 +34,6 @@ export const AgentTurnInline = memo(function AgentTurnInline({ agentId }: AgentT
       {status === "running" && displayItems.length > 0 && (
         <div className="flex items-center gap-1.5 py-1 text-muted-foreground/80">
           <Loader2 className="size-3 animate-spin" />
-        </div>
-      )}
-      {status !== "running" && totalCost !== undefined && (
-        <div className="pt-1 text-xs text-muted-foreground/70">
-          Cost {formatCost(totalCost)}
         </div>
       )}
     </div>

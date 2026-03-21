@@ -84,10 +84,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const activeRunStatus = useAgentStore((s) =>
     activeAgentId ? s.runs[activeAgentId]?.status : undefined,
   );
-  const activeRunCost = useAgentStore((s) =>
-    activeAgentId ? s.runs[activeAgentId]?.totalCost : undefined,
-  );
-  const [lastTurnCost, setLastTurnCost] = useState<number | undefined>(undefined);
 
   // Capture the skill that was active when the agent started, so the
   // completion effect attributes output to the correct skill even if the
@@ -274,6 +270,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       return;
     }
 
+    console.log("[workspace-refine] cancel: session=%s", store.sessionId);
+
     try {
       await cancelRefineTurn(store.sessionId);
     } catch (err) {
@@ -282,6 +280,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         cause: err,
         context: { operation: "workspace_refine_cancel" },
       });
+    } finally {
+      store.setRunning(false);
+      store.setActiveAgentId(null);
+      runSkillRef.current = null;
     }
   }, []);
 
@@ -354,9 +356,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     if (activeRunStatus === "error" || activeRunStatus === "shutdown") {
       toast.error("Agent failed — check the chat for details", { duration: Infinity });
     }
-
-    const agentRun = useAgentStore.getState().runs[activeAgentId];
-    setLastTurnCost(agentRun?.totalCost);
 
     const completionSkill = runSkillRef.current ?? selectedSkill;
 
@@ -461,8 +460,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       : undefined;
   const dotClass = isRunning ? "animate-pulse" : selectedSkill ? "" : "bg-zinc-500";
   const statusLabel = isRunning ? "running..." : selectedSkill ? "ready" : "loading...";
-  const statusCost = activeRunCost ?? (!isRunning ? lastTurnCost : undefined);
-
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 w-full flex-1 overflow-hidden">
@@ -500,12 +497,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           <>
             <span className="text-muted-foreground/20">&middot;</span>
             <span className="text-xs text-muted-foreground">{(elapsed / 1000).toFixed(1)}s</span>
-          </>
-        )}
-        {statusCost !== undefined && (
-          <>
-            <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs text-muted-foreground">${statusCost.toFixed(4)}</span>
           </>
         )}
       </div>

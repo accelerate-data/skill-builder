@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { RefineMessage, RefineQuestionResponse } from "@/stores/refine-store";
@@ -32,7 +33,11 @@ export function ChatMessageList({
   if (messages.length === 0) {
     return (
       <div data-testid="refine-chat-empty" className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
-        <p className="text-sm text-muted-foreground">Describe what you want to change and the agent will update your skill files.</p>
+        <MessageSquare className="size-6 text-muted-foreground/40" />
+        <div className="space-y-1.5">
+          <p className="text-sm text-muted-foreground">Describe a change and the agent will update your skill files.</p>
+          <p className="text-xs text-muted-foreground/70">Use commands to validate or benchmark, and @ to target specific files.</p>
+        </div>
         <div className="flex flex-wrap justify-center gap-2 text-xs text-muted-foreground">
           <span className="rounded-md border px-2 py-1 font-mono">/validate</span>
           <span className="rounded-md border px-2 py-1 font-mono">/benchmark</span>
@@ -52,7 +57,7 @@ export function ChatMessageList({
                 <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                   Request
                 </div>
-                <div className="rounded-lg border border-border/45 bg-muted/20 px-4 py-3">
+                <div className="rounded-lg border border-border/45 bg-muted/20 px-4 py-3" style={{ borderLeftWidth: 2, borderLeftColor: "var(--color-pacific)" }}>
                   {(msg.command || (msg.targetFiles && msg.targetFiles.length > 0)) && (
                     <div className="mb-2 flex flex-wrap gap-1.5">
                       {msg.command && (

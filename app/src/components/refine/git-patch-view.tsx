@@ -4,7 +4,7 @@ type PatchLineType = "meta" | "hunk" | "added" | "removed" | "context";
 
 const PATCH_LINE_STYLES: Record<PatchLineType, string> = {
   meta: "bg-muted/40 text-muted-foreground",
-  hunk: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  hunk: "bg-[color-mix(in_oklch,var(--color-pacific),transparent_88%)] text-[var(--color-pacific)]",
   added: "bg-[color-mix(in_oklch,var(--color-seafoam),transparent_88%)] text-[var(--color-seafoam)]",
   removed: "bg-destructive/10 text-destructive",
   context: "",

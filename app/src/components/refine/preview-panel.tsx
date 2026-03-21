@@ -17,16 +17,12 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isSkillFile, parseFrontmatter } from "@/lib/frontmatter";
+import { normalizeDiffPath } from "@/lib/path-utils";
 import { useRefineStore } from "@/stores/refine-store";
 import { GitPatchView } from "./git-patch-view";
 
 const REMARK_PLUGINS = [remarkGfm];
 const REHYPE_PLUGINS = [rehypeHighlight, rehypeSanitize];
-
-function normalizeDiffPath(path: string): string {
-  const parts = path.split("/");
-  return parts.length > 1 ? parts.slice(1).join("/") : path;
-}
 
 const MarkdownPreview = memo(function MarkdownPreview({ content, filename }: { content: string; filename: string }) {
   const parsed = useMemo(() => {

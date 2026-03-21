@@ -21,7 +21,7 @@ export function BenchmarkPromptInline({ onConfirm, onSkip }: BenchmarkPromptInli
   };
 
   return (
-    <div className="my-1 rounded-lg border border-border bg-card px-4 py-3">
+    <div className="my-1 rounded-lg border bg-card px-4 py-3">
       <div className="flex items-start gap-3">
         <div
           className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md"

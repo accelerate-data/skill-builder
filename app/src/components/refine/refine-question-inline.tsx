@@ -58,10 +58,11 @@ export function RefineQuestionInline({ message, onSubmit }: RefineQuestionInline
     return (
       <div
         data-testid="refine-question-inline"
-        className="rounded-xl border border-border/30 bg-muted/20 px-4 py-3"
+        className="rounded-xl border bg-muted/20 px-4 py-3"
+        style={{ borderColor: "color-mix(in oklch, var(--color-seafoam), transparent 60%)" }}
       >
         <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-          <CheckCircle2 className="size-3.5" />
+          <CheckCircle2 className="size-3.5" style={{ color: "var(--color-seafoam)" }} />
           Clarified
         </div>
         <div className="space-y-3">

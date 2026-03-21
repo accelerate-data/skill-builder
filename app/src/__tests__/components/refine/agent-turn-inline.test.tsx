@@ -8,7 +8,7 @@ describe("AgentTurnInline", () => {
     useAgentStore.getState().clearRuns();
   });
 
-  it("shows cost after a turn completes", () => {
+  it("does not render inline cost after a turn completes", () => {
     useAgentStore.getState().registerRun("refine-agent-1", "sonnet", "my-skill", "refine");
     useAgentStore.setState((state) => ({
       runs: {
@@ -23,10 +23,11 @@ describe("AgentTurnInline", () => {
 
     render(<AgentTurnInline agentId="refine-agent-1" />);
 
-    expect(screen.getByText("Cost $0.1234")).toBeInTheDocument();
+    expect(screen.queryByText(/Cost/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$0\.1234/)).not.toBeInTheDocument();
   });
 
-  it("does not show cost while run is still running", () => {
+  it("shows thinking indicator while running with no output", () => {
     useAgentStore.getState().registerRun("refine-agent-2", "sonnet", "my-skill", "refine");
     useAgentStore.setState((state) => ({
       runs: {
@@ -34,13 +35,13 @@ describe("AgentTurnInline", () => {
         "refine-agent-2": {
           ...state.runs["refine-agent-2"],
           status: "running",
-          totalCost: 0.5678,
+          displayItems: [],
         },
       },
     }));
 
     render(<AgentTurnInline agentId="refine-agent-2" />);
 
-    expect(screen.queryByText("Cost $0.5678")).not.toBeInTheDocument();
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
   });
 });
