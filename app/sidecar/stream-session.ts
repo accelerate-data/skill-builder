@@ -48,6 +48,8 @@ export class StreamSession {
   private abortState: ReturnType<typeof createAbortState> | null = null;
   /** SDK session ID captured from messages — used for resume after cancel. */
   private sdkSessionId: string | null = null;
+  /** Active conversation iterator — stored so cancelTurn() can force-return it. */
+  private activeConversation: AsyncIterable<unknown> | null = null;
 
   constructor(
     sessionId: string,
@@ -140,6 +142,16 @@ export class StreamSession {
       this.abortState.abortController.abort();
     }
 
+    // Force-return the conversation async iterator so the for-await loop
+    // exits immediately instead of waiting for the next SDK message.
+    if (this.activeConversation) {
+      const iter = this.activeConversation as AsyncIterableIterator<unknown>;
+      if (typeof iter.return === "function") {
+        iter.return(undefined).catch(() => {});
+      }
+      this.activeConversation = null;
+    }
+
     // If the generator is parked waiting for a message, unblock it
     // so runQuery() can exit cleanly.
     if (this.pendingResolve) {
@@ -181,6 +193,14 @@ export class StreamSession {
     this.closed = true;
     if (this.abortState && !this.abortState.abortController.signal.aborted) {
       this.abortState.abortController.abort();
+    }
+    // Force-return the conversation iterator so for-await exits immediately.
+    if (this.activeConversation) {
+      const iter = this.activeConversation as AsyncIterableIterator<unknown>;
+      if (typeof iter.return === "function") {
+        iter.return(undefined).catch(() => {});
+      }
+      this.activeConversation = null;
     }
     if (this.pendingQuestion) {
       this.pendingQuestion.reject(new Error("Stream session closed while waiting for user input"));
@@ -420,6 +440,9 @@ export class StreamSession {
       options,
     });
 
+    // Store the conversation iterator so cancelTurn() can force-terminate it.
+    this.activeConversation = conversation;
+
     try {
       let sdkReadyEmitted = false;
       for await (const message of conversation) {
@@ -521,6 +544,7 @@ export class StreamSession {
 
     process.stderr.write(`[stream-session] Session ${this.sessionId} ended\n`);
     this.abortState = null;
+    this.activeConversation = null;
   }
 
   private async emitMockTurn(
