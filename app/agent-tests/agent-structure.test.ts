@@ -399,10 +399,9 @@ describe("skill-creator plugin structure", () => {
     expect(content).toMatch(/Do not rewrite `evals\/evals\.json` or `eval_metadata\.json` during the run/i);
     expect(generateSkillContent).toMatch(/must include a human-readable `eval_name` and its fixed `expectations` at creation time/i);
     expect(benchmarkContent).toMatch(/Validate every eval in `\{eval_dir\}\/evals\.json` before continuing/i);
-    expect(benchmarkContent).toMatch(/Treat `expectations` as frozen benchmark inputs/i);
-    expect(benchmarkContent).toMatch(/If `eval_name` is missing, treat it as a legacy eval and keep going/i);
+    expect(benchmarkContent).toMatch(/Treat `eval_name` and `expectations` as frozen benchmark inputs/i);
+    expect(benchmarkContent).toMatch(/If any eval is missing either field, return immediately/i);
     expect(schemaContent).toMatch(/evals\[\]\.eval_name/);
-    expect(schemaContent).toMatch(/newly created evals should include it; legacy evals may rely on fallback naming/i);
     expect(schemaContent).toMatch(/written at eval creation time and frozen for subsequent benchmark iterations/i);
   });
 

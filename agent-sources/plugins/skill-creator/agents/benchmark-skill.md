@@ -61,12 +61,12 @@ Read and verify that the required inputs exist before proceeding:
 ```
 
 - Validate every eval in `{eval_dir}/evals.json` before continuing:
+  - `eval_name` must be present and non-empty.
   - `expectations` must be present and contain at least one item.
-  - If `eval_name` is missing, treat it as a legacy eval and keep going without rewriting `evals.json`. Use the existing fallback naming behavior in per-iteration metadata or the viewer instead.
-  - If any eval is missing `expectations`, return immediately:
+  - If any eval is missing either field, return immediately:
 
 ```json
-{ "status": "skipped", "call_trace": ["validate-inputs-missing-expectations"] }
+{ "status": "skipped", "call_trace": ["validate-inputs-incomplete-evals"] }
 ```
 
 - If `baseline_mode` is `"prior_version"`:
@@ -92,7 +92,7 @@ All generated files (test results, grading, benchmark) must only be written to `
 
 Key inputs for the eval pipeline:
 
-- **Test cases**: from `{eval_dir}/evals.json` (read in Step 0). Do NOT create or overwrite `evals.json`. Treat `expectations` as frozen benchmark inputs. Copy `eval_name` into per-iteration metadata when present, and preserve legacy fallback naming when it is absent.
+- **Test cases**: from `{eval_dir}/evals.json` (read in Step 0). Do NOT create or overwrite `evals.json`. Treat `eval_name` and `expectations` as frozen benchmark inputs and only copy them into per-iteration metadata.
 - **With-skill run**: provide skill path as `skill_output_dir`.
 - **Baseline run**: depends on `baseline_mode`:
   - `"no_skill"`: same prompt, no skill at all. Save to `without_skill/` directories.

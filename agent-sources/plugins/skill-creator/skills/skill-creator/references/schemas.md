@@ -30,7 +30,7 @@ Defines the evals for a skill. Located at `evals/evals.json` within the skill di
 **Fields:**
 - `skill_name`: Name matching the skill's frontmatter
 - `evals[].id`: Unique integer identifier
-- `evals[].eval_name`: Human-readable eval name used in the viewer and per-iteration metadata. Newly created evals should include it; legacy evals may rely on fallback naming.
+- `evals[].eval_name`: Human-readable eval name used in the viewer and per-iteration metadata
 - `evals[].prompt`: The task to execute
 - `evals[].expected_output`: Human-readable description of success
 - `evals[].files`: Optional list of input file paths (relative to skill root)
