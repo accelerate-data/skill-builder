@@ -33,11 +33,13 @@ Everything else. Replays bundled JSONL templates (~1s per step, no API spend).
 ## Launch Commands
 
 **Mock mode** (from worktree):
+
 ```bash
 cd ../worktrees/<branch>/app && MOCK_AGENTS=true npm run dev
 ```
 
 **Full mode** (from worktree):
+
 ```bash
 cd ../worktrees/<branch>/app && npm run dev
 ```

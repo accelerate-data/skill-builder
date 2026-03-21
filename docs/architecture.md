@@ -19,7 +19,7 @@ The engineer (frontend) never picks up a guitar. The musician (sidecar) never to
 
 ## System Architecture Diagram
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        TAURI DESKTOP APP                                 │
 │                                                                           │
@@ -95,7 +95,7 @@ TanStack Router manages 5 routes:
 
 `AppLayout` is the root component. Think of it as the **studio's main console**.
 
-```
+```text
 AppLayout
 ├── IconRail (52px left column: nav icons + gear)
 ├── SkillListPanel (260px resizable: unified skill list)
@@ -109,6 +109,7 @@ AppLayout
 ```
 
 **AppLayout responsibilities on mount:**
+
 1. Load settings from Rust (API key, paths, models)
 2. Run `reconcileStartup()` — compare DB vs filesystem
 3. Load GitHub auth state
@@ -180,7 +181,8 @@ These three flags are the source of most navigation confusion. Here is exactly w
 **Why it exists:** Navigation in TanStack Router is asynchronous. The SkillListPanel triggers `navigate({ to: "/skill/$skillName" })` but WorkflowPage hasn't mounted yet. You can't call `handleStartAgentStep()` before the component exists. So instead, the panel primes the flag, the page reads it on mount and fires.
 
 **Lifecycle:**
-```
+
+```text
 SkillListPanel (click fresh skill)
   → setPendingUpdateMode(true)
   → navigate("/skill/$skillName")
@@ -275,7 +277,7 @@ interface AgentRun {
 
 **Display item batching:** Items from the sidecar arrive at high frequency. Rather than calling `setState` per item (which would re-render the entire tree per item), the store uses a `requestAnimationFrame` buffer — items are queued and flushed in batches on the next animation frame.
 
-```
+```text
 Sidecar emits 50 display items in 10ms
    ↓
 addDisplayItem() → push to buffer[], schedule RAF if not already scheduled
@@ -416,7 +418,7 @@ Each skill row shows a colored dot derived from state:
 
 #### Click Navigation Logic
 
-```
+```text
 User clicks skill
 ├── If marketplace or imported → WorkspaceShell (Overview tab)
 ├── If builder + completed     → WorkspaceShell (Overview tab)
@@ -433,6 +435,7 @@ User clicks skill
 #### Locking
 
 While any workflow is running, all other skill rows are locked:
+
 - Own-instance lock: derived from `workflowStore.isRunning` + `skillStore.lockedSkills`
 - External instance locks: fetched via `getExternallyLockedSkills()` Tauri command
 - Locked rows: 45% opacity, `Lock` icon, `cursor-not-allowed`, click blocked
@@ -443,7 +446,7 @@ While any workflow is running, all other skill rows are locked:
 
 The workflow page is the most complex component. It uses **4 hooks** in sequence:
 
-```
+```text
 WorkflowPage
 ├── useWorkflowPersistence  (1) Load saved state from SQLite
 ├── useWorkflowAutosave     (2) Debounced clarifications editor
@@ -454,6 +457,7 @@ WorkflowPage
 #### useWorkflowPersistence
 
 Runs on mount. Loads the persisted workflow state for this skill from SQLite:
+
 1. `getWorkflowState(skillName)` → completed step IDs + currentStep
 2. `loadWorkflowState(completedStepIds, savedCurrentStep)` in store
 3. Read clarifications file from disk (if step 0 complete)
@@ -478,7 +482,7 @@ This is the **conductor**. Key actions it exposes:
 
 The "gate" is the Answer Evaluator that runs between step 1 (Detailed Research) and step 2 (Decisions). It checks whether the research answers are sufficient to generate a high-quality skill.
 
-```
+```text
 User completes step 1, clicks "Continue"
   ↓
 Gate dialog opens (loading state)
@@ -502,12 +506,13 @@ User sees dialog with options:
 **WorkspaceShell** wraps completed/imported skills in a tabbed interface.
 
 **WorkspaceOverview** shows skill metadata and two actions:
+
 - **Open Refine** → switches to Refine tab
 - **Redo Workflow** (builder only) → confirmation dialog → `resetWorkflowStep(0)` → navigate to `/skill/$skillName` with `pendingUpdateMode=true`
 
 **WorkspaceRefine** is the live refine chat. Its lifecycle:
 
-```
+```text
 Mount
 ├── acquireLock(skillName)
 ├── startRefineSession(skillName, workspacePath)
@@ -539,7 +544,7 @@ Unmount / navigation
 
 ### 2.1 Module Map
 
-```
+```text
 app/src-tauri/src/
 ├── lib.rs                  App entry point, Tauri builder
 ├── commands/
@@ -659,7 +664,7 @@ app/src-tauri/src/
 
 > **Analogy:** A **physical key system** — only one person can hold the key to a studio room at a time. If they leave without returning the key but their car is gone from the lot (dead PID), the manager can reclaim it.
 
-```
+```text
 acquire_skill_lock(skill_name, instance_id, pid)
   ↓
 BEGIN IMMEDIATE transaction (prevents race)
@@ -672,6 +677,7 @@ Check existing lock?
 ```
 
 PID liveness check:
+
 - **Unix:** `kill(pid, 0)` — signal 0 returns success if process exists
 - **Windows:** `tasklist /FI "PID eq N"` — parse output
 
@@ -679,7 +685,7 @@ PID liveness check:
 
 > **Analogy:** The **live room** in the studio. Rather than hiring and firing musicians for each song (spawning a new Node.js process per agent run), you keep the musician in the room. The intercom (stdin/stdout) stays open. When a new take starts, you just give them the new sheet music (request JSON).
 
-```
+```text
 SidecarPool
 └── HashMap<skill_name, PersistentSidecar>
     └── PersistentSidecar
@@ -693,7 +699,7 @@ SidecarPool
 
 **Lifecycle:**
 
-```
+```text
 spawn_sidecar(skill_name, config)
   ↓
 SidecarPool.get_or_spawn(skill_name)
@@ -723,7 +729,7 @@ stdout_task routes responses:
 
 On every startup, the reconciler compares the DB with the filesystem and resolves discrepancies:
 
-```
+```text
 Pass 1: For each skill in DB
   ├── skill-builder source
   │   ├── Workspace marker exists? → check step artifacts → advance/reset DB
@@ -747,7 +753,7 @@ Pass 2: Scan skills_path for folders NOT in DB
 
 > **Analogy:** The sidecar is the **session musician**. It sits in the live room (a persistent Node.js process), reads sheet music (agent instructions via stdin), plays (runs Claude SDK), and sends back a recording (display items + events via stdout). Between songs, it waits quietly.
 
-```
+```text
 Rust spawns: node bootstrap.js --persistent
   ↓
 bootstrap.js catches module load errors → imports agent-runner.js
@@ -770,7 +776,7 @@ For each JSON line on stdin:
 
 **One-shot** (workflow steps): Single prompt → agent runs to completion → result.
 
-```
+```text
 runAgentRequest(config, onMessage, signal)
   ├── MOCK_AGENTS? → runMockAgent()
   └── else
@@ -783,7 +789,7 @@ runAgentRequest(config, onMessage, signal)
 
 **Streaming** (refine chat): Continuous conversation, user sends multiple messages.
 
-```
+```text
 StreamSession (stream_start)
 ├── Async generator as SDK prompt:
 │   ├── yield config.prompt   (first message)
@@ -800,7 +806,7 @@ StreamSession (stream_start)
 
 > **Analogy:** A **sound engineer mixing live inputs** — raw signals from microphones (SDK messages) are processed, routed to the right channel (display item type), and the levels balanced (filtered/transformed) before hitting the speakers (frontend UI).
 
-```
+```text
 Raw SDK Message → classifyRawMessage()
   ├── hardNoise → drop (filtered)
   ├── system   → emit init_progress / run_config / run_init events
@@ -823,7 +829,7 @@ Raw SDK Message → classifyRawMessage()
 
 When `MOCK_AGENTS=true`, the sidecar replays pre-recorded JSONL templates instead of calling the Anthropic API. This is used for frontend development and testing.
 
-```
+```text
 resolveStepTemplate(agentName, skillName)
   ├── research-orchestrator → step0-research.jsonl
   ├── detailed-research     → step1-detailed-research.jsonl
@@ -848,7 +854,7 @@ Write mock output files to workspace:
 
 Here's the complete journey from "user clicks +" to "SKILL.md exists on disk":
 
-```
+```text
 1. User clicks + in SkillListPanel
    → SkillDialog opens (create mode)
    → User enters skill name + purpose

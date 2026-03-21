@@ -3,6 +3,7 @@
 ## When to Use
 
 Use when ALL are true:
+
 - Estimate is XS or S (1-2 points)
 - Changes are isolated to one area of the codebase
 - User can override in either direction
