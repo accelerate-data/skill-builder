@@ -87,6 +87,7 @@ const mockResponses: Record<string, unknown> = {
   reset_workflow_step: undefined,
   // Sidecar lifecycle
   cleanup_skill_sidecar: undefined,
+  clean_benchmark_snapshot: undefined,
   // Reconciliation
   reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0, discovered_skills: [] },
   record_reconciliation_cancel: undefined,
@@ -289,6 +290,16 @@ function resolveContextFileCommand(
 }
 
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  // Optional invoke tracking: tests set __TAURI_TRACK_INVOKES__ to a command list,
+  // and calls are recorded in __TAURI_TRACKED_INVOKES__ for later assertions.
+  const w = window as unknown as Record<string, unknown>;
+  const tracked = w.__TAURI_TRACK_INVOKES__ as string[] | undefined;
+  if (tracked?.includes(cmd)) {
+    const log = (w.__TAURI_TRACKED_INVOKES__ ?? []) as Array<{ cmd: string; args: unknown }>;
+    log.push({ cmd, args: args ? { ...args } : undefined });
+    w.__TAURI_TRACKED_INVOKES__ = log;
+  }
+
   // Allow tests to override via window
   const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as
     | Record<string, unknown>

@@ -21,6 +21,7 @@ import {
   sendRefineMessage,
   closeRefineSession,
   finalizeRefineRun,
+  cleanBenchmarkSnapshot,
   materializeRefineValidationOutput,
   cleanupSkillSidecar,
   acquireLock,
@@ -294,6 +295,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           }
         }
       } else if (workspacePath && completionSkill) {
+        // Agent failed or was cancelled — clean up any stale benchmark snapshot
+        await cleanBenchmarkSnapshot(completionSkill.name, workspacePath).catch(() => {});
         const files = await loadSkillFiles(workspacePath, completionSkill.name);
         if (files) {
           store.updateSkillFiles(files);

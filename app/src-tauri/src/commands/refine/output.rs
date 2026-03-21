@@ -8,6 +8,30 @@ use super::content::get_skill_content_inner;
 use super::diff::get_refine_diff_for_commit_range_inner;
 use super::resolve_skills_path;
 
+// ─── Snapshot cleanup ────────────────────────────────────────────────────────
+
+/// Remove the `skill-snapshot` directory from a skill's workspace if it exists.
+///
+/// Called after benchmark/rewrite finalization and on error/cancellation to
+/// prevent stale snapshots from accumulating on disk.
+pub(crate) fn cleanup_skill_snapshot(workspace_skill_root: &Path) {
+    let snapshot_dir = workspace_skill_root.join("skill-snapshot");
+    if snapshot_dir.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&snapshot_dir) {
+            log::warn!(
+                "[cleanup_skill_snapshot] failed to clean up skill-snapshot at {}: {}",
+                snapshot_dir.display(),
+                e
+            );
+        } else {
+            log::debug!(
+                "[cleanup_skill_snapshot] cleaned up skill-snapshot at {}",
+                snapshot_dir.display()
+            );
+        }
+    }
+}
+
 // ─── Output materialization ──────────────────────────────────────────────────
 
 pub(crate) fn materialize_refine_validation_output_value(
@@ -101,21 +125,7 @@ pub(crate) fn finalize_refine_run_inner(
     }
 
     // Clean up any stale skill snapshot left by a prior rewrite→benchmark cycle
-    let snapshot_dir = workspace_skill_root.join("skill-snapshot");
-    if snapshot_dir.exists() {
-        if let Err(e) = std::fs::remove_dir_all(&snapshot_dir) {
-            log::warn!(
-                "[finalize_refine_run] failed to clean up skill-snapshot at {}: {}",
-                snapshot_dir.display(),
-                e
-            );
-        } else {
-            log::debug!(
-                "[finalize_refine_run] cleaned up skill-snapshot at {}",
-                snapshot_dir.display()
-            );
-        }
-    }
+    cleanup_skill_snapshot(&workspace_skill_root);
 
     // Agent now handles commit+tag via shell git; read HEAD for the commit SHA
     let commit_sha = {
@@ -169,6 +179,18 @@ pub(crate) fn finalize_refine_run_inner(
 }
 
 // ─── Tauri commands ──────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn clean_benchmark_snapshot(
+    skill_name: String,
+    workspace_path: String,
+) -> Result<(), String> {
+    log::info!("[clean_benchmark_snapshot] skill={}", skill_name);
+    validate_skill_name(&skill_name)?;
+    let workspace_skill_root = Path::new(&workspace_path).join(&skill_name);
+    cleanup_skill_snapshot(&workspace_skill_root);
+    Ok(())
+}
 
 #[tauri::command]
 pub fn materialize_refine_validation_output(

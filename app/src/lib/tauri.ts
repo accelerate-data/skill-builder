@@ -467,6 +467,14 @@ export const finalizeRefineRun = (
   structuredOutput: structuredOutput ?? null,
 })
 
+export const cleanBenchmarkSnapshot = (
+  skillName: string,
+  workspacePath: string,
+) => invoke<void>("clean_benchmark_snapshot", {
+  skillName,
+  workspacePath,
+})
+
 // --- Git History ---
 
 export const getSkillHistory = (

@@ -1,6 +1,6 @@
 use super::content::get_skill_content_inner;
 use super::diff::{get_refine_diff_inner};
-use super::output::{finalize_refine_run_inner, materialize_refine_validation_output_value};
+use super::output::{cleanup_skill_snapshot, finalize_refine_run_inner, materialize_refine_validation_output_value};
 use super::protocol::*;
 use super::*;
 use crate::commands::imported_skills::validate_skill_name;
@@ -1255,4 +1255,57 @@ fn test_no_user_context_when_fields_empty() {
         None,
     );
     assert!(ctx.is_none());
+}
+
+// ===== cleanup_skill_snapshot tests =====
+
+#[test]
+fn test_cleanup_skill_snapshot_removes_existing_snapshot_dir() {
+    let workspace_skill_root = tempdir().unwrap();
+    let snapshot_dir = workspace_skill_root.path().join("skill-snapshot");
+    std::fs::create_dir_all(snapshot_dir.join("some-skill")).unwrap();
+    std::fs::write(snapshot_dir.join("some-skill/SKILL.md"), "# Old\n").unwrap();
+
+    assert!(snapshot_dir.exists());
+    cleanup_skill_snapshot(workspace_skill_root.path());
+    assert!(!snapshot_dir.exists());
+}
+
+#[test]
+fn test_cleanup_skill_snapshot_noop_when_no_snapshot() {
+    let workspace_skill_root = tempdir().unwrap();
+    let snapshot_dir = workspace_skill_root.path().join("skill-snapshot");
+    assert!(!snapshot_dir.exists());
+
+    // Should not panic or error
+    cleanup_skill_snapshot(workspace_skill_root.path());
+    assert!(!snapshot_dir.exists());
+}
+
+#[test]
+fn test_finalize_refine_run_cleans_up_snapshot_dir() {
+    let dir = tempdir().unwrap();
+    let workspace_dir = tempdir().unwrap();
+    crate::git::ensure_repo(dir.path()).unwrap();
+
+    let skill_dir = dir.path().join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
+    crate::git::commit_all(dir.path(), "initial").unwrap();
+
+    // Create a stale snapshot in the workspace
+    let snapshot_dir = workspace_dir.path().join("my-skill").join("skill-snapshot");
+    std::fs::create_dir_all(&snapshot_dir).unwrap();
+    std::fs::write(snapshot_dir.join("SKILL.md"), "# Old version\n").unwrap();
+    assert!(snapshot_dir.exists());
+
+    let _result = finalize_refine_run_inner(
+        "my-skill",
+        dir.path().to_str().unwrap(),
+        workspace_dir.path().to_str().unwrap(),
+        None,
+    )
+    .unwrap();
+
+    assert!(!snapshot_dir.exists(), "skill-snapshot should be removed after finalize");
 }
