@@ -50,6 +50,7 @@ Before moving issue to `In Review`, inspect required checks for the base branch.
 
 - Always write PR bodies/long comments to temp markdown files and use `--body-file`.
 - Never inline long command outputs into PR body, Linear description, or comments.
+- **No double-escaping** (see AGENTS.md Gotchas): `description`/`body` fields accept raw Markdown — write literal newlines and markdown syntax directly.
 
 ## Autonomy
 

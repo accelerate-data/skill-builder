@@ -139,3 +139,4 @@ Before drafting or creating an issue:
 
 - Never inline long command/test output into Linear issue fields.
 - Keep Linear description concise and product-facing.
+- **No double-escaping** (see AGENTS.md Gotchas): `description`/`body` fields accept raw Markdown — write literal newlines and markdown syntax directly.

@@ -50,6 +50,7 @@ Before merge:
 
 - Use temp markdown files with `gh pr edit --body-file` for long PR updates.
 - Never paste long command output into PR/Linear comments.
+- **No double-escaping** (see AGENTS.md Gotchas): `description`/`body` fields accept raw Markdown — write literal newlines and markdown syntax directly.
 
 ## Identify
 
