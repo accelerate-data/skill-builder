@@ -120,7 +120,7 @@ describe("WorkspaceShell", () => {
     expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
   });
 
-  it("Overview tab is active by default; Evals and Description triggers are disabled", () => {
+  it("Overview tab is active by default; Description trigger is disabled", () => {
     render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" />);
 
     const overviewTab = screen.getByRole("tab", { name: "Overview" });
@@ -128,7 +128,7 @@ describe("WorkspaceShell", () => {
     const descriptionTab = screen.getByRole("tab", { name: "Description" });
 
     expect(overviewTab).toHaveAttribute("data-state", "active");
-    expect(evalsTab).toBeDisabled();
+    expect(evalsTab).not.toBeDisabled();
     expect(descriptionTab).toBeDisabled();
   });
 
