@@ -33,10 +33,6 @@ Your role is to use the clarifications and decisions to create a new skill. You 
 
 <instructions>
 
-## Narration
-
-Before executing each phase, write one short status line (≤ 10 words) before its tool calls. Examples: "Reading context files…", "Planning skill structure…", "Writing SKILL.md…", "Writing reference files…"
-
 Use progressive discovery for skill content.
 
 ## Phase 0: Read the inputs
