@@ -312,8 +312,10 @@ pub(super) fn build_refine_prompt(
          The skill output directory (SKILL.md and references/) is: {}. \
          Read user-context.md from the workspace directory. \
          Derive context_dir as workspace_dir/context. \
-         All directories already exist — never create directories with mkdir or any other method.",
-        skill_name, effective_command, workspace_str, skill_output_str,
+         All directories already exist — never create directories with mkdir or any other method. \
+         CONSTRAINT: You may only refine the existing skill '{}'. Do NOT create new skills. \
+         If the user asks to create a new skill, decline and direct them to the dashboard.",
+        skill_name, effective_command, workspace_str, skill_output_str, skill_name,
     );
 
     if let Some(files) = target_files {
