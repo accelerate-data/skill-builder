@@ -50,6 +50,8 @@ export const REFINE_OVERRIDES: Record<string, unknown> = {
   get_skill_content_for_refine: [
     { path: "SKILL.md", content: "# Test Skill\n\nA skill for testing.\n\n## Instructions\n\nFollow these steps..." },
     { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
+    { path: "references/checklist.md", content: "# Delivery Checklist\n\n- Validate inputs\n- Log failures\n- Add regression coverage" },
+    { path: "references/troubleshooting.md", content: "# Troubleshooting\n\n## Common failures\n\n- Missing configuration\n- Invalid payload shape\n- Timeout during sync" },
   ],
   start_refine_session: {
     session_id: "e2e-refine-session-001",
