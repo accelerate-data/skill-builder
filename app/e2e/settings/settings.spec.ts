@@ -85,4 +85,77 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     await expect(industryAfter).toHaveValue("Financial Services");
     await expect(roleAfter).toHaveValue("Data Platform Lead");
   });
+
+  test("GitHub section renders login entrypoint", async ({ page }) => {
+    await page.getByRole("button", { name: "GitHub" }).click();
+
+    await expect(page.getByText("GitHub Account").first()).toBeVisible();
+    await expect(page.getByText("Connect your GitHub account to submit feedback and report issues.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sign in with GitHub" })).toBeVisible();
+  });
+
+  test("Marketplace section supports adding registries and toggling auto-update", async ({ page }) => {
+    await reloadWithOverrides(page, {
+      get_settings: {
+        anthropic_api_key: "sk-ant-test",
+        workspace_path: E2E_WORKSPACE_PATH,
+        skills_path: E2E_SKILLS_PATH,
+        marketplace_registries: [
+          { name: "Vibedata Skills", source_url: "hbanerjee74/skills", enabled: true },
+        ],
+        auto_update: false,
+      },
+      check_workspace_path: true,
+      list_skills: [],
+      update_user_settings: undefined,
+      parse_github_url: { owner: "acme", repo: "skills", branch: "main", subpath: null },
+      check_marketplace_url: "Acme Skills",
+    });
+
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Marketplace" }).click();
+
+    await expect(page.getByText("Registries").first()).toBeVisible();
+    await expect(page.getByText("hbanerjee74/skills")).toBeVisible();
+
+    await page.getByRole("button", { name: "Add registry" }).click();
+    await page.getByLabel("GitHub repository").fill("acme/skills");
+    await page.getByRole("button", { name: "Add" }).click();
+
+    await expect(page.getByText("acme/skills")).toBeVisible({ timeout: 5_000 });
+
+    const autoUpdate = page.getByRole("switch", { name: "Enable auto-update" });
+    await expect(autoUpdate).toHaveAttribute("aria-checked", "false");
+    await autoUpdate.click();
+    await expect(autoUpdate).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("Advanced section supports log level changes and skills-folder browse", async ({ page }) => {
+    await reloadWithOverrides(page, {
+      get_settings: {
+        anthropic_api_key: "sk-ant-test",
+        workspace_path: E2E_WORKSPACE_PATH,
+        skills_path: E2E_SKILLS_PATH,
+        log_level: "info",
+      },
+      check_workspace_path: true,
+      list_skills: [],
+      update_user_settings: undefined,
+      get_data_dir: "C:/skill-builder-test/data",
+    });
+
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Advanced" }).click();
+
+    await expect(page.getByText("Logging").first()).toBeVisible();
+    await page.locator("#log-level-select").click();
+    await page.getByRole("option", { name: "Debug" }).click();
+    await expect(page.getByText("Saved")).toBeVisible({ timeout: 5_000 });
+
+    await page.getByRole("button", { name: "Browse" }).click();
+    await expect(page.getByText("C:/skill-builder-test/workspace")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("C:/skill-builder-test/data")).toBeVisible();
+  });
 });
