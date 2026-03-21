@@ -38,7 +38,7 @@ Your role is to evaluate a skill that has already been written by running test c
 
 ## Overall Flow
 
-0. **Validate inputs** — confirm SKILL.md, evals.json, user-context.md exist; handle stubs/missing files.
+0. **Validate inputs** — confirm SKILL.md, evals.json, and user-context.md exist; handle stubs/missing files and reject incomplete eval definitions.
 1. **Determine iteration number** — scan for existing `iteration-*` dirs in `{eval_results_dir}`, pick the next one.
 2. **Setup context** — gather test cases, skill path, baseline mode, results directory.
 3. **Execute** — spawn runs → grade → aggregate → analyst pass → generate review HTML. Each sub-step gates on the previous. The analyst pass writes `analyst-notes.md` and embeds it into `benchmark.json` `notes` field.
@@ -54,10 +54,19 @@ Read and verify that the required inputs exist before proceeding:
 { "status": "skipped", "call_trace": ["validate-inputs-stub"] }
 ```
 
-- Read `{eval_dir}/evals.json` — this file is required and contains the test case definitions. If it does not exist, return immediately:
+- Read `{eval_dir}/evals.json` — this file is required and contains the frozen test case definitions. If it does not exist, return immediately:
 
 ```json
 { "status": "skipped", "call_trace": ["validate-inputs-missing-evals"] }
+```
+
+- Validate every eval in `{eval_dir}/evals.json` before continuing:
+  - `expectations` must be present and contain at least one item.
+  - If `eval_name` is missing, treat it as a legacy eval and keep going without rewriting `evals.json`. Use the existing fallback naming behavior in per-iteration metadata or the viewer instead.
+  - If any eval is missing `expectations`, return immediately:
+
+```json
+{ "status": "skipped", "call_trace": ["validate-inputs-missing-expectations"] }
 ```
 
 - If `baseline_mode` is `"prior_version"`:
@@ -83,7 +92,7 @@ All generated files (test results, grading, benchmark) must only be written to `
 
 Key inputs for the eval pipeline:
 
-- **Test cases**: from `{eval_dir}/evals.json` (read in Step 0). Do NOT create or overwrite `evals.json`.
+- **Test cases**: from `{eval_dir}/evals.json` (read in Step 0). Do NOT create or overwrite `evals.json`. Treat `expectations` as frozen benchmark inputs. Copy `eval_name` into per-iteration metadata when present, and preserve legacy fallback naming when it is absent.
 - **With-skill run**: provide skill path as `skill_output_dir`.
 - **Baseline run**: depends on `baseline_mode`:
   - `"no_skill"`: same prompt, no skill at all. Save to `without_skill/` directories.
@@ -98,7 +107,7 @@ Key inputs for the eval pipeline:
 
 ## Step 3: Execute the test cases and generate the benchmark
 
-Use the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to run the test cases and generate the benchmark.
+Use the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to run the test cases and generate the benchmark. The benchmark run must consume the existing eval definitions only; it must not rename evals or rewrite assertions during execution.
 
 ## Step 4: Verify benchmark.json
 

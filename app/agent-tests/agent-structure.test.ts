@@ -376,7 +376,15 @@ describe("skill-creator plugin structure", () => {
       "skill-creator",
       "SKILL.md",
     );
+    const schemaPath = path.join(
+      pluginRoot,
+      "skills",
+      "skill-creator",
+      "references",
+      "schemas.md",
+    );
     const content = fs.readFileSync(skillPath, "utf8");
+    const schemaContent = fs.readFileSync(schemaPath, "utf8");
     const generateSkillContent = fs.readFileSync(
       resolveAgentPath("generate-skill"),
       "utf8",
@@ -389,8 +397,13 @@ describe("skill-creator plugin structure", () => {
     expect(content).toMatch(/Write the quantitative assertions at the same time as the prompts/i);
     expect(content).toMatch(/treat those assertions as fixed/i);
     expect(content).toMatch(/Do not rewrite `evals\/evals\.json` or `eval_metadata\.json` during the run/i);
-    expect(generateSkillContent).toMatch(/must include its fixed `expectations` at creation time/i);
-    expect(benchmarkContent).toMatch(/Do NOT create or overwrite `evals\.json`/i);
+    expect(generateSkillContent).toMatch(/must include a human-readable `eval_name` and its fixed `expectations` at creation time/i);
+    expect(benchmarkContent).toMatch(/Validate every eval in `\{eval_dir\}\/evals\.json` before continuing/i);
+    expect(benchmarkContent).toMatch(/Treat `expectations` as frozen benchmark inputs/i);
+    expect(benchmarkContent).toMatch(/If `eval_name` is missing, treat it as a legacy eval and keep going/i);
+    expect(schemaContent).toMatch(/evals\[\]\.eval_name/);
+    expect(schemaContent).toMatch(/newly created evals should include it; legacy evals may rely on fallback naming/i);
+    expect(schemaContent).toMatch(/written at eval creation time and frozen for subsequent benchmark iterations/i);
   });
 
 });

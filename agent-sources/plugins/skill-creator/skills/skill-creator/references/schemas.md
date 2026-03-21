@@ -6,7 +6,7 @@ This document defines the JSON schemas used by skill-creator.
 
 ## evals.json
 
-Defines the evals for a skill. Located at `evals/evals.json` within the skill directory.
+Defines the evals for a skill. Located at `evals/evals.json` within the skill directory. This file is finalized before the first benchmark iteration runs and then treated as the frozen source of truth for later iterations.
 
 ```json
 {
@@ -14,6 +14,7 @@ Defines the evals for a skill. Located at `evals/evals.json` within the skill di
   "evals": [
     {
       "id": 1,
+      "eval_name": "Customer returns workflow",
       "prompt": "User's example prompt",
       "expected_output": "Description of expected result",
       "files": ["evals/files/sample1.pdf"],
@@ -29,10 +30,11 @@ Defines the evals for a skill. Located at `evals/evals.json` within the skill di
 **Fields:**
 - `skill_name`: Name matching the skill's frontmatter
 - `evals[].id`: Unique integer identifier
+- `evals[].eval_name`: Human-readable eval name used in the viewer and per-iteration metadata. Newly created evals should include it; legacy evals may rely on fallback naming.
 - `evals[].prompt`: The task to execute
 - `evals[].expected_output`: Human-readable description of success
 - `evals[].files`: Optional list of input file paths (relative to skill root)
-- `evals[].expectations`: List of verifiable statements
+- `evals[].expectations`: List of verifiable statements, written at eval creation time and frozen for subsequent benchmark iterations
 
 ---
 
