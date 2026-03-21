@@ -106,6 +106,9 @@ jobs:
           ".claude/skills/implement-linear-issue/SKILL.md"
           ".claude/skills/implement-linear-issue/references/*.md"
           ".claude/skills/playwright/SKILL.md"
+          "agent-sources/**/*.md"
+          "#agent-sources/plugins/vd-agent/**"
+          "#agent-sources/plugins/skill-creator/skills/skill-creator/**"
           "docs/architecture.md"
           "docs/user-guide/**/*.md"
 
