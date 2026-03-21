@@ -432,17 +432,17 @@ export function ResearchSummaryCard({
 
   // Non-happy-path: show only the summary card (no ClarificationsEditor)
   if (isNonHappyPath) {
-    return <div className="flex flex-col gap-4">{summaryCard}</div>;
+    return <div className="flex w-full min-w-0 flex-col gap-4">{summaryCard}</div>;
   }
 
   if (editable) {
     return (
-      <div className="flex h-full flex-col gap-3">
+      <div className="flex h-full w-full min-w-0 flex-col gap-3">
         {/* Summary Card — fixed height, collapses when toggled */}
         <div className="shrink-0">{summaryCard}</div>
 
         {/* Clarifications editor — fills remaining space */}
-        <div className="flex-1 min-h-0 rounded-lg border shadow-sm overflow-hidden">
+        <div className="min-h-0 w-full min-w-0 flex-1 overflow-hidden rounded-lg border shadow-sm">
           <ClarificationsEditor
             data={clarificationsData}
             onChange={onClarificationsChange ?? (() => {})}
@@ -457,7 +457,7 @@ export function ResearchSummaryCard({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex w-full min-w-0 flex-col gap-4">
       {/* Summary Card */}
       {summaryCard}
 

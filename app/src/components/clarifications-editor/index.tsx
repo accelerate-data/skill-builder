@@ -172,7 +172,7 @@ export function ClarificationsEditor({
     .filter(({ visibleQuestions }) => visibleQuestions.length > 0);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full w-full min-w-0 flex-col">
       {/* ── Toolbar ── */}
       <div className="flex shrink-0 items-center gap-3 border-b bg-muted/60 px-6 py-2">
         <div className="flex flex-1 items-center gap-3">
