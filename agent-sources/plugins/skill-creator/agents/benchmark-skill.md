@@ -108,11 +108,9 @@ Use the **Running and evaluating test cases** section in `skill-creator:skill-cr
 
 Read `{eval_results_dir}/{iteration}/benchmark.json`.
 
-- If it exists and contains a valid `run_summary` with per-configuration statistics, return `status: "complete"`.
-- If it exists but is missing some configurations or some evals had errors, return `status: "partial"`.
-- If it does not exist after Step 3 completed (aggregation script failed), return `status: "partial"`.
-
-All non-skipped returns must include `"benchmark_path": "evals/workspace/{iteration}"`.
+- If it exists and contains a valid `run_summary` with per-configuration statistics, report it as complete.
+- If it exists but is missing some configurations or some evals had errors, report it as partial.
+- If it does not exist after Step 3 completed (aggregation script failed), report it as partial.
 
 ---
 
@@ -132,28 +130,16 @@ All non-skipped returns must include `"benchmark_path": "evals/workspace/{iterat
 
 **Gate — do NOT return until:**
 
-You have verified `benchmark.json` exists, contains a valid `run_summary`, and has a non-empty `notes` array
+You have verified `benchmark.json` exists, contains a valid `run_summary`, and has a non-empty `notes` array.
 
-Return JSON only:
+Return a short natural-language summary, not JSON.
 
-```json
-{
-  "status": "complete",
-  "benchmark_path": "evals/workspace/{iteration}",
-  "call_trace": ["validate-inputs", "determine-iteration", "run-evals", "verify-benchmark"]
-}
-```
+The final response must:
 
-For stub/skipped cases, return:
+- State whether the benchmark finished as complete, partial, or skipped
+- Include the relative benchmark path `evals/workspace/{iteration}` for non-skipped runs
+- Briefly summarize the outcome in plain language
 
-```json
-{ "status": "skipped", "call_trace": ["validate-inputs-stub"] }
-```
-
-`status`: `"complete"` when all evals ran and benchmark.json was produced, `"partial"` when some evals had errors, `"skipped"` when a required input is missing or the skill is a stub.
-
-`benchmark_path`: relative path from `{workspace_dir}` to the iteration directory, always in the form `evals/workspace/{iteration}` — do not return an absolute path. Omit when `status` is `"skipped"`.
-
-`call_trace`: ordered list of logical steps performed.
+For skipped cases, say why it was skipped in plain language.
 
 </output>

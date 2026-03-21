@@ -481,13 +481,6 @@ export async function buildStructuredMockResult(
     };
   }
 
-  if (stepTemplate === "benchmark-skill") {
-    return {
-      status: "complete",
-      benchmark_path: "evals/workspace/iteration-1",
-    };
-  }
-
   if (stepTemplate === "gate-answer-evaluator" || stepTemplate === "gate-answer-evaluator-contradictory") {
     const dir = stepTemplate === "gate-answer-evaluator-contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator";
     return readJsonIfExists(

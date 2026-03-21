@@ -322,6 +322,22 @@ describe("runMockAgent", () => {
     // Cancelled runs should produce an error status (not completed)
     expect(["error", "shutdown"]).toContain(event.status);
   }, 10000);
+
+  it("benchmark-skill does not emit synthetic structured output", async () => {
+    const messages: Record<string, unknown>[] = [];
+    await runMockAgent(
+      baseMockConfig({ agentName: "skill-creator:benchmark-skill" }),
+      (msg) => messages.push(msg),
+    );
+
+    const resultItem = messages.find(
+      (m) => m.type === "display_item" &&
+        (m.item as Record<string, unknown> | undefined)?.type === "result",
+    );
+    expect(resultItem).toBeDefined();
+    const item = resultItem!.item as Record<string, unknown>;
+    expect(item.structuredOutput).toBeUndefined();
+  });
 });
 
 describe("buildStructuredMockResult", () => {
@@ -357,5 +373,10 @@ describe("buildStructuredMockResult", () => {
     const payload = result as Record<string, unknown>;
     expect(typeof payload.verdict).toBe("string");
     expect(Array.isArray(payload.per_question)).toBe(true);
+  });
+
+  it("returns null for benchmark-skill", async () => {
+    const result = await buildStructuredMockResult("benchmark-skill");
+    expect(result).toBeNull();
   });
 });
