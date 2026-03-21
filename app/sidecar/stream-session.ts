@@ -24,14 +24,20 @@ interface PendingQuestion {
  * The generator yields user messages on demand — the first from the config,
  * subsequent ones pushed via `pushMessage()`. The SDK maintains full
  * conversation state (tool_use, tool_result, assistant messages) across yields.
+ *
+ * Cancel (interrupt): `cancelTurn()` aborts the current AbortController,
+ * stopping the active turn. The session stays alive. The next `pushMessage()`
+ * restarts `query()` with `resume: sdkSessionId` to continue the conversation.
  */
 export class StreamSession {
   private currentRequestId: string;
   private pendingResolve: ((value: string | typeof CLOSE_SENTINEL) => void) | null = null;
   private messageQueue: string[] = [];
   private closed = false;
+  private cancelled = false;
   private sessionId: string;
   private config: SidecarConfig;
+  private onMessage: (requestId: string, message: Record<string, unknown>) => void;
   private mockMode = false;
   private mockOnMessage:
     | ((requestId: string, message: Record<string, unknown>) => void)
@@ -40,6 +46,8 @@ export class StreamSession {
   private mockProcessor: MessageProcessor | null = null;
   private pendingQuestion: PendingQuestion | null = null;
   private abortState: ReturnType<typeof createAbortState> | null = null;
+  /** SDK session ID captured from messages — used for resume after cancel. */
+  private sdkSessionId: string | null = null;
 
   constructor(
     sessionId: string,
@@ -50,6 +58,7 @@ export class StreamSession {
   ) {
     this.sessionId = sessionId;
     this.config = config;
+    this.onMessage = onMessage;
     this.currentRequestId = firstRequestId;
 
     // Start the streaming query in background — don't await.
@@ -58,17 +67,39 @@ export class StreamSession {
   }
 
   /** Resolves when `runQuery` finishes (success, error, or abort). */
-  readonly queryDone: Promise<void>;
+  queryDone: Promise<void>;
 
   /**
    * Push a follow-up user message into the streaming session.
    * Resolves the pending promise so the generator yields to the SDK.
+   *
+   * If the session was cancelled (turn interrupted via cancelTurn()),
+   * restarts the SDK query with `resume` to continue the conversation.
    */
   pushMessage(requestId: string, userMessage: string): void {
     if (this.closed) {
       throw new Error(`StreamSession ${this.sessionId} is closed`);
     }
     this.currentRequestId = requestId;
+
+    // After a cancel, the previous query() has ended.
+    // Restart with resume to continue the conversation.
+    if (this.cancelled) {
+      this.cancelled = false;
+      this.messageQueue = [];
+      this.pendingResolve = null;
+      process.stderr.write(
+        `[stream-session] Resuming after cancel: session=${this.sessionId} sdkSession=${this.sdkSessionId ?? "none"}\n`,
+      );
+      this.queryDone = this.runQuery(
+        { ...this.config, prompt: userMessage },
+        this.onMessage,
+        undefined,
+        this.sdkSessionId ?? undefined,
+      );
+      return;
+    }
+
     if (this.mockMode && this.mockOnMessage) {
       void this.emitMockTurn(userMessage, this.mockOnMessage);
       // Fall through to drain any messages that were queued before mock mode was confirmed.
@@ -80,6 +111,40 @@ export class StreamSession {
       // Generator hasn't reached its await yet — queue the message
       // so it's consumed on the next iteration instead of being dropped.
       this.messageQueue.push(userMessage);
+    }
+  }
+
+  /**
+   * Interrupt the current turn without closing the session.
+   * Aborts the AbortController so the SDK stops the active turn.
+   * The session stays alive — the next pushMessage() resumes via the SDK's
+   * `resume` option to continue the conversation.
+   */
+  cancelTurn(): void {
+    if (this.closed || this.cancelled) return;
+
+    process.stderr.write(
+      `[stream-session] cancelTurn: session=${this.sessionId} sdkSession=${this.sdkSessionId ?? "none"}\n`,
+    );
+
+    this.cancelled = true;
+
+    // Reject any pending AskUserQuestion so the SDK doesn't hang.
+    if (this.pendingQuestion) {
+      this.pendingQuestion.reject(new Error("Turn cancelled by user"));
+      this.pendingQuestion = null;
+    }
+
+    // Abort the controller — the SDK will stop processing.
+    if (this.abortState && !this.abortState.abortController.signal.aborted) {
+      this.abortState.abortController.abort();
+    }
+
+    // If the generator is parked waiting for a message, unblock it
+    // so runQuery() can exit cleanly.
+    if (this.pendingResolve) {
+      this.pendingResolve(CLOSE_SENTINEL);
+      this.pendingResolve = null;
     }
   }
 
@@ -197,6 +262,7 @@ export class StreamSession {
     config: SidecarConfig,
     onMessage: (requestId: string, message: Record<string, unknown>) => void,
     externalSignal?: AbortSignal,
+    resumeSessionId?: string,
   ): Promise<void> {
     if (process.env.MOCK_AGENTS === "true") {
       this.mockMode = true;
@@ -269,7 +335,7 @@ export class StreamSession {
     }
 
     const canUseTool = this.buildCanUseTool(onMessage);
-    const options = buildQueryOptions(
+    const baseOptions = buildQueryOptions(
       config,
       state.abortController,
       pluginPaths,
@@ -277,6 +343,17 @@ export class StreamSession {
       processorRef,
       canUseTool,
     );
+
+    // Resume from a previous session (after cancelTurn interrupted a turn).
+    const options = resumeSessionId
+      ? { ...baseOptions, resume: resumeSessionId }
+      : baseOptions;
+
+    if (resumeSessionId) {
+      process.stderr.write(
+        `[stream-session] Resuming SDK session ${resumeSessionId} for session ${this.sessionId}\n`,
+      );
+    }
 
     // Gate run_result emission until all subagents/background tasks finish.
     const gate = new ResultGate(processor);
@@ -294,7 +371,7 @@ export class StreamSession {
       };
 
       // Subsequent messages: wait for pushMessage() calls
-      while (!self.closed) {
+      while (!self.closed && !self.cancelled) {
         // Check for queued messages that arrived before we could await
         if (self.messageQueue.length > 0) {
           const message = self.messageQueue.shift()!;
@@ -357,6 +434,11 @@ export class StreamSession {
         }
 
         const msg = message as Record<string, unknown>;
+
+        // Capture SDK session ID for resume after cancel.
+        if (typeof msg.session_id === "string" && !this.sdkSessionId) {
+          this.sdkSessionId = msg.session_id;
+        }
 
         // Process into display items + pass-through messages
         // Task events (task_started/task_progress/task_notification) are routed
@@ -425,8 +507,8 @@ export class StreamSession {
       } as Record<string, unknown>);
     }
 
-    if (!this.closed && !state.abortController.signal.aborted) {
-      // Turns exhausted naturally (not user-initiated close, not externally aborted)
+    if (!this.closed && !this.cancelled && !state.abortController.signal.aborted) {
+      // Turns exhausted naturally (not user-initiated close, not cancelled, not externally aborted)
       process.stderr.write(
         `[stream-session] Session ${this.sessionId} exhausted (query completed without close)\n`,
       );

@@ -52,6 +52,12 @@ interface StreamQuestionAnswerRequest {
   answers: Record<string, unknown>;
 }
 
+/** Interrupt the current turn without closing the session. */
+interface StreamCancelRequest {
+  type: "stream_cancel";
+  session_id: string;
+}
+
 /** Close a streaming session. */
 interface StreamEndRequest {
   type: "stream_end";
@@ -67,6 +73,7 @@ type IncomingMessage =
   | StreamStartRequest
   | StreamMessageRequest
   | StreamQuestionAnswerRequest
+  | StreamCancelRequest
   | StreamEndRequest;
 
 /**
@@ -163,6 +170,14 @@ export function parseIncomingMessage(line: string): IncomingMessage | null {
       tool_use_id: obj.tool_use_id,
       questions: obj.questions,
       answers: obj.answers as Record<string, unknown>,
+    };
+  }
+
+  if (obj.type === "stream_cancel") {
+    if (typeof obj.session_id !== "string" || !obj.session_id) return null;
+    return {
+      type: "stream_cancel",
+      session_id: obj.session_id,
     };
   }
 
@@ -372,6 +387,18 @@ export async function runPersistent(
             message: errorMessage,
           }),
         );
+      }
+      continue;
+    }
+
+    if (message.type === "stream_cancel") {
+      const { session_id } = message;
+      process.stderr.write(`[sidecar] Stream cancel (interrupt): session=${session_id}\n`);
+
+      const session = activeSessions.get(session_id);
+      if (session) {
+        session.cancelTurn();
+        // Session stays in activeSessions — next pushMessage() will resume.
       }
       continue;
     }

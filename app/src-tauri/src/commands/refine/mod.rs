@@ -433,22 +433,29 @@ pub async fn cancel_refine_turn(
     pool: tauri::State<'_, SidecarPool>,
 ) -> Result<(), String> {
     let skill_name = {
-        let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
+        let map = sessions.0.lock().map_err(|e| e.to_string())?;
         let session = map
-            .get_mut(&session_id)
+            .get(&session_id)
             .ok_or_else(|| format!("Session not found: {}", session_id))?;
 
         if !session.stream_started {
             return Ok(());
         }
 
-        session.stream_started = false;
+        // Do NOT reset stream_started — the session stays alive.
+        // The sidecar will abort the current turn via AbortController
+        // and resume on the next stream_message.
         session.skill_name.clone()
     };
 
-    if let Err(err) = pool.send_stream_end(&skill_name, &session_id).await {
+    log::info!(
+        "[cancel_refine_turn] Interrupting current turn for skill '{}'",
+        skill_name
+    );
+
+    if let Err(err) = pool.send_stream_cancel(&skill_name, &session_id).await {
         log::warn!(
-            "[cancel_refine_turn] Failed to send stream_end for skill '{}': {}",
+            "[cancel_refine_turn] Failed to send stream_cancel for skill '{}': {}",
             skill_name,
             err
         );

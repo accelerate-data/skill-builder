@@ -950,6 +950,27 @@ impl SidecarPool {
         result
     }
 
+    /// Interrupt the current turn without closing the session.
+    /// The sidecar aborts the AbortController; the next stream_message
+    /// resumes the conversation via the SDK's `resume` option.
+    pub async fn send_stream_cancel(&self, skill_name: &str, session_id: &str) -> Result<(), String> {
+        let message = serde_json::json!({
+            "type": "stream_cancel",
+            "session_id": session_id,
+        });
+
+        let result = self.write_to_sidecar_stdin(skill_name, &message).await;
+        if let Err(ref e) = result {
+            log::warn!("[send_stream_cancel] Failed for session '[REDACTED]': {}", e);
+        } else {
+            log::info!(
+                "[send_stream_cancel] session=[REDACTED] on skill '{}'",
+                skill_name
+            );
+        }
+        result
+    }
+
     /// Close a streaming session.
     pub async fn send_stream_end(&self, skill_name: &str, session_id: &str) -> Result<(), String> {
         let message = serde_json::json!({
