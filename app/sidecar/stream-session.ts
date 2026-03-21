@@ -137,18 +137,29 @@ export class StreamSession {
       this.pendingQuestion = null;
     }
 
-    // Send interrupt to the SDK child process. interrupt() communicates
-    // directly with the subprocess (a separate OS process), so it works
-    // even when the main thread's for-await loop is blocked waiting for
-    // the next SDK message during a long tool execution.
+    // Kill the SDK child process. interrupt() is cooperative (sends a
+    // control message to cli.js stdin) — if cli.js is blocked on an API
+    // call it can't process the interrupt. So we fire interrupt() for a
+    // graceful stop but unconditionally schedule close() (forceful kill)
+    // after a short timeout to guarantee the process actually dies.
     if (this.activeQuery) {
-      this.activeQuery.interrupt().catch((err) => {
+      const queryRef = this.activeQuery;
+      const forceCloseTimer = setTimeout(() => {
         process.stderr.write(
-          `[stream-session] interrupt() failed, falling back to close(): ${err}\n`,
+          `[stream-session] interrupt() timeout — forcing close() for session ${this.sessionId}\n`,
         );
-        // close() is synchronous and forcefully kills the child process.
-        this.activeQuery?.close();
-      });
+        queryRef.close();
+      }, 500);
+
+      queryRef.interrupt()
+        .then(() => clearTimeout(forceCloseTimer))
+        .catch(() => {
+          clearTimeout(forceCloseTimer);
+          process.stderr.write(
+            `[stream-session] interrupt() failed — forcing close() for session ${this.sessionId}\n`,
+          );
+          queryRef.close();
+        });
     }
 
     // Also abort the controller as a secondary signal.
