@@ -26,30 +26,6 @@ pub fn list_imported_skills(
     Ok(skills)
 }
 
-// ---------------------------------------------------------------------------
-// get_skill_content
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-pub fn get_skill_content(skill_name: String, db: tauri::State<'_, Db>) -> Result<String, String> {
-    log::info!("[get_skill_content] skill_name={}", skill_name);
-    let skill = {
-        let conn = db.0.lock().map_err(|e| {
-            log::error!("[get_skill_content] Failed to acquire DB lock: {}", e);
-            e.to_string()
-        })?;
-        crate::db::get_imported_skill(&conn, &skill_name)?
-            .ok_or_else(|| format!("Imported skill '{}' not found", skill_name))?
-    }; // lock released before disk I/O
-
-    let skill_md_path = Path::new(&skill.disk_path).join("SKILL.md");
-    fs::read_to_string(&skill_md_path).map_err(|e| format!("Failed to read SKILL.md: {}", e))
-}
-
-// ---------------------------------------------------------------------------
-// export_skill
-// ---------------------------------------------------------------------------
-
 #[tauri::command]
 pub fn export_skill(skill_name: String, db: tauri::State<'_, Db>) -> Result<String, String> {
     log::info!("[export_skill] skill_name={}", skill_name);

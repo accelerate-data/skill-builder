@@ -1,38 +1,11 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::commands::imported_skills::validate_skill_name;
-use crate::db::Db;
 use crate::types::{RefineDiff, RefineFileDiff};
-
-use super::resolve_skills_path;
-
+ 
 // ─── get_refine_diff ─────────────────────────────────────────────────────────
 
-/// Returns the git diff for a skill's directory — both staged and unstaged changes.
-/// Used by the preview panel to show what the refine agent changed.
-///
-/// Also supports per-file diffs via the `files` array in the response.
-/// The frontend can use `git checkout -- <file>` (via a separate command) to undo
-/// individual file changes.
-#[tauri::command]
-pub fn get_refine_diff(
-    skill_name: String,
-    workspace_path: String,
-    db: tauri::State<'_, Db>,
-) -> Result<RefineDiff, String> {
-    log::info!("[get_refine_diff] skill={}", skill_name);
-    validate_skill_name(&skill_name)?;
-    let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
-        log::error!("[get_refine_diff] Failed to resolve skills path: {}", e);
-        e
-    })?;
-    get_refine_diff_inner(&skill_name, &skills_path).map_err(|e| {
-        log::error!("[get_refine_diff] {}", e);
-        e
-    })
-}
-
+#[cfg(test)]
 pub(crate) fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDiff, String> {
     use git2::{Delta, DiffFormat, DiffOptions, Repository};
 

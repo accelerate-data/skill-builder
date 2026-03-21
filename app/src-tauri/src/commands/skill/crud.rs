@@ -130,48 +130,9 @@ pub(crate) fn list_skills_inner(
     Ok(skills)
 }
 
-/// Returns skills that have completed their build (status = 'completed') and
-/// have a SKILL.md on disk. These are eligible for the refine workflow.
-#[tauri::command]
-pub fn list_refinable_skills(
-    workspace_path: String,
-    db: tauri::State<'_, Db>,
-) -> Result<Vec<SkillSummary>, String> {
-    log::info!("[list_refinable_skills]");
-
-    // Hold the DB lock only for DB reads; release before filesystem I/O.
-    let (skills_path, completed) = {
-        let conn = db.0.lock().map_err(|e| {
-            log::error!("[list_refinable_skills] Failed to acquire DB lock: {}", e);
-            e.to_string()
-        })?;
-        let settings = crate::db::read_settings(&conn).map_err(|e| {
-            log::error!("[list_refinable_skills] Failed to read settings: {}", e);
-            e
-        })?;
-        let skills_path = settings
-            .skills_path
-            .unwrap_or_else(|| workspace_path.clone());
-        let all = list_skills_inner(&workspace_path, None, &conn)?;
-        let completed: Vec<SkillSummary> = all
-            .into_iter()
-            .filter(|s| s.status.as_deref() == Some("completed"))
-            .collect();
-        (skills_path, completed)
-    }; // conn lock released here
-
-    // Filesystem existence checks happen outside the DB lock.
-    let result = filter_by_skill_md_exists(&skills_path, completed);
-    log::debug!(
-        "[list_refinable_skills] {} skills eligible for refine (skills_path={})",
-        result.len(),
-        skills_path
-    );
-    Ok(result)
-}
-
 /// Filter completed skills to only those with a SKILL.md on disk.
-/// Separated from DB access so the Tauri command can release the DB lock first.
+/// Test-only helper for list_refinable_skills_inner.
+#[cfg(test)]
 fn filter_by_skill_md_exists(skills_path: &str, completed: Vec<SkillSummary>) -> Vec<SkillSummary> {
     completed
         .into_iter()

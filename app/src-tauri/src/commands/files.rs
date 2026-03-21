@@ -292,6 +292,7 @@ fn write_file_with_roots(
         .map_err(|e| format!("Failed to write '{}': {}", canonical_target.display(), e))
 }
 
+#[cfg(test)]
 fn copy_file_with_roots(src: &str, dest: &str, allowed_roots: &[PathBuf]) -> Result<(), String> {
     let src_input = Path::new(src);
     reject_traversal(src_input)?;
@@ -380,38 +381,9 @@ pub fn write_file(path: String, content: String, db: tauri::State<'_, Db>) -> Re
     })
 }
 
-#[tauri::command]
-pub fn copy_file(src: String, dest: String, db: tauri::State<'_, Db>) -> Result<(), String> {
-    log::info!("[copy_file] src={} dest={}", src, dest);
-    let allowed_roots = get_allowed_roots(&db)?;
-    if let Some(workspace_root) = get_workspace_root(&db) {
-        let src_input = Path::new(&src);
-        if let Ok(canonical_src) = fs::canonicalize(src_input) {
-            if is_workspace_context_path(&canonical_src, &workspace_root) {
-                return Err(
-                    "Copy rejected: context files are backend-owned; use workflow/refine domain commands"
-                        .to_string(),
-                );
-            }
-        }
-        if let Ok(canonical_dest) = canonicalize_for_write_target(Path::new(&dest)) {
-            if is_workspace_context_path(&canonical_dest, &workspace_root) {
-                return Err(
-                    "Copy rejected: context files are backend-owned; use workflow/refine domain commands"
-                        .to_string(),
-                );
-            }
-        }
-    }
-    copy_file_with_roots(&src, &dest, &allowed_roots).map_err(|e| {
-        log::error!("[copy_file] Failed to copy {} to {}: {}", src, dest, e);
-        e
-    })
-}
-
 /// Copy a packaged export file (zip/skill) to a user-chosen destination.
 ///
-/// Unlike `copy_file`, the destination is not constrained to the app's allowed
+/// The destination is not constrained to the app's allowed
 /// roots because it was explicitly chosen by the user through the OS file-save
 /// dialog. The source must still be within an allowed root so we cannot be
 /// used to exfiltrate arbitrary app-internal files.

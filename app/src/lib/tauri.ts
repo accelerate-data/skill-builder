@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry } from "@/lib/types";
 
 // Re-export invoke for flexible Tauri command invocation
 export { invoke };
@@ -37,9 +37,6 @@ export const getDefaultSkillsPath = () => invoke<string>("get_default_skills_pat
 
 export const deleteSkill = (workspacePath: string, name: string) =>
   invoke("delete_skill", { workspacePath, name });
-
-export const updateSkillTags = (skillName: string, tags: string[]) =>
-  invoke("update_skill_tags", { skillName, tags });
 
 export const updateSkillMetadata = (
   skillName: string,
@@ -320,23 +317,11 @@ export const githubGetUser = () =>
 export const githubLogout = () =>
   invoke<void>("github_logout");
 
-// --- Skill Locks ---
-
-interface SkillLock {
-  skill_name: string;
-  instance_id: string;
-  pid: number;
-  acquired_at: string;
-}
-
 export const acquireLock = (skillName: string) =>
   invoke<void>("acquire_lock", { skillName });
 
 export const releaseLock = (skillName: string) =>
   invoke<void>("release_lock", { skillName });
-
-export const getLockedSkills = () =>
-  invoke<SkillLock[]>("get_locked_skills");
 
 export const getExternallyLockedSkills = () =>
   invoke<string[]>("get_externally_locked_skills");
@@ -348,9 +333,6 @@ export const getUsageSummary = (hideCancelled: boolean = false, startDate?: stri
 
 export const getRecentWorkflowSessions = (limit: number = 50, hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
   invoke<WorkflowSessionRecord[]>("get_recent_workflow_sessions", { limit, hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
-
-export const getSessionAgentRuns = (sessionId: string) =>
-  invoke<AgentRunRecord[]>("get_session_agent_runs", { sessionId });
 
 export const getStepAgentRuns = (skillName: string, stepId: number) =>
   invoke<AgentRunRecord[]>("get_step_agent_runs", { skillName, stepId });
@@ -377,10 +359,6 @@ export const resetUsage = () =>
 
 export const exportSkill = (skillName: string) =>
   invoke<string>("export_skill", { skillName });
-
-export async function getInstalledSkillNames(): Promise<string[]> {
-  return invoke<string[]>("get_installed_skill_names")
-}
 
 export async function getDashboardSkillNames(): Promise<string[]> {
   return invoke<string[]>("get_dashboard_skill_names")
@@ -424,14 +402,8 @@ export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
 
 // --- Refine ---
 
-export const listRefinableSkills = (workspacePath: string) =>
-  invoke<SkillSummary[]>("list_refinable_skills", { workspacePath })
-
 export const getSkillContentForRefine = (skillName: string, workspacePath: string) =>
   invoke<SkillFileContent[]>("get_skill_content_for_refine", { skillName, workspacePath })
-
-export const getRefineDiff = (skillName: string, workspacePath: string) =>
-  invoke<RefineDiff>("get_refine_diff", { skillName, workspacePath })
 
 export const startRefineSession = (skillName: string, workspacePath: string) =>
   invoke<RefineSessionInfo>("start_refine_session", { skillName, workspacePath })
@@ -584,11 +556,8 @@ export const importSkillFromFile = (params: {
 
 // --- Additional typed wrappers ---
 
-export const copyFile = (src: string, dest: string) =>
-  invoke<void>("copy_file", { src, dest });
-
 /** Copy a packaged export file to a user-chosen path selected via the OS save dialog.
- *  Unlike copyFile, the destination is not constrained to the app's allowed roots. */
+ *  The destination is not constrained to the app's allowed roots. */
 export const saveExportTo = (src: string, dest: string) =>
   invoke<void>("save_export_to", { src, dest });
 
@@ -624,9 +593,6 @@ export const createSkill = (params: {
 export const setLogLevel = (level: string) =>
   invoke<void>("set_log_level", { level });
 
-export const getSkillContent = (skillName: string) =>
-  invoke<string>("get_skill_content", { skillName });
-
 export const checkStartupDeps = () =>
   invoke<StartupDeps>("check_startup_deps");
 
@@ -637,7 +603,7 @@ export const getAllTags = () =>
 
 export interface LatestBenchmarkResult {
   iteration: number;
-  data: import("@/components/benchmark-summary-card").BenchmarkData;
+  data: import("@/lib/types").BenchmarkData;
 }
 
 export const readLatestBenchmark = (skillName: string, workspacePath: string) =>
@@ -645,4 +611,3 @@ export const readLatestBenchmark = (skillName: string, workspacePath: string) =>
     "read_latest_benchmark",
     { skillName, workspacePath },
   );
-
