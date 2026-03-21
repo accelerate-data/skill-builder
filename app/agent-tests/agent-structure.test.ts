@@ -395,13 +395,15 @@ describe("skill-creator plugin structure", () => {
     );
 
     expect(content).toMatch(/Write the quantitative assertions at the same time as the prompts/i);
-    expect(content).toMatch(/treat those assertions as fixed/i);
+    expect(content).toMatch(/treat those fields and those assertions as fixed/i);
+    expect(content).toMatch(/deterministic `slug`/i);
     expect(content).toMatch(/Do not rewrite `evals\/evals\.json` or `eval_metadata\.json` during the run/i);
-    expect(generateSkillContent).toMatch(/must include a human-readable `eval_name` and its fixed `expectations` at creation time/i);
+    expect(generateSkillContent).toMatch(/must include a human-readable `eval_name`, a deterministic `slug`, and its fixed `expectations` at creation time/i);
     expect(benchmarkContent).toMatch(/Validate every eval in `\{eval_dir\}\/evals\.json` before continuing/i);
-    expect(benchmarkContent).toMatch(/Treat `eval_name` and `expectations` as frozen benchmark inputs/i);
-    expect(benchmarkContent).toMatch(/If any eval is missing either field, return immediately/i);
+    expect(benchmarkContent).toMatch(/Treat `eval_name`, `slug`, and `expectations` as frozen benchmark inputs/i);
+    expect(benchmarkContent).toMatch(/If any eval is missing any required field, return immediately/i);
     expect(schemaContent).toMatch(/evals\[\]\.eval_name/);
+    expect(schemaContent).toMatch(/evals\[\]\.slug/);
     expect(schemaContent).toMatch(/written at eval creation time and frozen for subsequent benchmark iterations/i);
   });
 

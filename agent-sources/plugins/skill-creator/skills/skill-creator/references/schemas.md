@@ -15,6 +15,7 @@ Defines the evals for a skill. Located at `evals/evals.json` within the skill di
     {
       "id": 1,
       "eval_name": "Customer returns workflow",
+      "slug": "customer-returns-workflow",
       "prompt": "User's example prompt",
       "expected_output": "Description of expected result",
       "files": ["evals/files/sample1.pdf"],
@@ -31,6 +32,7 @@ Defines the evals for a skill. Located at `evals/evals.json` within the skill di
 - `skill_name`: Name matching the skill's frontmatter
 - `evals[].id`: Unique integer identifier
 - `evals[].eval_name`: Human-readable eval name used in the viewer and per-iteration metadata
+- `evals[].slug`: Deterministic slug used for `eval-<id>-<slug>` directory names and copied into per-iteration metadata
 - `evals[].prompt`: The task to execute
 - `evals[].expected_output`: Human-readable description of success
 - `evals[].files`: Optional list of input file paths (relative to skill root)

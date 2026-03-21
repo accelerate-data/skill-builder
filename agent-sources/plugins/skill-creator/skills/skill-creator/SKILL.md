@@ -13,7 +13,7 @@ At a high level, the process of creating a skill goes like this:
 - Write a draft of the skill
 - Create a few test prompts and run claude-with-access-to-the-skill on them
 - Help the user evaluate the results both qualitatively and quantitatively
-  - While the runs happen in the background, draft some quantitative evals if there aren't any (if there are some, you can either use as is or modify if you feel something needs to change about them). Then explain them to the user (or if they already existed, explain the ones that already exist)
+  - While the runs happen in the background, explain the already-frozen quantitative evals to the user so they know what the benchmark is checking
   - Use the `eval-viewer/generate_review.py` script to show the user the results for them to look at, and also let them look at the quantitative metrics
 - Rewrite the skill based on feedback from the user's evaluation of the results (and also if there are any glaring flaws that become apparent from the quantitative benchmarks)
 - Repeat until you're satisfied
@@ -142,7 +142,7 @@ Try to explain to the model why things are important in lieu of heavy-handed mus
 
 After writing the skill draft, come up with 2-3 realistic test prompts — the kind of thing a real user would actually say. Share them with the user: [you don't have to use this exact language] "Here are a few test cases I'd like to try. Do these look right, or do you want to add more?" Then run them.
 
-Save test cases to `evals/evals.json`. Write the quantitative assertions at the same time as the prompts so the eval definition is complete before the first benchmark iteration runs. Once written, treat those assertions as fixed for later iterations unless the user explicitly changes the eval itself.
+Save test cases to `evals/evals.json`. Write the quantitative assertions at the same time as the prompts so the eval definition is complete before the first benchmark iteration runs. Each eval also needs a human-readable `eval_name` and a deterministic `slug` so later iterations reuse the same labels and directory names. Once written, treat those fields and those assertions as fixed for later iterations unless the user explicitly changes the eval itself.
 
 ```json
 {
@@ -150,6 +150,8 @@ Save test cases to `evals/evals.json`. Write the quantitative assertions at the 
   "evals": [
     {
       "id": 1,
+      "eval_name": "Customer returns workflow",
+      "slug": "customer-returns-workflow",
       "prompt": "User's task prompt",
       "expected_output": "Description of expected result",
       "files": [],
@@ -189,12 +191,13 @@ Execute this task:
 - **Creating a new skill**: no skill at all. Same prompt, no skill path, save to `without_skill/outputs/`.
 - **Improving an existing skill**: the old version. Before editing, snapshot the skill (`cp -r <skill-path> <workspace>/skill-snapshot/`), then point the baseline subagent at the snapshot. Save to `old_skill/outputs/`.
 
-Write an `eval_metadata.json` for each test case using the same frozen assertions already written to `evals/evals.json`. Directory names **must** start with `eval-<ID>-` followed by a descriptive slug (e.g. `eval-0-hybrid-cogs`, `eval-1-returns-treatment`). The `eval-` prefix is required — the aggregator uses `eval-*` to discover directories. If this iteration uses new or modified eval prompts, create these files for each new eval directory — don't assume they carry over from previous iterations.
+Write an `eval_metadata.json` for each test case using the same frozen `eval_name`, `slug`, and assertions already written to `evals/evals.json`. Directory names **must** start with `eval-<ID>-` followed by that exact slug from `evals.json` (e.g. `eval-0-hybrid-cogs`, `eval-1-returns-treatment`). The `eval-` prefix is required — the aggregator uses `eval-*` to discover directories. Generate the slug once when creating `evals.json`, keep it deterministic, and do not regenerate it differently in later iterations. If this iteration uses new or modified eval prompts, create these files for each new eval directory — don't assume they carry over from previous iterations.
 
 ```json
 {
   "eval_id": 0,
   "eval_name": "descriptive-name-here",
+  "slug": "descriptive-name-here",
   "prompt": "The user's task prompt",
   "assertions": [
     "A fixed assertion for this eval",
@@ -205,7 +208,7 @@ Write an `eval_metadata.json` for each test case using the same frozen assertion
 
 ### Step 2: While runs are in progress, explain the frozen assertions
 
-Don't just wait for the runs to finish — you can use this time productively. Review the quantitative assertions already saved for each test case and explain them to the user. Do not rewrite `evals/evals.json` or `eval_metadata.json` during the run just because an iteration suggests better wording; iteration-over-iteration comparisons only make sense when the grading criteria stay identical.
+Don't just wait for the runs to finish — you can use this time productively. Review the quantitative assertions already saved for each test case and explain them to the user. Do not rewrite `evals/evals.json` or `eval_metadata.json` during the run just because an iteration suggests better wording; iteration-over-iteration comparisons only make sense when the grading criteria, names, and directory slugs stay identical.
 
 Good assertions are objectively verifiable and have descriptive names — they should read clearly in the benchmark viewer so someone glancing at the results immediately understands what each one checks. Subjective skills (writing style, design quality) are better evaluated qualitatively — don't force assertions onto things that need human judgment.
 

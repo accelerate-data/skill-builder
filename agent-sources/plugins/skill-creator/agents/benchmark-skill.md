@@ -62,8 +62,9 @@ Read and verify that the required inputs exist before proceeding:
 
 - Validate every eval in `{eval_dir}/evals.json` before continuing:
   - `eval_name` must be present and non-empty.
+  - `slug` must be present, non-empty, and deterministic enough to use directly in directory names.
   - `expectations` must be present and contain at least one item.
-  - If any eval is missing either field, return immediately:
+  - If any eval is missing any required field, return immediately:
 
 ```json
 { "status": "skipped", "call_trace": ["validate-inputs-incomplete-evals"] }
@@ -92,7 +93,7 @@ All generated files (test results, grading, benchmark) must only be written to `
 
 Key inputs for the eval pipeline:
 
-- **Test cases**: from `{eval_dir}/evals.json` (read in Step 0). Do NOT create or overwrite `evals.json`. Treat `eval_name` and `expectations` as frozen benchmark inputs and only copy them into per-iteration metadata.
+- **Test cases**: from `{eval_dir}/evals.json` (read in Step 0). Do NOT create or overwrite `evals.json`. Treat `eval_name`, `slug`, and `expectations` as frozen benchmark inputs and only copy them into per-iteration metadata and deterministic directory names.
 - **With-skill run**: provide skill path as `skill_output_dir`.
 - **Baseline run**: depends on `baseline_mode`:
   - `"no_skill"`: same prompt, no skill at all. Save to `without_skill/` directories.
