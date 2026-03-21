@@ -443,6 +443,7 @@ describe("MessageProcessor", () => {
       );
       expect(subagentUpdates).toHaveLength(1);
       expect(subagentUpdates[0].subagentStatus).toBe("complete");
+      expect(subagentUpdates[0].subagentConclusion).toBe("Research complete");
       expect(subagentUpdates[0].subagentItems).toHaveLength(1);
       expect(subagentUpdates[0].subagentItems![0].type).toBe("output");
       expect(processor.activeSubagentCount).toBe(0);
@@ -480,6 +481,7 @@ describe("MessageProcessor", () => {
       const items = extractDisplayItems(out);
       const subagent = items.find((i) => i.type === "subagent");
       expect(subagent?.subagentStatus).toBe("error");
+      expect(subagent?.subagentConclusion).toBe("Agent failed");
     });
   });
 

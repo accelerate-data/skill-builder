@@ -4,7 +4,7 @@ import { SubagentItem } from "@/components/agent-items/subagent-item";
 import type { DisplayItem } from "@/lib/display-types";
 
 const baseItemState = vi.hoisted(() => ({
-  props: null as null | Record<string, unknown>,
+  props: [] as Record<string, unknown>[],
 }));
 
 vi.mock("@/components/agent-items/base-item", () => ({
@@ -20,7 +20,7 @@ vi.mock("@/components/agent-items/base-item", () => ({
     summary?: string;
     children?: React.ReactNode;
   }) => {
-    baseItemState.props = { label, summary, ...props };
+    baseItemState.props.push({ label, summary, ...props });
     return (
       <div data-testid="subagent-base-item">
         <div data-testid="subagent-base-item-icon">{icon}</div>
@@ -66,7 +66,7 @@ function createChild(id: string): DisplayItem {
 
 describe("SubagentItem", () => {
   beforeEach(() => {
-    baseItemState.props = null;
+    baseItemState.props = [];
   });
 
   it("renders fallback labels and no-output text when there are no child items", () => {
@@ -94,7 +94,7 @@ describe("SubagentItem", () => {
 
     expect(screen.getByTestId("display-item-list")).toHaveAttribute("data-depth", "2");
     expect(screen.getByTestId("display-item-list")).toHaveAttribute("data-count", "2");
-    expect(baseItemState.props).toMatchObject({
+    expect(baseItemState.props[0]).toMatchObject({
       label: "Researcher",
       summary: "Collect evidence",
       tokenCount: 128,
@@ -127,5 +127,36 @@ describe("SubagentItem", () => {
     );
 
     expect(screen.getByText("Running...")).toBeInTheDocument();
+  });
+
+  it("renders a conclusion section when the subagent has final result text", () => {
+    render(
+      <SubagentItem
+        item={createItem({
+          subagentStatus: "complete",
+          subagentConclusion: "## Done\nFound the root cause.",
+          subagentItems: [createChild("c1")],
+        })}
+      />,
+    );
+
+    expect(screen.getAllByTestId("subagent-base-item-label")[1]).toHaveTextContent("Conclusion");
+    expect(screen.getByRole("heading", { name: "Done" })).toBeInTheDocument();
+    expect(screen.getByText("Found the root cause.")).toBeInTheDocument();
+    expect(screen.getByTestId("display-item-list")).toHaveAttribute("data-count", "1");
+  });
+
+  it("omits the conclusion section when no final result text is present", () => {
+    render(
+      <SubagentItem
+        item={createItem({
+          subagentStatus: "complete",
+          subagentItems: [createChild("c1")],
+        })}
+      />,
+    );
+
+    expect(screen.getAllByTestId("subagent-base-item-label")).toHaveLength(1);
+    expect(screen.queryByText("Conclusion")).not.toBeInTheDocument();
   });
 });
