@@ -359,6 +359,27 @@ describe("Need Review filter toggle", () => {
     expect(screen.queryByText("Required Question")).not.toBeInTheDocument();
     expect(screen.queryByText("Flagged Question")).not.toBeInTheDocument();
   });
+
+  it("keeps answered contradictory questions visible", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([
+      makeQuestion({ id: "Q1", title: "Contradictory Question", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q2", title: "Other Question", answer_choice: "A", answer_text: "Choice A" }),
+    ]);
+    data.answer_evaluator_notes = [
+      {
+        type: "answer_feedback",
+        title: "Contradictory answer: Q1",
+        body: "This answer conflicts with Q2.",
+      },
+    ];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    await user.click(screen.getByRole("switch", { name: "Need Review" }));
+
+    expect(screen.getByText("Contradictory Question")).toBeInTheDocument();
+    expect(screen.getByText("Other Question")).toBeInTheDocument();
+  });
 });
 
 describe("Needs Review banner count", () => {
@@ -390,6 +411,22 @@ describe("Needs Review banner count", () => {
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
 
     expect(screen.queryByText(/currently marked for review/)).not.toBeInTheDocument();
+  });
+
+  it("counts contradictory questions and their referenced counterparts", () => {
+    const data = makeClarifications([
+      makeQuestion({ id: "Q1", title: "Contradictory Question", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q2", title: "Referenced Counterpart", answer_choice: "B", answer_text: "Choice B" }),
+      makeQuestion({ id: "Q3", title: "Answered Non-contradictory", answer_choice: "A", answer_text: "Choice A" }),
+    ]);
+    data.answer_evaluator_notes = [
+      { type: "answer_feedback", title: "Contradictory answer: Q1", body: "This answer conflicts with Q2." },
+      { type: "answer_feedback", title: "Needs refinement: Q3", body: "More detail needed." },
+    ];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+
+    expect(screen.getByText("2 questions currently marked for review by the answer evaluator.")).toBeInTheDocument();
   });
 });
 
@@ -424,6 +461,31 @@ describe("Inline evaluator feedback", () => {
 
     expect(screen.getByText("Need Review: Vague")).toBeInTheDocument();
     expect(screen.getByText("Why flagged: Missing concrete thresholds.")).toBeInTheDocument();
+  });
+
+  it("shows contradiction context on counterpart questions surfaced by Needs Review", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([
+      makeQuestion({ id: "Q1", title: "Flagged Contradiction", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q2", title: "Conflict Counterpart", answer_choice: "B", answer_text: "Choice B" }),
+    ]);
+    data.answer_evaluator_notes = [
+      {
+        type: "answer_feedback",
+        title: "Contradictory answer: Q1",
+        body: "This answer conflicts with Q2.",
+      },
+    ];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    await user.click(screen.getByRole("switch", { name: "Need Review" }));
+
+    expect(screen.getByText("In conflict with Q1")).toBeInTheDocument();
+
+    await expandCard(user, "Conflict Counterpart");
+
+    expect(screen.getByText("Need Review: Conflict counterpart")).toBeInTheDocument();
+    expect(screen.getByText("Conflicts with Q1")).toBeInTheDocument();
   });
 });
 
