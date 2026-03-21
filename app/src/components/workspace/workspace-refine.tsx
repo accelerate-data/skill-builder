@@ -29,7 +29,6 @@ import {
 import type { SkillSummary } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
-import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 
@@ -76,6 +75,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const selectedSkill = useRefineStore((s) => s.selectedSkill);
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const previewRevision = useRefineStore((s) => s.previewRevision);
+  const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const isRunning = useRefineStore((s) => s.isRunning);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
 
@@ -400,8 +400,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 w-full flex-1 overflow-hidden">
-        <ResizableSplitPane
-          left={
+        {selectedModifiedFile ? (
+          <PreviewPanel key={previewRevision} />
+        ) : (
+          <div className="h-full">
             <ChatPanel
               onSend={handleSend}
               isRunning={isRunning}
@@ -411,9 +413,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
               onBenchmarkConfirm={handleBenchmarkConfirm}
               onBenchmarkSkip={handleBenchmarkSkip}
             />
-          }
-          right={<PreviewPanel key={previewRevision} />}
-        />
+          </div>
+        )}
       </div>
 
       {/* Status bar */}

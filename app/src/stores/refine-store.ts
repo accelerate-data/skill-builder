@@ -31,6 +31,7 @@ interface RefineState {
 
   // Preview panel
   activeFileTab: string; // filename key e.g. "SKILL.md"
+  selectedModifiedFile: string | null;
   diffMode: boolean;
   gitDiff: RefineDiff | null;
   previewRevision: number;
@@ -55,6 +56,7 @@ interface RefineState {
   setSkillFiles: (files: SkillFile[]) => void;
   setLoadingFiles: (v: boolean) => void;
   setActiveFileTab: (filename: string) => void;
+  setSelectedModifiedFile: (filename: string | null) => void;
   setDiffMode: (v: boolean) => void;
   addUserMessage: (text: string, targetFiles?: string[], command?: RefineCommand) => RefineMessage;
   addAgentTurn: (agentId: string) => RefineMessage;
@@ -84,6 +86,7 @@ const SESSION_DEFAULTS = {
   previewRevision: 0,
   skillFiles: [] as SkillFile[],
   activeFileTab: "SKILL.md",
+  selectedModifiedFile: null as string | null,
   // pendingInitialMessage is intentionally excluded: it is cross-page navigation
   // state set by the test page and consumed by ChatInputBar. Including it here
   // caused React StrictMode's simulated unmount (and normal page-unmount cleanup)
@@ -115,6 +118,7 @@ export const useRefineStore = create<RefineState>((set) => ({
     })),
   setLoadingFiles: (v) => set({ isLoadingFiles: v }),
   setActiveFileTab: (filename) => set({ activeFileTab: filename }),
+  setSelectedModifiedFile: (filename) => set({ selectedModifiedFile: filename }),
   setDiffMode: (v) => set({ diffMode: v }),
 
   addUserMessage: (text, targetFiles, command) => {
@@ -153,6 +157,7 @@ export const useRefineStore = create<RefineState>((set) => ({
 
   updateSkillFiles: (files) => set((state) => {
     const existingFiles = new Set(state.skillFiles.map((file) => file.filename));
+    const nextFileNames = new Set(files.map((file) => file.filename));
     const firstNewAuthoredFile = files.find((file) =>
       !existingFiles.has(file.filename) && isAuthoredSkillFile(file.filename)
     )?.filename;
@@ -166,11 +171,35 @@ export const useRefineStore = create<RefineState>((set) => ({
     return {
       skillFiles: files,
       activeFileTab: nextActive,
+      selectedModifiedFile: state.selectedModifiedFile && nextFileNames.has(state.selectedModifiedFile)
+        ? state.selectedModifiedFile
+        : null,
       previewRevision: state.previewRevision + 1,
     };
   }),
 
-  setGitDiff: (diff) => set({ gitDiff: diff }),
+  setGitDiff: (diff) => set((state) => {
+    if (!diff) {
+      return {
+        gitDiff: null,
+        selectedModifiedFile: null,
+      };
+    }
+    const diffPaths = new Set(
+      diff.files
+        .map((file) => {
+          const parts = file.path.split("/");
+          return parts.length > 1 ? parts.slice(1).join("/") : file.path;
+        })
+        .filter((path) => isAuthoredSkillFile(path)),
+    );
+    return {
+      gitDiff: diff,
+      selectedModifiedFile: state.selectedModifiedFile && diffPaths.has(state.selectedModifiedFile)
+        ? state.selectedModifiedFile
+        : null,
+    };
+  }),
 
   setActiveAgentId: (id) => set({ activeAgentId: id }),
   setRunning: (v) => set({ isRunning: v }),

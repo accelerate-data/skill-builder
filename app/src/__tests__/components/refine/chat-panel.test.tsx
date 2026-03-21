@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { useRefineStore, type RefineMessage } from "@/stores/refine-store";
 
@@ -54,6 +55,7 @@ describe("ChatPanel", () => {
       messages: [],
       sessionExhausted: false,
       pendingInitialMessage: null,
+      gitDiff: null,
     });
   });
 
@@ -136,5 +138,31 @@ describe("ChatPanel", () => {
     expect(inputBarState.props).toMatchObject({
       isRunning: true,
     });
+  });
+
+  it("shows modified-file pills and opens the selected file", async () => {
+    const user = userEvent.setup();
+    useRefineStore.setState({
+      gitDiff: {
+        stat: "3 files changed",
+        files: [
+          { path: "test-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" },
+          { path: "test-skill/references/glossary.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" },
+          { path: "test-skill/context/debug.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" },
+        ],
+      },
+    });
+
+    renderPanel();
+
+    expect(screen.getByTestId("refine-modified-files")).toBeInTheDocument();
+    expect(screen.getByText("SKILL.md")).toBeInTheDocument();
+    expect(screen.getByText("references/glossary.md")).toBeInTheDocument();
+    expect(screen.queryByText("context/debug.md")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("refine-modified-file-pill-references/glossary.md"));
+
+    expect(useRefineStore.getState().activeFileTab).toBe("references/glossary.md");
+    expect(useRefineStore.getState().selectedModifiedFile).toBe("references/glossary.md");
   });
 });

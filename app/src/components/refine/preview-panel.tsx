@@ -1,25 +1,16 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
+import { ArrowLeft, FileText, GitCompare } from "lucide-react";
 import { markdownComponents } from "@/components/markdown-link";
 import { SkillFrontmatterHeader } from "@/components/skill-frontmatter-header";
-import { isSkillFile, parseFrontmatter } from "@/lib/frontmatter";
-import { ChevronDown, FileText, GitCompare } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { isAuthoredSkillFile, useRefineStore } from "@/stores/refine-store";
+import { isSkillFile, parseFrontmatter } from "@/lib/frontmatter";
+import { useRefineStore } from "@/stores/refine-store";
 import { GitPatchView } from "./git-patch-view";
 
 const REMARK_PLUGINS = [remarkGfm];
@@ -30,18 +21,6 @@ function normalizeDiffPath(path: string): string {
   return parts.length > 1 ? parts.slice(1).join("/") : path;
 }
 
-function getDiffFileTabNames(skillFiles: string[], gitDiffPaths: string[]): string[] {
-  const names = new Set<string>(skillFiles);
-  for (const path of gitDiffPaths) {
-    const normalized = normalizeDiffPath(path);
-    if (isAuthoredSkillFile(normalized)) {
-      names.add(normalized);
-    }
-  }
-  return Array.from(names);
-}
-
-/** Memoized markdown renderer — only re-renders when content or filename changes. */
 const MarkdownPreview = memo(function MarkdownPreview({ content, filename }: { content: string; filename: string }) {
   const parsed = useMemo(() => {
     if (isSkillFile(filename)) return parseFrontmatter(content);
@@ -63,27 +42,12 @@ const MarkdownPreview = memo(function MarkdownPreview({ content, filename }: { c
 export function PreviewPanel() {
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const activeFileTab = useRefineStore((s) => s.activeFileTab);
+  const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const diffMode = useRefineStore((s) => s.diffMode);
   const gitDiff = useRefineStore((s) => s.gitDiff);
   const isLoadingFiles = useRefineStore((s) => s.isLoadingFiles);
-  const setActiveFileTab = useRefineStore((s) => s.setActiveFileTab);
   const setDiffMode = useRefineStore((s) => s.setDiffMode);
-
-  const [filePickerOpen, setFilePickerOpen] = useState(false);
-  const previewFiles = skillFiles.filter((file) => isAuthoredSkillFile(file.filename));
-  const previewFileNames = getDiffFileTabNames(
-    previewFiles.map((file) => file.filename),
-    gitDiff?.files.map((file) => file.path) ?? [],
-  );
-  const fileListKey = previewFileNames.join("|");
-
-  if (previewFileNames.length === 0 && !isLoadingFiles) {
-    return (
-      <div data-testid="refine-preview-empty" className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Skill files will appear here after loading
-      </div>
-    );
-  }
+  const setSelectedModifiedFile = useRefineStore((s) => s.setSelectedModifiedFile);
 
   if (isLoadingFiles) {
     return (
@@ -94,45 +58,37 @@ export function PreviewPanel() {
     );
   }
 
-  const activeFile = previewFiles.find((f) => f.filename === activeFileTab);
+  if (!selectedModifiedFile) {
+    return (
+      <div data-testid="refine-file-view-empty" className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Select a modified file to view it here
+      </div>
+    );
+  }
+
+  const activeFile = skillFiles.find((f) => f.filename === activeFileTab);
   const gitDiffFile = gitDiff?.files.find((file) => normalizeDiffPath(file.path) === activeFileTab);
-  const hasDiff = (gitDiff?.files.length ?? 0) > 0;
+  const hasDiff = !!gitDiffFile;
 
   return (
-    <div className="flex h-full flex-col">
+    <div data-testid="refine-file-view" className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b px-4 py-2">
-        <Popover open={filePickerOpen} onOpenChange={setFilePickerOpen}>
-          <PopoverTrigger asChild>
-            <Button data-testid="refine-file-picker" variant="outline" size="sm" className="max-w-[280px] justify-between gap-1.5">
-              <FileText className="size-3.5 shrink-0" />
-              <span className="truncate">{activeFileTab}</span>
-              <ChevronDown className="ml-1 size-3.5 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-72 p-0" align="start">
-            <Command key={fileListKey}>
-              <CommandInput placeholder="Search files..." />
-              <CommandList>
-                <CommandEmpty>No files found</CommandEmpty>
-                <CommandGroup>
-                    {previewFileNames.map((filename) => (
-                      <CommandItem
-                      key={filename}
-                      value={filename}
-                      onSelect={() => {
-                        setActiveFileTab(filename);
-                        setFilePickerOpen(false);
-                      }}
-                    >
-                      <FileText className="mr-2 size-3.5 shrink-0" />
-                      <span className="truncate">{filename}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
+        <div className="flex min-w-0 items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-testid="refine-file-view-back"
+            onClick={() => setSelectedModifiedFile(null)}
+          >
+            <ArrowLeft className="size-3.5" />
+            Back
+          </Button>
+          <div className="flex min-w-0 items-center gap-1.5 text-sm">
+            <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate" data-testid="refine-file-view-title">{selectedModifiedFile}</span>
+          </div>
+        </div>
         <Button
           data-testid="refine-diff-toggle"
           variant="outline"
