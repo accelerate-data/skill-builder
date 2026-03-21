@@ -7,6 +7,12 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Active mock scenario. Set `MOCK_SCENARIO=contradictory` to exercise the
+ * contradictory-answer gate flow in step 0 without live API calls.
+ */
+const MOCK_SCENARIO = process.env.MOCK_SCENARIO ?? "default";
+
+/**
  * Map agent names to step template files.
  *
  * Plugin-hosted agents use qualified names (e.g., `skill-creator:generate-skill`,
@@ -33,7 +39,7 @@ export function resolveStepTemplate(
   if (agentName === "skill-creator:generate-skill") return "step3-generate-skill";
   if (agentName === "skill-creator:rewrite-skill") return "rewrite-skill";
   if (agentName === "skill-creator:benchmark-skill") return "benchmark-skill";
-  if (agentName === "answer-evaluator") return "gate-answer-evaluator";
+  if (agentName === "answer-evaluator") return MOCK_SCENARIO === "contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator";
 
   // Research orchestrator (plugin-qualified) and all sub-agents spawned by the research skill
   if (
@@ -60,13 +66,13 @@ export function resolveStepTemplate(
 /** Map step template name to the outputs subdirectory. */
 function getOutputDir(stepTemplate: string): string {
   const stepMap: Record<string, string> = {
-    "step0-research": "step0",
+    "step0-research": MOCK_SCENARIO === "contradictory" ? "step0-contradictory" : "step0",
     "step1-detailed-research": "step1",
     "step2-confirm-decisions": "step2",
     "step3-generate-skill": "step3",
     "rewrite-skill": "refine",
     "benchmark-skill": "benchmark",
-    "gate-answer-evaluator": "gate-answer-evaluator",
+    "gate-answer-evaluator": MOCK_SCENARIO === "contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator",
   };
   return stepMap[stepTemplate] || "";
 }
@@ -386,8 +392,9 @@ export async function buildStructuredMockResult(
 ): Promise<unknown | null> {
   const outputsRoot = path.join(__dirname, "mock-templates", "outputs");
   if (stepTemplate === "step0-research") {
+    const step0Dir = MOCK_SCENARIO === "contradictory" ? "step0-contradictory" : "step0";
     const clarifications = await readJsonIfExists(
-      path.join(outputsRoot, "step0", "context", "clarifications.json"),
+      path.join(outputsRoot, step0Dir, "context", "clarifications.json"),
     );
     if (!clarifications) return null;
     const metadata =
@@ -481,9 +488,10 @@ export async function buildStructuredMockResult(
     };
   }
 
-  if (stepTemplate === "gate-answer-evaluator") {
+  if (stepTemplate === "gate-answer-evaluator" || stepTemplate === "gate-answer-evaluator-contradictory") {
+    const dir = stepTemplate === "gate-answer-evaluator-contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator";
     return readJsonIfExists(
-      path.join(outputsRoot, "gate-answer-evaluator", "answer-evaluation.json"),
+      path.join(outputsRoot, dir, "answer-evaluation.json"),
     );
   }
 

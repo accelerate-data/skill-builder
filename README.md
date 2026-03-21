@@ -25,6 +25,15 @@ cd app && MOCK_AGENTS=true npm run dev
 
 This replays bundled JSONL templates with short delays, writes mock output files, and advances the workflow through all steps without hitting the Anthropic API.
 
+### Mock Scenarios
+
+Set `MOCK_SCENARIO` to switch between pre-built scenarios:
+
+| Scenario | Command | Behaviour |
+| --- | --- | --- |
+| `default` | `MOCK_AGENTS=true npm run dev` | Happy path -- all answers clear, gate verdict `sufficient`, workflow advances without friction |
+| `contradictory` | `MOCK_AGENTS=true MOCK_SCENARIO=contradictory npm run dev` | Step 0 produces pre-filled answers with contradictions (Q1 self-contradicts choice vs free-text, Q2 beginner target conflicts with Q7 advanced examples, Q5 vague, Q8 unanswered). Gate evaluator returns `mixed` verdict triggering the gate dialog with per-question feedback notes |
+
 ## How It Works
 
 The workflow guides you through building a skill in 6 steps:
