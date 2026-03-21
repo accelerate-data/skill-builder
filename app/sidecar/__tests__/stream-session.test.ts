@@ -379,6 +379,55 @@ describe("StreamSession — AskUserQuestion flow", () => {
   });
 });
 
+describe("StreamSession — close aborts active query", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.MOCK_AGENTS;
+    mockBuildQueryOptions.mockImplementation(
+      (
+        _config,
+        abortController,
+        _pluginPaths,
+        _stderrHandler,
+        _processorRef,
+      ) => ({
+        abortController,
+      }),
+    );
+  });
+
+  afterEach(() => {
+    delete process.env.MOCK_AGENTS;
+  });
+
+  it("aborts the live streaming query when close is called", async () => {
+    mockQuery.mockImplementation(({ options }) => {
+      async function* fakeConversation() {
+        await new Promise<void>((resolve) => {
+          options.abortController.signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+      }
+
+      return fakeConversation() as ReturnType<typeof query>;
+    });
+
+    const messages: Record<string, unknown>[] = [];
+    const session = new StreamSession("sess-close", "req-close-1", baseConfig(), (_requestId, msg) => {
+      messages.push(msg);
+    });
+
+    await vi.waitFor(() => {
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+    session.close();
+    await session.queryDone;
+
+    const runResult = messages.find(isRunResult);
+    expect(runResult).toBeDefined();
+    expect((runResult?.event as Record<string, unknown>)?.status).toBe("shutdown");
+  });
+});
+
 // TS-04: Setup-error path — discoverInstalledPlugins rejects
 describe("StreamSession — setup error path", () => {
   beforeEach(() => {

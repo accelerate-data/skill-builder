@@ -39,6 +39,7 @@ export class StreamSession {
   /** Shared MessageProcessor for mock streaming — persists across turns. */
   private mockProcessor: MessageProcessor | null = null;
   private pendingQuestion: PendingQuestion | null = null;
+  private abortState: ReturnType<typeof createAbortState> | null = null;
 
   constructor(
     sessionId: string,
@@ -113,6 +114,9 @@ export class StreamSession {
    */
   close(): void {
     this.closed = true;
+    if (this.abortState && !this.abortState.abortController.signal.aborted) {
+      this.abortState.abortController.abort();
+    }
     if (this.pendingQuestion) {
       this.pendingQuestion.reject(new Error("Stream session closed while waiting for user input"));
       this.pendingQuestion = null;
@@ -218,6 +222,7 @@ export class StreamSession {
     }
 
     const state = createAbortState();
+    this.abortState = state;
     if (externalSignal) {
       linkExternalSignal(state, externalSignal);
     }
@@ -433,6 +438,7 @@ export class StreamSession {
     }
 
     process.stderr.write(`[stream-session] Session ${this.sessionId} ended\n`);
+    this.abortState = null;
   }
 
   private async emitMockTurn(
