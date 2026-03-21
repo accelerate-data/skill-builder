@@ -69,7 +69,7 @@ if `metadata.contradictory_inputs == "revised"` then treat it as authoritative a
 
 ### No contradictions
 
-If `metadata.contradictory_inputs` is absent (the normal case), read `{context_dir}/clarifications.json`.
+If `metadata.contradictory_inputs` is absent (the normal case), read `{context_dir}/clarifications.json`. **This file is often larger than the Read tool's token limit.** Always read it in two calls: first `Read` with `limit: 200`, then `Read` with `offset: 200`. Concatenate both results into a single string before parsing JSON. Do not skip the second read — the sections and questions needed for skill writing are in the second half.
 
 If `metadata.scope_recommendation == true` in the parsed `clarifications.json`.
 

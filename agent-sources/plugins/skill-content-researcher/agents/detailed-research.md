@@ -39,7 +39,7 @@ Do not write any files in this agent.
 ### Phase 0: Read inputs
 
 Read `{workspace_dir}/user-context.md`.
-Read `{context_dir}/clarifications.json`. Parse the JSON.
+Read `{context_dir}/clarifications.json`. **This file is often larger than the Read tool's token limit.** Always read it in two calls: first `Read` with `limit: 200`, then `Read` with `offset: 200`. Concatenate both results into a single string before parsing the JSON.
 Read `{workspace_dir}/answer-evaluation.json`. Parse the JSON. If missing, see Error Handling.
 
 If `user-context.md` or `clarifications.json` is missing or the JSON is malformed, return immediately:

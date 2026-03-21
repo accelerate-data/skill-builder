@@ -40,7 +40,7 @@ Do not write any files in this agent.
 ### Step 1: Read user context and clarifications
 
 Read `{workspace_dir}/user-context.md`.
-Read `{context_dir}/clarifications.json`. Parse the JSON.
+Read `{context_dir}/clarifications.json`. **This file is often larger than the Read tool's token limit.** Always read it in two calls: first `Read` with `limit: 200`, then `Read` with `offset: 200`. Concatenate both results into a single string before parsing the JSON.
 
 If either file is missing or the JSON is malformed, return immediately:
 
