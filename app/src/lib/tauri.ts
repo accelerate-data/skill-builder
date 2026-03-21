@@ -411,6 +411,20 @@ export const startRefineSession = (skillName: string, workspacePath: string) =>
 export const closeRefineSession = (sessionId: string) =>
   invoke<void>("close_refine_session", { sessionId })
 
+export const answerRefineQuestion = (
+  sessionId: string,
+  agentId: string,
+  toolUseId: string,
+  questions: unknown,
+  answers: Record<string, unknown>,
+) => invoke<void>("answer_refine_question", {
+  sessionId,
+  agentId,
+  toolUseId,
+  questions,
+  answers,
+})
+
 export const sendRefineMessage = (
   sessionId: string,
   userMessage: string,

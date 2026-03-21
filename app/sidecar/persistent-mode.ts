@@ -42,6 +42,16 @@ interface StreamMessageRequest {
   user_message: string;
 }
 
+/** Resolve a pending AskUserQuestion callback in a streaming session. */
+interface StreamQuestionAnswerRequest {
+  type: "stream_question_answer";
+  request_id: string;
+  session_id: string;
+  tool_use_id: string;
+  questions: unknown;
+  answers: Record<string, unknown>;
+}
+
 /** Close a streaming session. */
 interface StreamEndRequest {
   type: "stream_end";
@@ -56,6 +66,7 @@ type IncomingMessage =
   | CancelRequest
   | StreamStartRequest
   | StreamMessageRequest
+  | StreamQuestionAnswerRequest
   | StreamEndRequest;
 
 /**
@@ -136,6 +147,22 @@ export function parseIncomingMessage(line: string): IncomingMessage | null {
       request_id: obj.request_id,
       session_id: obj.session_id,
       user_message: obj.user_message,
+    };
+  }
+
+  if (obj.type === "stream_question_answer") {
+    if (typeof obj.request_id !== "string" || !obj.request_id) return null;
+    if (typeof obj.session_id !== "string" || !obj.session_id) return null;
+    if (typeof obj.tool_use_id !== "string" || !obj.tool_use_id) return null;
+    if (!Array.isArray(obj.questions)) return null;
+    if (typeof obj.answers !== "object" || obj.answers === null) return null;
+    return {
+      type: "stream_question_answer",
+      request_id: obj.request_id,
+      session_id: obj.session_id,
+      tool_use_id: obj.tool_use_id,
+      questions: obj.questions,
+      answers: obj.answers as Record<string, unknown>,
     };
   }
 
@@ -306,6 +333,37 @@ export async function runPersistent(
 
       try {
         session.pushMessage(request_id, user_message);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        writeLine(
+          wrapWithRequestId(request_id, {
+            type: "error",
+            message: errorMessage,
+          }),
+        );
+      }
+      continue;
+    }
+
+    if (message.type === "stream_question_answer") {
+      const { request_id, session_id, tool_use_id, questions, answers } = message;
+      process.stderr.write(
+        `[sidecar] Stream question answer: session=${session_id} request=${request_id} tool=${tool_use_id}\n`,
+      );
+
+      const session = activeSessions.get(session_id);
+      if (!session) {
+        writeLine(
+          wrapWithRequestId(request_id, {
+            type: "error",
+            message: `No stream session found for '${session_id}'`,
+          }),
+        );
+        continue;
+      }
+
+      try {
+        session.answerQuestion(request_id, tool_use_id, questions as never, answers);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         writeLine(

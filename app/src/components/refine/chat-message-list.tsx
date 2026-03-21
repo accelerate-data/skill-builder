@@ -1,17 +1,24 @@
 import { useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { RefineMessage } from "@/stores/refine-store";
+import type { RefineMessage, RefineQuestionResponse } from "@/stores/refine-store";
 import { AgentTurnInline } from "./agent-turn-inline";
 import { BenchmarkPromptInline } from "./benchmark-prompt-inline";
+import { RefineQuestionInline } from "./refine-question-inline";
 
 interface ChatMessageListProps {
   messages: RefineMessage[];
   onBenchmarkConfirm?: () => void;
   onBenchmarkSkip?: () => void;
+  onQuestionSubmit?: (message: RefineMessage, response: RefineQuestionResponse) => Promise<void>;
 }
 
-export function ChatMessageList({ messages, onBenchmarkConfirm, onBenchmarkSkip }: ChatMessageListProps) {
+export function ChatMessageList({
+  messages,
+  onBenchmarkConfirm,
+  onBenchmarkSkip,
+  onQuestionSubmit,
+}: ChatMessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,7 +34,6 @@ export function ChatMessageList({ messages, onBenchmarkConfirm, onBenchmarkSkip 
       <div data-testid="refine-chat-empty" className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
         <p className="text-sm text-muted-foreground">Describe what you want to change and the agent will update your skill files.</p>
         <div className="flex flex-wrap justify-center gap-2 text-xs text-muted-foreground">
-          <span className="rounded-md border px-2 py-1 font-mono">/rewrite</span>
           <span className="rounded-md border px-2 py-1 font-mono">/validate</span>
           <span className="rounded-md border px-2 py-1 font-mono">/benchmark</span>
           <span className="rounded-md border px-2 py-1 font-mono">@SKILL.md</span>
@@ -78,24 +84,35 @@ export function ChatMessageList({ messages, onBenchmarkConfirm, onBenchmarkSkip 
 
           if (msg.role === "agent" && msg.agentId) {
             return (
-              <div key={msg.id} className="flex min-w-0 w-full flex-col gap-2 overflow-hidden border-t border-border/35 pt-3">
+              <div key={msg.id} className="flex min-w-0 w-full flex-col gap-2 overflow-hidden">
                 <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                   Agent
                 </div>
-                <div className="min-w-0 overflow-hidden rounded-lg border border-border/45 bg-card/35 px-4 py-3">
+                <div className="min-w-0 overflow-hidden rounded-lg border border-border/25 bg-card/15 px-4 py-3">
                   <AgentTurnInline agentId={msg.agentId} />
                 </div>
               </div>
             );
           }
 
+          if (msg.role === "question" && onQuestionSubmit) {
+            return (
+              <RefineQuestionInline
+                key={msg.id}
+                message={msg}
+                onSubmit={onQuestionSubmit}
+              />
+            );
+          }
+
           if (msg.role === "benchmark-prompt") {
             return (
-              <BenchmarkPromptInline
-                key={msg.id}
-                onConfirm={onBenchmarkConfirm ?? (() => {})}
-                onSkip={onBenchmarkSkip ?? (() => {})}
-              />
+              <div key={msg.id} className="w-full">
+                <BenchmarkPromptInline
+                  onConfirm={onBenchmarkConfirm ?? (() => {})}
+                  onSkip={onBenchmarkSkip ?? (() => {})}
+                />
+              </div>
             );
           }
 

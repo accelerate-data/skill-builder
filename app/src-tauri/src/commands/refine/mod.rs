@@ -426,5 +426,59 @@ pub async fn close_refine_session(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn answer_refine_question(
+    session_id: String,
+    agent_id: String,
+    tool_use_id: String,
+    questions: serde_json::Value,
+    answers: serde_json::Value,
+    sessions: tauri::State<'_, RefineSessionManager>,
+    pool: tauri::State<'_, SidecarPool>,
+) -> Result<(), String> {
+    log::info!(
+        "[answer_refine_question] session=[REDACTED] agent={} tool={}",
+        agent_id,
+        tool_use_id
+    );
+
+    let skill_name = {
+        let map = sessions.0.lock().map_err(|e| {
+            log::error!(
+                "[answer_refine_question] Failed to acquire session lock: {}",
+                e
+            );
+            e.to_string()
+        })?;
+        let session = map.get(&session_id).ok_or_else(|| {
+            let msg = "No refine session found for answer_refine_question".to_string();
+            log::error!("[answer_refine_question] {}", msg);
+            msg
+        })?;
+
+        if !session.stream_started {
+            let msg = "Refine stream has not started yet".to_string();
+            log::error!("[answer_refine_question] {}", msg);
+            return Err(msg);
+        }
+
+        session.skill_name.clone()
+    };
+
+    pool.send_stream_question_answer(
+        &skill_name,
+        &session_id,
+        &agent_id,
+        &tool_use_id,
+        questions,
+        answers,
+    )
+    .await
+    .map_err(|e| {
+        log::error!("[answer_refine_question] Failed to send answer: {}", e);
+        e
+    })
+}
+
 #[cfg(test)]
 mod tests;

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { initAgentStream, _resetForTesting } from "@/hooks/use-agent-stream";
 import { useAgentStore, flushDisplayItems } from "@/stores/agent-store";
+import { useRefineStore } from "@/stores/refine-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { mockListen } from "@/test/mocks/tauri";
 
@@ -11,6 +12,13 @@ describe("initAgentStream", () => {
 
   beforeEach(async () => {
     useAgentStore.getState().clearRuns();
+    useRefineStore.setState({
+      messages: [],
+      activeAgentId: null,
+      pendingRedirect: null,
+      sessionId: null,
+      sessionExhausted: false,
+    });
     useWorkflowStore.getState().reset();
     await _resetForTesting();
     listeners = {};
@@ -62,6 +70,39 @@ describe("initAgentStream", () => {
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.displayItems).toHaveLength(1);
     expect(run.displayItems[0].outputText).toBe("Hello world");
+  });
+
+  it("adds refine question messages to the refine store", async () => {
+    await initAgentStream();
+
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "agent-7",
+        message: {
+          type: "refine_question",
+          tool_use_id: "toolu_123",
+          questions: [
+            {
+              header: "Next Step",
+              question: "Launch validate instead?",
+              options: [
+                { label: "Launch validate", description: "Run validation." },
+                { label: "Clarify refine", description: "Stay in refine." },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    const question = useRefineStore.getState().messages[0];
+    expect(question).toMatchObject({
+      role: "question",
+      agentId: "agent-7",
+      toolUseId: "toolu_123",
+      pending: true,
+    });
+    expect(question.questions).toHaveLength(1);
   });
 
   it("updates run init via agent-run-init event", async () => {

@@ -19,6 +19,7 @@ import {
   getSkillContentForRefine,
   startRefineSession,
   sendRefineMessage,
+  answerRefineQuestion,
   closeRefineSession,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
@@ -31,6 +32,7 @@ import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { PreviewPanel } from "@/components/refine/preview-panel";
+import type { RefineQuestionResponse } from "@/stores/refine-store";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
@@ -213,99 +215,13 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skill.name]);
 
-  // --- Watch agent completion ---
-  useEffect(() => {
-    if (!activeAgentId || !activeRunStatus) return;
-
-    const isTerminal = ["completed", "error", "shutdown"].includes(activeRunStatus);
-    if (!isTerminal) return;
-
-    console.log(
-      "[workspace-refine] agent %s finished: status=%s",
-      activeAgentId,
-      activeRunStatus,
-    );
-
-    if (activeRunStatus === "error" || activeRunStatus === "shutdown") {
-      toast.error("Agent failed — check the chat for details", { duration: Infinity });
-    }
-
-    const agentRun = useAgentStore.getState().runs[activeAgentId];
-    setLastTurnCost(agentRun?.totalCost);
-
-    // Use the skill that was active when the agent started, not the
-    // current reactive selectedSkill, to avoid attributing output to
-    // the wrong skill if the user switches skills mid-flight.
-    const completionSkill = runSkillRef.current ?? selectedSkill;
-
-    const complete = async () => {
-      const store = useRefineStore.getState();
-
-      if (activeRunStatus === "completed" && workspacePath && completionSkill) {
-        const structuredOutput = extractStructuredResultPayload(activeAgentId);
-        const hasStructuredObject =
-          !!structuredOutput &&
-          typeof structuredOutput === "object" &&
-          !Array.isArray(structuredOutput);
-
-        try {
-          const finalized = await finalizeRefineRun(
-            completionSkill.name,
-            workspacePath,
-            hasStructuredObject ? structuredOutput : undefined,
-          );
-          store.updateSkillFiles(
-            finalized.files.map((file): SkillFile => ({
-              filename: file.path,
-              content: file.content,
-            })),
-          );
-          store.setGitDiff(finalized.diff);
-          // Offer benchmark only after an explicit /rewrite that changed files.
-          const userMessages = store.messages.filter((m: RefineMessage) => m.role === "user");
-          const lastMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1] : undefined;
-          if (lastMsg?.command === "rewrite" && finalized.diff.files.length > 0) {
-            store.addBenchmarkPrompt();
-          }
-        } catch {
-          try {
-            const files = await loadSkillFiles(workspacePath, completionSkill.name);
-            if (files) {
-              store.updateSkillFiles(files);
-              store.setGitDiff(null);
-            }
-          } catch (err) {
-            toast.error(
-              `Refine finalization failed: ${err instanceof Error ? err.message : String(err)}`,
-              { duration: Infinity },
-            );
-          }
-        }
-      } else if (workspacePath && completionSkill) {
-        // Agent failed or was cancelled — clean up any stale benchmark snapshot
-        await cleanBenchmarkSnapshot(completionSkill.name, workspacePath).catch(() => {});
-        const files = await loadSkillFiles(workspacePath, completionSkill.name);
-        if (files) {
-          store.updateSkillFiles(files);
-          store.setGitDiff(null);
-        }
-      }
-
-      store.setRunning(false);
-      store.setActiveAgentId(null);
-      runSkillRef.current = null;
-    };
-
-    void complete();
-  }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill, extractStructuredResultPayload]);
-
   // --- Send a message ---
   const handleSend = useCallback(
     async (text: string, targetFiles?: string[], command?: RefineCommand) => {
       const store = useRefineStore.getState();
       const sessionId = store.sessionId;
       if (!selectedSkill || !workspacePath || !sessionId) return;
-      if (isRunning) return;
+      if (store.isRunning) return;
 
       console.log(
         "[workspace-refine] send: skill=%s command=%s files=%s",
@@ -317,6 +233,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       const model = preferredModel ?? "sonnet";
 
       runSkillRef.current = selectedSkill;
+      store.setPendingRedirect(null);
       store.setGitDiff(null);
       store.addUserMessage(text, targetFiles, command);
       store.setRunning(true);
@@ -347,7 +264,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         toast.error("Failed to start agent", { duration: Infinity });
       }
     },
-    [selectedSkill, workspacePath, preferredModel, isRunning],
+    [selectedSkill, workspacePath, preferredModel],
   );
 
   // --- Benchmark prompt callbacks ---
@@ -359,6 +276,138 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const handleBenchmarkSkip = useCallback(() => {
     console.log("[workspace-refine] benchmark skipped");
   }, []);
+
+  const handleQuestionSubmit = useCallback(
+    async (message: RefineMessage, response: RefineQuestionResponse) => {
+      const store = useRefineStore.getState();
+      const sessionId = store.sessionId;
+      const agentId = store.activeAgentId;
+      if (!selectedSkill || !workspacePath || !sessionId || !agentId || !message.toolUseId || !message.questions) {
+        throw new Error("Refine question session is no longer available");
+      }
+
+      const redirectLabel = response.selectedLabels.find((label) =>
+        label.toLowerCase().startsWith("launch "),
+      );
+      if (redirectLabel?.toLowerCase().includes("validate")) {
+        const userMessages = store.messages.filter((entry) => entry.role === "user");
+        store.setPendingRedirect({
+          command: "validate",
+          text: userMessages.length > 0 ? userMessages[userMessages.length - 1]?.userText ?? "" : "",
+        });
+      } else if (
+        redirectLabel?.toLowerCase().includes("benchmark")
+        || redirectLabel?.toLowerCase().includes("eval")
+      ) {
+        const userMessages = store.messages.filter((entry) => entry.role === "user");
+        store.setPendingRedirect({
+          command: "benchmark",
+          text: userMessages.length > 0 ? userMessages[userMessages.length - 1]?.userText ?? "" : "",
+        });
+      } else {
+        store.setPendingRedirect(null);
+      }
+
+      await answerRefineQuestion(
+        sessionId,
+        agentId,
+        message.toolUseId,
+        message.questions,
+        response.answers,
+      );
+      store.answerQuestionMessage(message.id, response);
+    },
+    [selectedSkill, workspacePath],
+  );
+
+  // --- Watch agent completion ---
+  useEffect(() => {
+    if (!activeAgentId || !activeRunStatus) return;
+
+    const isTerminal = ["completed", "error", "shutdown"].includes(activeRunStatus);
+    if (!isTerminal) return;
+
+    console.log(
+      "[workspace-refine] agent %s finished: status=%s",
+      activeAgentId,
+      activeRunStatus,
+    );
+
+    if (activeRunStatus === "error" || activeRunStatus === "shutdown") {
+      toast.error("Agent failed — check the chat for details", { duration: Infinity });
+    }
+
+    const agentRun = useAgentStore.getState().runs[activeAgentId];
+    setLastTurnCost(agentRun?.totalCost);
+
+    const completionSkill = runSkillRef.current ?? selectedSkill;
+
+    const complete = async () => {
+      const store = useRefineStore.getState();
+
+      if (activeRunStatus === "completed" && workspacePath && completionSkill) {
+        const structuredOutput = extractStructuredResultPayload(activeAgentId);
+        const hasStructuredObject =
+          !!structuredOutput &&
+          typeof structuredOutput === "object" &&
+          !Array.isArray(structuredOutput);
+
+        try {
+          const finalized = await finalizeRefineRun(
+            completionSkill.name,
+            workspacePath,
+            hasStructuredObject ? structuredOutput : undefined,
+          );
+          store.updateSkillFiles(
+            finalized.files.map((file): SkillFile => ({
+              filename: file.path,
+              content: file.content,
+            })),
+          );
+          store.setGitDiff(finalized.diff);
+          const userMessages = store.messages.filter((m: RefineMessage) => m.role === "user");
+          const lastMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1] : undefined;
+          if (!lastMsg?.command && finalized.diff.files.length > 0) {
+            store.addBenchmarkPrompt();
+          }
+        } catch {
+          try {
+            const files = await loadSkillFiles(workspacePath, completionSkill.name);
+            if (files) {
+              store.updateSkillFiles(files);
+              store.setGitDiff(null);
+            }
+          } catch (err) {
+            toast.error(
+              `Refine finalization failed: ${err instanceof Error ? err.message : String(err)}`,
+              { duration: Infinity },
+            );
+          }
+        }
+      } else if (workspacePath && completionSkill) {
+        await cleanBenchmarkSnapshot(completionSkill.name, workspacePath).catch(() => {});
+        const files = await loadSkillFiles(workspacePath, completionSkill.name);
+        if (files) {
+          store.updateSkillFiles(files);
+          store.setGitDiff(null);
+        }
+      }
+
+      const pendingRedirect = store.pendingRedirect;
+      store.setPendingRedirect(null);
+      store.setRunning(false);
+      store.setActiveAgentId(null);
+      runSkillRef.current = null;
+
+      if (pendingRedirect) {
+        setTimeout(() => {
+          void handleSend(pendingRedirect.text, undefined, pendingRedirect.command);
+        }, 0);
+      }
+    };
+
+    void complete();
+  }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill, extractStructuredResultPayload, handleSend]);
 
   // --- Status bar ---
   const [elapsed, setElapsed] = useState(0);
@@ -408,6 +457,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             scopeBlocked={scopeBlocked}
             onBenchmarkConfirm={handleBenchmarkConfirm}
             onBenchmarkSkip={handleBenchmarkSkip}
+            onQuestionSubmit={handleQuestionSubmit}
           />
           <PreviewPanel key={previewRevision} />
         </div>

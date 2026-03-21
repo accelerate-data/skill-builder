@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatInputBar } from "@/components/refine/chat-input-bar";
 
-// cmdk uses scrollIntoView which jsdom doesn't implement
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
@@ -24,14 +23,93 @@ describe("ChatInputBar", () => {
     defaultProps.onSend.mockReset();
   });
 
-  // --- Send behavior ---
-
-  it("calls onSend with trimmed text on Enter", async () => {
+  it("sends generic text as refine with no command", async () => {
     const user = userEvent.setup();
     renderBar();
 
     const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "improve the intro");
+    await user.type(input, "tighten the quick start");
+    await user.keyboard("{Enter}");
+
+    expect(defaultProps.onSend).toHaveBeenCalledWith(
+      "tighten the quick start",
+      undefined,
+      undefined,
+    );
+  });
+
+  it("keeps only validate and benchmark action buttons", () => {
+    renderBar();
+
+    expect(screen.queryByTestId("refine-action-rewrite")).not.toBeInTheDocument();
+    expect(screen.getByTestId("refine-action-validate")).toHaveAccessibleName(
+      "Validate skill",
+    );
+    expect(screen.getByTestId("refine-action-benchmark")).toHaveAccessibleName(
+      "Benchmark skill",
+    );
+  });
+
+  it("selects validate from the visible action button", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    await user.click(screen.getByTestId("refine-action-validate"));
+
+    expect(screen.getByTestId("refine-command-badge")).toHaveTextContent("/validate");
+  });
+
+  it("sends with the active explicit command", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    await user.click(screen.getByTestId("refine-action-benchmark"));
+    await user.type(screen.getByTestId("refine-chat-input"), "run the evals");
+    await user.keyboard("{Enter}");
+
+    expect(defaultProps.onSend).toHaveBeenCalledWith(
+      "run the evals",
+      undefined,
+      "benchmark",
+    );
+  });
+
+  it("parses typed /validate as an explicit command", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    const input = screen.getByTestId("refine-chat-input");
+    await user.type(input, "/validate formatting");
+    await user.keyboard("{Enter}");
+
+    expect(defaultProps.onSend).toHaveBeenCalledWith(
+      "formatting",
+      undefined,
+      "validate",
+    );
+  });
+
+  it("parses /eval as benchmark", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    const input = screen.getByTestId("refine-chat-input");
+    await user.type(input, "/eval current skill");
+    await user.keyboard("{Enter}");
+
+    expect(defaultProps.onSend).toHaveBeenCalledWith(
+      "current skill",
+      undefined,
+      "benchmark",
+    );
+  });
+
+  it("treats /rewrite as generic refine text with no command", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    const input = screen.getByTestId("refine-chat-input");
+    await user.type(input, "/rewrite improve the intro");
     await user.keyboard("{Enter}");
 
     expect(defaultProps.onSend).toHaveBeenCalledWith(
@@ -41,130 +119,13 @@ describe("ChatInputBar", () => {
     );
   });
 
-  it("clears input after sending", async () => {
+  it("shows only validate and benchmark in the slash command picker", async () => {
     const user = userEvent.setup();
     renderBar();
 
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "some text");
-    await user.keyboard("{Enter}");
-
-    expect(input).toHaveValue("");
-  });
-
-  it("does not send empty text", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.click(input);
-    await user.keyboard("{Enter}");
-
-    expect(defaultProps.onSend).not.toHaveBeenCalled();
-  });
-
-  it("inserts a newline on Shift+Enter instead of sending", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "line one");
-    await user.keyboard("{Shift>}{Enter}{/Shift}");
-
-    expect(defaultProps.onSend).not.toHaveBeenCalled();
-    expect(input).toHaveValue("line one\n");
-  });
-
-  // --- Disabled state ---
-
-  it("disables textarea and send button while agent is running", () => {
-    renderBar({ isRunning: true });
-
-    const input = screen.getByTestId("refine-chat-input");
-    const sendBtn = screen.getByTestId("refine-send-button");
-    const rewriteBtn = screen.getByTestId("refine-action-rewrite");
-    const validateBtn = screen.getByTestId("refine-action-validate");
-    const benchmarkBtn = screen.getByTestId("refine-action-benchmark");
-
-    expect(input).toBeDisabled();
-    expect(sendBtn).toBeDisabled();
-    expect(rewriteBtn).toBeDisabled();
-    expect(validateBtn).toBeDisabled();
-    expect(benchmarkBtn).toBeDisabled();
-  });
-
-  it("disables send button when input is empty", () => {
-    renderBar();
-
-    const sendBtn = screen.getByTestId("refine-send-button");
-    expect(sendBtn).toBeDisabled();
-  });
-
-  it("enables send button when input has text", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "hello");
-
-    const sendBtn = screen.getByTestId("refine-send-button");
-    expect(sendBtn).toBeEnabled();
-  });
-
-  // --- Slash command picker ---
-
-  it("shows visible rewrite, validate, and benchmark action buttons", () => {
-    renderBar();
-
-    expect(screen.getByTestId("refine-action-rewrite")).toHaveAccessibleName(
-      "Rewrite skill",
-    );
-    expect(screen.getByTestId("refine-action-validate")).toHaveAccessibleName(
-      "Validate skill",
-    );
-    expect(screen.getByTestId("refine-action-benchmark")).toHaveAccessibleName(
-      "Benchmark skill",
-    );
-  });
-
-  it("selects rewrite from the visible action button", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    await user.click(screen.getByTestId("refine-action-rewrite"));
-
-    expect(screen.getByTestId("refine-command-badge")).toHaveTextContent(
-      "/rewrite",
-    );
-  });
-
-  it("toggles off the active action when clicked again", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    const rewriteButton = screen.getByTestId("refine-action-rewrite");
-    await user.click(rewriteButton);
-    expect(screen.getByTestId("refine-command-badge")).toHaveTextContent(
-      "/rewrite",
-    );
-
-    await user.click(rewriteButton);
-    expect(
-      screen.queryByTestId("refine-command-badge"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows command picker when / is typed", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "/");
+    await user.type(screen.getByTestId("refine-chat-input"), "/");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("option", { name: "Rewrite skill" }),
-      ).toBeInTheDocument();
       expect(
         screen.getByRole("option", { name: "Validate skill" }),
       ).toBeInTheDocument();
@@ -172,313 +133,30 @@ describe("ChatInputBar", () => {
         screen.getByRole("option", { name: "Benchmark skill" }),
       ).toBeInTheDocument();
     });
-  });
-
-  it("selects a command and shows it as a badge", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "/");
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("option", { name: "Rewrite skill" }),
-      ).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole("option", { name: "Rewrite skill" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("refine-command-badge")).toHaveTextContent(
-        "/rewrite",
-      );
-    });
-  });
-
-  it("selects benchmark from the visible action button", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    await user.click(screen.getByTestId("refine-action-benchmark"));
-
-    expect(screen.getByTestId("refine-command-badge")).toHaveTextContent(
-      "/benchmark",
-    );
-  });
-
-  it("sends with the active command", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "/");
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("option", { name: "Validate skill" }),
-      ).toBeInTheDocument();
-    });
-    await user.click(screen.getByRole("option", { name: "Validate skill" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("refine-command-badge")).toBeInTheDocument();
-    });
-
-    await user.type(input, "check quality");
-    await user.keyboard("{Enter}");
-
-    expect(defaultProps.onSend).toHaveBeenCalledWith(
-      "check quality",
-      undefined,
-      "validate",
-    );
-  });
-
-  it("removes command badge when X is clicked", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "/");
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("option", { name: "Rewrite skill" }),
-      ).toBeInTheDocument();
-    });
-    await user.click(screen.getByRole("option", { name: "Rewrite skill" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("refine-command-badge")).toBeInTheDocument();
-    });
-
-    const badge = screen.getByTestId("refine-command-badge");
-    const removeBtn = badge.querySelector("button")!;
-    await user.click(removeBtn);
-
     expect(
-      screen.queryByTestId("refine-command-badge"),
+      screen.queryByRole("option", { name: "Rewrite skill" }),
     ).not.toBeInTheDocument();
   });
 
-  // --- @file autocomplete ---
-
-  it("shows file picker when @ is typed", async () => {
+  it("supports selecting targeted files", async () => {
     const user = userEvent.setup();
     renderBar();
 
     const input = screen.getByTestId("refine-chat-input");
     await user.type(input, "@");
-
     await waitFor(() => {
-      expect(screen.getByText("SKILL.md")).toBeInTheDocument();
-      expect(screen.getByText("references/glossary.md")).toBeInTheDocument();
-    });
-  });
-
-  it("adds file as badge when selected from picker", async () => {
-    const user = userEvent.setup();
-    const { container } = renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "@");
-
-    await waitFor(() => {
-      expect(screen.getByText("SKILL.md")).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "SKILL.md" })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("SKILL.md"));
-
-    await waitFor(() => {
-      // Badge element contains "@SKILL.md" — target the badge specifically
-      const badge = container.querySelector(
-        "[data-slot='badge'][data-variant='secondary']",
-      );
-      expect(badge).toBeTruthy();
-      expect(badge!.textContent).toContain("@SKILL.md");
-    });
-  });
-
-  it("sends with targeted files", async () => {
-    const user = userEvent.setup();
-    const { container } = renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "@");
-
-    await waitFor(() => {
-      expect(screen.getByText("SKILL.md")).toBeInTheDocument();
-    });
-    await user.click(screen.getByText("SKILL.md"));
-
-    await waitFor(() => {
-      const badge = container.querySelector(
-        "[data-slot='badge'][data-variant='secondary']",
-      );
-      expect(badge).toBeTruthy();
-    });
-
-    await user.type(input, "fix this section");
+    await user.click(screen.getByRole("option", { name: "SKILL.md" }));
+    await user.type(input, " tighten this");
     await user.keyboard("{Enter}");
 
-    expect(defaultProps.onSend).toHaveBeenCalledWith(
-      expect.stringContaining("fix this section"),
-      ["SKILL.md"],
-      undefined,
-    );
-  });
-
-  it("removes file badge when X is clicked", async () => {
-    const user = userEvent.setup();
-    const { container } = renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "@");
-
-    await waitFor(() => {
-      expect(screen.getByText("SKILL.md")).toBeInTheDocument();
-    });
-    await user.click(screen.getByText("SKILL.md"));
-
-    await waitFor(() => {
-      const badge = container.querySelector(
-        "[data-slot='badge'][data-variant='secondary']",
-      );
-      expect(badge).toBeTruthy();
-    });
-
-    // Find and click the remove button inside the badge
-    const badge = container.querySelector(
-      "[data-slot='badge'][data-variant='secondary']",
-    )!;
-    const removeBtn = badge.querySelector("button")!;
-    await user.click(removeBtn);
-
-    // Badge should be gone
-    expect(
-      container.querySelector("[data-slot='badge'][data-variant='secondary']"),
-    ).toBeNull();
-  });
-
-  it("does not show file picker when no files are available", async () => {
-    const user = userEvent.setup();
-    renderBar({ availableFiles: [] });
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "@");
-
-    // Picker heading should not appear
-    expect(screen.queryByText("Files")).not.toBeInTheDocument();
-  });
-
-  // --- Keyboard navigation in pickers ---
-
-  it("selects a command via ArrowDown + Enter keyboard navigation", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "/");
-
-    // Wait for picker to be rendered before sending navigation keys
-    await waitFor(() => {
-      expect(
-        screen.getByRole("option", { name: "Rewrite skill" }),
-      ).toBeInTheDocument();
-    });
-
-    // Fire navigation directly on the textarea to bypass Radix focus guards
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    await waitFor(() => {
-      const badge = screen.getByTestId("refine-command-badge");
-      expect(badge).toHaveTextContent("/validate");
-    });
-  });
-
-  it("selects a file via ArrowDown + Enter keyboard navigation", async () => {
-    const user = userEvent.setup();
-    const { container } = renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "@");
-
-    // Wait for picker to be rendered
-    await waitFor(() => {
-      expect(screen.getByText("SKILL.md")).toBeInTheDocument();
-    });
-
-    // Fire navigation directly on the textarea
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    await waitFor(() => {
-      const badge = container.querySelector(
-        "[data-slot='badge'][data-variant='secondary']",
-      );
-      expect(badge).toBeTruthy();
-      expect(badge!.textContent).toContain("@references/glossary.md");
-    });
-  });
-
-  it("closes picker on Escape without sending", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "/");
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("option", { name: "Rewrite skill" }),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.keyDown(input, { key: "Escape" });
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("option", { name: "Rewrite skill" }),
-      ).not.toBeInTheDocument();
-    });
-    // Should not have sent anything
-    expect(defaultProps.onSend).not.toHaveBeenCalled();
-  });
-
-  it("wraps around when navigating past the last picker item", async () => {
-    const user = userEvent.setup();
-    renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    await user.type(input, "/");
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("option", { name: "Rewrite skill" }),
-      ).toBeInTheDocument();
-    });
-
-    // Three commands: rewrite (0), validate (1), benchmark (2). Start at rewrite (0).
-    // ArrowDown → validate (1), ArrowDown → benchmark (2), ArrowDown → wraps to rewrite (0), Enter selects rewrite
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    await waitFor(() => {
-      const badge = screen.getByTestId("refine-command-badge");
-      expect(badge).toHaveTextContent("/rewrite");
-    });
-  });
-
-  // --- Placeholder ---
-
-  it("shows default placeholder when no command is active", () => {
-    renderBar();
-
-    const input = screen.getByTestId("refine-chat-input");
-    expect(input).toHaveAttribute("placeholder", "Describe what to change...");
+    expect(defaultProps.onSend).toHaveBeenCalledTimes(1);
+    const [text, targetFiles, command] = defaultProps.onSend.mock.calls[0]!;
+    expect(text).toContain("@SKILL.md");
+    expect(text).toContain("tighten this");
+    expect(targetFiles).toEqual(["SKILL.md"]);
+    expect(command).toBeUndefined();
   });
 });

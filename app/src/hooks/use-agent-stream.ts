@@ -4,6 +4,7 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import type { DisplayItem } from "@/lib/display-types";
+import type { RefineQuestionPrompt } from "@/stores/refine-store";
 import type {
   CompactionEvent,
   ContextWindowEvent,
@@ -20,6 +21,14 @@ interface AgentMessagePayload {
     type: string;
     item?: DisplayItem;
     [key: string]: unknown;
+  };
+}
+
+interface RefineQuestionMessagePayload extends AgentMessagePayload {
+  message: {
+    type: "refine_question";
+    tool_use_id: string;
+    questions: RefineQuestionPrompt[];
   };
 }
 
@@ -151,7 +160,7 @@ export async function initAgentStream() {
       );
       useAgentStore.getState().applyContextWindow(agent_id, contextWindow);
     }),
-    reg<AgentMessagePayload>("agent-message", (event) => {
+    reg<AgentMessagePayload | RefineQuestionMessagePayload>("agent-message", (event) => {
       const { agent_id, message } = event.payload;
 
       // Clear the "initializing" spinner on the first message from the agent.
@@ -172,6 +181,15 @@ export async function initAgentStream() {
         );
         agentStore.addDisplayItem(agent_id, message.item);
         return;
+      }
+
+      if (message.type === "refine_question") {
+        const toolUseId = typeof message.tool_use_id === "string" ? message.tool_use_id : "";
+        const questions = Array.isArray(message.questions) ? message.questions : [];
+        if (toolUseId && questions.length > 0) {
+          useRefineStore.getState().addQuestionMessage(agent_id, toolUseId, questions);
+          return;
+        }
       }
 
       // Log unhandled message types at debug level for troubleshooting

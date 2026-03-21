@@ -1,4 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import type { AskUserQuestionInput, CanUseTool, PermissionResult } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 import { buildQueryOptions } from "./options.js";
 import { createAbortState, linkExternalSignal } from "./shutdown.js";
@@ -8,6 +9,13 @@ import { ResultGate } from "./result-gate.js";
 
 /** Sentinel used to close the async generator cleanly. */
 const CLOSE_SENTINEL = Symbol("close");
+
+interface PendingQuestion {
+  toolUseId: string;
+  questions: AskUserQuestionInput["questions"];
+  resolve: (result: PermissionResult) => void;
+  reject: (error: Error) => void;
+}
 
 /**
  * A streaming session that wraps the SDK's streaming input mode.
@@ -30,6 +38,7 @@ export class StreamSession {
     | null = null;
   /** Shared MessageProcessor for mock streaming — persists across turns. */
   private mockProcessor: MessageProcessor | null = null;
+  private pendingQuestion: PendingQuestion | null = null;
 
   constructor(
     sessionId: string,
@@ -73,12 +82,41 @@ export class StreamSession {
     }
   }
 
+  answerQuestion(
+    requestId: string,
+    toolUseId: string,
+    questions: AskUserQuestionInput["questions"],
+    answers: Record<string, unknown>,
+  ): void {
+    if (this.closed) {
+      throw new Error(`StreamSession ${this.sessionId} is closed`);
+    }
+    if (!this.pendingQuestion || this.pendingQuestion.toolUseId !== toolUseId) {
+      throw new Error(`No pending user question found for tool ${toolUseId}`);
+    }
+
+    const pending = this.pendingQuestion;
+    this.pendingQuestion = null;
+    this.currentRequestId = requestId;
+    pending.resolve({
+      behavior: "allow",
+      updatedInput: {
+        questions,
+        answers,
+      },
+    });
+  }
+
   /**
    * Close the streaming session. The generator exits, query() finishes.
    * In mock mode, emits a shutdown run_result so Rust can persist the run.
    */
   close(): void {
     this.closed = true;
+    if (this.pendingQuestion) {
+      this.pendingQuestion.reject(new Error("Stream session closed while waiting for user input"));
+      this.pendingQuestion = null;
+    }
     if (this.mockMode && this.mockProcessor && !this.mockProcessor.hasEmittedResult() && this.mockOnMessage) {
       const [summary, orphaned] = this.mockProcessor.buildShutdownSummary();
       for (const item of orphaned) {
@@ -94,6 +132,61 @@ export class StreamSession {
       this.pendingResolve(CLOSE_SENTINEL);
       this.pendingResolve = null;
     }
+  }
+
+  private buildCanUseTool(
+    onMessage: (requestId: string, message: Record<string, unknown>) => void,
+  ): CanUseTool {
+    return async (toolName, input, options) => {
+      if (toolName !== "AskUserQuestion") {
+        return { behavior: "allow" };
+      }
+
+      const rawQuestions = (input as AskUserQuestionInput).questions;
+      if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
+        return {
+          behavior: "deny",
+          message: "AskUserQuestion requires at least one question",
+        };
+      }
+
+      if (this.pendingQuestion) {
+        return {
+          behavior: "deny",
+          message: "Another user question is already pending",
+        };
+      }
+
+      onMessage(this.currentRequestId, {
+        type: "refine_question",
+        tool_use_id: options.toolUseID,
+        questions: rawQuestions,
+        timestamp: Date.now(),
+      });
+
+      return await new Promise<PermissionResult>((resolve, reject) => {
+        const onAbort = () => {
+          if (this.pendingQuestion?.toolUseId === options.toolUseID) {
+            this.pendingQuestion = null;
+          }
+          reject(new Error("AskUserQuestion aborted"));
+        };
+
+        options.signal.addEventListener("abort", onAbort, { once: true });
+        this.pendingQuestion = {
+          toolUseId: options.toolUseID,
+          questions: rawQuestions,
+          resolve: (result) => {
+            options.signal.removeEventListener("abort", onAbort);
+            resolve(result);
+          },
+          reject: (error) => {
+            options.signal.removeEventListener("abort", onAbort);
+            reject(error);
+          },
+        };
+      });
+    };
   }
 
   private async runQuery(
@@ -170,7 +263,15 @@ export class StreamSession {
       return;
     }
 
-    const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler, processorRef);
+    const canUseTool = this.buildCanUseTool(onMessage);
+    const options = buildQueryOptions(
+      config,
+      state.abortController,
+      pluginPaths,
+      stderrHandler,
+      processorRef,
+      canUseTool,
+    );
 
     // Gate run_result emission until all subagents/background tasks finish.
     const gate = new ResultGate(processor);

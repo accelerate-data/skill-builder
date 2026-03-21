@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ChatMessageList } from "@/components/refine/chat-message-list";
 import type { RefineMessage } from "@/stores/refine-store";
 
@@ -26,12 +27,27 @@ describe("ChatMessageList", () => {
     vi.mocked(Element.prototype.scrollIntoView).mockClear();
   });
 
-  it("scrolls to the bottom without changing horizontal alignment", () => {
+  it("scrolls to the bottom of the transcript", () => {
+    const messages: RefineMessage[] = [
+      { id: "m1", role: "user", userText: "first message", timestamp: 1 },
+      { id: "m2", role: "agent", agentId: "agent-1", timestamp: 2 },
+    ];
+
+    render(<ChatMessageList messages={messages} />);
+
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "end",
+      inline: "nearest",
+    });
+  });
+
+  it("renders subtle request and agent blocks", () => {
     const messages: RefineMessage[] = [
       {
         id: "m1",
         role: "user",
-        userText: "first message",
+        userText: "tighten the intro",
         timestamp: 1,
       },
       {
@@ -44,47 +60,49 @@ describe("ChatMessageList", () => {
 
     render(<ChatMessageList messages={messages} />);
 
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
-    expect(Element.prototype.scrollIntoView).toHaveBeenLastCalledWith({
-      behavior: "smooth",
-      block: "end",
-      inline: "nearest",
-    });
+    expect(screen.getByText("Request")).toBeInTheDocument();
+    expect(screen.getByText("Agent")).toBeInTheDocument();
+    expect(screen.getByText("tighten the intro")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-turn-agent-1")).toBeInTheDocument();
   });
 
-  it("does not render a user text bubble when userText is empty", () => {
+  it("renders pending refine questions inline and submits answers", async () => {
+    const user = userEvent.setup();
+    const onQuestionSubmit = vi.fn().mockResolvedValue(undefined);
     const messages: RefineMessage[] = [
       {
-        id: "m1",
-        role: "user",
-        userText: "",
-        command: "benchmark",
+        id: "q1",
+        role: "question",
+        agentId: "agent-1",
+        toolUseId: "toolu_1",
+        pending: true,
+        questions: [{
+          header: "Next Step",
+          question: "Should I launch validate instead?",
+          options: [
+            { label: "Launch validate", description: "Run the validation agent." },
+            { label: "Clarify refine", description: "Explain what should be changed." },
+          ],
+        }],
         timestamp: 1,
       },
     ];
 
-    const { container } = render(<ChatMessageList messages={messages} />);
+    render(<ChatMessageList messages={messages} onQuestionSubmit={onQuestionSubmit} />);
 
-    // Command badge should render
-    expect(screen.getByText("/benchmark")).toBeInTheDocument();
-    // No text bubble (the rounded-2xl chat bubble div)
-    expect(container.querySelector(".rounded-2xl.bg-primary")).toBeNull();
+    await user.click(screen.getByRole("button", { name: /launch validate/i }));
+    await user.click(screen.getByTestId("refine-question-submit"));
+
+    expect(onQuestionSubmit).toHaveBeenCalled();
   });
 
   it("renders benchmark-prompt messages", () => {
     const onConfirm = vi.fn();
     const onSkip = vi.fn();
-    const messages: RefineMessage[] = [
-      {
-        id: "m1",
-        role: "benchmark-prompt",
-        timestamp: 1,
-      },
-    ];
 
     render(
       <ChatMessageList
-        messages={messages}
+        messages={[{ id: "m1", role: "benchmark-prompt", timestamp: 1 }]}
         onBenchmarkConfirm={onConfirm}
         onBenchmarkSkip={onSkip}
       />,
@@ -93,9 +111,11 @@ describe("ChatMessageList", () => {
     expect(screen.getByTestId("benchmark-prompt")).toBeInTheDocument();
   });
 
-  it("shows /benchmark hint in empty state", () => {
+  it("shows validate and benchmark hints in the empty state", () => {
     render(<ChatMessageList messages={[]} />);
 
+    expect(screen.getByText("/validate")).toBeInTheDocument();
     expect(screen.getByText("/benchmark")).toBeInTheDocument();
+    expect(screen.queryByText("/rewrite")).not.toBeInTheDocument();
   });
 });

@@ -5,12 +5,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useRefineStore, type RefineCommand } from "@/stores/refine-store";
 
+const COMMAND_ALIASES = new Map<string, RefineCommand>([
+  ["validate", "validate"],
+  ["benchmark", "benchmark"],
+  ["eval", "benchmark"],
+  ["evaluate", "benchmark"],
+]);
+
 const COMMANDS: {
   value: RefineCommand;
   label: string;
   icon: typeof RefreshCw;
 }[] = [
-  { value: "rewrite", label: "Rewrite skill", icon: RefreshCw },
   { value: "validate", label: "Validate skill", icon: ShieldCheck },
   { value: "benchmark", label: "Benchmark skill", icon: FlaskConical },
 ];
@@ -25,6 +31,31 @@ function cycleValue(
   const idx = items.indexOf(current);
   if (idx === -1) return items[0];
   return items[(idx + direction + items.length) % items.length];
+}
+
+function normalizeSlashCommand(text: string): {
+  command?: RefineCommand;
+  normalizedText: string;
+} {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("/")) {
+    return { normalizedText: trimmed };
+  }
+
+  const [commandToken, ...rest] = trimmed.split(/\s+/);
+  const normalizedToken = commandToken.slice(1).toLowerCase();
+  const remainder = rest.join(" ").trim();
+
+  if (normalizedToken === "rewrite") {
+    return { normalizedText: remainder };
+  }
+
+  const command = COMMAND_ALIASES.get(normalizedToken);
+  if (command) {
+    return { command, normalizedText: remainder };
+  }
+
+  return { normalizedText: trimmed };
 }
 
 interface ChatInputBarProps {
@@ -98,12 +129,13 @@ export function ChatInputBar({
   }, [pickerOpen]);
 
   const handleSend = useCallback(() => {
-    const trimmed = text.trim();
-    if (!trimmed && !activeCommand) return;
+    const { command: parsedCommand, normalizedText } = normalizeSlashCommand(text);
+    const command = activeCommand ?? parsedCommand;
+    if (!normalizedText && !command) return;
     onSend(
-      trimmed,
+      normalizedText,
       targetFiles.length > 0 ? targetFiles : undefined,
-      activeCommand,
+      command,
     );
     setText("");
     setTargetFiles([]);
@@ -180,6 +212,18 @@ export function ChatInputBar({
 
         // Enter confirms the currently highlighted picker item
         if (e.key === "Enter") {
+          const parsed = showCommandPicker ? normalizeSlashCommand(text) : null;
+          if (
+            showCommandPicker
+            && !activeCommand
+            && parsed
+            && (parsed.command !== undefined || parsed.normalizedText !== text.trim())
+          ) {
+            e.preventDefault();
+            setShowCommandPicker(false);
+            handleSend();
+            return;
+          }
           e.preventDefault();
           const current = pickerValueRef.current;
           if (showCommandPicker) {

@@ -1,4 +1,4 @@
-import type { HookInput, Options } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, HookInput, Options } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 import type { MessageProcessor } from "./message-processor.js";
 
@@ -61,6 +61,7 @@ export function buildQueryOptions(
   pluginPaths: string[],
   stderr?: (data: string) => void,
   processorRef?: { current: MessageProcessor | null },
+  canUseTool?: CanUseTool,
 ) {
   // --- agent / model resolution ---
   const hasAgent = typeof config.agentName === "string" && config.agentName.length > 0;
@@ -113,6 +114,7 @@ export function buildQueryOptions(
       ? { promptSuggestions: config.promptSuggestions }
       : {}),
     ...(stderr ? { stderr } : {}),
+    ...(canUseTool ? { canUseTool } : {}),
     ...(processorRef ? buildHooks(processorRef) : {}),
   };
 }

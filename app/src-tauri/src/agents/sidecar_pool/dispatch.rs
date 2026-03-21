@@ -914,6 +914,42 @@ impl SidecarPool {
         result
     }
 
+    /// Resolve a pending AskUserQuestion callback inside an active streaming session.
+    pub async fn send_stream_question_answer(
+        &self,
+        skill_name: &str,
+        session_id: &str,
+        agent_id: &str,
+        tool_use_id: &str,
+        questions: serde_json::Value,
+        answers: serde_json::Value,
+    ) -> Result<(), String> {
+        let message = serde_json::json!({
+            "type": "stream_question_answer",
+            "request_id": agent_id,
+            "session_id": session_id,
+            "tool_use_id": tool_use_id,
+            "questions": questions,
+            "answers": answers,
+        });
+
+        let result = self.write_to_sidecar_stdin(skill_name, &message).await;
+        if let Err(ref e) = result {
+            log::error!(
+                "[send_stream_question_answer] Failed for session '[REDACTED]': {}",
+                e
+            );
+        } else {
+            log::info!(
+                "[send_stream_question_answer] session=[REDACTED] agent={} tool={} on skill '{}'",
+                agent_id,
+                tool_use_id,
+                skill_name,
+            );
+        }
+        result
+    }
+
     /// Close a streaming session.
     pub async fn send_stream_end(&self, skill_name: &str, session_id: &str) -> Result<(), String> {
         let message = serde_json::json!({

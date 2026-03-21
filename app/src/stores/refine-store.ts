@@ -6,8 +6,27 @@ export interface SkillFile {
   content: string;
 }
 
-export type RefineMessageRole = "user" | "agent" | "benchmark-prompt";
-export type RefineCommand = "rewrite" | "validate" | "benchmark";
+export interface RefineQuestionOption {
+  label: string;
+  description: string;
+  preview?: string;
+}
+
+export interface RefineQuestionPrompt {
+  question: string;
+  header: string;
+  options: RefineQuestionOption[];
+  multiSelect?: boolean;
+}
+
+export interface RefineQuestionResponse {
+  answers: Record<string, string | string[]>;
+  selectedLabels: string[];
+  customText?: string;
+}
+
+export type RefineMessageRole = "user" | "agent" | "benchmark-prompt" | "question";
+export type RefineCommand = "validate" | "benchmark";
 
 export interface RefineMessage {
   id: string;
@@ -15,8 +34,17 @@ export interface RefineMessage {
   agentId?: string; // set for "agent" role — links to agent-store run
   userText?: string; // set for "user" role
   targetFiles?: string[]; // files targeted with @mentions
-  command?: RefineCommand; // slash command used (e.g., /rewrite, /validate)
+  command?: RefineCommand; // slash command used (e.g., /validate)
+  toolUseId?: string;
+  questions?: RefineQuestionPrompt[];
+  pending?: boolean;
+  response?: RefineQuestionResponse;
   timestamp: number;
+}
+
+interface RefineRedirectRequest {
+  command: RefineCommand;
+  text: string;
 }
 
 interface RefineState {
@@ -38,6 +66,7 @@ interface RefineState {
 
   // Chat messages
   messages: RefineMessage[];
+  pendingRedirect: RefineRedirectRequest | null;
 
   // Agent state
   activeAgentId: string | null;
@@ -61,12 +90,15 @@ interface RefineState {
   addUserMessage: (text: string, targetFiles?: string[], command?: RefineCommand) => RefineMessage;
   addAgentTurn: (agentId: string) => RefineMessage;
   addBenchmarkPrompt: () => RefineMessage;
+  addQuestionMessage: (agentId: string, toolUseId: string, questions: RefineQuestionPrompt[]) => RefineMessage;
+  answerQuestionMessage: (messageId: string, response: RefineQuestionResponse) => void;
   updateSkillFiles: (files: SkillFile[]) => void;
   setGitDiff: (diff: RefineDiff | null) => void;
   setActiveAgentId: (id: string | null) => void;
   setRunning: (v: boolean) => void;
   setSessionId: (id: string | null) => void;
   setSessionExhausted: (v: boolean) => void;
+  setPendingRedirect: (redirect: RefineRedirectRequest | null) => void;
   clearSession: () => void;
 }
 
@@ -77,6 +109,7 @@ export function isAuthoredSkillFile(filename: string): boolean {
 /** Session state that resets when switching skills or clearing the session. */
 const SESSION_DEFAULTS = {
   messages: [] as RefineMessage[],
+  pendingRedirect: null as RefineRedirectRequest | null,
   activeAgentId: null as string | null,
   isRunning: false,
   sessionId: null as string | null,
@@ -93,7 +126,7 @@ const SESSION_DEFAULTS = {
   // to wipe the message before ChatInputBar could render and read it.
 } as const;
 
-export const useRefineStore = create<RefineState>((set) => ({
+export const useRefineStore = create<RefineState>((set, get) => ({
   // Initial state
   selectedSkill: null,
   refinableSkills: [],
@@ -155,6 +188,40 @@ export const useRefineStore = create<RefineState>((set) => ({
     return message;
   },
 
+  addQuestionMessage: (agentId, toolUseId, questions): RefineMessage => {
+    const existingMessage = get()
+      .messages
+      .find((message) => message.role === "question" && message.toolUseId === toolUseId);
+    if (existingMessage) {
+      return existingMessage;
+    }
+
+    const message: RefineMessage = {
+      id: crypto.randomUUID(),
+      role: "question",
+      agentId,
+      toolUseId,
+      questions,
+      pending: true,
+      timestamp: Date.now(),
+    };
+    set((state) => ({ messages: [...state.messages, message] }));
+    return message;
+  },
+
+  answerQuestionMessage: (messageId, response) =>
+    set((state) => ({
+      messages: state.messages.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              pending: false,
+              response,
+            }
+          : message,
+      ),
+    })),
+
   updateSkillFiles: (files) => set((state) => {
     const existingFiles = new Set(state.skillFiles.map((file) => file.filename));
     const nextFileNames = new Set(files.map((file) => file.filename));
@@ -205,6 +272,7 @@ export const useRefineStore = create<RefineState>((set) => ({
   setRunning: (v) => set({ isRunning: v }),
   setSessionId: (id) => set({ sessionId: id }),
   setSessionExhausted: (v) => set({ sessionExhausted: v }),
+  setPendingRedirect: (redirect) => set({ pendingRedirect: redirect }),
 
   clearSession: () => set(SESSION_DEFAULTS),
 }));

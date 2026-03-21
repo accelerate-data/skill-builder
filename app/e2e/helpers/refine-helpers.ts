@@ -59,6 +59,7 @@ export const REFINE_OVERRIDES: Record<string, unknown> = {
     created_at: new Date().toISOString(),
   },
   send_refine_message: "refine-test-skill-e2e-001",
+  answer_refine_question: undefined,
   close_refine_session: undefined,
   acquire_lock: undefined,
   release_lock: undefined,

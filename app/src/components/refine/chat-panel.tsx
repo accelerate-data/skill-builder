@@ -1,7 +1,7 @@
 import { AlertTriangle, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRefineStore } from "@/stores/refine-store";
-import type { RefineCommand } from "@/stores/refine-store";
+import type { RefineCommand, RefineMessage, RefineQuestionResponse } from "@/stores/refine-store";
 import { ChatMessageList } from "./chat-message-list";
 import { ChatInputBar } from "./chat-input-bar";
 
@@ -18,9 +18,19 @@ interface ChatPanelProps {
   scopeBlocked?: boolean;
   onBenchmarkConfirm?: () => void;
   onBenchmarkSkip?: () => void;
+  onQuestionSubmit?: (message: RefineMessage, response: RefineQuestionResponse) => Promise<void>;
 }
 
-export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles, scopeBlocked, onBenchmarkConfirm, onBenchmarkSkip }: ChatPanelProps) {
+export function ChatPanel({
+  onSend,
+  isRunning,
+  hasSkill,
+  availableFiles,
+  scopeBlocked,
+  onBenchmarkConfirm,
+  onBenchmarkSkip,
+  onQuestionSubmit,
+}: ChatPanelProps) {
   const messages = useRefineStore((s) => s.messages);
   const sessionExhausted = useRefineStore((s) => s.sessionExhausted);
   const pendingInitialMessage = useRefineStore((s) => s.pendingInitialMessage);
@@ -85,6 +95,7 @@ export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles, scopeBl
         messages={messages}
         onBenchmarkConfirm={onBenchmarkConfirm}
         onBenchmarkSkip={onBenchmarkSkip}
+        onQuestionSubmit={onQuestionSubmit}
       />
       {sessionExhausted && (
         <div className="border-t bg-muted px-3 py-2 text-center text-sm text-muted-foreground">

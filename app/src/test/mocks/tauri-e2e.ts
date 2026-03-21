@@ -102,6 +102,7 @@ const mockResponses: Record<string, unknown> = {
     created_at: new Date().toISOString(),
   },
   send_refine_message: "refine-test-skill-e2e-001",
+  answer_refine_question: undefined,
   close_refine_session: undefined,
   list_refinable_skills: [
     {
