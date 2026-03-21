@@ -22,7 +22,6 @@ import {
   closeRefineSession,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
-  materializeRefineValidationOutput,
   cleanupSkillSidecar,
   acquireLock,
   releaseLock,
@@ -271,17 +270,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           }
         } catch {
           try {
-            if (
-              hasStructuredObject &&
-              (structuredOutput as Record<string, unknown>).status === "validation_complete"
-            ) {
-              await materializeRefineValidationOutput(
-                completionSkill.name,
-                workspacePath,
-                structuredOutput,
-              );
-            }
-
             const files = await loadSkillFiles(workspacePath, completionSkill.name);
             if (files) {
               store.updateSkillFiles(files);

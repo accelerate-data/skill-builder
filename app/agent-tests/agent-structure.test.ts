@@ -7,9 +7,6 @@ import { AGENTS_DIR, PLUGINS_DIR, REPO_ROOT } from "./helpers";
 const EXPECTED_AGENTS = [
   "answer-evaluator",
   "confirm-decisions",
-  "eval-skill",
-  "validate-quality",
-  "validate-skill",
 ];
 
 /** Plugin-hosted agents: agent name → plugin path relative to PLUGINS_DIR */
@@ -17,6 +14,7 @@ const PLUGIN_AGENTS: Record<string, string> = {
   "generate-skill": "skill-creator/agents/generate-skill.md",
   "rewrite-skill": "skill-creator/agents/rewrite-skill.md",
   "benchmark-skill": "skill-creator/agents/benchmark-skill.md",
+  "validate-skill": "skill-creator/agents/validate-skill.md",
   "research-orchestrator": "skill-content-researcher/agents/research-orchestrator.md",
   "detailed-research": "skill-content-researcher/agents/detailed-research.md",
 };
@@ -103,8 +101,7 @@ describe("canonical format compliance", () => {
 describe("read directive compliance", () => {
   const TARGET_FILES = [
     resolveAgentPath("generate-skill"),
-    path.join(AGENTS_DIR, "validate-quality.md"),
-    path.join(AGENTS_DIR, "eval-skill.md"),
+    resolveAgentPath("validate-skill"),
   ];
 
   const bannedPatterns: Array<[string, RegExp]> = [
@@ -260,16 +257,6 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/sufficient|mixed|insufficient/);
     expect(content).toMatch(/"per_question"/);
     expect(content).toMatch(/"answered_count"/);
-  });
-
-  it("validate-skill agent returns validation_complete envelope with all three output keys", () => {
-    const content = fs.readFileSync(
-      path.join(AGENTS_DIR, "validate-skill.md"),
-      "utf8"
-    );
-    expect(content).toMatch(/status.*validation_complete/);
-    expect(content).toMatch(/validation_log_markdown/);
-    expect(content).toMatch(/test_results_markdown/);
   });
 });
 

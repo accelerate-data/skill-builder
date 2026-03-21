@@ -5,7 +5,7 @@ use crate::commands::workflow::{resolve_model_id, tools_for_agent};
 use crate::db::{self, Db};
 use crate::types::SecretString;
 
-pub(super) const VALIDATE_AGENT_NAME: &str = "validate-skill";
+pub(super) const VALIDATE_AGENT_NAME: &str = "skill-creator:validate-skill";
 pub(super) const REWRITE_AGENT_NAME: &str = "skill-creator:rewrite-skill";
 pub(super) const BENCHMARK_AGENT_NAME: &str = "skill-creator:benchmark-skill";
 

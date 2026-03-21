@@ -1114,18 +1114,10 @@ Context directory: ${dir}/workspace/${skillName}/context
 Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
-<agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"validation_complete", "validation_log_markdown", and "test_results_markdown".`;
+<agent-instructions>${agentInstructions}</agent-instructions>`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
-  const response = parseAgentJsonOutput(stdout);
-  const validation = response?.validation_log_markdown ?? "";
-  const tests = response?.test_results_markdown ?? "";
   return finalizeScenario("validate-skill-scope-guard", {
-    structuredResponseObject: Boolean(response && typeof response === "object"),
-    validationPayloadExists: typeof validation === "string" && validation.trim().length > 0,
-    testPayloadExists: typeof tests === "string" && tests.trim().length > 0,
-    validationStub: /## Validation Skipped/.test(validation),
-    testStub: /## Testing Skipped/.test(tests),
+    guardMessage: /Scope recommendation is active|Validation Skipped/i.test(stdout),
   });
 }
 
@@ -1144,11 +1136,8 @@ Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
-  const response = parseAgentJsonOutput(stdout);
-  const validation = response?.validation_log_markdown ?? stdout;
   return finalizeScenario("validate-skill-missing-skill-md", {
-    guardMessage: /No SKILL\.md found|Validation Skipped/.test(validation),
-    noValidationFile: !fs.existsSync(path.join(dir, "workspace", skillName, "context", "agent-validation-log.md")),
+    guardMessage: /No SKILL\.md found|Validation Skipped/i.test(stdout),
   });
 }
 

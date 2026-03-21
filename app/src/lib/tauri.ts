@@ -419,16 +419,6 @@ export const sendRefineMessage = (
   command?: string,
 ) => invoke<string>("send_refine_message", { sessionId, userMessage, workspacePath, targetFiles: targetFiles ?? null, command: command ?? null })
 
-export const materializeRefineValidationOutput = (
-  skillName: string,
-  workspacePath: string,
-  structuredOutput: unknown,
-) => invoke<void>("materialize_refine_validation_output", {
-  skillName,
-  workspacePath,
-  structuredOutput,
-})
-
 export const finalizeRefineRun = (
   skillName: string,
   workspacePath: string,

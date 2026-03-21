@@ -1,6 +1,6 @@
 use super::content::get_skill_content_inner;
 use super::diff::{get_refine_diff_inner};
-use super::output::{cleanup_skill_snapshot, finalize_refine_run_inner, materialize_refine_validation_output_value};
+use super::output::{cleanup_skill_snapshot, finalize_refine_run_inner};
 use super::protocol::*;
 use super::*;
 use crate::commands::imported_skills::validate_skill_name;
@@ -581,71 +581,6 @@ fn test_direct_config_agent_id_uses_agent_label() {
     );
 }
 
-#[test]
-fn test_materialize_refine_validation_output_writes_context_files() {
-    let tmp = tempdir().unwrap();
-    let workspace_skill_root = tmp.path().join("my-skill");
-    let payload = serde_json::json!({
-        "status": "validation_complete",
-        "validation_log_markdown": "## Validation\nok",
-        "test_results_markdown": "## Testing\nok"
-    });
-
-    materialize_refine_validation_output_value(&workspace_skill_root, &payload).unwrap();
-    assert!(workspace_skill_root.join("context/agent-validation-log.md").exists());
-    assert!(workspace_skill_root.join("context/test-skill.md").exists());
-}
-
-#[test]
-fn test_materialize_refine_validation_output_rejects_missing_payload_fields() {
-    let tmp = tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-    let payload = serde_json::json!({
-        "status": "validation_complete",
-        "validation_log_markdown": "## Validation\nok"
-    });
-
-    let err = materialize_refine_validation_output_value(&skill_root, &payload).unwrap_err();
-    assert!(err.contains("structured_output.test_results_markdown must be a string"));
-}
-
-#[test]
-fn test_materialize_refine_validation_output_rejects_null_payload() {
-    let tmp = tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-    let err = materialize_refine_validation_output_value(
-        &skill_root,
-        &serde_json::json!(null),
-    )
-    .unwrap_err();
-    assert!(err.contains("structured_output must be a JSON object"));
-}
-
-#[test]
-fn test_materialize_refine_validation_output_rejects_wrong_status() {
-    let tmp = tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-    let payload = serde_json::json!({
-        "status": "generated",
-        "validation_log_markdown": "## Validation\nok",
-        "test_results_markdown": "## Testing\nok"
-    });
-    let err = materialize_refine_validation_output_value(&skill_root, &payload).unwrap_err();
-    assert!(err.contains("structured_output.status must be 'validation_complete'"));
-}
-
-#[test]
-fn test_materialize_refine_validation_output_rejects_empty_markdown_fields() {
-    let tmp = tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-    let payload = serde_json::json!({
-        "status": "validation_complete",
-        "validation_log_markdown": "  ",
-        "test_results_markdown": "## Testing\nok"
-    });
-    let err = materialize_refine_validation_output_value(&skill_root, &payload).unwrap_err();
-    assert!(err.contains("structured_output.validation_log_markdown must not be empty"));
-}
 
 #[test]
 fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
@@ -720,7 +655,7 @@ fn test_get_skill_content_excludes_context_artifacts() {
 }
 
 #[test]
-fn test_finalize_refine_validation_writes_workspace_context_without_skill_diff() {
+fn test_finalize_refine_run_ignores_structured_output() {
     let skills_dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
     crate::git::ensure_repo(skills_dir.path()).unwrap();
@@ -728,17 +663,11 @@ fn test_finalize_refine_validation_writes_workspace_context_without_skill_diff()
     let skill_dir = skills_dir.path().join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
-    // First commit adds the skill (simulates generate step)
     crate::git::commit_all(skills_dir.path(), "generate skill").unwrap();
-    // Second commit touches an unrelated file so HEAD's diff vs parent
-    // does not include skill files (simulates agent refine with no skill changes)
-    std::fs::write(skills_dir.path().join("other.txt"), "unrelated\n").unwrap();
-    crate::git::commit_all(skills_dir.path(), "refine: validation only").unwrap();
 
     let payload = serde_json::json!({
         "status": "validation_complete",
-        "validation_log_markdown": "## Validation\nok",
-        "test_results_markdown": "## Testing\nok"
+        "validation_log_markdown": "## Validation\nok"
     });
 
     let result = finalize_refine_run_inner(
@@ -749,17 +678,14 @@ fn test_finalize_refine_validation_writes_workspace_context_without_skill_diff()
     )
     .unwrap();
 
-    // HEAD always exists, so commit_sha is always Some
     assert!(result.commit_sha.is_some());
-    assert!(result.diff.files.is_empty());
     assert_eq!(result.files.len(), 1);
     assert_eq!(result.files[0].path, "SKILL.md");
-    assert!(workspace_dir
+    // No materialization — context files should not exist
+    assert!(!workspace_dir
         .path()
         .join("my-skill/context/agent-validation-log.md")
         .exists());
-    assert!(workspace_dir.path().join("my-skill/context/test-skill.md").exists());
-    assert!(!skill_dir.join("context/agent-validation-log.md").exists());
 }
 
 // ===== build_refine_prompt tests =====

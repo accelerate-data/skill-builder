@@ -568,18 +568,15 @@ describe("MessageProcessor", () => {
         type: "result",
         subtype: "success",
         structured_output: {
-          status: "validation_complete",
-          validation_log_markdown: "# Validation Log\n\nAll checks passed.",
-          test_results_markdown: "# Test Results\n\n3/3 passed.",
+          status: "generated",
+          summary_markdown: "# Summary\n\nSkill generated successfully.",
         },
         usage: { input_tokens: 10, output_tokens: 5 },
       };
       const out = processor.process(raw);
       const items = extractDisplayItems(out);
 
-      expect(items[0].resultMarkdown).toContain("# Validation Log");
-      expect(items[0].resultMarkdown).toContain("# Test Results");
-      expect(items[0].resultMarkdown).toContain("---");
+      expect(items[0].resultMarkdown).toContain("# Summary");
     });
 
     it("does not set resultMarkdown when structured output has no *_markdown fields", () => {
@@ -635,19 +632,19 @@ describe("MessageProcessor", () => {
 
     it("joins multiple *_markdown fields with divider", () => {
       const result = extractResultMarkdown({
-        validation_log_markdown: "# Log",
-        test_results_markdown: "# Tests",
-        status: "validation_complete",
+        summary_markdown: "# Summary",
+        details_markdown: "# Details",
+        status: "complete",
       });
-      expect(result).toBe("# Log\n\n---\n\n# Tests");
+      expect(result).toBe("# Summary\n\n---\n\n# Details");
     });
 
     it("ignores non-string *_markdown fields", () => {
       const result = extractResultMarkdown({
-        validation_log_markdown: "# Log",
-        test_results_markdown: null,
+        summary_markdown: "# Summary",
+        details_markdown: null,
       });
-      expect(result).toBe("# Log");
+      expect(result).toBe("# Summary");
     });
   });
 

@@ -14,7 +14,6 @@ const tauriMocks = vi.hoisted(() => ({
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
   sendRefineMessage: vi.fn().mockResolvedValue("agent-1"),
   finalizeRefineRun: vi.fn().mockResolvedValue({ files: [], diff: null }),
-  materializeRefineValidationOutput: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/tauri", () => tauriMocks);

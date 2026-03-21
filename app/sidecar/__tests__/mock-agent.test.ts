@@ -183,10 +183,7 @@ describe("parsePromptPaths (inline)", () => {
  * If you add a new agent that should be mocked, add a mapping in
  * resolveStepTemplate() — don't just add it here.
  */
-const AGENTS_WITHOUT_MOCK = new Set([
-  "eval-skill",
-  "validate-quality",
-  "validate-skill",
+const AGENTS_WITHOUT_MOCK = new Set<string>([
 ]);
 
 describe("mock-agent drift detection", () => {
