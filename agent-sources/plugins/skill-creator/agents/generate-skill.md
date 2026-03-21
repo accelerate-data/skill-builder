@@ -153,6 +153,7 @@ version: 1.0.0
 **This is important**
 
 - Test cases from the **`Test Cases` subsection of Creating a skill section must be written to to `{eval_dir}/evals.json`**.
+- Each eval written to `{eval_dir}/evals.json` must include its fixed `expectations` at creation time. Do not defer assertion writing to the benchmark phase.
 - Do not write in the `skill_dir`.
 - Do not create the `eval` folder in the `skill_dir`.
 - Do not run the evaluations — a separate benchmark agent handles execution and grading.
@@ -193,7 +194,7 @@ If the commit reports "nothing to commit", skip tagging.
 - Every decision from `decisions.json` addressed in the skill
 - SKILL.md frontmatter is valid (name, description, tools, version)
 - Reference files are complete and cross-referenced from SKILL.md
-- `evals.json` written with 3+ evaluation scenarios
+- `evals.json` written with 3+ evaluation scenarios and frozen expectations
 
 </instructions>
 

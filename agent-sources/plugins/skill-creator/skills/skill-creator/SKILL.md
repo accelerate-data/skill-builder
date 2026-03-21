@@ -142,7 +142,7 @@ Try to explain to the model why things are important in lieu of heavy-handed mus
 
 After writing the skill draft, come up with 2-3 realistic test prompts — the kind of thing a real user would actually say. Share them with the user: [you don't have to use this exact language] "Here are a few test cases I'd like to try. Do these look right, or do you want to add more?" Then run them.
 
-Save test cases to `evals/evals.json`. Don't write assertions yet — just the prompts. You'll draft assertions in the next step while the runs are in progress.
+Save test cases to `evals/evals.json`. Write the quantitative assertions at the same time as the prompts so the eval definition is complete before the first benchmark iteration runs. Once written, treat those assertions as fixed for later iterations unless the user explicitly changes the eval itself.
 
 ```json
 {
@@ -152,13 +152,17 @@ Save test cases to `evals/evals.json`. Don't write assertions yet — just the p
       "id": 1,
       "prompt": "User's task prompt",
       "expected_output": "Description of expected result",
-      "files": []
+      "files": [],
+      "expectations": [
+        "A verifiable statement about the output",
+        "Another fixed assertion used for grading"
+      ]
     }
   ]
 }
 ```
 
-See `references/schemas.md` for the full schema (including the `assertions` field, which you'll add later).
+See `references/schemas.md` for the full schema.
 
 ## Running and evaluating test cases
 
@@ -185,24 +189,27 @@ Execute this task:
 - **Creating a new skill**: no skill at all. Same prompt, no skill path, save to `without_skill/outputs/`.
 - **Improving an existing skill**: the old version. Before editing, snapshot the skill (`cp -r <skill-path> <workspace>/skill-snapshot/`), then point the baseline subagent at the snapshot. Save to `old_skill/outputs/`.
 
-Write an `eval_metadata.json` for each test case (assertions can be empty for now). Directory names **must** start with `eval-<ID>-` followed by a descriptive slug (e.g. `eval-0-hybrid-cogs`, `eval-1-returns-treatment`). The `eval-` prefix is required — the aggregator uses `eval-*` to discover directories. If this iteration uses new or modified eval prompts, create these files for each new eval directory — don't assume they carry over from previous iterations.
+Write an `eval_metadata.json` for each test case using the same frozen assertions already written to `evals/evals.json`. Directory names **must** start with `eval-<ID>-` followed by a descriptive slug (e.g. `eval-0-hybrid-cogs`, `eval-1-returns-treatment`). The `eval-` prefix is required — the aggregator uses `eval-*` to discover directories. If this iteration uses new or modified eval prompts, create these files for each new eval directory — don't assume they carry over from previous iterations.
 
 ```json
 {
   "eval_id": 0,
   "eval_name": "descriptive-name-here",
   "prompt": "The user's task prompt",
-  "assertions": []
+  "assertions": [
+    "A fixed assertion for this eval",
+    "Another fixed assertion for this eval"
+  ]
 }
 ```
 
-### Step 2: While runs are in progress, draft assertions
+### Step 2: While runs are in progress, explain the frozen assertions
 
-Don't just wait for the runs to finish — you can use this time productively. Draft quantitative assertions for each test case and explain them to the user. If assertions already exist in `evals/evals.json`, review them and explain what they check.
+Don't just wait for the runs to finish — you can use this time productively. Review the quantitative assertions already saved for each test case and explain them to the user. Do not rewrite `evals/evals.json` or `eval_metadata.json` during the run just because an iteration suggests better wording; iteration-over-iteration comparisons only make sense when the grading criteria stay identical.
 
 Good assertions are objectively verifiable and have descriptive names — they should read clearly in the benchmark viewer so someone glancing at the results immediately understands what each one checks. Subjective skills (writing style, design quality) are better evaluated qualitatively — don't force assertions onto things that need human judgment.
 
-Update the `eval_metadata.json` files and `evals/evals.json` with the assertions once drafted. Also explain to the user what they'll see in the viewer — both the qualitative outputs and the quantitative benchmark.
+Also explain to the user what they'll see in the viewer — both the qualitative outputs and the quantitative benchmark.
 
 ### Step 3: As runs complete, capture timing data
 

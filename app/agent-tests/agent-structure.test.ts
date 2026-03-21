@@ -369,4 +369,28 @@ describe("skill-creator plugin structure", () => {
     expect(content).toMatch(/generate_review\.py/);
   });
 
+  it("skill-creator freezes eval expectations at creation time", () => {
+    const skillPath = path.join(
+      pluginRoot,
+      "skills",
+      "skill-creator",
+      "SKILL.md",
+    );
+    const content = fs.readFileSync(skillPath, "utf8");
+    const generateSkillContent = fs.readFileSync(
+      resolveAgentPath("generate-skill"),
+      "utf8",
+    );
+    const benchmarkContent = fs.readFileSync(
+      resolveAgentPath("benchmark-skill"),
+      "utf8",
+    );
+
+    expect(content).toMatch(/Write the quantitative assertions at the same time as the prompts/i);
+    expect(content).toMatch(/treat those assertions as fixed/i);
+    expect(content).toMatch(/Do not rewrite `evals\/evals\.json` or `eval_metadata\.json` during the run/i);
+    expect(generateSkillContent).toMatch(/must include its fixed `expectations` at creation time/i);
+    expect(benchmarkContent).toMatch(/Do NOT create or overwrite `evals\.json`/i);
+  });
+
 });
