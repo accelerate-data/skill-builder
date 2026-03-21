@@ -39,15 +39,15 @@
     {
       "name": "GitHub Actions",
       "config_files": [
-        ".github/workflows/ci.yml",
-        ".github/workflows/ci-windows.yml",
+        ".github/workflows/pr-ci.yml",
+        ".github/workflows/pr-policy.yml",
+        ".github/workflows/security.yml",
         ".github/workflows/docs.yml",
         ".github/workflows/release.yml",
-        ".github/workflows/claude.yml",
-        ".github/workflows/claude-code-review.yml",
+        ".github/workflows/sync-skill-creator.yml",
         ".github/workflows/sync-vd-agent.yml"
       ],
-      "notes": "ci.yml: typecheck + unit tests (Node 22) + cargo test + clippy + docs build gate. docs.yml: VitePress build + GitHub Pages deploy. release.yml: multi-platform Tauri build + sign + publish."
+      "notes": "pr-ci.yml: platform CI (Linux/Windows/macOS) + frontend unit/integration. pr-policy.yml: docs build, agents-structural, instruction-docs-lint, repo-map-audit, test-manifest-audit. security.yml: dependency-review, CodeQL, cargo-audit. docs.yml: VitePress GitHub Pages deploy. release.yml: multi-platform Tauri build + publish."
     }
   ],
   "test_frameworks": [
