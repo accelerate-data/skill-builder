@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   type ClarificationsFile,
   type Question,
+  type Section,
   getTotalCounts,
   isQuestionAnswered,
 } from "@/lib/clarifications-types";
@@ -26,6 +27,14 @@ interface ClarificationsEditorProps {
   filePath?: string;
   saveStatus?: SaveStatus;
   evaluating?: boolean;
+}
+
+function flattenQuestions(questions: Question[]): Question[] {
+  return questions.flatMap((question) => [question, ...flattenQuestions(question.refinements)]);
+}
+
+function flattenSectionQuestions(sections: Section[]): Question[] {
+  return sections.flatMap((section) => flattenQuestions(section.questions));
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
@@ -50,25 +59,48 @@ export function ClarificationsEditor({
     () => getReviewFeedbackMap(data.answer_evaluator_notes ?? []),
     [data.answer_evaluator_notes],
   );
+  const allQuestions = useMemo(() => flattenSectionQuestions(data.sections), [data.sections]);
+  const allQuestionIds = useMemo(() => new Set(allQuestions.map((question) => question.id)), [allQuestions]);
+  const contradictionSourcesByQuestion = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+
+    for (const feedback of reviewFeedbackByQuestion.values()) {
+      if (feedback.status !== "contradictory" || !feedback.contradicts) continue;
+      if (!allQuestionIds.has(feedback.contradicts)) continue;
+
+      const sources = map.get(feedback.contradicts) ?? new Set<string>();
+      sources.add(feedback.questionId);
+      map.set(feedback.contradicts, sources);
+    }
+
+    return new Map(
+      Array.from(map.entries()).map(([questionId, sources]) => [questionId, Array.from(sources).sort()])
+    );
+  }, [allQuestionIds, reviewFeedbackByQuestion]);
   const canContinue = mustUnanswered === 0;
   const progressPct = total > 0 ? Math.round((answered / total) * 100) : 0;
   const isComplete = answered === total;
+  const needsReviewQuestionIds = useMemo(() => {
+    const ids = new Set<string>();
 
-  const questionNeedsReview = useCallback(
-    (question: Question): boolean => {
-      if (isQuestionAnswered(question)) return false;
-      return reviewFeedbackByQuestion.has(question.id) || question.must_answer;
-    },
-    [reviewFeedbackByQuestion],
-  );
+    for (const question of allQuestions) {
+      const feedback = reviewFeedbackByQuestion.get(question.id);
+      if (feedback?.status === "contradictory") {
+        ids.add(question.id);
+        if (feedback.contradicts && allQuestionIds.has(feedback.contradicts)) {
+          ids.add(feedback.contradicts);
+        }
+        continue;
+      }
 
-  const needsReviewCount = useMemo(
-    () =>
-      data.sections
-        .flatMap((s) => s.questions.flatMap((q) => [q, ...q.refinements]))
-        .filter(questionNeedsReview).length,
-    [data.sections, questionNeedsReview],
-  );
+      if (!isQuestionAnswered(question) && (Boolean(feedback) || question.must_answer)) {
+        ids.add(question.id);
+      }
+    }
+
+    return ids;
+  }, [allQuestionIds, allQuestions, reviewFeedbackByQuestion]);
+  const needsReviewCount = needsReviewQuestionIds.size;
 
   const toggleCard = useCallback((id: string) => {
     setExpandedCards((prev) => {
@@ -126,9 +158,9 @@ export function ClarificationsEditor({
   );
 
   const hasNeedsReviewInTree = useCallback((q: Question): boolean => {
-    if (questionNeedsReview(q)) return true;
+    if (needsReviewQuestionIds.has(q.id)) return true;
     return q.refinements.some(hasNeedsReviewInTree);
-  }, [questionNeedsReview]);
+  }, [needsReviewQuestionIds]);
 
   const visibleSections = data.sections
     .map((section) => ({
@@ -229,6 +261,7 @@ export function ClarificationsEditor({
             updateQuestion={updateQuestion}
             readOnly={readOnly}
             reviewFeedbackByQuestion={reviewFeedbackByQuestion}
+            contradictionSourcesByQuestion={contradictionSourcesByQuestion}
           />
         ))}
         {visibleSections.length === 0 && (

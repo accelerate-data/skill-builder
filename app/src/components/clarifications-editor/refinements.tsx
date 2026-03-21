@@ -1,7 +1,7 @@
 import type { Question } from "@/lib/clarifications-types";
 import { isQuestionAnswered, parseRecommendedChoiceId } from "@/lib/clarifications-types";
 import type { ReviewFeedback } from "@/lib/clarifications-review";
-import { ChoiceList, AnswerField, ReviewFeedbackCallout } from "./question-card";
+import { ChoiceList, AnswerField, ReviewFeedbackCallout, RelatedConflictCallout } from "./question-card";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -16,12 +16,13 @@ function makeAnswerUpdater(text: string): (q: Question) => Question {
 // ─── Refinements Block ───────────────────────────────────────────────────────
 
 export function RefinementsBlock({
-  refinements, updateQuestion, readOnly, reviewFeedbackByQuestion,
+  refinements, updateQuestion, readOnly, reviewFeedbackByQuestion, contradictionSourcesByQuestion,
 }: {
   refinements: Question[];
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
   readOnly: boolean;
   reviewFeedbackByQuestion: Map<string, ReviewFeedback>;
+  contradictionSourcesByQuestion: Map<string, string[]>;
 }) {
   return (
     <div
@@ -47,6 +48,7 @@ export function RefinementsBlock({
           updateQuestion={updateQuestion}
           readOnly={readOnly}
           reviewFeedback={reviewFeedbackByQuestion.get(ref.id)}
+          relatedConflictQuestionIds={contradictionSourcesByQuestion.get(ref.id)}
         />
       ))}
     </div>
@@ -56,12 +58,13 @@ export function RefinementsBlock({
 // ─── Refinement Item ─────────────────────────────────────────────────────────
 
 function RefinementItem({
-  refinement, updateQuestion, readOnly, reviewFeedback,
+  refinement, updateQuestion, readOnly, reviewFeedback, relatedConflictQuestionIds,
 }: {
   refinement: Question;
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
   readOnly: boolean;
   reviewFeedback?: ReviewFeedback;
+  relatedConflictQuestionIds?: string[];
 }) {
   const answered = isQuestionAnswered(refinement);
 
@@ -89,6 +92,9 @@ function RefinementItem({
         )}
       </div>
       {reviewFeedback && <ReviewFeedbackCallout feedback={reviewFeedback} compact />}
+      {!reviewFeedback && relatedConflictQuestionIds && relatedConflictQuestionIds.length > 0 && (
+        <RelatedConflictCallout relatedQuestionIds={relatedConflictQuestionIds} compact />
+      )}
       {refinement.choices.length > 0 && (
         <ChoiceList
           choices={refinement.choices}

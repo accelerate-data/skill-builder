@@ -26,7 +26,7 @@ function makeAnswerUpdater(text: string): (q: Question) => Question {
 // ─── Question Card ───────────────────────────────────────────────────────────
 
 export function QuestionCard({
-  question, isExpanded, toggleCard, updateQuestion, readOnly, reviewFeedback, reviewFeedbackByQuestion, renderRefinements,
+  question, isExpanded, toggleCard, updateQuestion, readOnly, reviewFeedback, reviewFeedbackByQuestion, relatedConflictQuestionIds, renderRefinements,
 }: {
   question: Question;
   isExpanded: boolean;
@@ -35,6 +35,7 @@ export function QuestionCard({
   readOnly: boolean;
   reviewFeedback?: ReviewFeedback;
   reviewFeedbackByQuestion: Map<string, ReviewFeedback>;
+  relatedConflictQuestionIds?: string[];
   renderRefinements: (props: {
     refinements: Question[];
     updateQuestion: (id: string, updater: (q: Question) => Question) => void;
@@ -78,6 +79,9 @@ export function QuestionCard({
           {question.title}
         </span>
         {reviewFeedback && <ReviewStatusBadge status={reviewFeedback.status} />}
+        {!reviewFeedback && relatedConflictQuestionIds && relatedConflictQuestionIds.length > 0 && (
+          <RelatedConflictBadge relatedQuestionIds={relatedConflictQuestionIds} />
+        )}
         {refCount > 0 && <RefinementBadge count={refCount} unanswered={refUnanswered} />}
         {question.must_answer && <MustBadge />}
         <ChevronRight
@@ -111,6 +115,9 @@ export function QuestionCard({
             {question.text}
           </p>
           {reviewFeedback && <ReviewFeedbackCallout feedback={reviewFeedback} />}
+          {!reviewFeedback && relatedConflictQuestionIds && relatedConflictQuestionIds.length > 0 && (
+            <RelatedConflictCallout relatedQuestionIds={relatedConflictQuestionIds} />
+          )}
 
           {question.choices.length > 0 && (
             <ChoiceList
@@ -356,5 +363,37 @@ function ReviewStatusBadge({ status }: { status: ReviewStatus }) {
     >
       {REVIEW_STATUS_LABEL[status]}
     </span>
+  );
+}
+
+function RelatedConflictBadge({ relatedQuestionIds }: { relatedQuestionIds: string[] }) {
+  const relatedLabel = relatedQuestionIds.join(", ");
+
+  return (
+    <span className="shrink-0 rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
+      In conflict with {relatedLabel}
+    </span>
+  );
+}
+
+export function RelatedConflictCallout({ relatedQuestionIds, compact = false }: { relatedQuestionIds: string[]; compact?: boolean }) {
+  const relatedLabel = relatedQuestionIds.join(", ");
+
+  return (
+    <div
+      className={`mb-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 ${compact ? "py-2" : "py-2.5"} text-xs leading-relaxed`}
+    >
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
+          Need Review: Conflict counterpart
+        </span>
+        <span className="rounded-full border border-destructive/30 px-2 py-0.5 text-[11px] font-medium text-destructive">
+          Conflicts with {relatedLabel}
+        </span>
+      </div>
+      <p className="text-muted-foreground">
+        Another answer in this set conflicts with this response. Review both answers together.
+      </p>
+    </div>
   );
 }

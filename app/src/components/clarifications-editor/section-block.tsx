@@ -13,7 +13,7 @@ import { RefinementsBlock } from "./refinements";
 // ─── Section Block ───────────────────────────────────────────────────────────
 
 export function SectionBlock({
-  section, visibleQuestions, isExpanded, toggleSection, expandedCards, toggleCard, updateQuestion, readOnly, reviewFeedbackByQuestion,
+  section, visibleQuestions, isExpanded, toggleSection, expandedCards, toggleCard, updateQuestion, readOnly, reviewFeedbackByQuestion, contradictionSourcesByQuestion,
 }: {
   section: Section;
   visibleQuestions: Question[];
@@ -24,6 +24,7 @@ export function SectionBlock({
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
   readOnly: boolean;
   reviewFeedbackByQuestion: Map<string, ReviewFeedback>;
+  contradictionSourcesByQuestion: Map<string, string[]>;
 }) {
   const status = getSectionStatus(section);
   const { answered, total } = getSectionCounts(section);
@@ -73,7 +74,13 @@ export function SectionBlock({
               readOnly={readOnly}
               reviewFeedback={reviewFeedbackByQuestion.get(question.id)}
               reviewFeedbackByQuestion={reviewFeedbackByQuestion}
-              renderRefinements={(props) => <RefinementsBlock {...props} />}
+              relatedConflictQuestionIds={contradictionSourcesByQuestion.get(question.id)}
+              renderRefinements={(props) => (
+                <RefinementsBlock
+                  {...props}
+                  contradictionSourcesByQuestion={contradictionSourcesByQuestion}
+                />
+              )}
             />
           ))}
         </div>
