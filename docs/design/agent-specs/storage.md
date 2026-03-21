@@ -29,9 +29,12 @@ The skills path defaults to `~/skill-builder/` but is set by the user on first l
 └── workspace/
     ├── .claude/
     │   ├── CLAUDE.md                 # Rebuilt on startup: base + active skills + user customization
-    │   ├── agents/                   # Bundled agent prompts, copied from agents/ on startup
-    │   │   ├── confirm-decisions.md
+    │   ├── agents/                   # Bundled top-level agent prompts, copied from agents/ on startup
     │   │   └── ...
+    │   ├── plugins/                  # Bundled managed plugins, copied from plugins/ on startup
+    │   │   └── skill-content-researcher/
+    │   │       └── agents/
+    │   │           └── confirm-decisions.md
     │   └── skills/                   # Bundled and imported skills (seeded on startup)
     │       ├── research/
     │       ├── validate-skill/
@@ -67,7 +70,8 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 |---|---|---|---|
 | `skill-builder.db` | Rust | Continuous | Tauri app data dir |
 | `.claude/CLAUDE.md` | Rust | Startup + skill import/remove | `{workspace}/.claude/` |
-| `.claude/agents/*.md` | Rust | Startup (copied from bundle) | `{workspace}/.claude/agents/` |
+| `.claude/agents/*.md` | Rust | Startup (copied from top-level bundle) | `{workspace}/.claude/agents/` |
+| `.claude/plugins/*/agents/*.md` | Rust | Startup (copied from managed plugin bundle) | `{workspace}/.claude/plugins/` |
 | `.claude/skills/` | Rust | Startup (seeded from bundle) | `{workspace}/.claude/skills/` |
 | `{skill}/` (marker dir) | Rust | `create_skill` | `{workspace}/` |
 | `{skill}/user-context.md` | Rust **or plugin coordinator** | Before each agent step (Rust) / end of Scoping Turn 2 (plugin) | `{workspace}/{skill}/` |
@@ -111,7 +115,7 @@ If `~/.vibedata` exists from pre-DataDir builds, the app attempts best-effort cl
 
 ### 3. Deploy agent infrastructure
 
-Copy bundled agent prompts (`agents/*.md`) to `{workspace}/.claude/agents/`. Seed bundled skills to `{workspace}/.claude/skills/`. Both are overwritten unconditionally to stay in sync with the app version. Session-scoped cache prevents redundant copies within a single run.
+Copy bundled top-level agent prompts (`agents/*.md`) to `{workspace}/.claude/agents/`. Copy bundled managed plugins (`plugins/*`) to `{workspace}/.claude/plugins/`. Seed bundled skills to `{workspace}/.claude/skills/`. These are overwritten unconditionally to stay in sync with the app version. Session-scoped cache prevents redundant copies within a single run.
 
 ### 4. Rebuild CLAUDE.md
 
