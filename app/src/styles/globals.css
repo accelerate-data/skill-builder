@@ -602,3 +602,18 @@ html, body, #root {
 @utility animate-dot-pulse {
   animation: dot-pulse 1.8s ease-in-out infinite;
 }
+
+/* Tiptap editor styles for the refine composer */
+.refine-editor .tiptap {
+  outline: none;
+}
+.refine-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+.refine-editor .tiptap .mention {
+  font-weight: 500;
+}
