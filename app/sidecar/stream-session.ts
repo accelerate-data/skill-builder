@@ -137,29 +137,16 @@ export class StreamSession {
       this.pendingQuestion = null;
     }
 
-    // Kill the SDK child process. interrupt() is cooperative (sends a
-    // control message to cli.js stdin) — if cli.js is blocked on an API
-    // call it can't process the interrupt. So we fire interrupt() for a
-    // graceful stop but unconditionally schedule close() (forceful kill)
-    // after a short timeout to guarantee the process actually dies.
+    // Send interrupt to the SDK child process. interrupt() sends a
+    // control_request to cli.js which will stop the current turn and
+    // emit a terminal event. The for-await loop will then exit naturally,
+    // emitting shutdown run_result which drives the frontend transition.
     if (this.activeQuery) {
-      const queryRef = this.activeQuery;
-      const forceCloseTimer = setTimeout(() => {
+      this.activeQuery.interrupt().catch((err) => {
         process.stderr.write(
-          `[stream-session] interrupt() timeout — forcing close() for session ${this.sessionId}\n`,
+          `[stream-session] interrupt() failed for session ${this.sessionId}: ${err}\n`,
         );
-        queryRef.close();
-      }, 500);
-
-      queryRef.interrupt()
-        .then(() => clearTimeout(forceCloseTimer))
-        .catch(() => {
-          clearTimeout(forceCloseTimer);
-          process.stderr.write(
-            `[stream-session] interrupt() failed — forcing close() for session ${this.sessionId}\n`,
-          );
-          queryRef.close();
-        });
+      });
     }
 
     // Also abort the controller as a secondary signal.

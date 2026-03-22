@@ -280,11 +280,11 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         cause: err,
         context: { operation: "workspace_refine_cancel" },
       });
-    } finally {
-      store.setRunning(false);
-      store.setActiveAgentId(null);
-      runSkillRef.current = null;
     }
+    // Do NOT optimistically clear running state here. The agent completion
+    // useEffect watches activeRunStatus for a terminal event ("completed",
+    // "error", "shutdown") and handles cleanup. This ensures the UI only
+    // transitions when the stream has actually stopped.
   }, []);
 
   // --- Benchmark prompt callbacks ---
