@@ -261,6 +261,8 @@ export interface AgentRun {
   runSource?: "workflow" | "refine" | "test";
   /** Optional synthetic session key used for non-workflow usage grouping. */
   usageSessionId?: string;
+  /** SDK prompt suggestion — predicted next user prompt, arrives after result. */
+  promptSuggestion?: string;
 }
 
 interface AgentState {
@@ -288,6 +290,7 @@ interface AgentState {
   applyTurnUsage: (agentId: string, event: TurnUsageEvent) => void;
   applyCompaction: (agentId: string, event: CompactionEvent) => void;
   applyContextWindow: (agentId: string, event: ContextWindowEvent) => void;
+  setPromptSuggestion: (agentId: string, suggestion: string) => void;
   completeRun: (agentId: string, success: boolean) => void;
   shutdownRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
@@ -530,6 +533,15 @@ export const useAgentStore = create<AgentState>((set) => ({
             contextWindow: event.contextWindow,
           },
         },
+      };
+    }),
+
+  setPromptSuggestion: (agentId, suggestion) =>
+    set((state) => {
+      const run = state.runs[agentId];
+      if (!run) return {};
+      return {
+        runs: { ...state.runs, [agentId]: { ...run, promptSuggestion: suggestion } },
       };
     }),
 

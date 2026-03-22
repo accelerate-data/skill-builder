@@ -10,9 +10,10 @@ import type { RefineMessage, RefineQuestionResponse } from "@/stores/refine-stor
 import { AgentTurnInline } from "./agent-turn-inline";
 import { RefineQuestionInline } from "./refine-question-inline";
 
-const SUGGESTIONS = [
-  "Fix the issues found above",
+/** Static suggestions shown in empty state only. Post-turn suggestions come from the SDK. */
+const EMPTY_STATE_SUGGESTIONS = [
   "Validate this skill",
+  "Improve the skill",
   "Run benchmarks",
 ];
 
@@ -70,7 +71,10 @@ export function ChatMessageList({
   const lastAgentStatus = useAgentStore((s) =>
     lastAgentId ? s.runs[lastAgentId]?.status : undefined,
   );
-  const showSuggestions = !isRunning && lastAgentStatus === "completed" && onSuggestionClick;
+  const promptSuggestion = useAgentStore((s) =>
+    lastAgentId ? s.runs[lastAgentId]?.promptSuggestion : undefined,
+  );
+  const showSuggestion = !isRunning && lastAgentStatus === "completed" && onSuggestionClick && promptSuggestion;
 
   if (messages.length === 0) {
     return (
@@ -82,7 +86,7 @@ export function ChatMessageList({
         </div>
         {onSuggestionClick && (
           <div className="flex flex-wrap justify-center gap-2">
-            {["Validate this skill", "Improve the skill", "Run benchmarks"].map((text) => (
+            {EMPTY_STATE_SUGGESTIONS.map((text) => (
               <Button
                 key={text}
                 type="button"
@@ -180,20 +184,17 @@ export function ChatMessageList({
 
           return null;
         })}
-        {showSuggestions && (
+        {showSuggestion && (
           <div className="flex flex-wrap gap-2">
-            {SUGGESTIONS.map((text) => (
-              <Button
-                key={text}
-                type="button"
-                size="xs"
-                variant="outline"
-                className="text-xs text-muted-foreground"
-                onClick={() => onSuggestionClick(text)}
-              >
-                {text}
-              </Button>
-            ))}
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              className="text-xs text-muted-foreground"
+              onClick={() => onSuggestionClick(promptSuggestion)}
+            >
+              {promptSuggestion}
+            </Button>
           </div>
         )}
         <div ref={bottomRef} />

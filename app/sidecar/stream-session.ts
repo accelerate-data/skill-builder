@@ -482,6 +482,21 @@ export class StreamSession {
           this.sdkSessionId = msg.session_id;
         }
 
+        // Forward prompt suggestions directly — they arrive after result
+        // and are not display items. Emit as an agent_event so Rust routes
+        // them to the frontend agent store.
+        if (msg.type === "prompt_suggestion" && typeof msg.suggestion === "string") {
+          onMessage(this.currentRequestId, {
+            type: "agent_event",
+            event: {
+              type: "prompt_suggestion",
+              suggestion: msg.suggestion,
+            },
+            timestamp: Date.now(),
+          });
+          continue;
+        }
+
         // Process into display items + pass-through messages
         // Task events (task_started/task_progress/task_notification) are routed
         // through the "task" classifier category → processTaskEvent.

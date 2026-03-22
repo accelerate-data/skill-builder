@@ -144,6 +144,19 @@ export async function runAgentRequest(
 
       const raw = message as Record<string, unknown>;
 
+      // Forward prompt suggestions directly.
+      if (raw.type === "prompt_suggestion" && typeof raw.suggestion === "string") {
+        onMessage({
+          type: "agent_event",
+          event: {
+            type: "prompt_suggestion",
+            suggestion: raw.suggestion,
+          },
+          timestamp: Date.now(),
+        });
+        continue;
+      }
+
       // Process into display items + pass-through messages
       // Task events (task_started/task_progress/task_notification) are routed
       // through the "task" classifier category → processTaskEvent.

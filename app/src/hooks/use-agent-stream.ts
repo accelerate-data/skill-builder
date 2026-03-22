@@ -192,6 +192,15 @@ export async function initAgentStream() {
         }
       }
 
+      // Prompt suggestions from the SDK (arrives after result).
+      if (message.type === "agent_event") {
+        const event = message.event as Record<string, unknown> | undefined;
+        if (event?.type === "prompt_suggestion" && typeof event.suggestion === "string") {
+          agentStore.setPromptSuggestion(agent_id, event.suggestion);
+          return;
+        }
+      }
+
       // Log unhandled message types at debug level for troubleshooting
       console.debug(
         "[use-agent-stream] event=unhandled_message agent_id=%s msg_type=%s",
