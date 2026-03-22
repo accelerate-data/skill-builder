@@ -230,11 +230,11 @@ pub(super) fn build_refine_prompt(
 
     let mut prompt = format!(
         "The skill name is: {skill_name}. \
-         The workspace directory is: {workspace_str}. \
-         The skill output directory (SKILL.md and references/) is: {skill_output_str}. \
-         Derive context_dir as {workspace_str}/context. \
-         Derive eval_dir as {workspace_str}/evals. \
-         Derive eval_results_dir as {workspace_str}/evals/workspace. \
+         The workspace directory is: \"{workspace_str}\". \
+         The skill output directory (SKILL.md and references/) is: \"{skill_output_str}\". \
+         Derive context_dir as \"{workspace_str}/context\". \
+         Derive eval_dir as \"{workspace_str}/evals\". \
+         Derive eval_results_dir as \"{workspace_str}/evals/workspace\". \
          All directories already exist — never create directories with mkdir or any other method. \
          CONSTRAINT: You may only refine the existing skill '{skill_name}'. Do NOT create new skills. \
          If the user asks to create a new skill, decline and direct them to the dashboard.",
