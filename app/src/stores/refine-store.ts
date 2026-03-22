@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { RefineDiff, SkillSummary } from "@/lib/types";
+import { useAgentStore } from "@/stores/agent-store";
 
 export interface SkillFile {
   filename: string; // e.g. "SKILL.md", "references/domain-glossary.md"
@@ -39,6 +40,7 @@ export interface RefineMessage {
   questions?: RefineQuestionPrompt[];
   pending?: boolean;
   response?: RefineQuestionResponse;
+  displayItemSplitIndex?: number; // display item count when question was asked — splits agent turn
   diff?: RefineDiff; // attached after agent turn completes with file changes
   timestamp: number;
 }
@@ -197,6 +199,8 @@ export const useRefineStore = create<RefineState>((set, get) => ({
       return existingMessage;
     }
 
+    const displayItemSplitIndex =
+      useAgentStore.getState().runs[agentId]?.displayItems?.length ?? 0;
     const message: RefineMessage = {
       id: crypto.randomUUID(),
       role: "question",
@@ -204,6 +208,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
       toolUseId,
       questions,
       pending: true,
+      displayItemSplitIndex,
       timestamp: Date.now(),
     };
     set((state) => ({ messages: [...state.messages, message] }));

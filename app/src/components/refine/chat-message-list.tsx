@@ -101,7 +101,7 @@ export function ChatMessageList({
   return (
     <ScrollArea className="h-0 flex-1">
       <div ref={contentRef} className="mx-auto flex min-w-0 w-full max-w-4xl flex-col gap-4 overflow-x-hidden px-4 pb-5 pt-3">
-        {messages.map((msg) => {
+        {messages.map((msg, msgIdx) => {
           if (msg.role === "user") {
             return (
               <div key={msg.id} className="flex w-full justify-end">
@@ -132,6 +132,13 @@ export function ChatMessageList({
           }
 
           if (msg.role === "agent" && msg.agentId) {
+            // Check if a question follows this agent turn — if so, split display
+            // items so content after the question appears below it.
+            const nextQuestion = messages.slice(msgIdx + 1).find(
+              (m) => m.role === "question" && m.agentId === msg.agentId && m.displayItemSplitIndex !== undefined,
+            );
+            const splitAt = nextQuestion?.displayItemSplitIndex;
+
             const diffFiles = msg.diff
               ? Array.from(new Set(
                   msg.diff.files
@@ -146,7 +153,7 @@ export function ChatMessageList({
                 className="flex min-w-0 w-full flex-col gap-2 overflow-hidden"
               >
                 <div className="min-w-0 overflow-hidden">
-                  <AgentTurnInline agentId={msg.agentId} />
+                  <AgentTurnInline agentId={msg.agentId} toIndex={splitAt} />
                 </div>
                 {diffFiles.length > 0 && <InlineChangedFiles files={diffFiles} />}
               </div>
@@ -155,11 +162,16 @@ export function ChatMessageList({
 
           if (msg.role === "question" && onQuestionSubmit) {
             return (
-              <div key={msg.id} ref={questionRef}>
+              <div key={msg.id} ref={questionRef} className="flex flex-col gap-4">
                 <RefineQuestionInline
                   message={msg}
                   onSubmit={onQuestionSubmit}
                 />
+                {msg.agentId && msg.displayItemSplitIndex !== undefined && (
+                  <div className="min-w-0 overflow-hidden">
+                    <AgentTurnInline agentId={msg.agentId} fromIndex={msg.displayItemSplitIndex} />
+                  </div>
+                )}
               </div>
             );
           }
