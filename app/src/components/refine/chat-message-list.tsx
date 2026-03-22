@@ -30,16 +30,36 @@ export function ChatMessageList({
   onSuggestionClick,
 }: ChatMessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const questionRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
+  // Scroll to the question card when one exists, otherwise scroll to bottom.
+  // Uses ResizeObserver to re-scroll when the agent turn above the question
+  // grows with new display items (which pushes the question card down).
   useEffect(() => {
-    const hasPendingQuestion = messages.some((m) => m.role === "question" && m.pending);
-    if (!hasPendingQuestion) {
-      bottomRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "end",
-        inline: "nearest",
-      });
-    }
+    const scrollToTarget = () => {
+      if (questionRef.current) {
+        questionRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+          inline: "nearest",
+        });
+      } else {
+        bottomRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "end",
+          inline: "nearest",
+        });
+      }
+    };
+
+    scrollToTarget();
+
+    const el = contentRef.current;
+    if (!el || !questionRef.current) return;
+    const observer = new ResizeObserver(scrollToTarget);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [messages.length, messages]);
 
   // Check if the last message is a completed agent turn (show suggestion chips)
@@ -80,7 +100,7 @@ export function ChatMessageList({
 
   return (
     <ScrollArea className="h-0 flex-1">
-      <div className="mx-auto flex min-w-0 w-full max-w-4xl flex-col gap-4 overflow-x-hidden px-4 pb-5 pt-3">
+      <div ref={contentRef} className="mx-auto flex min-w-0 w-full max-w-4xl flex-col gap-4 overflow-x-hidden px-4 pb-5 pt-3">
         {messages.map((msg) => {
           if (msg.role === "user") {
             return (
@@ -135,11 +155,12 @@ export function ChatMessageList({
 
           if (msg.role === "question" && onQuestionSubmit) {
             return (
-              <RefineQuestionInline
-                key={msg.id}
-                message={msg}
-                onSubmit={onQuestionSubmit}
-              />
+              <div key={msg.id} ref={questionRef}>
+                <RefineQuestionInline
+                  message={msg}
+                  onSubmit={onQuestionSubmit}
+                />
+              </div>
             );
           }
 
