@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
-import { FileText, GitCompare, X } from "lucide-react";
+import { ChevronDown, FileText, GitCompare, X } from "lucide-react";
 import { markdownComponents } from "@/components/markdown-link";
 import { SkillFrontmatterHeader } from "@/components/skill-frontmatter-header";
 import { Button } from "@/components/ui/button";
@@ -190,30 +190,29 @@ export function PreviewPanel() {
       />
       {/* Header with tabs + controls */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
-        <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <FileText className="size-3.5 shrink-0 text-muted-foreground" />
           {fileTabs.length > 1 ? (
-            fileTabs.map((tab) => (
-              <Button
-                key={tab}
-                type="button"
-                size="xs"
-                variant={activeFileTab === tab ? "secondary" : "ghost"}
-                className="shrink-0 gap-1 text-xs"
-                {...(activeFileTab === tab ? { "data-testid": "refine-file-view-title" } : {})}
-                onClick={() => {
-                  setActiveFileTab(tab);
-                  setSelectedModifiedFile(tab);
+            <div className="relative">
+              <select
+                data-testid="refine-file-view-title"
+                value={activeFileTab}
+                onChange={(e) => {
+                  setActiveFileTab(e.target.value);
+                  setSelectedModifiedFile(e.target.value);
                 }}
+                className="appearance-none bg-transparent pr-5 text-sm font-medium outline-none cursor-pointer"
               >
-                <FileText className="size-3" />
-                {tab}
-              </Button>
-            ))
-          ) : (
-            <div className="flex items-center gap-1.5 text-sm font-medium">
-              <FileText className="size-3.5 text-muted-foreground" />
-              <span data-testid="refine-file-view-title">{selectedModifiedFile ?? activeFileTab}</span>
+                {fileTabs.map((tab) => (
+                  <option key={tab} value={tab}>{tab}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-0 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             </div>
+          ) : (
+            <span data-testid="refine-file-view-title" className="text-sm font-medium">
+              {selectedModifiedFile ?? activeFileTab}
+            </span>
           )}
         </div>
         <div className="flex items-center gap-1">
