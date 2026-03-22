@@ -201,25 +201,13 @@ pub async fn send_refine_message(
         // ─── First message: start streaming session ───────────────────────
         // All commands go through the same streaming config. No agent is
         // specified — Claude decides which agent to invoke based on the
-        // prompt and the agents discovered from plugins.
-        let (baseline_mode_owned, snapshot_dir) = if command.as_deref() == Some("benchmark") {
-            let skills_dir = std::path::Path::new(&runtime.skills_path);
-            let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
-            let baseline = crate::git::resolve_benchmark_baseline(skills_dir, &skill_name, &workspace_dir);
-            (Some(baseline.mode), baseline.snapshot_dir)
-        } else {
-            (None, None)
-        };
-
+        // user's message and the agents discovered from plugins.
         let prompt = build_refine_prompt(
             &skill_name,
             &workspace_path,
             &runtime.skills_path,
             &user_message,
             target_files.as_deref(),
-            command.as_deref(),
-            baseline_mode_owned.as_deref(),
-            snapshot_dir.as_deref(),
         );
         let (mut config, agent_id) = build_refine_config(
             prompt.clone(),

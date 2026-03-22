@@ -616,9 +616,6 @@ fn test_refine_prompt_includes_all_three_paths() {
         &skills,
         "Add metrics section",
         None,
-        None,
-        None,
-        None,
     );
     // build_refine_prompt normalises backslashes to forward slashes
     let ws_fwd = ws.replace('\\', "/");
@@ -634,30 +631,12 @@ fn test_refine_prompt_includes_all_three_paths() {
 
 #[test]
 fn test_refine_prompt_includes_metadata() {
-    let prompt = build_refine_prompt("my-skill", "/ws", "/skills", "Fix overview", None, None, None, None);
+    let prompt = build_refine_prompt("my-skill", "/ws", "/skills", "Fix overview", None);
     assert!(prompt.contains("The skill name is: my-skill"));
     assert!(prompt.contains("The workspace directory is:"));
     assert!(prompt.contains("The skill output directory"));
 }
 
-#[test]
-fn test_refine_prompt_default_command_is_refine() {
-    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit something", None, None, None, None);
-    assert!(prompt.contains("The command is: refine"));
-}
-
-#[test]
-fn test_refine_prompt_rewrite_command() {
-    let prompt =
-        build_refine_prompt("s", "/ws", "/sk", "improve clarity", None, Some("rewrite"), None, None);
-    assert!(prompt.contains("The command is: rewrite"));
-}
-
-#[test]
-fn test_refine_prompt_validate_command() {
-    let prompt = build_refine_prompt("s", "/ws", "/sk", "", None, Some("validate"), None, None);
-    assert!(prompt.contains("The command is: validate"));
-}
 
 #[test]
 fn test_refine_prompt_file_targeting() {
@@ -668,9 +647,6 @@ fn test_refine_prompt_file_targeting() {
         "/skills",
         "update these",
         Some(&files),
-        None,
-        None,
-        None,
     );
     assert!(prompt
         .contains("IMPORTANT: Only edit these files (relative to skill output directory):"));
@@ -680,7 +656,7 @@ fn test_refine_prompt_file_targeting() {
 
 #[test]
 fn test_refine_prompt_no_file_constraint_when_empty() {
-    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit freely", None, None, None, None);
+    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit freely", None);
     assert!(!prompt.contains("Only edit these files"));
 }
 
@@ -692,16 +668,13 @@ fn test_refine_prompt_includes_user_message() {
         "/sk",
         "Add SLA metrics to the overview",
         None,
-        None,
-        None,
-        None,
     );
     assert!(prompt.contains("Current request: Add SLA metrics to the overview"));
 }
 
 #[test]
 fn test_refine_prompt_includes_derived_paths() {
-    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None, None, None, None);
+    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None);
     assert!(prompt.contains("context_dir"));
     assert!(prompt.contains("eval_dir"));
     assert!(prompt.contains("eval_results_dir"));
@@ -709,59 +682,12 @@ fn test_refine_prompt_includes_derived_paths() {
 
 #[test]
 fn test_refine_prompt_no_inline_user_context() {
-    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None, None, None, None);
+    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None);
     assert!(!prompt.contains("**Industry**:"));
     assert!(!prompt.contains("**Target Audience**:"));
     assert!(!prompt.contains("**Function**:"));
 }
 
-#[test]
-fn test_refine_prompt_validate_routes_to_validate_agent() {
-    let prompt = build_refine_prompt(
-        "my-skill", "/ws", "/skills", "Run validation now",
-        None, Some("validate"), None, None,
-    );
-    assert!(prompt.contains("skill-creator:validate-skill"));
-    assert!(prompt.contains("The workspace directory is: /ws/my-skill"));
-    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /skills/my-skill"));
-    assert!(prompt.contains("Current request: Run validation now"));
-    assert!(!prompt.contains("baseline_mode"));
-}
-
-#[test]
-fn test_refine_prompt_benchmark_includes_baseline() {
-    let prompt = build_refine_prompt(
-        "my-skill", "/ws", "/skills", "Benchmark the skill",
-        None, Some("benchmark"), Some("prior_version"), Some("/ws/my-skill/skill-snapshot"),
-    );
-    assert!(prompt.contains("skill-creator:benchmark-skill"));
-    assert!(prompt.contains("baseline_mode: prior_version"));
-    assert!(prompt.contains("prior_skill_snapshot_dir: /ws/my-skill/skill-snapshot"));
-    assert!(prompt.contains("Current request: Benchmark the skill"));
-}
-
-#[test]
-fn test_refine_prompt_default_routes_to_rewrite_agent() {
-    let prompt = build_refine_prompt(
-        "my-skill", "/ws", "/skills", "Improve the intro",
-        None, None, None, None,
-    );
-    assert!(prompt.contains("skill-creator:rewrite-skill"));
-    assert!(prompt.contains("Current request: Improve the intro"));
-    assert!(prompt.contains("eval_dir"));
-    assert!(prompt.contains("eval_results_dir"));
-}
-
-#[test]
-fn test_refine_prompt_includes_target_files() {
-    let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
-    let prompt = build_refine_prompt(
-        "my-skill", "/ws", "/skills", "Improve metrics",
-        Some(&files), None, None, None,
-    );
-    assert!(prompt.contains("Only edit these files"));
-    assert!(prompt.contains("SKILL.md, references/metrics.md"));
-}
 
 #[test]
 fn test_close_session_removes_entry() {

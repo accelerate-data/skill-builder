@@ -214,29 +214,22 @@ pub(super) fn build_followup_prompt(
     prompt
 }
 
-/// Build the refine prompt with all runtime fields the agents need.
-/// No agent is pre-selected — the prompt includes enough context for
-/// Claude to decide which agent to invoke via the Task tool.
-#[allow(clippy::too_many_arguments)]
+/// Build the refine prompt. Sends workspace context + the user's message.
+/// Claude decides which agent to invoke based on the message content.
 pub(super) fn build_refine_prompt(
     skill_name: &str,
     workspace_path: &str,
     skills_path: &str,
     user_message: &str,
     target_files: Option<&[String]>,
-    command: Option<&str>,
-    baseline_mode: Option<&str>,
-    prior_skill_snapshot_dir: Option<&str>,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_dir = Path::new(skills_path).join(skill_name);
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
 
-    let effective_command = command.unwrap_or("refine");
-
     let mut prompt = format!(
-        "The skill name is: {skill_name}. The command is: {effective_command}. \
+        "The skill name is: {skill_name}. \
          The workspace directory is: {workspace_str}. \
          The skill output directory (SKILL.md and references/) is: {skill_output_str}. \
          Derive context_dir as {workspace_str}/context. \
@@ -246,29 +239,6 @@ pub(super) fn build_refine_prompt(
          CONSTRAINT: You may only refine the existing skill '{skill_name}'. Do NOT create new skills. \
          If the user asks to create a new skill, decline and direct them to the dashboard.",
     );
-
-    // Agent routing: tell Claude which agent to use based on the command.
-    match effective_command {
-        "validate" => prompt.push_str(
-            "\n\nUse the skill-creator:validate-skill agent to validate this skill.",
-        ),
-        "benchmark" => {
-            let mode = baseline_mode.unwrap_or("no_skill");
-            prompt.push_str(&format!(
-                "\n\nUse the skill-creator:benchmark-skill agent to benchmark this skill.\nbaseline_mode: {}",
-                mode,
-            ));
-            if let Some(snapshot_dir) = prior_skill_snapshot_dir {
-                prompt.push_str(&format!(
-                    "\nprior_skill_snapshot_dir: {}",
-                    snapshot_dir.replace('\\', "/")
-                ));
-            }
-        }
-        _ => prompt.push_str(
-            "\n\nUse the skill-creator:rewrite-skill agent to refine this skill.",
-        ),
-    }
 
     if let Some(files) = target_files {
         if !files.is_empty() {
