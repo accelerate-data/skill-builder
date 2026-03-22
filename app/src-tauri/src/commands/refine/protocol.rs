@@ -132,6 +132,9 @@ pub(super) fn build_refine_config(
         chrono::Utc::now().timestamp_millis()
     );
 
+    // When model is set explicitly (no agent), fallbackModel must differ.
+    let effective_fallback = fallback_model.filter(|fm| fm != &model);
+
     let config = SidecarConfig {
         prompt,
         betas: crate::commands::workflow::build_betas(
@@ -156,7 +159,7 @@ pub(super) fn build_refine_config(
                 "budgetTokens": budget
             })
         }),
-        fallback_model,
+        fallback_model: effective_fallback,
         effort: sdk_effort,
         output_format: None,
         prompt_suggestions: Some(refine_prompt_suggestions),
