@@ -363,9 +363,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       activeRunStatus,
     );
 
-    if (activeRunStatus === "error" || activeRunStatus === "shutdown") {
+    if (activeRunStatus === "error") {
       toast.error("Agent failed — check the chat for details", { duration: Infinity });
     }
+    // "shutdown" status is user-initiated (cancel) — no error toast needed.
 
     // Accumulate session-level metrics from the completed run.
     const agentRun = useAgentStore.getState().runs[activeAgentId];
