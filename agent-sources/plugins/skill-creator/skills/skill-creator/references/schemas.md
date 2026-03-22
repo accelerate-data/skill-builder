@@ -226,6 +226,9 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
 
 ```json
 {
+  "skill_version": "2.0.0",
+  "baseline_version": "pdf/v1",
+
   "metadata": {
     "skill_name": "pdf",
     "skill_path": "/path/to/pdf",
@@ -285,6 +288,9 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
 ```
 
 **Fields:**
+
+- `skill_version`: The skill version from `SKILL.md` frontmatter (e.g. `"2.0.0"`). Used for result reuse — a cached iteration is only valid when both `skill_version` and `baseline_version` match.
+- `baseline_version`: `"no_skill"` when benchmarked without any skill, or the prior git tag (e.g. `"pdf/v1"`) when benchmarked against a previous version. Used together with `skill_version` for result reuse.
 - `metadata`: Information about the benchmark run
   - `skill_name`: Name of the skill
   - `timestamp`: When the benchmark was run
