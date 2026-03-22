@@ -48,8 +48,6 @@ export class StreamSession {
   private abortState: ReturnType<typeof createAbortState> | null = null;
   /** SDK session ID captured from messages — used for resume after cancel. */
   private sdkSessionId: string | null = null;
-  /** Active SDK Query object — stored so cancelTurn() can call interrupt()/close(). */
-  private activeQuery: { interrupt(): Promise<void>; close(): void } | null = null;
 
   constructor(
     sessionId: string,
@@ -137,19 +135,12 @@ export class StreamSession {
       this.pendingQuestion = null;
     }
 
-    // Send interrupt to the SDK child process. interrupt() sends a
-    // control_request to cli.js which will stop the current turn and
-    // emit a terminal event. The for-await loop will then exit naturally,
-    // emitting shutdown run_result which drives the frontend transition.
-    if (this.activeQuery) {
-      this.activeQuery.interrupt().catch((err) => {
-        process.stderr.write(
-          `[stream-session] interrupt() failed for session ${this.sessionId}: ${err}\n`,
-        );
-      });
-    }
-
-    // Also abort the controller as a secondary signal.
+    // Abort the AbortController — this is the primary cancel mechanism.
+    // The SDK's query() receives this controller and propagates the abort
+    // signal to the cli.js child process. The for-await loop will throw
+    // AbortError or the iterator will end, emitting a shutdown run_result
+    // that drives the frontend transition.
+    // See: https://github.com/anthropics/claude-code/issues/7181
     if (this.abortState && !this.abortState.abortController.signal.aborted) {
       this.abortState.abortController.abort();
     }
@@ -193,11 +184,6 @@ export class StreamSession {
    */
   close(): void {
     this.closed = true;
-    // Forcefully kill the SDK child process.
-    if (this.activeQuery) {
-      this.activeQuery.close();
-      this.activeQuery = null;
-    }
     if (this.abortState && !this.abortState.abortController.signal.aborted) {
       this.abortState.abortController.abort();
     }
@@ -439,10 +425,6 @@ export class StreamSession {
       options,
     });
 
-    // Store the Query object so cancelTurn() can call interrupt() and
-    // close() can call close() — both communicate with the SDK child
-    // process directly, bypassing the event loop.
-    this.activeQuery = conversation as unknown as { interrupt(): Promise<void>; close(): void };
 
     try {
       let sdkReadyEmitted = false;
@@ -545,7 +527,6 @@ export class StreamSession {
 
     process.stderr.write(`[stream-session] Session ${this.sessionId} ended\n`);
     this.abortState = null;
-    this.activeQuery = null;
   }
 
   private async emitMockTurn(

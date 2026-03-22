@@ -408,13 +408,7 @@ describe("StreamSession — close aborts active query", () => {
         });
       }
 
-      const gen = fakeConversation();
-      // Attach SDK Query interface methods expected by StreamSession.
-      (gen as Record<string, unknown>).interrupt = () => Promise.resolve();
-      (gen as Record<string, unknown>).close = () => {
-        options.abortController.abort();
-      };
-      return gen as ReturnType<typeof query>;
+      return fakeConversation() as ReturnType<typeof query>;
     });
 
     const messages: Record<string, unknown>[] = [];
