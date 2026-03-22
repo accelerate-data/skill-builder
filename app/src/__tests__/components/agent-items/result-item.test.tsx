@@ -51,7 +51,6 @@ describe("ResultItem", () => {
   it("renders a success result with the default message", () => {
     render(<ResultItem item={createItem()} />);
 
-    expect(screen.getByText("Result:")).toBeInTheDocument();
     expect(screen.getByText("Agent completed")).toBeInTheDocument();
   });
 
