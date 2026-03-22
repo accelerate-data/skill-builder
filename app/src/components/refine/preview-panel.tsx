@@ -58,13 +58,17 @@ export function PreviewPanel() {
 
   const isOpen = !!selectedModifiedFile;
 
-  // Tabs: all modified authored files from the current diff.
-  const modifiedTabs = useMemo(() => {
-    if (!gitDiff) return [];
-    return gitDiff.files
-      .map((f) => normalizeDiffPath(f.path))
-      .filter((p) => isAuthoredSkillFile(p));
-  }, [gitDiff]);
+  // Tabs: modified files from the diff, or all authored skill files when browsing.
+  const fileTabs = useMemo(() => {
+    if (gitDiff && gitDiff.files.length > 0) {
+      return gitDiff.files
+        .map((f) => normalizeDiffPath(f.path))
+        .filter((p) => isAuthoredSkillFile(p));
+    }
+    return skillFiles
+      .map((f) => f.filename)
+      .filter((f) => isAuthoredSkillFile(f));
+  }, [gitDiff, skillFiles]);
 
   const activeFile = skillFiles.find((f) => f.filename === activeFileTab);
   const gitDiffFile = gitDiff?.files.find((file) => normalizeDiffPath(file.path) === activeFileTab);
@@ -187,14 +191,15 @@ export function PreviewPanel() {
       {/* Header with tabs + controls */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
         <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
-          {modifiedTabs.length > 1 ? (
-            modifiedTabs.map((tab) => (
+          {fileTabs.length > 1 ? (
+            fileTabs.map((tab) => (
               <Button
                 key={tab}
                 type="button"
                 size="xs"
                 variant={activeFileTab === tab ? "secondary" : "ghost"}
                 className="shrink-0 gap-1 text-xs"
+                {...(activeFileTab === tab ? { "data-testid": "refine-file-view-title" } : {})}
                 onClick={() => {
                   setActiveFileTab(tab);
                   setSelectedModifiedFile(tab);
@@ -212,17 +217,18 @@ export function PreviewPanel() {
           )}
         </div>
         <div className="flex items-center gap-1">
-          <Button
-            data-testid="refine-diff-toggle"
-            variant="ghost"
-            size="xs"
-            disabled={!hasDiff}
-            onClick={() => setDiffMode(!diffMode)}
-            className="gap-1"
-          >
-            <GitCompare className="size-3" />
-            {diffMode ? "Preview" : "Diff"}
-          </Button>
+          {hasDiff && (
+            <Button
+              data-testid="refine-diff-toggle"
+              variant="ghost"
+              size="xs"
+              onClick={() => setDiffMode(!diffMode)}
+              className="gap-1"
+            >
+              <GitCompare className="size-3" />
+              {diffMode ? "Preview" : "Diff"}
+            </Button>
+          )}
           <Button
             type="button"
             variant="ghost"
