@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { MessageSquare, UserCircle } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -84,11 +84,16 @@ export function ChatMessageList({
         {messages.map((msg) => {
           if (msg.role === "user") {
             return (
-              <div key={msg.id} className="flex w-full items-start gap-2.5">
-                <UserCircle className="mt-3 size-4 shrink-0 text-muted-foreground/50" />
-                <div className="min-w-0 flex-1 rounded-lg border border-border/45 bg-muted/20 px-4 py-3" style={{ borderLeftWidth: 2, borderLeftColor: "var(--color-pacific)" }}>
+              <div key={msg.id} className="flex w-full justify-end">
+                <div
+                  className="max-w-[85%] rounded-2xl px-4 py-2.5"
+                  style={{
+                    background: "color-mix(in oklch, var(--color-pacific), transparent 85%)",
+                    borderBottomRightRadius: "4px",
+                  }}
+                >
                   {(msg.targetFiles && msg.targetFiles.length > 0) && (
-                    <div className="mb-2 flex flex-wrap gap-1.5">
+                    <div className="mb-1.5 flex flex-wrap gap-1.5">
                       {msg.targetFiles.map((f) => (
                         <Badge key={f} variant="outline" className="max-w-full text-xs">
                           {f}
