@@ -73,17 +73,9 @@ Detect available prior versions and let the user choose a baseline. The agent de
 **Decision rules:**
 
 - **0-1 tags** → no prior version available. Default to `baseline_mode = "no_skill"` silently (do not prompt the user).
-- **2 tags** → one prior version exists. Use `AskUserQuestion` with these options:
-  1. Compare against previous version (`{prior_tag}`)
-  2. Compare against no skill (baseline)
-  3. Skip benchmark
-- **3+ tags** → multiple prior versions exist. You MUST include a "choose a specific version" option. Use `AskUserQuestion` with these options:
-  1. Compare against previous version (`{most_recent_prior_tag}`)
-  2. Choose a specific older version — when chosen, send a **second** `AskUserQuestion` listing every prior tag as an option (e.g. `my-skill/v3`, `my-skill/v2`, `my-skill/v1`) and let the user pick one
-  3. Compare against no skill (baseline)
-  4. Skip benchmark
+- **2+ tags** → prior versions exist. Use `AskUserQuestion` with one option per prior version tag (e.g. `my-skill/v3`, `my-skill/v2`, `my-skill/v1`), plus "Compare against no skill (baseline)" and "Skip benchmark". The user picks the exact version to compare against.
 
-Include the available version tags in the question text so the user knows what versions exist. If the user chooses "Skip", return immediately with `{ "status": "skipped", "call_trace": ["user-skipped"] }`.
+If the user chooses "Skip", return immediately with `{ "status": "skipped", "call_trace": ["user-skipped"] }`.
 
 **Output:** Store `baseline_mode` (`"no_skill"` or `"prior_version"`) and, when applicable, the chosen `prior_tag` (e.g. `"my-skill/v1"`) for subsequent steps.
 
