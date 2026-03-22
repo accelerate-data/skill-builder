@@ -64,6 +64,9 @@ pub struct RefineSession {
     /// Whether the sidecar streaming session has been started.
     /// First `send_refine_message` sends `stream_start`, subsequent sends `stream_message`.
     pub stream_started: bool,
+    /// HEAD SHA of the skills repo when the session started.
+    /// Used by `finalize_refine_run` to detect whether the agent actually committed.
+    pub head_sha_at_start: Option<String>,
 }
 
 /// Manages active refine sessions. Registered as Tauri managed state.
@@ -140,12 +143,22 @@ pub async fn start_refine_session(
         skill_name
     );
 
+    // Capture HEAD SHA so finalize_refine_run can detect whether the agent committed.
+    let head_sha_at_start = git2::Repository::open(Path::new(&skills_path))
+        .ok()
+        .and_then(|repo| {
+            let head = repo.head().ok()?;
+            let commit = head.peel_to_commit().ok()?;
+            Some(commit.id().to_string())
+        });
+
     map.insert(
         session_id.clone(),
         RefineSession {
             skill_name: skill_name.clone(),
             usage_session_id: new_refine_usage_session_id(&skill_name),
             stream_started: false,
+            head_sha_at_start,
         },
     );
 
