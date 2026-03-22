@@ -6,7 +6,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAgentStore } from "@/stores/agent-store";
 import type { RefineMessage, RefineQuestionResponse } from "@/stores/refine-store";
 import { AgentTurnInline } from "./agent-turn-inline";
-import { BenchmarkPromptInline } from "./benchmark-prompt-inline";
 import { RefineQuestionInline } from "./refine-question-inline";
 
 const SUGGESTIONS = [
@@ -18,8 +17,6 @@ const SUGGESTIONS = [
 interface ChatMessageListProps {
   messages: RefineMessage[];
   isRunning: boolean;
-  onBenchmarkConfirm?: () => void;
-  onBenchmarkSkip?: () => void;
   onQuestionSubmit?: (message: RefineMessage, response: RefineQuestionResponse) => Promise<void>;
   onSuggestionClick?: (text: string) => void;
 }
@@ -27,8 +24,6 @@ interface ChatMessageListProps {
 export function ChatMessageList({
   messages,
   isRunning,
-  onBenchmarkConfirm,
-  onBenchmarkSkip,
   onQuestionSubmit,
   onSuggestionClick,
 }: ChatMessageListProps) {
@@ -132,17 +127,6 @@ export function ChatMessageList({
                 message={msg}
                 onSubmit={onQuestionSubmit}
               />
-            );
-          }
-
-          if (msg.role === "benchmark-prompt") {
-            return (
-              <div key={msg.id} className="w-full">
-                <BenchmarkPromptInline
-                  onConfirm={onBenchmarkConfirm ?? (() => {})}
-                  onSkip={onBenchmarkSkip ?? (() => {})}
-                />
-              </div>
             );
           }
 

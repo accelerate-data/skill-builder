@@ -10,14 +10,6 @@ vi.mock("@/components/refine/agent-turn-inline", () => ({
   ),
 }));
 
-vi.mock("@/components/refine/benchmark-prompt-inline", () => ({
-  BenchmarkPromptInline: ({ onConfirm }: { onConfirm: () => void; onSkip: () => void }) => (
-    <div data-testid="benchmark-prompt">
-      <button data-testid="benchmark-confirm" onClick={onConfirm}>Run Benchmarks</button>
-    </div>
-  ),
-}));
-
 describe("ChatMessageList", () => {
   beforeAll(() => {
     Element.prototype.scrollIntoView = vi.fn();
@@ -86,22 +78,6 @@ describe("ChatMessageList", () => {
     await user.click(screen.getByTestId("refine-question-submit"));
 
     expect(onQuestionSubmit).toHaveBeenCalled();
-  });
-
-  it("renders benchmark-prompt messages", () => {
-    const onConfirm = vi.fn();
-    const onSkip = vi.fn();
-
-    render(
-      <ChatMessageList
-        messages={[{ id: "m1", role: "benchmark-prompt", timestamp: 1 }]}
-        isRunning={false}
-        onBenchmarkConfirm={onConfirm}
-        onBenchmarkSkip={onSkip}
-      />,
-    );
-
-    expect(screen.getByTestId("benchmark-prompt")).toBeInTheDocument();
   });
 
   it("shows helpful hints in the empty state", () => {

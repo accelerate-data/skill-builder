@@ -14,8 +14,6 @@ interface ChatPanelProps {
   hasSkill: boolean;
   availableFiles: string[];
   scopeBlocked?: boolean;
-  onBenchmarkConfirm?: () => void;
-  onBenchmarkSkip?: () => void;
   onQuestionSubmit?: (message: RefineMessage, response: RefineQuestionResponse) => Promise<void>;
 }
 
@@ -26,8 +24,6 @@ export function ChatPanel({
   hasSkill,
   availableFiles,
   scopeBlocked,
-  onBenchmarkConfirm,
-  onBenchmarkSkip,
   onQuestionSubmit,
 }: ChatPanelProps) {
   const messages = useRefineStore((s) => s.messages);
@@ -96,8 +92,6 @@ export function ChatPanel({
       <ChatMessageList
         messages={messages}
         isRunning={isRunning}
-        onBenchmarkConfirm={onBenchmarkConfirm}
-        onBenchmarkSkip={onBenchmarkSkip}
         onQuestionSubmit={onQuestionSubmit}
         onSuggestionClick={handleSuggestionClick}
       />

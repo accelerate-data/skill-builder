@@ -12,8 +12,6 @@ const EXPECTED_AGENTS = [
 const PLUGIN_AGENTS: Record<string, string> = {
   "generate-skill": "skill-creator/agents/generate-skill.md",
   "rewrite-skill": "skill-creator/agents/rewrite-skill.md",
-  "benchmark-skill": "skill-creator/agents/benchmark-skill.md",
-  "validate-skill": "skill-creator/agents/validate-skill.md",
   "research-orchestrator": "skill-content-researcher/agents/research-orchestrator.md",
   "detailed-research": "skill-content-researcher/agents/detailed-research.md",
   "confirm-decisions": "skill-content-researcher/agents/confirm-decisions.md",
@@ -99,9 +97,17 @@ describe("canonical format compliance", () => {
 // ── Read-directive compliance ───────────────────────────────────────────────
 
 describe("read directive compliance", () => {
+  const SKILL_VALIDATOR_PATH = path.join(
+    PLUGINS_DIR,
+    "skill-creator",
+    "skills",
+    "skill-validator",
+    "SKILL.md",
+  );
+
   const TARGET_FILES = [
     resolveAgentPath("generate-skill"),
-    resolveAgentPath("validate-skill"),
+    SKILL_VALIDATOR_PATH,
   ];
 
   const bannedPatterns: Array<[string, RegExp]> = [
@@ -233,16 +239,6 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     const content = fs.readFileSync(resolveAgentPath("generate-skill"), "utf8");
     expect(content).toMatch(/status.*generated/);
     expect(content).toMatch(/call_trace/);
-  });
-
-  it("benchmark-skill returns a prose completion summary", () => {
-    const content = fs.readFileSync(resolveAgentPath("benchmark-skill"), "utf8");
-    expect(content).toMatch(/Return a short natural-language summary, not JSON/i);
-    expect(content).toMatch(/report it as complete/i);
-    expect(content).toMatch(/report it as partial/i);
-    expect(content).toMatch(/skipped cases/i);
-    expect(content).toMatch(/evals\/workspace\/\{iteration\}/);
-    expect(content).not.toMatch(/benchmark_status/);
   });
 
   it("rewrite-skill returns rewritten status", () => {
@@ -390,7 +386,7 @@ describe("skill-creator plugin structure", () => {
       "utf8",
     );
     const benchmarkContent = fs.readFileSync(
-      resolveAgentPath("benchmark-skill"),
+      path.join(pluginRoot, "skills", "skill-evaluator", "SKILL.md"),
       "utf8",
     );
 

@@ -1,11 +1,9 @@
 ---
-name: validate-skill
-description: Validates a completed skill for structural quality, decision coverage, content quality, and boundary alignment.
-model: sonnet
-tools: Read, Glob, Grep
+name: skill-validator
+description: Validates a completed skill for structural quality, decision coverage, content quality, and boundary alignment. Use when the user wants to validate, check, or review a skill's quality.
 ---
 
-# Validate Skill
+# Skill Validator
 
 <role>
 

@@ -38,7 +38,6 @@ export function resolveStepTemplate(
   if (agentName === "skill-content-researcher:confirm-decisions") return "step2-confirm-decisions";
   if (agentName === "skill-creator:generate-skill") return "step3-generate-skill";
   if (agentName === "skill-creator:rewrite-skill") return "rewrite-skill";
-  if (agentName === "skill-creator:benchmark-skill") return "benchmark-skill";
   if (agentName === "answer-evaluator") return MOCK_SCENARIO === "contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator";
 
   // Research orchestrator (plugin-qualified) and all sub-agents spawned by the research skill
@@ -71,7 +70,6 @@ function getOutputDir(stepTemplate: string): string {
     "step2-confirm-decisions": "step2",
     "step3-generate-skill": "step3",
     "rewrite-skill": "refine",
-    "benchmark-skill": "benchmark",
     "gate-answer-evaluator": MOCK_SCENARIO === "contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator",
   };
   return stepMap[stepTemplate] || "";
@@ -324,9 +322,6 @@ async function writeMockOutputFiles(
   } else if (stepTemplate === "step3-generate-skill") {
     // Step 3: files go to skill output dir (may differ from skill dir when skills_path is set)
     destRoot = paths.skillOutputDir ?? paths.skillDir ?? config.cwd;
-  } else if (stepTemplate === "benchmark-skill") {
-    // Benchmark: evals directory tree is relative to the workspace directory
-    destRoot = paths.workspaceDir ?? config.cwd;
   } else {
     // Steps 0, 1, 2: context files go under the skill directory.
     // The mock template has outputs/{stepN}/context/... so we strip the

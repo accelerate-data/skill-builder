@@ -25,7 +25,7 @@ export interface RefineQuestionResponse {
   customText?: string;
 }
 
-export type RefineMessageRole = "user" | "agent" | "benchmark-prompt" | "question";
+export type RefineMessageRole = "user" | "agent" | "question";
 export type RefineCommand = "validate" | "benchmark";
 
 export interface RefineMessage {
@@ -89,7 +89,6 @@ interface RefineState {
   setDiffMode: (v: boolean) => void;
   addUserMessage: (text: string, targetFiles?: string[], command?: RefineCommand) => RefineMessage;
   addAgentTurn: (agentId: string) => RefineMessage;
-  addBenchmarkPrompt: () => RefineMessage;
   addQuestionMessage: (agentId: string, toolUseId: string, questions: RefineQuestionPrompt[]) => RefineMessage;
   answerQuestionMessage: (messageId: string, response: RefineQuestionResponse) => void;
   updateSkillFiles: (files: SkillFile[]) => void;
@@ -172,16 +171,6 @@ export const useRefineStore = create<RefineState>((set, get) => ({
       id: crypto.randomUUID(),
       role: "agent",
       agentId,
-      timestamp: Date.now(),
-    };
-    set((state) => ({ messages: [...state.messages, message] }));
-    return message;
-  },
-
-  addBenchmarkPrompt: () => {
-    const message: RefineMessage = {
-      id: crypto.randomUUID(),
-      role: "benchmark-prompt",
       timestamp: Date.now(),
     };
     set((state) => ({ messages: [...state.messages, message] }));

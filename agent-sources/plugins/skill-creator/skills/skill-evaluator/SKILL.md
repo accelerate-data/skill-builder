@@ -1,11 +1,9 @@
 ---
-name: benchmark-skill
-description: Runs evaluation pipeline (executor, grader, aggregation, review HTML). Called after generate-skill or rewrite-skill completes.
-model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill, AskUserQuestion
+name: skill-evaluator
+description: Runs evaluation pipeline (executor, grader, aggregation, review HTML) for a skill. Use when the user wants to benchmark, evaluate, or run evals on a skill.
 ---
 
-# Benchmark Skill
+# Skill Evaluator
 
 <role>
 

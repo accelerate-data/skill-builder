@@ -298,15 +298,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     // transitions when the stream has actually stopped.
   }, []);
 
-  // --- Benchmark prompt callbacks ---
-  const handleBenchmarkConfirm = useCallback(() => {
-    console.log("[workspace-refine] benchmark confirmed");
-    void handleSend("run benchmarks on this skill");
-  }, [handleSend]);
-
-  const handleBenchmarkSkip = useCallback(() => {
-    console.log("[workspace-refine] benchmark skipped");
-  }, []);
 
   const handleQuestionSubmit = useCallback(
     async (message: RefineMessage, response: RefineQuestionResponse) => {
@@ -407,11 +398,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             })),
           );
           store.setGitDiff(finalized.diff);
-          const userMessages = store.messages.filter((m: RefineMessage) => m.role === "user");
-          const lastMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1] : undefined;
-          if (!lastMsg?.command && finalized.diff.files.length > 0) {
-            store.addBenchmarkPrompt();
-          }
         } catch {
           try {
             const files = await loadSkillFiles(workspacePath, completionSkill.name);
@@ -501,8 +487,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         hasSkill={!!selectedSkill}
         availableFiles={availableFiles}
             scopeBlocked={scopeBlocked}
-            onBenchmarkConfirm={handleBenchmarkConfirm}
-            onBenchmarkSkip={handleBenchmarkSkip}
             onQuestionSubmit={handleQuestionSubmit}
           />
           <PreviewPanel key={previewRevision} />

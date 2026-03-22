@@ -230,8 +230,10 @@ pub(super) fn build_refine_prompt(
          Derive context_dir as \"{workspace_str}/context\". \
          Derive eval_dir as \"{workspace_str}/evals\". \
          Derive eval_results_dir as \"{workspace_str}/evals/workspace\". \
-         All directories already exist — never create directories with mkdir or any other method. \
-         CONSTRAINT: You may only refine the existing skill '{skill_name}'. Do NOT create new skills. \
+         All directories already exist — never create directories with mkdir or any other method.\n\n\
+         ROUTING:\n\
+         - For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.\n\
+         - CONSTRAINT: You may only refine, evaluate, benchmark, or validate the existing skill '{skill_name}'. Do NOT create new skills. \
          If the user asks to create a new skill, decline and direct them to the dashboard.",
     );
 
