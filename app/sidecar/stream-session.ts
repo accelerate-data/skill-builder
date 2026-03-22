@@ -489,20 +489,38 @@ export class StreamSession {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[stream-session] Query error: ${errorMessage}\n`);
-      onMessage(this.currentRequestId, {
-        type: "error",
-        message: errorMessage,
-      });
-      // Emit error run_result for persistence — use execution-error path so
-      // failures are distinguishable from user-initiated shutdowns.
-      if (!processor.hasEmittedResult()) {
-        process.stderr.write(`[stream-session] Emitting error run_result for session ${this.sessionId}\n`);
-        const [errorSummary, orphanedErr] = processor.buildExecutionErrorSummary(errorMessage);
-        for (const item of orphanedErr) {
-          onMessage(this.currentRequestId, item as Record<string, unknown>);
+      const isUserAbort =
+        state.abortController.signal.aborted ||
+        this.cancelled ||
+        errorMessage.includes("aborted by user");
+
+      if (isUserAbort) {
+        // User-initiated cancel threw instead of breaking the loop cleanly.
+        // Treat as a shutdown, not an error.
+        process.stderr.write(`[stream-session] Session ${this.sessionId} aborted (caught) — emitting shutdown run_result\n`);
+        if (!processor.hasEmittedResult()) {
+          const [shutdownSummary, orphanedAbort] = processor.buildShutdownSummary();
+          for (const item of orphanedAbort) {
+            onMessage(this.currentRequestId, item as Record<string, unknown>);
+          }
+          onMessage(this.currentRequestId, { type: "agent_event", event: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
         }
-        onMessage(this.currentRequestId, { type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+      } else {
+        process.stderr.write(`[stream-session] Query error: ${errorMessage}\n`);
+        onMessage(this.currentRequestId, {
+          type: "error",
+          message: errorMessage,
+        });
+        // Emit error run_result for persistence — use execution-error path so
+        // failures are distinguishable from user-initiated shutdowns.
+        if (!processor.hasEmittedResult()) {
+          process.stderr.write(`[stream-session] Emitting error run_result for session ${this.sessionId}\n`);
+          const [errorSummary, orphanedErr] = processor.buildExecutionErrorSummary(errorMessage);
+          for (const item of orphanedErr) {
+            onMessage(this.currentRequestId, item as Record<string, unknown>);
+          }
+          onMessage(this.currentRequestId, { type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+        }
       }
     }
 

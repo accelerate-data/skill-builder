@@ -148,14 +148,13 @@ Missing files are not errors — skip and proceed to the next phase.
 
 ### Prior-step handoff
 
-The "Capture Intent" and "Interview and Research" phases are complete and authoritative. Do not run those phases.
-The outputs are:
+The "Capture Intent" and "Interview and Research" phases are complete and the outputs are:
 
 - `clarifications.json` (if provided and read) — research questions, user answers, and refinements (= the interview record).
 - `decisions.json` (if provided and read) — distilled design decisions with rationale and implications (= the design spec).
 - `user-context.md` (always provided) — skill name, version, author, dates, purpose, and any user-provided description
 
-Do not repeat intent capture or interviewing. Treat these artifacts as authoritative input.
+Include these artifacts as input.
 
 ### Inventory existing skill
 
@@ -225,9 +224,6 @@ If `Current request` has `@`-prefixed files (e.g., `@references/metrics.md`) con
 The following top-level sections in the `skill-creator` skill should **not** be followed:
 
 - `Creating a skill`
-- `Running and evaluating test cases`
-- `Advanced: Blind comparison`
-- `Description Optimization`
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
 

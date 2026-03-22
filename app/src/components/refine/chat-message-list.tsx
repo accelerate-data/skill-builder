@@ -1,12 +1,13 @@
 import { useEffect, useRef } from "react";
-import { MessageSquare } from "lucide-react";
+import { FileText, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { normalizeDiffPath } from "@/lib/path-utils";
 import { useAgentStore } from "@/stores/agent-store";
+import { useRefineStore } from "@/stores/refine-store";
 import type { RefineMessage, RefineQuestionResponse } from "@/stores/refine-store";
 import { AgentTurnInline } from "./agent-turn-inline";
-import { BenchmarkPromptInline } from "./benchmark-prompt-inline";
 import { RefineQuestionInline } from "./refine-question-inline";
 
 const SUGGESTIONS = [
@@ -18,8 +19,6 @@ const SUGGESTIONS = [
 interface ChatMessageListProps {
   messages: RefineMessage[];
   isRunning: boolean;
-  onBenchmarkConfirm?: () => void;
-  onBenchmarkSkip?: () => void;
   onQuestionSubmit?: (message: RefineMessage, response: RefineQuestionResponse) => Promise<void>;
   onSuggestionClick?: (text: string) => void;
 }
@@ -27,20 +26,43 @@ interface ChatMessageListProps {
 export function ChatMessageList({
   messages,
   isRunning,
-  onBenchmarkConfirm,
-  onBenchmarkSkip,
   onQuestionSubmit,
   onSuggestionClick,
 }: ChatMessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const questionRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
+  // Scroll to the question card when one exists, otherwise scroll to bottom.
+  // Uses ResizeObserver to re-scroll when the agent turn above the question
+  // grows with new display items (which pushes the question card down).
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end",
-      inline: "nearest",
+    const scrollToTarget = () => {
+      if (questionRef.current) {
+        questionRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+          inline: "nearest",
+        });
+      } else {
+        bottomRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "end",
+          inline: "nearest",
+        });
+      }
+    };
+
+    scrollToTarget();
+
+    const el = contentRef.current;
+    if (!el || !questionRef.current) return;
+    const observer = new ResizeObserver((_entries, _observer) => {
+      scrollToTarget();
     });
-  }, [messages.length]);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [messages.length, messages]);
 
   // Check if the last message is a completed agent turn (show suggestion chips)
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : undefined;
@@ -80,8 +102,8 @@ export function ChatMessageList({
 
   return (
     <ScrollArea className="h-0 flex-1">
-      <div className="mx-auto flex min-w-0 w-full max-w-4xl flex-col gap-4 overflow-x-hidden px-4 pb-5 pt-3">
-        {messages.map((msg) => {
+      <div ref={contentRef} className="mx-auto flex min-w-0 w-full max-w-4xl flex-col gap-4 overflow-x-hidden px-4 pb-5 pt-3">
+        {messages.map((msg, msgIdx) => {
           if (msg.role === "user") {
             return (
               <div key={msg.id} className="flex w-full justify-end">
@@ -112,6 +134,20 @@ export function ChatMessageList({
           }
 
           if (msg.role === "agent" && msg.agentId) {
+            // Check if a question follows this agent turn — if so, split display
+            // items so content after the question appears below it.
+            const nextQuestion = messages.slice(msgIdx + 1).find(
+              (m) => m.role === "question" && m.agentId === msg.agentId && m.displayItemSplitIndex !== undefined,
+            );
+            const splitAt = nextQuestion?.displayItemSplitIndex;
+
+            const diffFiles = msg.diff
+              ? Array.from(new Set(
+                  msg.diff.files
+                    .map((f) => normalizeDiffPath(f.path))
+                    .filter((p) => p === "SKILL.md" || p.startsWith("references/")),
+                ))
+              : [];
             return (
               <div
                 key={msg.id}
@@ -119,29 +155,25 @@ export function ChatMessageList({
                 className="flex min-w-0 w-full flex-col gap-2 overflow-hidden"
               >
                 <div className="min-w-0 overflow-hidden">
-                  <AgentTurnInline agentId={msg.agentId} />
+                  <AgentTurnInline agentId={msg.agentId} toIndex={splitAt} />
                 </div>
+                {diffFiles.length > 0 && <InlineChangedFiles files={diffFiles} />}
               </div>
             );
           }
 
           if (msg.role === "question" && onQuestionSubmit) {
             return (
-              <RefineQuestionInline
-                key={msg.id}
-                message={msg}
-                onSubmit={onQuestionSubmit}
-              />
-            );
-          }
-
-          if (msg.role === "benchmark-prompt") {
-            return (
-              <div key={msg.id} className="w-full">
-                <BenchmarkPromptInline
-                  onConfirm={onBenchmarkConfirm ?? (() => {})}
-                  onSkip={onBenchmarkSkip ?? (() => {})}
+              <div key={msg.id} ref={msg.pending ? questionRef : undefined} className="flex flex-col gap-4">
+                <RefineQuestionInline
+                  message={msg}
+                  onSubmit={onQuestionSubmit}
                 />
+                {msg.agentId && msg.displayItemSplitIndex !== undefined && (
+                  <div className="min-w-0 overflow-hidden">
+                    <AgentTurnInline agentId={msg.agentId} fromIndex={msg.displayItemSplitIndex} />
+                  </div>
+                )}
               </div>
             );
           }
@@ -167,5 +199,37 @@ export function ChatMessageList({
         <div ref={bottomRef} />
       </div>
     </ScrollArea>
+  );
+}
+
+function InlineChangedFiles({ files }: { files: string[] }) {
+  const setActiveFileTab = useRefineStore((s) => s.setActiveFileTab);
+  const setSelectedModifiedFile = useRefineStore((s) => s.setSelectedModifiedFile);
+
+  return (
+    <div data-testid="refine-modified-files" className="flex items-center gap-3">
+      <span className="shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        Changed
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {files.map((filename) => (
+          <Button
+            key={filename}
+            type="button"
+            size="xs"
+            variant="outline"
+            className="max-w-full justify-start rounded-full bg-background/80"
+            data-testid={`refine-modified-file-pill-${filename}`}
+            onClick={() => {
+              setActiveFileTab(filename);
+              setSelectedModifiedFile(filename);
+            }}
+          >
+            <FileText className="size-3" />
+            <span className="truncate">{filename}</span>
+          </Button>
+        ))}
+      </div>
+    </div>
   );
 }

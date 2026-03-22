@@ -29,6 +29,7 @@ Defines the evals for a skill. Located at `evals/evals.json` within the skill di
 ```
 
 **Fields:**
+
 - `skill_name`: Name matching the skill's frontmatter
 - `evals[].id`: Unique integer identifier
 - `evals[].eval_name`: Human-readable eval name used in the viewer and per-iteration metadata
@@ -76,6 +77,7 @@ Tracks version progression in Improve mode. Located at workspace root.
 ```
 
 **Fields:**
+
 - `started_at`: ISO timestamp of when improvement started
 - `skill_name`: Name of the skill being improved
 - `current_best`: Version identifier of the best performer
@@ -154,6 +156,7 @@ Output from the grader agent. Located at `<run-dir>/grading.json`.
 ```
 
 **Fields:**
+
 - `expectations[]`: Graded expectations with evidence
 - `summary`: Aggregate pass/fail counts
 - `execution_metrics`: Tool usage and output size (from executor's metrics.json)
@@ -188,6 +191,7 @@ Output from the executor agent. Located at `<run-dir>/outputs/metrics.json`.
 ```
 
 **Fields:**
+
 - `tool_calls`: Count per tool type
 - `total_tool_calls`: Sum of all tool calls
 - `total_steps`: Number of major execution steps
@@ -226,6 +230,9 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
 
 ```json
 {
+  "skill_version": "2.0.0",
+  "baseline_version": "pdf/v1",
+
   "metadata": {
     "skill_name": "pdf",
     "skill_path": "/path/to/pdf",
@@ -285,6 +292,9 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
 ```
 
 **Fields:**
+
+- `skill_version`: The skill version from `SKILL.md` frontmatter (e.g. `"2.0.0"`). Used for result reuse — a cached iteration is only valid when both `skill_version` and `baseline_version` match.
+- `baseline_version`: `"no_skill"` when benchmarked without any skill, or the prior git tag (e.g. `"pdf/v1"`) when benchmarked against a previous version. Used together with `skill_version` for result reuse.
 - `metadata`: Information about the benchmark run
   - `skill_name`: Name of the skill
   - `timestamp`: When the benchmark was run
@@ -293,11 +303,11 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
 - `runs[]`: Individual run results
   - `eval_id`: Numeric eval identifier
   - `eval_name`: Human-readable eval name (used as section header in the viewer)
-  - `configuration`: Must be `"with_skill"` or `"without_skill"` (the viewer uses this exact string for grouping and color coding)
+  - `configuration`: `"with_skill"`, `"without_skill"`, or `"old_skill"`. The viewer uses this string for grouping and color coding. Use `"without_skill"` for no-skill baseline and `"old_skill"` for prior-version baseline.
   - `run_number`: Integer run number (1, 2, 3...)
   - `result`: Nested object with `pass_rate`, `passed`, `total`, `time_seconds`, `tokens`, `errors`
 - `run_summary`: Statistical aggregates per configuration
-  - `with_skill` / `without_skill`: Each contains `pass_rate`, `time_seconds`, `tokens` objects with `mean` and `stddev` fields
+  - Keys match the `configuration` values used in runs (e.g. `with_skill` / `without_skill`, or `with_skill` / `old_skill`). Each contains `pass_rate`, `time_seconds`, `tokens` objects with `mean` and `stddev` fields
   - `delta`: Difference strings like `"+0.50"`, `"+13.0"`, `"+1700"`
 - `notes`: Markdown string with analyst observations (written by benchmark-skill Step 4 from `analyst-notes.md`)
 

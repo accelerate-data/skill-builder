@@ -6,6 +6,10 @@ import { DisplayItemList } from "@/components/agent-items/display-item-list";
 
 interface AgentTurnInlineProps {
   agentId: string;
+  /** Render only display items starting from this index. */
+  fromIndex?: number;
+  /** Render only display items up to (not including) this index. */
+  toIndex?: number;
 }
 
 function ThinkingIndicator({ agentId }: { agentId: string }) {
@@ -34,7 +38,11 @@ function ThinkingIndicator({ agentId }: { agentId: string }) {
   );
 }
 
-export const AgentTurnInline = memo(function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
+export const AgentTurnInline = memo(function AgentTurnInline({
+  agentId,
+  fromIndex,
+  toIndex,
+}: AgentTurnInlineProps) {
   const { displayItems, status } = useAgentStore(
     useShallow((s) => ({
       displayItems: s.runs[agentId]?.displayItems,
@@ -44,20 +52,36 @@ export const AgentTurnInline = memo(function AgentTurnInline({ agentId }: AgentT
 
   if (!displayItems) return null;
 
+  const sliced =
+    fromIndex !== undefined || toIndex !== undefined
+      ? displayItems.slice(fromIndex ?? 0, toIndex)
+      : displayItems;
+  const isSliced = fromIndex !== undefined || toIndex !== undefined;
+  // Tail slice: fromIndex set, no toIndex — this is the last visible part of the turn
+  const isTailSlice = fromIndex !== undefined && toIndex === undefined;
+
   // Typing indicator while agent is running with no output yet
-  if (status === "running" && displayItems.length === 0) {
+  if (status === "running" && sliced.length === 0 && !isSliced) {
     return <ThinkingIndicator agentId={agentId} />;
   }
 
+  // Nothing to render for this slice yet
+  if (sliced.length === 0) return null;
+
   return (
     <div data-agent-id={agentId} className="flex min-w-0 w-full flex-col gap-2 overflow-hidden">
-      <DisplayItemList items={displayItems} />
-      {status === "running" && displayItems.length > 0 && (
+      <DisplayItemList items={sliced} />
+      {!isSliced && status === "running" && sliced.length > 0 && (
         <div className="flex items-center gap-1.5 py-1 text-muted-foreground/80">
           <Loader2 className="size-3 animate-spin" />
         </div>
       )}
-      {status === "shutdown" && (
+      {isTailSlice && status === "running" && (
+        <div className="flex items-center gap-1.5 py-1 text-muted-foreground/80">
+          <Loader2 className="size-3 animate-spin" />
+        </div>
+      )}
+      {(!isSliced || isTailSlice) && status === "shutdown" && (
         <div className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-muted-foreground">
           <StopCircle className="size-3.5 shrink-0" />
           Interrupted by user

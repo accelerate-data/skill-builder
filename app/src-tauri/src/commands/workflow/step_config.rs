@@ -8,10 +8,8 @@ pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
         "skill-content-researcher:detailed-research" => &["Read", "Agent"],
         "skill-content-researcher:confirm-decisions" => &["Read"],
         "answer-evaluator" => &["Read"],
-        "skill-creator:validate-skill" => &["Read", "Glob", "Grep"],
         "skill-creator:generate-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill"],
         "skill-creator:rewrite-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill", "AskUserQuestion"],
-        "skill-creator:benchmark-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill"],
         _ => &["Read", "Glob", "Grep", "Agent", "Skill"],
     };
     tools.iter().map(|s| s.to_string()).collect()
@@ -118,21 +116,6 @@ pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde
                     "skipped": { "type": "boolean" },
                     "commit_summary": { "type": "string" },
                     "version_bump": { "type": "string", "enum": ["major", "minor", "patch"] }
-                },
-                "additionalProperties": true
-            }
-        })),
-        "skill-creator:benchmark-skill" => Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["status"],
-                "properties": {
-                    "status": {
-                        "type": "string",
-                        "enum": ["complete", "partial", "skipped"]
-                    },
-                    "benchmark_path": { "type": "string" }
                 },
                 "additionalProperties": true
             }
