@@ -82,7 +82,7 @@ export function ChatMessageList({
         </div>
         {onSuggestionClick && (
           <div className="flex flex-wrap justify-center gap-2">
-            {["Validate this skill", "Improve the overview", "Run benchmarks"].map((text) => (
+            {["Validate this skill", "Improve the skill", "Run benchmarks"].map((text) => (
               <Button
                 key={text}
                 type="button"
