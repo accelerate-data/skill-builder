@@ -128,7 +128,9 @@ export function RefineQuestionInline({ message, onSubmit }: RefineQuestionInline
 
   const currentQuestion = questions[currentStep];
   const isLastStep = currentStep === questions.length - 1;
-  const currentAnswered = currentQuestion ? !!selectedAnswers[currentQuestion.question] : false;
+  const currentAnswer = currentQuestion ? selectedAnswers[currentQuestion.question] : undefined;
+  const currentAnswered = !!currentAnswer;
+  const currentNeedsClarifyText = currentAnswered && isClarifyLabel(currentAnswer!) && clarificationText.trim().length === 0;
   const allAnswered = questions.every((q) => !!selectedAnswers[q.question]);
 
   return (
@@ -218,7 +220,7 @@ export function RefineQuestionInline({ message, onSubmit }: RefineQuestionInline
                 <Button
                   type="button"
                   data-testid="wizard-next"
-                  disabled={!currentAnswered}
+                  disabled={!currentAnswered || currentNeedsClarifyText}
                   onClick={() => setCurrentStep((s) => s + 1)}
                 >
                   Next

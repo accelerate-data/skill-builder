@@ -105,11 +105,12 @@ Create a temporary snapshot of the prior skill version:
 
 ```bash
 PRIOR_TAG="<prior_tag from Step 1>"
-SNAPSHOT_DIR=$(mktemp -d "/tmp/skill-snapshot-{skill_name}-XXXXXX")
+TMPDIR=$(python3 -c "import tempfile; print(tempfile.gettempdir())")
+SNAPSHOT_DIR=$(mktemp -d "$TMPDIR/skill-snapshot-{skill_name}-XXXXXX")
 git -C "<skills_repo_root>" archive "$PRIOR_TAG" -- "{skill_name}/" | tar -x -C "$SNAPSHOT_DIR"
 ```
 
-The unique slug in `/tmp` prevents contention across concurrent runs and benefits from OS-level cleanup. Store the `SNAPSHOT_DIR` path as `prior_skill_snapshot_dir` for use in Step 5.
+Use `python3 tempfile.gettempdir()` to resolve the OS temp directory (works on macOS, Linux, and Windows). The unique slug prevents contention across concurrent runs and benefits from OS-level cleanup. Store the `SNAPSHOT_DIR` path as `prior_skill_snapshot_dir` for use in Step 5.
 
 **Fallback**: If `git archive` or extraction fails, log a warning ("Prior version extraction failed — falling back to no_skill baseline") and switch `baseline_mode` to `"no_skill"`.
 
@@ -141,7 +142,7 @@ Key inputs for the eval pipeline:
 
 ## Step 6: Execute the test cases and generate the benchmark
 
-Use the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to run the test cases and generate the benchmark. The benchmark run must consume the existing eval definitions only; it must not rename evals or rewrite assertions during execution.
+Use the **Running and evaluating test cases** section in `skill-creator:skill-creator` skill to run the test cases and generate the benchmark. The benchmark run must consume the existing eval definitions only; it must not rename evals or rewrite assertions during execution. **Path override**: all output must go to `{eval_results_dir}/{iteration}/` as established in Step 4 — ignore any different path conventions in the skill-creator skill.
 
 After aggregation, write two additional fields into the top-level `benchmark.json`:
 

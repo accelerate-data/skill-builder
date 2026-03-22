@@ -162,7 +162,7 @@ export function ChatMessageList({
 
           if (msg.role === "question" && onQuestionSubmit) {
             return (
-              <div key={msg.id} ref={questionRef} className="flex flex-col gap-4">
+              <div key={msg.id} ref={msg.pending ? questionRef : undefined} className="flex flex-col gap-4">
                 <RefineQuestionInline
                   message={msg}
                   onSubmit={onQuestionSubmit}

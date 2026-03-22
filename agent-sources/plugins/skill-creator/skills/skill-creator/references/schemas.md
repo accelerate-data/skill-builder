@@ -303,11 +303,11 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
 - `runs[]`: Individual run results
   - `eval_id`: Numeric eval identifier
   - `eval_name`: Human-readable eval name (used as section header in the viewer)
-  - `configuration`: Must be `"with_skill"` or `"without_skill"` (the viewer uses this exact string for grouping and color coding)
+  - `configuration`: `"with_skill"`, `"without_skill"`, or `"old_skill"`. The viewer uses this string for grouping and color coding. Use `"without_skill"` for no-skill baseline and `"old_skill"` for prior-version baseline.
   - `run_number`: Integer run number (1, 2, 3...)
   - `result`: Nested object with `pass_rate`, `passed`, `total`, `time_seconds`, `tokens`, `errors`
 - `run_summary`: Statistical aggregates per configuration
-  - `with_skill` / `without_skill`: Each contains `pass_rate`, `time_seconds`, `tokens` objects with `mean` and `stddev` fields
+  - Keys match the `configuration` values used in runs (e.g. `with_skill` / `without_skill`, or `with_skill` / `old_skill`). Each contains `pass_rate`, `time_seconds`, `tokens` objects with `mean` and `stddev` fields
   - `delta`: Difference strings like `"+0.50"`, `"+13.0"`, `"+1700"`
 - `notes`: Markdown string with analyst observations (written by benchmark-skill Step 4 from `analyst-notes.md`)
 
