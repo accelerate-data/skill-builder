@@ -68,20 +68,22 @@ Detect available prior versions and let the user choose a baseline. The agent de
 **Gather context:**
 
 1. Find the skills git repo root. The skill lives at `{skill_output_dir}` — walk up to find the `.git` directory.
-2. List all git tags matching the skill: `git tag --list "{skill_name}/v*" --sort=-v:refname` in the skills repo.
-3. For each tag, run `git log --oneline {tag}..HEAD -- {skill_name}/` to count commits since that version.
+2. List all git tags matching the skill: `git tag --list "{skill_name}/v*" --sort=-v:refname` in the skills repo. The latest tag is the current version; all earlier tags are prior versions available for comparison.
 
 **Decision rules:**
 
 - **0-1 tags** → no prior version available. Default to `baseline_mode = "no_skill"` silently (do not prompt the user).
-- **2 tags** → one prior version exists. Use `AskUserQuestion` to offer: compare against that version, compare against no skill, or skip. Include the tag name and commit summary so the user can see what changed.
-- **3+ tags** → multiple prior versions exist. Use `AskUserQuestion` to offer: compare against the most recent prior version, choose a specific version, compare against no skill, or skip. If the user picks "specific version", show a follow-up listing all available tags with their commit counts since each tag, and let the user pick one.
+- **2 tags** → one prior version exists. Use `AskUserQuestion` with these options:
+  1. Compare against previous version (`{prior_tag}`)
+  2. Compare against no skill (baseline)
+  3. Skip benchmark
+- **3+ tags** → multiple prior versions exist. You MUST include a "choose a specific version" option. Use `AskUserQuestion` with these options:
+  1. Compare against previous version (`{most_recent_prior_tag}`)
+  2. Choose a specific older version — when chosen, send a **second** `AskUserQuestion` listing every prior tag as an option (e.g. `my-skill/v3`, `my-skill/v2`, `my-skill/v1`) and let the user pick one
+  3. Compare against no skill (baseline)
+  4. Skip benchmark
 
-**Prompt guidelines:**
-
-- Always include the tag name(s) and a short summary of changes (commit list or count) so the user can make an informed choice.
-- Use `AskUserQuestion` — do not hardcode exact question text. Craft the question naturally based on the available context.
-- If the user chooses "Skip", return immediately with `{ "status": "skipped", "call_trace": ["user-skipped"] }`.
+Include the available version tags in the question text so the user knows what versions exist. If the user chooses "Skip", return immediately with `{ "status": "skipped", "call_trace": ["user-skipped"] }`.
 
 **Output:** Store `baseline_mode` (`"no_skill"` or `"prior_version"`) and, when applicable, the chosen `prior_tag` (e.g. `"my-skill/v1"`) for subsequent steps.
 
