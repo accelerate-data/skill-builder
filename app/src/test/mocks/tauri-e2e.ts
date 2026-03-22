@@ -103,6 +103,7 @@ const mockResponses: Record<string, unknown> = {
   },
   send_refine_message: "refine-test-skill-e2e-001",
   answer_refine_question: undefined,
+  cancel_refine_turn: undefined,
   close_refine_session: undefined,
   list_refinable_skills: [
     {

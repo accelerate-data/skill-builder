@@ -8,7 +8,7 @@ interface AgentTurnInlineProps {
   agentId: string;
 }
 
-function ThinkingIndicator() {
+function ThinkingIndicator({ agentId }: { agentId: string }) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -22,6 +22,7 @@ function ThinkingIndicator() {
   return (
     <div
       data-testid="refine-agent-thinking"
+      data-agent-id={agentId}
       className="flex items-center gap-2 rounded-md px-3 py-2"
       style={{ background: "var(--chat-thinking-bg)" }}
     >
@@ -45,7 +46,7 @@ export const AgentTurnInline = memo(function AgentTurnInline({ agentId }: AgentT
 
   // Typing indicator while agent is running with no output yet
   if (status === "running" && displayItems.length === 0) {
-    return <ThinkingIndicator />;
+    return <ThinkingIndicator agentId={agentId} />;
   }
 
   return (

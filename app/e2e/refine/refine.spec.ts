@@ -49,37 +49,22 @@ async function getTrackedInvokes(
 }
 
 test.describe("Refine Page", { tag: "@refine" }, () => {
-  test("slash command /validate routes directly to validate", async ({ page }) => {
+  test("quick-action button prefills input and sends message", async ({ page }) => {
     await navigateToRefineWithSkill(page);
     await trackInvokes(page, ["send_refine_message"]);
 
+    // Click the "Validate this skill" quick-action button — prefills input
+    await page.getByRole("button", { name: "Validate this skill" }).click();
     const input = page.getByTestId("refine-chat-input");
+    await expect(input).toHaveValue("Validate this skill");
 
-    // Type "/" to trigger command picker
-    await input.press("/");
-    await expect(page.getByRole("listbox")).toBeVisible();
-
-    await expect(page.getByRole("option", { name: /validate skill/i })).toBeVisible();
-    await expect(page.getByRole("option", { name: /benchmark skill/i })).toBeVisible();
-
-    await page.getByRole("option", { name: /validate skill/i }).click();
-
-    // /validate badge should appear
-    await expect(page.getByTestId("refine-command-badge")).toBeVisible();
-    await expect(page.getByTestId("refine-command-badge")).toContainText("/validate");
-
-    // Type additional instructions
-    await input.fill("check structure");
-
-    // Send
+    // Press Enter to send
     await input.press("Enter");
-
-    await expect(page.getByText("/validate").last()).toBeVisible();
 
     const invokes = await getTrackedInvokes(page, "send_refine_message");
     expect(invokes).toHaveLength(1);
-    expect(invokes[0]?.args.command).toBe("validate");
-    expect(invokes[0]?.args.userMessage).toBe("check structure");
+    expect(invokes[0]?.args.command).toBeNull();
+    expect(invokes[0]?.args.userMessage).toBe("Validate this skill");
 
     // Read agentId and simulate agent
     const agentId = await getAgentId(page);
@@ -373,8 +358,8 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
 
     const sendCalls = await getTrackedInvokes(page, "send_refine_message");
     expect(sendCalls[0]?.args.command).toBeNull();
-    expect(sendCalls[1]?.args.command).toBe("validate");
-    expect(sendCalls[1]?.args.userMessage).toBe("can you review this skill for issues?");
+    expect(sendCalls[1]?.args.command).toBeNull();
+    expect(sendCalls[1]?.args.userMessage).toBe("validate this skill: can you review this skill for issues?");
   });
 
   test("tab-switch guard blocks leaving refine while agent is running", async ({ page }) => {
