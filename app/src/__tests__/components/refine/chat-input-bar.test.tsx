@@ -12,6 +12,7 @@ const defaultProps = {
   onCancel: vi.fn(),
   isRunning: false,
   availableFiles: ["SKILL.md", "references/glossary.md"],
+  availableAgents: ["skill-creator:rewrite-skill", "skill-creator:generate-skill"],
 };
 
 function renderBar(overrides?: Partial<typeof defaultProps>) {

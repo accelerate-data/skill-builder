@@ -1,24 +1,17 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
-import { FileText, GitCompare } from "lucide-react";
+import { FileText, GitCompare, X } from "lucide-react";
 import { markdownComponents } from "@/components/markdown-link";
 import { SkillFrontmatterHeader } from "@/components/skill-frontmatter-header";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isSkillFile, parseFrontmatter } from "@/lib/frontmatter";
 import { normalizeDiffPath } from "@/lib/path-utils";
-import { useRefineStore } from "@/stores/refine-store";
+import { useRefineStore, isAuthoredSkillFile } from "@/stores/refine-store";
 import { GitPatchView } from "./git-patch-view";
 
 const REMARK_PLUGINS = [remarkGfm];
@@ -43,10 +36,7 @@ const MarkdownPreview = memo(function MarkdownPreview({ content, filename }: { c
 });
 
 export function PreviewPanel() {
-  const [drawerWidth, setDrawerWidth] = useState(920);
-  const [dragging, setDragging] = useState(false);
-  const pendingWidthRef = useRef<number | null>(null);
-  const rafIdRef = useRef<number | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const activeFileTab = useRefineStore((s) => s.activeFileTab);
   const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
@@ -54,153 +44,136 @@ export function PreviewPanel() {
   const gitDiff = useRefineStore((s) => s.gitDiff);
   const isLoadingFiles = useRefineStore((s) => s.isLoadingFiles);
   const setDiffMode = useRefineStore((s) => s.setDiffMode);
+  const setActiveFileTab = useRefineStore((s) => s.setActiveFileTab);
   const setSelectedModifiedFile = useRefineStore((s) => s.setSelectedModifiedFile);
+
+  const isOpen = !!selectedModifiedFile;
+
+  // Tabs: all modified authored files from the current diff.
+  const modifiedTabs = useMemo(() => {
+    if (!gitDiff) return [];
+    return gitDiff.files
+      .map((f) => normalizeDiffPath(f.path))
+      .filter((p) => isAuthoredSkillFile(p));
+  }, [gitDiff]);
 
   const activeFile = skillFiles.find((f) => f.filename === activeFileTab);
   const gitDiffFile = gitDiff?.files.find((file) => normalizeDiffPath(file.path) === activeFileTab);
   const hasDiff = !!gitDiffFile;
 
-  const clampWidth = useCallback((width: number) => {
-    if (typeof window === "undefined") return width;
-    const maxWidth = Math.min(1200, Math.floor(window.innerWidth * 0.9));
-    return Math.min(maxWidth, Math.max(560, width));
-  }, []);
+  const close = useCallback(() => {
+    setSelectedModifiedFile(null);
+  }, [setSelectedModifiedFile]);
 
-  const onResizeStart = useCallback(() => {
-    setDragging(true);
-  }, []);
-
+  // Escape to close.
   useEffect(() => {
-    if (!dragging) return;
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, close]);
 
-    const onMouseMove = (e: MouseEvent) => {
-      pendingWidthRef.current = clampWidth(window.innerWidth - e.clientX);
-      if (rafIdRef.current === null) {
-        rafIdRef.current = requestAnimationFrame(() => {
-          if (pendingWidthRef.current !== null) {
-            setDrawerWidth(pendingWidthRef.current);
-            pendingWidthRef.current = null;
-          }
-          rafIdRef.current = null;
-        });
+  // Click outside to close.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        close();
       }
     };
-
-    const onMouseUp = () => {
-      setDragging(false);
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = null;
-      }
-      if (pendingWidthRef.current !== null) {
-        setDrawerWidth(pendingWidthRef.current);
-        pendingWidthRef.current = null;
-      }
-    };
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
+    // Use setTimeout to avoid closing immediately from the pill click itself.
+    const id = setTimeout(() => {
+      document.addEventListener("mousedown", onClick);
+    }, 0);
     return () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = null;
-      }
+      clearTimeout(id);
+      document.removeEventListener("mousedown", onClick);
     };
-  }, [clampWidth, dragging]);
+  }, [isOpen, close]);
+
+  if (!isOpen) return null;
 
   return (
-    <Dialog
-      open={!!selectedModifiedFile}
-      onOpenChange={(open) => {
-        if (!open) setSelectedModifiedFile(null);
-      }}
+    <div
+      ref={panelRef}
+      data-testid="refine-artifact-dropdown"
+      className="absolute inset-y-0 right-0 z-40 flex w-[min(560px,85%)] flex-col border-l bg-background shadow-lg animate-in slide-in-from-right-4 duration-200"
     >
-      <DialogContent
-        showCloseButton={false}
-        className={`left-auto right-0 top-0 h-screen translate-x-0 translate-y-0 gap-0 rounded-none border-l border-r-0 border-t-0 border-b-0 p-0 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right ${dragging ? "select-none" : ""}`}
-        style={{ width: `${drawerWidth}px`, maxWidth: "90vw" }}
-      >
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize file viewer"
-          tabIndex={0}
-          data-testid="refine-file-view-resize-handle"
-          className="absolute left-0 top-0 bottom-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors duration-150 hover:bg-primary/30 before:absolute before:-left-1 before:-right-1 before:top-0 before:bottom-0 before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onMouseDown={onResizeStart}
-          onKeyDown={(e) => {
-            const step = 32;
-            if (e.key === "ArrowLeft") {
-              e.preventDefault();
-              setDrawerWidth((prev) => clampWidth(prev + step));
-            } else if (e.key === "ArrowRight") {
-              e.preventDefault();
-              setDrawerWidth((prev) => clampWidth(prev - step));
-            }
-          }}
-        />
-        <DialogHeader className="border-b px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <DialogTitle className="flex min-w-0 items-start gap-1.5 text-base">
-                <FileText className="size-4 shrink-0 text-muted-foreground" />
-                <span className="break-words text-left leading-6" data-testid="refine-file-view-title">
-                  {selectedModifiedFile ?? activeFileTab}
-                </span>
-              </DialogTitle>
-              <DialogDescription className="mt-1 break-words text-xs">
-                Inspect the selected file without leaving the refine transcript.
-              </DialogDescription>
-            </div>
-            <div className="flex items-center gap-2">
+      {/* Header with tabs + controls */}
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
+        <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+          {modifiedTabs.length > 1 ? (
+            modifiedTabs.map((tab) => (
               <Button
-                data-testid="refine-diff-toggle"
-                variant="outline"
-                size="sm"
-                disabled={!hasDiff}
-                onClick={() => setDiffMode(!diffMode)}
-                className="gap-1.5"
-              >
-                <GitCompare className="size-3.5" />
-                {diffMode ? "Preview" : "Diff"}
-              </Button>
-              <Button
+                key={tab}
                 type="button"
-                variant="ghost"
-                size="sm"
-                data-testid="refine-file-view-close"
-                onClick={() => setSelectedModifiedFile(null)}
+                size="xs"
+                variant={activeFileTab === tab ? "secondary" : "ghost"}
+                className="shrink-0 gap-1 text-xs"
+                onClick={() => {
+                  setActiveFileTab(tab);
+                  setSelectedModifiedFile(tab);
+                }}
               >
-                Close
+                <FileText className="size-3" />
+                {tab}
               </Button>
-            </div>
-          </div>
-        </DialogHeader>
-        <div data-testid="refine-file-view" className="min-h-0 flex-1">
-          {isLoadingFiles ? (
-            <div className="flex flex-col gap-3 p-4">
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-64 w-full" />
-            </div>
-          ) : diffMode && gitDiffFile ? (
-            <GitPatchView patch={gitDiffFile.diff} />
-          ) : diffMode ? (
-            <div data-testid="git-patch-empty" className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              No git diff is available for this file.
-            </div>
-          ) : activeFile ? (
-            <ScrollArea className="h-full">
-              <MarkdownPreview content={activeFile.content} filename={activeFile.filename} />
-            </ScrollArea>
+            ))
           ) : (
-            <div data-testid="refine-preview-missing-file" className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              This file is only available in the git diff.
+            <div className="flex items-center gap-1.5 text-sm font-medium">
+              <FileText className="size-3.5 text-muted-foreground" />
+              <span data-testid="refine-file-view-title">{selectedModifiedFile ?? activeFileTab}</span>
             </div>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+        <div className="flex items-center gap-1">
+          <Button
+            data-testid="refine-diff-toggle"
+            variant="ghost"
+            size="xs"
+            disabled={!hasDiff}
+            onClick={() => setDiffMode(!diffMode)}
+            className="gap-1"
+          >
+            <GitCompare className="size-3" />
+            {diffMode ? "Preview" : "Diff"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            data-testid="refine-file-view-close"
+            onClick={close}
+          >
+            <X className="size-3.5" />
+          </Button>
+        </div>
+      </div>
+      {/* Content */}
+      <div data-testid="refine-file-view" className="min-h-0 flex-1">
+        {isLoadingFiles ? (
+          <div className="flex flex-col gap-3 p-4">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-64 w-full" />
+          </div>
+        ) : diffMode && gitDiffFile ? (
+          <GitPatchView patch={gitDiffFile.diff} />
+        ) : diffMode ? (
+          <div data-testid="git-patch-empty" className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            No git diff is available for this file.
+          </div>
+        ) : activeFile ? (
+          <ScrollArea className="h-full">
+            <MarkdownPreview content={activeFile.content} filename={activeFile.filename} />
+          </ScrollArea>
+        ) : (
+          <div data-testid="refine-preview-missing-file" className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            This file is only available in the git diff.
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

@@ -76,6 +76,8 @@ interface RefineState {
   isRunning: boolean;
   sessionId: string | null;
   sessionExhausted: boolean;
+  /** Agent names discovered from allowed refine plugins (e.g. "skill-creator:rewrite-skill"). */
+  availableAgents: string[];
 
   // Pending initial message (from Test page -> Refine page navigation)
   pendingInitialMessage: string | null;
@@ -101,6 +103,7 @@ interface RefineState {
   setRunning: (v: boolean) => void;
   setSessionId: (id: string | null) => void;
   setSessionExhausted: (v: boolean) => void;
+  setAvailableAgents: (agents: string[]) => void;
   setPendingRedirect: (redirect: RefineRedirectRequest | null) => void;
   clearSession: () => void;
 }
@@ -117,6 +120,7 @@ const SESSION_DEFAULTS = {
   isRunning: false,
   sessionId: null as string | null,
   sessionExhausted: false,
+  availableAgents: [] as string[],
   diffMode: false,
   gitDiff: null as RefineDiff | null,
   previewRevision: 0,
@@ -278,6 +282,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   setRunning: (v) => set({ isRunning: v }),
   setSessionId: (id) => set({ sessionId: id }),
   setSessionExhausted: (v) => set({ sessionExhausted: v }),
+  setAvailableAgents: (agents) => set({ availableAgents: agents }),
   setPendingRedirect: (redirect) => set({ pendingRedirect: redirect }),
 
   clearSession: () => set(SESSION_DEFAULTS),

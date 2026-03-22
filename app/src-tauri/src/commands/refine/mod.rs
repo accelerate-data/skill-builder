@@ -25,6 +25,32 @@ fn resolve_skills_path(db: &Db, workspace_path: &str) -> Result<String, String> 
         .unwrap_or_else(|| workspace_path.to_string()))
 }
 
+/// Plugins allowed for refine sessions. Must match `required_plugins` in
+/// `build_refine_config` so the picker shows exactly the agents the SDK loads.
+const REFINE_ALLOWED_PLUGINS: &[&str] = &["skill-content-researcher", "skill-creator"];
+
+/// Scan `{workspace}/.claude/plugins/{plugin}/agents/` for agent `.md` files.
+/// Returns agent names as `{plugin}:{agent}` qualified identifiers.
+fn discover_plugin_agents(workspace_path: &str) -> Vec<String> {
+    let plugins_dir = Path::new(workspace_path).join(".claude").join("plugins");
+    let mut agents = Vec::new();
+    for plugin in REFINE_ALLOWED_PLUGINS {
+        let agents_dir = plugins_dir.join(plugin).join("agents");
+        if let Ok(entries) = std::fs::read_dir(&agents_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        agents.push(format!("{}:{}", plugin, stem));
+                    }
+                }
+            }
+        }
+    }
+    agents.sort();
+    agents
+}
+
 // ─── Session management ──────────────────────────────────────────────────────
 
 /// In-memory state for a single refine session.
@@ -123,10 +149,14 @@ pub async fn start_refine_session(
         },
     );
 
+    // Discover agents from allowed refine plugins deployed in workspace.
+    let available_agents = discover_plugin_agents(&workspace_path);
+
     Ok(RefineSessionInfo {
         session_id,
         skill_name,
         created_at,
+        available_agents,
     })
 }
 

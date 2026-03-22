@@ -35,6 +35,8 @@ pub struct RefineSessionInfo {
     pub session_id: String,
     pub skill_name: String,
     pub created_at: String,
+    /// Agent names discovered from the allowed refine plugins.
+    pub available_agents: Vec<String>,
 }
 
 impl std::fmt::Debug for RefineSessionInfo {
