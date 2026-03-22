@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -35,8 +35,17 @@ const MarkdownPreview = memo(function MarkdownPreview({ content, filename }: { c
   );
 });
 
+const MIN_WIDTH = 360;
+const MAX_WIDTH_RATIO = 0.85;
+const DEFAULT_WIDTH = 560;
+
 export function PreviewPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const [dragging, setDragging] = useState(false);
+  const pendingWidthRef = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
+
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const activeFileTab = useRefineStore((s) => s.activeFileTab);
   const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
@@ -93,14 +102,88 @@ export function PreviewPanel() {
     };
   }, [isOpen, close]);
 
+  // Clamp width to container bounds.
+  const clampWidth = useCallback((w: number) => {
+    const containerWidth = panelRef.current?.parentElement?.clientWidth ?? window.innerWidth;
+    const max = Math.floor(containerWidth * MAX_WIDTH_RATIO);
+    return Math.min(max, Math.max(MIN_WIDTH, w));
+  }, []);
+
+  // Drag-to-resize from left edge.
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setDragging(true);
+  }, []);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMouseMove = (e: MouseEvent) => {
+      const container = panelRef.current?.parentElement;
+      if (!container) return;
+      const containerRect = container.getBoundingClientRect();
+      pendingWidthRef.current = clampWidth(containerRect.right - e.clientX);
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          if (pendingWidthRef.current !== null) {
+            setWidth(pendingWidthRef.current);
+            pendingWidthRef.current = null;
+          }
+          rafRef.current = null;
+        });
+      }
+    };
+    const onMouseUp = () => {
+      setDragging(false);
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      if (pendingWidthRef.current !== null) {
+        setWidth(pendingWidthRef.current);
+        pendingWidthRef.current = null;
+      }
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [dragging, clampWidth]);
+
   if (!isOpen) return null;
 
   return (
     <div
       ref={panelRef}
       data-testid="refine-artifact-dropdown"
-      className="absolute inset-y-0 right-0 z-40 flex w-[min(560px,85%)] flex-col border-l bg-background shadow-lg animate-in slide-in-from-right-4 duration-200"
+      className={`absolute inset-y-0 right-0 z-40 flex flex-col border-l bg-background shadow-lg animate-in slide-in-from-right-4 duration-200 ${dragging ? "select-none" : ""}`}
+      style={{ width: `${width}px`, maxWidth: "85%" }}
     >
+      {/* Resize handle */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize file viewer"
+        tabIndex={0}
+        data-testid="refine-file-view-resize-handle"
+        className="absolute left-0 top-0 bottom-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors duration-150 hover:bg-primary/30 before:absolute before:-left-1 before:-right-1 before:top-0 before:bottom-0 before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onMouseDown={onResizeStart}
+        onKeyDown={(e) => {
+          const step = 32;
+          if (e.key === "ArrowLeft") {
+            e.preventDefault();
+            setWidth((prev) => clampWidth(prev + step));
+          } else if (e.key === "ArrowRight") {
+            e.preventDefault();
+            setWidth((prev) => clampWidth(prev - step));
+          }
+        }}
+      />
       {/* Header with tabs + controls */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
         <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
