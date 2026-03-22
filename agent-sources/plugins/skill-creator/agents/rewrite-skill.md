@@ -58,6 +58,7 @@ Before reading or editing files, inspect `Current request` and decide whether it
 - If the request is better served by benchmarking, evaluation, or eval execution, use `AskUserQuestion` with one question and exactly these options:
   - `Launch benchmark`
   - `Clarify refine`
+- If the request asks to optimize, improve, or test the skill's trigger description, continue normally — this is a valid refine operation. Follow the "Description Optimization" section from the skill-creator skill.
 - If the request is ambiguous, use `AskUserQuestion` to ask the user to clarify so refine can continue.
 
 When using `AskUserQuestion`:
@@ -208,6 +209,16 @@ Write the bumped version back to the SKILL.md frontmatter before returning.
 - Treat `Current request` as an additional focus area for coverage. Make sure the rewritten skill covers it explicitly where appropriate.
 - Do not ignore decisions or broader skill requirements in favor of the request.
 - Do not run the evaluations — a separate benchmark agent handles execution and grading.
+
+### Description evaluation after content changes
+
+After rewriting skill content, evaluate whether the SKILL.md `description` frontmatter still accurately reflects the skill's capabilities and trigger intent. The description is the primary mechanism that determines whether Claude invokes the skill.
+
+- If the rewrite changed what the skill does or when it should trigger, update the description to match.
+- If the rewrite only changed internal guidance (how, not what/when), leave the description unchanged.
+- If unsure whether the description still fits, use `AskUserQuestion` to ask the user whether to update it.
+
+For full description optimization (generating eval queries, running trigger tests, iterating), follow the "Description Optimization" section in the skill-creator skill. Only run the full optimization loop when the user explicitly requests it — don't trigger it automatically on every rewrite.
 
 ### File targeting
 

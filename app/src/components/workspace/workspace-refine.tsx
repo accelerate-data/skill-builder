@@ -32,7 +32,6 @@ import type { SkillSummary } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
 import { ChatPanel } from "@/components/refine/chat-panel";
-import { PreviewPanel } from "@/components/refine/preview-panel";
 import type { RefineQuestionResponse } from "@/stores/refine-store";
 
 // Ensure agent-stream listeners are registered
@@ -77,7 +76,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
   const selectedSkill = useRefineStore((s) => s.selectedSkill);
   const skillFiles = useRefineStore((s) => s.skillFiles);
-  const previewRevision = useRefineStore((s) => s.previewRevision);
   const isRunning = useRefineStore((s) => s.isRunning);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
 
@@ -146,6 +144,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   });
 
   const availableFiles = useMemo(() => skillFiles.map((f) => f.filename), [skillFiles]);
+  const availableAgents = useRefineStore((s) => s.availableAgents);
 
   // --- Select skill on mount ---
   const handleSelectSkill = useCallback(
@@ -193,6 +192,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         try {
           const session = await startRefineSession(s.name, workspacePath);
           useRefineStore.getState().setSessionId(session.session_id);
+          useRefineStore.getState().setAvailableAgents(session.available_agents ?? []);
         } catch (err) {
           console.error("[workspace-refine] Failed to start refine session:", err);
           toast.error("Failed to start refine session", { duration: Infinity });
@@ -482,18 +482,16 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 w-full flex-1 overflow-hidden">
-        <div className="h-full">
-      <ChatPanel
-        onSend={handleSend}
-        onCancel={handleCancel}
-        isRunning={isRunning}
-        hasSkill={!!selectedSkill}
-        availableFiles={availableFiles}
-            scopeBlocked={scopeBlocked}
-            onQuestionSubmit={handleQuestionSubmit}
-          />
-          <PreviewPanel key={previewRevision} />
-        </div>
+        <ChatPanel
+          onSend={handleSend}
+          onCancel={handleCancel}
+          isRunning={isRunning}
+          hasSkill={!!selectedSkill}
+          availableFiles={availableFiles}
+          availableAgents={availableAgents}
+          scopeBlocked={scopeBlocked}
+          onQuestionSubmit={handleQuestionSubmit}
+        />
       </div>
 
       {/* Status bar */}

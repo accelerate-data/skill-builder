@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { FileText } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,7 +11,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useSkillStore } from "@/stores/skill-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
+import type { SkillFile } from "@/stores/refine-store";
+import { getSkillContentForRefine } from "@/lib/tauri";
+import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
@@ -55,53 +60,107 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
   }, [pendingTab]);
 
   const skillName = "name" in skill ? skill.name : skill.skill_name;
+  const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
+  const isBuilderSkill = "name" in skill;
+  const workspacePath = useSettingsStore((s) => s.workspacePath);
+
+  const toggleFileViewer = useCallback(async () => {
+    const store = useRefineStore.getState();
+    if (store.selectedModifiedFile) {
+      store.setSelectedModifiedFile(null);
+      return;
+    }
+
+    // Load skill files if not already loaded (e.g. opening from Overview tab).
+    if (store.skillFiles.length === 0 && isBuilderSkill && workspacePath) {
+      try {
+        const contents = await getSkillContentForRefine(
+          (skill as SkillSummary).name,
+          workspacePath,
+        );
+        const files: SkillFile[] = contents
+          .map((c) => ({ filename: c.path, content: c.content }))
+          .sort((a, b) => {
+            if (a.filename === "SKILL.md") return -1;
+            if (b.filename === "SKILL.md") return 1;
+            return a.filename.localeCompare(b.filename);
+          });
+        store.setSkillFiles(files);
+        if (files.length > 0) store.setActiveFileTab(files[0].filename);
+      } catch {
+        return;
+      }
+    }
+
+    const tab = store.activeFileTab || "SKILL.md";
+    store.setActiveFileTab(tab);
+    store.setDiffMode(false);
+    store.setSelectedModifiedFile(tab);
+  }, [isBuilderSkill, workspacePath, skill]);
 
   return (
     <div className="flex h-full flex-col">
       {/* 48px header */}
-      <div className="flex h-12 shrink-0 items-center gap-2.5 border-b px-4">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
         <span className="truncate text-sm font-semibold">{skillName}</span>
+        {isBuilderSkill && (
+          <Button
+            type="button"
+            variant={selectedModifiedFile ? "secondary" : "ghost"}
+            size="icon-xs"
+            data-file-viewer-toggle
+            onClick={toggleFileViewer}
+            title={selectedModifiedFile ? "Close file viewer" : "View skill files"}
+            aria-label={selectedModifiedFile ? "Close file viewer" : "View skill files"}
+          >
+            <FileText className="size-3.5" />
+          </Button>
+        )}
       </div>
 
-      {/* Tabs */}
-      <Tabs
-        value={activeTab}
-        onValueChange={handleTabChange}
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        <TabsList variant="line" className="shrink-0 border-b px-4">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="refine">Refine</TabsTrigger>
-          <TabsTrigger value="evals">Evals</TabsTrigger>
-          <TabsTrigger value="description" disabled>
-            Description
-          </TabsTrigger>
-        </TabsList>
+      {/* Tabs + overlay container */}
+      <div className="relative min-h-0 flex-1">
+        <Tabs
+          value={activeTab}
+          onValueChange={handleTabChange}
+          className="flex h-full flex-col"
+        >
+          <TabsList variant="line" className="shrink-0 border-b px-4">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="refine">Refine</TabsTrigger>
+            <TabsTrigger value="evals">Evals</TabsTrigger>
+            <TabsTrigger value="description" disabled>
+              Description
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="overview" className="flex-1 overflow-y-auto p-6">
-          <WorkspaceOverview
-            skill={skill}
-            skillType={skillType}
-            isLoading={isSkillStoreLoading}
-          />
-        </TabsContent>
+          <TabsContent value="overview" className="flex-1 overflow-y-auto p-6">
+            <WorkspaceOverview
+              skill={skill}
+              skillType={skillType}
+              isLoading={isSkillStoreLoading}
+            />
+          </TabsContent>
 
-        <TabsContent value="refine" className="min-h-0 flex-1 overflow-hidden">
-          {"name" in skill ? (
-            <WorkspaceRefine skill={skill as SkillSummary} />
-          ) : (
+          <TabsContent value="refine" className="min-h-0 flex-1 overflow-hidden">
+            {"name" in skill ? (
+              <WorkspaceRefine skill={skill as SkillSummary} />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Refine is not available for imported skills.
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="evals" className="flex-1 overflow-y-auto p-6">
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              Refine is not available for imported skills.
+              Evals coming soon.
             </div>
-          )}
-        </TabsContent>
+          </TabsContent>
+        </Tabs>
 
-        <TabsContent value="evals" className="flex-1 overflow-y-auto p-6">
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Evals coming soon.
-          </div>
-        </TabsContent>
-      </Tabs>
+        <PreviewPanel />
+      </div>
 
       {pendingTab !== null && (
         <Dialog open onOpenChange={(open) => { if (!open) handleTabStay(); }}>

@@ -48,6 +48,8 @@ export class StreamSession {
   private abortState: ReturnType<typeof createAbortState> | null = null;
   /** SDK session ID captured from messages — used for resume after cancel. */
   private sdkSessionId: string | null = null;
+  /** Reference to the active SDK async iterator — used for force-return on cancel timeout. */
+  private activeConversation: AsyncGenerator<unknown, unknown, unknown> | null = null;
 
   constructor(
     sessionId: string,
@@ -150,6 +152,27 @@ export class StreamSession {
     if (this.pendingResolve) {
       this.pendingResolve(CLOSE_SENTINEL);
       this.pendingResolve = null;
+    }
+
+    // Fallback: if the SDK doesn't respond to abort within 5s (e.g. stuck
+    // waiting for subagent HTTP responses), force-return the async iterator.
+    // This terminates the for-await loop in runQuery() so the session can
+    // emit a shutdown result and transition the frontend out of "running".
+    //
+    // Trade-off: conversation.return() kills the iterator so SDK conversation
+    // state is lost — the next pushMessage() will start a fresh query instead
+    // of resuming. This is acceptable because the alternative is the user
+    // being stuck with no way to recover without restarting the session.
+    const conv = this.activeConversation;
+    if (conv) {
+      setTimeout(() => {
+        if (this.activeConversation === conv) {
+          process.stderr.write(
+            `[stream-session] cancelTurn force-return: session=${this.sessionId} (abort timed out after 5s)\n`,
+          );
+          conv.return(undefined).catch(() => {});
+        }
+      }, 5000);
     }
   }
 
@@ -420,12 +443,13 @@ export class StreamSession {
 
     process.stderr.write(`[stream-session] Starting streaming query for session ${this.sessionId}\n`);
 
-    let conversation;
+    let conversation: AsyncGenerator<unknown, unknown, unknown>;
     try {
       conversation = query({
         prompt: messageGenerator(),
         options,
-      });
+      }) as AsyncGenerator<unknown, unknown, unknown>;
+      this.activeConversation = conversation;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[stream-session] query() threw synchronously for session ${this.sessionId}: ${errorMessage}\n`);
@@ -456,6 +480,21 @@ export class StreamSession {
         // Capture SDK session ID for resume after cancel.
         if (typeof msg.session_id === "string" && !this.sdkSessionId) {
           this.sdkSessionId = msg.session_id;
+        }
+
+        // Forward prompt suggestions directly — they arrive after result
+        // and are not display items. Emit as an agent_event so Rust routes
+        // them to the frontend agent store.
+        if (msg.type === "prompt_suggestion" && typeof msg.suggestion === "string") {
+          onMessage(this.currentRequestId, {
+            type: "agent_event",
+            event: {
+              type: "prompt_suggestion",
+              suggestion: msg.suggestion,
+            },
+            timestamp: Date.now(),
+          });
+          continue;
         }
 
         // Process into display items + pass-through messages
@@ -556,6 +595,7 @@ export class StreamSession {
     }
 
     process.stderr.write(`[stream-session] Session ${this.sessionId} ended\n`);
+    this.activeConversation = null;
     this.abortState = null;
   }
 

@@ -101,10 +101,6 @@ vi.mock("@/components/refine/chat-panel", () => ({
   ChatPanel: () => <div data-testid="chat-panel" />,
 }));
 
-vi.mock("@/components/refine/preview-panel", () => ({
-  PreviewPanel: () => <div data-testid="preview-panel" />,
-}));
-
 // --- Helpers ---
 function makeSkill(name: string): SkillSummary {
   return {
@@ -142,7 +138,7 @@ describe("WorkspaceRefine", () => {
     });
 
     expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("preview-panel")).toBeInTheDocument();
+    // PreviewPanel is now rendered at the workspace-shell level, not here.
   });
 
   it("keeps the chat panel mounted when a modified file is selected", async () => {
@@ -154,7 +150,7 @@ describe("WorkspaceRefine", () => {
     });
 
     expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("preview-panel")).toBeInTheDocument();
+    // PreviewPanel is now rendered at the workspace-shell level, not here.
   });
 
   it("does not render a SkillPicker", async () => {

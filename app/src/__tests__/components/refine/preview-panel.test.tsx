@@ -78,7 +78,7 @@ describe("PreviewPanel", () => {
     expect(useRefineStore.getState().selectedModifiedFile).toBeNull();
   });
 
-  it("disables the diff toggle when the selected file has no diff", () => {
+  it("hides the diff toggle when the selected file has no diff", () => {
     setStoreState({
       skillFiles: SKILL_FILES,
       activeFileTab: "SKILL.md",
@@ -91,7 +91,7 @@ describe("PreviewPanel", () => {
 
     render(<PreviewPanel />);
 
-    expect(screen.getByTestId("refine-diff-toggle")).toBeDisabled();
+    expect(screen.queryByTestId("refine-diff-toggle")).not.toBeInTheDocument();
   });
 
   it("toggles diff mode for the selected file when a diff exists", async () => {

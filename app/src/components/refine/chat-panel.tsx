@@ -11,6 +11,7 @@ interface ChatPanelProps {
   isRunning: boolean;
   hasSkill: boolean;
   availableFiles: string[];
+  availableAgents: string[];
   scopeBlocked?: boolean;
   onQuestionSubmit?: (message: RefineMessage, response: RefineQuestionResponse) => Promise<void>;
 }
@@ -21,6 +22,7 @@ export function ChatPanel({
   isRunning,
   hasSkill,
   availableFiles,
+  availableAgents,
   scopeBlocked,
   onQuestionSubmit,
 }: ChatPanelProps) {
@@ -67,6 +69,7 @@ export function ChatPanel({
         onCancel={onCancel}
         isRunning={isRunning || sessionExhausted || !!scopeBlocked}
         availableFiles={availableFiles}
+        availableAgents={availableAgents}
         prefilledValue={pendingInitialMessage ?? undefined}
       />
     </div>

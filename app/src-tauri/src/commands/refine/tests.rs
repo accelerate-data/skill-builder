@@ -213,6 +213,7 @@ fn test_session_create_and_lookup() {
                 skill_name: "my-skill".to_string(),
                 usage_session_id: "usage-session-1".to_string(),
                 stream_started: false,
+                head_sha_at_start: None,
             },
         );
     }
@@ -235,6 +236,7 @@ fn test_session_conflict_detection() {
                 skill_name: "my-skill".to_string(),
                 usage_session_id: "usage-session-1".to_string(),
                 stream_started: false,
+                head_sha_at_start: None,
             },
         );
     }
@@ -475,6 +477,7 @@ fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
         dir.path().to_str().unwrap(),
         workspace_dir.path().to_str().unwrap(),
         None,
+        None,
     )
     .unwrap();
 
@@ -501,6 +504,7 @@ fn test_finalize_refine_run_returns_head_sha_even_when_no_new_changes() {
         "my-skill",
         dir.path().to_str().unwrap(),
         workspace_dir.path().to_str().unwrap(),
+        None,
         None,
     )
     .unwrap();
@@ -546,6 +550,7 @@ fn test_finalize_refine_run_ignores_structured_output() {
         skills_dir.path().to_str().unwrap(),
         workspace_dir.path().to_str().unwrap(),
         Some(&payload),
+        None,
     )
     .unwrap();
 
@@ -584,6 +589,7 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
         "my-skill",
         skills_dir.path().to_str().unwrap(),
         workspace_dir.path().to_str().unwrap(),
+        None,
         None,
     )
     .unwrap();
@@ -704,6 +710,7 @@ fn test_close_session_removes_entry() {
                 skill_name: "my-skill".to_string(),
                 usage_session_id: "usage-session-close".to_string(),
                 stream_started: false,
+                head_sha_at_start: None,
             },
         );
         assert_eq!(map.len(), 1);
@@ -861,6 +868,7 @@ fn test_session_stream_started_defaults_to_false() {
                 skill_name: "my-skill".to_string(),
                 usage_session_id: "usage-session-stream".to_string(),
                 stream_started: false,
+                head_sha_at_start: None,
             },
         );
     }
@@ -879,6 +887,7 @@ fn test_session_stream_started_can_be_set() {
                 skill_name: "my-skill".to_string(),
                 usage_session_id: "usage-session-stream".to_string(),
                 stream_started: false,
+                head_sha_at_start: None,
             },
         );
     }
@@ -903,6 +912,7 @@ fn test_completed_turn_does_not_close_or_reset_stream_started_session() {
                 skill_name: "my-skill".to_string(),
                 usage_session_id: "usage-session-stream".to_string(),
                 stream_started: true,
+                head_sha_at_start: None,
             },
         );
     }
@@ -1014,6 +1024,7 @@ fn test_finalize_refine_run_cleans_up_snapshot_dir() {
         "my-skill",
         dir.path().to_str().unwrap(),
         workspace_dir.path().to_str().unwrap(),
+        None,
         None,
     )
     .unwrap();

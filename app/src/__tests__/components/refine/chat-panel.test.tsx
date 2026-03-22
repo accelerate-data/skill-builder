@@ -24,6 +24,7 @@ vi.mock("@/components/refine/chat-input-bar", () => ({
     onCancel?: () => void;
     isRunning: boolean;
     availableFiles: string[];
+    availableAgents: string[];
     prefilledValue?: string;
   }) => {
     inputBarState.props = props;
@@ -41,6 +42,7 @@ const defaultProps = {
   isRunning: false,
   hasSkill: true,
   availableFiles: ["SKILL.md", "references/glossary.md"],
+  availableAgents: ["skill-creator:rewrite-skill"],
 };
 
 function renderPanel(overrides?: Partial<typeof defaultProps> & { scopeBlocked?: boolean }) {

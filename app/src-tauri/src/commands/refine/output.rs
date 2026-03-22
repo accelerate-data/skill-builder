@@ -80,6 +80,7 @@ pub(crate) fn finalize_refine_run_inner(
     skills_path: &str,
     workspace_path: &str,
     _structured_output: Option<&serde_json::Value>,
+    pre_run_sha: Option<&str>,
 ) -> Result<RefineFinalizeResult, String> {
     let skill_root = Path::new(skills_path).join(skill_name);
     let workspace_skill_root = Path::new(workspace_path).join(skill_name);
@@ -103,6 +104,29 @@ pub(crate) fn finalize_refine_run_inner(
             .and_then(|h| h.peel_to_commit().ok())
             .map(|c| c.id().to_string())
     };
+
+    // If HEAD hasn't changed since the session started, the agent made no commits.
+    // Return files with an empty diff instead of diffing a stale prior commit.
+    let head_unchanged = match (&commit_sha, pre_run_sha) {
+        (Some(current), Some(pre)) => current == pre,
+        _ => false,
+    };
+    if head_unchanged {
+        log::info!(
+            "[finalize_refine_run] HEAD unchanged skill={} — no agent commit, skipping diff",
+            skill_name,
+        );
+        let files = get_skill_content_inner(skill_name, skills_path)?;
+        return Ok(RefineFinalizeResult {
+            files,
+            diff: RefineDiff {
+                stat: "no changes".to_string(),
+                files: vec![],
+            },
+            commit_sha,
+        });
+    }
+
     if let Some(ref sha) = commit_sha {
         log::info!(
             "[finalize_refine_run] agent committed skill={} sha={}",
@@ -175,6 +199,7 @@ pub fn finalize_refine_run(
     workspace_path: String,
     structured_output: Option<serde_json::Value>,
     db: tauri::State<'_, Db>,
+    sessions: tauri::State<'_, super::RefineSessionManager>,
 ) -> Result<RefineFinalizeResult, String> {
     log::info!("[finalize_refine_run] skill={}", skill_name);
     validate_skill_name(&skill_name)?;
@@ -183,14 +208,37 @@ pub fn finalize_refine_run(
         e
     })?;
 
-    finalize_refine_run_inner(
+    // Look up the session's pre-run HEAD SHA to detect no-op turns.
+    let pre_run_sha = sessions
+        .0
+        .lock()
+        .ok()
+        .and_then(|map| {
+            map.values()
+                .find(|s| s.skill_name == skill_name)
+                .and_then(|s| s.head_sha_at_start.clone())
+        });
+
+    let result = finalize_refine_run_inner(
         &skill_name,
         &skills_path,
         &workspace_path,
         structured_output.as_ref(),
+        pre_run_sha.as_deref(),
     )
     .map_err(|e| {
         log::error!("[finalize_refine_run] {}", e);
         e
-    })
+    })?;
+
+    // Update session's head_sha_at_start so subsequent turns diff correctly.
+    if let Some(ref new_sha) = result.commit_sha {
+        if let Ok(mut map) = sessions.0.lock() {
+            if let Some(session) = map.values_mut().find(|s| s.skill_name == skill_name) {
+                session.head_sha_at_start = Some(new_sha.clone());
+            }
+        }
+    }
+
+    Ok(result)
 }
