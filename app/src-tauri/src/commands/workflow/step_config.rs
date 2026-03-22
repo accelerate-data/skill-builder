@@ -10,7 +10,7 @@ pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
         "answer-evaluator" => &["Read"],
         "skill-creator:validate-skill" => &["Read", "Glob", "Grep"],
         "skill-creator:generate-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill"],
-        "skill-creator:rewrite-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill"],
+        "skill-creator:rewrite-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill", "AskUserQuestion"],
         "skill-creator:benchmark-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill"],
         _ => &["Read", "Glob", "Grep", "Agent", "Skill"],
     };

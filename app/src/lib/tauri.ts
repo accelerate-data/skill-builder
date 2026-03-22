@@ -411,13 +411,29 @@ export const startRefineSession = (skillName: string, workspacePath: string) =>
 export const closeRefineSession = (sessionId: string) =>
   invoke<void>("close_refine_session", { sessionId })
 
+export const cancelRefineTurn = (sessionId: string) =>
+  invoke<void>("cancel_refine_turn", { sessionId })
+
+export const answerRefineQuestion = (
+  sessionId: string,
+  agentId: string,
+  toolUseId: string,
+  questions: unknown,
+  answers: Record<string, unknown>,
+) => invoke<void>("answer_refine_question", {
+  sessionId,
+  agentId,
+  toolUseId,
+  questions,
+  answers,
+})
+
 export const sendRefineMessage = (
   sessionId: string,
   userMessage: string,
   workspacePath: string,
   targetFiles?: string[],
-  command?: string,
-) => invoke<string>("send_refine_message", { sessionId, userMessage, workspacePath, targetFiles: targetFiles ?? null, command: command ?? null })
+) => invoke<string>("send_refine_message", { sessionId, userMessage, workspacePath, targetFiles: targetFiles ?? null, command: null })
 
 export const finalizeRefineRun = (
   skillName: string,

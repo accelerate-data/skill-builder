@@ -2,7 +2,7 @@
 name: rewrite-skill
 description: Rewrites or refines an existing skill based on decisions and user request. Handles both full rewrites and targeted streaming edits.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent, AskUserQuestion
 ---
 
 # Rewrite Skill
@@ -46,6 +46,27 @@ If the user asks you to create a new skill, generate a skill from scratch, or st
 2. **Respond with:** "I can only refine the current skill (*{skill_name}*). To create a new skill, please go back to the dashboard and start a new skill workflow."
 
 This constraint applies regardless of how the request is phrased — including indirect requests like "make a separate skill for X" or "start fresh with a new skill."
+
+## Intent triage before rewriting
+
+Before reading or editing files, inspect `Current request` and decide whether it is actually a refine request.
+
+- If the request is clearly asking to change or rewrite skill content, continue normally.
+- If the request is better served by validation or quality review, use `AskUserQuestion` with one question and exactly these options:
+  - `Launch validate`
+  - `Clarify refine`
+- If the request is better served by benchmarking, evaluation, or eval execution, use `AskUserQuestion` with one question and exactly these options:
+  - `Launch benchmark`
+  - `Clarify refine`
+- If the request is ambiguous, use `AskUserQuestion` to ask the user to clarify so refine can continue.
+
+When using `AskUserQuestion`:
+
+- Ask only one question.
+- Use a short `header`.
+- Explain the tradeoff in each option description.
+- If the user chooses `Launch validate` or `Launch benchmark`, respond with one short note confirming the redirect and stop without reading or editing files.
+- If the user chooses `Clarify refine`, treat the returned free-text answer as the refined request and continue with the rewrite flow.
 
 ## Phase 0: Read the inputs
 

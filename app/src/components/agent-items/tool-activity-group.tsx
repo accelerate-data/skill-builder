@@ -43,7 +43,8 @@ interface ToolActivityGroupProps {
 export const ToolActivityGroupView = memo(function ToolActivityGroupView({
   items,
 }: ToolActivityGroupProps) {
-  const [expanded, setExpanded] = useState(false);
+  const hasError = items.some((item) => item.toolStatus === "error");
+  const [expanded, setExpanded] = useState(hasError);
   const hasBeenExpanded = useRef(false);
 
   const summary = useMemo(() => summarizeToolActivity(items), [items]);

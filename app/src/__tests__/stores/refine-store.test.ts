@@ -14,9 +14,12 @@ const initialState = {
   gitDiff: null,
   previewRevision: 0,
   messages: [],
+  pendingRedirect: null,
   activeAgentId: null,
   isRunning: false,
   sessionId: null,
+  sessionExhausted: false,
+  selectedModifiedFile: null,
 };
 
 describe("useRefineStore", () => {
@@ -36,9 +39,11 @@ describe("useRefineStore", () => {
     expect(state.gitDiff).toBeNull();
     expect(state.previewRevision).toBe(0);
     expect(state.messages).toEqual([]);
+    expect(state.pendingRedirect).toBeNull();
     expect(state.activeAgentId).toBeNull();
     expect(state.isRunning).toBe(false);
     expect(state.sessionId).toBeNull();
+    expect(state.sessionExhausted).toBe(false);
   });
 
   it("setRefinableSkills sets the skills list", () => {
@@ -121,10 +126,10 @@ describe("useRefineStore", () => {
   });
 
   it("addUserMessage with command stores the command on the message", () => {
-    const msg = useRefineStore.getState().addUserMessage("improve structure", undefined, "rewrite");
+    const msg = useRefineStore.getState().addUserMessage("check structure", undefined, "validate");
 
-    expect(msg.command).toBe("rewrite");
-    expect(msg.userText).toBe("improve structure");
+    expect(msg.command).toBe("validate");
+    expect(msg.userText).toBe("check structure");
     expect(msg.targetFiles).toBeUndefined();
   });
 
@@ -148,6 +153,35 @@ describe("useRefineStore", () => {
     const state = useRefineStore.getState();
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0]).toEqual(msg);
+  });
+
+  it("adds and answers a refine question inline without duplicating tool_use ids", () => {
+    const questions = [
+      {
+        header: "Next Step",
+        question: "Launch validate instead?",
+        options: [
+          { label: "Launch validate", description: "Run validation." },
+          { label: "Clarify refine", description: "Stay in refine." },
+        ],
+      },
+    ];
+
+    const first = useRefineStore.getState().addQuestionMessage("agent-1", "toolu_123", questions);
+    const duplicate = useRefineStore.getState().addQuestionMessage("agent-1", "toolu_123", questions);
+
+    expect(duplicate.id).toBe(first.id);
+    expect(useRefineStore.getState().messages).toHaveLength(1);
+
+    useRefineStore.getState().answerQuestionMessage(first.id, {
+      answers: { "Launch validate instead?": "Clarify the introduction" },
+      selectedLabels: ["Clarify refine"],
+      customText: "Clarify the introduction",
+    });
+
+    const question = useRefineStore.getState().messages[0];
+    expect(question.pending).toBe(false);
+    expect(question.response?.customText).toBe("Clarify the introduction");
   });
 
   it("updateSkillFiles replaces skillFiles", () => {

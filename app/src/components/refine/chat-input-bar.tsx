@@ -1,19 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FlaskConical, RefreshCw, SendHorizontal, ShieldCheck, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { SendHorizontal, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { useRefineStore, type RefineCommand } from "@/stores/refine-store";
-
-const COMMANDS: {
-  value: RefineCommand;
-  label: string;
-  icon: typeof RefreshCw;
-}[] = [
-  { value: "rewrite", label: "Rewrite skill", icon: RefreshCw },
-  { value: "validate", label: "Validate skill", icon: ShieldCheck },
-  { value: "benchmark", label: "Benchmark skill", icon: FlaskConical },
-];
+import { useRefineStore } from "@/stores/refine-store";
 
 /** Cycle to the next/previous item in a list, wrapping around. */
 function cycleValue(
@@ -28,11 +18,8 @@ function cycleValue(
 }
 
 interface ChatInputBarProps {
-  onSend: (
-    text: string,
-    targetFiles?: string[],
-    command?: RefineCommand,
-  ) => void;
+  onSend: (text: string, targetFiles?: string[]) => void;
+  onCancel?: () => void;
   isRunning: boolean;
   availableFiles: string[];
   prefilledValue?: string;
@@ -40,26 +27,20 @@ interface ChatInputBarProps {
 
 export function ChatInputBar({
   onSend,
+  onCancel,
   isRunning,
   availableFiles,
   prefilledValue,
 }: ChatInputBarProps) {
   const [text, setText] = useState("");
   const [targetFiles, setTargetFiles] = useState<string[]>([]);
-  const [activeCommand, setActiveCommand] = useState<
-    RefineCommand | undefined
-  >();
   const [showFilePicker, setShowFilePicker] = useState(false);
-  const [showCommandPicker, setShowCommandPicker] = useState(false);
   const [pickerValue, setPickerValue] = useState("");
   const pickerValueRef = useRef("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Populate text from prefilled value (e.g. navigating from Test page).
-  // Clear from the store here — after this component mounts — so the message
-  // isn't consumed before ChatInputBar is mounted (the hasSkill guard in
-  // ChatPanel would otherwise clear it before the input ever renders).
   useEffect(() => {
     if (prefilledValue) {
       setText(prefilledValue);
@@ -72,43 +53,31 @@ export function ChatInputBar({
     pickerValueRef.current = pickerValue;
   }, [pickerValue]);
 
-  const pickerOpen = showFilePicker || showCommandPicker;
-
-  // Item values for the currently open picker (used for arrow key cycling)
-  const pickerItems = useMemo(() => {
-    if (showCommandPicker) return COMMANDS.map((c) => c.value);
-    if (showFilePicker) return availableFiles;
-    return [];
-  }, [showCommandPicker, showFilePicker, availableFiles]);
-
   // Close picker on outside click
   useEffect(() => {
-    if (!pickerOpen) return;
+    if (!showFilePicker) return;
     const handleClick = (e: MouseEvent) => {
       if (
         wrapperRef.current &&
         !wrapperRef.current.contains(e.target as Node)
       ) {
         setShowFilePicker(false);
-        setShowCommandPicker(false);
       }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [pickerOpen]);
+  }, [showFilePicker]);
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
-    if (!trimmed && !activeCommand) return;
+    if (!trimmed) return;
     onSend(
       trimmed,
       targetFiles.length > 0 ? targetFiles : undefined,
-      activeCommand,
     );
     setText("");
     setTargetFiles([]);
-    setActiveCommand(undefined);
-  }, [text, targetFiles, activeCommand, onSend]);
+  }, [text, targetFiles, onSend]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -117,10 +86,6 @@ export function ChatInputBar({
       // Close file picker if user deletes the @ trigger
       if (!val.includes("@")) {
         setShowFilePicker(false);
-      }
-      // Close command picker if user deletes the / trigger
-      if (!val.includes("/")) {
-        setShowCommandPicker(false);
       }
     },
     [],
@@ -141,28 +106,14 @@ export function ChatInputBar({
     textareaRef.current?.focus();
   }, []);
 
-  const selectCommand = useCallback((command: RefineCommand) => {
-    setActiveCommand(command);
-    // Remove the / trigger from text
-    setText((prev) => {
-      const slashIdx = prev.lastIndexOf("/");
-      if (slashIdx >= 0) {
-        return prev.slice(0, slashIdx) + prev.slice(slashIdx + 1);
-      }
-      return prev;
-    });
-    setShowCommandPicker(false);
-    textareaRef.current?.focus();
-  }, []);
-
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (pickerOpen) {
+      if (showFilePicker) {
         // Arrow keys cycle through picker items
         if (e.key === "ArrowDown") {
           e.preventDefault();
           setPickerValue((prev) => {
-            const next = cycleValue(pickerItems, prev, 1);
+            const next = cycleValue(availableFiles, prev, 1);
             pickerValueRef.current = next;
             return next;
           });
@@ -171,7 +122,7 @@ export function ChatInputBar({
         if (e.key === "ArrowUp") {
           e.preventDefault();
           setPickerValue((prev) => {
-            const next = cycleValue(pickerItems, prev, -1);
+            const next = cycleValue(availableFiles, prev, -1);
             pickerValueRef.current = next;
             return next;
           });
@@ -182,10 +133,7 @@ export function ChatInputBar({
         if (e.key === "Enter") {
           e.preventDefault();
           const current = pickerValueRef.current;
-          if (showCommandPicker) {
-            const cmd = COMMANDS.find((c) => c.value === current);
-            if (cmd) selectCommand(cmd.value);
-          } else if (showFilePicker && current) {
+          if (current) {
             const file = availableFiles.find((f) => f === current);
             if (file) selectFile(file);
           }
@@ -196,7 +144,6 @@ export function ChatInputBar({
         if (e.key === "Escape") {
           e.preventDefault();
           setShowFilePicker(false);
-          setShowCommandPicker(false);
           return;
         }
       }
@@ -210,22 +157,12 @@ export function ChatInputBar({
         setPickerValue(availableFiles[0] ?? "");
         pickerValueRef.current = availableFiles[0] ?? "";
       }
-      if (e.key === "/" && !activeCommand && !showCommandPicker) {
-        setShowCommandPicker(true);
-        setPickerValue(COMMANDS[0]?.value ?? "");
-        pickerValueRef.current = COMMANDS[0]?.value ?? "";
-      }
     },
     [
       handleSend,
       selectFile,
-      selectCommand,
       availableFiles,
-      activeCommand,
       showFilePicker,
-      showCommandPicker,
-      pickerOpen,
-      pickerItems,
     ],
   );
 
@@ -233,59 +170,12 @@ export function ChatInputBar({
     setTargetFiles((prev) => prev.filter((f) => f !== filename));
   }, []);
 
-  const removeCommand = useCallback(() => {
-    setActiveCommand(undefined);
-  }, []);
-
-  const hasBadges = targetFiles.length > 0 || activeCommand;
+  const hasBadges = targetFiles.length > 0;
 
   return (
     <div className="flex flex-col gap-2 border-t px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {COMMANDS.map((cmd) => {
-          const isActive = activeCommand === cmd.value;
-          return (
-            <Button
-              key={cmd.value}
-              type="button"
-              size="sm"
-              variant={isActive ? "default" : "outline"}
-              aria-label={cmd.label}
-              data-testid={`refine-action-${cmd.value}`}
-              disabled={isRunning}
-              onClick={() => {
-                if (isActive) {
-                  removeCommand();
-                } else {
-                  selectCommand(cmd.value);
-                }
-              }}
-              className="gap-1.5"
-            >
-              <cmd.icon className="size-3.5" />
-              {cmd.value[0].toUpperCase() + cmd.value.slice(1)}
-            </Button>
-          );
-        })}
-      </div>
       {hasBadges && (
         <div className="flex flex-wrap gap-1">
-          {activeCommand && (
-            <Badge
-              data-testid="refine-command-badge"
-              variant="default"
-              className="gap-1 text-xs"
-            >
-              /{activeCommand}
-              <button
-                type="button"
-                onClick={removeCommand}
-                className="ml-0.5 hover:text-destructive"
-              >
-                <X className="size-3" />
-              </button>
-            </Badge>
-          )}
           {targetFiles.map((f) => (
             <Badge key={f} variant="secondary" className="gap-1 text-xs">
               @{f}
@@ -308,78 +198,52 @@ export function ChatInputBar({
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder={
-              activeCommand
-                ? `Describe what to ${activeCommand}...`
-                : "Describe what to change..."
-            }
+            placeholder="Describe what to change..."
             disabled={isRunning}
             className="min-h-10 resize-none"
             rows={1}
           />
-          {pickerOpen && (
+          {showFilePicker && (
             <div className="absolute bottom-full left-0 z-50 mb-1 w-56 rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
-              {showCommandPicker && (
-                <div role="listbox" aria-label="Commands">
-                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                    Commands
+              <div role="listbox" aria-label="Files">
+                <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                  Files
+                </div>
+                {availableFiles.length === 0 ? (
+                  <div className="py-6 text-center text-sm text-muted-foreground">
+                    No files available
                   </div>
-                  {COMMANDS.map((cmd) => (
+                ) : (
+                  availableFiles.map((f) => (
                     <div
-                      key={cmd.value}
+                      key={f}
                       role="option"
-                      aria-selected={pickerValue === cmd.value}
-                      data-selected={pickerValue === cmd.value || undefined}
+                      aria-selected={pickerValue === f}
+                      data-selected={pickerValue === f || undefined}
                       className="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[selected]:bg-accent data-[selected]:text-accent-foreground"
                       onMouseDown={(e) => {
                         e.preventDefault(); // keep focus on textarea
-                        selectCommand(cmd.value);
+                        selectFile(f);
                       }}
                     >
-                      <cmd.icon className="size-3.5" />
-                      {cmd.label}
+                      {f}
                     </div>
-                  ))}
-                </div>
-              )}
-              {showFilePicker && (
-                <div role="listbox" aria-label="Files">
-                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                    Files
-                  </div>
-                  {availableFiles.length === 0 ? (
-                    <div className="py-6 text-center text-sm text-muted-foreground">
-                      No files available
-                    </div>
-                  ) : (
-                    availableFiles.map((f) => (
-                      <div
-                        key={f}
-                        role="option"
-                        aria-selected={pickerValue === f}
-                        data-selected={pickerValue === f || undefined}
-                        className="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[selected]:bg-accent data-[selected]:text-accent-foreground"
-                        onMouseDown={(e) => {
-                          e.preventDefault(); // keep focus on textarea
-                          selectFile(f);
-                        }}
-                      >
-                        {f}
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
+                  ))
+                )}
+              </div>
             </div>
           )}
         </div>
         <Button
           data-testid="refine-send-button"
           size="icon"
-          onClick={handleSend}
-          disabled={isRunning || (!text.trim() && !activeCommand)}
+          type="button"
+          onClick={isRunning ? onCancel : handleSend}
+          disabled={isRunning ? !onCancel : !text.trim()}
+          aria-label={isRunning ? "Cancel current run" : "Send refine message"}
+          title={isRunning ? "Cancel current run" : "Send refine message"}
         >
-          <SendHorizontal className="size-4" />
+          {isRunning ? <Square className="size-4 fill-current" /> : <SendHorizontal className="size-4" />}
         </Button>
       </div>
     </div>

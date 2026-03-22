@@ -803,7 +803,10 @@ impl SidecarPool {
                 let _ = writeln!(f, "{}", transcript_first_line);
                 let log_handle: RequestLogFile = Arc::new(Mutex::new(Some(f)));
                 let mut logs = self.request_logs.lock().await;
-                logs.insert(agent_id.to_string(), log_handle);
+                logs.insert(agent_id.to_string(), log_handle.clone());
+                // Also register under session_id so follow-up messages can find it.
+                let mut session_logs = self.session_logs.lock().await;
+                session_logs.insert(session_id.to_string(), log_handle);
             }
         }
 
@@ -866,6 +869,16 @@ impl SidecarPool {
             pending.insert(agent_id.to_string(), skill_name.to_string());
         }
 
+        // Share the session's log file with this follow-up request_id so all
+        // turns in the streaming session are logged to the same JSONL file.
+        {
+            let session_logs = self.session_logs.lock().await;
+            if let Some(log_handle) = session_logs.get(session_id) {
+                let mut logs = self.request_logs.lock().await;
+                logs.insert(agent_id.to_string(), log_handle.clone());
+            }
+        }
+
         log::debug!(
             "[send_stream_message] session=[REDACTED] agent='{}' skill='{}' user_message:\n{}",
             agent_id,
@@ -893,6 +906,63 @@ impl SidecarPool {
                 "[send_stream_message] session=[REDACTED] agent={} on skill '{}'",
                 agent_id,
                 skill_name,
+            );
+        }
+        result
+    }
+
+    /// Resolve a pending AskUserQuestion callback inside an active streaming session.
+    pub async fn send_stream_question_answer(
+        &self,
+        skill_name: &str,
+        session_id: &str,
+        agent_id: &str,
+        tool_use_id: &str,
+        questions: serde_json::Value,
+        answers: serde_json::Value,
+    ) -> Result<(), String> {
+        let message = serde_json::json!({
+            "type": "stream_question_answer",
+            "request_id": agent_id,
+            "session_id": session_id,
+            "tool_use_id": tool_use_id,
+            "questions": questions,
+            "answers": answers,
+        });
+
+        let result = self.write_to_sidecar_stdin(skill_name, &message).await;
+        if let Err(ref e) = result {
+            log::error!(
+                "[send_stream_question_answer] Failed for session '[REDACTED]': {}",
+                e
+            );
+        } else {
+            log::info!(
+                "[send_stream_question_answer] session=[REDACTED] agent={} tool={} on skill '{}'",
+                agent_id,
+                tool_use_id,
+                skill_name,
+            );
+        }
+        result
+    }
+
+    /// Interrupt the current turn without closing the session.
+    /// The sidecar aborts the AbortController; the next stream_message
+    /// resumes the conversation via the SDK's `resume` option.
+    pub async fn send_stream_cancel(&self, skill_name: &str, session_id: &str) -> Result<(), String> {
+        let message = serde_json::json!({
+            "type": "stream_cancel",
+            "session_id": session_id,
+        });
+
+        let result = self.write_to_sidecar_stdin(skill_name, &message).await;
+        if let Err(ref e) = result {
+            log::warn!("[send_stream_cancel] Failed for session '[REDACTED]': {}", e);
+        } else {
+            log::info!(
+                "[send_stream_cancel] session=[REDACTED] on skill '{}'",
+                skill_name
             );
         }
         result

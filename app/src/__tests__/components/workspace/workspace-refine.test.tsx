@@ -1,4 +1,3 @@
-import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import { WorkspaceRefine } from "@/components/workspace/workspace-refine";
@@ -42,6 +41,7 @@ const refineStoreState = vi.hoisted(() => ({
   selectedSkill: null as SkillSummary | null,
   skillFiles: [] as { filename: string; content: string }[],
   previewRevision: 0,
+  selectedModifiedFile: null as string | null,
   isRunning: false,
   activeAgentId: null as string | null,
   sessionId: null as string | null,
@@ -51,6 +51,7 @@ const refineStoreState = vi.hoisted(() => ({
   setSkillFiles: vi.fn(),
   setGitDiff: vi.fn(),
   setActiveFileTab: vi.fn(),
+  setSelectedModifiedFile: vi.fn(),
   setSessionId: vi.fn(),
   setRunning: vi.fn(),
   setActiveAgentId: vi.fn(),
@@ -104,15 +105,6 @@ vi.mock("@/components/refine/preview-panel", () => ({
   PreviewPanel: () => <div data-testid="preview-panel" />,
 }));
 
-vi.mock("@/components/refine/resizable-split-pane", () => ({
-  ResizableSplitPane: ({ left, right }: { left: React.ReactNode; right: React.ReactNode }) => (
-    <div data-testid="resizable-split-pane">
-      {left}
-      {right}
-    </div>
-  ),
-}));
-
 // --- Helpers ---
 function makeSkill(name: string): SkillSummary {
   return {
@@ -138,12 +130,25 @@ describe("WorkspaceRefine", () => {
     vi.clearAllMocks();
     refineStoreState.selectedSkill = null;
     refineStoreState.sessionId = null;
+    refineStoreState.selectedModifiedFile = null;
     refineStoreState.isRunning = false;
     refineStoreState.activeAgentId = null;
   });
 
-  it("renders ChatPanel and PreviewPanel for the selected skill", async () => {
+  it("renders the chat panel by default for the selected skill", async () => {
     const skill = makeSkill("my-skill");
+    await act(async () => {
+      renderRefine(skill);
+    });
+
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("preview-panel")).toBeInTheDocument();
+  });
+
+  it("keeps the chat panel mounted when a modified file is selected", async () => {
+    const skill = makeSkill("my-skill");
+    refineStoreState.selectedModifiedFile = "SKILL.md";
+
     await act(async () => {
       renderRefine(skill);
     });

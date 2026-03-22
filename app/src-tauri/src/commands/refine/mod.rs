@@ -159,7 +159,6 @@ pub async fn send_refine_message(
         "[send_refine_message] session=[REDACTED] command={:?}",
         command
     );
-    let dispatch = dispatch_for_refine_command(command.as_deref(), target_files.as_deref());
 
     // 1. Look up session and check stream state
     let (skill_name, usage_session_id, stream_started) = {
@@ -198,109 +197,20 @@ pub async fn send_refine_message(
     let runtime = load_refine_runtime_settings(&db, &workspace_path, &skill_name)?;
     ensure_skill_workspace_dir(&workspace_path, &skill_name);
 
-    if matches!(
-        dispatch,
-        RefineDispatch::DirectValidate | RefineDispatch::DirectRewrite | RefineDispatch::DirectBenchmark
-    ) {
-        let direct_agent_name = match dispatch {
-            RefineDispatch::DirectValidate => VALIDATE_AGENT_NAME,
-            RefineDispatch::DirectRewrite => REWRITE_AGENT_NAME,
-            RefineDispatch::DirectBenchmark => BENCHMARK_AGENT_NAME,
-            RefineDispatch::Stream => unreachable!(),
-        };
-
-        // For benchmark: auto-detect baseline from git tags
-        let (baseline_mode_owned, snapshot_dir) = if dispatch == RefineDispatch::DirectBenchmark {
-            let skills_dir = std::path::Path::new(&runtime.skills_path);
-            let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
-            let baseline = crate::git::resolve_benchmark_baseline(skills_dir, &skill_name, &workspace_dir);
-            (Some(baseline.mode), baseline.snapshot_dir)
-        } else {
-            (None, None)
-        };
-        let baseline_mode = baseline_mode_owned.as_deref();
-
-        let prompt = build_direct_agent_prompt(
-            direct_agent_name,
-            &skill_name,
-            &workspace_path,
-            &runtime.skills_path,
-            &user_message,
-            target_files.as_deref(),
-            baseline_mode,
-            snapshot_dir.as_deref(),
-        );
-        log::debug!(
-            "[send_refine_message] direct prompt ({} chars) for skill '{}' command={:?}",
-            prompt.len(),
-            skill_name,
-            command
-        );
-        let (mut config, agent_id) = build_direct_refine_config(
-            prompt,
-            &skill_name,
-            &usage_session_id,
-            &workspace_path,
-            runtime.api_key,
-            runtime.model,
-            runtime.extended_thinking,
-            runtime.interleaved_thinking_beta,
-            runtime.sdk_effort,
-            runtime.fallback_model,
-            direct_agent_name,
-        );
-
-        if config.path_to_claude_code_executable.is_none() {
-            if let Ok(cli_path) = sidecar::resolve_sdk_cli_path_public(&app) {
-                config.path_to_claude_code_executable = Some(cli_path);
-            }
-        }
-
-        pool.send_request(&skill_name, &agent_id, config, &app, None)
-            .await
-            .map_err(|e| {
-                log::error!("[send_refine_message] Failed to send direct request: {}", e);
-                e
-            })?;
-
-        // Direct-dispatch agents run outside the streaming session.
-        // Reset stream_started so a follow-up streaming message will
-        // correctly start a new stream instead of pushing into the
-        // (now-stale) previous streaming context.
-        {
-            let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
-            if let Some(session) = map.get_mut(&session_id) {
-                session.stream_started = false;
-            }
-        }
-
-        return Ok(agent_id);
-    }
-
     if !stream_started {
         // ─── First message: start streaming session ───────────────────────
+        // All commands go through the same streaming config. No agent is
+        // specified — Claude decides which agent to invoke based on the
+        // user's message and the agents discovered from plugins.
         let prompt = build_refine_prompt(
             &skill_name,
             &workspace_path,
             &runtime.skills_path,
             &user_message,
             target_files.as_deref(),
-            command.as_deref(),
-        );
-        log::debug!(
-            "[send_refine_message] first message prompt ({} chars) for skill '{}' command={:?}",
-            prompt.len(),
-            skill_name,
-            command
-        );
-
-        log::info!(
-            "[send_refine_message] skill={} model={}",
-            skill_name,
-            runtime.model
         );
         let (mut config, agent_id) = build_refine_config(
-            prompt,
+            prompt.clone(),
             &skill_name,
             &usage_session_id,
             &workspace_path,
@@ -311,6 +221,18 @@ pub async fn send_refine_message(
             runtime.sdk_effort,
             runtime.fallback_model,
             runtime.refine_prompt_suggestions,
+        );
+
+        log::info!(
+            "[send_refine_message] skill={} model={}",
+            skill_name,
+            config.model.as_deref().unwrap_or("default"),
+        );
+        log::debug!(
+            "[send_refine_message] first message prompt ({} chars) for skill '{}' command={:?}",
+            prompt.len(),
+            skill_name,
+            command
         );
 
         // Resolve SDK cli.js path
@@ -349,7 +271,6 @@ pub async fn send_refine_message(
             &runtime.skills_path,
             &skill_name,
             target_files.as_deref(),
-            command.as_deref(),
         );
         log::debug!(
             "[send_refine_message] follow-up prompt ({} chars) for skill '{}' command={:?}:\n{}",
@@ -424,6 +345,97 @@ pub async fn close_refine_session(
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn cancel_refine_turn(
+    session_id: String,
+    sessions: tauri::State<'_, RefineSessionManager>,
+    pool: tauri::State<'_, SidecarPool>,
+) -> Result<(), String> {
+    let skill_name = {
+        let map = sessions.0.lock().map_err(|e| e.to_string())?;
+        let session = map
+            .get(&session_id)
+            .ok_or_else(|| format!("Session not found: {}", session_id))?;
+
+        if !session.stream_started {
+            return Ok(());
+        }
+
+        // Do NOT reset stream_started — the session stays alive.
+        // The sidecar will abort the current turn via AbortController
+        // and resume on the next stream_message.
+        session.skill_name.clone()
+    };
+
+    log::info!(
+        "[cancel_refine_turn] Interrupting current turn for skill '{}'",
+        skill_name
+    );
+
+    if let Err(err) = pool.send_stream_cancel(&skill_name, &session_id).await {
+        log::warn!(
+            "[cancel_refine_turn] Failed to send stream_cancel for skill '{}': {}",
+            skill_name,
+            err
+        );
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn answer_refine_question(
+    session_id: String,
+    agent_id: String,
+    tool_use_id: String,
+    questions: serde_json::Value,
+    answers: serde_json::Value,
+    sessions: tauri::State<'_, RefineSessionManager>,
+    pool: tauri::State<'_, SidecarPool>,
+) -> Result<(), String> {
+    log::info!(
+        "[answer_refine_question] session=[REDACTED] agent={} tool={}",
+        agent_id,
+        tool_use_id
+    );
+
+    let skill_name = {
+        let map = sessions.0.lock().map_err(|e| {
+            log::error!(
+                "[answer_refine_question] Failed to acquire session lock: {}",
+                e
+            );
+            e.to_string()
+        })?;
+        let session = map.get(&session_id).ok_or_else(|| {
+            let msg = "No refine session found for answer_refine_question".to_string();
+            log::error!("[answer_refine_question] {}", msg);
+            msg
+        })?;
+
+        if !session.stream_started {
+            let msg = "Refine stream has not started yet".to_string();
+            log::error!("[answer_refine_question] {}", msg);
+            return Err(msg);
+        }
+
+        session.skill_name.clone()
+    };
+
+    pool.send_stream_question_answer(
+        &skill_name,
+        &session_id,
+        &agent_id,
+        &tool_use_id,
+        questions,
+        answers,
+    )
+    .await
+    .map_err(|e| {
+        log::error!("[answer_refine_question] Failed to send answer: {}", e);
+        e
+    })
 }
 
 #[cfg(test)]

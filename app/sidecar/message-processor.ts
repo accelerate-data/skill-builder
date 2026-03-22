@@ -298,7 +298,12 @@ export class MessageProcessor {
         const isError = b.is_error === true;
         const resultContent = typeof b.content === "string"
           ? b.content
-          : JSON.stringify(b.content ?? "");
+          : Array.isArray(b.content)
+            ? (b.content as Record<string, unknown>[])
+                .filter((block) => block.type === "text" && typeof block.text === "string")
+                .map((block) => block.text as string)
+                .join("\n\n")
+            : JSON.stringify(b.content ?? "");
 
         const pendingItem = this.toolCallMap.get(toolUseId);
         if (pendingItem) {

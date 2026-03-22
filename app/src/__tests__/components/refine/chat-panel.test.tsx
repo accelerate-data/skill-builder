@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { useRefineStore, type RefineMessage } from "@/stores/refine-store";
 
@@ -21,6 +22,7 @@ vi.mock("@/components/refine/chat-message-list", () => ({
 vi.mock("@/components/refine/chat-input-bar", () => ({
   ChatInputBar: (props: {
     onSend: (text: string) => void;
+    onCancel?: () => void;
     isRunning: boolean;
     availableFiles: string[];
     prefilledValue?: string;
@@ -36,6 +38,7 @@ vi.mock("@/components/refine/chat-input-bar", () => ({
 
 const defaultProps = {
   onSend: vi.fn(),
+  onCancel: vi.fn(),
   isRunning: false,
   hasSkill: true,
   availableFiles: ["SKILL.md", "references/glossary.md"],
@@ -48,12 +51,14 @@ function renderPanel(overrides?: Partial<typeof defaultProps> & { scopeBlocked?:
 describe("ChatPanel", () => {
   beforeEach(() => {
     defaultProps.onSend.mockReset();
+    defaultProps.onCancel.mockReset();
     messageListState.messages = [];
     inputBarState.props = null;
     useRefineStore.setState({
       messages: [],
       sessionExhausted: false,
       pendingInitialMessage: null,
+      gitDiff: null,
     });
   });
 
@@ -84,6 +89,7 @@ describe("ChatPanel", () => {
     expect(messageListState.messages).toHaveLength(1);
     expect(inputBarState.props).toMatchObject({
       onSend: defaultProps.onSend,
+      onCancel: defaultProps.onCancel,
       isRunning: false,
       availableFiles: defaultProps.availableFiles,
       prefilledValue: undefined,
@@ -134,7 +140,34 @@ describe("ChatPanel", () => {
     renderPanel({ isRunning: true });
 
     expect(inputBarState.props).toMatchObject({
+      onCancel: defaultProps.onCancel,
       isRunning: true,
     });
+  });
+
+  it("shows modified-file pills and opens the selected file", async () => {
+    const user = userEvent.setup();
+    useRefineStore.setState({
+      gitDiff: {
+        stat: "3 files changed",
+        files: [
+          { path: "test-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" },
+          { path: "test-skill/references/glossary.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" },
+          { path: "test-skill/context/debug.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" },
+        ],
+      },
+    });
+
+    renderPanel();
+
+    expect(screen.getByTestId("refine-modified-files")).toBeInTheDocument();
+    expect(screen.getByText("SKILL.md")).toBeInTheDocument();
+    expect(screen.getByText("references/glossary.md")).toBeInTheDocument();
+    expect(screen.queryByText("context/debug.md")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("refine-modified-file-pill-references/glossary.md"));
+
+    expect(useRefineStore.getState().activeFileTab).toBe("references/glossary.md");
+    expect(useRefineStore.getState().selectedModifiedFile).toBe("references/glossary.md");
   });
 });

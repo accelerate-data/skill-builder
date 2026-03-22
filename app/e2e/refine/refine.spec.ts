@@ -27,53 +27,61 @@ async function getAgentId(page: Page): Promise<string> {
   return agentId;
 }
 
+async function trackInvokes(page: Page, commands: string[]): Promise<void> {
+  await page.evaluate((cmds) => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__TAURI_TRACK_INVOKES__ = cmds;
+    w.__TAURI_TRACKED_INVOKES__ = [];
+  }, commands);
+}
+
+async function getTrackedInvokes(
+  page: Page,
+  cmd: string,
+): Promise<Array<{ cmd: string; args: Record<string, unknown> }>> {
+  const all = await page.evaluate(() => {
+    return ((window as unknown as Record<string, unknown>).__TAURI_TRACKED_INVOKES__ ?? []) as Array<{
+      cmd: string;
+      args: Record<string, unknown>;
+    }>;
+  });
+  return all.filter((entry) => entry.cmd === cmd);
+}
+
 test.describe("Refine Page", { tag: "@refine" }, () => {
-  test("slash command /rewrite shows badge and sends command", async ({ page }) => {
+  test("quick-action button prefills input and sends message", async ({ page }) => {
     await navigateToRefineWithSkill(page);
+    await trackInvokes(page, ["send_refine_message"]);
 
+    // Click the "Validate this skill" quick-action button — prefills input
+    await page.getByRole("button", { name: "Validate this skill" }).click();
     const input = page.getByTestId("refine-chat-input");
+    await expect(input).toHaveValue("Validate this skill");
 
-    // Type "/" to trigger command picker
-    await input.press("/");
-    await expect(page.getByRole("listbox")).toBeVisible();
-
-    // Command picker should open with both options
-    await expect(page.getByRole("option", { name: /rewrite skill/i })).toBeVisible();
-    await expect(page.getByRole("option", { name: /validate skill/i })).toBeVisible();
-
-    // Select "Rewrite skill"
-    await page.getByRole("option", { name: /rewrite skill/i }).click();
-
-    // /rewrite badge should appear
-    await expect(page.getByTestId("refine-command-badge")).toBeVisible();
-    await expect(page.getByTestId("refine-command-badge")).toContainText("/rewrite");
-
-    // Type additional instructions
-    await input.fill("improve structure");
-
-    // Send
+    // Press Enter to send
     await input.press("Enter");
 
-    // User message in chat should show the /rewrite badge
-    await expect(page.getByText("/rewrite").last()).toBeVisible();
+    const invokes = await getTrackedInvokes(page, "send_refine_message");
+    expect(invokes).toHaveLength(1);
+    expect(invokes[0]?.args.command).toBeNull();
+    expect(invokes[0]?.args.userMessage).toBe("Validate this skill");
 
     // Read agentId and simulate agent
     const agentId = await getAgentId(page);
     await simulateAgentRun(page, {
       agentId,
-      messages: ["Rewriting skill with improved structure..."],
-      result: "Rewrite complete.",
+      messages: ["Running validation checks..."],
+      result: "Validation complete.",
     });
 
-    await expect(page.getByText("Rewriting skill with improved structure...").last()).toBeVisible();
+    await expect(page.getByText("Running validation checks...").last()).toBeVisible();
   });
 
-  test("happy path: select skill, send message, see agent output, verify diff", async ({ page }) => {
+  test("happy path: select skill, send message, open modified file, and close the side viewer", async ({ page }) => {
     await navigateToRefineWithSkill(page);
 
     // --- 1. Verify skill loaded ---
-    await expect(page.getByText("Test Skill").first()).toBeVisible();
-    await expect(page.getByTestId("refine-file-picker")).toContainText("SKILL.md");
+    await expect(page.getByTestId("refine-chat-input")).toBeVisible();
 
     // --- 2. Send a refinement message ---
     const input = page.getByTestId("refine-chat-input");
@@ -135,18 +143,28 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     // Thinking indicator gone
     await expect(page.getByTestId("refine-agent-thinking")).not.toBeVisible();
 
-    // --- 7. Verify diff toggle is now enabled (git diff is available) ---
+    // --- 7. Verify modified-file pills are shown ---
+    await expect(page.getByTestId("refine-modified-files")).toBeVisible();
+    const skillPill = page.getByTestId("refine-modified-file-pill-SKILL.md");
+    await expect(skillPill).toBeVisible();
+
+    // --- 8. Open the modified file view ---
+    await skillPill.click();
+    await expect(page.getByTestId("refine-file-view")).toBeVisible();
+    await expect(page.getByTestId("refine-file-view-title")).toContainText("SKILL.md");
+    await expect(page.getByTestId("refine-chat-input")).toBeVisible();
+
+    // --- 9. Toggle diff mode inside the file view ---
     const diffToggle = page.getByTestId("refine-diff-toggle");
     await expect(diffToggle).toBeEnabled();
-
-    // --- 8. Toggle diff mode ---
     await diffToggle.click();
-
-    // Button label should switch to "Preview" (indicating diff mode is on)
     await expect(diffToggle).toContainText("Preview");
 
-    // --- 9. Diff mode toggled successfully ---
-    await expect(diffToggle).toContainText("Preview");
+    // --- 10. Close the side viewer ---
+    await page.getByTestId("refine-file-view-close").click();
+    await expect(page.getByTestId("refine-chat-input")).toBeVisible();
+    await expect(page.getByText("add a quick-start section")).toBeVisible();
+    await expect(page.getByTestId("refine-file-view")).not.toBeVisible();
   });
 
   test("agent error mid-refine: error renders, chat usable, diff preserved", async ({ page }) => {
@@ -192,14 +210,16 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
 
     // Wait for agent to finish and files to reload (updateSkillFiles is async)
     await expect(page.getByTestId("refine-agent-thinking")).not.toBeVisible();
-    await page.locator("text=Quick Start").first().waitFor();
+    const skillPill = page.getByTestId("refine-modified-file-pill-SKILL.md");
+    await expect(skillPill).toBeVisible();
 
     // Verify diff toggle enabled and turn 1 diff works
+    await skillPill.click();
     const diffToggle = page.getByTestId("refine-diff-toggle");
     await expect(diffToggle).toBeEnabled();
     await diffToggle.click();
     await expect(page.getByTestId("git-patch-line-added").filter({ hasText: "## Quick Start" })).toBeVisible();
-    await diffToggle.click(); // Toggle diff off
+    await page.getByTestId("refine-file-view-close").click();
 
     // --- Turn 2 (error): Agent fails before modifying files ---
     // Swap send_refine_message mock to return a new agent ID
@@ -224,8 +244,122 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     // Verify chat input is still enabled (user can retry)
     await expect(page.getByTestId("refine-chat-input")).toBeEnabled();
 
-    // Turn 2 clears the stale turn 1 patch immediately, so diff mode is disabled
-    await expect(diffToggle).toBeDisabled();
+    // Turn 2 clears the stale turn 1 modified-file pills immediately
+    await expect(page.getByTestId("refine-modified-files")).not.toBeVisible();
+  });
+
+  test("multi-file refine run keeps the selected file aligned with Preview/Diff", async ({ page }) => {
+    await navigateToRefineWithSkill(page);
+
+    const input = page.getByTestId("refine-chat-input");
+    await input.fill("rewrite both files");
+    await page.getByTestId("refine-send-button").click();
+
+    const agentId = await getAgentId(page);
+
+    await page.evaluate(() => {
+      const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+      const files = [
+        {
+          path: "SKILL.md",
+          content: "# Test Skill\n\nA skill for testing.\n\n## Quick Start\n\nGet started in 3 steps.\n\n## Instructions\n\nFollow these steps...",
+        },
+        { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Updated definition" },
+      ];
+      overrides.get_skill_content_for_refine = files;
+      overrides.finalize_refine_run = {
+        files,
+        diff: {
+          stat: "2 files changed",
+          files: [
+            {
+              path: "test-skill/SKILL.md",
+              status: "modified",
+              diff: "diff --git a/SKILL.md b/SKILL.md\n--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,5 +1,9 @@\n # Test Skill\n \n A skill for testing.\n+\n+## Quick Start\n+\n+Get started in 3 steps.\n \n ## Instructions\n",
+            },
+            {
+              path: "test-skill/references/glossary.md",
+              status: "modified",
+              diff: "diff --git a/references/glossary.md b/references/glossary.md\n--- a/references/glossary.md\n+++ b/references/glossary.md\n@@ -1,2 +1,2 @@\n # Glossary\n \n-- **Term**: Definition\n+- **Term**: Updated definition\n",
+            },
+          ],
+        },
+        commit_sha: null,
+      };
+    });
+
+    await simulateAgentRun(page, {
+      agentId,
+      messages: ["Updating the skill and glossary..."],
+      result: "Done.",
+    });
+
+    const glossaryPill = page.getByTestId("refine-modified-file-pill-references/glossary.md");
+    await expect(glossaryPill).toBeVisible();
+    await glossaryPill.click();
+
+    await expect(page.getByTestId("refine-file-view-title")).toContainText("references/glossary.md");
+    const diffToggle = page.getByTestId("refine-diff-toggle");
+    await expect(diffToggle).toBeEnabled();
+    await diffToggle.click();
+    await expect(page.getByTestId("git-patch-view")).toContainText("Updated definition");
+    await expect(page.getByTestId("refine-file-view-title")).toContainText("references/glossary.md");
+
+    await page.getByTestId("refine-file-view-close").click();
+    await page.getByTestId("refine-modified-file-pill-SKILL.md").click();
+    await expect(page.getByTestId("refine-file-view-title")).toContainText("SKILL.md");
+  });
+
+  test("agent-led redirect asks inline and launches validate after confirmation", async ({ page }) => {
+    await navigateToRefineWithSkill(page);
+    await trackInvokes(page, ["send_refine_message", "answer_refine_question"]);
+
+    const input = page.getByTestId("refine-chat-input");
+    await input.fill("can you review this skill for issues?");
+    await page.getByTestId("refine-send-button").click();
+
+    const agentId = await getAgentId(page);
+
+    await emitTauriEvent(page, "agent-message", {
+      agent_id: agentId,
+      message: {
+        type: "refine_question",
+        tool_use_id: "toolu_redirect",
+        questions: [
+          {
+            header: "Next Step",
+            question: "This looks more like validation. What should I do?",
+            options: [
+              { label: "Launch validate", description: "Run the validation agent now." },
+              { label: "Clarify refine", description: "Explain what should be rewritten." },
+            ],
+          },
+        ],
+      },
+    });
+
+    await expect(page.getByTestId("refine-question-inline")).toBeVisible();
+    await page.getByRole("button", { name: /launch validate/i }).click();
+    await page.getByTestId("refine-question-submit").click();
+
+    const answerCalls = await getTrackedInvokes(page, "answer_refine_question");
+    expect(answerCalls).toHaveLength(1);
+    expect(answerCalls[0]?.args.toolUseId).toBe("toolu_redirect");
+
+    await emitTauriEvent(page, "agent-exit", {
+      agent_id: agentId,
+      success: true,
+    });
+
+    await expect.poll(async () => {
+      const calls = await getTrackedInvokes(page, "send_refine_message");
+      return calls.length;
+    }).toBe(2);
+
+    const sendCalls = await getTrackedInvokes(page, "send_refine_message");
+    expect(sendCalls[0]?.args.command).toBeNull();
+    expect(sendCalls[1]?.args.command).toBeNull();
+    expect(sendCalls[1]?.args.userMessage).toBe("validate this skill: can you review this skill for issues?");
   });
 
   test("tab-switch guard blocks leaving refine while agent is running", async ({ page }) => {

@@ -13,12 +13,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
-import type { RefineCommand, RefineMessage, SkillFile } from "@/stores/refine-store";
-import { useAgentStore } from "@/stores/agent-store";
+import type { RefineMessage, SkillFile } from "@/stores/refine-store";
+import { useAgentStore, formatTokenCount } from "@/stores/agent-store";
 import {
   getSkillContentForRefine,
   startRefineSession,
   sendRefineMessage,
+  answerRefineQuestion,
+  cancelRefineTurn,
   closeRefineSession,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
@@ -29,9 +31,9 @@ import {
 import type { SkillSummary } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
-import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { PreviewPanel } from "@/components/refine/preview-panel";
+import type { RefineQuestionResponse } from "@/stores/refine-store";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
@@ -82,10 +84,14 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const activeRunStatus = useAgentStore((s) =>
     activeAgentId ? s.runs[activeAgentId]?.status : undefined,
   );
-  const activeRunCost = useAgentStore((s) =>
-    activeAgentId ? s.runs[activeAgentId]?.totalCost : undefined,
+  const activeRunTurns = useAgentStore((s) =>
+    activeAgentId ? s.runs[activeAgentId]?.contextHistory?.length ?? 0 : 0,
   );
-  const [lastTurnCost, setLastTurnCost] = useState<number | undefined>(undefined);
+
+  // Cumulative session metrics (accumulated across all agent runs)
+  const [sessionTurns, setSessionTurns] = useState(0);
+  const [sessionTokens, setSessionTokens] = useState(0);
+  const [sessionCost, setSessionCost] = useState(0);
 
   // Capture the skill that was active when the agent started, so the
   // completion effect attributes output to the correct skill even if the
@@ -178,6 +184,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
       store.selectSkill(s);
       store.setLoadingFiles(true);
+      // Reset session metrics for the new skill.
+      setSessionTurns(0);
+      setSessionTokens(0);
+      setSessionCost(0);
 
       if (workspacePath) {
         try {
@@ -214,6 +224,133 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skill.name]);
 
+  // --- Send a message ---
+  const handleSend = useCallback(
+    async (text: string, targetFiles?: string[]) => {
+      const store = useRefineStore.getState();
+      const sessionId = store.sessionId;
+      if (!selectedSkill || !workspacePath || !sessionId) return;
+      if (store.isRunning) return;
+
+      console.log(
+        "[workspace-refine] send: skill=%s files=%s",
+        selectedSkill.name,
+        targetFiles?.join(",") ?? "all",
+      );
+
+      const model = preferredModel ?? "sonnet";
+
+      runSkillRef.current = selectedSkill;
+      store.setPendingRedirect(null);
+      store.setGitDiff(null);
+      store.addUserMessage(text, targetFiles);
+      store.setRunning(true);
+
+      try {
+        const agentId = await sendRefineMessage(
+          sessionId,
+          text,
+          workspacePath,
+          targetFiles,
+        );
+
+        useAgentStore.getState().registerRun(
+          agentId,
+          model,
+          selectedSkill.name,
+          "refine",
+          `synthetic:refine:${selectedSkill.name}:${sessionId}`,
+        );
+
+        store.addAgentTurn(agentId);
+        store.setActiveAgentId(agentId);
+      } catch (err) {
+        console.error("[workspace-refine] Failed to send refine message:", err);
+        store.setRunning(false);
+        store.setActiveAgentId(null);
+        toast.error("Failed to start agent", { duration: Infinity });
+      }
+    },
+    [selectedSkill, workspacePath, preferredModel],
+  );
+
+  const handleCancel = useCallback(async () => {
+    const store = useRefineStore.getState();
+    if (!store.sessionId || !store.isRunning) {
+      return;
+    }
+
+    console.log("[workspace-refine] cancel: session=%s", store.sessionId);
+
+    try {
+      await cancelRefineTurn(store.sessionId);
+    } catch (err) {
+      console.error("[workspace-refine] Failed to cancel refine turn:", err);
+      toast.error("Failed to cancel current run", {
+        duration: Infinity,
+        cause: err,
+        context: { operation: "workspace_refine_cancel" },
+      });
+    }
+    // Do NOT optimistically clear running state here. The agent completion
+    // useEffect watches activeRunStatus for a terminal event ("completed",
+    // "error", "shutdown") and handles cleanup. This ensures the UI only
+    // transitions when the stream has actually stopped.
+  }, []);
+
+  // --- Benchmark prompt callbacks ---
+  const handleBenchmarkConfirm = useCallback(() => {
+    console.log("[workspace-refine] benchmark confirmed");
+    void handleSend("run benchmarks on this skill");
+  }, [handleSend]);
+
+  const handleBenchmarkSkip = useCallback(() => {
+    console.log("[workspace-refine] benchmark skipped");
+  }, []);
+
+  const handleQuestionSubmit = useCallback(
+    async (message: RefineMessage, response: RefineQuestionResponse) => {
+      const store = useRefineStore.getState();
+      const sessionId = store.sessionId;
+      const agentId = store.activeAgentId;
+      if (!selectedSkill || !workspacePath || !sessionId || !agentId || !message.toolUseId || !message.questions) {
+        throw new Error("Refine question session is no longer available");
+      }
+
+      const redirectLabel = response.selectedLabels.find((label) =>
+        label.toLowerCase().startsWith("launch "),
+      );
+      if (redirectLabel?.toLowerCase().includes("validate")) {
+        const userMessages = store.messages.filter((entry) => entry.role === "user");
+        store.setPendingRedirect({
+          command: "validate",
+          text: userMessages.length > 0 ? userMessages[userMessages.length - 1]?.userText ?? "" : "",
+        });
+      } else if (
+        redirectLabel?.toLowerCase().includes("benchmark")
+        || redirectLabel?.toLowerCase().includes("eval")
+      ) {
+        const userMessages = store.messages.filter((entry) => entry.role === "user");
+        store.setPendingRedirect({
+          command: "benchmark",
+          text: userMessages.length > 0 ? userMessages[userMessages.length - 1]?.userText ?? "" : "",
+        });
+      } else {
+        store.setPendingRedirect(null);
+      }
+
+      await answerRefineQuestion(
+        sessionId,
+        agentId,
+        message.toolUseId,
+        message.questions,
+        response.answers,
+      );
+      store.answerQuestionMessage(message.id, response);
+    },
+    [selectedSkill, workspacePath],
+  );
+
   // --- Watch agent completion ---
   useEffect(() => {
     if (!activeAgentId || !activeRunStatus) return;
@@ -227,16 +364,24 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       activeRunStatus,
     );
 
-    if (activeRunStatus === "error" || activeRunStatus === "shutdown") {
+    if (activeRunStatus === "error") {
       toast.error("Agent failed — check the chat for details", { duration: Infinity });
     }
+    // "shutdown" status is user-initiated (cancel) — no error toast needed.
 
+    // Accumulate session-level metrics from the completed run.
     const agentRun = useAgentStore.getState().runs[activeAgentId];
-    setLastTurnCost(agentRun?.totalCost);
+    if (agentRun) {
+      const runTurns = agentRun.contextHistory?.length ?? 0;
+      const runTokens = agentRun.tokenUsage
+        ? agentRun.tokenUsage.input + agentRun.tokenUsage.output
+        : 0;
+      const runCost = agentRun.totalCost ?? 0;
+      setSessionTurns((prev) => prev + runTurns);
+      setSessionTokens((prev) => prev + runTokens);
+      setSessionCost((prev) => prev + runCost);
+    }
 
-    // Use the skill that was active when the agent started, not the
-    // current reactive selectedSkill, to avoid attributing output to
-    // the wrong skill if the user switches skills mid-flight.
     const completionSkill = runSkillRef.current ?? selectedSkill;
 
     const complete = async () => {
@@ -262,10 +407,9 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             })),
           );
           store.setGitDiff(finalized.diff);
-          // Offer benchmark only after an explicit /rewrite that changed files.
           const userMessages = store.messages.filter((m: RefineMessage) => m.role === "user");
           const lastMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1] : undefined;
-          if (lastMsg?.command === "rewrite" && finalized.diff.files.length > 0) {
+          if (!lastMsg?.command && finalized.diff.files.length > 0) {
             store.addBenchmarkPrompt();
           }
         } catch {
@@ -283,7 +427,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           }
         }
       } else if (workspacePath && completionSkill) {
-        // Agent failed or was cancelled — clean up any stale benchmark snapshot
         await cleanBenchmarkSnapshot(completionSkill.name, workspacePath).catch(() => {});
         const files = await loadSkillFiles(workspacePath, completionSkill.name);
         if (files) {
@@ -292,74 +435,26 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         }
       }
 
+      const pendingRedirect = store.pendingRedirect;
+      store.setPendingRedirect(null);
       store.setRunning(false);
       store.setActiveAgentId(null);
       runSkillRef.current = null;
+
+      if (pendingRedirect) {
+        const redirectText = pendingRedirect.command
+          ? `${pendingRedirect.command} this skill${pendingRedirect.text ? `: ${pendingRedirect.text}` : ""}`
+          : pendingRedirect.text;
+        if (redirectText) {
+          setTimeout(() => {
+            void handleSend(redirectText);
+          }, 0);
+        }
+      }
     };
 
     void complete();
-  }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill, extractStructuredResultPayload]);
-
-  // --- Send a message ---
-  const handleSend = useCallback(
-    async (text: string, targetFiles?: string[], command?: RefineCommand) => {
-      const store = useRefineStore.getState();
-      const sessionId = store.sessionId;
-      if (!selectedSkill || !workspacePath || !sessionId) return;
-      if (isRunning) return;
-
-      console.log(
-        "[workspace-refine] send: skill=%s command=%s files=%s",
-        selectedSkill.name,
-        command ?? "refine",
-        targetFiles?.join(",") ?? "all",
-      );
-
-      const model = preferredModel ?? "sonnet";
-
-      runSkillRef.current = selectedSkill;
-      store.setGitDiff(null);
-      store.addUserMessage(text, targetFiles, command);
-      store.setRunning(true);
-
-      try {
-        const agentId = await sendRefineMessage(
-          sessionId,
-          text,
-          workspacePath,
-          targetFiles,
-          command,
-        );
-
-        useAgentStore.getState().registerRun(
-          agentId,
-          model,
-          selectedSkill.name,
-          "refine",
-          `synthetic:refine:${selectedSkill.name}:${sessionId}`,
-        );
-
-        store.addAgentTurn(agentId);
-        store.setActiveAgentId(agentId);
-      } catch (err) {
-        console.error("[workspace-refine] Failed to send refine message:", err);
-        store.setRunning(false);
-        store.setActiveAgentId(null);
-        toast.error("Failed to start agent", { duration: Infinity });
-      }
-    },
-    [selectedSkill, workspacePath, preferredModel, isRunning],
-  );
-
-  // --- Benchmark prompt callbacks ---
-  const handleBenchmarkConfirm = useCallback(() => {
-    console.log("[workspace-refine] benchmark confirmed");
-    void handleSend("", undefined, "benchmark");
-  }, [handleSend]);
-
-  const handleBenchmarkSkip = useCallback(() => {
-    console.log("[workspace-refine] benchmark skipped");
-  }, []);
+  }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill, extractStructuredResultPayload, handleSend]);
 
   // --- Status bar ---
   const [elapsed, setElapsed] = useState(0);
@@ -395,25 +490,23 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       : undefined;
   const dotClass = isRunning ? "animate-pulse" : selectedSkill ? "" : "bg-zinc-500";
   const statusLabel = isRunning ? "running..." : selectedSkill ? "ready" : "loading...";
-  const statusCost = activeRunCost ?? (!isRunning ? lastTurnCost : undefined);
-
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 w-full flex-1 overflow-hidden">
-        <ResizableSplitPane
-          left={
-            <ChatPanel
-              onSend={handleSend}
-              isRunning={isRunning}
-              hasSkill={!!selectedSkill}
-              availableFiles={availableFiles}
-              scopeBlocked={scopeBlocked}
-              onBenchmarkConfirm={handleBenchmarkConfirm}
-              onBenchmarkSkip={handleBenchmarkSkip}
-            />
-          }
-          right={<PreviewPanel key={previewRevision} />}
-        />
+        <div className="h-full">
+      <ChatPanel
+        onSend={handleSend}
+        onCancel={handleCancel}
+        isRunning={isRunning}
+        hasSkill={!!selectedSkill}
+        availableFiles={availableFiles}
+            scopeBlocked={scopeBlocked}
+            onBenchmarkConfirm={handleBenchmarkConfirm}
+            onBenchmarkSkip={handleBenchmarkSkip}
+            onQuestionSubmit={handleQuestionSubmit}
+          />
+          <PreviewPanel key={previewRevision} />
+        </div>
       </div>
 
       {/* Status bar */}
@@ -436,10 +529,28 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             <span className="text-xs text-muted-foreground">{(elapsed / 1000).toFixed(1)}s</span>
           </>
         )}
-        {statusCost !== undefined && (
+        {(sessionTurns + activeRunTurns) > 0 && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs text-muted-foreground">${statusCost.toFixed(4)}</span>
+            <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
+              {sessionTurns + activeRunTurns} {sessionTurns + activeRunTurns === 1 ? "turn" : "turns"}
+            </span>
+          </>
+        )}
+        {sessionTokens > 0 && !isRunning && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
+              {formatTokenCount(sessionTokens)} tokens
+            </span>
+          </>
+        )}
+        {sessionCost > 0 && !isRunning && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
+              ${sessionCost.toFixed(4)}
+            </span>
           </>
         )}
       </div>

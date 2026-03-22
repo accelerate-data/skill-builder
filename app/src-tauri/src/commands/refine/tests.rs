@@ -276,63 +276,12 @@ fn base_refine_config(prompt: &str) -> (crate::agents::sidecar::SidecarConfig, S
     )
 }
 
-fn base_direct_config(agent_name: &'static str) -> (crate::agents::sidecar::SidecarConfig, String) {
-    build_direct_refine_config(
-        "direct prompt".to_string(),
-        "my-skill",
-        "usage-session-123",
-        &test_workspace_path(),
-        crate::types::SecretString::new("sk-test-key".to_string()),
-        "sonnet".to_string(),
-        false,
-        true,
-        None,
-        None,
-        agent_name,
-    )
-}
 
 #[test]
-fn test_dispatch_for_validate_is_direct() {
-    assert_eq!(
-        dispatch_for_refine_command(Some("validate"), None),
-        RefineDispatch::DirectValidate
-    );
-}
-
-#[test]
-fn test_dispatch_for_unscoped_rewrite_is_direct() {
-    assert_eq!(
-        dispatch_for_refine_command(Some("rewrite"), None),
-        RefineDispatch::DirectRewrite
-    );
-    assert_eq!(
-        dispatch_for_refine_command(Some("rewrite"), Some(&[])),
-        RefineDispatch::DirectRewrite
-    );
-}
-
-#[test]
-fn test_dispatch_for_scoped_rewrite_is_direct() {
-    let targets = vec!["SKILL.md".to_string()];
-    assert_eq!(
-        dispatch_for_refine_command(Some("rewrite"), Some(&targets)),
-        RefineDispatch::DirectRewrite
-    );
-}
-
-#[test]
-fn test_dispatch_for_freeform_stays_streaming() {
-    assert_eq!(
-        dispatch_for_refine_command(None, None),
-        RefineDispatch::Stream
-    );
-}
-
-#[test]
-fn test_refine_config_always_uses_refine_skill_agent() {
+fn test_refine_config_has_no_agent() {
     let (config, _) = base_refine_config("improve metrics");
-    assert_eq!(config.agent_name.as_deref(), Some(REWRITE_AGENT_NAME));
+    assert!(config.agent_name.is_none());
+    assert!(config.model.is_some());
 }
 
 #[test]
@@ -390,15 +339,10 @@ fn test_refine_config_agent_id_format() {
 }
 
 #[test]
-fn test_direct_refine_config_agent_id_uses_agent_label() {
-    let (_, agent_id) = base_direct_config(BENCHMARK_AGENT_NAME);
-    assert!(agent_id.starts_with("benchmark-skill-my-skill-"));
-}
-
-#[test]
-fn test_refine_config_omits_model_for_named_agent() {
+fn test_refine_config_sets_model_directly() {
     let (config, _) = base_refine_config("test");
-    assert!(config.model.is_none());
+    assert!(config.model.is_some());
+    assert!(config.agent_name.is_none());
 }
 
 #[test]
@@ -452,12 +396,13 @@ fn test_refine_config_serialization_matches_sidecar_schema() {
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
     assert_eq!(parsed["prompt"], "full prompt here");
-    assert_eq!(parsed["agentName"], REWRITE_AGENT_NAME);
+    assert!(parsed.get("agentName").is_none());
+    assert!(parsed.get("model").is_some());
     assert_eq!(parsed["maxTurns"], REFINE_STREAM_MAX_TURNS);
     assert!(parsed["allowedTools"]
         .as_array()
         .unwrap()
-        .contains(&serde_json::json!("Agent")));
+        .contains(&serde_json::json!("Task")));
     assert_eq!(parsed["skillName"], "my-skill");
     assert_eq!(parsed["usageSessionId"], expected_usage_session_id);
     assert!(parsed.get("conversationHistory").is_none());
@@ -488,15 +433,6 @@ fn test_refine_config_requires_skill_creator_plugin() {
 }
 
 #[test]
-fn test_direct_refine_config_requires_skill_creator_plugin() {
-    let (config, _) = base_direct_config(REWRITE_AGENT_NAME);
-    assert_eq!(
-        config.required_plugins,
-        Some(vec!["skill-creator".to_string()])
-    );
-}
-
-#[test]
 fn test_new_refine_usage_session_id_is_opaque_and_scoped_to_skill() {
     let usage_session_id = new_refine_usage_session_id("my-skill");
 
@@ -515,71 +451,6 @@ fn test_refine_config_serialization_omits_none_fields() {
     assert!(parsed.get("permissionMode").is_none());
 }
 
-#[test]
-fn test_direct_validate_config_uses_validate_agent_contract() {
-    let (config, _) = base_direct_config(VALIDATE_AGENT_NAME);
-    assert_eq!(config.agent_name.as_deref(), Some(VALIDATE_AGENT_NAME));
-    assert_eq!(config.max_turns, Some(50));
-    // Refine direct agents do not use structured output — agents run to
-    // natural completion and write results to disk.
-    assert!(config.output_format.is_none());
-    let tools = config.allowed_tools.unwrap();
-    assert!(tools.contains(&"Read".to_string()));
-    assert!(!tools.contains(&"Write".to_string()));
-    assert!(!tools.contains(&"Skill".to_string()));
-}
-
-#[test]
-fn test_direct_rewrite_config_uses_rewrite_agent_contract() {
-    let (config, _) = base_direct_config(REWRITE_AGENT_NAME);
-    assert_eq!(config.agent_name.as_deref(), Some(REWRITE_AGENT_NAME));
-    assert_eq!(config.max_turns, Some(80));
-    assert!(config.output_format.is_none());
-    let tools = config.allowed_tools.unwrap();
-    assert!(tools.contains(&"Write".to_string()));
-    assert!(tools.contains(&"Skill".to_string()));
-}
-
-#[test]
-fn test_direct_benchmark_config_uses_benchmark_agent_contract() {
-    let (config, _) = base_direct_config(BENCHMARK_AGENT_NAME);
-    assert_eq!(config.agent_name.as_deref(), Some(BENCHMARK_AGENT_NAME));
-    assert_eq!(config.max_turns, Some(200));
-    assert!(config.output_format.is_none());
-    let tools = config.allowed_tools.unwrap();
-    assert!(tools.contains(&"Agent".to_string()));
-    assert!(tools.contains(&"Skill".to_string()));
-}
-
-#[test]
-fn test_direct_config_disables_prompt_suggestions() {
-    let (config, _) = base_direct_config(VALIDATE_AGENT_NAME);
-    assert_eq!(config.prompt_suggestions, Some(false));
-}
-
-#[test]
-fn test_direct_config_agent_id_uses_agent_label() {
-    let (_, agent_id) = base_direct_config(BENCHMARK_AGENT_NAME);
-    assert!(
-        agent_id.starts_with("benchmark-skill-my-skill-"),
-        "expected agent_id to start with 'benchmark-skill-my-skill-', got: {}",
-        agent_id
-    );
-
-    let (_, agent_id) = base_direct_config(REWRITE_AGENT_NAME);
-    assert!(
-        agent_id.starts_with("rewrite-skill-my-skill-"),
-        "expected agent_id to start with 'rewrite-skill-my-skill-', got: {}",
-        agent_id
-    );
-
-    let (_, agent_id) = base_direct_config(VALIDATE_AGENT_NAME);
-    assert!(
-        agent_id.starts_with("validate-skill-my-skill-"),
-        "expected agent_id to start with 'validate-skill-my-skill-', got: {}",
-        agent_id
-    );
-}
 
 
 #[test]
@@ -688,6 +559,53 @@ fn test_finalize_refine_run_ignores_structured_output() {
         .exists());
 }
 
+#[test]
+fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
+    let prev_mock_agents = std::env::var("MOCK_AGENTS").ok();
+    std::env::set_var("MOCK_AGENTS", "true");
+
+    let skills_dir = tempdir().unwrap();
+    let workspace_dir = tempdir().unwrap();
+    crate::git::ensure_repo(skills_dir.path()).unwrap();
+
+    let skill_dir = skills_dir.path().join("my-skill");
+    std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n\nMock rewrite output\n").unwrap();
+    std::fs::write(
+        skill_dir.join("references/checklist.md"),
+        "# Checklist\n\n- Verify modified files UI\n",
+    )
+    .unwrap();
+    crate::git::commit_all(skills_dir.path(), "initial").unwrap();
+    std::fs::write(skills_dir.path().join("README.md"), "top-level docs").unwrap();
+    crate::git::commit_all(skills_dir.path(), "unrelated repo change").unwrap();
+
+    let result = finalize_refine_run_inner(
+        "my-skill",
+        skills_dir.path().to_str().unwrap(),
+        workspace_dir.path().to_str().unwrap(),
+        None,
+    )
+    .unwrap();
+
+    assert!(result.commit_sha.is_some());
+    assert_eq!(result.files.len(), 2);
+    assert_eq!(result.diff.files.len(), 2);
+    assert!(result
+        .diff
+        .files
+        .iter()
+        .all(|file| file.status == "modified"));
+    assert!(result.diff.files[0].path.starts_with("my-skill/"));
+    assert!(result.diff.files[0].diff.contains("diff --git"));
+    assert!(result.diff.stat.contains("2 file(s) changed"));
+
+    match prev_mock_agents {
+        Some(value) => std::env::set_var("MOCK_AGENTS", value),
+        None => std::env::remove_var("MOCK_AGENTS"),
+    }
+}
+
 // ===== build_refine_prompt tests =====
 
 #[test]
@@ -700,46 +618,27 @@ fn test_refine_prompt_includes_all_three_paths() {
         &skills,
         "Add metrics section",
         None,
-        None,
     );
     // build_refine_prompt normalises backslashes to forward slashes
     let ws_fwd = ws.replace('\\', "/");
     let skills_fwd = skills.replace('\\', "/");
     assert!(prompt
-        .contains(&format!("The workspace directory is: {}/my-skill", ws_fwd)));
+        .contains(&format!("The workspace directory is: \"{}/my-skill\"", ws_fwd)));
     assert!(prompt.contains(
-        &format!("The skill output directory (SKILL.md and references/) is: {}/my-skill", skills_fwd)
+        &format!("The skill output directory (SKILL.md and references/) is: \"{}/my-skill\"", skills_fwd)
     ));
-    assert!(prompt.contains("Read user-context.md from the workspace directory"));
-    assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
+    assert!(prompt.contains("context_dir"));
+    assert!(prompt.contains("eval_dir"));
 }
 
 #[test]
 fn test_refine_prompt_includes_metadata() {
-    let prompt = build_refine_prompt("my-skill", "/ws", "/skills", "Fix overview", None, None);
+    let prompt = build_refine_prompt("my-skill", "/ws", "/skills", "Fix overview", None);
     assert!(prompt.contains("The skill name is: my-skill"));
-    assert!(!prompt.contains("The skill type is:"));
-    assert!(prompt.contains("user-context.md"));
+    assert!(prompt.contains("The workspace directory is:"));
+    assert!(prompt.contains("The skill output directory"));
 }
 
-#[test]
-fn test_refine_prompt_default_command_is_refine() {
-    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit something", None, None);
-    assert!(prompt.contains("The command is: refine"));
-}
-
-#[test]
-fn test_refine_prompt_rewrite_command() {
-    let prompt =
-        build_refine_prompt("s", "/ws", "/sk", "improve clarity", None, Some("rewrite"));
-    assert!(prompt.contains("The command is: rewrite"));
-}
-
-#[test]
-fn test_refine_prompt_validate_command() {
-    let prompt = build_refine_prompt("s", "/ws", "/sk", "", None, Some("validate"));
-    assert!(prompt.contains("The command is: validate"));
-}
 
 #[test]
 fn test_refine_prompt_file_targeting() {
@@ -750,7 +649,6 @@ fn test_refine_prompt_file_targeting() {
         "/skills",
         "update these",
         Some(&files),
-        None,
     );
     assert!(prompt
         .contains("IMPORTANT: Only edit these files (relative to skill output directory):"));
@@ -760,7 +658,7 @@ fn test_refine_prompt_file_targeting() {
 
 #[test]
 fn test_refine_prompt_no_file_constraint_when_empty() {
-    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit freely", None, None);
+    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit freely", None);
     assert!(!prompt.contains("Only edit these files"));
 }
 
@@ -772,120 +670,26 @@ fn test_refine_prompt_includes_user_message() {
         "/sk",
         "Add SLA metrics to the overview",
         None,
-        None,
     );
     assert!(prompt.contains("Current request: Add SLA metrics to the overview"));
 }
 
 #[test]
-fn test_refine_prompt_reads_user_context_from_file() {
-    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None, None);
-    assert!(prompt.contains("user-context.md"));
-    assert!(!prompt.contains("## User Context"));
-    assert!(!prompt.contains("**Industry**"));
+fn test_refine_prompt_includes_derived_paths() {
+    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None);
+    assert!(prompt.contains("context_dir"));
+    assert!(prompt.contains("eval_dir"));
+    assert!(prompt.contains("eval_results_dir"));
 }
 
 #[test]
 fn test_refine_prompt_no_inline_user_context() {
-    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None, None);
+    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None);
     assert!(!prompt.contains("**Industry**:"));
     assert!(!prompt.contains("**Target Audience**:"));
     assert!(!prompt.contains("**Function**:"));
 }
 
-#[test]
-fn test_direct_validate_prompt_includes_required_paths() {
-    let prompt = build_direct_agent_prompt(
-        VALIDATE_AGENT_NAME,
-        "my-skill",
-        "/ws",
-        "/skills",
-        "Run validation now",
-        None,
-        None,
-        None,
-    );
-    assert!(prompt.contains("The workspace directory is: /ws/my-skill"));
-    assert!(prompt.contains(
-        "The skill output directory (SKILL.md and references/) is: /skills/my-skill"
-    ));
-    assert!(prompt.contains(
-        "Treat Current request as an additional focus area for coverage"
-    ));
-    assert!(prompt.contains("Current request: Run validation now"));
-    assert!(!prompt.contains("/rewrite mode"));
-}
-
-#[test]
-fn test_direct_rewrite_prompt_uses_rewrite_agent() {
-    let prompt = build_direct_agent_prompt(
-        REWRITE_AGENT_NAME,
-        "my-skill",
-        "/ws",
-        "/skills",
-        "Rewrite this skill for coherence",
-        None,
-        None,
-        None,
-    );
-    assert!(prompt.contains(
-        "Treat Current request as an additional focus area for coverage"
-    ));
-    assert!(prompt.contains("Current request: Rewrite this skill for coherence"));
-    assert!(!prompt.contains("Focus the rewrite on these files"));
-    assert!(!prompt.contains("baseline_mode"));
-}
-
-#[test]
-fn test_direct_rewrite_prompt_includes_target_files() {
-    let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
-    let prompt = build_direct_agent_prompt(
-        REWRITE_AGENT_NAME,
-        "my-skill",
-        "/ws",
-        "/skills",
-        "Improve the metrics section",
-        Some(&files),
-        None,
-        None,
-    );
-    assert!(prompt.contains("Focus the rewrite on these files: SKILL.md, references/metrics.md."));
-    assert!(prompt.contains("Current request: Improve the metrics section"));
-}
-
-#[test]
-fn test_direct_benchmark_prompt_includes_baseline_mode() {
-    let prompt = build_direct_agent_prompt(
-        BENCHMARK_AGENT_NAME,
-        "my-skill",
-        "/ws",
-        "/skills",
-        "Benchmark the skill",
-        None,
-        Some("prior_version"),
-        Some("/ws/my-skill/skill-snapshot"),
-    );
-    assert!(prompt.contains("baseline_mode: prior_version"));
-    assert!(prompt.contains("prior_skill_snapshot_dir: /ws/my-skill/skill-snapshot"));
-    assert!(prompt.contains("Current request: Benchmark the skill"));
-}
-
-#[test]
-fn test_direct_validate_prompt_ignores_target_files() {
-    let files = vec!["SKILL.md".to_string()];
-    let prompt = build_direct_agent_prompt(
-        VALIDATE_AGENT_NAME,
-        "my-skill",
-        "/ws",
-        "/skills",
-        "Run validation now",
-        Some(&files),
-        None,
-        None,
-    );
-    assert!(!prompt.contains("Focus the rewrite on these files"));
-    assert!(!prompt.contains("baseline_mode"));
-}
 
 #[test]
 fn test_close_session_removes_entry() {
@@ -1022,45 +826,26 @@ fn test_get_refine_diff_stat_ignores_patch_file_header_lines() {
 // ===== build_followup_prompt tests =====
 
 #[test]
-fn test_followup_prompt_includes_command_and_message() {
-    let prompt = build_followup_prompt(
-        "Add SLA metrics",
-        "/skills",
-        "my-skill",
-        None,
-        Some("refine"),
-    );
-    assert!(prompt.contains("The command is: refine"));
-    assert!(prompt.contains("Current request: Add SLA metrics"));
-}
-
-#[test]
-fn test_followup_prompt_default_command_is_refine() {
-    let prompt = build_followup_prompt("fix it", "/sk", "s", None, None);
-    assert!(prompt.contains("The command is: refine"));
+fn test_followup_prompt_is_just_user_message() {
+    let prompt = build_followup_prompt("Add SLA metrics", "/skills", "my-skill", None);
+    assert_eq!(prompt, "Add SLA metrics");
+    assert!(!prompt.contains("command"));
 }
 
 #[test]
 fn test_followup_prompt_file_targeting() {
     let files = vec!["SKILL.md".to_string(), "references/api.md".to_string()];
-    let prompt = build_followup_prompt("update", "/skills", "my-skill", Some(&files), None);
+    let prompt = build_followup_prompt("update", "/skills", "my-skill", Some(&files));
     assert!(prompt.contains("IMPORTANT: Only edit these files:"));
     assert!(prompt.contains("/skills/my-skill/SKILL.md"));
     assert!(prompt.contains("/skills/my-skill/references/api.md"));
+    assert!(prompt.contains("update"));
 }
 
 #[test]
 fn test_followup_prompt_no_file_constraint_when_empty() {
-    let prompt = build_followup_prompt("edit freely", "/sk", "s", None, None);
+    let prompt = build_followup_prompt("edit freely", "/sk", "s", None);
     assert!(!prompt.contains("Only edit these files"));
-}
-
-#[test]
-fn test_followup_prompt_does_not_include_paths() {
-    let prompt = build_followup_prompt("add more", "/skills", "my-skill", None, None);
-    assert!(!prompt.contains("skill directory is:"));
-    assert!(!prompt.contains("context directory is:"));
-    assert!(!prompt.contains("workspace directory is:"));
 }
 
 // ===== session stream_started tests =====

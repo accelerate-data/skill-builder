@@ -28,11 +28,13 @@ vi.mock("../shutdown.js", () => ({
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { discoverInstalledPlugins } from "../run-agent.js";
+import { buildQueryOptions } from "../options.js";
 import { StreamSession } from "../stream-session.js";
 import type { SidecarConfig } from "../config.js";
 
 const mockQuery = vi.mocked(query);
 const mockDiscoverInstalledPlugins = vi.mocked(discoverInstalledPlugins);
+const mockBuildQueryOptions = vi.mocked(buildQueryOptions);
 
 function baseConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
   return {
@@ -271,6 +273,158 @@ describe("StreamSession — pushMessage queue draining", () => {
     const runResult = messages.find(isRunResult);
     const event = (runResult!.event as Record<string, unknown>);
     expect(event.status).toBe("completed");
+  });
+});
+
+describe("StreamSession — AskUserQuestion flow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.MOCK_AGENTS;
+    mockBuildQueryOptions.mockImplementation(
+      (
+        _config,
+        abortController,
+        _pluginPaths,
+        _stderrHandler,
+        _processorRef,
+        canUseTool,
+      ) => ({
+        abortController,
+        canUseTool,
+      }),
+    );
+  });
+
+  afterEach(() => {
+    delete process.env.MOCK_AGENTS;
+  });
+
+  it("emits a refine_question and resumes the session when answers arrive", async () => {
+    const questionPrompt = {
+      header: "Next Step",
+      question: "This sounds like validation. Launch validate instead?",
+      options: [
+        { label: "Launch validate", description: "Run the validation agent now." },
+        { label: "Clarify refine", description: "Explain what should be changed first." },
+      ],
+    };
+
+    mockQuery.mockImplementation(({ options }) => {
+      async function* fakeConversation() {
+        const permission = await options.canUseTool(
+          "AskUserQuestion",
+          { questions: [questionPrompt] },
+          {
+            toolUseID: "toolu_123",
+            signal: new AbortController().signal,
+          },
+        );
+
+        yield {
+          type: "assistant",
+          message: {
+            type: "message",
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: `redirected:${String(permission.updatedInput?.answers?.[questionPrompt.question])}`,
+              },
+            ],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 12, output_tokens: 6 },
+          },
+        };
+      }
+
+      return fakeConversation() as ReturnType<typeof query>;
+    });
+
+    const messages: Record<string, unknown>[] = [];
+    let resolveQuestion!: () => void;
+    const questionSeen = new Promise<void>((resolve) => {
+      resolveQuestion = resolve;
+    });
+    const onMessage = (_requestId: string, msg: Record<string, unknown>) => {
+      messages.push(msg);
+      if (msg.type === "refine_question") {
+        resolveQuestion();
+      }
+    };
+
+    const session = new StreamSession("sess-q", "req-q1", baseConfig(), onMessage);
+    await questionSeen;
+
+    const questionEvent = messages.find((msg) => msg.type === "refine_question");
+    expect(questionEvent).toMatchObject({
+      type: "refine_question",
+      tool_use_id: "toolu_123",
+      questions: [questionPrompt],
+    });
+
+    session.answerQuestion(
+      "req-q2",
+      "toolu_123",
+      [questionPrompt],
+      { [questionPrompt.question]: "Launch validate" },
+    );
+
+    await session.queryDone;
+
+    const output = messages.find((msg) => msg.type === "display_item");
+    expect(output).toBeDefined();
+    expect(((output?.item as Record<string, unknown>)?.outputText as string) ?? "").toContain(
+      "redirected:Launch validate",
+    );
+  });
+});
+
+describe("StreamSession — close aborts active query", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.MOCK_AGENTS;
+    mockBuildQueryOptions.mockImplementation(
+      (
+        _config,
+        abortController,
+        _pluginPaths,
+        _stderrHandler,
+        _processorRef,
+      ) => ({
+        abortController,
+      }),
+    );
+  });
+
+  afterEach(() => {
+    delete process.env.MOCK_AGENTS;
+  });
+
+  it("aborts the live streaming query when close is called", async () => {
+    mockQuery.mockImplementation(({ options }) => {
+      async function* fakeConversation() {
+        await new Promise<void>((resolve) => {
+          options.abortController.signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+      }
+
+      return fakeConversation() as ReturnType<typeof query>;
+    });
+
+    const messages: Record<string, unknown>[] = [];
+    const session = new StreamSession("sess-close", "req-close-1", baseConfig(), (_requestId, msg) => {
+      messages.push(msg);
+    });
+
+    await vi.waitFor(() => {
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+    session.close();
+    await session.queryDone;
+
+    const runResult = messages.find(isRunResult);
+    expect(runResult).toBeDefined();
+    expect((runResult?.event as Record<string, unknown>)?.status).toBe("shutdown");
   });
 });
 

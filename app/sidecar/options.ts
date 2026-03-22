@@ -1,4 +1,4 @@
-import type { HookInput, Options } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, HookInput, Options } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 import type { MessageProcessor } from "./message-processor.js";
 
@@ -61,6 +61,7 @@ export function buildQueryOptions(
   pluginPaths: string[],
   stderr?: (data: string) => void,
   processorRef?: { current: MessageProcessor | null },
+  canUseTool?: CanUseTool,
 ) {
   // --- agent / model resolution ---
   const hasAgent = typeof config.agentName === "string" && config.agentName.length > 0;
@@ -113,6 +114,7 @@ export function buildQueryOptions(
       ? { promptSuggestions: config.promptSuggestions }
       : {}),
     ...(stderr ? { stderr } : {}),
+    ...(canUseTool ? { canUseTool } : {}),
     ...(processorRef ? buildHooks(processorRef) : {}),
   };
 }
@@ -132,8 +134,13 @@ export function buildQueryOptions(
  * exposed exclusively for unit-test inspection.
  */
 export function buildHooks(
-  processorRef: { current: MessageProcessor | null },
+  _processorRef: { current: MessageProcessor | null },
 ) {
+  // SubagentStart/SubagentStop are logged for observability but no longer
+  // drive the Stop hook — the SDK handles its own stop logic. The previous
+  // Stop hook blocked termination based on a subagent counter that became
+  // stale in multi-turn streaming sessions (counter grew but never shrank
+  // when SubagentStop events were missed for nested subagents).
   const counter: { count: number } = { count: 0 };
 
   const hooks = {
@@ -161,25 +168,6 @@ export function buildHooks(
           counter.count,
         );
         return {};
-      }],
-    }],
-    Stop: [{
-      hooks: [async () => {
-        const subagents = counter.count;
-        const bgTasks = processorRef.current?.pendingBackgroundTaskCount ?? 0;
-        const total = subagents + bgTasks;
-        const decision = total > 0 ? "block" : "approve";
-        console.error(
-          "[sidecar:hook] event=Stop decision=%s hook_subagents=%d bg_tasks=%d total=%d",
-          decision,
-          subagents,
-          bgTasks,
-          total,
-        );
-        if (total > 0) {
-          return { decision: "block" as const, reason: `${total} agent(s) still running` };
-        }
-        return { decision: "approve" as const };
       }],
     }],
   };

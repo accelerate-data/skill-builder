@@ -1,27 +1,15 @@
 use std::path::Path;
 
 use crate::agents::sidecar::SidecarConfig;
-use crate::commands::workflow::{resolve_model_id, tools_for_agent};
+use crate::commands::workflow::resolve_model_id;
 use crate::db::{self, Db};
 use crate::types::SecretString;
-
-pub(super) const VALIDATE_AGENT_NAME: &str = "skill-creator:validate-skill";
-pub(super) const REWRITE_AGENT_NAME: &str = "skill-creator:rewrite-skill";
-pub(super) const BENCHMARK_AGENT_NAME: &str = "skill-creator:benchmark-skill";
 
 /// Max agentic turns for the entire streaming session. Each user message may
 /// use multiple turns internally (tool calls, etc.). 400 covers ~20 messages
 /// × 20 turns each. When exhausted, the sidecar emits session_exhausted and
 /// the frontend shows a "session limit reached" notice.
 pub(super) const REFINE_STREAM_MAX_TURNS: u32 = 400;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum RefineDispatch {
-    Stream,
-    DirectValidate,
-    DirectRewrite,
-    DirectBenchmark,
-}
 
 pub(super) struct RefineRuntimeSettings {
     pub api_key: SecretString,
@@ -34,17 +22,6 @@ pub(super) struct RefineRuntimeSettings {
     pub skills_path: String,
 }
 
-pub(super) fn dispatch_for_refine_command(
-    command: Option<&str>,
-    _target_files: Option<&[String]>,
-) -> RefineDispatch {
-    match command {
-        Some("validate") => RefineDispatch::DirectValidate,
-        Some("rewrite") => RefineDispatch::DirectRewrite,
-        Some("benchmark") => RefineDispatch::DirectBenchmark,
-        _ => RefineDispatch::Stream,
-    }
-}
 
 pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
@@ -126,6 +103,8 @@ pub(super) fn load_refine_runtime_settings(
 }
 
 /// Build a SidecarConfig for the first refine message (stream_start).
+/// No agent is specified — Claude decides which agent to invoke based on
+/// the prompt content and the agents discovered from plugins.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_refine_config(
     prompt: String,
@@ -142,12 +121,18 @@ pub(super) fn build_refine_config(
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
 
+    // cwd must stay at workspace root so the SDK finds .claude/ (project
+    // settings, agents, CLAUDE.md). Agents resolve skill-specific paths
+    // from the absolute workspace_dir in the prompt.
     let cwd = workspace_path.to_string();
     let agent_id = format!(
         "refine-{}-{}",
         skill_name,
         chrono::Utc::now().timestamp_millis()
     );
+
+    // When model is set explicitly (no agent), fallbackModel must differ.
+    let effective_fallback = fallback_model.filter(|fm| fm != &model);
 
     let config = SidecarConfig {
         prompt,
@@ -156,10 +141,15 @@ pub(super) fn build_refine_config(
             &model,
             interleaved_thinking_beta,
         ),
-        model: None,
+        model: Some(model),
         api_key,
         cwd,
-        allowed_tools: Some(tools_for_agent(REWRITE_AGENT_NAME)),
+        allowed_tools: Some(vec![
+            "Read".into(), "Write".into(), "Edit".into(),
+            "Glob".into(), "Grep".into(), "Bash".into(),
+            "Agent".into(), "Skill".into(), "Task".into(),
+            "AskUserQuestion".into(),
+        ]),
         max_turns: Some(REFINE_STREAM_MAX_TURNS),
         permission_mode: None,
         thinking: thinking_budget.map(|budget| {
@@ -168,12 +158,12 @@ pub(super) fn build_refine_config(
                 "budgetTokens": budget
             })
         }),
-        fallback_model,
+        fallback_model: effective_fallback,
         effort: sdk_effort,
         output_format: None,
         prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
-        agent_name: Some(REWRITE_AGENT_NAME.to_string()),
+        agent_name: None,
         required_plugins: Some(vec![
             "skill-content-researcher".to_string(),
             "skill-creator".to_string(),
@@ -189,133 +179,60 @@ pub(super) fn build_refine_config(
     (config, agent_id)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn build_direct_refine_config(
-    prompt: String,
-    skill_name: &str,
-    usage_session_id: &str,
-    workspace_path: &str,
-    api_key: SecretString,
-    model: String,
-    extended_thinking: bool,
-    interleaved_thinking_beta: bool,
-    sdk_effort: Option<String>,
-    fallback_model: Option<String>,
-    agent_name: &'static str,
-) -> (SidecarConfig, String) {
-    let thinking_budget = extended_thinking.then_some(16_000u32);
-    let agent_label = agent_name.rsplit(':').next().unwrap_or(agent_name);
-    let agent_id = format!(
-        "{}-{}-{}",
-        agent_label,
-        skill_name,
-        chrono::Utc::now().timestamp_millis()
-    );
-    let allowed_tools = tools_for_agent(agent_name);
-    let max_turns = match agent_name {
-        VALIDATE_AGENT_NAME => 50,
-        REWRITE_AGENT_NAME => 80,
-        BENCHMARK_AGENT_NAME => 200,
-        _ => REFINE_STREAM_MAX_TURNS,
-    };
-
-    let config = SidecarConfig {
-        prompt,
-        betas: crate::commands::workflow::build_betas(
-            thinking_budget,
-            &model,
-            interleaved_thinking_beta,
-        ),
-        model: None,
-        api_key,
-        cwd: workspace_path.to_string(),
-        allowed_tools: Some(allowed_tools),
-        max_turns: Some(max_turns),
-        permission_mode: None,
-        thinking: thinking_budget.map(|budget| {
-            serde_json::json!({
-                "type": "enabled",
-                "budgetTokens": budget
-            })
-        }),
-        fallback_model,
-        effort: sdk_effort,
-        // Refine runs as a chat UI — structured output causes the SDK to
-        // terminate the agent loop prematurely when the model emits matching
-        // JSON mid-run. Agents write results to disk; the frontend reads them
-        // via finalizeRefineRun, not from structured output.
-        output_format: None,
-        prompt_suggestions: Some(false),
-        path_to_claude_code_executable: None,
-        agent_name: Some(agent_name.to_string()),
-        required_plugins: Some(vec!["skill-creator".to_string()]),
-        conversation_history: None,
-        skill_name: Some(skill_name.to_string()),
-        step_id: Some(-10),
-        workflow_session_id: None,
-        usage_session_id: Some(usage_session_id.to_string()),
-        run_source: Some("refine".to_string()),
-    };
-
-    (config, agent_id)
-}
-
-/// Build a follow-up prompt for subsequent refine messages.
+/// Build a follow-up prompt for subsequent messages in the streaming session.
+/// Just the user's message + optional file targeting. No command prefix —
+/// Claude already has the full context from the initial prompt.
 pub(super) fn build_followup_prompt(
     user_message: &str,
     skills_path: &str,
     skill_name: &str,
     target_files: Option<&[String]>,
-    command: Option<&str>,
 ) -> String {
-    let skill_dir = Path::new(skills_path).join(skill_name);
-    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
-    let effective_command = command.unwrap_or("refine");
-
-    let mut prompt = format!("The command is: {}.", effective_command);
+    let mut prompt = String::new();
 
     if let Some(files) = target_files {
         if !files.is_empty() {
+            let skill_dir = Path::new(skills_path).join(skill_name);
+            let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
             let abs_files: Vec<String> = files
                 .iter()
                 .map(|f| format!("{}/{}", skill_dir_str, f))
                 .collect();
             prompt.push_str(&format!(
-                "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
+                "IMPORTANT: Only edit these files: {}. Do not modify any other files.\n\n",
                 abs_files.join(", ")
             ));
         }
     }
 
-    prompt.push_str(&format!("\n\nCurrent request: {}", user_message));
+    prompt.push_str(user_message);
     prompt
 }
 
-/// Build the refine agent prompt with all runtime fields.
+/// Build the refine prompt. Sends workspace context + the user's message.
+/// Claude decides which agent to invoke based on the message content.
 pub(super) fn build_refine_prompt(
     skill_name: &str,
     workspace_path: &str,
     skills_path: &str,
     user_message: &str,
     target_files: Option<&[String]>,
-    command: Option<&str>,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_dir = Path::new(skills_path).join(skill_name);
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
 
-    let effective_command = command.unwrap_or("refine");
-
     let mut prompt = format!(
-        "The skill name is: {}. The command is: {}. The workspace directory is: {}. \
-         The skill output directory (SKILL.md and references/) is: {}. \
-         Read user-context.md from the workspace directory. \
-         Derive context_dir as workspace_dir/context. \
+        "The skill name is: {skill_name}. \
+         The workspace directory is: \"{workspace_str}\". \
+         The skill output directory (SKILL.md and references/) is: \"{skill_output_str}\". \
+         Derive context_dir as \"{workspace_str}/context\". \
+         Derive eval_dir as \"{workspace_str}/evals\". \
+         Derive eval_results_dir as \"{workspace_str}/evals/workspace\". \
          All directories already exist — never create directories with mkdir or any other method. \
-         CONSTRAINT: You may only refine the existing skill '{}'. Do NOT create new skills. \
+         CONSTRAINT: You may only refine the existing skill '{skill_name}'. Do NOT create new skills. \
          If the user asks to create a new skill, decline and direct them to the dashboard.",
-        skill_name, effective_command, workspace_str, skill_output_str, skill_name,
     );
 
     if let Some(files) = target_files {
@@ -332,54 +249,3 @@ pub(super) fn build_refine_prompt(
     prompt
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn build_direct_agent_prompt(
-    agent_name: &'static str,
-    skill_name: &str,
-    workspace_path: &str,
-    skills_path: &str,
-    user_message: &str,
-    target_files: Option<&[String]>,
-    baseline_mode: Option<&str>,
-    prior_skill_snapshot_dir: Option<&str>,
-) -> String {
-    let workspace_dir = Path::new(workspace_path).join(skill_name);
-    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let skill_output_dir = Path::new(skills_path).join(skill_name);
-    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
-
-    let mut prompt = format!(
-        "The skill name is: {}. The workspace directory is: {}. \
-         The skill output directory (SKILL.md and references/) is: {}. \
-         Read user-context.md from the workspace directory. \
-         Derive context_dir as workspace_dir/context. \
-         All directories already exist — never create directories with mkdir or any other method. \
-         Treat Current request as an additional focus area for coverage, but do not ignore the agent's full workflow.",
-        skill_name, workspace_str, skill_output_str,
-    );
-
-    if agent_name == REWRITE_AGENT_NAME {
-        if let Some(files) = target_files {
-            if !files.is_empty() {
-                prompt.push_str(&format!(
-                    "\n\nFocus the rewrite on these files: {}.",
-                    files.join(", ")
-                ));
-            }
-        }
-    }
-
-    if agent_name == BENCHMARK_AGENT_NAME {
-        let mode = baseline_mode.unwrap_or("no_skill");
-        prompt.push_str(&format!("\n\nbaseline_mode: {}", mode));
-        if let Some(snapshot_dir) = prior_skill_snapshot_dir {
-            prompt.push_str(&format!(
-                "\nprior_skill_snapshot_dir: {}",
-                snapshot_dir.replace('\\', "/")
-            ));
-        }
-    }
-
-    prompt.push_str(&format!("\n\nCurrent request: {}", user_message));
-    prompt
-}

@@ -216,6 +216,48 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({ type: "stream_end" });
     expect(parseIncomingMessage(line)).toBeNull();
   });
+
+  it("parses a valid stream_question_answer", () => {
+    const line = JSON.stringify({
+      type: "stream_question_answer",
+      request_id: "req_3",
+      session_id: "sess_1",
+      tool_use_id: "toolu_123",
+      questions: [
+        {
+          header: "Next Step",
+          question: "Launch validate instead?",
+          options: [
+            { label: "Launch validate", description: "Run validation." },
+            { label: "Clarify refine", description: "Stay in refine." },
+          ],
+        },
+      ],
+      answers: {
+        "Launch validate instead?": "Launch validate",
+      },
+    });
+    const result = parseIncomingMessage(line);
+    expect(result).toEqual({
+      type: "stream_question_answer",
+      request_id: "req_3",
+      session_id: "sess_1",
+      tool_use_id: "toolu_123",
+      questions: [
+        {
+          header: "Next Step",
+          question: "Launch validate instead?",
+          options: [
+            { label: "Launch validate", description: "Run validation." },
+            { label: "Clarify refine", description: "Stay in refine." },
+          ],
+        },
+      ],
+      answers: {
+        "Launch validate instead?": "Launch validate",
+      },
+    });
+  });
 });
 
 // =====================================================================
@@ -992,5 +1034,105 @@ describe("runPersistent", () => {
           msg.request_id === "req_stream_2",
       );
     expect(turnCompleteForFollowUp).toBe(true);
+  });
+
+  it("routes stream_question_answer into the active session", async () => {
+    const questionPrompt = {
+      header: "Next Step",
+      question: "Launch validate instead?",
+      options: [
+        { label: "Launch validate", description: "Run validation." },
+        { label: "Clarify refine", description: "Stay in refine." },
+      ],
+    };
+
+    mockQuery.mockImplementation(({ options }) => {
+      async function* fakeConversation() {
+        const permission = await options.canUseTool(
+          "AskUserQuestion",
+          { questions: [questionPrompt] },
+          {
+            toolUseID: "toolu_123",
+            signal: new AbortController().signal,
+          },
+        );
+
+        yield {
+          type: "assistant",
+          message: {
+            content: [
+              {
+                type: "text",
+                text: `Answer:${String(permission.updatedInput?.answers?.[questionPrompt.question])}`,
+              },
+            ],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 10, output_tokens: 5 },
+          },
+        };
+      }
+
+      return fakeConversation() as ReturnType<typeof query>;
+    });
+
+    const input = new Readable({ read() {} });
+    const exitFn = vi.fn();
+    const capture = captureStdout();
+
+    try {
+      const runPromise = runPersistent(input, exitFn);
+      input.push(
+        JSON.stringify({
+          type: "stream_start",
+          request_id: "req_start",
+          session_id: "sess_qa",
+          config: { prompt: "help me", apiKey: "sk-test", cwd: os.tmpdir() },
+        }) + "\n",
+      );
+
+      await vi.waitFor(() => {
+        expect(
+          capture.lines.some((line) => {
+            const parsed = JSON.parse(line);
+            return parsed.request_id === "req_start" && parsed.type === "refine_question";
+          }),
+        ).toBe(true);
+      });
+
+      input.push(
+        JSON.stringify({
+          type: "stream_question_answer",
+          request_id: "req_answer",
+          session_id: "sess_qa",
+          tool_use_id: "toolu_123",
+          questions: [questionPrompt],
+          answers: {
+            [questionPrompt.question]: "Launch validate",
+          },
+        }) + "\n",
+      );
+      input.push(JSON.stringify({ type: "shutdown" }) + "\n");
+      input.push(null);
+
+      await runPromise;
+    } finally {
+      capture.restore();
+    }
+
+    expect(
+      capture.lines.some((line) => {
+        const parsed = JSON.parse(line);
+        return parsed.request_id === "req_start" && parsed.type === "refine_question";
+      }),
+    ).toBe(true);
+    expect(
+      capture.lines.some((line) => {
+        const parsed = JSON.parse(line);
+        return parsed.request_id === "req_answer"
+          && parsed.type === "display_item"
+          && parsed.item?.type === "output"
+          && String(parsed.item?.outputText ?? "").includes("Answer:Launch validate");
+      }),
+    ).toBe(true);
   });
 });

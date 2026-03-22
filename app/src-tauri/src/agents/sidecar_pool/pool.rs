@@ -34,6 +34,10 @@ pub struct SidecarPool {
     /// Per-request JSONL log files, keyed by agent_id.
     /// The stdout reader appends each message to the matching file.
     pub(super) request_logs: Arc<Mutex<HashMap<String, RequestLogFile>>>,
+    /// Streaming session log files, keyed by session_id.
+    /// Follow-up messages in a session clone from here to ensure all turns
+    /// are logged to the same JSONL file.
+    pub(super) session_logs: Arc<Mutex<HashMap<String, RequestLogFile>>>,
     /// Handle for the background idle cleanup task. Aborted on pool drop.
     pub(super) idle_cleanup_task: Arc<Mutex<Option<JoinHandle<()>>>>,
     /// Set to `true` in `shutdown_all` before aborting the idle cleanup task.
@@ -52,6 +56,7 @@ impl SidecarPool {
             spawning: Arc::new(Mutex::new(HashSet::new())),
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
             request_logs: Arc::new(Mutex::new(HashMap::new())),
+            session_logs: Arc::new(Mutex::new(HashMap::new())),
             idle_cleanup_task: Arc::new(Mutex::new(None)),
             shutdown_initiated: Arc::new(AtomicBool::new(false)),
             shutdown_completed: Arc::new(AtomicBool::new(false)),
