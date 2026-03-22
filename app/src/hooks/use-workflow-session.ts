@@ -1,12 +1,10 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useLeaveGuard } from "./use-leave-guard";
-import { useWorkflowStore } from "@/stores/workflow-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { teardownWorkflowSession } from "@/lib/workflow-teardown";
 import {
   acquireLock,
   releaseLock,
-  endWorkflowSession,
   cleanupSkillSidecar,
 } from "@/lib/tauri";
 import { toast } from "@/lib/toast";
@@ -76,22 +74,7 @@ export function useWorkflowSession({
     return () => {
       if (sessionCleanedUpRef.current) return;
       sessionCleanedUpRef.current = true;
-
-      // Revert any in-progress step to pending
-      const store = useWorkflowStore.getState();
-      const { currentStep: step, steps: curSteps } = store;
-      if (curSteps[step]?.status === "in_progress") {
-        store.updateStepStatus(step, "pending");
-      }
-
-      // Clear running/gate state
-      store.setRunning(false);
-      store.setGateLoading(false);
-      useAgentStore.getState().clearRuns();
-
-      // Fire-and-forget: end workflow session
-      const sessionId = useWorkflowStore.getState().workflowSessionId;
-      if (sessionId) endWorkflowSession(sessionId).catch((e) => console.warn("[use-workflow-session] non-fatal: op=endWorkflowSession err=%s", e));
+      teardownWorkflowSession({ logPrefix: "use-workflow-session" });
 
       // Fire-and-forget: clean up persistent sidecar
       cleanupSkillSidecar(skillName).catch((e) => console.warn("[use-workflow-session] non-fatal: op=cleanupSkillSidecar err=%s", e));
@@ -103,26 +86,10 @@ export function useWorkflowSession({
     shouldBlock: () => shouldBlock(),
     onLeave: (proceed) => {
       sessionCleanedUpRef.current = true;
-
-      const store = useWorkflowStore.getState();
-      const { currentStep: step, steps: curSteps } = store;
-      const sessionId = store.workflowSessionId;
-
-      // Revert any in-progress step to pending
-      if (curSteps[step]?.status === "in_progress") {
-        store.updateStepStatus(step, "pending");
-      }
-
-      // Clear running/gate state
-      store.setRunning(false);
-      store.setGateLoading(false);
-
-      // Clear session ID so the next "Continue" starts a fresh session
-      useWorkflowStore.setState({ workflowSessionId: null });
-      useAgentStore.getState().clearRuns();
-
-      // Fire-and-forget: end workflow session
-      if (sessionId) endWorkflowSession(sessionId).catch((e) => console.warn("[use-workflow-session] non-fatal: op=endWorkflowSession err=%s", e));
+      teardownWorkflowSession({
+        logPrefix: "use-workflow-session",
+        clearSessionId: true,
+      });
 
       // Fire-and-forget: shut down persistent sidecar for this skill
       cleanupSkillSidecar(skillName).catch((e) => console.warn("[use-workflow-session] non-fatal: op=cleanupSkillSidecar err=%s", e));

@@ -21,9 +21,7 @@ pub fn get_data_dir(data_dir: tauri::State<'_, crate::DataDir>) -> Result<String
 ///
 /// Called once at startup from `init_db` instead of on every `get_settings` read.
 /// This avoids holding the global DB mutex for write operations on every settings read.
-pub(crate) fn run_settings_startup_migrations(
-    conn: &rusqlite::Connection,
-) -> Result<(), String> {
+pub(crate) fn run_settings_startup_migrations(conn: &rusqlite::Connection) -> Result<(), String> {
     let mut settings = crate::db::read_settings(conn)?;
     let mut dirty = false;
 
@@ -126,53 +124,70 @@ fn normalize_path(raw: &str) -> String {
     }
 }
 
-#[tauri::command]
-pub fn save_settings(db: tauri::State<'_, Db>, settings: AppSettings) -> Result<(), String> {
-    log::info!("[save_settings]");
+fn preserve_backend_owned_settings(
+    settings: &mut AppSettings,
+    old_settings: &AppSettings,
+    log_scope: &str,
+) {
+    settings.splash_shown = old_settings.splash_shown;
+    settings.github_oauth_token = old_settings.github_oauth_token.clone();
+    settings.github_user_login = old_settings.github_user_login.clone();
+    settings.github_user_avatar = old_settings.github_user_avatar.clone();
+    settings.github_user_email = old_settings.github_user_email.clone();
+    if old_settings.marketplace_initialized && !settings.marketplace_initialized {
+        log::warn!(
+            "[{}] stale save attempted to reset marketplace_initialized — preserving true",
+            log_scope
+        );
+        settings.marketplace_initialized = true;
+    }
+}
+
+fn persist_settings(
+    conn: &rusqlite::Connection,
+    settings: AppSettings,
+    log_scope: &str,
+) -> Result<(), String> {
     let mut settings = settings;
+
     // Normalize skills_path before persisting
     if let Some(ref sp) = settings.skills_path {
         let normalized = normalize_path(sp);
         settings.skills_path = Some(normalized);
     }
 
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[save_settings] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-
     // Handle skills_path changes: first set → init; changed → move
-    let old_settings = crate::db::read_settings(&conn)?;
+    let old_settings = crate::db::read_settings(conn)?;
     let old_sp = old_settings.skills_path.as_deref();
     let new_sp = settings.skills_path.as_deref();
     handle_skills_path_change(old_sp, new_sp)?;
 
     // Guard backend-owned fields: preserve from DB, never let a stale frontend
-    // save overwrite them.  These fields are written only by dedicated commands
-    // (update_github_identity, github_poll_for_token, github_logout) or
-    // one-time startup migrations.
-    settings.splash_shown = old_settings.splash_shown;
-    settings.github_oauth_token = old_settings.github_oauth_token.clone();
-    settings.github_user_login = old_settings.github_user_login.clone();
-    settings.github_user_avatar = old_settings.github_user_avatar.clone();
-    settings.github_user_email = old_settings.github_user_email.clone();
-    // Guard: once marketplace_initialized is true in the DB, never let a stale
-    // frontend save overwrite it back to false. This prevents the migration from
-    // re-running if a component calls save_settings with a pre-migration snapshot.
-    if old_settings.marketplace_initialized && !settings.marketplace_initialized {
-        log::warn!("[save_settings] stale save attempted to reset marketplace_initialized — preserving true");
-        settings.marketplace_initialized = true;
-    }
+    // save overwrite them. These fields are written only by dedicated commands
+    // or startup migrations.
+    preserve_backend_owned_settings(&mut settings, &old_settings, log_scope);
 
     // Log what changed
     let changes = diff_settings(&old_settings, &settings);
     if changes.is_empty() {
-        log::info!("[save_settings] no changes");
+        log::info!("[{}] no changes", log_scope);
     } else {
-        log::info!("[save_settings] {}", changes.join(", "));
+        log::info!("[{}] {}", log_scope, changes.join(", "));
     }
 
-    crate::db::write_settings(&conn, &settings)?;
+    crate::db::write_settings(conn, &settings)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn save_settings(db: tauri::State<'_, Db>, settings: AppSettings) -> Result<(), String> {
+    log::info!("[save_settings]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[save_settings] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+
+    persist_settings(&conn, settings, "save_settings")?;
     Ok(())
 }
 
@@ -344,50 +359,13 @@ pub fn update_user_settings(
     settings: crate::types::AppSettings,
 ) -> Result<(), String> {
     log::info!("[update_user_settings]");
-    let mut settings = settings;
-    // Normalize skills_path before persisting
-    if let Some(ref sp) = settings.skills_path {
-        let normalized = normalize_path(sp);
-        settings.skills_path = Some(normalized);
-    }
-
     let conn = db.0.lock().map_err(|e| {
         log::error!("[update_user_settings] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
 
-    let old_settings = crate::db::read_settings(&conn).map_err(|e| {
-        log::error!("[update_user_settings] read_settings failed: {}", e);
-        e
-    })?;
-
-    // Handle skills_path changes
-    let old_sp = old_settings.skills_path.as_deref();
-    let new_sp = settings.skills_path.as_deref();
-    handle_skills_path_change(old_sp, new_sp).map_err(|e| {
-        log::error!("[update_user_settings] handle_skills_path_change failed: {}", e);
-        e
-    })?;
-
-    // Preserve all backend-owned fields from DB
-    settings.splash_shown = old_settings.splash_shown;
-    settings.github_oauth_token = old_settings.github_oauth_token.clone();
-    settings.github_user_login = old_settings.github_user_login.clone();
-    settings.github_user_avatar = old_settings.github_user_avatar.clone();
-    settings.github_user_email = old_settings.github_user_email.clone();
-    if old_settings.marketplace_initialized {
-        settings.marketplace_initialized = true;
-    }
-
-    let changes = diff_settings(&old_settings, &settings);
-    if changes.is_empty() {
-        log::info!("[update_user_settings] no changes");
-    } else {
-        log::info!("[update_user_settings] {}", changes.join(", "));
-    }
-
-    crate::db::write_settings(&conn, &settings).map_err(|e| {
-        log::error!("[update_user_settings] write_settings failed: {}", e);
+    persist_settings(&conn, settings, "update_user_settings").map_err(|e| {
+        log::error!("[update_user_settings] {}", e);
         e
     })?;
     Ok(())
@@ -695,7 +673,10 @@ mod tests {
 
     #[test]
     fn normalize_path_handles_spaces_in_path() {
-        assert_eq!(normalize_path("/Users/John Doe/My Skills/My Skills"), "/Users/John Doe/My Skills");
+        assert_eq!(
+            normalize_path("/Users/John Doe/My Skills/My Skills"),
+            "/Users/John Doe/My Skills"
+        );
     }
 
     // ===== save_settings guard tests =====
@@ -717,7 +698,10 @@ mod tests {
         crate::db::write_settings(&conn, &payload).unwrap();
 
         let result = crate::db::read_settings(&conn).unwrap();
-        assert!(result.splash_shown, "save_settings must preserve splash_shown from DB");
+        assert!(
+            result.splash_shown,
+            "save_settings must preserve splash_shown from DB"
+        );
     }
 
     #[test]
@@ -746,9 +730,15 @@ mod tests {
         crate::db::write_settings(&conn, &payload).unwrap();
 
         let result = crate::db::read_settings(&conn).unwrap();
-        assert_eq!(result.github_oauth_token.as_deref(), Some("test-oauth-token"));
+        assert_eq!(
+            result.github_oauth_token.as_deref(),
+            Some("test-oauth-token")
+        );
         assert_eq!(result.github_user_login.as_deref(), Some("octocat"));
-        assert_eq!(result.github_user_avatar.as_deref(), Some("https://avatar.url"));
+        assert_eq!(
+            result.github_user_avatar.as_deref(),
+            Some("https://avatar.url")
+        );
         assert_eq!(result.github_user_email.as_deref(), Some("cat@github.com"));
     }
 
@@ -818,8 +808,14 @@ mod tests {
         let result = crate::db::read_settings(&conn).unwrap();
         assert_eq!(result.github_user_login.as_deref(), Some("alice"));
         assert_eq!(result.github_user_avatar.as_deref(), Some("https://avatar"));
-        assert_eq!(result.github_user_email.as_deref(), Some("alice@example.com"));
-        assert_eq!(result.github_oauth_token.as_deref(), Some("gho_placeholder_for_tests"));
+        assert_eq!(
+            result.github_user_email.as_deref(),
+            Some("alice@example.com")
+        );
+        assert_eq!(
+            result.github_oauth_token.as_deref(),
+            Some("gho_placeholder_for_tests")
+        );
     }
 
     #[test]
@@ -893,7 +889,38 @@ mod tests {
 
         let result = crate::db::read_settings(&conn).unwrap();
         assert!(result.splash_shown);
-        assert_eq!(result.github_oauth_token.as_deref(), Some("test-oauth-token"));
+        assert_eq!(
+            result.github_oauth_token.as_deref(),
+            Some("test-oauth-token")
+        );
+        assert_eq!(result.github_user_login.as_deref(), Some("dev"));
+        assert!(result.marketplace_initialized);
+        assert_eq!(result.preferred_model.as_deref(), Some("claude-opus-4"));
+    }
+
+    #[test]
+    fn test_persist_settings_normalizes_path_and_preserves_backend_fields() {
+        let conn = crate::db::create_test_db_for_tests();
+        let mut initial = crate::types::AppSettings::default();
+        initial.splash_shown = true;
+        initial.github_oauth_token = Some("test-oauth-token".to_string());
+        initial.github_user_login = Some("dev".to_string());
+        initial.marketplace_initialized = true;
+        crate::db::write_settings(&conn, &initial).unwrap();
+
+        let mut new_settings = crate::types::AppSettings::default();
+        new_settings.skills_path = Some("/tmp/Skills/Skills/".to_string());
+        new_settings.preferred_model = Some("claude-opus-4".to_string());
+
+        persist_settings(&conn, new_settings, "settings-test").unwrap();
+
+        let result = crate::db::read_settings(&conn).unwrap();
+        assert_eq!(result.skills_path.as_deref(), Some("/tmp/Skills"));
+        assert!(result.splash_shown);
+        assert_eq!(
+            result.github_oauth_token.as_deref(),
+            Some("test-oauth-token")
+        );
         assert_eq!(result.github_user_login.as_deref(), Some("dev"));
         assert!(result.marketplace_initialized);
         assert_eq!(result.preferred_model.as_deref(), Some("claude-opus-4"));
@@ -919,7 +946,10 @@ mod tests {
         crate::db::write_settings(&conn, &settings).unwrap();
 
         let result = crate::db::read_settings(&conn).unwrap();
-        assert_eq!(result.github_oauth_token.as_deref(), Some("test-oauth-saved"));
+        assert_eq!(
+            result.github_oauth_token.as_deref(),
+            Some("test-oauth-saved")
+        );
         assert_eq!(result.github_user_login.as_deref(), Some("octocat"));
     }
 

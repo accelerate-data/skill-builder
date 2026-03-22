@@ -104,7 +104,7 @@
     },
     "frontend_lib": {
       "path": "app/src/lib/",
-      "description": "Utilities and shared types: tauri.ts (typed Tauri command wrappers), types.ts (shared TS types), agent-events.ts (frontend AgentEvent types), display-types.ts (DisplayItem types), agent-results.ts (result parsing), models.ts (model list), workflow-steps.ts + workflow-step-configs.ts (step definitions), clarifications-types.ts, path-utils.ts, app-log.ts, help-urls.ts, toast.ts, utils.ts"
+      "description": "Utilities and shared types: tauri.ts (typed Tauri command wrappers), types.ts (shared TS types), agent-events.ts (frontend AgentEvent types), display-types.ts (DisplayItem types), agent-results.ts (result parsing), models.ts (model list), workflow-steps.ts + workflow-step-configs.ts (step definitions), workflow-teardown.ts (shared workflow session teardown helper), clarifications-types.ts, path-utils.ts, app-log.ts, help-urls.ts, toast.ts, utils.ts"
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",

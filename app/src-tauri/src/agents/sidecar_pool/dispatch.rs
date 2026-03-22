@@ -11,13 +11,38 @@ use tokio::sync::Mutex;
 
 use super::pool::SidecarPool;
 use super::process::{
-    PersistentSidecar, RequestLogFile, LaunchedProcess, StdoutContext,
-    cleanup_sidecar, remove_and_cleanup_sidecar, spawn_heartbeat_task, handle_stdout_line,
+    cleanup_sidecar, handle_stdout_line, remove_and_cleanup_sidecar, spawn_heartbeat_task,
+    LaunchedProcess, PersistentSidecar, RequestLogFile, StdoutContext,
 };
 use super::startup_error::SidecarStartupError;
-use crate::agents::{events, node_resolver, sidecar_path};
 use crate::agents::node_resolver::NodeBinaryError;
 use crate::agents::sidecar::SidecarConfig;
+use crate::agents::{events, node_resolver, sidecar_path};
+
+fn build_config_event_payload(config: &SidecarConfig) -> serde_json::Value {
+    let mut config_val = serde_json::to_value(config).unwrap_or_default();
+    if let Some(obj) = config_val.as_object_mut() {
+        obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
+        obj.remove("prompt");
+    }
+
+    serde_json::json!({
+        "type": "config",
+        "config": config_val,
+    })
+}
+
+fn build_transcript_first_line(config: &SidecarConfig) -> serde_json::Value {
+    let mut config_val = serde_json::to_value(config).unwrap_or_default();
+    if let Some(obj) = config_val.as_object_mut() {
+        obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
+    }
+
+    serde_json::json!({
+        "type": "config",
+        "config": config_val,
+    })
+}
 
 impl SidecarPool {
     /// Get an existing sidecar for a skill or spawn a new persistent one.
@@ -520,31 +545,9 @@ impl SidecarPool {
             config.prompt,
         );
 
-        // Emit redacted config to frontend (strip both apiKey and prompt)
-        {
-            let mut config_val = serde_json::to_value(&config).unwrap_or_default();
-            if let Some(obj) = config_val.as_object_mut() {
-                obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
-                obj.remove("prompt");
-            }
-            let event = serde_json::json!({
-                "type": "config",
-                "config": config_val,
-            });
-            events::handle_sidecar_message(app_handle, agent_id, &event.to_string());
-        }
-
-        // Build transcript first line: config with prompt intact, only apiKey redacted
-        let transcript_first_line = {
-            let mut config_val = serde_json::to_value(&config).unwrap_or_default();
-            if let Some(obj) = config_val.as_object_mut() {
-                obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
-            }
-            serde_json::json!({
-                "type": "config",
-                "config": config_val,
-            })
-        };
+        let config_event = build_config_event_payload(&config);
+        events::handle_sidecar_message(app_handle, agent_id, &config_event.to_string());
+        let transcript_first_line = build_transcript_first_line(&config);
 
         // Create per-request JSONL transcript file alongside chat storage:
         //   {cwd}/{skill_name}/logs/{step_label}-{iso_timestamp}.jsonl
@@ -781,28 +784,9 @@ impl SidecarPool {
             config.prompt,
         );
 
-        // Emit redacted config to frontend (strip both apiKey and prompt)
-        {
-            let mut config_val = serde_json::to_value(&config).unwrap_or_default();
-            if let Some(obj) = config_val.as_object_mut() {
-                obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
-                obj.remove("prompt");
-            }
-            let event = serde_json::json!({ "type": "config", "config": config_val });
-            events::handle_sidecar_message(app_handle, agent_id, &event.to_string());
-        }
-
-        // Build transcript first line: config with prompt intact, only apiKey redacted
-        let transcript_first_line = {
-            let mut config_val = serde_json::to_value(&config).unwrap_or_default();
-            if let Some(obj) = config_val.as_object_mut() {
-                obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
-            }
-            serde_json::json!({
-                "type": "config",
-                "config": config_val,
-            })
-        };
+        let config_event = build_config_event_payload(&config);
+        events::handle_sidecar_message(app_handle, agent_id, &config_event.to_string());
+        let transcript_first_line = build_transcript_first_line(&config);
 
         // Create JSONL transcript
         {
@@ -1216,6 +1200,52 @@ fn extract_step_label<'a>(agent_id: &'a str, skill_name: &str) -> &'a str {
 mod tests {
     use super::*;
 
+    fn sample_config() -> SidecarConfig {
+        SidecarConfig {
+            prompt: "Top secret prompt".to_string(),
+            model: Some("claude-sonnet-4".to_string()),
+            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
+            cwd: "/tmp/skill-builder".to_string(),
+            allowed_tools: Some(vec!["Read".to_string()]),
+            max_turns: Some(3),
+            permission_mode: None,
+            betas: None,
+            thinking: None,
+            fallback_model: None,
+            effort: None,
+            output_format: None,
+            prompt_suggestions: Some(true),
+            path_to_claude_code_executable: None,
+            agent_name: Some("worker".to_string()),
+            required_plugins: None,
+            conversation_history: None,
+            skill_name: Some("demo-skill".to_string()),
+            step_id: Some(1),
+            workflow_session_id: Some("session-123".to_string()),
+            usage_session_id: None,
+            run_source: Some("workflow".to_string()),
+        }
+    }
+
+    #[test]
+    fn test_build_config_event_payload_redacts_api_key_and_prompt() {
+        let event = build_config_event_payload(&sample_config());
+
+        assert_eq!(event["type"], "config");
+        assert_eq!(event["config"]["apiKey"], "[REDACTED]");
+        assert!(event["config"].get("prompt").is_none());
+        assert_eq!(event["config"]["cwd"], "/tmp/skill-builder");
+    }
+
+    #[test]
+    fn test_build_transcript_first_line_redacts_api_key_but_keeps_prompt() {
+        let event = build_transcript_first_line(&sample_config());
+
+        assert_eq!(event["type"], "config");
+        assert_eq!(event["config"]["apiKey"], "[REDACTED]");
+        assert_eq!(event["config"]["prompt"], "Top secret prompt");
+    }
+
     // -----------------------------------------------------------------
     // extract_step_label tests
     // -----------------------------------------------------------------
@@ -1262,10 +1292,7 @@ mod tests {
     #[test]
     fn test_extract_step_label_named_workflow_step() {
         assert_eq!(
-            extract_step_label(
-                "my-skill-confirm-decisions-1707654321000",
-                "my-skill"
-            ),
+            extract_step_label("my-skill-confirm-decisions-1707654321000", "my-skill"),
             "confirm-decisions"
         );
     }
