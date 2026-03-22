@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
-import type { RefineCommand, RefineMessage, SkillFile } from "@/stores/refine-store";
+import type { RefineMessage, SkillFile } from "@/stores/refine-store";
 import { useAgentStore } from "@/stores/agent-store";
 import {
   getSkillContentForRefine,
@@ -214,16 +214,15 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
   // --- Send a message ---
   const handleSend = useCallback(
-    async (text: string, targetFiles?: string[], command?: RefineCommand) => {
+    async (text: string, targetFiles?: string[]) => {
       const store = useRefineStore.getState();
       const sessionId = store.sessionId;
       if (!selectedSkill || !workspacePath || !sessionId) return;
       if (store.isRunning) return;
 
       console.log(
-        "[workspace-refine] send: skill=%s command=%s files=%s",
+        "[workspace-refine] send: skill=%s files=%s",
         selectedSkill.name,
-        command ?? "refine",
         targetFiles?.join(",") ?? "all",
       );
 
@@ -232,7 +231,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       runSkillRef.current = selectedSkill;
       store.setPendingRedirect(null);
       store.setGitDiff(null);
-      store.addUserMessage(text, targetFiles, command);
+      store.addUserMessage(text, targetFiles);
       store.setRunning(true);
 
       try {
@@ -241,7 +240,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           text,
           workspacePath,
           targetFiles,
-          command,
         );
 
         useAgentStore.getState().registerRun(
@@ -290,7 +288,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   // --- Benchmark prompt callbacks ---
   const handleBenchmarkConfirm = useCallback(() => {
     console.log("[workspace-refine] benchmark confirmed");
-    void handleSend("", undefined, "benchmark");
+    void handleSend("run benchmarks on this skill");
   }, [handleSend]);
 
   const handleBenchmarkSkip = useCallback(() => {
@@ -417,9 +415,14 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       runSkillRef.current = null;
 
       if (pendingRedirect) {
-        setTimeout(() => {
-          void handleSend(pendingRedirect.text, undefined, pendingRedirect.command);
-        }, 0);
+        const redirectText = pendingRedirect.command
+          ? `${pendingRedirect.command} this skill${pendingRedirect.text ? `: ${pendingRedirect.text}` : ""}`
+          : pendingRedirect.text;
+        if (redirectText) {
+          setTimeout(() => {
+            void handleSend(redirectText);
+          }, 0);
+        }
       }
     };
 
