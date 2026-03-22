@@ -73,7 +73,7 @@ Detect available prior versions and let the user choose a baseline. The agent de
 **Decision rules:**
 
 - **0-1 tags** → no prior version available. Default to `baseline_mode = "no_skill"` silently (do not prompt the user).
-- **2+ tags** → prior versions exist. Use `AskUserQuestion` to allow the user to either default to `baseline_mode = "no_skill"` or pick one of the prior versions. 
+- **2+ tags** → prior versions exist. Use `AskUserQuestion` to allow the user to either default to `baseline_mode = "no_skill"` or pick one of the prior versions.
 
 If the user chooses "Skip", return immediately with `{ "status": "skipped", "call_trace": ["user-skipped"] }`.
 
