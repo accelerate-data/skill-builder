@@ -278,9 +278,9 @@ fn base_refine_config(prompt: &str) -> (crate::agents::sidecar::SidecarConfig, S
 
 
 #[test]
-fn test_refine_config_has_no_agent_name() {
+fn test_refine_config_uses_rewrite_agent() {
     let (config, _) = base_refine_config("improve metrics");
-    assert!(config.agent_name.is_none());
+    assert_eq!(config.agent_name.as_deref(), Some(REWRITE_AGENT_NAME));
 }
 
 #[test]
@@ -338,10 +338,10 @@ fn test_refine_config_agent_id_format() {
 }
 
 #[test]
-fn test_refine_config_sets_model_without_agent() {
+fn test_refine_config_omits_model_for_named_agent() {
     let (config, _) = base_refine_config("test");
-    assert!(config.agent_name.is_none());
-    assert!(config.model.is_some());
+    assert!(config.model.is_none());
+    assert_eq!(config.agent_name.as_deref(), Some(REWRITE_AGENT_NAME));
 }
 
 #[test]
@@ -395,12 +395,12 @@ fn test_refine_config_serialization_matches_sidecar_schema() {
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
     assert_eq!(parsed["prompt"], "full prompt here");
-    assert!(parsed.get("agentName").is_none());
+    assert_eq!(parsed["agentName"], REWRITE_AGENT_NAME);
     assert_eq!(parsed["maxTurns"], REFINE_STREAM_MAX_TURNS);
     assert!(parsed["allowedTools"]
         .as_array()
         .unwrap()
-        .contains(&serde_json::json!("Task")));
+        .contains(&serde_json::json!("Agent")));
     assert_eq!(parsed["skillName"], "my-skill");
     assert_eq!(parsed["usageSessionId"], expected_usage_session_id);
     assert!(parsed.get("conversationHistory").is_none());

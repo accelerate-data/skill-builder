@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::agents::sidecar::SidecarConfig;
-use crate::commands::workflow::resolve_model_id;
+use crate::commands::workflow::{resolve_model_id, tools_for_agent};
 use crate::db::{self, Db};
 use crate::types::SecretString;
 
@@ -26,12 +26,6 @@ pub(super) struct RefineRuntimeSettings {
     pub skills_path: String,
 }
 
-/// All tools available in refine streaming sessions.
-/// Claude decides which agent to invoke via the Task tool based on the prompt.
-const REFINE_ALLOWED_TOOLS: &[&str] = &[
-    "Read", "Write", "Edit", "Glob", "Grep", "Bash",
-    "Agent", "Skill", "Task", "AskUserQuestion",
-];
 
 pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
@@ -138,11 +132,6 @@ pub(super) fn build_refine_config(
         chrono::Utc::now().timestamp_millis()
     );
 
-    let allowed_tools = REFINE_ALLOWED_TOOLS
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-
     let config = SidecarConfig {
         prompt,
         betas: crate::commands::workflow::build_betas(
@@ -150,10 +139,10 @@ pub(super) fn build_refine_config(
             &model,
             interleaved_thinking_beta,
         ),
-        model: Some(model),
+        model: None,
         api_key,
         cwd,
-        allowed_tools: Some(allowed_tools),
+        allowed_tools: Some(tools_for_agent(REWRITE_AGENT_NAME)),
         max_turns: Some(REFINE_STREAM_MAX_TURNS),
         permission_mode: None,
         thinking: thinking_budget.map(|budget| {
@@ -167,7 +156,7 @@ pub(super) fn build_refine_config(
         output_format: None,
         prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
-        agent_name: None,
+        agent_name: Some(REWRITE_AGENT_NAME.to_string()),
         required_plugins: Some(vec![
             "skill-content-researcher".to_string(),
             "skill-creator".to_string(),
