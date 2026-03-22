@@ -125,12 +125,10 @@ pub(super) fn build_refine_config(
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
 
-    // Set cwd to the skill's workspace directory so relative paths resolve
-    // correctly when Claude or subagents read files like user-context.md.
-    let cwd = std::path::Path::new(workspace_path)
-        .join(skill_name)
-        .to_string_lossy()
-        .to_string();
+    // cwd must stay at workspace root so the SDK finds .claude/ (project
+    // settings, agents, CLAUDE.md). Agents resolve skill-specific paths
+    // from the absolute workspace_dir in the prompt.
+    let cwd = workspace_path.to_string();
     let agent_id = format!(
         "refine-{}-{}",
         skill_name,
