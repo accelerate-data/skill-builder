@@ -254,7 +254,7 @@ describe("buildQueryOptions", () => {
     expect(opts).not.toHaveProperty("hooks");
   });
 
-  it("includes Stop, SubagentStart, and SubagentStop hooks when processorRef is provided", () => {
+  it("includes SubagentStart and SubagentStop hooks when processorRef is provided", () => {
     const processorRef = { current: null };
     const opts = buildQueryOptions(
       makeConfig(),
@@ -265,7 +265,7 @@ describe("buildQueryOptions", () => {
     );
     expect(opts).toHaveProperty("hooks");
     const hooks = (opts as Record<string, unknown>).hooks as Record<string, unknown>;
-    expect(hooks).toHaveProperty("Stop");
+    expect(hooks).not.toHaveProperty("Stop");
     expect(hooks).toHaveProperty("SubagentStart");
     expect(hooks).toHaveProperty("SubagentStop");
   });
@@ -275,15 +275,14 @@ describe("buildQueryOptions", () => {
     type HookFn = (...args: unknown[]) => Promise<unknown>;
     type HookMatcher = { hooks: HookFn[] };
 
-    function makeHooks(bgTasks = 0) {
-      const fakeProcessor = { pendingBackgroundTaskCount: bgTasks };
+    function makeHooks() {
+      const fakeProcessor = { pendingBackgroundTaskCount: 0 };
       const processorRef = { current: fakeProcessor as never };
       const result = buildHooks(processorRef);
       const hooks = result.hooks as Record<string, HookMatcher[]>;
       return {
         subagentStart: hooks.SubagentStart[0].hooks[0],
         subagentStop: hooks.SubagentStop[0].hooks[0],
-        stop: hooks.Stop[0].hooks[0],
         counter: result._subagentCounter,
       };
     }
@@ -311,41 +310,6 @@ describe("buildQueryOptions", () => {
       expect(counter.count).toBe(0);
       await subagentStop({ hook_event_name: "SubagentStop", agent_id: "a1", agent_type: "general" });
       expect(counter.count).toBe(0);
-    });
-
-    it("Stop hook blocks when hook-counted subagents are active", async () => {
-      const { subagentStart, stop } = makeHooks();
-      await subagentStart({ hook_event_name: "SubagentStart", agent_id: "a1", agent_type: "general" });
-      await subagentStart({ hook_event_name: "SubagentStart", agent_id: "a2", agent_type: "general" });
-      const result = await stop();
-      expect(result).toEqual({ decision: "block", reason: "2 agent(s) still running" });
-    });
-
-    it("Stop hook blocks when only background tasks are active", async () => {
-      const { stop } = makeHooks(3);
-      const result = await stop();
-      expect(result).toEqual({ decision: "block", reason: "3 agent(s) still running" });
-    });
-
-    it("Stop hook sums hook subagents and background tasks", async () => {
-      const { subagentStart, stop } = makeHooks(2);
-      await subagentStart({ hook_event_name: "SubagentStart", agent_id: "a1", agent_type: "general" });
-      const result = await stop();
-      expect(result).toEqual({ decision: "block", reason: "3 agent(s) still running" });
-    });
-
-    it("Stop hook approves when no subagents or background tasks", async () => {
-      const { stop } = makeHooks(0);
-      const result = await stop();
-      expect(result).toEqual({ decision: "approve" });
-    });
-
-    it("Stop hook approves after all subagents stop", async () => {
-      const { subagentStart, subagentStop, stop } = makeHooks();
-      await subagentStart({ hook_event_name: "SubagentStart", agent_id: "a1", agent_type: "general" });
-      await subagentStop({ hook_event_name: "SubagentStop", agent_id: "a1", agent_type: "general" });
-      const result = await stop();
-      expect(result).toEqual({ decision: "approve" });
     });
   });
 

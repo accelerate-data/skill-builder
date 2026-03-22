@@ -819,7 +819,10 @@ impl SidecarPool {
                 let _ = writeln!(f, "{}", transcript_first_line);
                 let log_handle: RequestLogFile = Arc::new(Mutex::new(Some(f)));
                 let mut logs = self.request_logs.lock().await;
-                logs.insert(agent_id.to_string(), log_handle);
+                logs.insert(agent_id.to_string(), log_handle.clone());
+                // Also register under session_id so follow-up messages can find it.
+                let mut session_logs = self.session_logs.lock().await;
+                session_logs.insert(session_id.to_string(), log_handle);
             }
         }
 
@@ -880,6 +883,16 @@ impl SidecarPool {
         {
             let mut pending = self.pending_requests.lock().await;
             pending.insert(agent_id.to_string(), skill_name.to_string());
+        }
+
+        // Share the session's log file with this follow-up request_id so all
+        // turns in the streaming session are logged to the same JSONL file.
+        {
+            let session_logs = self.session_logs.lock().await;
+            if let Some(log_handle) = session_logs.get(session_id) {
+                let mut logs = self.request_logs.lock().await;
+                logs.insert(agent_id.to_string(), log_handle.clone());
+            }
         }
 
         log::debug!(

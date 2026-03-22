@@ -541,7 +541,11 @@ describe("runAgentRequest — stop hook integration", () => {
     const opts = callArgs.options as Record<string, unknown>;
     expect(opts).toHaveProperty("hooks");
     const hooks = opts.hooks as Record<string, unknown>;
-    expect(hooks).toHaveProperty("Stop");
+    // Stop hook was removed (stale counter in streaming sessions).
+    // SubagentStart/SubagentStop still present for observability.
+    expect(hooks).not.toHaveProperty("Stop");
+    expect(hooks).toHaveProperty("SubagentStart");
+    expect(hooks).toHaveProperty("SubagentStop");
   });
 
   it("emits orphaned tool call display items alongside shutdown run_result on abort", async () => {

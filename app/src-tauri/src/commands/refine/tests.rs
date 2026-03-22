@@ -278,9 +278,10 @@ fn base_refine_config(prompt: &str) -> (crate::agents::sidecar::SidecarConfig, S
 
 
 #[test]
-fn test_refine_config_uses_rewrite_agent() {
+fn test_refine_config_has_no_agent() {
     let (config, _) = base_refine_config("improve metrics");
-    assert_eq!(config.agent_name.as_deref(), Some(REWRITE_AGENT_NAME));
+    assert!(config.agent_name.is_none());
+    assert!(config.model.is_some());
 }
 
 #[test]
@@ -338,10 +339,10 @@ fn test_refine_config_agent_id_format() {
 }
 
 #[test]
-fn test_refine_config_omits_model_for_named_agent() {
+fn test_refine_config_sets_model_directly() {
     let (config, _) = base_refine_config("test");
-    assert!(config.model.is_none());
-    assert_eq!(config.agent_name.as_deref(), Some(REWRITE_AGENT_NAME));
+    assert!(config.model.is_some());
+    assert!(config.agent_name.is_none());
 }
 
 #[test]
@@ -395,12 +396,13 @@ fn test_refine_config_serialization_matches_sidecar_schema() {
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
     assert_eq!(parsed["prompt"], "full prompt here");
-    assert_eq!(parsed["agentName"], REWRITE_AGENT_NAME);
+    assert!(parsed.get("agentName").is_none());
+    assert!(parsed.get("model").is_some());
     assert_eq!(parsed["maxTurns"], REFINE_STREAM_MAX_TURNS);
     assert!(parsed["allowedTools"]
         .as_array()
         .unwrap()
-        .contains(&serde_json::json!("Agent")));
+        .contains(&serde_json::json!("Task")));
     assert_eq!(parsed["skillName"], "my-skill");
     assert_eq!(parsed["usageSessionId"], expected_usage_session_id);
     assert!(parsed.get("conversationHistory").is_none());
@@ -621,9 +623,9 @@ fn test_refine_prompt_includes_all_three_paths() {
     let ws_fwd = ws.replace('\\', "/");
     let skills_fwd = skills.replace('\\', "/");
     assert!(prompt
-        .contains(&format!("The workspace directory is: {}/my-skill", ws_fwd)));
+        .contains(&format!("The workspace directory is: \"{}/my-skill\"", ws_fwd)));
     assert!(prompt.contains(
-        &format!("The skill output directory (SKILL.md and references/) is: {}/my-skill", skills_fwd)
+        &format!("The skill output directory (SKILL.md and references/) is: \"{}/my-skill\"", skills_fwd)
     ));
     assert!(prompt.contains("context_dir"));
     assert!(prompt.contains("eval_dir"));
