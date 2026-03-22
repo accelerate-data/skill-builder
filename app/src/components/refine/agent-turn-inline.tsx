@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, StopCircle } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useAgentStore } from "@/stores/agent-store";
 import { DisplayItemList } from "@/components/agent-items/display-item-list";
@@ -54,6 +54,12 @@ export const AgentTurnInline = memo(function AgentTurnInline({ agentId }: AgentT
       {status === "running" && displayItems.length > 0 && (
         <div className="flex items-center gap-1.5 py-1 text-muted-foreground/80">
           <Loader2 className="size-3 animate-spin" />
+        </div>
+      )}
+      {status === "shutdown" && (
+        <div className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-muted-foreground">
+          <StopCircle className="size-3.5 shrink-0" />
+          Interrupted by user
         </div>
       )}
     </div>
