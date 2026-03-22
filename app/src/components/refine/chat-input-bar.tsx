@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SendHorizontal, Square, X, Bot, FileText } from "lucide-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -140,7 +140,6 @@ function SuggestionListInner(
   );
 }
 
-import React from "react";
 const SuggestionList = React.forwardRef<SuggestionListHandle, SuggestionListProps>(SuggestionListInner);
 
 // ── Mention extension config ─────────────────────────────────────────────────

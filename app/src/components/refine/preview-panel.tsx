@@ -93,20 +93,14 @@ export function PreviewPanel() {
     if (!isOpen) return;
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      // Skip if clicking the toggle button (it handles open/close itself).
-      if (target.closest("[data-file-viewer-toggle]")) return;
+      // Skip if clicking the toggle button or a modified-file pill (they handle open/close).
+      if (target.closest("[data-file-viewer-toggle]") || target.closest("[data-testid^='refine-modified-file-pill']")) return;
       if (panelRef.current && !panelRef.current.contains(target)) {
         close();
       }
     };
-    // Use setTimeout to avoid closing immediately from the pill click itself.
-    const id = setTimeout(() => {
-      document.addEventListener("mousedown", onClick);
-    }, 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener("mousedown", onClick);
-    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
   }, [isOpen, close]);
 
   // Clamp width to container bounds.

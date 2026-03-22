@@ -16,6 +16,8 @@ export const BareOutput = memo(function BareOutput({ item }: { item: DisplayItem
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {
+      console.warn("[bare-output] Clipboard write failed");
     });
   }, [text]);
 
