@@ -80,6 +80,72 @@ describe("ChatMessageList", () => {
     expect(onQuestionSubmit).toHaveBeenCalled();
   });
 
+  it("renders multi-question as wizard with step-through navigation", async () => {
+    const user = userEvent.setup();
+    const onQuestionSubmit = vi.fn().mockResolvedValue(undefined);
+    const messages: RefineMessage[] = [
+      {
+        id: "q1",
+        role: "question",
+        agentId: "agent-1",
+        toolUseId: "toolu_1",
+        pending: true,
+        questions: [
+          {
+            header: "Baseline",
+            question: "How would you like to benchmark?",
+            options: [
+              { label: "Prior version", description: "Compare against prior." },
+              { label: "No skill", description: "Compare against no skill." },
+            ],
+          },
+          {
+            header: "Iterations",
+            question: "How many iterations?",
+            options: [
+              { label: "1 iteration", description: "Quick run." },
+              { label: "3 iterations", description: "Full run." },
+            ],
+          },
+        ],
+        timestamp: 1,
+      },
+    ];
+
+    render(<ChatMessageList messages={messages} isRunning={false} onQuestionSubmit={onQuestionSubmit} />);
+
+    // Step indicator shows "1 of 2"
+    expect(screen.getByTestId("wizard-step-indicator")).toHaveTextContent("1 of 2");
+
+    // Only first question visible, second is not
+    expect(screen.getByText("How would you like to benchmark?")).toBeInTheDocument();
+    expect(screen.queryByText("How many iterations?")).not.toBeInTheDocument();
+
+    // Next is disabled until an answer is selected
+    expect(screen.getByTestId("wizard-next")).toBeDisabled();
+
+    // Select answer and advance
+    await user.click(screen.getByRole("button", { name: /prior version/i }));
+    expect(screen.getByTestId("wizard-next")).toBeEnabled();
+    await user.click(screen.getByTestId("wizard-next"));
+
+    // Now on step 2
+    expect(screen.getByTestId("wizard-step-indicator")).toHaveTextContent("2 of 2");
+    expect(screen.getByText("How many iterations?")).toBeInTheDocument();
+    expect(screen.queryByText("How would you like to benchmark?")).not.toBeInTheDocument();
+
+    // Back button works
+    await user.click(screen.getByTestId("wizard-back"));
+    expect(screen.getByTestId("wizard-step-indicator")).toHaveTextContent("1 of 2");
+    await user.click(screen.getByTestId("wizard-next"));
+
+    // Select answer on step 2 and submit
+    await user.click(screen.getByRole("button", { name: /3 iterations/i }));
+    await user.click(screen.getByTestId("refine-question-submit"));
+
+    expect(onQuestionSubmit).toHaveBeenCalled();
+  });
+
   it("shows helpful hints in the empty state", () => {
     render(<ChatMessageList messages={[]} isRunning={false} />);
 
