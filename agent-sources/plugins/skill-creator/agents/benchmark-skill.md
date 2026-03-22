@@ -55,21 +55,7 @@ Read and verify that the required inputs exist before proceeding:
 { "status": "skipped", "call_trace": ["validate-inputs-stub"] }
 ```
 
-- Read `{eval_dir}/evals.json` — this file is required and contains the frozen test case definitions. If it does not exist, return immediately:
-
-```json
-{ "status": "skipped", "call_trace": ["validate-inputs-missing-evals"] }
-```
-
-- Validate every eval in `{eval_dir}/evals.json` before continuing:
-  - `eval_name` must be present and non-empty.
-  - `slug` must be present, non-empty, and deterministic enough to use directly in directory names.
-  - `expectations` must be present and contain at least one item.
-  - If any eval is missing any required field, return immediately:
-
-```json
-{ "status": "skipped", "call_trace": ["validate-inputs-incomplete-evals"] }
-```
+- Read `{eval_dir}/evals.json` — this file is required and contains the frozen test case definitions. If it does not exist, return immediately with `{ "status": "skipped", "call_trace": ["validate-inputs-missing-evals"] }`. Validate every eval in `{eval_dir}/evals.json` before continuing: `eval_name` must be present and non-empty, `slug` must be present and non-empty (used directly in directory names), and `expectations` must contain at least one item. If any eval is missing any required field, return immediately with `{ "status": "skipped", "call_trace": ["validate-inputs-incomplete-evals"] }`.
 
 - Read `{workspace_dir}/user-context.md` for skill metadata (name, purpose, description). If it does not exist, return immediately:
 
