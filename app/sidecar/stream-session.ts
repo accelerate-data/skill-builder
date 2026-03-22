@@ -420,11 +420,23 @@ export class StreamSession {
 
     process.stderr.write(`[stream-session] Starting streaming query for session ${this.sessionId}\n`);
 
-    const conversation = query({
-      prompt: messageGenerator(),
-      options,
-    });
-
+    let conversation;
+    try {
+      conversation = query({
+        prompt: messageGenerator(),
+        options,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[stream-session] query() threw synchronously for session ${this.sessionId}: ${errorMessage}\n`);
+      onMessage(this.currentRequestId, { type: "error", message: errorMessage });
+      const [errorSummary, orphanedSetup] = processor.buildExecutionErrorSummary(errorMessage);
+      for (const item of orphanedSetup) {
+        onMessage(this.currentRequestId, item as Record<string, unknown>);
+      }
+      onMessage(this.currentRequestId, { type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+      return;
+    }
 
     try {
       let sdkReadyEmitted = false;

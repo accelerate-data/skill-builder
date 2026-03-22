@@ -139,10 +139,15 @@ pub(super) fn build_refine_config(
             &model,
             interleaved_thinking_beta,
         ),
-        model: None,
+        model: Some(model),
         api_key,
         cwd,
-        allowed_tools: Some(tools_for_agent(REWRITE_AGENT_NAME)),
+        allowed_tools: Some(vec![
+            "Read".into(), "Write".into(), "Edit".into(),
+            "Glob".into(), "Grep".into(), "Bash".into(),
+            "Agent".into(), "Skill".into(), "Task".into(),
+            "AskUserQuestion".into(),
+        ]),
         max_turns: Some(REFINE_STREAM_MAX_TURNS),
         permission_mode: None,
         thinking: thinking_budget.map(|budget| {
@@ -156,7 +161,7 @@ pub(super) fn build_refine_config(
         output_format: None,
         prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
-        agent_name: Some(REWRITE_AGENT_NAME.to_string()),
+        agent_name: None,
         required_plugins: Some(vec![
             "skill-content-researcher".to_string(),
             "skill-creator".to_string(),
