@@ -287,6 +287,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     } catch (err) {
       console.error("[workspace-refine] Failed to cancel refine turn:", err);
       toast.error("Failed to cancel current run", {
+        duration: Infinity,
         cause: err,
         context: { operation: "workspace_refine_cancel" },
       });

@@ -19,11 +19,7 @@ export const MemoizedMarkdown = memo(function MemoizedMarkdown({
 }: MemoizedMarkdownProps) {
   return (
     <div className={className}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeSanitize]}
-        components={markdownComponents}
-      >
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
         {content}
       </ReactMarkdown>
     </div>
