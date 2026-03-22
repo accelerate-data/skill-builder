@@ -92,7 +92,10 @@ export function PreviewPanel() {
   useEffect(() => {
     if (!isOpen) return;
     const onClick = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+      const target = e.target as HTMLElement;
+      // Skip if clicking the toggle button (it handles open/close itself).
+      if (target.closest("[data-file-viewer-toggle]")) return;
+      if (panelRef.current && !panelRef.current.contains(target)) {
         close();
       }
     };

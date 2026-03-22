@@ -505,6 +505,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
               variant={selectedModifiedFile ? "secondary" : "ghost"}
               size="icon-xs"
               className="absolute top-2 right-2 z-50"
+              data-file-viewer-toggle
               onClick={toggleFileViewer}
               title={selectedModifiedFile ? "Close file viewer" : "View skill files"}
               aria-label={selectedModifiedFile ? "Close file viewer" : "View skill files"}
