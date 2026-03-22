@@ -826,45 +826,26 @@ fn test_get_refine_diff_stat_ignores_patch_file_header_lines() {
 // ===== build_followup_prompt tests =====
 
 #[test]
-fn test_followup_prompt_includes_command_and_message() {
-    let prompt = build_followup_prompt(
-        "Add SLA metrics",
-        "/skills",
-        "my-skill",
-        None,
-        Some("refine"),
-    );
-    assert!(prompt.contains("The command is: refine"));
-    assert!(prompt.contains("Current request: Add SLA metrics"));
-}
-
-#[test]
-fn test_followup_prompt_default_command_is_refine() {
-    let prompt = build_followup_prompt("fix it", "/sk", "s", None, None);
-    assert!(prompt.contains("The command is: refine"));
+fn test_followup_prompt_is_just_user_message() {
+    let prompt = build_followup_prompt("Add SLA metrics", "/skills", "my-skill", None);
+    assert_eq!(prompt, "Add SLA metrics");
+    assert!(!prompt.contains("command"));
 }
 
 #[test]
 fn test_followup_prompt_file_targeting() {
     let files = vec!["SKILL.md".to_string(), "references/api.md".to_string()];
-    let prompt = build_followup_prompt("update", "/skills", "my-skill", Some(&files), None);
+    let prompt = build_followup_prompt("update", "/skills", "my-skill", Some(&files));
     assert!(prompt.contains("IMPORTANT: Only edit these files:"));
     assert!(prompt.contains("/skills/my-skill/SKILL.md"));
     assert!(prompt.contains("/skills/my-skill/references/api.md"));
+    assert!(prompt.contains("update"));
 }
 
 #[test]
 fn test_followup_prompt_no_file_constraint_when_empty() {
-    let prompt = build_followup_prompt("edit freely", "/sk", "s", None, None);
+    let prompt = build_followup_prompt("edit freely", "/sk", "s", None);
     assert!(!prompt.contains("Only edit these files"));
-}
-
-#[test]
-fn test_followup_prompt_does_not_include_paths() {
-    let prompt = build_followup_prompt("add more", "/skills", "my-skill", None, None);
-    assert!(!prompt.contains("skill directory is:"));
-    assert!(!prompt.contains("context directory is:"));
-    assert!(!prompt.contains("workspace directory is:"));
 }
 
 // ===== session stream_started tests =====

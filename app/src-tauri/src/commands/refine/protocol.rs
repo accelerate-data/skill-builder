@@ -183,34 +183,33 @@ pub(super) fn build_refine_config(
     (config, agent_id)
 }
 
-/// Build a follow-up prompt for subsequent refine messages.
+/// Build a follow-up prompt for subsequent messages in the streaming session.
+/// Just the user's message + optional file targeting. No command prefix —
+/// Claude already has the full context from the initial prompt.
 pub(super) fn build_followup_prompt(
     user_message: &str,
     skills_path: &str,
     skill_name: &str,
     target_files: Option<&[String]>,
-    command: Option<&str>,
 ) -> String {
-    let skill_dir = Path::new(skills_path).join(skill_name);
-    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
-    let effective_command = command.unwrap_or("refine");
-
-    let mut prompt = format!("The command is: {}.", effective_command);
+    let mut prompt = String::new();
 
     if let Some(files) = target_files {
         if !files.is_empty() {
+            let skill_dir = Path::new(skills_path).join(skill_name);
+            let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
             let abs_files: Vec<String> = files
                 .iter()
                 .map(|f| format!("{}/{}", skill_dir_str, f))
                 .collect();
             prompt.push_str(&format!(
-                "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
+                "IMPORTANT: Only edit these files: {}. Do not modify any other files.\n\n",
                 abs_files.join(", ")
             ));
         }
     }
 
-    prompt.push_str(&format!("\n\nCurrent request: {}", user_message));
+    prompt.push_str(user_message);
     prompt
 }
 
