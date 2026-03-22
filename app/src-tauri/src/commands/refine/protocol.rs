@@ -15,14 +15,6 @@ pub(super) const BENCHMARK_AGENT_NAME: &str = "skill-creator:benchmark-skill";
 /// the frontend shows a "session limit reached" notice.
 pub(super) const REFINE_STREAM_MAX_TURNS: u32 = 400;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum RefineDispatch {
-    Stream,
-    DirectValidate,
-    DirectRewrite,
-    DirectBenchmark,
-}
-
 pub(super) struct RefineRuntimeSettings {
     pub api_key: SecretString,
     pub extended_thinking: bool,
@@ -34,15 +26,13 @@ pub(super) struct RefineRuntimeSettings {
     pub skills_path: String,
 }
 
-pub(super) fn dispatch_for_refine_command(
-    command: Option<&str>,
-    _target_files: Option<&[String]>,
-) -> RefineDispatch {
+/// Resolve the agent name for a refine command. Returns None for the default
+/// refine/rewrite flow (uses the streaming session's base agent).
+pub(super) fn agent_for_command(command: Option<&str>) -> Option<&'static str> {
     match command {
-        Some("validate") => RefineDispatch::DirectValidate,
-        Some("rewrite") => RefineDispatch::DirectRewrite,
-        Some("benchmark") => RefineDispatch::DirectBenchmark,
-        _ => RefineDispatch::Stream,
+        Some("validate") => Some(VALIDATE_AGENT_NAME),
+        Some("benchmark") => Some(BENCHMARK_AGENT_NAME),
+        _ => None,
     }
 }
 

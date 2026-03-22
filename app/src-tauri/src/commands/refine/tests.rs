@@ -293,40 +293,19 @@ fn base_direct_config(agent_name: &'static str) -> (crate::agents::sidecar::Side
 }
 
 #[test]
-fn test_dispatch_for_validate_is_direct() {
-    assert_eq!(
-        dispatch_for_refine_command(Some("validate"), None),
-        RefineDispatch::DirectValidate
-    );
+fn test_agent_for_validate_command() {
+    assert_eq!(agent_for_command(Some("validate")), Some(VALIDATE_AGENT_NAME));
 }
 
 #[test]
-fn test_dispatch_for_unscoped_rewrite_is_direct() {
-    assert_eq!(
-        dispatch_for_refine_command(Some("rewrite"), None),
-        RefineDispatch::DirectRewrite
-    );
-    assert_eq!(
-        dispatch_for_refine_command(Some("rewrite"), Some(&[])),
-        RefineDispatch::DirectRewrite
-    );
+fn test_agent_for_benchmark_command() {
+    assert_eq!(agent_for_command(Some("benchmark")), Some(BENCHMARK_AGENT_NAME));
 }
 
 #[test]
-fn test_dispatch_for_scoped_rewrite_is_direct() {
-    let targets = vec!["SKILL.md".to_string()];
-    assert_eq!(
-        dispatch_for_refine_command(Some("rewrite"), Some(&targets)),
-        RefineDispatch::DirectRewrite
-    );
-}
-
-#[test]
-fn test_dispatch_for_freeform_stays_streaming() {
-    assert_eq!(
-        dispatch_for_refine_command(None, None),
-        RefineDispatch::Stream
-    );
+fn test_agent_for_freeform_is_none() {
+    assert_eq!(agent_for_command(None), None);
+    assert_eq!(agent_for_command(Some("rewrite")), None);
 }
 
 #[test]

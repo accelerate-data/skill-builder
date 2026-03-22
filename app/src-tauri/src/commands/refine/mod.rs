@@ -159,7 +159,6 @@ pub async fn send_refine_message(
         "[send_refine_message] session=[REDACTED] command={:?}",
         command
     );
-    let dispatch = dispatch_for_refine_command(command.as_deref(), target_files.as_deref());
 
     // 1. Look up session and check stream state
     let (skill_name, usage_session_id, stream_started) = {
@@ -198,119 +197,86 @@ pub async fn send_refine_message(
     let runtime = load_refine_runtime_settings(&db, &workspace_path, &skill_name)?;
     ensure_skill_workspace_dir(&workspace_path, &skill_name);
 
-    if matches!(
-        dispatch,
-        RefineDispatch::DirectValidate | RefineDispatch::DirectRewrite | RefineDispatch::DirectBenchmark
-    ) {
-        let direct_agent_name = match dispatch {
-            RefineDispatch::DirectValidate => VALIDATE_AGENT_NAME,
-            RefineDispatch::DirectRewrite => REWRITE_AGENT_NAME,
-            RefineDispatch::DirectBenchmark => BENCHMARK_AGENT_NAME,
-            RefineDispatch::Stream => unreachable!(),
-        };
-
-        // For benchmark: auto-detect baseline from git tags
-        let (baseline_mode_owned, snapshot_dir) = if dispatch == RefineDispatch::DirectBenchmark {
-            let skills_dir = std::path::Path::new(&runtime.skills_path);
-            let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
-            let baseline = crate::git::resolve_benchmark_baseline(skills_dir, &skill_name, &workspace_dir);
-            (Some(baseline.mode), baseline.snapshot_dir)
-        } else {
-            (None, None)
-        };
-        let baseline_mode = baseline_mode_owned.as_deref();
-
-        let prompt = build_direct_agent_prompt(
-            direct_agent_name,
-            &skill_name,
-            &workspace_path,
-            &runtime.skills_path,
-            &user_message,
-            target_files.as_deref(),
-            baseline_mode,
-            snapshot_dir.as_deref(),
-        );
-        log::debug!(
-            "[send_refine_message] direct prompt ({} chars) for skill '{}' command={:?}",
-            prompt.len(),
-            skill_name,
-            command
-        );
-        let (mut config, agent_id) = build_direct_refine_config(
-            prompt,
-            &skill_name,
-            &usage_session_id,
-            &workspace_path,
-            runtime.api_key,
-            runtime.model,
-            runtime.extended_thinking,
-            runtime.interleaved_thinking_beta,
-            runtime.sdk_effort,
-            runtime.fallback_model,
-            direct_agent_name,
-        );
-
-        if config.path_to_claude_code_executable.is_none() {
-            if let Ok(cli_path) = sidecar::resolve_sdk_cli_path_public(&app) {
-                config.path_to_claude_code_executable = Some(cli_path);
-            }
-        }
-
-        pool.send_request(&skill_name, &agent_id, config, &app, None)
-            .await
-            .map_err(|e| {
-                log::error!("[send_refine_message] Failed to send direct request: {}", e);
-                e
-            })?;
-
-        // Direct-dispatch agents run outside the streaming session.
-        // Reset stream_started so a follow-up streaming message will
-        // correctly start a new stream instead of pushing into the
-        // (now-stale) previous streaming context.
-        {
-            let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
-            if let Some(session) = map.get_mut(&session_id) {
-                session.stream_started = false;
-            }
-        }
-
-        return Ok(agent_id);
-    }
+    // Resolve which agent to use. validate/benchmark use a specific agent;
+    // default refine uses the rewrite-skill agent from the streaming config.
+    let direct_agent = agent_for_command(command.as_deref());
 
     if !stream_started {
         // ─── First message: start streaming session ───────────────────────
-        let prompt = build_refine_prompt(
-            &skill_name,
-            &workspace_path,
-            &runtime.skills_path,
-            &user_message,
-            target_files.as_deref(),
-            command.as_deref(),
+        // All commands (refine, validate, benchmark) go through streaming
+        // so they share the same cancel infrastructure.
+        let (prompt, mut config, agent_id) = if let Some(agent_name) = direct_agent {
+            // validate / benchmark: use the direct agent config + prompt
+            let (baseline_mode_owned, snapshot_dir) = if agent_name == BENCHMARK_AGENT_NAME {
+                let skills_dir = std::path::Path::new(&runtime.skills_path);
+                let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
+                let baseline = crate::git::resolve_benchmark_baseline(skills_dir, &skill_name, &workspace_dir);
+                (Some(baseline.mode), baseline.snapshot_dir)
+            } else {
+                (None, None)
+            };
+
+            let prompt = build_direct_agent_prompt(
+                agent_name,
+                &skill_name,
+                &workspace_path,
+                &runtime.skills_path,
+                &user_message,
+                target_files.as_deref(),
+                baseline_mode_owned.as_deref(),
+                snapshot_dir.as_deref(),
+            );
+            let (config, agent_id) = build_direct_refine_config(
+                prompt.clone(),
+                &skill_name,
+                &usage_session_id,
+                &workspace_path,
+                runtime.api_key,
+                runtime.model,
+                runtime.extended_thinking,
+                runtime.interleaved_thinking_beta,
+                runtime.sdk_effort,
+                runtime.fallback_model,
+                agent_name,
+            );
+            (prompt, config, agent_id)
+        } else {
+            // default refine: use the streaming rewrite config + prompt
+            let prompt = build_refine_prompt(
+                &skill_name,
+                &workspace_path,
+                &runtime.skills_path,
+                &user_message,
+                target_files.as_deref(),
+                command.as_deref(),
+            );
+            let (config, agent_id) = build_refine_config(
+                prompt.clone(),
+                &skill_name,
+                &usage_session_id,
+                &workspace_path,
+                runtime.api_key,
+                runtime.model,
+                runtime.extended_thinking,
+                runtime.interleaved_thinking_beta,
+                runtime.sdk_effort,
+                runtime.fallback_model,
+                runtime.refine_prompt_suggestions,
+            );
+            (prompt, config, agent_id)
+        };
+
+        log::info!(
+            "[send_refine_message] skill={} model={} agent={:?}",
+            skill_name,
+            config.agent_name.as_deref().unwrap_or("default"),
+            direct_agent,
         );
         log::debug!(
             "[send_refine_message] first message prompt ({} chars) for skill '{}' command={:?}",
             prompt.len(),
             skill_name,
             command
-        );
-
-        log::info!(
-            "[send_refine_message] skill={} model={}",
-            skill_name,
-            runtime.model
-        );
-        let (mut config, agent_id) = build_refine_config(
-            prompt,
-            &skill_name,
-            &usage_session_id,
-            &workspace_path,
-            runtime.api_key,
-            runtime.model,
-            runtime.extended_thinking,
-            runtime.interleaved_thinking_beta,
-            runtime.sdk_effort,
-            runtime.fallback_model,
-            runtime.refine_prompt_suggestions,
         );
 
         // Resolve SDK cli.js path
