@@ -235,8 +235,6 @@ If `Current request` has `@`-prefixed files (e.g., `@references/metrics.md`) con
 The following top-level sections in the `skill-creator` skill should **not** be followed:
 
 - `Creating a skill`
-- `Running and evaluating test cases`
-- `Advanced: Blind comparison`
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
 
