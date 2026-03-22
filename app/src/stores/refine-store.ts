@@ -39,6 +39,7 @@ export interface RefineMessage {
   questions?: RefineQuestionPrompt[];
   pending?: boolean;
   response?: RefineQuestionResponse;
+  diff?: RefineDiff; // attached after agent turn completes with file changes
   timestamp: number;
 }
 
@@ -89,6 +90,7 @@ interface RefineState {
   setDiffMode: (v: boolean) => void;
   addUserMessage: (text: string, targetFiles?: string[], command?: RefineCommand) => RefineMessage;
   addAgentTurn: (agentId: string) => RefineMessage;
+  attachDiffToLastAgentTurn: (diff: RefineDiff) => void;
   addQuestionMessage: (agentId: string, toolUseId: string, questions: RefineQuestionPrompt[]) => RefineMessage;
   answerQuestionMessage: (messageId: string, response: RefineQuestionResponse) => void;
   updateSkillFiles: (files: SkillFile[]) => void;
@@ -176,6 +178,16 @@ export const useRefineStore = create<RefineState>((set, get) => ({
     set((state) => ({ messages: [...state.messages, message] }));
     return message;
   },
+
+  attachDiffToLastAgentTurn: (diff) =>
+    set((state) => {
+      const idx = [...state.messages].reverse().findIndex((m) => m.role === "agent");
+      if (idx === -1) return {};
+      const actualIdx = state.messages.length - 1 - idx;
+      const updated = [...state.messages];
+      updated[actualIdx] = { ...updated[actualIdx], diff };
+      return { messages: updated };
+    }),
 
   addQuestionMessage: (agentId, toolUseId, questions): RefineMessage => {
     const existingMessage = get()

@@ -1,7 +1,5 @@
 import { useCallback } from "react";
-import { AlertTriangle, CircleSlash, FileText } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { normalizeDiffPath } from "@/lib/path-utils";
+import { AlertTriangle, CircleSlash } from "lucide-react";
 import { useRefineStore } from "@/stores/refine-store";
 import type { RefineMessage, RefineQuestionResponse } from "@/stores/refine-store";
 import { ChatMessageList } from "./chat-message-list";
@@ -29,15 +27,6 @@ export function ChatPanel({
   const messages = useRefineStore((s) => s.messages);
   const sessionExhausted = useRefineStore((s) => s.sessionExhausted);
   const pendingInitialMessage = useRefineStore((s) => s.pendingInitialMessage);
-  const gitDiff = useRefineStore((s) => s.gitDiff);
-  const setActiveFileTab = useRefineStore((s) => s.setActiveFileTab);
-  const setSelectedModifiedFile = useRefineStore((s) => s.setSelectedModifiedFile);
-
-  const modifiedFiles = Array.from(new Set(
-    (gitDiff?.files ?? [])
-      .map((file) => normalizeDiffPath(file.path))
-      .filter((path) => path === "SKILL.md" || path.startsWith("references/")),
-  ));
 
   // Suggestion chip click — inject text into the input via the store's
   // pendingInitialMessage mechanism (same as cross-page navigation).
@@ -59,34 +48,6 @@ export function ChatPanel({
         <div className="flex items-center gap-2 border-b bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
           <AlertTriangle className="size-4 shrink-0" />
           Scope recommendation active — the skill scope is too broad. Refine and test are blocked until the scope is resolved.
-        </div>
-      )}
-      {modifiedFiles.length > 0 && (
-        <div className="sticky top-0 z-10 border-b bg-background px-4 py-2">
-          <div data-testid="refine-modified-files" className="mx-auto flex max-w-4xl items-center gap-3">
-            <span className="shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Changed
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {modifiedFiles.map((filename) => (
-                <Button
-                  key={filename}
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  className="max-w-full justify-start rounded-full bg-background/80"
-                  data-testid={`refine-modified-file-pill-${filename}`}
-                  onClick={() => {
-                    setActiveFileTab(filename);
-                    setSelectedModifiedFile(filename);
-                  }}
-                >
-                  <FileText className="size-3" />
-                  <span className="truncate">{filename}</span>
-                </Button>
-              ))}
-            </div>
-          </div>
         </div>
       )}
       <ChatMessageList

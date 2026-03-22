@@ -398,6 +398,9 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             })),
           );
           store.setGitDiff(finalized.diff);
+          if (finalized.diff) {
+            store.attachDiffToLastAgentTurn(finalized.diff);
+          }
         } catch {
           try {
             const files = await loadSkillFiles(workspacePath, completionSkill.name);

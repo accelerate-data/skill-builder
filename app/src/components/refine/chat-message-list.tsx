@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
-import { MessageSquare } from "lucide-react";
+import { FileText, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { normalizeDiffPath } from "@/lib/path-utils";
 import { useAgentStore } from "@/stores/agent-store";
+import { useRefineStore } from "@/stores/refine-store";
 import type { RefineMessage, RefineQuestionResponse } from "@/stores/refine-store";
 import { AgentTurnInline } from "./agent-turn-inline";
 import { RefineQuestionInline } from "./refine-question-inline";
@@ -30,12 +32,15 @@ export function ChatMessageList({
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end",
-      inline: "nearest",
-    });
-  }, [messages.length]);
+    const hasPendingQuestion = messages.some((m) => m.role === "question" && m.pending);
+    if (!hasPendingQuestion) {
+      bottomRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+        inline: "nearest",
+      });
+    }
+  }, [messages.length, messages]);
 
   // Check if the last message is a completed agent turn (show suggestion chips)
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : undefined;
@@ -107,6 +112,13 @@ export function ChatMessageList({
           }
 
           if (msg.role === "agent" && msg.agentId) {
+            const diffFiles = msg.diff
+              ? Array.from(new Set(
+                  msg.diff.files
+                    .map((f) => normalizeDiffPath(f.path))
+                    .filter((p) => p === "SKILL.md" || p.startsWith("references/")),
+                ))
+              : [];
             return (
               <div
                 key={msg.id}
@@ -116,6 +128,7 @@ export function ChatMessageList({
                 <div className="min-w-0 overflow-hidden">
                   <AgentTurnInline agentId={msg.agentId} />
                 </div>
+                {diffFiles.length > 0 && <InlineChangedFiles files={diffFiles} />}
               </div>
             );
           }
@@ -151,5 +164,37 @@ export function ChatMessageList({
         <div ref={bottomRef} />
       </div>
     </ScrollArea>
+  );
+}
+
+function InlineChangedFiles({ files }: { files: string[] }) {
+  const setActiveFileTab = useRefineStore((s) => s.setActiveFileTab);
+  const setSelectedModifiedFile = useRefineStore((s) => s.setSelectedModifiedFile);
+
+  return (
+    <div data-testid="refine-modified-files" className="flex items-center gap-3">
+      <span className="shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        Changed
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {files.map((filename) => (
+          <Button
+            key={filename}
+            type="button"
+            size="xs"
+            variant="outline"
+            className="max-w-full justify-start rounded-full bg-background/80"
+            data-testid={`refine-modified-file-pill-${filename}`}
+            onClick={() => {
+              setActiveFileTab(filename);
+              setSelectedModifiedFile(filename);
+            }}
+          >
+            <FileText className="size-3" />
+            <span className="truncate">{filename}</span>
+          </Button>
+        ))}
+      </div>
+    </div>
   );
 }

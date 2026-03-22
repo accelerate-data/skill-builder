@@ -847,19 +847,16 @@ impl SidecarPool {
         user_message: &str,
         app_handle: &tauri::AppHandle,
     ) -> Result<(), String> {
-        // Verify sidecar exists before sending
+        // Verify sidecar exists before sending; restart if cleaned up by idle timer
         {
             let pool = self.sidecars.lock().await;
             if !pool.contains_key(skill_name) {
-                let active: Vec<&str> = pool.keys().map(|k| k.as_str()).collect();
-                let msg = format!(
-                    "Sidecar for '{}' not found. Active sidecars ({}): {:?}",
-                    skill_name,
-                    pool.len(),
-                    active
+                drop(pool);
+                log::warn!(
+                    "[send_stream_message] Sidecar for '{}' was cleaned up, restarting...",
+                    skill_name
                 );
-                log::error!("[send_stream_message] {}", msg);
-                return Err(msg);
+                self.get_or_spawn(skill_name, app_handle).await?;
             }
         }
 
