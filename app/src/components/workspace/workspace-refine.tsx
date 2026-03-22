@@ -31,9 +31,7 @@ import {
 import type { SkillSummary } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
-import { FileText } from "lucide-react";
 import { ChatPanel } from "@/components/refine/chat-panel";
-import { PreviewPanel } from "@/components/refine/preview-panel";
 import type { RefineQuestionResponse } from "@/stores/refine-store";
 
 // Ensure agent-stream listeners are registered
@@ -78,7 +76,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
   const selectedSkill = useRefineStore((s) => s.selectedSkill);
   const skillFiles = useRefineStore((s) => s.skillFiles);
-  const previewRevision = useRefineStore((s) => s.previewRevision);
   const isRunning = useRefineStore((s) => s.isRunning);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
 
@@ -148,19 +145,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
   const availableFiles = useMemo(() => skillFiles.map((f) => f.filename), [skillFiles]);
   const availableAgents = useRefineStore((s) => s.availableAgents);
-  const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
-
-  const toggleFileViewer = useCallback(() => {
-    const store = useRefineStore.getState();
-    if (store.selectedModifiedFile) {
-      store.setSelectedModifiedFile(null);
-    } else {
-      const tab = store.activeFileTab || "SKILL.md";
-      store.setActiveFileTab(tab);
-      store.setDiffMode(false);
-      store.setSelectedModifiedFile(tab);
-    }
-  }, []);
 
   // --- Select skill on mount ---
   const handleSelectSkill = useCallback(
@@ -498,33 +482,16 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 w-full flex-1 overflow-hidden">
-        <div className="relative h-full">
-          {selectedSkill && availableFiles.length > 0 && (
-            <Button
-              type="button"
-              variant={selectedModifiedFile ? "secondary" : "ghost"}
-              size="icon-xs"
-              className="absolute top-2 right-2 z-50"
-              data-file-viewer-toggle
-              onClick={toggleFileViewer}
-              title={selectedModifiedFile ? "Close file viewer" : "View skill files"}
-              aria-label={selectedModifiedFile ? "Close file viewer" : "View skill files"}
-            >
-              <FileText className="size-3.5" />
-            </Button>
-          )}
-      <ChatPanel
-        onSend={handleSend}
-        onCancel={handleCancel}
-        isRunning={isRunning}
-        hasSkill={!!selectedSkill}
-        availableFiles={availableFiles}
-        availableAgents={availableAgents}
-            scopeBlocked={scopeBlocked}
-            onQuestionSubmit={handleQuestionSubmit}
-          />
-          <PreviewPanel key={previewRevision} />
-        </div>
+        <ChatPanel
+          onSend={handleSend}
+          onCancel={handleCancel}
+          isRunning={isRunning}
+          hasSkill={!!selectedSkill}
+          availableFiles={availableFiles}
+          availableAgents={availableAgents}
+          scopeBlocked={scopeBlocked}
+          onQuestionSubmit={handleQuestionSubmit}
+        />
       </div>
 
       {/* Status bar */}
