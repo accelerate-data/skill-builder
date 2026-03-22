@@ -57,6 +57,8 @@ export const AgentTurnInline = memo(function AgentTurnInline({
       ? displayItems.slice(fromIndex ?? 0, toIndex)
       : displayItems;
   const isSliced = fromIndex !== undefined || toIndex !== undefined;
+  // Tail slice: fromIndex set, no toIndex — this is the last visible part of the turn
+  const isTailSlice = fromIndex !== undefined && toIndex === undefined;
 
   // Typing indicator while agent is running with no output yet
   if (status === "running" && sliced.length === 0 && !isSliced) {
@@ -74,12 +76,12 @@ export const AgentTurnInline = memo(function AgentTurnInline({
           <Loader2 className="size-3 animate-spin" />
         </div>
       )}
-      {isSliced && fromIndex !== undefined && status === "running" && (
+      {isTailSlice && status === "running" && (
         <div className="flex items-center gap-1.5 py-1 text-muted-foreground/80">
           <Loader2 className="size-3 animate-spin" />
         </div>
       )}
-      {!isSliced && status === "shutdown" && (
+      {(!isSliced || isTailSlice) && status === "shutdown" && (
         <div className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-muted-foreground">
           <StopCircle className="size-3.5 shrink-0" />
           Interrupted by user
