@@ -57,7 +57,9 @@ export function ChatMessageList({
 
     const el = contentRef.current;
     if (!el || !questionRef.current) return;
-    const observer = new ResizeObserver(scrollToTarget);
+    const observer = new ResizeObserver((_entries, _observer) => {
+      scrollToTarget();
+    });
     observer.observe(el);
     return () => observer.disconnect();
   }, [messages.length, messages]);
