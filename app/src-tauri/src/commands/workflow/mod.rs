@@ -13,7 +13,7 @@ pub mod user_context;
 // Re-export items used by callers outside this module via `commands::workflow::*`.
 
 // step_config
-pub(crate) use step_config::{build_betas, resolve_model_id, tools_for_agent};
+pub(crate) use step_config::{build_betas, resolve_model_id};
 
 // deploy
 pub(crate) use deploy::{

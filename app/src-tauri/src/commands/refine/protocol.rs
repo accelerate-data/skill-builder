@@ -1,13 +1,9 @@
 use std::path::Path;
 
 use crate::agents::sidecar::SidecarConfig;
-use crate::commands::workflow::{resolve_model_id, tools_for_agent};
+use crate::commands::workflow::resolve_model_id;
 use crate::db::{self, Db};
 use crate::types::SecretString;
-
-pub(super) const VALIDATE_AGENT_NAME: &str = "skill-creator:validate-skill";
-pub(super) const REWRITE_AGENT_NAME: &str = "skill-creator:rewrite-skill";
-pub(super) const BENCHMARK_AGENT_NAME: &str = "skill-creator:benchmark-skill";
 
 /// Max agentic turns for the entire streaming session. Each user message may
 /// use multiple turns internally (tool calls, etc.). 400 covers ~20 messages
