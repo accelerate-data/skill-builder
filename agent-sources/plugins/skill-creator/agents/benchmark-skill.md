@@ -69,12 +69,15 @@ Detect whether a prior version of the skill exists, then determine the baseline 
 
 1. Find the skills git repo root. The skill lives at `{skill_output_dir}` — walk up to find the `.git` directory.
 2. List git tags matching the skill: `git tag --list "{skill_name}/v*" --sort=-v:refname` in the skills repo.
-3. If **2 or more tags** exist → a prior version is available. Use `AskUserQuestion` to let the user choose:
-   - Ask: "How would you like to benchmark this skill?"
-   - Options:
-     - "Compare against previous version" → sets `baseline_mode` to `"prior_version"` and records the second-highest tag as `prior_tag`
-     - "Compare against no skill (baseline)" → sets `baseline_mode` to `"no_skill"`
-     - "Skip benchmark" → return immediately with `{ "status": "skipped", "call_trace": ["user-skipped"] }`
+3. If **2 or more tags** exist → a prior version is available. Gather context before prompting:
+   - Identify the second-highest tag as the prior version (e.g. `my-skill/v1`).
+   - Run `git log --oneline {prior_tag}..HEAD -- {skill_name}/` to get the list of commits since the prior version.
+   - Use `AskUserQuestion` to let the user choose. Include the prior tag name and the commit summary in the prompt so the user can see what changed:
+     - Ask: "How would you like to benchmark this skill? Prior version: `{prior_tag}`. Changes since then:\n{commit_list}"
+     - Options:
+       - "Compare against previous version ({prior_tag})" → sets `baseline_mode` to `"prior_version"` and records `prior_tag`
+       - "Compare against no skill (baseline)" → sets `baseline_mode` to `"no_skill"`
+       - "Skip benchmark" → return immediately with `{ "status": "skipped", "call_trace": ["user-skipped"] }`
 4. If **fewer than 2 tags** exist → no prior version available. Default to `baseline_mode = "no_skill"` silently (do not prompt the user).
 
 Store `baseline_mode` (`"no_skill"` or `"prior_version"`) and, when applicable, `prior_tag` (e.g. `"my-skill/v1"`) for subsequent steps.
