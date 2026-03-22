@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { AlertTriangle, CircleSlash, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { normalizeDiffPath } from "@/lib/path-utils";
@@ -42,6 +43,12 @@ export function ChatPanel({
       .filter((path) => path === "SKILL.md" || path.startsWith("references/")),
   ));
 
+  // Suggestion chip click — inject text into the input via the store's
+  // pendingInitialMessage mechanism (same as cross-page navigation).
+  const handleSuggestionClick = useCallback((text: string) => {
+    useRefineStore.getState().setPendingInitialMessage(text);
+  }, []);
+
   if (!hasSkill) {
     return (
       <div data-testid="refine-no-skill" className="flex h-full items-center justify-center text-muted-foreground">
@@ -59,7 +66,7 @@ export function ChatPanel({
         </div>
       )}
       {modifiedFiles.length > 0 && (
-        <div className="border-b px-4 py-2">
+        <div className="sticky top-0 z-10 border-b bg-background px-4 py-2">
           <div data-testid="refine-modified-files" className="mx-auto flex max-w-4xl items-center gap-3">
             <span className="shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Changed
@@ -88,9 +95,11 @@ export function ChatPanel({
       )}
       <ChatMessageList
         messages={messages}
+        isRunning={isRunning}
         onBenchmarkConfirm={onBenchmarkConfirm}
         onBenchmarkSkip={onBenchmarkSkip}
         onQuestionSubmit={onQuestionSubmit}
+        onSuggestionClick={handleSuggestionClick}
       />
       {sessionExhausted && (
         <div className="flex items-center justify-center gap-2 border-t bg-muted px-3 py-2 text-sm text-muted-foreground">

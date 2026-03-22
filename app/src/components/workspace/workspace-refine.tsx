@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { RefineMessage, SkillFile } from "@/stores/refine-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { useAgentStore, formatTokenCount } from "@/stores/agent-store";
 import {
   getSkillContentForRefine,
   startRefineSession,
@@ -84,6 +84,14 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const activeRunStatus = useAgentStore((s) =>
     activeAgentId ? s.runs[activeAgentId]?.status : undefined,
   );
+  const activeRunTurns = useAgentStore((s) =>
+    activeAgentId ? s.runs[activeAgentId]?.contextHistory?.length ?? 0 : 0,
+  );
+
+  // Cumulative session metrics (accumulated across all agent runs)
+  const [sessionTurns, setSessionTurns] = useState(0);
+  const [sessionTokens, setSessionTokens] = useState(0);
+  const [sessionCost, setSessionCost] = useState(0);
 
   // Capture the skill that was active when the agent started, so the
   // completion effect attributes output to the correct skill even if the
@@ -176,6 +184,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
       store.selectSkill(s);
       store.setLoadingFiles(true);
+      // Reset session metrics for the new skill.
+      setSessionTurns(0);
+      setSessionTokens(0);
+      setSessionCost(0);
 
       if (workspacePath) {
         try {
@@ -355,6 +367,19 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       toast.error("Agent failed — check the chat for details", { duration: Infinity });
     }
 
+    // Accumulate session-level metrics from the completed run.
+    const agentRun = useAgentStore.getState().runs[activeAgentId];
+    if (agentRun) {
+      const runTurns = agentRun.contextHistory?.length ?? 0;
+      const runTokens = agentRun.tokenUsage
+        ? agentRun.tokenUsage.input + agentRun.tokenUsage.output
+        : 0;
+      const runCost = agentRun.totalCost ?? 0;
+      setSessionTurns((prev) => prev + runTurns);
+      setSessionTokens((prev) => prev + runTokens);
+      setSessionCost((prev) => prev + runCost);
+    }
+
     const completionSkill = runSkillRef.current ?? selectedSkill;
 
     const complete = async () => {
@@ -500,6 +525,30 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           <>
             <span className="text-muted-foreground/20">&middot;</span>
             <span className="text-xs text-muted-foreground">{(elapsed / 1000).toFixed(1)}s</span>
+          </>
+        )}
+        {(sessionTurns + activeRunTurns) > 0 && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
+              {sessionTurns + activeRunTurns} {sessionTurns + activeRunTurns === 1 ? "turn" : "turns"}
+            </span>
+          </>
+        )}
+        {sessionTokens > 0 && !isRunning && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
+              {formatTokenCount(sessionTokens)} tokens
+            </span>
+          </>
+        )}
+        {sessionCost > 0 && !isRunning && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
+              ${sessionCost.toFixed(4)}
+            </span>
           </>
         )}
       </div>

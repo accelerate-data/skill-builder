@@ -33,7 +33,7 @@ describe("ChatMessageList", () => {
       { id: "m2", role: "agent", agentId: "agent-1", timestamp: 2 },
     ];
 
-    render(<ChatMessageList messages={messages} />);
+    render(<ChatMessageList messages={messages} isRunning={false} />);
 
     expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
       behavior: "smooth",
@@ -42,26 +42,17 @@ describe("ChatMessageList", () => {
     });
   });
 
-  it("renders subtle request and agent blocks", () => {
+  it("renders user messages with text and agent turn blocks", () => {
     const messages: RefineMessage[] = [
-      {
-        id: "m1",
-        role: "user",
-        userText: "tighten the intro",
-        timestamp: 1,
-      },
-      {
-        id: "m2",
-        role: "agent",
-        agentId: "agent-1",
-        timestamp: 2,
-      },
+      { id: "m1", role: "user", userText: "tighten the intro", timestamp: 1 },
+      { id: "m2", role: "agent", agentId: "agent-1", timestamp: 2 },
     ];
 
-    render(<ChatMessageList messages={messages} />);
+    render(<ChatMessageList messages={messages} isRunning={false} />);
 
-    expect(screen.getByText("Request")).toBeInTheDocument();
-    expect(screen.getByText("Agent")).toBeInTheDocument();
+    // Labels are removed — no "Request" or "Agent" headings
+    expect(screen.queryByText("Request")).not.toBeInTheDocument();
+    expect(screen.queryByText("Agent")).not.toBeInTheDocument();
     expect(screen.getByText("tighten the intro")).toBeInTheDocument();
     expect(screen.getByTestId("agent-turn-agent-1")).toBeInTheDocument();
     expect(screen.getByTestId("refine-agent-turn-block")).toBeInTheDocument();
@@ -89,7 +80,7 @@ describe("ChatMessageList", () => {
       },
     ];
 
-    render(<ChatMessageList messages={messages} onQuestionSubmit={onQuestionSubmit} />);
+    render(<ChatMessageList messages={messages} isRunning={false} onQuestionSubmit={onQuestionSubmit} />);
 
     await user.click(screen.getByRole("button", { name: /launch validate/i }));
     await user.click(screen.getByTestId("refine-question-submit"));
@@ -104,6 +95,7 @@ describe("ChatMessageList", () => {
     render(
       <ChatMessageList
         messages={[{ id: "m1", role: "benchmark-prompt", timestamp: 1 }]}
+        isRunning={false}
         onBenchmarkConfirm={onConfirm}
         onBenchmarkSkip={onSkip}
       />,
@@ -112,11 +104,9 @@ describe("ChatMessageList", () => {
     expect(screen.getByTestId("benchmark-prompt")).toBeInTheDocument();
   });
 
-  it("shows validate and benchmark hints in the empty state", () => {
-    render(<ChatMessageList messages={[]} />);
+  it("shows helpful hints in the empty state", () => {
+    render(<ChatMessageList messages={[]} isRunning={false} />);
 
-    expect(screen.getByText("/validate")).toBeInTheDocument();
-    expect(screen.getByText("/benchmark")).toBeInTheDocument();
-    expect(screen.queryByText("/rewrite")).not.toBeInTheDocument();
+    expect(screen.getByText(/Describe a change/)).toBeInTheDocument();
   });
 });
