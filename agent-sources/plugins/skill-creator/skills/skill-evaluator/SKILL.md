@@ -83,7 +83,7 @@ If the user chooses "Skip", return immediately with `{ "status": "skipped", "cal
 
 Before running a new benchmark, check whether a matching result already exists.
 
-1. Read the `version` field from `{skill_output_dir}/SKILL.md` frontmatter — this is the **skill version** (e.g. `"2.0.0"`).
+1. Read `metadata.version` from `{skill_output_dir}/SKILL.md` frontmatter — this is the **skill version** (e.g. `"2.0.0"`). If only a legacy top-level `version` field exists, accept it as fallback.
 2. Determine the **baseline version**:
    - If `baseline_mode` is `"no_skill"` → `baseline_version = "no_skill"`
    - If `baseline_mode` is `"prior_version"` → `baseline_version = prior_tag` (e.g. `"my-skill/v1"`)
@@ -146,7 +146,7 @@ Use the **Running and evaluating test cases** section in `skill-creator:skill-cr
 
 After aggregation, write two additional fields into the top-level `benchmark.json`:
 
-- `"skill_version"`: the version read from `{skill_output_dir}/SKILL.md` frontmatter in Step 2
+- `"skill_version"`: the version read from `{skill_output_dir}/SKILL.md` frontmatter in Step 2 (`metadata.version`, with legacy top-level `version` accepted only as fallback)
 - `"baseline_version"`: `"no_skill"` or the prior tag string (e.g. `"my-skill/v1"`)
 
 These fields enable result reuse in future runs (Step 2).

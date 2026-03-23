@@ -6,12 +6,33 @@ export function parseFrontmatter(markdown) {
   const match = markdown.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return {};
   const map = {};
+  let currentSection = null;
   for (const line of match[1].split("\n")) {
+    const trimmed = line.trim();
+    const isIndented = line.startsWith(" ") || line.startsWith("\t");
+    if (!isIndented) {
+      currentSection = null;
+      if (trimmed.endsWith(":") && !trimmed.slice(0, -1).includes(":")) {
+        currentSection = trimmed.slice(0, -1);
+        continue;
+      }
+    }
     const idx = line.indexOf(":");
     if (idx === -1) continue;
     const key = line.slice(0, idx).trim();
     const value = line.slice(idx + 1).trim();
-    map[key] = value;
+    const cleaned =
+      (value.startsWith('"') && value.endsWith('"'))
+      || (value.startsWith("'") && value.endsWith("'"))
+        ? value.slice(1, -1)
+        : value;
+    if (currentSection === "metadata") {
+      if (key === "version" || key === "author") {
+        map[key] = cleaned;
+      }
+      continue;
+    }
+    map[key] = cleaned;
   }
   return map;
 }

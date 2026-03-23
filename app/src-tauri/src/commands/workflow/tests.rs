@@ -1484,6 +1484,7 @@ fn test_write_user_context_file_all_fields() {
         workspace_path,
         "my-skill",
         &[],
+        None,
         Some("Healthcare"),
         Some("Analytics Lead"),
         Some(intake),
@@ -1519,6 +1520,7 @@ fn test_write_user_context_file_partial_fields() {
         workspace_path,
         "my-skill",
         &[],
+        None,
         Some("Fintech"),
         None,
         None,
@@ -1547,6 +1549,7 @@ fn test_write_user_context_file_empty_optional_fields_skipped() {
         workspace_path,
         "my-skill",
         &[],
+        None,
         Some(""),
         None,
         None,
@@ -1585,6 +1588,7 @@ fn test_write_user_context_file_always_writes_skill_name() {
         None,
         None,
         None,
+        None,
     );
 
     // Skill name alone is enough to produce a file
@@ -1604,6 +1608,7 @@ fn test_write_user_context_file_creates_missing_dir() {
         workspace_path,
         "new-skill",
         &[],
+        None,
         Some("Retail"),
         None,
         None,
@@ -1790,6 +1795,7 @@ fn test_format_user_context_all_fields() {
     let result = format_user_context(
         Some("my-skill"),
         &tags,
+        None,
         Some("Healthcare"),
         Some("Analytics Lead"),
         Some(intake),
@@ -1824,6 +1830,7 @@ fn test_format_user_context_partial_fields() {
     let result = format_user_context(
         None,
         &[],
+        None,
         Some("Fintech"),
         None,
         None,
@@ -1845,6 +1852,7 @@ fn test_format_user_context_empty_strings_skipped() {
     let result = format_user_context(
         None,
         &[],
+        None,
         Some(""),
         Some(""),
         None,
@@ -1874,6 +1882,7 @@ fn test_format_user_context_all_none() {
         None,
         None,
         None,
+        None,
     );
     assert!(result.is_none());
 }
@@ -1883,6 +1892,7 @@ fn test_format_user_context_invalid_json_ignored() {
     let result = format_user_context(
         None,
         &[],
+        None,
         Some("Tech"),
         None,
         Some("not json"),
@@ -1905,6 +1915,7 @@ fn test_format_user_context_partial_intake() {
     let result = format_user_context(
         None,
         &[],
+        None,
         None,
         None,
         Some(intake),
@@ -2317,7 +2328,8 @@ fn test_generate_skills_section_no_trigger_no_path() {
 
 #[test]
 fn test_format_user_context_returns_none_when_all_empty() {
-    let result = format_user_context(None, &[], None, None, None, None, None, None, None, None, None, None);
+    let result =
+        format_user_context(None, &[], None, None, None, None, None, None, None, None, None, None, None);
     assert!(result.is_none(), "should return None when no fields are provided");
 }
 
@@ -2325,7 +2337,7 @@ fn test_format_user_context_returns_none_when_all_empty() {
 fn test_format_user_context_includes_name_and_tags() {
     let tags = vec!["finance".to_string(), "analytics".to_string()];
     let result = format_user_context(
-        Some("my-skill"), &tags, None, None, None, None, None, None, None, None, None, None,
+        Some("my-skill"), &tags, None, None, None, None, None, None, None, None, None, None, None,
     );
     let text = result.unwrap();
     assert!(text.contains("## User Context"), "should have heading");
@@ -2336,7 +2348,7 @@ fn test_format_user_context_includes_name_and_tags() {
 #[test]
 fn test_format_user_context_includes_purpose_label_mapping() {
     let result = format_user_context(
-        None, &[], None, None, None, None, Some("domain"), None, None, None, None, None,
+        None, &[], None, None, None, None, None, Some("domain"), None, None, None, None, None,
     );
     let text = result.unwrap();
     assert!(text.contains("Business process knowledge"), "domain purpose should map to label");
@@ -2345,7 +2357,7 @@ fn test_format_user_context_includes_purpose_label_mapping() {
 #[test]
 fn test_format_user_context_includes_profile_section() {
     let result = format_user_context(
-        None, &[], Some("Healthcare"), Some("Data Engineer"), None, None, None, None, None, None, None, None,
+        None, &[], None, Some("Healthcare"), Some("Data Engineer"), None, None, None, None, None, None, None, None,
     );
     let text = result.unwrap();
     assert!(text.contains("### About You"), "should have profile heading");
@@ -2356,7 +2368,7 @@ fn test_format_user_context_includes_profile_section() {
 #[test]
 fn test_format_user_context_includes_configuration() {
     let result = format_user_context(
-        None, &[], None, None, None, None, None, Some("1.0"), Some("claude-sonnet-4-6"), Some("/ask"), Some(true), Some(false),
+        None, &[], None, None, None, None, None, None, Some("1.0"), Some("claude-sonnet-4-6"), Some("/ask"), Some(true), Some(false),
     );
     let text = result.unwrap();
     assert!(text.contains("### Configuration"), "should have config heading");
@@ -2370,7 +2382,7 @@ fn test_format_user_context_includes_configuration() {
 #[test]
 fn test_format_user_context_skips_inherit_model() {
     let result = format_user_context(
-        None, &[], None, None, None, None, None, None, Some("inherit"), None, None, None,
+        None, &[], None, None, None, None, None, None, None, Some("inherit"), None, None, None,
     );
     // "inherit" model should be filtered out — if nothing else is set, result is None
     assert!(result.is_none(), "inherit model alone should produce None");
@@ -2380,7 +2392,7 @@ fn test_format_user_context_skips_inherit_model() {
 fn test_format_user_context_includes_intake_json_context() {
     let intake = r#"{"context": "We use Snowflake and dbt for data pipelines."}"#;
     let result = format_user_context(
-        None, &[], None, None, Some(intake), None, None, None, None, None, None, None,
+        None, &[], None, None, None, Some(intake), None, None, None, None, None, None, None,
     );
     let text = result.unwrap();
     assert!(text.contains("### What Claude Needs to Know"), "should include intake context heading");
@@ -2395,7 +2407,7 @@ fn test_write_user_context_file_creates_file() {
     let tags = vec!["tag1".to_string()];
 
     write_user_context_file(
-        workspace_path, skill_name, &tags, Some("Tech"), None, None, Some("A test skill"), Some("domain"), None, None, None, None, None,
+        workspace_path, skill_name, &tags, None, Some("Tech"), None, None, Some("A test skill"), Some("domain"), None, None, None, None, None,
     );
 
     let ctx_path = tmp.path().join(skill_name).join("user-context.md");

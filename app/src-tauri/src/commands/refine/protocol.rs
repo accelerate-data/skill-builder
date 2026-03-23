@@ -66,6 +66,10 @@ pub(super) fn load_refine_runtime_settings(
     let skills_path = settings
         .skills_path
         .unwrap_or_else(|| workspace_path.to_string());
+    let settings_author = settings
+        .github_user_email
+        .clone()
+        .or(settings.github_user_login.clone());
 
     let run_row = db::get_workflow_run(&conn, skill_name).ok().flatten();
     let purpose = run_row
@@ -73,17 +77,27 @@ pub(super) fn load_refine_runtime_settings(
         .map(|r| r.purpose.clone())
         .unwrap_or_else(|| "domain".to_string());
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
+    let skill_md_path = Path::new(&skills_path).join(skill_name).join("SKILL.md");
+    let frontmatter = std::fs::read_to_string(&skill_md_path)
+        .ok()
+        .map(|content| crate::commands::imported_skills::parse_frontmatter_full(&content))
+        .unwrap_or_default();
+    let author_for_context = frontmatter
+        .author
+        .or_else(|| run_row.as_ref().and_then(|r| r.author_login.clone()))
+        .or(settings_author);
 
     crate::commands::workflow::write_user_context_file(
         workspace_path,
         skill_name,
         &[],
+        author_for_context.as_deref(),
         settings.industry.as_deref(),
         settings.function_role.as_deref(),
         intake_json.as_deref(),
         None,
         Some(purpose.as_str()),
-        None,
+        frontmatter.version.as_deref(),
         None,
         None,
         None,
@@ -250,4 +264,3 @@ pub(super) fn build_refine_prompt(
 
     prompt
 }
-

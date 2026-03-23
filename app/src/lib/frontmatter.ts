@@ -18,7 +18,7 @@ export interface ParsedSkillContent {
 
 /**
  * Parse YAML frontmatter from SKILL.md content.
- * Handles flat key-value pairs only (no nested objects or anchors).
+ * Handles flat key-value pairs and a nested metadata block.
  * Tolerates CRLF line endings.
  */
 export function parseFrontmatter(content: string): ParsedSkillContent {
@@ -41,14 +41,16 @@ export function parseFrontmatter(content: string): ParsedSkillContent {
   const frontmatter: SkillFrontmatter = {};
   let currentMultilineKey: string | null = null;
   let multilineBuf = "";
+  let currentSection: string | null = null;
 
   for (const line of yamlBlock.split("\n")) {
     const trimmedLine = line.trim();
+    const isIndented = line.startsWith(" ") || line.startsWith("\t");
 
     // Continuation line for multi-line scalar
     if (
       currentMultilineKey &&
-      (line.startsWith(" ") || line.startsWith("\t")) &&
+      isIndented &&
       trimmedLine.length > 0
     ) {
       if (multilineBuf.length > 0) multilineBuf += " ";
@@ -62,6 +64,14 @@ export function parseFrontmatter(content: string): ParsedSkillContent {
       if (val) frontmatter[currentMultilineKey] = val;
       currentMultilineKey = null;
       multilineBuf = "";
+    }
+
+    if (!isIndented) {
+      currentSection = null;
+      if (trimmedLine.endsWith(":") && !trimmedLine.slice(0, -1).includes(":")) {
+        currentSection = trimmedLine.slice(0, -1);
+        continue;
+      }
     }
 
     // Parse key: value
@@ -80,7 +90,17 @@ export function parseFrontmatter(content: string): ParsedSkillContent {
         (rawVal.startsWith("'") && rawVal.endsWith("'"))
           ? rawVal.slice(1, -1)
           : rawVal;
-      if (cleaned) frontmatter[key] = cleaned;
+      if (!cleaned) continue;
+      if (currentSection === "metadata") {
+        if (key === "version" || key === "author") {
+          frontmatter[key] = cleaned;
+        }
+        continue;
+      }
+
+      if (key === "version" && frontmatter.version) continue;
+      if (key === "author" && frontmatter.author) continue;
+      frontmatter[key] = cleaned;
     }
   }
 

@@ -11,8 +11,9 @@ describe("parseFrontmatter", () => {
       "type: automation",
       "tools: Bash, Read, Write",
       "model: sonnet",
-      "version: 1.0.0",
-      "author: hb",
+      "metadata:",
+      "  version: 1.0.0",
+      "  author: hb",
       "---",
       "",
       "# Skill Body",
@@ -45,7 +46,8 @@ describe("parseFrontmatter", () => {
     const content = [
       "---",
       "name: partial-skill",
-      "version: 0.1.0",
+      "metadata:",
+      "  version: 0.1.0",
       "---",
       "",
       "Body text.",
@@ -61,7 +63,7 @@ describe("parseFrontmatter", () => {
 
   it("handles CRLF line endings", () => {
     const content =
-      "---\r\nname: crlf-skill\r\ndescription: Works on Windows\r\nversion: 1.0.0\r\n---\r\n\r\n# Body\r\n";
+      "---\r\nname: crlf-skill\r\ndescription: Works on Windows\r\nmetadata:\r\n  version: 1.0.0\r\n---\r\n\r\n# Body\r\n";
 
     const result = parseFrontmatter(content);
     expect(result.frontmatter).toEqual({
@@ -80,7 +82,8 @@ describe("parseFrontmatter", () => {
       "  This is a long",
       "  description that spans",
       "  multiple lines",
-      "version: 2.0.0",
+      "metadata:",
+      "  version: 2.0.0",
       "---",
       "",
       "Body.",
@@ -116,7 +119,7 @@ describe("parseFrontmatter", () => {
   });
 
   it("ignores empty values", () => {
-    const content = ["---", "name: has-name", "description:", "version: 1.0", "---", "", "Body."].join("\n");
+    const content = ["---", "name: has-name", "description:", "metadata:", "  version: 1.0", "---", "", "Body."].join("\n");
 
     const result = parseFrontmatter(content);
     expect(result.frontmatter).toEqual({
@@ -158,6 +161,25 @@ describe("parseFrontmatter", () => {
     const result = parseFrontmatter(content);
     expect(result.frontmatter?.argument_hint).toBe("Use when testing");
     expect(result.frontmatter?.user_invocable).toBe("true");
+  });
+
+  it("prefers metadata version and author over legacy top-level fields", () => {
+    const content = [
+      "---",
+      "name: migrated-skill",
+      "version: 0.1.0",
+      "author: legacy",
+      "metadata:",
+      "  version: 2.0.0",
+      "  author: metadata-user",
+      "---",
+      "",
+      "Body.",
+    ].join("\n");
+
+    const result = parseFrontmatter(content);
+    expect(result.frontmatter?.version).toBe("2.0.0");
+    expect(result.frontmatter?.author).toBe("metadata-user");
   });
 });
 

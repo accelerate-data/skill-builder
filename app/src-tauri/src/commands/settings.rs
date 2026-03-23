@@ -119,32 +119,60 @@ fn backfill_missing_skill_versions(
         let content = fs::read_to_string(&skill_md)
             .map_err(|e| format!("Failed to read '{}': {}", skill_md.display(), e))?;
         let frontmatter = crate::commands::imported_skills::parse_frontmatter_full(&content);
-        if frontmatter.version.is_some() {
-            continue;
-        }
-        if crate::git::skill_has_any_tag(skills_root, &skill_name)? {
-            log::info!(
-                "[startup] skipping version backfill for '{}' because a tag already exists",
-                skill_name
-            );
+        let missing_version = frontmatter.version.is_none();
+        let missing_metadata_version = !frontmatter.has_metadata_version;
+        if !missing_version && !missing_metadata_version {
             continue;
         }
 
-        let final_version =
-            crate::commands::imported_skills::frontmatter::ensure_skill_frontmatter_version(
-                &skill_md, None,
-            )?;
-        crate::git::commit_all(
-            skills_root,
-            &format!("{}: backfill imported skill version", skill_name),
+        let normalized = crate::commands::imported_skills::frontmatter::ensure_skill_frontmatter_metadata(
+            &skill_md,
+            None,
+            None,
         )?;
-        crate::git::create_skill_version_tag(skills_root, &skill_name, &final_version)?;
+
+        if missing_version {
+            if crate::git::skill_has_any_tag(skills_root, &skill_name)? {
+                log::info!(
+                    "[startup] skipping version tag backfill for '{}' because a tag already exists",
+                    skill_name
+                );
+                if normalized.modified {
+                    crate::git::commit_all(
+                        skills_root,
+                        &format!("{}: normalize skill frontmatter metadata", skill_name),
+                    )?;
+                }
+            } else {
+                crate::git::commit_all(
+                    skills_root,
+                    &format!("{}: backfill imported skill version", skill_name),
+                )?;
+                crate::git::create_skill_version_tag(skills_root, &skill_name, &normalized.version)?;
+
+                log::info!(
+                    "[startup] backfilled missing version for '{}' with tag {}/v{}",
+                    skill_name,
+                    skill_name,
+                    normalized.version
+                );
+            }
+        } else if normalized.modified {
+            crate::git::commit_all(
+                skills_root,
+                &format!("{}: normalize skill frontmatter metadata", skill_name),
+            )?;
+            log::info!(
+                "[startup] normalized metadata.version for '{}'",
+                skill_name
+            );
+        }
 
         crate::db::set_skill_behaviour(
             conn,
             &skill_name,
             None,
-            Some(&final_version),
+            Some(&normalized.version),
             None,
             None,
             None,
@@ -152,16 +180,9 @@ fn backfill_missing_skill_versions(
         )?;
         conn.execute(
             "UPDATE imported_skills SET version = ?2 WHERE skill_name = ?1",
-            rusqlite::params![&skill_name, &final_version],
+            rusqlite::params![&skill_name, &normalized.version],
         )
         .map_err(|e| e.to_string())?;
-
-        log::info!(
-            "[startup] backfilled missing version for '{}' with tag {}/v{}",
-            skill_name,
-            skill_name,
-            final_version
-        );
     }
 
     Ok(())
@@ -524,7 +545,7 @@ mod tests {
 
         let updated =
             std::fs::read_to_string(skills_path.join("legacy-skill").join("SKILL.md")).unwrap();
-        assert!(updated.contains("version: 1.0.0"));
+        assert!(updated.contains("metadata:\n  version: \"1.0.0\""));
         assert!(
             crate::git::skill_version_tag_exists(&skills_path, "legacy-skill", "1.0.0").unwrap()
         );
@@ -537,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn test_run_settings_startup_migrations_skips_when_tag_exists() {
+    fn test_run_settings_startup_migrations_normalizes_legacy_version_when_tag_exists() {
         let conn = crate::db::create_test_db_for_tests();
         let dir = tempfile::tempdir().unwrap();
         let skills_path = dir.path().join("skills");
@@ -546,7 +567,7 @@ mod tests {
         crate::git::ensure_repo(&skills_path).unwrap();
         std::fs::write(
             skill_dir.join("SKILL.md"),
-            "---\nname: legacy-skill\ndescription: Legacy\n---\n# Body\n",
+            "---\nname: legacy-skill\ndescription: Legacy\nversion: 1.0.0\n---\n# Body\n",
         )
         .unwrap();
         crate::git::commit_all(&skills_path, "legacy-skill: seed").unwrap();
@@ -559,7 +580,7 @@ mod tests {
         run_settings_startup_migrations(&conn).unwrap();
 
         let updated = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
-        assert!(!updated.contains("version: 1.0.0"));
+        assert!(updated.contains("metadata:\n  version: \"1.0.0\""));
     }
 
     #[test]

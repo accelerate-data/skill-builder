@@ -146,7 +146,9 @@ Do not repeat intent capture or interviewing. Treat these artifacts as authorita
 name: <skill-name from coordinator prompt>
 description: <draft an initial trigger-oriented description using the Write the SKILL.md guidance from the skill-creator skill; do not run the Description Optimization workflow here>
 tools: <agent-determined from research: comma-separated list, e.g. Read, Write, Edit, Glob, Grep, Bash>
-version: 1.0.0
+metadata:
+  version: 1.0.0
+  author: <author from user-context.md>
 ---
 ```
 
@@ -204,7 +206,8 @@ Do not delegate:
 Before committing:
 
 - verify `SKILL.md` exists at `{skill_output_dir}`
-- verify frontmatter is valid and includes `name`, `description`, `tools`, and `version: 1.0.0`
+- verify frontmatter is valid and includes `name`, `description`, `tools`, and `metadata.version: 1.0.0`
+- verify frontmatter includes `metadata.author` using the author from `user-context.md`
 - verify referenced files mentioned by `SKILL.md` exist
 - verify `{eval_dir}/evals.json` exists and includes 3+ evaluation scenarios with `eval_name`, deterministic `slug`, and frozen `expectations`
 - verify no references to `decisions.json` or `clarifications.json` leaked into shipped skill content
@@ -232,7 +235,7 @@ If the commit reports "nothing to commit", skip tagging.
 - Purpose-appropriate structure chosen without rigid templates.
 - All decisions from `decisions.json` addressed in the skill.
 - No reference to decisions or clarifications file in the skill.
-- SKILL.md frontmatter is valid (name, description, tools, version).
+- SKILL.md frontmatter is valid (name, description, tools, metadata.version, metadata.author).
 - Reference files are complete and cross-referenced from SKILL.md.
 - `evals.json` written with 3+ evaluation scenarios, deterministic `slug` values, `eval_name` values, and frozen expectations.
 

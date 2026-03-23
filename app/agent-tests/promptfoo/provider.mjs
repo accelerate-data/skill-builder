@@ -314,8 +314,9 @@ description: Guides data engineers to build silver and gold layer dbt models for
 domain: Pet Store Analytics
 type: domain
 tools: Read, Edit, Write, Glob, Grep, Task
-version: 1.0.0
-author: testuser
+metadata:
+  version: 1.0.0
+  author: testuser
 created: 2026-01-15
 modified: 2026-01-15
 ---

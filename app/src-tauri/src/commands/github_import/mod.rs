@@ -602,10 +602,8 @@ mod tests {
             name: Some("new-name".to_string()),
             description: Some("new-desc".to_string()),
             version: None,
-            model: None,
-            argument_hint: None,
-            user_invocable: None,
-            disable_model_invocation: None,
+            author: None,
+            ..Default::default()
         };
 
         rewrite_skill_md(dir.path(), &fm).unwrap();
@@ -644,10 +642,8 @@ mod tests {
             name: Some("my-skill".to_string()),
             description: Some("desc".to_string()),
             version: None,
-            model: None,
-            argument_hint: None,
-            user_invocable: None,
-            disable_model_invocation: None,
+            author: None,
+            ..Default::default()
         };
 
         rewrite_skill_md(dir.path(), &fm).unwrap();
@@ -687,10 +683,8 @@ mod tests {
             name: Some("legit\nmalicious-key: injected".to_string()),
             description: Some("desc".to_string()),
             version: None,
-            model: None,
-            argument_hint: None,
-            user_invocable: None,
-            disable_model_invocation: None,
+            author: None,
+            ..Default::default()
         };
 
         rewrite_skill_md(dir.path(), &fm).unwrap();
@@ -807,10 +801,8 @@ mod tests {
                 name: Some("my-skill".to_string()),
                 description: Some("overridden desc".to_string()),
                 version: None,
-                model: None,
-                argument_hint: None,
-                user_invocable: None,
-                disable_model_invocation: None,
+                author: None,
+                ..Default::default()
             };
 
             rewrite_skill_md(dir.path(), &fm).unwrap();
@@ -892,7 +884,7 @@ mod tests {
         let skill_md = dir.path().join("SKILL.md");
 
         // Original SKILL.md has version and model set
-        let original = "---\nname: original-name\ndescription: original-desc\nversion: \"1.0.0\"\nmodel: claude-3-haiku\n---\n# Body content\n";
+        let original = "---\nname: original-name\ndescription: original-desc\nmetadata:\n  version: \"1.0.0\"\n  author: \"acceleratedata\"\nmodel: claude-3-haiku\n---\n# Body content\n";
         fs::write(&skill_md, original).unwrap();
 
         // Simulate what import_single_skill does: parse original, then apply partial override
@@ -918,7 +910,7 @@ mod tests {
 
         // Non-overridden fields must be preserved from the original parse
         assert!(
-            result.contains("version: \"1.0.0\""),
+            result.contains("metadata:\n  version: \"1.0.0\"\n  author: \"acceleratedata\""),
             "version was lost: {}",
             result
         );
@@ -1362,7 +1354,8 @@ mod tests {
         let written =
             std::fs::read_to_string(tmp.path().join("my-skill").join("SKILL.md")).unwrap();
         assert_eq!(skill.version.as_deref(), Some("1.0.0"));
-        assert!(written.contains("version:"));
-        assert!(written.contains("1.0.0"));
+        assert!(written.contains("metadata:"));
+        assert!(written.contains("version: \"1.0.0\""));
+        assert!(written.contains("author: \"owner\""));
     }
 }

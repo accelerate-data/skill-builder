@@ -142,13 +142,13 @@ Include these artifacts as input.
 
 ### Version management
 
-Before rewriting, read the `version` field from the existing SKILL.md frontmatter. If no `version` field exists, treat the current version as `1.0.0`. After the rewrite, apply a semver bump and update the `version` field in SKILL.md frontmatter:
+Before rewriting, read `metadata.version` from the existing SKILL.md frontmatter. If only a legacy top-level `version` field exists, treat that as the current version and migrate it into `metadata.version`. If no version field exists, treat the current version as `1.0.0`. After the rewrite, apply a semver bump and update `metadata.version` in SKILL.md frontmatter:
 
 - `patch`: bug fixes, typo corrections, minor wording improvements
 - `minor`: feature additions, significant content changes, new reference files
 - `major`: breaking structural changes (e.g. renamed sections that other tools reference)
 
-Write the bumped version back to the SKILL.md frontmatter before returning.
+Also preserve `metadata.author` when present. If `metadata.author` is missing, use the author from `user-context.md` and write it into SKILL.md before returning.
 
 ### Rewrite strategy
 
@@ -239,7 +239,7 @@ If the commit reports "nothing to commit", skip tagging.
 - All original domain knowledge preserved
 - Inconsistencies and redundancies resolved
 - Every decision from `decisions.json` addressed
-- SKILL.md frontmatter is valid (name, description, tools, version)
+- SKILL.md frontmatter is valid (name, description, tools, metadata.version, metadata.author)
 - `Current request` is addressed explicitly or the gap is recorded
 - Cross-references between SKILL.md and reference files are accurate
 - Only relevant files are modified
