@@ -72,7 +72,7 @@ mod tests {
             plugin_display_name: Some("No Plugin".to_string()),
             is_default_plugin: Some(true),
         };
-        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+        crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
         let result = crate::db::list_imported_skills_filtered(&conn, None).unwrap();
         assert!(result.iter().any(|s| s.skill_id == "listing-test-id"));
     }

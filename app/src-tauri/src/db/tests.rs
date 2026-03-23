@@ -2672,7 +2672,7 @@ fn test_list_active_skills() {
         plugin_display_name: Some("No Plugin".to_string()),
         is_default_plugin: Some(true),
     };
-    insert_imported_skill(&conn, &skill1).unwrap();
+    test_insert_imported_skill(&conn, &skill1).unwrap();
 
     // Skill 2: active
     let skill2 = ImportedSkill {
@@ -2695,7 +2695,7 @@ fn test_list_active_skills() {
         plugin_display_name: Some("No Plugin".to_string()),
         is_default_plugin: Some(true),
     };
-    insert_imported_skill(&conn, &skill2).unwrap();
+    test_insert_imported_skill(&conn, &skill2).unwrap();
 
     // Skill 3: inactive
     let skill3 = ImportedSkill {
@@ -2718,7 +2718,7 @@ fn test_list_active_skills() {
         plugin_display_name: Some("No Plugin".to_string()),
         is_default_plugin: Some(true),
     };
-    insert_imported_skill(&conn, &skill3).unwrap();
+    test_insert_imported_skill(&conn, &skill3).unwrap();
 
     // Only active skills should be returned (inactive filtered out)
     let result = list_active_skills(&conn).unwrap();
@@ -2754,7 +2754,7 @@ fn test_delete_imported_skill_by_name() {
         plugin_display_name: Some("No Plugin".to_string()),
         is_default_plugin: Some(true),
     };
-    insert_imported_skill(&conn, &skill).unwrap();
+    test_insert_imported_skill(&conn, &skill).unwrap();
 
     // Verify it exists
     assert!(get_imported_skill(&conn, "delete-me").unwrap().is_some());
@@ -3247,7 +3247,7 @@ fn test_list_imported_skills_filtered() {
         false,
     )
     .unwrap();
-    insert_imported_skill(&conn, &skill).unwrap();
+    test_insert_imported_skill(&conn, &skill).unwrap();
 
     let all = list_imported_skills_filtered(&conn, None).unwrap();
     assert_eq!(all.len(), 1);
@@ -3283,7 +3283,7 @@ fn test_get_imported_skill_by_id() {
         plugin_display_name: Some("No Plugin".to_string()),
         is_default_plugin: Some(true),
     };
-    insert_imported_skill(&conn, &skill).unwrap();
+    test_insert_imported_skill(&conn, &skill).unwrap();
 
     let found = get_imported_skill_by_id(&conn, "imp-test-byid").unwrap();
     assert!(found.is_some());
@@ -3316,7 +3316,7 @@ fn test_delete_imported_skill_by_skill_id() {
         plugin_display_name: Some("No Plugin".to_string()),
         is_default_plugin: Some(true),
     };
-    insert_imported_skill(&conn, &skill).unwrap();
+    test_insert_imported_skill(&conn, &skill).unwrap();
     assert!(get_imported_skill_by_id(&conn, "imp-test-del").unwrap().is_some());
 
     delete_imported_skill_by_skill_id(&conn, "imp-test-del").unwrap();
@@ -3357,7 +3357,7 @@ fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
         false,
     )
     .unwrap();
-    insert_imported_skill(&conn, &imported).unwrap();
+    test_insert_imported_skill(&conn, &imported).unwrap();
 
     let found = get_imported_skill_by_name_and_source(
         &conn,

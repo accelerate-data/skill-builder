@@ -2,21 +2,7 @@ use crate::types::ImportedSkill;
 use rusqlite::Connection;
 use std::fs;
 
-use super::skills::{
-    get_skill_master_id, get_skill_master_id_in_plugin, upsert_skill_with_source_in_plugin,
-};
-
-fn resolve_plugin_slug(skill: &ImportedSkill) -> &str {
-    skill.plugin_slug.as_deref().unwrap_or("no-plugin")
-}
-
-fn resolve_skill_source(skill: &ImportedSkill) -> &str {
-    if skill.marketplace_source_url.is_some() {
-        "marketplace"
-    } else {
-        "imported"
-    }
-}
+use super::skills::get_skill_master_id;
 
 fn imported_skill_select(prefix: &str) -> String {
     format!(
@@ -80,19 +66,11 @@ pub fn hydrate_skills_metadata(skills: &mut [ImportedSkill]) {
 }
 
 #[allow(dead_code)]
-pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
-    let plugin_slug = resolve_plugin_slug(skill);
-    let skill_master_id = match get_skill_master_id_in_plugin(conn, &skill.skill_name, plugin_slug)?
-    {
-        Some(id) => id,
-        None => upsert_skill_with_source_in_plugin(
-            conn,
-            &skill.skill_name,
-            resolve_skill_source(skill),
-            skill.purpose.as_deref().unwrap_or("domain"),
-            plugin_slug,
-        )?,
-    };
+/// Insert an imported skill row, linking it to an existing skill master row.
+///
+/// The caller must have already created the skill master row and passes
+/// the resulting `skill_master_id`.
+pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill, skill_master_id: i64) -> Result<(), String> {
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
              purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
@@ -389,6 +367,22 @@ pub fn get_imported_skill_by_name_and_source(
 
 /// Return names of all skills in the skills master table.
 /// Used by the skill-library (dashboard) path to check which skills are already installed.
+/// Test-only convenience: creates the skill master row then inserts the imported_skills row.
+/// Production code must call `upsert_skill_in_plugin` + `insert_imported_skill` separately.
+#[cfg(test)]
+pub fn test_insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
+    let plugin_slug = skill.plugin_slug.as_deref().unwrap_or("no-plugin");
+    let source = if skill.marketplace_source_url.is_some() { "marketplace" } else { "imported" };
+    let skill_master_id = super::skills::upsert_skill_with_source_in_plugin(
+        conn,
+        &skill.skill_name,
+        source,
+        skill.purpose.as_deref().unwrap_or("domain"),
+        plugin_slug,
+    )?;
+    insert_imported_skill(conn, skill, skill_master_id)
+}
+
 pub fn get_dashboard_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
     let mut stmt = conn
         .prepare("SELECT name FROM skills WHERE COALESCE(deleted_at, '') = ''")

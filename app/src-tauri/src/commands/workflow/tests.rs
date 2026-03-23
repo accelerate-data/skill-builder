@@ -2127,7 +2127,7 @@ fn test_generate_skills_section_single_active_skill() {
         plugin_display_name: Some("No Plugin".to_string()),
         is_default_plugin: Some(true),
     };
-    crate::db::insert_imported_skill(&conn, &skill).unwrap();
+    crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
 
     let section = generate_skills_section(&conn).unwrap();
 
@@ -2180,7 +2180,7 @@ fn test_generate_skills_section_inactive_skill_excluded() {
         plugin_display_name: Some("No Plugin".to_string()),
         is_default_plugin: Some(true),
     };
-    crate::db::insert_imported_skill(&conn, &skill).unwrap();
+    crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
 
     let section = generate_skills_section(&conn).unwrap();
     assert!(
@@ -2246,8 +2246,8 @@ fn test_generate_skills_section_multiple_skills_same_format() {
         plugin_display_name: Some("No Plugin".to_string()),
         is_default_plugin: Some(true),
     };
-    crate::db::insert_imported_skill(&conn, &bundled).unwrap();
-    crate::db::insert_imported_skill(&conn, &imported).unwrap();
+    crate::db::test_insert_imported_skill(&conn, &bundled).unwrap();
+    crate::db::test_insert_imported_skill(&conn, &imported).unwrap();
 
     let section = generate_skills_section(&conn).unwrap();
 
@@ -2313,7 +2313,7 @@ fn test_generate_skills_section_no_trigger_no_path() {
         plugin_display_name: Some("No Plugin".to_string()),
         is_default_plugin: Some(true),
     };
-    crate::db::insert_imported_skill(&conn, &skill).unwrap();
+    crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
 
     let section = generate_skills_section(&conn).unwrap();
 
