@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod evals;
 pub mod api_validation;
+pub mod description;
 pub mod feedback;
 pub mod files;
 pub mod git;
