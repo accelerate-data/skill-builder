@@ -17,6 +17,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -32,7 +33,17 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
 import { PURPOSE_SHORT_LABELS } from "@/lib/types";
-import { listSkills, exportSkill, packageSkill, saveExportTo, resetWorkflowStep, getExternallyLockedSkills } from "@/lib/tauri";
+import {
+  createPluginFromSkills,
+  getExternallyLockedSkills,
+  exportSkill,
+  listSkills,
+  moveSkillToPlugin,
+  packageSkill,
+  removeSkillFromPlugin,
+  resetWorkflowStep,
+  saveExportTo,
+} from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 interface UnifiedSkill {
@@ -241,6 +252,17 @@ export function SkillListPanel({
   const filteredSkills = unifiedSkills.filter((s) =>
     `${s.name} ${s.pluginDisplayName}`.toLowerCase().includes(search.toLowerCase()),
   );
+  const pluginOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          unifiedSkills
+            .filter((skill) => !skill.isDefaultPlugin && skill.pluginSlug)
+            .map((skill) => [skill.pluginSlug, skill.pluginDisplayName]),
+        ).entries(),
+      ),
+    [unifiedSkills],
+  );
 
   function handleRowClick(skill: UnifiedSkill) {
     // All other rows are locked while a workflow or refine agent runs
@@ -354,6 +376,63 @@ export function SkillListPanel({
     const summary = builderSkills.find((s) => s.name === skill.name) ?? null;
     setDeleteTarget(summary);
     setDeleteOpen(true);
+  }
+
+  async function refreshSkillLists() {
+    if (workspacePath) {
+      await listSkills(workspacePath).then(setSkills);
+    }
+    await fetchImportedSkills();
+  }
+
+  async function handleCreatePlugin(skill: UnifiedSkill) {
+    const pluginName = window.prompt(`Create a new plugin for "${skill.name}"`)
+    if (!pluginName) return
+    const toastId = toast.loading(`Creating plugin "${pluginName}"...`)
+    try {
+      await createPluginFromSkills(pluginName, [skill.key])
+      await refreshSkillLists()
+      toast.success(`Created plugin "${pluginName}"`, { id: toastId })
+    } catch (err) {
+      toast.error(
+        `Create plugin failed: ${err instanceof Error ? err.message : String(err)}`,
+        { id: toastId },
+      )
+    }
+  }
+
+  async function handleMoveToPlugin(skill: UnifiedSkill) {
+    const available = pluginOptions
+      .filter(([slug]) => slug !== skill.pluginSlug)
+      .map(([slug, label]) => `${label} (${slug})`)
+      .join(", ")
+    const pluginSlug = window.prompt(
+      `Move "${skill.name}" to plugin slug${available ? `\nAvailable: ${available}` : ""}`,
+    )
+    if (!pluginSlug) return
+    const toastId = toast.loading(`Moving "${skill.name}"...`)
+    try {
+      await moveSkillToPlugin(skill.key, pluginSlug)
+      await refreshSkillLists()
+      toast.success(`Moved "${skill.name}"`, { id: toastId })
+    } catch (err) {
+      toast.error(`Move failed: ${err instanceof Error ? err.message : String(err)}`, {
+        id: toastId,
+      })
+    }
+  }
+
+  async function handleRemoveFromPlugin(skill: UnifiedSkill) {
+    const toastId = toast.loading(`Removing "${skill.name}" from plugin...`)
+    try {
+      await removeSkillFromPlugin(skill.key)
+      await refreshSkillLists()
+      toast.success(`Removed "${skill.name}" from plugin`, { id: toastId })
+    } catch (err) {
+      toast.error(`Remove failed: ${err instanceof Error ? err.message : String(err)}`, {
+        id: toastId,
+      })
+    }
   }
 
   return (
@@ -523,6 +602,26 @@ export function SkillListPanel({
                         <DropdownMenuItem onSelect={() => handleExport(skill)}>
                           Export
                         </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
+                          PLUGIN
+                        </DropdownMenuLabel>
+                        <DropdownMenuGroup>
+                          {skill.isDefaultPlugin ? (
+                            <DropdownMenuItem onSelect={() => handleCreatePlugin(skill)}>
+                              Create plugin
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onSelect={() => handleRemoveFromPlugin(skill)}>
+                              Remove from plugin
+                            </DropdownMenuItem>
+                          )}
+                          {pluginOptions.some(([slug]) => slug !== skill.pluginSlug) && (
+                            <DropdownMenuItem onSelect={() => handleMoveToPlugin(skill)}>
+                              Move to plugin
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuGroup>
                       </>
                     ) : (
                       <DropdownMenuItem onSelect={() => handleContinueBuilding(skill.name)}>
