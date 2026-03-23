@@ -82,6 +82,20 @@ pub fn ensure_default_plugin(conn: &Connection) -> Result<i64, String> {
     )
 }
 
+/// Delete a plugin row by slug. Only succeeds if the plugin has no skills
+/// (enforced by FK RESTRICT on skills.plugin_id). Refuses to delete the default plugin.
+pub fn delete_plugin_by_slug(conn: &Connection, slug: &str) -> Result<(), String> {
+    if slug == DEFAULT_PLUGIN_SLUG {
+        return Err("Cannot delete the default plugin".to_string());
+    }
+    conn.execute(
+        "DELETE FROM plugins WHERE slug = ?1",
+        rusqlite::params![slug],
+    )
+    .map_err(|e| format!("delete_plugin_by_slug: {}", e))?;
+    Ok(())
+}
+
 pub fn get_plugin_id_by_slug(conn: &Connection, slug: &str) -> Result<Option<i64>, String> {
     conn.query_row(
         "SELECT id FROM plugins WHERE slug = ?1",
