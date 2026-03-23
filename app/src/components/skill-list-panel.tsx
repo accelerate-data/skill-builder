@@ -36,12 +36,17 @@ import { listSkills, exportSkill, packageSkill, saveExportTo, resetWorkflowStep,
 import { cn } from "@/lib/utils";
 
 interface UnifiedSkill {
+  key: string;
   name: string;
   description: string | null;
   purpose: string | null;
   lastModified: Date | null;
   createdAt: Date | null;
   source: "builder" | "imported" | "marketplace";
+  pluginSlug: string;
+  pluginDisplayName: string;
+  isDefaultPlugin: boolean;
+  importedSkillId: string | null;
   status: string | null;
   currentStep: string | null;
 }
@@ -113,43 +118,46 @@ function mergeSkills(
   builderSkills: SkillSummary[],
   importedSkills: ImportedSkill[],
 ): UnifiedSkill[] {
-  const fromBuilder: UnifiedSkill[] = builderSkills.map((s) => ({
-    name: s.name,
-    description: s.description ?? null,
-    purpose: s.purpose,
-    lastModified: s.last_modified ? new Date(s.last_modified) : null,
-    createdAt: s.created_at ? new Date(s.created_at) : null,
-    source: s.skill_source === "marketplace" ? "marketplace" : ("builder" as const),
-    status: s.status,
-    currentStep: s.current_step,
-  }));
+  const fromBuilder: UnifiedSkill[] = builderSkills
+    .filter((s) => s.skill_source === "skill-builder")
+    .map((s) => ({
+      key: s.library_key ?? s.name,
+      name: s.name,
+      description: s.description ?? null,
+      purpose: s.purpose,
+      lastModified: s.last_modified ? new Date(s.last_modified) : null,
+      createdAt: s.created_at ? new Date(s.created_at) : null,
+      source: "builder" as const,
+      pluginSlug: s.plugin_slug ?? "no-plugin",
+      pluginDisplayName: s.plugin_display_name ?? "No Plugin",
+      isDefaultPlugin: s.is_default_plugin ?? true,
+      importedSkillId: null,
+      status: s.status,
+      currentStep: s.current_step,
+    }));
 
   const fromImported: UnifiedSkill[] = importedSkills.map((s) => ({
+    key: s.library_key ?? `imported:${s.skill_id}`,
     name: s.skill_name,
     description: s.description,
     purpose: s.purpose,
     lastModified: new Date(s.imported_at),
     createdAt: new Date(s.imported_at),
     source: s.marketplace_source_url ? ("marketplace" as const) : ("imported" as const),
+    pluginSlug: s.plugin_slug ?? "no-plugin",
+    pluginDisplayName: s.plugin_display_name ?? "No Plugin",
+    isDefaultPlugin: s.is_default_plugin ?? true,
+    importedSkillId: s.skill_id,
     status: null,
     currentStep: null,
   }));
 
-  // Deduplicate by name — builder entry wins for status info, but marketplace imported
-  // entry wins if the builder record lacks the marketplace source flag.
-  const byName = new Map<string, UnifiedSkill>();
-  for (const s of fromBuilder) byName.set(s.name, s);
-  for (const s of fromImported) {
-    if (!byName.has(s.name)) {
-      byName.set(s.name, s);
-    } else if (s.source !== "builder" && byName.get(s.name)!.source === "builder") {
-      // Builder record exists but imported entry indicates non-builder origin — override source.
-      byName.set(s.name, { ...byName.get(s.name)!, source: s.source });
-    }
-  }
-
   // Sort by creation date descending — newest skill first, stable across edits
-  return Array.from(byName.values()).sort((a, b) => {
+  return [...fromBuilder, ...fromImported].sort((a, b) => {
+    if (a.pluginDisplayName !== b.pluginDisplayName) {
+      if (a.isDefaultPlugin !== b.isDefaultPlugin) return a.isDefaultPlugin ? -1 : 1;
+      return a.pluginDisplayName.localeCompare(b.pluginDisplayName);
+    }
     const at = a.createdAt?.getTime() ?? 0;
     const bt = b.createdAt?.getTime() ?? 0;
     return bt - at;
@@ -216,10 +224,10 @@ export function SkillListPanel({
   // Default selection — run once on mount after stores are populated
   useEffect(() => {
     const stored = localStorage.getItem("last-selected-skill");
-    if (stored && unifiedSkills.some((s) => s.name === stored)) {
+    if (stored && unifiedSkills.some((s) => s.key === stored)) {
       setSelectedSkill(stored);
     } else if (unifiedSkills.length > 0) {
-      setSelectedSkill(unifiedSkills[0].name);
+      setSelectedSkill(unifiedSkills[0].key);
     }
     // Intentionally mount-only: we only restore the saved selection once
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -231,7 +239,7 @@ export function SkillListPanel({
   const runningSkillName = runningAgent?.skillName ?? null;
 
   const filteredSkills = unifiedSkills.filter((s) =>
-    s.name.toLowerCase().includes(search.toLowerCase()),
+    `${s.name} ${s.pluginDisplayName}`.toLowerCase().includes(search.toLowerCase()),
   );
 
   function handleRowClick(skill: UnifiedSkill) {
@@ -243,11 +251,11 @@ export function SkillListPanel({
     if (externalLockedSkills.has(skill.name)) return;
 
     console.log("event=skill_selected skill=%s", skill.name);
-    localStorage.setItem("last-selected-skill", skill.name);
-    setSelectedSkill(skill.name);
+    localStorage.setItem("last-selected-skill", skill.key);
+    setSelectedSkill(skill.key);
 
     if (isSkillComplete(skill) || skill.source !== "builder") {
-      onSelectSkill?.(skill.name);
+      onSelectSkill?.(skill.key);
     } else {
       // Row click always opens in Review mode — auto-start is only for explicit actions
       // (SkillDialog create, Continue Building, Redo) which pass state: { autoStart: true }.
@@ -307,17 +315,17 @@ export function SkillListPanel({
     }
   }
 
-  function handleOverview(skillName: string) {
-    console.log("event=skill_overview skill=%s", skillName);
-    localStorage.setItem("last-selected-skill", skillName);
-    setSelectedSkill(skillName);
-    useSkillStore.getState().setActiveSkill(skillName);
+  function handleOverview(skillKey: string) {
+    console.log("event=skill_overview skill=%s", skillKey);
+    localStorage.setItem("last-selected-skill", skillKey);
+    setSelectedSkill(skillKey);
+    useSkillStore.getState().setActiveSkill(skillKey);
     navigate({ to: "/", search: { tab: "overview" } });
   }
 
-  function handleRefine(skillName: string) {
-    console.log("event=skill_refine skill=%s", skillName);
-    useSkillStore.getState().setActiveSkill(skillName);
+  function handleRefine(skillKey: string) {
+    console.log("event=skill_refine skill=%s", skillKey);
+    useSkillStore.getState().setActiveSkill(skillKey);
     navigate({ to: "/", search: { tab: "refine" } });
   }
 
@@ -336,6 +344,13 @@ export function SkillListPanel({
   }
 
   function handleDelete(skill: UnifiedSkill) {
+    if (skill.importedSkillId) {
+      const toastId = toast.loading(`Deleting "${skill.name}"...`);
+      useImportedSkillsStore.getState().deleteSkill(skill.importedSkillId, fetchImportedSkills)
+        .then(() => toast.success(`Deleted "${skill.name}"`, { id: toastId }))
+        .catch((err) => toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId }));
+      return;
+    }
     const summary = builderSkills.find((s) => s.name === skill.name) ?? null;
     setDeleteTarget(summary);
     setDeleteOpen(true);
@@ -391,44 +406,50 @@ export function SkillListPanel({
 
       {/* Skill rows */}
       <ScrollArea className="flex-1">
-        {filteredSkills.map((skill) => {
+        {filteredSkills.map((skill, index) => {
           const isLocked = (!!runningSkillName && skill.name !== runningSkillName) || externalLockedSkills.has(skill.name);
           const isRunning = skill.name === runningSkillName;
-          const isSelected = skill.name === selectedSkill;
+          const isSelected = skill.key === selectedSkill;
           const dot = getStatusDot(skill, isRunning);
           const purposeLabel = skill.purpose
             ? (PURPOSE_SHORT_LABELS[skill.purpose as Purpose] ?? skill.purpose)
             : null;
 
           const menuState = getSkillMenuState(skill);
+          const showPluginHeader = index === 0 || filteredSkills[index - 1]?.pluginSlug !== skill.pluginSlug;
 
           return (
-            <div
-              key={skill.name}
-              role="button"
-              tabIndex={isLocked ? -1 : 0}
-              aria-selected={isSelected}
-              className={cn(
-                "group flex h-[46px] cursor-pointer items-center gap-2 px-3 transition-colors",
-                isSelected && "border-l-2 bg-muted/60 pl-[10px]",
-                !isSelected && "border-l-2 border-l-transparent",
-                !isSelected && !isLocked && "hover:bg-accent/50",
-                isLocked && "cursor-not-allowed opacity-[0.45]",
+            <div key={skill.key}>
+              {showPluginHeader && (
+                <div className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {skill.pluginDisplayName}
+                </div>
               )}
-              style={isSelected ? { borderLeftColor: "var(--color-pacific)" } : undefined}
-              onClick={() => handleRowClick(skill)}
-              onKeyDown={(e) => {
-                if (!isLocked && (e.key === "Enter" || e.key === " ")) {
-                  e.preventDefault();
-                  handleRowClick(skill);
-                }
-              }}
-            >
+              <div
+                role="button"
+                tabIndex={isLocked ? -1 : 0}
+                aria-selected={isSelected}
+                className={cn(
+                  "group flex h-[46px] cursor-pointer items-center gap-2 px-3 transition-colors",
+                  isSelected && "border-l-2 bg-muted/60 pl-[10px]",
+                  !isSelected && "border-l-2 border-l-transparent",
+                  !isSelected && !isLocked && "hover:bg-accent/50",
+                  isLocked && "cursor-not-allowed opacity-[0.45]",
+                )}
+                style={isSelected ? { borderLeftColor: "var(--color-pacific)" } : undefined}
+                onClick={() => handleRowClick(skill)}
+                onKeyDown={(e) => {
+                  if (!isLocked && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    handleRowClick(skill);
+                  }
+                }}
+              >
               {/* Status dot */}
               <div
                 className={cn("size-2 shrink-0 rounded-full", dot.className)}
                 style={dot.style}
-                aria-label={`status-dot-${skill.name}`}
+                aria-label={`status-dot-${skill.key}`}
               />
 
               {/* Name + purpose */}
@@ -486,11 +507,11 @@ export function SkillListPanel({
                         <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
                           SKILL
                         </DropdownMenuLabel>
-                        <DropdownMenuItem onSelect={() => handleOverview(skill.name)}>
+                        <DropdownMenuItem onSelect={() => handleOverview(skill.key)}>
                           Overview
                         </DropdownMenuItem>
                         {menuState.showsLifecycleActions && (
-                          <DropdownMenuItem onSelect={() => handleRefine(skill.name)}>
+                          <DropdownMenuItem onSelect={() => handleRefine(skill.key)}>
                             Refine
                           </DropdownMenuItem>
                         )}
@@ -518,6 +539,7 @@ export function SkillListPanel({
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
+              </div>
             </div>
           );
         })}

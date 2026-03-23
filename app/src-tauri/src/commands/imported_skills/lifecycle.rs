@@ -56,7 +56,11 @@ pub(crate) fn delete_imported_skill_inner(
     crate::db::delete_imported_skill_by_skill_id(conn, skill_id)?;
 
     // Delete from skills master
-    crate::db::delete_skill(conn, &skill_name)?;
+    crate::db::delete_skill_in_plugin(
+        conn,
+        &skill_name,
+        skill.plugin_slug.as_deref().unwrap_or("no-plugin"),
+    )?;
 
     // Regenerate CLAUDE.md
     if !workspace_path.is_empty() {
@@ -74,6 +78,59 @@ pub(crate) fn delete_imported_skill_inner(
         skill_name
     );
     Ok(())
+}
+
+fn resolve_skill_target(
+    conn: &rusqlite::Connection,
+    skill_key: &str,
+) -> Result<(String, String), String> {
+    if let Some(skill_id) = skill_key.strip_prefix("imported:") {
+        let imported = crate::db::get_imported_skill_by_id(conn, skill_id)?
+            .ok_or_else(|| format!("Imported skill '{}' not found", skill_id))?;
+        return Ok((
+            imported.skill_name,
+            imported.plugin_slug.unwrap_or_else(|| "no-plugin".to_string()),
+        ));
+    }
+    Ok((skill_key.to_string(), "no-plugin".to_string()))
+}
+
+#[tauri::command]
+pub fn create_plugin_from_skills(
+    plugin_name: String,
+    skill_keys: Vec<String>,
+    db: tauri::State<'_, Db>,
+) -> Result<String, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let (_plugin_id, plugin_slug) =
+        crate::db::create_plugin(&conn, &plugin_name, "local", None, None)?;
+    for skill_key in skill_keys {
+        let (skill_name, current_plugin_slug) = resolve_skill_target(&conn, &skill_key)?;
+        crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)?;
+    }
+    Ok(plugin_slug)
+}
+
+#[tauri::command]
+pub fn move_skill_to_plugin(
+    skill_key: String,
+    plugin_slug: String,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let (skill_name, current_plugin_slug) = resolve_skill_target(&conn, &skill_key)?;
+    crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)
+}
+
+#[tauri::command]
+pub fn remove_skill_from_plugin(
+    skill_key: String,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let (skill_name, current_plugin_slug) = resolve_skill_target(&conn, &skill_key)?;
+    crate::db::ensure_default_plugin(&conn)?;
+    crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, "no-plugin")
 }
 
 #[tauri::command]
@@ -98,6 +155,7 @@ mod tests {
         ImportedSkill {
             skill_id: id.to_string(),
             skill_name: name.to_string(),
+            library_key: Some(format!("imported:{id}")),
             is_active: true,
             disk_path: std::env::temp_dir()
                 .join(name)
@@ -113,6 +171,9 @@ mod tests {
             user_invocable: None,
             disable_model_invocation: None,
             marketplace_source_url: None,
+            plugin_slug: Some("no-plugin".to_string()),
+            plugin_display_name: Some("No Plugin".to_string()),
+            is_default_plugin: Some(true),
         }
     }
 

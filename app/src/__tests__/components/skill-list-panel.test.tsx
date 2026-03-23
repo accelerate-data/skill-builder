@@ -40,6 +40,7 @@ import { SkillListPanel } from "@/components/skill-list-panel";
 function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): SkillSummary {
   const base: SkillSummary = {
     name: overrides.name,
+    library_key: overrides.name,
     current_step: null,
     status: null,
     last_modified: new Date(Date.now() - 3600_000).toISOString(), // 1h ago
@@ -56,6 +57,9 @@ function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): 
     argumentHint: null,
     userInvocable: null,
     disableModelInvocation: null,
+    plugin_slug: "no-plugin",
+    plugin_display_name: "No Plugin",
+    is_default_plugin: true,
   };
   return { ...base, ...overrides };
 }
@@ -66,6 +70,7 @@ function makeImportedSkill(
   const base: ImportedSkill = {
     skill_id: `id-${overrides.skill_name}`,
     skill_name: overrides.skill_name,
+    library_key: `imported:id-${overrides.skill_name}`,
     description: null,
     is_active: true,
     disk_path: `/skills/${overrides.skill_name}`,
@@ -78,6 +83,9 @@ function makeImportedSkill(
     user_invocable: null,
     disable_model_invocation: null,
     marketplace_source_url: null,
+    plugin_slug: "no-plugin",
+    plugin_display_name: "No Plugin",
+    is_default_plugin: true,
   };
   return { ...base, ...overrides };
 }
@@ -230,7 +238,7 @@ describe("SkillListPanel", () => {
 
     render(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-imp-skill");
+    const dot = screen.getByLabelText("status-dot-imported:id-imp-skill");
     expect(dot.style.backgroundColor).toBe("var(--color-violet)");
   });
 
@@ -243,7 +251,7 @@ describe("SkillListPanel", () => {
 
     render(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-mkt-skill");
+    const dot = screen.getByLabelText("status-dot-imported:id-mkt-skill");
     expect(dot.style.backgroundColor).toBe("var(--color-pacific)");
   });
 
@@ -441,7 +449,7 @@ describe("SkillListPanel", () => {
     render(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("my-import").closest('[role="button"]')!);
 
-    expect(onSelectSkill).toHaveBeenCalledWith("my-import");
+    expect(onSelectSkill).toHaveBeenCalledWith("imported:id-my-import");
   });
 
   it("does not navigate or call onSelectSkill when clicking a locked row", () => {

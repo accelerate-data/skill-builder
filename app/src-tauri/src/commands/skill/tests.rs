@@ -575,10 +575,7 @@ fn test_delete_skill_inner_marketplace_skill_routes_to_imported_path() {
     let conn = create_test_db();
 
     // Insert a skills master row with source="marketplace" (no workflow_run)
-    conn.execute(
-        "INSERT INTO skills (name, skill_source, purpose) VALUES ('mkt-skill', 'marketplace', 'domain')",
-        [],
-    ).unwrap();
+    crate::db::upsert_skill(&conn, "mkt-skill", "marketplace", "domain").unwrap();
     // Insert corresponding imported_skills row
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled, skill_master_id)
@@ -689,10 +686,7 @@ fn test_rename_skill_inner_updates_imported_skills_name() {
     let mut conn = create_test_db();
 
     // Insert a skills master row (imported source)
-    conn.execute(
-        "INSERT INTO skills (name, skill_source, purpose) VALUES ('imp-skill', 'imported', 'domain')",
-        [],
-    ).unwrap();
+    crate::db::upsert_skill(&conn, "imp-skill", "imported", "domain").unwrap();
     // Insert imported_skills row
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled, skill_master_id)

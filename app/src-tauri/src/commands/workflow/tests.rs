@@ -2110,6 +2110,7 @@ fn test_generate_skills_section_single_active_skill() {
     let skill = crate::types::ImportedSkill {
         skill_id: "bundled-test-practices".to_string(),
         skill_name: "test-practices".to_string(),
+        library_key: Some("imported:bundled-test-practices".to_string()),
         is_active: true,
         disk_path,
         imported_at: "2000-01-01T00:00:00Z".to_string(),
@@ -2122,6 +2123,9 @@ fn test_generate_skills_section_single_active_skill() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
+        plugin_slug: Some("no-plugin".to_string()),
+        plugin_display_name: Some("No Plugin".to_string()),
+        is_default_plugin: Some(true),
     };
     crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -2159,6 +2163,7 @@ fn test_generate_skills_section_inactive_skill_excluded() {
     let skill = crate::types::ImportedSkill {
         skill_id: "bundled-test-practices".to_string(),
         skill_name: "test-practices".to_string(),
+        library_key: Some("imported:bundled-test-practices".to_string()),
         is_active: false,
         disk_path: format!("{}/skills/test-practices", std::env::temp_dir().display()),
         imported_at: "2000-01-01T00:00:00Z".to_string(),
@@ -2171,6 +2176,9 @@ fn test_generate_skills_section_inactive_skill_excluded() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
+        plugin_slug: Some("no-plugin".to_string()),
+        plugin_display_name: Some("No Plugin".to_string()),
+        is_default_plugin: Some(true),
     };
     crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -2201,6 +2209,7 @@ fn test_generate_skills_section_multiple_skills_same_format() {
     let bundled = crate::types::ImportedSkill {
         skill_id: "bundled-test-practices".to_string(),
         skill_name: "test-practices".to_string(),
+        library_key: Some("imported:bundled-test-practices".to_string()),
         is_active: true,
         disk_path: disk_path1,
         imported_at: "2000-01-01T00:00:00Z".to_string(),
@@ -2213,10 +2222,14 @@ fn test_generate_skills_section_multiple_skills_same_format() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
+        plugin_slug: Some("no-plugin".to_string()),
+        plugin_display_name: Some("No Plugin".to_string()),
+        is_default_plugin: Some(true),
     };
     let imported = crate::types::ImportedSkill {
         skill_id: "imp-data-analytics-123".to_string(),
         skill_name: "data-analytics".to_string(),
+        library_key: Some("imported:imp-data-analytics-123".to_string()),
         is_active: true,
         disk_path: disk_path2,
         imported_at: "2025-01-15T10:00:00Z".to_string(),
@@ -2229,6 +2242,9 @@ fn test_generate_skills_section_multiple_skills_same_format() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
+        plugin_slug: Some("no-plugin".to_string()),
+        plugin_display_name: Some("No Plugin".to_string()),
+        is_default_plugin: Some(true),
     };
     crate::db::insert_imported_skill(&conn, &bundled).unwrap();
     crate::db::insert_imported_skill(&conn, &imported).unwrap();
@@ -2280,6 +2296,7 @@ fn test_generate_skills_section_no_trigger_no_path() {
     let skill = crate::types::ImportedSkill {
         skill_id: "imp-my-skill-1".to_string(),
         skill_name: "my-skill".to_string(),
+        library_key: Some("imported:imp-my-skill-1".to_string()),
         is_active: true,
         disk_path,
         imported_at: "2025-01-01T00:00:00Z".to_string(),
@@ -2292,6 +2309,9 @@ fn test_generate_skills_section_no_trigger_no_path() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
+        plugin_slug: Some("no-plugin".to_string()),
+        plugin_display_name: Some("No Plugin".to_string()),
+        is_default_plugin: Some(true),
     };
     crate::db::insert_imported_skill(&conn, &skill).unwrap();
 

@@ -1,10 +1,5 @@
 use crate::db::Db;
 use crate::types::ImportedSkill;
-use std::fs;
-use std::path::Path;
-
-use super::helpers::add_dir_to_zip;
-
 // ---------------------------------------------------------------------------
 // list_imported_skills
 // ---------------------------------------------------------------------------
@@ -27,40 +22,20 @@ pub fn list_imported_skills(
 }
 
 #[tauri::command]
-pub fn export_skill(skill_name: String, db: tauri::State<'_, Db>) -> Result<String, String> {
+pub async fn export_skill(skill_name: String, db: tauri::State<'_, Db>) -> Result<String, String> {
     log::info!("[export_skill] skill_name={}", skill_name);
-    let skill = {
+    let plugin_slug = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[export_skill] Failed to acquire DB lock: {}", e);
             e.to_string()
         })?;
         crate::db::get_imported_skill(&conn, &skill_name)?
+            .and_then(|skill| skill.plugin_slug)
             .ok_or_else(|| format!("Skill '{}' not found", skill_name))?
-    }; // lock released before disk I/O
-
-    let skill_dir = Path::new(&skill.disk_path);
-    if !skill_dir.is_dir() {
-        return Err(format!("Skill directory not found: {}", skill.disk_path));
-    }
-
-    let tmp_dir = std::env::temp_dir();
-    let zip_path = tmp_dir.join(format!("{}.zip", skill_name));
-
-    let file =
-        fs::File::create(&zip_path).map_err(|e| format!("Failed to create zip file: {}", e))?;
-    let mut writer = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
-
-    // Walk the skill directory and add files at the zip root (no prefix)
-    add_dir_to_zip(&mut writer, skill_dir, "", &options)?;
-
-    writer
-        .finish()
-        .map_err(|e| format!("Failed to finalize zip: {}", e))?;
-
-    log::info!("[export_skill] exported to {}", zip_path.display());
-    Ok(zip_path.to_string_lossy().to_string())
+    };
+    let result = crate::commands::workflow::packaging::package_plugin_inner(&db, &plugin_slug).await?;
+    log::info!("[export_skill] exported plugin '{}' to {}", plugin_slug, result.file_path);
+    Ok(result.file_path)
 }
 
 #[cfg(test)]
@@ -77,6 +52,7 @@ mod tests {
         let skill = ImportedSkill {
             skill_id: "listing-test-id".to_string(),
             skill_name: "listing-test".to_string(),
+            library_key: Some("imported:listing-test-id".to_string()),
             is_active: true,
             disk_path: std::env::temp_dir()
                 .join("listing-test")
@@ -92,6 +68,9 @@ mod tests {
             user_invocable: None,
             disable_model_invocation: None,
             marketplace_source_url: None,
+            plugin_slug: Some("no-plugin".to_string()),
+            plugin_display_name: Some("No Plugin".to_string()),
+            is_default_plugin: Some(true),
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
         let result = crate::db::list_imported_skills_filtered(&conn, None).unwrap();

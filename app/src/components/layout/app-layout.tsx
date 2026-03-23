@@ -77,9 +77,11 @@ export function AppLayout() {
     [navigate, setSelectedWorkspaceSkillName],
   );
 
-  const selectedBuilderSkill = builderSkills.find((s) => s.name === selectedWorkspaceSkillName);
+  const selectedBuilderSkill = builderSkills.find(
+    (s) => s.skill_source === "skill-builder" && (s.library_key ?? s.name) === selectedWorkspaceSkillName,
+  );
   const selectedImportedSkill = importedSkills.find(
-    (s) => s.skill_name === selectedWorkspaceSkillName,
+    (s) => (s.library_key ?? `imported:${s.skill_id}`) === selectedWorkspaceSkillName,
   );
   const selectedSkillData = selectedBuilderSkill ?? selectedImportedSkill ?? null;
   const selectedSkillType: "builder" | "imported" | "marketplace" = selectedBuilderSkill

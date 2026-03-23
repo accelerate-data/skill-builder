@@ -198,11 +198,7 @@ mod tests {
 
     /// Insert a skill master row so `acquire_skill_lock` can look it up.
     fn insert_skill(conn: &rusqlite::Connection, name: &str) {
-        conn.execute(
-            "INSERT INTO skills (name, skill_source, purpose) VALUES (?1, 'skill-builder', 'test')",
-            rusqlite::params![name],
-        )
-        .unwrap();
+        super::super::skills::upsert_skill(conn, name, "skill-builder", "test").unwrap();
     }
 
     #[test]
