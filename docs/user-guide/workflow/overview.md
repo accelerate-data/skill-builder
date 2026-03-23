@@ -1,6 +1,6 @@
 # Workflow overview
 
-The workflow is a 4-step process where AI agents research your domain, gather your answers, and generate a skill file. Each step runs an agent, then waits for you to review or respond.
+The workflow is a 4-step process for builder skills. Agents research the domain, collect clarifications, confirm decisions, and generate the final skill files.
 
 ---
 
@@ -13,7 +13,7 @@ The workflow is a 4-step process where AI agents research your domain, gather yo
 | 3 | **Confirm Decisions** | Agent analyzes your answers and produces structured decisions |
 | 4 | **Generate Skill** | Agent writes the final `SKILL.md` and any reference files |
 
-Step 2 (Detailed Research) may be skipped if your Step 1 answers are thorough enough — the app asks you at the transition gate.
+Step 2 can be skipped if Step 1 answers are already strong enough. The transition gate decides that.
 
 ---
 
@@ -30,33 +30,37 @@ The left sidebar lists all steps with their current status.
 | Alert circle (red) | Error |
 | Skip-forward arrow (dimmed, "Skipped") | Skipped |
 
-The current step is highlighted. **Completed steps are clickable** — click one to jump back to it and review its output.
+The current step is highlighted.
+
+- In **Review** mode, completed steps are navigable for read-only review.
+- In **Update** mode, clicking an earlier completed step opens the reset flow so you can re-run from there.
 
 ---
 
-## What you see while an agent is running
+## While an agent is running
 
 The content area shows a live stream of the agent's activity:
 
 - **Agent text** — rendered as markdown as it arrives
 - **Tool calls** — shown as collapsible rows (e.g. "Reading SKILL.md", "Web search: …"). Click to expand and see details. Multiple consecutive tool calls are grouped.
-- The **footer bar** shows: status dot, agent name, model, elapsed time, and turn count.
+- The footer shows status, agent metadata, and run timing.
 
 ---
 
-## When the agent finishes
+## When a step finishes
 
 A step completion view replaces the stream:
 
-- Steps 1–2: the clarifications editor opens so you can answer questions.
-- Step 3: a decisions summary card with expandable decision cards.
-- Step 4: a file viewer showing the generated output files.
+- **Step 1** shows the research summary plus the clarifications editor.
+- **Step 2** shows the clarifications editor.
+- **Step 3** shows the decisions summary and editable decision cards when needed.
+- **Step 4** shows the generated files.
 
 A **"Step N completed"** toast appears.
 
 ---
 
-## How to reset a step
+## Reset a step
 
 Use this when you want to re-run a step from scratch.
 
@@ -86,8 +90,8 @@ When you open a completed skill from the dashboard, the workflow starts in **Rev
 
 | Mode | What it does |
 |---|---|
-| **Review** | Read-only view of each step's output. Navigate between completed steps using the sidebar. Agents do not run. |
-| **Update** | Editable view. You can re-run steps, edit answers, and trigger agents. Clicking a completed step in the sidebar opens the reset dialog so you can re-run from that point. |
+| **Review** | Read-only step review. |
+| **Update** | Editable mode for re-running and continuing the workflow. |
 
 The toggle is disabled while an agent is running or a gate evaluation is in progress.
 

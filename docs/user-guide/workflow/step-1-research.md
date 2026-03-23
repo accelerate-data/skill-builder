@@ -1,6 +1,6 @@
 # Step 1: Research
 
-The agent researches your domain and generates a set of clarification questions. Your job is to answer them.
+The first step researches the domain and produces `context/research-plan.md` plus `context/clarifications.json`.
 
 ---
 
@@ -10,23 +10,23 @@ When you start the workflow, the agent runs automatically. The content area stre
 
 ---
 
-## What's on screen after the agent finishes
+## What you see after the run finishes
 
-**Research Complete summary card** (collapsible, shown at top)
+The completion view includes a research summary at the top and the clarifications editor below it.
 
-| Column | What it shows |
-|---|---|
-| **Dimensions** | How many domain dimensions were evaluated vs. selected; dimension pills with scores (e.g. "Terminology 4/5") |
-| **Clarifications** | Total questions, sections, "Must answer" count, and how many you've answered so far |
-| **Notes** | Count of research notes; a warning count if any are flagged as blocked or a critical gap |
+The summary can show:
 
-**Clarifications editor** (below the summary card)
+- research outcome state
+- dimension counts and selected dimensions
+- clarification counts
+- notes and warnings
+- run duration when relevant
 
-A list of questions grouped into sections. Each question has a text area for your answer.
+Below that, the clarifications editor shows grouped questions and any follow-up refinements.
 
 ---
 
-## How to answer clarification questions
+## Answer clarifications
 
 1. Click a question card to expand it.
 2. If the question has choices, click one to select it. A **recommended** badge marks the agent's suggestion. You can select a choice and edit the answer text, or ignore the choices and type freely.
@@ -39,7 +39,7 @@ Some questions have nested **Refinements** — follow-up sub-questions inside th
 
 ---
 
-## How to continue to Step 2
+## Continue
 
 1. Answer all questions marked **must**.
 2. Click **Continue** at the bottom right. The button shows **Evaluating answers...** while the gate check runs.
@@ -74,6 +74,6 @@ Each dialog shows a per-question breakdown: OK, Missing, Vague, Needs refinement
 
 ---
 
-## How to re-run Step 1
+## Re-run Step 1
 
 Click **Re-run** at the bottom left of the editor. This opens the Reset Step dialog, which shows which files will be deleted. Click **Delete & Reset** to confirm. The agent re-runs from the beginning.

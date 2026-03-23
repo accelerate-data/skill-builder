@@ -1,127 +1,128 @@
 # Dashboard
 
-The Dashboard is the home screen. It lists all your skills and is where you create, import, and manage them.
+The dashboard is the app’s main working surface. It combines:
+
+- a left-hand **Skills** list
+- a main workspace area for the selected skill
+
+If no skill is selected, the main area shows a simple empty state with **New Skill**.
 
 ---
 
-## What's on this screen
+## What is on this screen
 
-**Top bar** (visible when workspace and skills folder are configured)
+### Left skill list
 
-- **Marketplace** button — browse and import skills from GitHub-hosted registries (disabled when no registry is enabled in Settings)
-- **Import** button — import a skill from a `.skill` package file on disk
-- **New Skill** button — opens the skill creation dialog
+The left panel contains:
 
-**Filter and view bar** (visible when at least one skill exists)
+- a **New skill** button
+- a search field
+- one row per skill
+- a per-skill **More actions** menu
 
-- Search field — filters by name, description, or type as you type
-- **Tags** dropdown — filter by one or more tags
-- **Type** dropdown — filter by purpose (e.g. Business Process, Source Systems)
-- **Source** dropdown — filter by Skill Builder, Marketplace, or Imported
-- **Status** dropdown — filter by All, Completed, or In Progress
-- View toggle — switch between Grid and List view
+Each row shows:
 
-**Skill cards (grid view)** — each card shows name, purpose badge, source badge, tags, and a progress bar.
+- a status dot
+- the skill name
+- the purpose label when one exists
+- the last-modified timestamp
 
-**Skill table (list view)** — sortable columns: Name, Source, Status, Updated, Actions. Click any column header to sort; click again to reverse.
+Rows can be dimmed and locked when another window or running session owns that skill.
 
----
+### Workspace area
 
-## How to create a skill
+When you select a skill on the dashboard route, the main area becomes a workspace shell with tabs:
 
-1. Click **New Skill**.
-2. Fill in **Skill Name** (use lowercase with hyphens, e.g. `sales-pipeline`), **Description**, and **What are you trying to capture?** (the purpose). Tags are optional.
-3. The Description field shows a ghost suggestion once name and purpose are filled — press **Tab** to accept it.
-4. Click **Next**.
-5. On Step 2, optionally adjust Version, Model, Argument Hint, and toggles. Defaults are pre-filled.
-6. Click **Create**. The app opens the skill workflow.
+- **Overview**
+- **Refine**
+- **Evals**
+- **Description** (currently disabled)
 
----
-
-## How to import from Marketplace
-
-1. Click **Marketplace**. The Browse Marketplace dialog opens with one tab per enabled registry.
-2. Each skill row shows its name, description, version, and an install or update icon.
-3. Click the download icon (new install) or refresh icon (update available) for the skill you want.
-4. In the **Edit & Import Skill** dialog, review or edit the name and description. Version is required.
-5. Click **Confirm Import**. The skill appears on the dashboard with a **Marketplace** badge.
-
-> **Marketplace button disabled?** Go to **Settings → Marketplace** and enable at least one registry.
+Imported skills can be viewed in the workspace shell, but builder-only actions such as Refine are not always available.
 
 ---
 
-## How to import from a file
+## Create a skill
 
-1. Click **Import**.
-2. Select a `.skill` or `.zip` package file.
-3. In the **Import Skill** dialog, review or edit the name and description.
-4. Click **Confirm Import**. The skill appears on the dashboard with an **Imported** badge.
+1. Click **New skill**.
+2. Enter the skill name, purpose, and description.
+3. Click **Next**.
+4. Review the second step of the dialog.
+5. Click **Create**.
 
----
-
-## How to search and filter
-
-- Type in the search field to filter by name, description, or type. Results update in real time.
-- Click **Tags**, **Type**, **Source**, or **Status** to open the dropdown. Check or uncheck options. A count badge appears on the button when a filter is active.
-- Click **Clear all** inside a dropdown to reset that filter.
+The app navigates directly into the [workflow](workflow/overview.md) for the new skill.
 
 ---
 
-## How to open or continue a skill
+## Search the skill list
 
-- **Click** any card or row to open the skill.
-  - Skills built with Skill Builder open in the [workflow](workflow/overview.md) in review mode. To make changes, switch to update mode using the **Review / Update** toggle in the header — see [Review and Update modes](workflow/overview.md#review-and-update-modes).
-  - Marketplace and imported skills open in the [Refine](refine.md) page.
+Use the search field above the list. It filters the visible skill rows by name.
 
----
-
-## How to edit a skill's details
-
-- **Grid view** — right-click a card and select **Edit details**.
-- **List view** — click the **⋯** button on the row and select **Edit details**.
-- The Edit Skill dialog opens. Name, purpose, and tags are locked after a skill has been built.
-- Click **Next**, then **Save**.
+There is no grid/list toggle or multi-filter bar in the current dashboard UI.
 
 ---
 
-## How to refine a completed skill
+## Open a skill
 
-Click the chat bubble icon on any completed skill card or row. This opens the [Refine](refine.md) page for that skill.
+- Click an in-progress builder skill to open its [workflow](workflow/overview.md).
+- Click a completed skill to open its workspace shell on the dashboard route.
 
----
-
-## How to test a skill
-
-Click the flask icon on any completed skill card or row. This opens the [Test](test.md) page for that skill.
+The workspace shell is the current home for **Overview**, **Refine**, and **Evals**.
 
 ---
 
-## How to download a skill
+## Use the skill menu
 
-1. Click the download icon on a completed skill (only visible on completed skills).
-2. A **Packaging skill...** toast appears.
-3. A save dialog opens with a default filename of `[skill-name].skill`. Choose a location and click **Save**.
+Hover a row and open **More actions** to access available actions.
+
+### Completed builder skills
+
+These can show:
+
+- **Review** — open the workflow in review mode
+- **Redo workflow** — reset back to step 1 and start over
+- **Overview** — open the workspace Overview tab
+- **Refine** — open the workspace Refine tab
+- **Restore version** — restore an earlier saved version
+- **Export** — export the skill as a `.zip`
+- **Delete**
+
+### In-progress builder skills
+
+These show:
+
+- **Continue Building**
+- **Delete**
+
+### Imported or marketplace skills
+
+These use the same workspace shell, but actions depend on the skill type and whether the app can treat it as a builder-owned skill.
 
 ---
 
-## How to delete a skill
+## Overview tab
 
-1. Click the trash icon on a card or row.
-2. The Delete Skill dialog shows: *"Are you sure you want to delete [name]? This will permanently remove all files for this skill."*
-3. Click **Delete** to confirm, or **Cancel** to dismiss.
+The **Overview** tab shows the selected skill’s metadata and history.
+
+For builder skills, it can include:
+
+- **Skill Details**
+- **Benchmark Results** when a benchmark exists
+- **Version History**
+
+For marketplace skills, the source can appear as the marketplace URL.
 
 ---
 
-## States
+## Empty and locked states
 
-**No skills yet**
-Shows a centered card: *"No skills yet — Skills are knowledge packages that teach Claude your team's specific processes, systems, and standards."* A **New Skill** button appears if the workspace is configured.
+**No selected skill**
 
-**Skills folder not configured**
-An amber banner appears: *"Skills folder not configured."* The **New Skill**, **Import**, and **Marketplace** buttons are hidden. Click **Settings** in the banner to configure the folder.
+The main area shows:
 
-**No results from filter**
-Shows: *"No matching skills — Try a different search term or clear your filters."*
+- `Select a skill`
+- `Choose a skill from the list to open its workspace, or create a new one.`
 
 **Locked skill**
-A skill being edited in another window is dimmed and shows a lock icon. You cannot delete or edit it until the other window is closed.
+
+If another running session or another app window owns a skill, its row is dimmed and not selectable.

@@ -1,20 +1,20 @@
 # Step 4: Generate Skill
 
-The agent writes the final skill files based on all your answers and the confirmed decisions. Once complete, you can review the output and move to Refine.
+The final step writes the generated skill files under `skill/`, including `skill/SKILL.md` and any `skill/references/...` files.
 
 ---
 
-## What's on screen after the agent finishes
+## What you see after the run finishes
 
-A file viewer showing the generated output.
+You get a file viewer that renders the generated markdown.
 
-- A header row shows **Generate Skill Complete** with a checkmark, elapsed time, and cost.
-- If the skill includes multiple files (a `SKILL.md` plus one or more `references/*.md` files), a **file selector dropdown** appears above the content. Select a file to view it.
-- File content renders as formatted markdown.
+- If there is more than one file, a selector appears.
+- If there is only one file, the filename is shown inline.
+- In update mode, the header shows completion state and elapsed time.
 
 ---
 
-## How to read the output
+## Review the output
 
 1. Review `SKILL.md` — this is the main skill file. It contains the instructions Claude will follow.
 2. If a dropdown is shown, open each reference file to review supplementary content.
@@ -24,11 +24,11 @@ A file viewer showing the generated output.
 
 ## What to do next
 
-Two buttons appear at the bottom right:
+The action bar can show:
 
 | Button | What it does |
 |---|---|
-| **Refine** | Opens the [Refine](../refine.md) page for this skill so you can make changes by chatting with an agent |
-| **Done** | Returns to the [Dashboard](../dashboard.md) — the skill is marked as completed |
+| **Eval** | Opens the workspace **Evals** tab for this skill |
+| **Done** | Returns to the [Dashboard](../dashboard.md) |
 
-> **Refine** is not shown when one or more steps are marked as skipped.
+The current **Evals** tab is placeholder-only. See [Evals](../test.md).

@@ -1,20 +1,19 @@
 # Step 3: Confirm Decisions
 
-The agent analyzes all your answers from Steps 1 and 2 and produces a structured set of decisions. Your job is to review them before the skill is generated.
+This step analyzes clarification answers and writes `context/decisions.json`.
 
 ---
 
-## What's on screen after the agent finishes
+## What you see after the run finishes
 
-**Decisions Complete summary card** (at top)
+The completion view shows a decisions summary followed by decision cards.
 
 | Column | What it shows |
 |---|---|
 | **Decisions** | Total decisions, how many are resolved, how many had conflicts resolved, how many need review |
-| **Quality** | Count of reconciled conflicts; "No unresolvable contradictions" or a red "Contradictions — review required" message |
+| **Quality** | Whether contradictions remain or were reviewed |
 
-**Contradiction banner** (appears in red if contradictions were found)
-*"Contradictory inputs detected — some answers are logically incompatible. Review decisions marked 'needs-review' before generating the skill."*
+The header state changes if contradictions remain, and can move to a reviewed state after you edit required fields.
 
 **Decision cards** (listed below the summary)
 
@@ -24,7 +23,8 @@ Each card shows a decision ID (e.g. D1), a title, and a status badge.
 |---|---|
 | **resolved** | Decision is clear and confirmed |
 | **conflict-resolved** | Two conflicting answers were reconciled by the agent |
-| **needs-review** | The agent could not resolve a contradiction — you should review this before continuing |
+| **needs-review** | The agent could not fully resolve this and expects review |
+| **revised** | You edited a previously blocked decision |
 
 Click any card to expand it and see:
 
@@ -34,15 +34,15 @@ Click any card to expand it and see:
 
 ---
 
-## How to edit a needs-review decision
+## Review and edit decisions
 
-Decisions marked **needs-review** are editable directly in the card — they open expanded by default. An amber banner confirms: *"N decisions need your review — edit the text below, changes save automatically."*
+When a decision needs review, the card is editable in update mode and changes autosave.
 
 1. Click a **needs-review** card to expand it (it opens automatically).
 2. Edit the **Decision** text and **Implication** text in the fields provided.
-3. Changes save automatically. The contradiction banner turns green: *"Contradictions reviewed — skill will be generated with your edits."*
+3. Changes save automatically.
 
-## How to continue to Step 4
+## Continue to Step 4
 
 Click **Next Step** at the bottom right. You can continue regardless of decision status.
 
