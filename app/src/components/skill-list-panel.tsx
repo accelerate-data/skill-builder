@@ -49,6 +49,7 @@ interface UnifiedSkill {
 interface SkillMenuState {
   isBuilder: boolean;
   isComplete: boolean;
+  showsLifecycleActions: boolean;
 }
 
 export interface SkillListPanelProps {
@@ -159,6 +160,7 @@ function getSkillMenuState(skill: UnifiedSkill): SkillMenuState {
   return {
     isBuilder: skill.source === "builder",
     isComplete: isSkillComplete(skill) || skill.source !== "builder",
+    showsLifecycleActions: isSkillComplete(skill) || skill.source !== "builder",
   };
 }
 
@@ -487,12 +489,12 @@ export function SkillListPanel({
                         <DropdownMenuItem onSelect={() => handleOverview(skill.name)}>
                           Overview
                         </DropdownMenuItem>
-                        {menuState.isBuilder && (
+                        {menuState.showsLifecycleActions && (
                           <DropdownMenuItem onSelect={() => handleRefine(skill.name)}>
                             Refine
                           </DropdownMenuItem>
                         )}
-                        {menuState.isBuilder && (
+                        {menuState.showsLifecycleActions && (
                           <DropdownMenuItem onSelect={() => setRestoreTarget(skill.name)}>
                             Restore version
                           </DropdownMenuItem>

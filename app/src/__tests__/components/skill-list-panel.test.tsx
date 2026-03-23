@@ -572,7 +572,7 @@ describe("SkillListPanel", () => {
     expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveClass("text-destructive");
   });
 
-  it("shows only valid lifecycle actions for imported skills", async () => {
+  it("shows the lifecycle section for imported skills without workflow-only actions", async () => {
     const user = userEvent.setup();
     const skill = makeImportedSkill({ skill_name: "imported-lifecycle-only" });
     useImportedSkillsStore.setState({ skills: [skill] });
@@ -584,10 +584,10 @@ describe("SkillListPanel", () => {
     expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
     expect(screen.getByText("SKILL")).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Refine" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Restore version" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
   });
 
@@ -606,6 +606,8 @@ describe("SkillListPanel", () => {
     expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
     expect(screen.getByText("SKILL")).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
