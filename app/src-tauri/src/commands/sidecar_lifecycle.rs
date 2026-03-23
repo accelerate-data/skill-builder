@@ -1,6 +1,6 @@
 use crate::agents::sidecar_pool::{SidecarPool, DEFAULT_SHUTDOWN_TIMEOUT_SECS};
 use crate::db::Db;
-use crate::InstanceInfo;
+use crate::{CloseGuardState, InstanceInfo};
 
 #[tauri::command]
 pub async fn cleanup_skill_sidecar(
@@ -66,4 +66,10 @@ pub async fn graceful_shutdown(
             ))
         }
     }
+}
+
+#[tauri::command]
+pub fn allow_app_exit(close_guard: tauri::State<'_, CloseGuardState>) {
+    log::info!("[allow_app_exit] marked");
+    close_guard.allow_exit();
 }

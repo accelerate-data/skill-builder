@@ -257,6 +257,10 @@ export const cleanupSkillSidecar = (skillName: string) =>
 export const gracefulShutdown = () =>
   invoke<void>("graceful_shutdown");
 
+/** Mark the next app/window close as user-confirmed so Tauri lets it exit. */
+export const allowAppExit = () =>
+  invoke<void>("allow_app_exit");
+
 // --- Workflow Sessions ---
 
 export const createWorkflowSession = (sessionId: string, skillName: string) =>

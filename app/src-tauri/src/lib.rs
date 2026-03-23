@@ -12,6 +12,7 @@ mod types;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 pub use types::*;
 
 const LEGACY_APP_DATA_DIR_NAME: &str = "com.skillbuilder.app";
@@ -25,13 +26,34 @@ pub struct InstanceInfo {
 #[derive(Clone)]
 pub struct DataDir(pub PathBuf);
 
+pub struct CloseGuardState {
+    allow_exit: AtomicBool,
+}
+
+impl Default for CloseGuardState {
+    fn default() -> Self {
+        Self {
+            allow_exit: AtomicBool::new(false),
+        }
+    }
+}
+
+impl CloseGuardState {
+    pub fn allow_exit(&self) {
+        self.allow_exit.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_exit_allowed(&self) -> bool {
+        self.allow_exit.load(Ordering::SeqCst)
+    }
+}
+
 fn dir_is_empty(path: &Path) -> Result<bool, io::Error> {
     Ok(fs::read_dir(path)?.next().is_none())
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), io::Error> {
-    crate::fs_utils::copy_dir_recursive(src, dst)
-        .map_err(io::Error::other)
+    crate::fs_utils::copy_dir_recursive(src, dst).map_err(io::Error::other)
 }
 
 /// One-time migration from historical app-local dir to the current bundle identifier path.
@@ -257,6 +279,7 @@ pub fn run() {
             Ok(())
         })
         .manage(agents::sidecar_pool::SidecarPool::new())
+        .manage(CloseGuardState::default())
         .manage(commands::refine::RefineSessionManager::new())
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,
@@ -306,6 +329,7 @@ pub fn run() {
             commands::workflow::runtime::log_gate_decision,
             commands::sidecar_lifecycle::cleanup_skill_sidecar,
             commands::sidecar_lifecycle::graceful_shutdown,
+            commands::sidecar_lifecycle::allow_app_exit,
             commands::workspace::get_workspace_path,
             commands::workspace::clear_workspace,
             commands::reconciliation::reconcile_startup,
@@ -353,8 +377,13 @@ pub fn run() {
             commands::imported_skills::upload::import_skill_from_file,
         ])
         .on_window_event(|window, event| {
-            use tauri::Emitter;
+            use tauri::{Emitter, Manager};
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let close_guard = window.state::<CloseGuardState>();
+                if close_guard.is_exit_allowed() {
+                    log::debug!("close-guard: WindowEvent::CloseRequested allowed");
+                    return;
+                }
                 log::debug!("close-guard: WindowEvent::CloseRequested intercepted, emitting close-requested");
                 api.prevent_close();
                 let _ = window.emit("close-requested", ());
@@ -374,9 +403,23 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
-                use tauri::Manager;
+            use tauri::{Emitter, Manager};
 
+            match event {
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                let close_guard = app_handle.state::<CloseGuardState>();
+                if close_guard.is_exit_allowed() {
+                    log::debug!("close-guard: RunEvent::ExitRequested allowed");
+                    return;
+                }
+
+                log::debug!("close-guard: RunEvent::ExitRequested intercepted, emitting close-requested");
+                api.prevent_exit();
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.emit("close-requested", ());
+                }
+            }
+            tauri::RunEvent::Exit => {
                 // Release all skill locks and close workflow sessions held by this instance
                 let instance = app_handle.state::<InstanceInfo>();
                 let db_state = app_handle.state::<crate::db::Db>();
@@ -413,6 +456,8 @@ pub fn run() {
                     log::warn!("[exit] Shutdown failed: {} — force-exiting", e);
                     std::process::exit(1);
                 }
+            }
+            _ => {}
             }
         });
 }
