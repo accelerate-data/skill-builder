@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { gracefulShutdown } from "@/lib/tauri";
+import { allowAppExit, gracefulShutdown } from "@/lib/tauri";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { Loader2 } from "lucide-react";
@@ -20,6 +20,7 @@ export function CloseGuard() {
   const [closing, setClosing] = useState(false);
 
   const destroyWindow = useCallback(async () => {
+    await allowAppExit();
     try {
       await getCurrentWindow().destroy();
     } catch {
@@ -81,9 +82,9 @@ export function CloseGuard() {
     <Dialog open onOpenChange={(open) => { if (!open && !closing) handleStay(); }}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>Agents Still Running</DialogTitle>
+          <DialogTitle>Agent Still Running</DialogTitle>
           <DialogDescription>
-            One or more agents are still running. Closing now will stop them.
+            An agent is still running. Close anyway?
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

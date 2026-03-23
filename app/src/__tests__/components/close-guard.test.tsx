@@ -31,7 +31,7 @@ describe("CloseGuard", () => {
     closeRequestedCallback?.();
 
     await waitFor(() => {
-      expect(screen.getByText("Agents Still Running")).toBeInTheDocument();
+      expect(screen.getByText("Agent Still Running")).toBeInTheDocument();
     });
 
     expect(screen.getByText("Stay")).toBeInTheDocument();
@@ -45,7 +45,7 @@ describe("CloseGuard", () => {
     closeRequestedCallback?.();
 
     await waitFor(() => {
-      expect(screen.getByText("Agents Still Running")).toBeInTheDocument();
+      expect(screen.getByText("Agent Still Running")).toBeInTheDocument();
     });
   });
 
@@ -56,7 +56,7 @@ describe("CloseGuard", () => {
     closeRequestedCallback?.();
 
     await waitFor(() => {
-      expect(screen.getByText("Agents Still Running")).toBeInTheDocument();
+      expect(screen.getByText("Agent Still Running")).toBeInTheDocument();
     });
   });
 
@@ -72,6 +72,10 @@ describe("CloseGuard", () => {
       destroy: destroyFn,
     });
     mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "allow_app_exit") {
+        callOrder.push("allow_app_exit");
+        return Promise.resolve();
+      }
       if (cmd === "graceful_shutdown") {
         callOrder.push("graceful_shutdown");
         return Promise.resolve();
@@ -86,7 +90,7 @@ describe("CloseGuard", () => {
       expect(destroyFn).toHaveBeenCalled();
     });
 
-    expect(callOrder).toEqual(["graceful_shutdown", "destroy"]);
+    expect(callOrder).toEqual(["graceful_shutdown", "allow_app_exit", "destroy"]);
   });
 
   it("closes without dialog when no workflow session active and no agents running", async () => {
@@ -100,6 +104,10 @@ describe("CloseGuard", () => {
       destroy: destroyFn,
     });
     mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "allow_app_exit") {
+        callOrder.push("allow_app_exit");
+        return Promise.resolve();
+      }
       if (cmd === "graceful_shutdown") {
         callOrder.push("graceful_shutdown");
         return Promise.resolve();
@@ -114,7 +122,7 @@ describe("CloseGuard", () => {
       expect(destroyFn).toHaveBeenCalled();
     });
 
-    expect(callOrder).toEqual(["graceful_shutdown", "destroy"]);
+    expect(callOrder).toEqual(["graceful_shutdown", "allow_app_exit", "destroy"]);
   });
 
   it("Stay button dismisses dialog", async () => {
@@ -125,13 +133,13 @@ describe("CloseGuard", () => {
     closeRequestedCallback?.();
 
     await waitFor(() => {
-      expect(screen.getByText("Agents Still Running")).toBeInTheDocument();
+      expect(screen.getByText("Agent Still Running")).toBeInTheDocument();
     });
 
     await user.click(screen.getByText("Stay"));
 
     await waitFor(() => {
-      expect(screen.queryByText("Agents Still Running")).not.toBeInTheDocument();
+      expect(screen.queryByText("Agent Still Running")).not.toBeInTheDocument();
     });
   });
 
@@ -149,6 +157,10 @@ describe("CloseGuard", () => {
       destroy: destroyFn,
     });
     mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "allow_app_exit") {
+        callOrder.push("allow_app_exit");
+        return Promise.resolve();
+      }
       if (cmd === "graceful_shutdown") {
         callOrder.push("graceful_shutdown");
         return Promise.resolve();
@@ -170,6 +182,6 @@ describe("CloseGuard", () => {
     });
 
     // graceful_shutdown must be called before destroy
-    expect(callOrder).toEqual(["graceful_shutdown", "destroy"]);
+    expect(callOrder).toEqual(["graceful_shutdown", "allow_app_exit", "destroy"]);
   });
 });
