@@ -12,6 +12,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { TestCase } from "@/lib/types";
+import {
+  EMPTY_TEST_CASE,
+  addExpectation,
+  applyExpectationChange,
+  applyNameChange,
+  prepareForSave,
+  removeExpectation,
+  validateTestCaseForm,
+} from "@/lib/evals";
 
 interface TestCaseFormProps {
   open: boolean;
@@ -20,86 +29,50 @@ interface TestCaseFormProps {
   onSave: (tc: TestCase) => Promise<void>;
 }
 
-function toSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-const EMPTY: TestCase = {
-  id: 0,
-  eval_name: "",
-  slug: "",
-  prompt: "",
-  expected_output: "",
-  files: [],
-  expectations: [""],
-};
-
 export function TestCaseForm({ open, initial, onClose, onSave }: TestCaseFormProps) {
-  const [form, setForm] = useState<TestCase>(initial ?? EMPTY);
+  const [form, setForm] = useState<TestCase>(initial ?? EMPTY_TEST_CASE);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
-      setForm(initial ?? EMPTY);
+      setForm(initial ?? EMPTY_TEST_CASE);
       setError(null);
     }
   }, [open, initial]);
 
   const isEdit = (initial?.id ?? 0) > 0;
 
+  // --- Action handlers (thin wrappers over pure calculations) ---
+
   function handleNameChange(name: string) {
-    setForm((prev) => ({
-      ...prev,
-      eval_name: name,
-      // Only auto-generate slug on create
-      slug: isEdit ? prev.slug : toSlug(name),
-    }));
+    setForm((prev) => applyNameChange(prev, name, isEdit));
   }
 
   function handleExpectationChange(idx: number, value: string) {
-    setForm((prev) => {
-      const expectations = [...prev.expectations];
-      expectations[idx] = value;
-      return { ...prev, expectations };
-    });
+    setForm((prev) => applyExpectationChange(prev, idx, value));
   }
 
-  function addExpectation() {
-    setForm((prev) => ({
-      ...prev,
-      expectations: [...prev.expectations, ""],
-    }));
+  function handleAddExpectation() {
+    setForm((prev) => addExpectation(prev));
   }
 
-  function removeExpectation(idx: number) {
-    setForm((prev) => ({
-      ...prev,
-      expectations: prev.expectations.filter((_, i) => i !== idx),
-    }));
+  function handleRemoveExpectation(idx: number) {
+    setForm((prev) => removeExpectation(prev, idx));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const validationError = validateTestCaseForm(form);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     setError(null);
-
-    if (!form.eval_name.trim()) {
-      setError("Test case name is required.");
-      return;
-    }
-    const nonEmpty = form.expectations.filter((e) => e.trim());
-    if (nonEmpty.length === 0) {
-      setError("At least one expectation is required.");
-      return;
-    }
-
     setSaving(true);
     try {
-      await onSave({ ...form, expectations: nonEmpty });
+      await onSave(prepareForSave(form));
       onClose();
     } catch (err) {
       console.error("event=save_test_case status=failure error=%s", err);
@@ -176,7 +149,7 @@ export function TestCaseForm({ open, initial, onClose, onSave }: TestCaseFormPro
                     type="button"
                     variant="ghost"
                     size="icon"
-                    onClick={() => removeExpectation(idx)}
+                    onClick={() => handleRemoveExpectation(idx)}
                     aria-label="Remove expectation"
                   >
                     <X className="size-4" />
@@ -189,7 +162,7 @@ export function TestCaseForm({ open, initial, onClose, onSave }: TestCaseFormPro
               variant="ghost"
               size="sm"
               className="w-fit"
-              onClick={addExpectation}
+              onClick={handleAddExpectation}
             >
               <Plus className="mr-1.5 size-3.5" />
               Add expectation

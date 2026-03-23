@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { deleteTestCase, listIterations, listTestCases, saveTestCase } from "@/lib/tauri";
 import type { IterationMeta, SkillSummary, ImportedSkill, TestCase } from "@/lib/types";
+import { iterationLabel, truncatePrompt } from "@/lib/evals";
 import { TestCaseForm } from "./test-case-form";
 
 interface WorkspaceEvalsProps {
@@ -35,6 +36,8 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
   const [editTarget, setEditTarget] = useState<TestCase | undefined>(undefined);
   const [deleteTarget, setDeleteTarget] = useState<TestCase | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // --- Actions ---
 
   const load = useCallback(async () => {
     if (!workspacePath) return;
@@ -106,6 +109,8 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
     );
   }
 
+  const latestIteration = iterations[0]?.iteration ?? 0;
+
   return (
     <div className="flex flex-col gap-6">
       {/* Test Cases section */}
@@ -168,7 +173,7 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
                     variant="secondary"
                     className="rounded-full px-2 py-0.5 text-xs font-medium"
                   >
-                    {iter.iteration === iterations[0].iteration ? "latest" : `#${iter.iteration}`}
+                    {iterationLabel(iter.iteration, latestIteration)}
                   </Badge>
                 </div>
               ))}
@@ -233,8 +238,6 @@ interface TestCaseRowProps {
 }
 
 function TestCaseRow({ tc, expanded, onToggle, onEdit, onDelete }: TestCaseRowProps) {
-  const promptPreview = tc.prompt.length > 60 ? tc.prompt.slice(0, 60) + "…" : tc.prompt;
-
   return (
     <div className="rounded-lg border bg-card transition-shadow duration-150 hover:shadow-sm">
       {/* Summary row */}
@@ -252,7 +255,9 @@ function TestCaseRow({ tc, expanded, onToggle, onEdit, onDelete }: TestCaseRowPr
           )}
           <span className="truncate text-sm font-medium">{tc.eval_name}</span>
         </button>
-        <span className="truncate text-sm text-muted-foreground">{promptPreview || "—"}</span>
+        <span className="truncate text-sm text-muted-foreground">
+          {truncatePrompt(tc.prompt) || "—"}
+        </span>
         <Badge
           variant="secondary"
           className="rounded-full px-2 py-0.5 text-xs font-medium"
