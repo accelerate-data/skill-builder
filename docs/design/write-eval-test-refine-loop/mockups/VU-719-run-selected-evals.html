@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VU-719: Run Selected Evals + Optional Rewrite</title>
+  <style>
+    :root {
+      --color-seafoam: oklch(0.720 0.125 155);
+      --color-pacific: oklch(0.680 0.120 210);
+      --color-background: oklch(0.956 0 0);
+      --color-card: oklch(1 0 0);
+      --color-foreground: oklch(0.145 0.005 250);
+      --color-muted-foreground: oklch(0.530 0.006 85);
+      --color-border: oklch(0.910 0.006 85);
+      --color-destructive: oklch(0.570 0.180 25);
+      --color-amber: oklch(0.760 0.160 60);
+      --font-sans: "Inter Variable", system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono Variable", monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-background);
+      padding: 40px 20px;
+      color: var(--color-foreground);
+    }
+
+    .container { max-width: 1280px; margin: 0 auto; }
+
+    h1 { font-size: 32px; font-weight: 600; margin-bottom: 12px; }
+    .subtitle { font-size: 13px; color: var(--color-muted-foreground); margin-bottom: 40px; }
+
+    section {
+      background: var(--color-card);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    h2 {
+      font-size: 16px; font-weight: 600; margin-bottom: 16px;
+      color: var(--color-foreground);
+      border-bottom: 2px solid var(--color-pacific);
+      padding-bottom: 10px;
+    }
+
+    h3 { font-size: 14px; font-weight: 600; margin-top: 20px; margin-bottom: 12px; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+    /* Workspace shell */
+    .ws {
+      background: var(--color-background);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 12px;
+    }
+
+    .ws-header {
+      background: var(--color-card);
+      border-bottom: 1px solid var(--color-border);
+      padding: 10px 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .ws-skill-name { font-size: 13px; font-weight: 600; color: oklch(0.215 0.105 265); }
+
+    .ws-tabs {
+      background: var(--color-card);
+      border-bottom: 1px solid var(--color-border);
+      display: flex; padding: 0 14px;
+    }
+
+    .ws-tab {
+      padding: 8px 12px; border-bottom: 2px solid transparent;
+      font-size: 12px; font-weight: 500; color: var(--color-muted-foreground);
+    }
+
+    .ws-tab.active {
+      border-bottom-color: var(--color-pacific);
+      color: var(--color-foreground); font-weight: 600;
+    }
+
+    /* Evals toolbar */
+    .evals-toolbar {
+      background: var(--color-card);
+      border-bottom: 1px solid var(--color-border);
+      padding: 6px 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+
+    /* Run mode toggle */
+    .run-toggle {
+      display: inline-flex;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--color-background);
+    }
+
+    .run-toggle-opt {
+      padding: 4px 10px;
+      font-size: 11px; font-weight: 500;
+      color: var(--color-muted-foreground);
+      cursor: pointer;
+      border: none; background: none;
+      border-right: 1px solid var(--color-border);
+    }
+
+    .run-toggle-opt:last-child { border-right: none; }
+
+    .run-toggle-opt.active {
+      background: var(--color-pacific);
+      color: white;
+    }
+
+    /* Two-panel body */
+    .evals-body { display: flex; min-height: 380px; }
+
+    /* Test list */
+    .test-list {
+      width: 200px; flex-shrink: 0;
+      border-right: 1px solid var(--color-border);
+      background: oklch(0.965 0.004 85);
+      overflow-y: auto;
+    }
+
+    .test-row {
+      padding: 7px 10px;
+      display: flex; align-items: center; gap: 7px;
+      border-bottom: 1px solid var(--color-border);
+      cursor: pointer;
+    }
+
+    .test-row.selected {
+      background: color-mix(in oklch, var(--color-pacific), transparent 90%);
+      border-left: 2px solid var(--color-pacific);
+      padding-left: 8px;
+    }
+
+    .cb {
+      width: 13px; height: 13px;
+      border: 1.5px solid var(--color-border);
+      border-radius: 3px; flex-shrink: 0;
+      background: white;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .cb.checked {
+      background: var(--color-pacific);
+      border-color: var(--color-pacific);
+      color: white; font-size: 9px;
+    }
+
+    .cb.indeterminate {
+      background: var(--color-pacific);
+      border-color: var(--color-pacific);
+      color: white; font-size: 11px; font-weight: 700;
+    }
+
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+    }
+
+    .test-name { font-size: 11px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .test-score { font-size: 10px; font-family: var(--font-mono); color: var(--color-muted-foreground); flex-shrink: 0; margin-left: auto; }
+
+    /* Detail pane */
+    .detail-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+    /* Prompt config area */
+    .prompt-config {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--color-border);
+      background: color-mix(in oklch, var(--color-background), transparent 20%);
+    }
+
+    .prompt-config-label {
+      font-size: 10px; text-transform: uppercase;
+      letter-spacing: 0.07em; font-weight: 600;
+      color: var(--color-muted-foreground);
+      margin-bottom: 7px;
+    }
+
+    .prompt-row {
+      display: flex; align-items: flex-start; gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .prompt-row:last-child { margin-bottom: 0; }
+
+    .run-label {
+      font-size: 10px; font-weight: 600; color: var(--color-muted-foreground);
+      padding-top: 5px; flex-shrink: 0; width: 36px;
+    }
+
+    .prompt-input {
+      flex: 1; padding: 5px 8px;
+      border: 1px solid var(--color-border);
+      border-radius: 5px; font-size: 11px;
+      font-family: var(--font-sans);
+      color: var(--color-foreground);
+      background: var(--color-card);
+      resize: none;
+      line-height: 1.4;
+    }
+
+    .prompt-input:focus { outline: none; border-color: var(--color-pacific); }
+
+    .gen-btn {
+      padding: 3px 8px;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      background: var(--color-card);
+      font-size: 10px; font-weight: 500;
+      color: var(--color-pacific);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .gen-btn:hover { background: color-mix(in oklch, var(--color-pacific), transparent 92%); }
+
+    /* Results panel */
+    .results-area { flex: 1; overflow-y: auto; padding: 10px 14px; }
+
+    .run-group {
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .run-group-header {
+      padding: 7px 10px;
+      display: flex; align-items: center; gap: 8px;
+      background: color-mix(in oklch, var(--color-background), transparent 30%);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .run-group-header.failing {
+      background: color-mix(in oklch, var(--color-destructive), transparent 94%);
+    }
+
+    .chevron { font-size: 9px; color: var(--color-muted-foreground); }
+
+    .run-title { font-size: 11px; font-weight: 600; flex: 1; }
+
+    .run-score {
+      font-size: 11px; font-family: var(--font-mono); font-weight: 600;
+    }
+
+    .run-score.pass { color: var(--color-seafoam); }
+    .run-score.fail { color: var(--color-destructive); }
+    .run-score.warn { color: var(--color-amber); }
+
+    .run-prompt-preview {
+      font-size: 10px; color: var(--color-muted-foreground);
+      font-style: italic;
+    }
+
+    .run-group-body { padding: 8px 10px; border-top: 1px solid var(--color-border); }
+
+    .assertion-row {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--color-muted-foreground);
+      padding: 3px 0;
+    }
+
+    .a-icon { font-size: 11px; font-weight: 700; width: 14px; flex-shrink: 0; }
+    .a-icon.pass { color: var(--color-seafoam); }
+    .a-icon.fail { color: var(--color-destructive); }
+
+    .output-preview {
+      margin-top: 6px; padding: 6px 8px;
+      background: var(--color-background);
+      border-radius: 4px;
+      font-size: 10px; line-height: 1.5;
+      color: var(--color-muted-foreground);
+      font-family: var(--font-mono);
+    }
+
+    /* Bottom action bar */
+    .action-bar {
+      padding: 8px 14px;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-card);
+      display: flex; align-items: center; gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .selection-info {
+      font-size: 11px; color: var(--color-muted-foreground);
+    }
+
+    .selection-info strong { color: var(--color-foreground); }
+
+    /* Buttons */
+    .btn {
+      padding: 5px 12px;
+      border-radius: 5px;
+      border: 1px solid var(--color-border);
+      background: var(--color-card);
+      font-size: 12px; font-weight: 500;
+      cursor: pointer;
+      color: var(--color-foreground);
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+
+    .btn:hover:not(:disabled) { background: var(--color-background); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-primary {
+      background: var(--color-pacific);
+      border-color: var(--color-pacific);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) { background: oklch(0.620 0.110 210); border-color: oklch(0.620 0.110 210); }
+
+    .btn-danger {
+      background: none; border-color: var(--color-destructive);
+      color: var(--color-destructive);
+    }
+
+    .btn-danger:hover:not(:disabled) { background: color-mix(in oklch, var(--color-destructive), transparent 92%); }
+
+    .btn-ghost {
+      background: none; border-color: transparent;
+      color: var(--color-muted-foreground);
+    }
+
+    .btn-ghost:hover:not(:disabled) { background: var(--color-background); color: var(--color-foreground); }
+
+    /* Spinner */
+    .spinner {
+      width: 11px; height: 11px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top: 2px solid white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Progress bar */
+    .progress-wrap {
+      height: 3px;
+      background: var(--color-border);
+      border-radius: 9999px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      border-radius: 9999px;
+      background: var(--color-pacific);
+      animation: progress-shimmer 1.5s ease-in-out infinite;
+    }
+
+    @keyframes progress-shimmer {
+      0%   { width: 30%; opacity: 1; }
+      50%  { width: 65%; opacity: 0.8; }
+      100% { width: 30%; opacity: 1; }
+    }
+
+    /* Rewrite callout */
+    .rewrite-callout {
+      margin: 8px 14px 10px;
+      padding: 10px 12px;
+      border: 1px solid color-mix(in oklch, var(--color-destructive), transparent 75%);
+      border-radius: 6px;
+      background: color-mix(in oklch, var(--color-destructive), transparent 95%);
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .rewrite-callout-text { flex: 1; font-size: 11px; line-height: 1.5; color: var(--color-foreground); }
+    .rewrite-callout-text strong { display: block; margin-bottom: 2px; font-size: 12px; }
+
+    /* Aggregate summary */
+    .agg-summary {
+      padding: 8px 14px;
+      border-top: 1px solid var(--color-border);
+      background: color-mix(in oklch, var(--color-background), transparent 20%);
+      display: flex; align-items: center; gap: 14px;
+      font-size: 11px; flex-shrink: 0;
+    }
+
+    .agg-stat { font-family: var(--font-mono); font-weight: 600; }
+    .agg-stat.pass { color: var(--color-seafoam); }
+    .agg-stat.fail { color: var(--color-destructive); }
+    .agg-stat.warn { color: var(--color-amber); }
+    .agg-label { color: var(--color-muted-foreground); }
+
+    /* Notes */
+    .note {
+      font-size: 11px; color: var(--color-muted-foreground);
+      background: var(--color-background);
+      border: 1px solid var(--color-border);
+      border-radius: 5px;
+      padding: 8px 12px;
+      margin-top: 12px;
+      line-height: 1.6;
+    }
+
+    .note strong { color: var(--color-foreground); }
+
+    /* Implementation section */
+    ul { margin-left: 20px; line-height: 1.8; }
+    li { font-size: 13px; color: var(--color-foreground); margin-bottom: 4px; }
+
+    .code {
+      background: var(--color-background);
+      padding: 2px 6px; border-radius: 3px;
+      font-family: var(--font-mono); font-size: 11px;
+      color: var(--color-pacific);
+    }
+
+    .checklist { background: var(--color-background); border: 1px solid var(--color-border); border-radius: 6px; padding: 12px; margin-top: 12px; }
+    .checklist ul { margin-left: 0; }
+    .checklist li { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .checklist li:last-child { margin-bottom: 0; }
+    .checkbox { width: 14px; height: 14px; border: 1.5px solid var(--color-border); border-radius: 3px; flex-shrink: 0; }
+
+    .tag {
+      display: inline-block;
+      padding: 1px 6px; border-radius: 9999px;
+      font-size: 10px; font-weight: 600;
+    }
+
+    .tag-new { background: color-mix(in oklch, var(--color-pacific), transparent 88%); color: var(--color-pacific); }
+    .tag-run { background: color-mix(in oklch, var(--color-seafoam), transparent 88%); color: var(--color-seafoam); }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>VU-719: Run Selected Evals + Optional Rewrite</h1>
+  <p class="subtitle">Select test cases, choose 1-run or 3-run mode, execute, view inline results, and trigger skill rewrite on failures</p>
+
+  <!-- ─────────────────────────────────────────────────────────
+       STATE 1A: 1-run mode — checkboxes visible, prompt entered
+       ───────────────────────────────────────────────────────── -->
+  <section>
+    <h2>State 1A — 1-Run Mode: Select &amp; Configure</h2>
+
+    <div class="ws">
+      <div class="ws-header">
+        <span class="ws-skill-name">dbt-data-quality</span>
+      </div>
+      <div class="ws-tabs">
+        <div class="ws-tab">Overview</div>
+        <div class="ws-tab">Refine</div>
+        <div class="ws-tab active">Evals</div>
+        <div class="ws-tab">Description</div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="evals-toolbar">
+        <span style="font-size:11px;font-weight:600;color:var(--color-muted-foreground);">RUN MODE</span>
+        <div class="run-toggle">
+          <button class="run-toggle-opt active">1 run</button>
+          <button class="run-toggle-opt">3 runs</button>
+        </div>
+        <div class="toolbar-right">
+          <button class="btn btn-primary" disabled>Run selected (0)</button>
+          <button class="btn">Add Test</button>
+        </div>
+      </div>
+
+      <div class="evals-body">
+        <!-- Test list with checkboxes -->
+        <div class="test-list">
+          <!-- header row: select-all -->
+          <div class="test-row" style="background:var(--color-card);padding:5px 10px;">
+            <div class="cb indeterminate">–</div>
+            <span style="font-size:10px;font-weight:600;color:var(--color-muted-foreground);">3 of 5</span>
+          </div>
+          <div class="test-row selected">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:oklch(0.720 0.125 155);"></span>
+            <span class="test-name">incremental-config</span>
+            <span class="test-score">4/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:oklch(0.720 0.125 155);"></span>
+            <span class="test-name">late-arrival-handling</span>
+            <span class="test-score">3/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:var(--color-amber);"></span>
+            <span class="test-name">dq-test-generation</span>
+            <span class="test-score">2/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb"></div>
+            <span class="status-dot" style="background:var(--color-amber);"></span>
+            <span class="test-name">source-freshness</span>
+            <span class="test-score">1/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb"></div>
+            <span class="status-dot" style="background:var(--color-border);border:1.5px solid var(--color-border);background:transparent;"></span>
+            <span class="test-name">enum-validation</span>
+            <span class="test-score" style="color:var(--color-border);">—</span>
+          </div>
+        </div>
+
+        <!-- Detail: 1-run prompt input -->
+        <div class="detail-pane">
+          <div class="prompt-config">
+            <div class="prompt-config-label">Prompt for this run</div>
+            <div class="prompt-row">
+              <textarea class="prompt-input" rows="2" placeholder="Describe the scenario you want to test…">My dbt pipeline on Fabric needs incremental loading with a 3-day CDC lag. Suggest the correct config.</textarea>
+              <button class="gen-btn">✦ Auto-generate</button>
+            </div>
+          </div>
+
+          <div class="results-area" style="display:flex;align-items:center;justify-content:center;color:var(--color-muted-foreground);font-size:12px;">
+            Results will appear here after running.
+          </div>
+
+          <div class="action-bar">
+            <span class="selection-info"><strong>3</strong> tests selected · <strong>1</strong> run</span>
+            <div style="margin-left:auto;display:flex;gap:6px;">
+              <button class="btn btn-primary">Run selected (3)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>1-run mode:</strong> One prompt, all selected tests run once.
+      Best for quick spot-checks. Auto-generate pre-fills a domain-relevant prompt
+      (e.g. <em>"I want to measure sales performance for my pet store"</em>) that the user can edit.
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────
+       STATE 1B: 3-run mode — 3 prompt inputs
+       ───────────────────────────────────────────────────────── -->
+  <section>
+    <h2>State 1B — 3-Run Mode: Select &amp; Configure</h2>
+
+    <div class="ws">
+      <div class="ws-header">
+        <span class="ws-skill-name">dbt-data-quality</span>
+      </div>
+      <div class="ws-tabs">
+        <div class="ws-tab">Overview</div>
+        <div class="ws-tab">Refine</div>
+        <div class="ws-tab active">Evals</div>
+        <div class="ws-tab">Description</div>
+      </div>
+
+      <div class="evals-toolbar">
+        <span style="font-size:11px;font-weight:600;color:var(--color-muted-foreground);">RUN MODE</span>
+        <div class="run-toggle">
+          <button class="run-toggle-opt">1 run</button>
+          <button class="run-toggle-opt active">3 runs</button>
+        </div>
+        <div style="font-size:11px;color:var(--color-muted-foreground);">Runs all selected tests 3× for statistical reliability</div>
+        <div class="toolbar-right">
+          <button class="btn btn-primary">Run selected (3)</button>
+          <button class="btn">Add Test</button>
+        </div>
+      </div>
+
+      <div class="evals-body">
+        <div class="test-list">
+          <div class="test-row" style="background:var(--color-card);padding:5px 10px;">
+            <div class="cb indeterminate">–</div>
+            <span style="font-size:10px;font-weight:600;color:var(--color-muted-foreground);">3 of 5</span>
+          </div>
+          <div class="test-row selected">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:oklch(0.720 0.125 155);"></span>
+            <span class="test-name">incremental-config</span>
+            <span class="test-score">4/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:oklch(0.720 0.125 155);"></span>
+            <span class="test-name">late-arrival-handling</span>
+            <span class="test-score">3/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:var(--color-amber);"></span>
+            <span class="test-name">dq-test-generation</span>
+            <span class="test-score">2/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb"></div>
+            <span class="status-dot" style="background:var(--color-amber);"></span>
+            <span class="test-name">source-freshness</span>
+            <span class="test-score">1/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb"></div>
+            <span class="status-dot" style="background:transparent;border:1.5px solid var(--color-border);"></span>
+            <span class="test-name">enum-validation</span>
+            <span class="test-score" style="color:var(--color-border);">—</span>
+          </div>
+        </div>
+
+        <!-- Detail: 3-run prompt inputs -->
+        <div class="detail-pane">
+          <div class="prompt-config">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;">
+              <div class="prompt-config-label" style="margin-bottom:0;">Prompt per run</div>
+              <button class="gen-btn">✦ Auto-generate all 3</button>
+            </div>
+            <div class="prompt-row">
+              <span class="run-label">Run 1</span>
+              <textarea class="prompt-input" rows="2">My dbt pipeline on Fabric needs incremental loading with a 3-day CDC lag. Suggest the config.</textarea>
+            </div>
+            <div class="prompt-row">
+              <span class="run-label">Run 2</span>
+              <textarea class="prompt-input" rows="2">I want to measure sales performance for my pet store using dbt on Fabric. What tests should I add?</textarea>
+            </div>
+            <div class="prompt-row">
+              <span class="run-label">Run 3</span>
+              <textarea class="prompt-input" rows="2">Our source data arrives late — up to 2 days. How do I configure dbt to account for this?</textarea>
+            </div>
+          </div>
+
+          <div class="results-area" style="display:flex;align-items:center;justify-content:center;color:var(--color-muted-foreground);font-size:12px;">
+            Results will appear here after running.
+          </div>
+
+          <div class="action-bar">
+            <span class="selection-info"><strong>3</strong> tests selected · <strong>3</strong> runs · <strong>9</strong> total executions</span>
+            <div style="margin-left:auto;display:flex;gap:6px;">
+              <button class="btn btn-primary">Run selected (3 × 3)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>3-run mode:</strong> Three different prompts are run against all selected tests, improving statistical confidence.
+      Each prompt exercises a different phrasing or domain angle. "Auto-generate all 3" uses the skill's
+      description and existing test prompts to propose varied, realistic scenarios — the user can edit any of them
+      before running.
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────
+       STATE 2: Running (3-run mode in progress)
+       ───────────────────────────────────────────────────────── -->
+  <section>
+    <h2>State 2 — Running (3-Run Mode)</h2>
+
+    <div class="ws">
+      <div class="ws-header">
+        <span class="ws-skill-name">dbt-data-quality</span>
+      </div>
+      <div class="ws-tabs">
+        <div class="ws-tab">Overview</div>
+        <div class="ws-tab">Refine</div>
+        <div class="ws-tab active">Evals</div>
+        <div class="ws-tab">Description</div>
+      </div>
+
+      <div class="evals-toolbar">
+        <span style="font-size:11px;font-weight:600;color:var(--color-muted-foreground);">RUN MODE</span>
+        <div class="run-toggle">
+          <button class="run-toggle-opt">1 run</button>
+          <button class="run-toggle-opt active">3 runs</button>
+        </div>
+        <div class="toolbar-right">
+          <button class="btn" disabled><span class="spinner" style="border-top-color:var(--color-pacific);border-color:color-mix(in oklch,var(--color-pacific),transparent 60%);"></span> Running…</button>
+          <button class="btn btn-ghost">Cancel</button>
+        </div>
+      </div>
+
+      <div class="evals-body">
+        <div class="test-list">
+          <div class="test-row" style="background:var(--color-card);padding:5px 10px;">
+            <div class="cb indeterminate">–</div>
+            <span style="font-size:10px;font-weight:600;color:var(--color-muted-foreground);">3 of 5</span>
+          </div>
+          <!-- running: row 1 has spinner -->
+          <div class="test-row selected">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:var(--color-pacific);animation:dot-pulse 1.2s ease-in-out infinite;"></span>
+            <span class="test-name">incremental-config</span>
+            <span class="test-score" style="color:var(--color-pacific);">…</span>
+          </div>
+          <div class="test-row">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:var(--color-border);"></span>
+            <span class="test-name">late-arrival-handling</span>
+            <span class="test-score" style="color:var(--color-border);">—</span>
+          </div>
+          <div class="test-row">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:var(--color-border);"></span>
+            <span class="test-name">dq-test-generation</span>
+            <span class="test-score" style="color:var(--color-border);">—</span>
+          </div>
+          <div class="test-row">
+            <div class="cb"></div>
+            <span class="status-dot" style="background:var(--color-border);"></span>
+            <span class="test-name">source-freshness</span>
+          </div>
+          <div class="test-row">
+            <div class="cb"></div>
+            <span class="status-dot" style="background:transparent;border:1.5px solid var(--color-border);"></span>
+            <span class="test-name">enum-validation</span>
+          </div>
+        </div>
+
+        <div class="detail-pane">
+          <!-- Progress summary -->
+          <div style="padding:10px 14px;border-bottom:1px solid var(--color-border);background:color-mix(in oklch,var(--color-pacific),transparent 97%);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <span class="spinner" style="border-top-color:var(--color-pacific);border-color:color-mix(in oklch,var(--color-pacific),transparent 60%);"></span>
+              <span style="font-size:12px;font-weight:600;">Running Run 1 of 3 · test 1 of 3</span>
+              <span style="font-size:11px;color:var(--color-muted-foreground);margin-left:auto;">1 / 9 executions</span>
+            </div>
+            <div class="progress-wrap">
+              <div class="progress-bar" style="width:11%;animation:none;"></div>
+            </div>
+          </div>
+
+          <div class="results-area">
+            <!-- Run 1: in progress -->
+            <div class="run-group">
+              <div class="run-group-header">
+                <span class="chevron">▶</span>
+                <span class="run-title">Run 1 · <em style="font-weight:400;color:var(--color-muted-foreground);">My dbt pipeline on Fabric needs incremental loading…</em></span>
+                <span style="font-size:10px;color:var(--color-pacific);font-weight:600;display:flex;align-items:center;gap:4px;">
+                  <span class="spinner" style="width:9px;height:9px;border-top-color:var(--color-pacific);border-color:color-mix(in oklch,var(--color-pacific),transparent 60%);"></span>
+                  running
+                </span>
+              </div>
+            </div>
+
+            <!-- Run 2: queued -->
+            <div class="run-group" style="opacity:0.5;">
+              <div class="run-group-header">
+                <span class="chevron">▶</span>
+                <span class="run-title">Run 2 · <em style="font-weight:400;color:var(--color-muted-foreground);">I want to measure sales performance for my pet store…</em></span>
+                <span style="font-size:10px;color:var(--color-muted-foreground);">queued</span>
+              </div>
+            </div>
+
+            <!-- Run 3: queued -->
+            <div class="run-group" style="opacity:0.5;">
+              <div class="run-group-header">
+                <span class="chevron">▶</span>
+                <span class="run-title">Run 3 · <em style="font-weight:400;color:var(--color-muted-foreground);">Our source data arrives late — up to 2 days…</em></span>
+                <span style="font-size:10px;color:var(--color-muted-foreground);">queued</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="action-bar">
+            <span class="selection-info">Running… <strong>1</strong> of <strong>9</strong> executions complete</span>
+            <div style="margin-left:auto;">
+              <button class="btn btn-ghost">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <style>@keyframes dot-pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }</style>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────
+       STATE 3A: Results — all passing (no Rewrite CTA)
+       ───────────────────────────────────────────────────────── -->
+  <section>
+    <h2>State 3A — Results: All Passing (no Rewrite)</h2>
+
+    <div class="ws">
+      <div class="ws-header">
+        <span class="ws-skill-name">dbt-data-quality</span>
+      </div>
+      <div class="ws-tabs">
+        <div class="ws-tab">Overview</div>
+        <div class="ws-tab">Refine</div>
+        <div class="ws-tab active">Evals</div>
+        <div class="ws-tab">Description</div>
+      </div>
+
+      <div class="evals-toolbar">
+        <span style="font-size:11px;font-weight:600;color:var(--color-muted-foreground);">RUN MODE</span>
+        <div class="run-toggle">
+          <button class="run-toggle-opt">1 run</button>
+          <button class="run-toggle-opt active">3 runs</button>
+        </div>
+        <div class="toolbar-right">
+          <button class="btn btn-primary">Run selected (3)</button>
+          <button class="btn">Add Test</button>
+        </div>
+      </div>
+
+      <div class="evals-body">
+        <div class="test-list">
+          <div class="test-row" style="background:var(--color-card);padding:5px 10px;">
+            <div class="cb indeterminate">–</div>
+            <span style="font-size:10px;font-weight:600;color:var(--color-muted-foreground);">3 of 5</span>
+          </div>
+          <div class="test-row selected">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:oklch(0.720 0.125 155);"></span>
+            <span class="test-name">incremental-config</span>
+            <span class="test-score" style="color:var(--color-seafoam);">4/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:oklch(0.720 0.125 155);"></span>
+            <span class="test-name">late-arrival-handling</span>
+            <span class="test-score" style="color:var(--color-seafoam);">4/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:oklch(0.720 0.125 155);"></span>
+            <span class="test-name">dq-test-generation</span>
+            <span class="test-score" style="color:var(--color-seafoam);">4/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb"></div>
+            <span class="status-dot" style="background:var(--color-amber);"></span>
+            <span class="test-name">source-freshness</span>
+            <span class="test-score">1/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb"></div>
+            <span class="status-dot" style="background:transparent;border:1.5px solid var(--color-border);"></span>
+            <span class="test-name">enum-validation</span>
+            <span class="test-score" style="color:var(--color-border);">—</span>
+          </div>
+        </div>
+
+        <div class="detail-pane">
+          <div class="results-area">
+            <!-- Run 1: all pass, collapsed -->
+            <div class="run-group">
+              <div class="run-group-header">
+                <span class="chevron">▶</span>
+                <span class="run-title">Run 1</span>
+                <span class="run-prompt-preview">My dbt pipeline on Fabric needs incremental loading…</span>
+                <span class="run-score pass" style="margin-left:auto;">12/12</span>
+              </div>
+            </div>
+            <!-- Run 2: all pass, expanded -->
+            <div class="run-group">
+              <div class="run-group-header">
+                <span class="chevron">▼</span>
+                <span class="run-title">Run 2</span>
+                <span class="run-prompt-preview">I want to measure sales performance for my pet store…</span>
+                <span class="run-score pass" style="margin-left:auto;">12/12</span>
+              </div>
+              <div class="run-group-body">
+                <div style="font-size:10px;font-weight:600;color:var(--color-muted-foreground);margin-bottom:5px;">incremental-config</div>
+                <div class="assertion-row"><span class="a-icon pass">✓</span> incremental_strategy is merge</div>
+                <div class="assertion-row"><span class="a-icon pass">✓</span> lookback window accounts for CDC lag</div>
+                <div class="assertion-row"><span class="a-icon pass">✓</span> Fabric-specific on_schema_change set</div>
+                <div class="assertion-row"><span class="a-icon pass">✓</span> is_incremental() filter present</div>
+                <div style="font-size:10px;font-weight:600;color:var(--color-muted-foreground);margin-top:8px;margin-bottom:5px;">late-arrival-handling · dq-test-generation</div>
+                <div class="assertion-row"><span class="a-icon pass">✓</span> All assertions passed</div>
+              </div>
+            </div>
+            <!-- Run 3: all pass, collapsed -->
+            <div class="run-group">
+              <div class="run-group-header">
+                <span class="chevron">▶</span>
+                <span class="run-title">Run 3</span>
+                <span class="run-prompt-preview">Our source data arrives late — up to 2 days…</span>
+                <span class="run-score pass" style="margin-left:auto;">12/12</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Aggregate summary -->
+          <div class="agg-summary">
+            <span class="agg-stat pass">100%</span>
+            <span class="agg-label">avg pass rate across 3 runs</span>
+            <span style="color:var(--color-border);">·</span>
+            <span class="agg-stat pass">36/36</span>
+            <span class="agg-label">assertions</span>
+            <span style="color:var(--color-border);">·</span>
+            <span style="font-size:11px;color:var(--color-seafoam);">✓ All selected tests passing consistently</span>
+          </div>
+
+          <div class="action-bar">
+            <span class="selection-info">3 tests · 3 runs complete</span>
+            <div style="margin-left:auto;display:flex;gap:6px;">
+              <button class="btn">Clear results</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      When all assertions pass across all runs, <strong>no Rewrite CTA is shown</strong>.
+      The aggregate summary confirms consistency. The user can clear results or select different tests to run.
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────
+       STATE 3B: Results — failures present → Rewrite CTA
+       ───────────────────────────────────────────────────────── -->
+  <section>
+    <h2>State 3B — Results: Failures Present → Rewrite CTA</h2>
+
+    <div class="ws">
+      <div class="ws-header">
+        <span class="ws-skill-name">dbt-data-quality</span>
+      </div>
+      <div class="ws-tabs">
+        <div class="ws-tab">Overview</div>
+        <div class="ws-tab">Refine</div>
+        <div class="ws-tab active">Evals</div>
+        <div class="ws-tab">Description</div>
+      </div>
+
+      <div class="evals-toolbar">
+        <span style="font-size:11px;font-weight:600;color:var(--color-muted-foreground);">RUN MODE</span>
+        <div class="run-toggle">
+          <button class="run-toggle-opt">1 run</button>
+          <button class="run-toggle-opt active">3 runs</button>
+        </div>
+        <div class="toolbar-right">
+          <button class="btn btn-primary">Re-run selected (3)</button>
+          <button class="btn">Add Test</button>
+        </div>
+      </div>
+
+      <div class="evals-body">
+        <div class="test-list">
+          <div class="test-row" style="background:var(--color-card);padding:5px 10px;">
+            <div class="cb indeterminate">–</div>
+            <span style="font-size:10px;font-weight:600;color:var(--color-muted-foreground);">3 of 5</span>
+          </div>
+          <div class="test-row selected">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:oklch(0.720 0.125 155);"></span>
+            <span class="test-name">incremental-config</span>
+            <span class="test-score" style="color:var(--color-seafoam);">4/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:var(--color-amber);"></span>
+            <span class="test-name">late-arrival-handling</span>
+            <span class="test-score" style="color:var(--color-amber);">2/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb checked">✓</div>
+            <span class="status-dot" style="background:var(--color-destructive);"></span>
+            <span class="test-name">dq-test-generation</span>
+            <span class="test-score" style="color:var(--color-destructive);">1/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb"></div>
+            <span class="status-dot" style="background:var(--color-amber);"></span>
+            <span class="test-name">source-freshness</span>
+            <span class="test-score">1/4</span>
+          </div>
+          <div class="test-row">
+            <div class="cb"></div>
+            <span class="status-dot" style="background:transparent;border:1.5px solid var(--color-border);"></span>
+            <span class="test-name">enum-validation</span>
+            <span class="test-score" style="color:var(--color-border);">—</span>
+          </div>
+        </div>
+
+        <div class="detail-pane">
+          <div class="results-area">
+            <!-- Run 1: mixed, collapsed -->
+            <div class="run-group">
+              <div class="run-group-header">
+                <span class="chevron">▶</span>
+                <span class="run-title">Run 1</span>
+                <span class="run-prompt-preview">My dbt pipeline on Fabric needs incremental loading…</span>
+                <span class="run-score warn" style="margin-left:auto;">7/12</span>
+              </div>
+            </div>
+            <!-- Run 2: failures, expanded -->
+            <div class="run-group">
+              <div class="run-group-header failing">
+                <span class="chevron">▼</span>
+                <span class="run-title">Run 2</span>
+                <span class="run-prompt-preview">I want to measure sales performance for my pet store…</span>
+                <span class="run-score fail" style="margin-left:auto;">5/12</span>
+              </div>
+              <div class="run-group-body">
+                <div style="font-size:10px;font-weight:600;color:var(--color-muted-foreground);margin-bottom:5px;">late-arrival-handling</div>
+                <div class="assertion-row"><span class="a-icon pass">✓</span> incremental_strategy is merge</div>
+                <div class="assertion-row"><span class="a-icon fail">✗</span> lookback window accounts for late data</div>
+                <div class="assertion-row"><span class="a-icon fail">✗</span> warning issued when source is stale</div>
+                <div class="assertion-row"><span class="a-icon pass">✓</span> source freshness config present</div>
+                <div style="font-size:10px;font-weight:600;color:var(--color-muted-foreground);margin-top:8px;margin-bottom:5px;">dq-test-generation</div>
+                <div class="assertion-row"><span class="a-icon fail">✗</span> generates not_null test for primary key</div>
+                <div class="assertion-row"><span class="a-icon fail">✗</span> accepted_values test for status column</div>
+                <div class="assertion-row"><span class="a-icon fail">✗</span> relationship test references correct model</div>
+                <div class="assertion-row"><span class="a-icon pass">✓</span> unique test on id</div>
+                <div class="output-preview">Output: "Add a not_null test to your primary key column. Consider using dbt's built-in generic tests…"
+                  ↳ Missing: late-arrival lookback config, accepted_values specifics</div>
+              </div>
+            </div>
+            <!-- Run 3: collapse -->
+            <div class="run-group">
+              <div class="run-group-header">
+                <span class="chevron">▶</span>
+                <span class="run-title">Run 3</span>
+                <span class="run-prompt-preview">Our source data arrives late — up to 2 days…</span>
+                <span class="run-score warn" style="margin-left:auto;">6/12</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Aggregate summary (failures) -->
+          <div class="agg-summary">
+            <span class="agg-stat warn">61%</span>
+            <span class="agg-label">avg pass rate across 3 runs</span>
+            <span style="color:var(--color-border);">·</span>
+            <span class="agg-stat fail">22/36</span>
+            <span class="agg-label">assertions passed</span>
+            <span style="color:var(--color-border);">·</span>
+            <span style="font-size:11px;color:var(--color-destructive);">14 failures across 2 tests</span>
+          </div>
+
+          <!-- Rewrite callout — only shown when failures exist -->
+          <div class="rewrite-callout">
+            <div class="rewrite-callout-text">
+              <strong>Failures detected across runs</strong>
+              14 assertion failures in <em>late-arrival-handling</em> and <em>dq-test-generation</em>.
+              Open Refine with these failures pre-loaded as context.
+            </div>
+            <button class="btn btn-danger" style="white-space:nowrap;flex-shrink:0;">
+              ↗ Rewrite in Refine
+            </button>
+          </div>
+
+          <div class="action-bar">
+            <span class="selection-info">3 tests · 3 runs complete · <strong style="color:var(--color-destructive);">14 failures</strong></span>
+            <div style="margin-left:auto;display:flex;gap:6px;">
+              <button class="btn">Clear results</button>
+              <button class="btn btn-primary">Re-run selected</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>Rewrite CTA</strong> only appears when there are failing assertions.
+      Clicking "Rewrite in Refine" switches to the Refine tab with a pre-filled message containing:
+      the failing assertion names, the prompts from runs where they failed, and any output excerpt.
+      The user can add their own notes before sending.
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────
+       STATE 4: Refine tab — pre-filled rewrite context
+       ───────────────────────────────────────────────────────── -->
+  <section>
+    <h2>State 4 — Refine Tab: Pre-filled Rewrite Context</h2>
+    <p style="font-size:13px;margin-bottom:16px;">After clicking "Rewrite in Refine", the app switches to the Refine tab with a pre-filled chat message. The user can edit or add notes before sending.</p>
+
+    <div class="ws">
+      <div class="ws-header">
+        <span class="ws-skill-name">dbt-data-quality</span>
+      </div>
+      <div class="ws-tabs">
+        <div class="ws-tab">Overview</div>
+        <div class="ws-tab active">Refine</div>
+        <div class="ws-tab">Evals</div>
+        <div class="ws-tab">Description</div>
+      </div>
+
+      <!-- Refine chat area (simplified) -->
+      <div style="padding:16px;min-height:200px;background:var(--color-background);">
+        <!-- Previous message context chip -->
+        <div style="margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:11px;color:var(--color-muted-foreground);">Context from Evals run:</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:9999px;background:color-mix(in oklch,var(--color-destructive),transparent 90%);color:var(--color-destructive);font-weight:600;">14 failures · 2 tests</span>
+        </div>
+
+        <!-- Pre-filled input -->
+        <div style="background:var(--color-card);border:1px solid var(--color-pacific);border-radius:8px;overflow:hidden;">
+          <div style="padding:10px 12px;background:color-mix(in oklch,var(--color-pacific),transparent 96%);border-bottom:1px solid var(--color-border);font-size:10px;font-weight:600;color:var(--color-pacific);">
+            Pre-filled from eval results — edit as needed
+          </div>
+          <textarea style="width:100%;padding:10px 12px;border:none;font-size:12px;font-family:var(--font-sans);color:var(--color-foreground);background:var(--color-card);resize:none;outline:none;line-height:1.6;" rows="7">The following assertions failed across 3 eval runs:
+
+**late-arrival-handling (failed 2/3 runs):**
+- lookback window does not account for late data
+- warning not issued when source is stale
+
+**dq-test-generation (failed 3/3 runs):**
+- not_null test missing for primary key
+- accepted_values test missing for status column
+- relationship test references wrong model
+
+Please update the skill to address these gaps. Focus on late-arrival CDC patterns and dbt generic test generation.</textarea>
+          <div style="padding:8px 12px;border-top:1px solid var(--color-border);display:flex;justify-content:flex-end;">
+            <button class="btn btn-primary">Send to Refine agent</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      The pre-filled message is fully editable. Failing assertion names, run counts, and a suggested
+      action are included automatically. The user can add domain context, remove irrelevant items,
+      or adjust the instruction before sending.
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────
+       IMPLEMENTATION NOTES
+       ───────────────────────────────────────────────────────── -->
+  <section>
+    <h2>Implementation Notes</h2>
+
+    <h3>Run Mode Toggle</h3>
+    <ul>
+      <li>State: <span class="code">runMode: '1' | '3'</span> in <span class="code">eval-tab.tsx</span></li>
+      <li>1-run: single <span class="code">&lt;textarea&gt;</span> for prompt; 3-run: three labelled textareas (Run 1/2/3)</li>
+      <li>Auto-generate button calls <span class="code">generate_eval_prompts(skillName, workspacePath, count)</span> → returns <span class="code">string[]</span></li>
+      <li>Generated prompts pre-fill the textarea(s); user can edit before running</li>
+    </ul>
+
+    <h3>Execution</h3>
+    <ul>
+      <li>New Rust command: <span class="code">run_selected_evals(skill_name, workspace_path, eval_ids[], prompts[])</span></li>
+      <li>Runs sequentially: Run 1 completes before Run 2 starts (avoids resource contention)</li>
+      <li>Each run result stored in a new <span class="code">iteration-N/</span> subdirectory</li>
+      <li>Progress events emitted via Tauri events: <span class="code">eval-run-progress</span> → <span class="code">{ runIndex, testIndex, total }</span></li>
+    </ul>
+
+    <h3>Results Display</h3>
+    <ul>
+      <li>Collapsed by default; user clicks chevron to expand a run's per-assertion detail</li>
+      <li>3-run aggregate: avg pass rate = sum(pass) / total assertions across all runs</li>
+      <li>Test list dots update live as each run's result arrives</li>
+      <li>Score shown as <span class="code">passed/total</span> (e.g. <span class="code">7/12</span>) in run header</li>
+    </ul>
+
+    <h3>Rewrite CTA</h3>
+    <ul>
+      <li>Visible only when <span class="code">totalFailures &gt; 0</span> after all runs complete</li>
+      <li>Clicking switches to Refine tab: sets <span class="code">prefillMessage</span> in refine store</li>
+      <li>Pre-fill format: list of failing assertions grouped by test, with run counts</li>
+      <li>Message is editable in the Refine input before sending</li>
+    </ul>
+
+    <h3>Files</h3>
+    <ul>
+      <li><span class="code">app/src/components/workspace/eval-tab.tsx</span> — extends VU-718 component</li>
+      <li><span class="code">app/src-tauri/src/commands/workflow/evaluation.rs</span> — add <span class="code">run_selected_evals</span></li>
+      <li><span class="code">app/src/lib/tauri.ts</span> — add <span class="code">runSelectedEvals</span> wrapper</li>
+      <li><span class="code">app/src/lib/types.ts</span> — add <span class="code">EvalRunResult</span>, <span class="code">RunProgress</span></li>
+      <li><span class="code">app/src/stores/refine-store.ts</span> — add <span class="code">prefillMessage</span> field</li>
+    </ul>
+
+    <h3>Acceptance Criteria</h3>
+    <div class="checklist">
+      <ul>
+        <li><div class="checkbox"></div>Run mode toggle switches between 1-prompt and 3-prompt input</li>
+        <li><div class="checkbox"></div>Auto-generate pre-fills prompt field(s) with domain-relevant scenarios</li>
+        <li><div class="checkbox"></div>Checkboxes on test rows; "Run selected (N)" button counts checked rows</li>
+        <li><div class="checkbox"></div>Run button disabled when no tests selected or prompts empty</li>
+        <li><div class="checkbox"></div>Progress indicator updates as each run/test completes</li>
+        <li><div class="checkbox"></div>Results shown as collapsible run groups (Run 1, 2, 3)</li>
+        <li><div class="checkbox"></div>Per-assertion pass/fail shown when run group is expanded</li>
+        <li><div class="checkbox"></div>Aggregate pass rate shown in summary bar</li>
+        <li><div class="checkbox"></div>"Rewrite in Refine" CTA visible only when failures exist</li>
+        <li><div class="checkbox"></div>Clicking Rewrite navigates to Refine tab with pre-filled message</li>
+        <li><div class="checkbox"></div>Pre-filled message lists failing assertions and can be edited</li>
+      </ul>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
