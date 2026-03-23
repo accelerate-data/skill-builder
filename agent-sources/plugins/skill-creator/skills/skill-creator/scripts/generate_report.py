@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 """Generate an HTML report from run_loop.py output.
 
 Takes the JSON output from run_loop.py and generates a visual HTML report
@@ -11,6 +15,15 @@ import html
 import json
 import sys
 from pathlib import Path
+
+
+def emit_json(payload: dict) -> None:
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+
+
+def log(message: str) -> None:
+    print(message, file=sys.stderr)
 
 
 def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") -> str:
@@ -302,24 +315,61 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate HTML report from run_loop output")
+    parser = argparse.ArgumentParser(
+        description="Generate an HTML report from run_loop output.",
+        epilog=(
+            "Examples:\n"
+            "  uv run scripts/generate_report.py results.json --output report.html\n"
+            "  uv run scripts/generate_report.py - --skill-name my-skill < results.json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("input", help="Path to JSON output from run_loop.py (or - for stdin)")
     parser.add_argument("-o", "--output", default=None, help="Output HTML file (default: stdout)")
     parser.add_argument("--skill-name", default="", help="Skill name to include in the report title")
     args = parser.parse_args()
 
-    if args.input == "-":
-        data = json.load(sys.stdin)
-    else:
-        data = json.loads(Path(args.input).read_text())
+    try:
+        if args.input == "-":
+            data = json.load(sys.stdin)
+        else:
+            data = json.loads(Path(args.input).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        log(f"Error: {exc}")
+        emit_json(
+            {
+                "ok": False,
+                "input": args.input,
+                "output": args.output,
+                "error": str(exc),
+                "hint": "Pass a valid run_loop JSON file or pipe valid JSON on stdin.",
+            }
+        )
+        raise SystemExit(1)
 
     html_output = generate_html(data, skill_name=args.skill_name)
 
     if args.output:
-        Path(args.output).write_text(html_output)
-        print(f"Report written to {args.output}", file=sys.stderr)
+        output_path = Path(args.output)
+        output_path.write_text(html_output, encoding="utf-8")
+        log(f"Report written to {output_path}")
+        emit_json(
+            {
+                "ok": True,
+                "input": args.input,
+                "report_path": str(output_path.resolve()),
+                "html_length": len(html_output),
+            }
+        )
     else:
-        print(html_output)
+        emit_json(
+            {
+                "ok": True,
+                "input": args.input,
+                "report_path": None,
+                "html": html_output,
+            }
+        )
 
 
 if __name__ == "__main__":

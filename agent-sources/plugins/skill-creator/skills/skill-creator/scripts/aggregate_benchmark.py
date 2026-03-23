@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""
-Aggregate individual run results into benchmark summary statistics.
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""Aggregate individual run results into benchmark summary statistics.
 
 Reads grading.json files from run directories and produces:
 - run_summary with mean, stddev, min, max for each metric
@@ -50,6 +53,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+def emit_json(payload: dict) -> None:
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+
+
+def log(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
 def calculate_stats(values: list[float]) -> dict:
     """Calculate mean, stddev, min, max for a list of values."""
     if not values:
@@ -83,7 +95,7 @@ def _load_analyst_notes(benchmark_dir: Path) -> str:
     return ""
 
 
-def load_run_results(benchmark_dir: Path) -> dict:
+def load_run_results(benchmark_dir: Path, warnings: list[str]) -> dict:
     """
     Load all run results from a benchmark directory.
 
@@ -97,7 +109,7 @@ def load_run_results(benchmark_dir: Path) -> dict:
     elif list(benchmark_dir.glob("eval-*")):
         search_dir = benchmark_dir
     else:
-        print(f"No eval directories found in {benchmark_dir} or {benchmark_dir / 'runs'}")
+        warnings.append(f"No eval directories found in {benchmark_dir} or {benchmark_dir / 'runs'}")
         return {}
 
     results: dict[str, list] = {}
@@ -146,14 +158,14 @@ def load_run_results(benchmark_dir: Path) -> dict:
                 grading_file = run_dir / "grading.json"
 
                 if not grading_file.exists():
-                    print(f"Warning: grading.json not found in {run_dir}")
+                    warnings.append(f"grading.json not found in {run_dir}")
                     continue
 
                 try:
                     with open(grading_file) as f:
                         grading = json.load(f)
                 except json.JSONDecodeError as e:
-                    print(f"Warning: Invalid JSON in {grading_file}: {e}")
+                    warnings.append(f"Invalid JSON in {grading_file}: {e}")
                     continue
 
                 # Extract metrics (use `or` to guard against explicit null values)
@@ -192,7 +204,9 @@ def load_run_results(benchmark_dir: Path) -> dict:
                 raw_expectations = grading.get("expectations") or []
                 for exp in raw_expectations:
                     if "text" not in exp or "passed" not in exp:
-                        print(f"Warning: expectation in {grading_file} missing required fields (text, passed, evidence): {exp}")
+                        warnings.append(
+                            f"Expectation in {grading_file} is missing required fields (text, passed, evidence): {exp}"
+                        )
                 result["expectations"] = raw_expectations
 
                 # Extract notes from user_notes_summary
@@ -259,11 +273,17 @@ def aggregate_results(results: dict) -> dict:
     return run_summary
 
 
-def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: str = "") -> dict:
+def generate_benchmark(
+    benchmark_dir: Path,
+    skill_name: str = "",
+    skill_path: str = "",
+    warnings: list[str] | None = None,
+) -> dict:
     """
     Generate complete benchmark.json from run results.
     """
-    results = load_run_results(benchmark_dir)
+    warning_list = warnings if warnings is not None else []
+    results = load_run_results(benchmark_dir, warning_list)
     run_summary = aggregate_results(results)
 
     # Build runs array for benchmark.json
@@ -313,7 +333,7 @@ def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: st
         },
         "runs": runs,
         "run_summary": run_summary,
-        "notes": _load_analyst_notes(benchmark_dir)  # Markdown string from analyst-notes.md
+        "notes": _load_analyst_notes(benchmark_dir),
     }
 
     return benchmark
@@ -406,11 +426,31 @@ def main():
     args = parser.parse_args()
 
     if not args.benchmark_dir.exists():
-        print(f"Directory not found: {args.benchmark_dir}")
+        log(f"Error: directory not found: {args.benchmark_dir}")
+        emit_json(
+            {
+                "ok": False,
+                "benchmark_dir": str(args.benchmark_dir),
+                "error": f"Directory not found: {args.benchmark_dir}",
+                "hint": "Pass the iteration directory that contains eval-* results or a runs/ folder.",
+            }
+        )
         sys.exit(1)
 
-    # Generate benchmark
-    benchmark = generate_benchmark(args.benchmark_dir, args.skill_name, args.skill_path)
+    warnings: list[str] = []
+    benchmark = generate_benchmark(args.benchmark_dir, args.skill_name, args.skill_path, warnings)
+    if not benchmark["runs"]:
+        log("Error: no benchmark runs were discovered.")
+        emit_json(
+            {
+                "ok": False,
+                "benchmark_dir": str(args.benchmark_dir),
+                "error": "No benchmark runs were discovered.",
+                "warnings": warnings,
+                "hint": "Ensure each eval-* directory contains grading.json files.",
+            }
+        )
+        sys.exit(1)
 
     # Determine output paths
     output_json = args.output or (args.benchmark_dir / "benchmark.json")
@@ -419,25 +459,26 @@ def main():
     # Write benchmark.json
     with open(output_json, "w") as f:
         json.dump(benchmark, f, indent=2)
-    print(f"Generated: {output_json}")
+    log(f"Generated benchmark JSON: {output_json}")
 
     # Write benchmark.md
     markdown = generate_markdown(benchmark)
     with open(output_md, "w") as f:
         f.write(markdown)
-    print(f"Generated: {output_md}")
+    log(f"Generated benchmark Markdown: {output_md}")
+    for warning in warnings:
+        log(f"Warning: {warning}")
 
-    # Print summary
-    run_summary = benchmark["run_summary"]
-    configs = [k for k in run_summary if k != "delta"]
-    delta = run_summary.get("delta", {})
-
-    print(f"\nSummary:")
-    for config in configs:
-        pr = run_summary[config]["pass_rate"]["mean"]
-        label = config.replace("_", " ").title()
-        print(f"  {label}: {pr*100:.1f}% pass rate")
-    print(f"  Delta:         {delta.get('pass_rate', '—')}")
+    emit_json(
+        {
+            "ok": True,
+            "benchmark_dir": str(args.benchmark_dir.resolve()),
+            "benchmark_json": str(output_json.resolve()),
+            "benchmark_markdown": str(output_md.resolve()),
+            "run_summary": benchmark["run_summary"],
+            "warnings": warnings,
+        }
+    )
 
 
 if __name__ == "__main__":

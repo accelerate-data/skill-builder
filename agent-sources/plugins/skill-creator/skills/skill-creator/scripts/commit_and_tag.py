@@ -1,19 +1,9 @@
 #!/usr/bin/env python3
-"""
-Commit skill files and create a version tag in the skills git repo.
-
-Stages all changes, commits, and creates an auto-incrementing lightweight
-tag of the form ``<skill-name>/v<N>`` on HEAD.
-
-Usage:
-    python3 -m scripts.commit_and_tag <skills_path> --skill-name <name>
-    python3 -m scripts.commit_and_tag <skills_path> --skill-name <name> --message "custom msg"
-
-Output (stdout):
-    {"commit_sha": "abc123...", "tag": "my-skill/v1", "version": 1}
-
-Exits non-zero on error with a message on stderr.
-"""
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""Commit skill files and create a version tag in the skills git repo."""
 
 import argparse
 import json
@@ -21,6 +11,15 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+
+def emit_json(payload: dict) -> None:
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+
+
+def log(message: str) -> None:
+    print(message, file=sys.stderr)
 
 
 def run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
@@ -88,6 +87,12 @@ def commit_and_tag(skills_path: Path, skill_name: str, message: str) -> dict:
 def main():
     parser = argparse.ArgumentParser(
         description="Commit skill files and create a version tag.",
+        epilog=(
+            "Examples:\n"
+            "  uv run scripts/commit_and_tag.py ./skills --skill-name my-skill\n"
+            "  uv run scripts/commit_and_tag.py ./skills --skill-name my-skill --message \"my-skill: update\""
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "skills_path",
@@ -111,21 +116,48 @@ def main():
 
     # Validate
     if not skills_path.is_dir():
-        print(f"Error: skills_path does not exist: {skills_path}", file=sys.stderr)
+        log(f"Error: skills_path does not exist: {skills_path}")
+        emit_json(
+            {
+                "ok": False,
+                "skills_path": str(skills_path),
+                "skill_name": skill_name,
+                "error": f"skills_path does not exist: {skills_path}",
+                "hint": "Pass the root of the skills git repository.",
+            }
+        )
         sys.exit(1)
 
     skill_md = skills_path / skill_name / "SKILL.md"
     if not skill_md.is_file():
-        print(f"Error: SKILL.md not found at {skill_md}", file=sys.stderr)
+        log(f"Error: SKILL.md not found at {skill_md}")
+        emit_json(
+            {
+                "ok": False,
+                "skills_path": str(skills_path),
+                "skill_name": skill_name,
+                "error": f"SKILL.md not found at {skill_md}",
+                "hint": "Pass the repository root and a skill name whose folder contains SKILL.md.",
+            }
+        )
         sys.exit(1)
 
     message = args.message or f"{skill_name}: generate skill"
 
     try:
         result = commit_and_tag(skills_path, skill_name, message)
-        print(json.dumps(result))
+        emit_json({"ok": True, **result})
     except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        log(f"Error: {e}")
+        emit_json(
+            {
+                "ok": False,
+                "skills_path": str(skills_path),
+                "skill_name": skill_name,
+                "error": str(e),
+                "hint": "Check git status, commit hooks, and tag collisions, then retry.",
+            }
+        )
         sys.exit(1)
 
 
