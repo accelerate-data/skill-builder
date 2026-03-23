@@ -216,9 +216,9 @@ export function ImportedSkillsTab() {
             <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-muted">
               <Package className="size-6 text-muted-foreground" />
             </div>
-            <CardTitle>No imported skills</CardTitle>
+            <CardTitle>No plugins</CardTitle>
             <CardDescription>
-              Import a .skill package or browse the marketplace to add skills.
+              Browse the marketplace or upload a plugin package to get started.
             </CardDescription>
           </CardHeader>
         </Card>
