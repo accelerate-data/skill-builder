@@ -73,6 +73,59 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(sourceLabels.first()).toBeVisible();
   });
 
+  test("groups imported skills by plugin and keeps duplicate skill names distinct", async ({ page }) => {
+    await reloadWithOverrides(page, {
+      ...BASE_OVERRIDES,
+      list_imported_skills: [
+        {
+          skill_id: "plugin-a-001",
+          skill_name: "analytics-helper",
+          description: "Plugin A variant",
+          is_active: true,
+          disk_path: `${E2E_SKILLS_PATH}/plugin-a/analytics-helper`,
+          imported_at: new Date().toISOString(),
+          is_bundled: false,
+          purpose: "domain",
+          version: "1.0.0",
+          model: null,
+          argument_hint: null,
+          user_invocable: null,
+          disable_model_invocation: null,
+          marketplace_source_url: null,
+          plugin_slug: "plugin-a",
+          plugin_display_name: "Plugin Alpha",
+          is_default_plugin: false,
+        },
+        {
+          skill_id: "plugin-b-001",
+          skill_name: "analytics-helper",
+          description: "Plugin B variant",
+          is_active: true,
+          disk_path: `${E2E_SKILLS_PATH}/plugin-b/analytics-helper`,
+          imported_at: new Date().toISOString(),
+          is_bundled: false,
+          purpose: "domain",
+          version: "2.0.0",
+          model: null,
+          argument_hint: null,
+          user_invocable: null,
+          disable_model_invocation: null,
+          marketplace_source_url: null,
+          plugin_slug: "plugin-b",
+          plugin_display_name: "Plugin Beta",
+          is_default_plugin: false,
+        },
+      ],
+    });
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Import" }).first().click();
+
+    await expect(page.getByText("Plugin Alpha")).toBeVisible();
+    await expect(page.getByText("Plugin Beta")).toBeVisible();
+    await expect(page.getByText("analytics-helper")).toHaveCount(2);
+  });
+
   test("delete button visible for non-bundled skill and hidden for bundled", async ({ page }) => {
     // Non-bundled skill (analytics-helper) should have a delete button
     const deleteAnalytics = page.getByLabel("Delete analytics-helper");

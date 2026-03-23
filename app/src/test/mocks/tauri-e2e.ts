@@ -25,7 +25,9 @@ const defaultSettings = {
 const mockResponses: Record<string, unknown> = {
   get_settings: defaultSettings,
   save_settings: undefined,
+  update_user_settings: undefined,
   test_api_key: true,
+  set_log_level: undefined,
   get_default_skills_path: E2E_DEFAULT_SKILLS_PATH,
   check_node: {
     available: true,
@@ -70,8 +72,10 @@ const mockResponses: Record<string, unknown> = {
     ],
   },
   save_clarification_answers: undefined,
+  save_clarifications_content: undefined,
   read_file: "",
   check_workspace_path: true,
+  check_marketplace_updates: { library: [], workspace: [], registry_name: null, registry_names: [] },
   has_running_agents: false,
   start_agent: "agent-001",
   run_workflow_step: "agent-001",
@@ -94,6 +98,7 @@ const mockResponses: Record<string, unknown> = {
   // Skill locks
   acquire_lock: undefined,
   release_lock: undefined,
+  create_workflow_session: undefined,
   get_locked_skills: [],
   // Refine page
   start_refine_session: {
@@ -157,6 +162,7 @@ const mockResponses: Record<string, unknown> = {
   delete_imported_skill: undefined,
   export_skill: `${E2E_ROOT}/export/test-skill.zip`,
   get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
+  list_skill_files: [],
   // GitHub import
   parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
   list_github_skills: [
@@ -208,11 +214,50 @@ const mockResponses: Record<string, unknown> = {
   materialize_workflow_step_output: undefined,
   get_disabled_steps: [],
   end_workflow_session: undefined,
+  navigate_back_to_step: undefined,
   preview_step_reset: [],
   get_step_agent_runs: [],
   verify_step_output: true,
   read_latest_benchmark: null,
+  "plugin:log|log": undefined,
 };
+
+function normalizeListSkills(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.map((skill) => {
+    if (!skill || typeof skill !== "object" || Array.isArray(skill)) return skill;
+    const record = skill as Record<string, unknown>;
+    const name = typeof record.name === "string" ? record.name : "";
+    return {
+      library_key: name || null,
+      skill_source: "skill-builder",
+      plugin_slug: "no-plugin",
+      plugin_display_name: "No Plugin",
+      is_default_plugin: true,
+      ...record,
+      library_key:
+        typeof record.library_key === "string" || record.library_key === null
+          ? record.library_key
+          : (name || null),
+      skill_source:
+        typeof record.skill_source === "string" || record.skill_source === null
+          ? record.skill_source
+          : "skill-builder",
+      plugin_slug:
+        typeof record.plugin_slug === "string" || record.plugin_slug === null
+          ? record.plugin_slug
+          : "no-plugin",
+      plugin_display_name:
+        typeof record.plugin_display_name === "string" || record.plugin_display_name === null
+          ? record.plugin_display_name
+          : "No Plugin",
+      is_default_plugin:
+        typeof record.is_default_plugin === "boolean" || record.is_default_plugin === null
+          ? record.is_default_plugin
+          : true,
+    };
+  });
+}
 
 /** Normalize path separators to forward slashes for OS-agnostic comparison. */
 function normalizeSep(p: string): string {
@@ -312,6 +357,9 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
     | undefined;
   if (overrides && cmd in overrides) {
     let val = overrides[cmd];
+    if (cmd === "list_skills") {
+      val = normalizeListSkills(val);
+    }
     if (cmd === "read_file") {
       val = resolveReadFileMock(val, args);
     }
@@ -343,6 +391,9 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
 
   if (cmd in mockResponses) {
     let val = mockResponses[cmd];
+    if (cmd === "list_skills") {
+      val = normalizeListSkills(val);
+    }
     if (cmd === "read_file") {
       val = resolveReadFileMock(val, args);
     }
