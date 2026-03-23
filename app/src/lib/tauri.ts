@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, IterationMeta, PendingEval, SkillEvalContext } from "@/lib/types";
+import type { EvalQuery, OptimizationResult } from "@/lib/description-optimization";
 
 // Re-export invoke for flexible Tauri command invocation
 export { invoke };
@@ -608,6 +609,27 @@ export const checkStartupDeps = () =>
 
 export const getAllTags = () =>
   invoke<string[]>("get_all_tags");
+
+// --- Description Optimization ---
+
+export const generateEvalQueries = (
+  skillName: string,
+  workspacePath: string,
+  model: string | null,
+) => invoke<EvalQuery[]>("generate_eval_queries", { skillName, workspacePath, model });
+
+export const runOptimizationLoop = (
+  skillName: string,
+  workspacePath: string,
+  model: string,
+  evalQueries: EvalQuery[],
+) => invoke<OptimizationResult>("run_optimization_loop", { skillName, workspacePath, model, evalQueries });
+
+export const applyDescription = (
+  skillName: string,
+  workspacePath: string,
+  description: string,
+) => invoke<void>("apply_description", { skillName, workspacePath, description });
 
 // --- Benchmark ---
 

@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VU-720 — Description Optimization UI Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: oklch(0.956 0 0);
+    --fg: oklch(0.145 0.005 250);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.955 0.005 85);
+    --muted-fg: oklch(0.530 0.006 85);
+    --border: oklch(0.910 0.006 85);
+    --primary: oklch(0.680 0.120 210);
+    --primary-fg: oklch(1 0 0);
+    --destructive: oklch(0.570 0.180 25);
+    --sidebar-bg: oklch(0.965 0.004 85);
+    --seafoam: oklch(0.780 0.175 160);
+    --pacific: oklch(0.680 0.120 210);
+    --ocean: oklch(0.530 0.130 230);
+    --navy: oklch(0.215 0.105 265);
+    --amber: oklch(0.760 0.160 60);
+    --dot-red: oklch(0.570 0.180 25);
+    --dot-yellow: oklch(0.760 0.160 60);
+    --dot-green: oklch(0.780 0.175 160);
+    --green-bg: oklch(0.960 0.040 160);
+    --green-border: oklch(0.860 0.090 160);
+    --red-bg: oklch(0.965 0.030 25);
+    --red-border: oklch(0.880 0.080 25);
+  }
+
+  @keyframes dot-pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+  .dot-pulse { animation: dot-pulse 1.8s ease-in-out infinite; }
+  @keyframes progress-shimmer {
+    0% { background-position: -200px 0; }
+    100% { background-position: calc(200px + 100%) 0; }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 40px;
+  }
+
+  /* ─── Page chrome ─────────────────────────────────────────────── */
+  .page-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 6px;
+  }
+  .page-meta {
+    font-size: 12px;
+    color: var(--muted-fg);
+    margin-bottom: 40px;
+  }
+  .screen-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted-fg);
+    margin-bottom: 10px;
+  }
+  .screen-wrap {
+    margin-bottom: 56px;
+  }
+
+  /* ─── App frame ───────────────────────────────────────────────── */
+  .app-frame {
+    display: flex;
+    height: 640px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 24px oklch(0.145 0.005 250 / 0.08);
+  }
+
+  /* Icon sidebar */
+  .icon-sidebar {
+    width: 52px;
+    flex-shrink: 0;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0;
+    gap: 4px;
+  }
+  .icon-logo {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--navy); color: white;
+    font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; cursor: default; user-select: none;
+  }
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 6px;
+    border: none; background: none; color: var(--muted-fg);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .icon-btn svg { width: 18px; height: 18px; }
+  .icon-spacer { flex: 1; }
+
+  /* Left panel */
+  .left-panel {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+  }
+  .panel-topbar {
+    height: 44px; padding: 0 12px;
+    display: flex; align-items: center;
+    border-bottom: 1px solid var(--border);
+    gap: 6px; flex-shrink: 0;
+  }
+  .panel-title { font-size: 13px; font-weight: 600; color: var(--navy); }
+  .count-badge {
+    font-size: 11px; background: var(--muted); color: var(--muted-fg);
+    border-radius: 9999px; padding: 1px 6px; font-weight: 400;
+  }
+  .panel-topbar-right { margin-left: auto; }
+  .icon-btn-sm {
+    width: 28px; height: 28px; border-radius: 6px;
+    border: 1px solid var(--border); background: none; color: var(--pacific);
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .icon-btn-sm svg { width: 14px; height: 14px; }
+  .search-wrap { padding: 6px 10px; position: relative; flex-shrink: 0; }
+  .search-icon {
+    position: absolute; left: 18px; top: 50%; transform: translateY(-50%);
+    width: 12px; height: 12px; color: var(--muted-fg); pointer-events: none;
+    display: flex; align-items: center;
+  }
+  .search-icon svg { width: 12px; height: 12px; }
+  .search-input {
+    width: 100%; height: 28px; border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 10px 4px 28px; font-size: 12px; background: var(--bg);
+    color: var(--fg); font-family: inherit; outline: none;
+  }
+  .search-input::placeholder { color: var(--muted-fg); }
+  .skill-list { flex: 1; overflow-y: auto; }
+  .skill-row {
+    height: 46px; padding: 6px 10px 6px 12px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border); cursor: pointer;
+  }
+  .skill-row.selected {
+    background: color-mix(in oklch, var(--pacific), transparent 90%);
+    border-left: 2px solid var(--pacific);
+    padding-left: 10px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot-none {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    border: 1.5px solid var(--border); background: transparent;
+  }
+  .skill-info { flex: 1; min-width: 0; }
+  .skill-name {
+    font-size: 13px; font-weight: 500; color: var(--fg);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 130px; display: block;
+  }
+  .skill-purpose {
+    font-size: 11px; color: var(--muted-fg);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 130px; display: block;
+  }
+  .skill-meta { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; }
+  .skill-time { font-size: 10px; font-family: 'Courier New', monospace; color: var(--muted-fg); }
+  .more-btn {
+    width: 24px; height: 24px; border-radius: 4px;
+    border: none; background: none; color: var(--muted-fg);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0; margin-left: 4px;
+  }
+  .more-btn svg { width: 14px; height: 14px; }
+  .panel-bottom {
+    border-top: 1px solid var(--border); padding: 8px 12px;
+    display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  }
+  .panel-bottom-btn {
+    display: flex; align-items: center; gap: 6px;
+    border: none; background: none; color: var(--muted-fg);
+    font-size: 12px; cursor: pointer; padding: 0; font-family: inherit;
+  }
+  .panel-bottom-btn svg { width: 14px; height: 14px; }
+
+  /* Main area */
+  .main-area {
+    flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--bg);
+  }
+  .ws-header { flex-shrink: 0; background: var(--card); border-bottom: 1px solid var(--border); }
+  .ws-header-row1 { height: 48px; padding: 0 20px; display: flex; align-items: center; gap: 10px; }
+  .ws-skill-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .ws-skill-name { font-size: 14px; font-weight: 600; color: var(--navy); }
+  .ws-version-badge {
+    font-size: 11px; font-family: 'Courier New', monospace;
+    background: var(--muted); color: var(--muted-fg);
+    border-radius: 9999px; padding: 2px 7px;
+  }
+  .ws-type-badge {
+    font-size: 10px; color: var(--muted-fg);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 6px; font-weight: 500;
+  }
+  .ws-header-actions { margin-left: auto; }
+  .ws-more-btn {
+    width: 28px; height: 28px; border-radius: 6px;
+    border: 1px solid var(--border); background: none; color: var(--muted-fg);
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .ws-more-btn svg { width: 16px; height: 16px; }
+  .ws-tabs { display: flex; padding: 0 20px; }
+  .ws-tab {
+    font-size: 13px; color: var(--muted-fg); padding: 8px 14px;
+    border-bottom: 2px solid transparent; cursor: pointer;
+    white-space: nowrap; border-top: none; border-left: none; border-right: none;
+    background: none; font-family: inherit; margin-bottom: -1px;
+  }
+  .ws-tab.active { font-weight: 600; color: var(--fg); border-bottom-color: var(--pacific); }
+  .ws-tab.disabled { color: color-mix(in oklch, var(--muted-fg), transparent 40%); cursor: not-allowed; }
+
+  /* ─── Description tab content ─────────────────────────────────── */
+  .desc-content { flex: 1; overflow-y: auto; padding: 20px 28px; }
+  .desc-inner { max-width: 680px; }
+
+  /* Step indicator */
+  .step-indicator {
+    display: flex; align-items: center; gap: 0;
+    margin-bottom: 24px;
+  }
+  .step-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 500; color: var(--muted-fg);
+  }
+  .step-item.active { color: var(--pacific); }
+  .step-item.done { color: var(--seafoam); }
+  .step-num {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; flex-shrink: 0;
+    background: var(--card);
+    color: var(--muted-fg);
+  }
+  .step-item.active .step-num {
+    border-color: var(--pacific); color: var(--pacific);
+    background: color-mix(in oklch, var(--pacific), transparent 90%);
+  }
+  .step-item.done .step-num {
+    border-color: var(--seafoam); background: var(--seafoam); color: white;
+  }
+  .step-connector {
+    width: 32px; height: 2px; background: var(--border); flex-shrink: 0; margin: 0 4px;
+  }
+  .step-connector.done { background: var(--seafoam); }
+
+  /* Section headings */
+  .section-heading { font-size: 14px; font-weight: 600; color: var(--navy); }
+  .section-subheading { font-size: 12px; color: var(--muted-fg); margin-top: 4px; line-height: 1.5; }
+
+  /* Current description card */
+  .current-desc-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px; margin-top: 12px;
+  }
+  .current-desc-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--muted-fg); margin-bottom: 6px;
+  }
+  .current-desc-text { font-size: 13px; line-height: 1.6; color: var(--fg); }
+
+  /* Buttons */
+  .btn-primary {
+    height: 32px; padding: 0 16px;
+    background: var(--primary); color: var(--primary-fg);
+    border: none; border-radius: 6px; font-size: 12px; font-weight: 600;
+    cursor: pointer; font-family: inherit; display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  .btn-primary.green {
+    background: var(--seafoam);
+  }
+  .btn-primary.large {
+    height: 36px; padding: 0 20px; font-size: 13px; border-radius: 7px;
+  }
+  .btn-outline {
+    height: 32px; padding: 0 14px;
+    background: none; border: 1px solid var(--border);
+    color: var(--fg); border-radius: 6px; font-size: 12px; font-weight: 500;
+    cursor: pointer; font-family: inherit; display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  .btn-outline.large { height: 36px; padding: 0 18px; font-size: 13px; border-radius: 7px; }
+  .btn-ghost {
+    height: 32px; padding: 0 14px;
+    background: none; border: none; color: var(--muted-fg);
+    border-radius: 6px; font-size: 12px; cursor: pointer; font-family: inherit;
+    display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  .btn-destructive {
+    height: 32px; padding: 0 14px;
+    background: none; border: 1px solid color-mix(in oklch, var(--destructive), transparent 60%);
+    color: var(--destructive); border-radius: 6px; font-size: 12px; font-weight: 500;
+    cursor: pointer; font-family: inherit; display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  .action-row { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
+
+  /* Empty state */
+  .empty-state {
+    background: var(--card); border: 1px dashed var(--border);
+    border-radius: 8px; padding: 32px 20px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 8px; margin-top: 12px; text-align: center;
+  }
+  .empty-state-icon { color: var(--muted-fg); }
+  .empty-state-icon svg { width: 28px; height: 28px; }
+  .empty-state-text { font-size: 13px; color: var(--muted-fg); }
+
+  /* Query list */
+  .query-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .query-col-header {
+    font-size: 11px; font-weight: 600; padding: 0 0 8px 0;
+    display: flex; align-items: center; gap: 6px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .badge-trigger {
+    font-size: 10px; font-weight: 600; padding: 2px 7px;
+    border-radius: 9999px;
+    background: color-mix(in oklch, var(--seafoam), transparent 82%);
+    color: var(--seafoam);
+  }
+  .badge-notrigger {
+    font-size: 10px; font-weight: 600; padding: 2px 7px;
+    border-radius: 9999px;
+    background: color-mix(in oklch, var(--destructive), transparent 88%);
+    color: var(--destructive);
+  }
+  .query-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 6px 8px; border-radius: 5px; border: 1px solid transparent;
+    margin-bottom: 4px; background: var(--card);
+    border-color: var(--border);
+  }
+  .query-check {
+    font-size: 13px; flex-shrink: 0; margin-top: 1px;
+    color: var(--seafoam);
+  }
+  .query-x {
+    font-size: 13px; flex-shrink: 0; margin-top: 1px;
+    color: var(--destructive);
+  }
+  .query-text { font-size: 12px; color: var(--fg); flex: 1; line-height: 1.4; }
+  .query-actions { display: flex; gap: 2px; flex-shrink: 0; margin-top: 1px; }
+  .query-icon-btn {
+    width: 20px; height: 20px; border-radius: 4px;
+    border: none; background: none; color: var(--muted-fg);
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .query-icon-btn svg { width: 12px; height: 12px; }
+  .query-toggle {
+    width: 28px; height: 15px; border-radius: 9999px;
+    border: none; cursor: pointer; flex-shrink: 0; margin-top: 3px;
+    position: relative; transition: background 150ms;
+  }
+  .query-toggle.on { background: var(--seafoam); }
+  .query-toggle.off { background: color-mix(in oklch, var(--destructive), transparent 50%); }
+  .query-toggle::after {
+    content: '';
+    position: absolute; top: 2px;
+    width: 11px; height: 11px; border-radius: 50%; background: white;
+    transition: left 150ms;
+  }
+  .query-toggle.on::after { left: 15px; }
+  .query-toggle.off::after { left: 2px; }
+
+  /* Progress section */
+  .progress-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px; margin-top: 14px;
+  }
+  .progress-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .iteration-label { font-size: 13px; font-weight: 600; color: var(--fg); }
+  .iteration-sub { font-size: 12px; color: var(--muted-fg); }
+  .progress-bar-wrap {
+    height: 8px; background: var(--muted); border-radius: 9999px;
+    overflow: hidden; margin-bottom: 16px;
+  }
+  .progress-bar-fill {
+    height: 100%; border-radius: 9999px;
+    background: linear-gradient(90deg, var(--pacific) 0%, var(--seafoam) 100%);
+    background-size: 400px 100%;
+    animation: progress-shimmer 2s linear infinite;
+  }
+  .score-cards { display: flex; gap: 12px; margin-bottom: 14px; }
+  .score-card {
+    flex: 1; background: var(--muted); border-radius: 7px;
+    padding: 12px 14px;
+  }
+  .score-card-label { font-size: 11px; color: var(--muted-fg); margin-bottom: 4px; }
+  .score-card-value {
+    font-size: 22px; font-weight: 700; font-family: 'Courier New', monospace;
+  }
+  .score-card-value.train { color: var(--pacific); }
+  .score-card-value.test { color: var(--seafoam); }
+  .progress-status {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--muted-fg);
+  }
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--border);
+    border-top-color: var(--pacific);
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Results */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+  .score-table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+  .score-table th {
+    background: var(--muted); font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted-fg); padding: 6px 12px;
+    text-align: left; font-weight: 600;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  .score-table td {
+    border-bottom: 1px solid var(--border);
+    padding: 6px 12px; font-size: 12px; font-family: 'Courier New', monospace;
+  }
+  .score-table tr.best td {
+    background: color-mix(in oklch, var(--seafoam), transparent 90%);
+  }
+  .score-table td.strong { font-weight: 700; color: var(--seafoam); }
+  .best-badge {
+    display: inline-block; font-size: 10px;
+    background: color-mix(in oklch, var(--seafoam), transparent 82%);
+    color: var(--seafoam); border-radius: 9999px;
+    padding: 1px 7px; margin-left: 6px; font-weight: 600;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* Diff */
+  .diff-wrap { margin-top: 16px; display: flex; flex-direction: column; gap: 3px; }
+  .diff-row { border-radius: 7px; padding: 14px 16px; }
+  .diff-row.before {
+    background: var(--red-bg); border: 1px solid var(--red-border);
+  }
+  .diff-row.after {
+    background: var(--green-bg); border: 1px solid var(--green-border);
+  }
+  .diff-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+  }
+  .diff-row.before .diff-label { color: var(--destructive); }
+  .diff-row.after .diff-label { color: var(--seafoam); }
+  .diff-text { font-size: 13px; line-height: 1.65; }
+  .diff-row.before .diff-text { color: oklch(0.35 0.05 25); text-decoration: none; }
+  .diff-row.after .diff-text { color: oklch(0.25 0.08 160); }
+  .diff-del { background: oklch(0.900 0.060 25 / 0.5); border-radius: 2px; padding: 0 2px; }
+  .diff-ins { background: oklch(0.870 0.100 160 / 0.45); border-radius: 2px; padding: 0 2px; }
+
+  .apply-row { display: flex; gap: 10px; align-items: center; margin-top: 20px; }
+
+  /* ─── Helpers for stacked screens ─────────────────────────────── */
+  .screens-stack { display: flex; flex-direction: column; gap: 56px; }
+</style>
+</head>
+<body>
+
+<div class="page-title">VU-720 — Description Optimization UI</div>
+<div class="page-meta">Mockup · customer-support-triage skill · 4 screens showing the 3-step optimization workflow</div>
+
+<div class="screens-stack">
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SCREEN 1: Step 1 — Trigger queries, initial (empty) state
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="screen-wrap">
+  <div class="screen-label">Screen 1 — Step 1: Trigger Eval Queries (initial state)</div>
+  <div class="app-frame">
+
+    <!-- Icon sidebar -->
+    <aside class="icon-sidebar">
+      <div class="icon-logo">SB</div>
+      <div class="icon-spacer"></div>
+      <button class="icon-btn" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </aside>
+
+    <!-- Left panel -->
+    <div class="left-panel">
+      <div class="panel-topbar">
+        <span class="panel-title">Skills</span>
+        <span class="count-badge">8</span>
+        <div class="panel-topbar-right">
+          <button class="icon-btn-sm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="search-wrap">
+        <span class="search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <input type="text" class="search-input" placeholder="Search skills…" readonly>
+      </div>
+      <div class="skill-list">
+        <div class="skill-row selected"><span class="dot" style="background:var(--dot-yellow);"></span><div class="skill-info"><span class="skill-name">customer-support-triage</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">now</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">order-status-lookup</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">2h</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">billing-dispute</span><span class="skill-purpose">finance</span></div><div class="skill-meta"><span class="skill-time">1d</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">returns-refunds</span><span class="skill-purpose">ops</span></div><div class="skill-meta"><span class="skill-time">3d</span></div></div>
+        <div class="skill-row"><span class="dot dot-pulse" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">product-faq</span><span class="skill-purpose">knowledge</span></div><div class="skill-meta"><span class="skill-time">5d</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-red);"></span><div class="skill-info"><span class="skill-name">escalation-routing</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">1w</span></div></div>
+        <div class="skill-row"><span class="dot-none"></span><div class="skill-info"><span class="skill-name">shipping-tracker</span><span class="skill-purpose">logistics</span></div><div class="skill-meta"><span class="skill-time">2w</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">warranty-claims</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">3w</span></div></div>
+      </div>
+      <div class="panel-bottom">
+        <button class="panel-bottom-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </button>
+      </div>
+    </div>
+
+    <!-- Main area -->
+    <main class="main-area">
+      <div class="ws-header">
+        <div class="ws-header-row1">
+          <span class="ws-skill-dot" style="background:var(--dot-yellow);"></span>
+          <span class="ws-skill-name">customer-support-triage</span>
+          <span class="ws-version-badge">v2</span>
+          <span class="ws-type-badge">support</span>
+          <div class="ws-header-actions">
+            <button class="ws-more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+        </div>
+        <div class="ws-tabs">
+          <button class="ws-tab">Overview</button>
+          <button class="ws-tab">Refine</button>
+          <button class="ws-tab">Evals</button>
+          <button class="ws-tab active">Description</button>
+        </div>
+      </div>
+
+      <div class="desc-content">
+        <div class="desc-inner">
+
+          <!-- Step indicator -->
+          <div class="step-indicator">
+            <div class="step-item active">
+              <div class="step-num">1</div>
+              <span>Trigger Queries</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item">
+              <div class="step-num">2</div>
+              <span>Optimization Loop</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item">
+              <div class="step-num">3</div>
+              <span>Apply Result</span>
+            </div>
+          </div>
+
+          <!-- Current description -->
+          <div class="section-heading">Step 1: Trigger Eval Queries</div>
+          <div class="section-subheading">Generate queries that should and should not invoke this skill. These become the eval set for the optimization loop.</div>
+
+          <div class="current-desc-card">
+            <div class="current-desc-label">Current description</div>
+            <div class="current-desc-text">A skill for handling customer support tickets including returns, billing disputes, and escalations</div>
+          </div>
+
+          <div class="action-row">
+            <button class="btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Generate 20 queries
+            </button>
+          </div>
+
+          <!-- Empty state -->
+          <div class="empty-state" style="margin-top: 20px;">
+            <div class="empty-state-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
+            </div>
+            <div class="empty-state-text">No queries generated yet — click <strong>Generate</strong> to create eval queries.</div>
+          </div>
+
+          <div class="action-row" style="margin-top: 20px;">
+            <button class="btn-primary" style="opacity:0.38; cursor:not-allowed;" disabled>
+              Proceed to Optimize
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SCREEN 2: Step 1 — Queries generated
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="screen-wrap">
+  <div class="screen-label">Screen 2 — Step 1: Trigger Eval Queries (after generation)</div>
+  <div class="app-frame">
+
+    <aside class="icon-sidebar">
+      <div class="icon-logo">SB</div>
+      <div class="icon-spacer"></div>
+      <button class="icon-btn" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </aside>
+
+    <div class="left-panel">
+      <div class="panel-topbar">
+        <span class="panel-title">Skills</span>
+        <span class="count-badge">8</span>
+        <div class="panel-topbar-right">
+          <button class="icon-btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        </div>
+      </div>
+      <div class="search-wrap">
+        <span class="search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <input type="text" class="search-input" placeholder="Search skills…" readonly>
+      </div>
+      <div class="skill-list">
+        <div class="skill-row selected"><span class="dot" style="background:var(--dot-yellow);"></span><div class="skill-info"><span class="skill-name">customer-support-triage</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">now</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">order-status-lookup</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">2h</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">billing-dispute</span><span class="skill-purpose">finance</span></div><div class="skill-meta"><span class="skill-time">1d</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">returns-refunds</span><span class="skill-purpose">ops</span></div><div class="skill-meta"><span class="skill-time">3d</span></div></div>
+        <div class="skill-row"><span class="dot dot-pulse" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">product-faq</span><span class="skill-purpose">knowledge</span></div><div class="skill-meta"><span class="skill-time">5d</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-red);"></span><div class="skill-info"><span class="skill-name">escalation-routing</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">1w</span></div></div>
+        <div class="skill-row"><span class="dot-none"></span><div class="skill-info"><span class="skill-name">shipping-tracker</span><span class="skill-purpose">logistics</span></div><div class="skill-meta"><span class="skill-time">2w</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">warranty-claims</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">3w</span></div></div>
+      </div>
+      <div class="panel-bottom">
+        <button class="panel-bottom-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </button>
+      </div>
+    </div>
+
+    <main class="main-area">
+      <div class="ws-header">
+        <div class="ws-header-row1">
+          <span class="ws-skill-dot" style="background:var(--dot-yellow);"></span>
+          <span class="ws-skill-name">customer-support-triage</span>
+          <span class="ws-version-badge">v2</span>
+          <span class="ws-type-badge">support</span>
+          <div class="ws-header-actions">
+            <button class="ws-more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+        </div>
+        <div class="ws-tabs">
+          <button class="ws-tab">Overview</button>
+          <button class="ws-tab">Refine</button>
+          <button class="ws-tab">Evals</button>
+          <button class="ws-tab active">Description</button>
+        </div>
+      </div>
+
+      <div class="desc-content">
+        <div class="desc-inner">
+
+          <!-- Step indicator -->
+          <div class="step-indicator">
+            <div class="step-item active">
+              <div class="step-num">1</div>
+              <span>Trigger Queries</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item">
+              <div class="step-num">2</div>
+              <span>Optimization Loop</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item">
+              <div class="step-num">3</div>
+              <span>Apply Result</span>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:baseline; gap:10px; justify-content:space-between;">
+            <div>
+              <div class="section-heading">Step 1: Trigger Eval Queries</div>
+              <div class="section-subheading">20 queries generated · edit, delete, or toggle trigger intent</div>
+            </div>
+            <button class="btn-outline" style="flex-shrink:0;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+              Regenerate
+            </button>
+          </div>
+
+          <!-- Two-column query list -->
+          <div class="query-cols">
+
+            <!-- Should trigger column -->
+            <div>
+              <div class="query-col-header">
+                <span class="badge-trigger">Should trigger</span>
+                <span style="font-size:11px; color:var(--muted-fg); font-weight:400;">12 queries</span>
+              </div>
+              <div class="query-item">
+                <span class="query-check">✓</span>
+                <span class="query-text">Customer wants to return a damaged product</span>
+                <div class="query-actions">
+                  <button class="query-icon-btn" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                  <button class="query-icon-btn" title="Delete" style="color:var(--destructive);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  <button class="query-toggle on" title="Toggle trigger"></button>
+                </div>
+              </div>
+              <div class="query-item">
+                <span class="query-check">✓</span>
+                <span class="query-text">I need help with my billing statement</span>
+                <div class="query-actions">
+                  <button class="query-icon-btn" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                  <button class="query-icon-btn" title="Delete" style="color:var(--destructive);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  <button class="query-toggle on" title="Toggle trigger"></button>
+                </div>
+              </div>
+              <div class="query-item">
+                <span class="query-check">✓</span>
+                <span class="query-text">I was charged twice for the same order</span>
+                <div class="query-actions">
+                  <button class="query-icon-btn" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                  <button class="query-icon-btn" title="Delete" style="color:var(--destructive);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  <button class="query-toggle on" title="Toggle trigger"></button>
+                </div>
+              </div>
+              <div class="query-item">
+                <span class="query-check">✓</span>
+                <span class="query-text">Requesting a supervisor escalation</span>
+                <div class="query-actions">
+                  <button class="query-icon-btn" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                  <button class="query-icon-btn" title="Delete" style="color:var(--destructive);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  <button class="query-toggle on" title="Toggle trigger"></button>
+                </div>
+              </div>
+              <div class="query-item">
+                <span class="query-check">✓</span>
+                <span class="query-text">My refund has not arrived after two weeks</span>
+                <div class="query-actions">
+                  <button class="query-icon-btn" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                  <button class="query-icon-btn" title="Delete" style="color:var(--destructive);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  <button class="query-toggle on" title="Toggle trigger"></button>
+                </div>
+              </div>
+              <div class="query-item">
+                <span class="query-check">✓</span>
+                <span class="query-text">I'd like to exchange my item for a different size</span>
+                <div class="query-actions">
+                  <button class="query-icon-btn" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                  <button class="query-icon-btn" title="Delete" style="color:var(--destructive);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  <button class="query-toggle on" title="Toggle trigger"></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Should NOT trigger column -->
+            <div>
+              <div class="query-col-header">
+                <span class="badge-notrigger">Should NOT trigger</span>
+                <span style="font-size:11px; color:var(--muted-fg); font-weight:400;">8 queries</span>
+              </div>
+              <div class="query-item">
+                <span class="query-x">✗</span>
+                <span class="query-text">What's the weather like today?</span>
+                <div class="query-actions">
+                  <button class="query-icon-btn" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                  <button class="query-icon-btn" title="Delete" style="color:var(--destructive);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  <button class="query-toggle off" title="Toggle trigger"></button>
+                </div>
+              </div>
+              <div class="query-item">
+                <span class="query-x">✗</span>
+                <span class="query-text">Can you write me a Python script?</span>
+                <div class="query-actions">
+                  <button class="query-icon-btn" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                  <button class="query-icon-btn" title="Delete" style="color:var(--destructive);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  <button class="query-toggle off" title="Toggle trigger"></button>
+                </div>
+              </div>
+              <div class="query-item">
+                <span class="query-x">✗</span>
+                <span class="query-text">How do I install Node.js on macOS?</span>
+                <div class="query-actions">
+                  <button class="query-icon-btn" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                  <button class="query-icon-btn" title="Delete" style="color:var(--destructive);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  <button class="query-toggle off" title="Toggle trigger"></button>
+                </div>
+              </div>
+              <div class="query-item">
+                <span class="query-x">✗</span>
+                <span class="query-text">Summarize the French Revolution</span>
+                <div class="query-actions">
+                  <button class="query-icon-btn" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                  <button class="query-icon-btn" title="Delete" style="color:var(--destructive);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  <button class="query-toggle off" title="Toggle trigger"></button>
+                </div>
+              </div>
+              <div class="query-item">
+                <span class="query-x">✗</span>
+                <span class="query-text">Translate this sentence to Spanish</span>
+                <div class="query-actions">
+                  <button class="query-icon-btn" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                  <button class="query-icon-btn" title="Delete" style="color:var(--destructive);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  <button class="query-toggle off" title="Toggle trigger"></button>
+                </div>
+              </div>
+              <div class="query-item">
+                <span class="query-x">✗</span>
+                <span class="query-text">What are the best hiking trails near Denver?</span>
+                <div class="query-actions">
+                  <button class="query-icon-btn" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                  <button class="query-icon-btn" title="Delete" style="color:var(--destructive);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  <button class="query-toggle off" title="Toggle trigger"></button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Add query + proceed -->
+          <div class="action-row" style="margin-top: 14px;">
+            <button class="btn-outline">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add query
+            </button>
+            <div style="margin-left:auto;">
+              <button class="btn-primary">
+                Proceed to Optimize
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SCREEN 3: Step 2 — Optimization running
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="screen-wrap">
+  <div class="screen-label">Screen 3 — Step 2: Optimization Loop (running)</div>
+  <div class="app-frame">
+
+    <aside class="icon-sidebar">
+      <div class="icon-logo">SB</div>
+      <div class="icon-spacer"></div>
+      <button class="icon-btn" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </aside>
+
+    <div class="left-panel">
+      <div class="panel-topbar">
+        <span class="panel-title">Skills</span>
+        <span class="count-badge">8</span>
+        <div class="panel-topbar-right">
+          <button class="icon-btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        </div>
+      </div>
+      <div class="search-wrap">
+        <span class="search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <input type="text" class="search-input" placeholder="Search skills…" readonly>
+      </div>
+      <div class="skill-list">
+        <div class="skill-row selected"><span class="dot dot-pulse" style="background:var(--pacific);"></span><div class="skill-info"><span class="skill-name">customer-support-triage</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">now</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">order-status-lookup</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">2h</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">billing-dispute</span><span class="skill-purpose">finance</span></div><div class="skill-meta"><span class="skill-time">1d</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">returns-refunds</span><span class="skill-purpose">ops</span></div><div class="skill-meta"><span class="skill-time">3d</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">product-faq</span><span class="skill-purpose">knowledge</span></div><div class="skill-meta"><span class="skill-time">5d</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-red);"></span><div class="skill-info"><span class="skill-name">escalation-routing</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">1w</span></div></div>
+        <div class="skill-row"><span class="dot-none"></span><div class="skill-info"><span class="skill-name">shipping-tracker</span><span class="skill-purpose">logistics</span></div><div class="skill-meta"><span class="skill-time">2w</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">warranty-claims</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">3w</span></div></div>
+      </div>
+      <div class="panel-bottom">
+        <button class="panel-bottom-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </button>
+      </div>
+    </div>
+
+    <main class="main-area">
+      <div class="ws-header">
+        <div class="ws-header-row1">
+          <span class="ws-skill-dot dot-pulse" style="background:var(--pacific);"></span>
+          <span class="ws-skill-name">customer-support-triage</span>
+          <span class="ws-version-badge">v2</span>
+          <span class="ws-type-badge">support</span>
+          <div class="ws-header-actions">
+            <button class="ws-more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+        </div>
+        <div class="ws-tabs">
+          <button class="ws-tab">Overview</button>
+          <button class="ws-tab">Refine</button>
+          <button class="ws-tab">Evals</button>
+          <button class="ws-tab active">Description</button>
+        </div>
+      </div>
+
+      <div class="desc-content">
+        <div class="desc-inner">
+
+          <!-- Step indicator -->
+          <div class="step-indicator">
+            <div class="step-item done">
+              <div class="step-num">✓</div>
+              <span>Trigger Queries</span>
+            </div>
+            <div class="step-connector done"></div>
+            <div class="step-item active">
+              <div class="step-num">2</div>
+              <span>Optimization Loop</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item">
+              <div class="step-num">3</div>
+              <span>Apply Result</span>
+            </div>
+          </div>
+
+          <div class="section-heading">Step 2: Optimization Loop</div>
+          <div class="section-subheading">Running up to 5 iterations · 60/40 train/test split · 3x runs per query</div>
+
+          <div class="progress-card">
+            <div class="progress-header">
+              <div>
+                <div class="iteration-label">Iteration 2 / 5</div>
+                <div class="iteration-sub" style="margin-top:2px;">Improving description based on eval failures…</div>
+              </div>
+            </div>
+
+            <div class="progress-bar-wrap">
+              <div class="progress-bar-fill" style="width: 40%;"></div>
+            </div>
+
+            <div class="score-cards">
+              <div class="score-card">
+                <div class="score-card-label">Train score</div>
+                <div class="score-card-value train">0.73</div>
+              </div>
+              <div class="score-card">
+                <div class="score-card-label">Test score</div>
+                <div class="score-card-value test">0.68</div>
+              </div>
+              <div class="score-card">
+                <div class="score-card-label">Best so far</div>
+                <div class="score-card-value" style="color:var(--navy);">0.71</div>
+              </div>
+            </div>
+
+            <div class="progress-status">
+              <div class="spinner"></div>
+              Running 3x eval queries on iteration 2 description…
+            </div>
+          </div>
+
+          <!-- Previous iterations mini-log -->
+          <div style="margin-top: 18px; font-size: 12px; color: var(--muted-fg); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.06em;">Completed iterations</div>
+          <table class="score-table">
+            <thead>
+              <tr>
+                <th>Iteration</th>
+                <th>Train</th>
+                <th>Test</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td>0.58</td>
+                <td>0.52</td>
+                <td style="color:var(--muted-fg);">done</td>
+              </tr>
+              <tr>
+                <td>2 <span style="font-size:10px; color:var(--pacific); font-family:'Inter',sans-serif;">(running)</span></td>
+                <td>0.73</td>
+                <td>0.68</td>
+                <td style="color:var(--pacific);">…</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="action-row" style="margin-top: 20px;">
+            <button class="btn-destructive">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              Cancel
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SCREEN 4: Step 3 — Results, apply or discard
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="screen-wrap">
+  <div class="screen-label">Screen 4 — Step 3: Apply Result (optimization complete)</div>
+  <div class="app-frame">
+
+    <aside class="icon-sidebar">
+      <div class="icon-logo">SB</div>
+      <div class="icon-spacer"></div>
+      <button class="icon-btn" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </aside>
+
+    <div class="left-panel">
+      <div class="panel-topbar">
+        <span class="panel-title">Skills</span>
+        <span class="count-badge">8</span>
+        <div class="panel-topbar-right">
+          <button class="icon-btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        </div>
+      </div>
+      <div class="search-wrap">
+        <span class="search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <input type="text" class="search-input" placeholder="Search skills…" readonly>
+      </div>
+      <div class="skill-list">
+        <div class="skill-row selected"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">customer-support-triage</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">now</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">order-status-lookup</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">2h</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">billing-dispute</span><span class="skill-purpose">finance</span></div><div class="skill-meta"><span class="skill-time">1d</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">returns-refunds</span><span class="skill-purpose">ops</span></div><div class="skill-meta"><span class="skill-time">3d</span></div></div>
+        <div class="skill-row"><span class="dot dot-pulse" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">product-faq</span><span class="skill-purpose">knowledge</span></div><div class="skill-meta"><span class="skill-time">5d</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-red);"></span><div class="skill-info"><span class="skill-name">escalation-routing</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">1w</span></div></div>
+        <div class="skill-row"><span class="dot-none"></span><div class="skill-info"><span class="skill-name">shipping-tracker</span><span class="skill-purpose">logistics</span></div><div class="skill-meta"><span class="skill-time">2w</span></div></div>
+        <div class="skill-row"><span class="dot" style="background:var(--dot-green);"></span><div class="skill-info"><span class="skill-name">warranty-claims</span><span class="skill-purpose">support</span></div><div class="skill-meta"><span class="skill-time">3w</span></div></div>
+      </div>
+      <div class="panel-bottom">
+        <button class="panel-bottom-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </button>
+      </div>
+    </div>
+
+    <main class="main-area">
+      <div class="ws-header">
+        <div class="ws-header-row1">
+          <span class="ws-skill-dot" style="background:var(--dot-green);"></span>
+          <span class="ws-skill-name">customer-support-triage</span>
+          <span class="ws-version-badge">v2</span>
+          <span class="ws-type-badge">support</span>
+          <div class="ws-header-actions">
+            <button class="ws-more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+        </div>
+        <div class="ws-tabs">
+          <button class="ws-tab">Overview</button>
+          <button class="ws-tab">Refine</button>
+          <button class="ws-tab">Evals</button>
+          <button class="ws-tab active">Description</button>
+        </div>
+      </div>
+
+      <div class="desc-content">
+        <div class="desc-inner">
+
+          <!-- Step indicator — all complete -->
+          <div class="step-indicator">
+            <div class="step-item done">
+              <div class="step-num">✓</div>
+              <span>Trigger Queries</span>
+            </div>
+            <div class="step-connector done"></div>
+            <div class="step-item done">
+              <div class="step-num">✓</div>
+              <span>Optimization Loop</span>
+            </div>
+            <div class="step-connector done"></div>
+            <div class="step-item active">
+              <div class="step-num">3</div>
+              <span>Apply Result</span>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:baseline; gap:10px; justify-content:space-between;">
+            <div>
+              <div class="section-heading">Step 3: Apply Result</div>
+              <div class="section-subheading">5 iterations complete · best test score <strong style="color:var(--seafoam);">0.91</strong> at iteration 4</div>
+            </div>
+          </div>
+
+          <!-- Iteration scores table -->
+          <table class="score-table" style="margin-top: 14px;">
+            <thead>
+              <tr>
+                <th>Iteration</th>
+                <th>Train score</th>
+                <th>Test score</th>
+                <th>Delta</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td>0.58</td>
+                <td>0.52</td>
+                <td style="color:var(--muted-fg);">—</td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>0.73</td>
+                <td>0.68</td>
+                <td style="color:var(--seafoam);">+0.16</td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td>0.84</td>
+                <td>0.79</td>
+                <td style="color:var(--seafoam);">+0.11</td>
+              </tr>
+              <tr class="best">
+                <td>4 <span class="best-badge">best</span></td>
+                <td class="strong">0.94</td>
+                <td class="strong">0.91</td>
+                <td style="color:var(--seafoam); font-weight:700;">+0.12</td>
+              </tr>
+              <tr>
+                <td>5</td>
+                <td>0.91</td>
+                <td>0.88</td>
+                <td style="color:var(--destructive);">−0.03</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Before / After diff -->
+          <div style="margin-top: 20px; font-size: 12px; font-weight: 600; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">
+            Description diff — iteration 1 vs best (iteration 4)
+          </div>
+
+          <div class="diff-wrap">
+            <div class="diff-row before">
+              <div class="diff-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                Before (iteration 1)
+              </div>
+              <div class="diff-text">
+                A skill for handling <span class="diff-del">customer support tickets including</span> returns, billing disputes, and escalations
+              </div>
+            </div>
+            <div class="diff-row after">
+              <div class="diff-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                After (iteration 4 · best)
+              </div>
+              <div class="diff-text">
+                <span class="diff-ins">Use when a customer needs help with</span> product returns, billing disputes, <span class="diff-ins">order issues, or escalation to a supervisor. Covers post-purchase support flows including refunds, exchanges, and complaint resolution.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Apply / Discard -->
+          <div class="apply-row">
+            <button class="btn-primary green large">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Apply best description
+            </button>
+            <button class="btn-outline large">
+              Discard
+            </button>
+            <button class="btn-ghost">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+              Run again
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+</div><!-- end screens-stack -->
+</body>
+</html>
