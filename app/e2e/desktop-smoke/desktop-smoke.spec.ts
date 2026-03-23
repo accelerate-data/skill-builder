@@ -117,7 +117,7 @@ test.describe("Desktop Smoke", { tag: "@desktop-smoke" }, () => {
       await input.fill("Update the skill with new context");
 
       // Send the message
-      await input.press("Enter");
+      await page.getByTestId("refine-send-button").click();
 
       // User message should appear in the chat transcript
       await expect(page.getByText("Update the skill with new context").last()).toBeVisible({ timeout: 5_000 });
