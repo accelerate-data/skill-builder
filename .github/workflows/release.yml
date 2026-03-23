@@ -34,6 +34,14 @@ jobs:
             app/package-lock.json
             app/sidecar/package-lock.json
 
+      - name: Pin npm version
+        run: npm install -g npm@11.11.0
+
+      - name: Show tool versions
+        run: |
+          node --version
+          npm --version
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
