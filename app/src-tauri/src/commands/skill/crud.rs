@@ -363,6 +363,10 @@ pub(crate) fn create_skill_inner(
     // INTENTIONAL: DB committed first; git commit may fail.
     // Reconciler corrects disk/DB divergence on next startup.
     if let Some(sp) = skills_path {
+        // Regenerate marketplace manifests
+        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
+            log::warn!("Manifest regeneration failed after create: {}", e);
+        }
         let msg = format!("{}: created", name);
         if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
             log::warn!("Git auto-commit failed ({}): {}", msg, e);
@@ -458,6 +462,10 @@ pub(crate) fn delete_skill_inner(
 
     // Auto-commit: record the deletion in git
     if let Some(sp) = skills_path {
+        // Regenerate marketplace manifests
+        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
+            log::warn!("Manifest regeneration failed after delete: {}", e);
+        }
         let msg = format!("{}: deleted", name);
         if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
             log::warn!("Git auto-commit failed ({}): {}", msg, e);

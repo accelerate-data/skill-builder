@@ -7,9 +7,9 @@ use std::fs;
 use std::path::Path;
 use tempfile::tempdir;
 
-/// Helper: build the nested skill path under a root directory.
+/// Helper: build the nested skill path under a root directory (marketplace layout).
 fn nested_skill(root: &str, skill_name: &str) -> std::path::PathBuf {
-    Path::new(root).join(DEFAULT_PLUGIN_SLUG).join(skill_name)
+    Path::new(root).join("plugins").join(DEFAULT_PLUGIN_SLUG).join("skills").join(skill_name)
 }
 
 // ===== list_skills_inner tests =====
@@ -529,8 +529,8 @@ fn test_delete_skill_directory_traversal() {
 
     // The outside directory should still exist (not deleted)
     assert!(outside_dir.exists());
-    // The legitimate skill should still exist (nested under no-plugin)
-    assert!(workspace.join(DEFAULT_PLUGIN_SLUG).join("legit").exists());
+    // The legitimate skill should still exist (marketplace layout: plugins/no-plugin/skills/legit)
+    assert!(workspace.join("plugins").join(DEFAULT_PLUGIN_SLUG).join("skills").join("legit").exists());
 }
 
 #[test]
@@ -1465,16 +1465,16 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
     )
     .unwrap();
 
-    // Create the skills-path directory (simulating a completed skill, nested under no-plugin)
-    let plugin_dir = skills_dir.join(DEFAULT_PLUGIN_SLUG);
-    fs::create_dir_all(&plugin_dir).unwrap();
-    let skill_output = plugin_dir.join("rename-fail");
+    // Create the skills-path directory (simulating a completed skill, marketplace layout)
+    let skills_plugin_dir = skills_dir.join("plugins").join(DEFAULT_PLUGIN_SLUG).join("skills");
+    fs::create_dir_all(&skills_plugin_dir).unwrap();
+    let skill_output = skills_plugin_dir.join("rename-fail");
     fs::create_dir_all(&skill_output).unwrap();
     fs::write(skill_output.join("SKILL.md"), "# Test").unwrap();
 
-    // Make the no-plugin directory read-only so fs::rename fails
+    // Make the skills directory read-only so fs::rename fails
     let perms = std::fs::Permissions::from_mode(0o555);
-    fs::set_permissions(&plugin_dir, perms).unwrap();
+    fs::set_permissions(&skills_plugin_dir, perms).unwrap();
 
     let result = rename_skill_inner(
         "rename-fail",
@@ -1486,7 +1486,7 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
 
     // Restore permissions before assertions (cleanup)
     let restore_perms = std::fs::Permissions::from_mode(0o755);
-    let _ = fs::set_permissions(&plugin_dir, restore_perms);
+    let _ = fs::set_permissions(&skills_plugin_dir, restore_perms);
 
     // The rename should fail because the skills directory is read-only
     assert!(result.is_err(), "rename should fail when skills dir is read-only");
@@ -1500,7 +1500,7 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
     // The workspace directory should have been rolled back (old name preserved)
     // because rename_skill_inner rolls back workspace rename on skills rename failure
     assert!(
-        workspace.join(DEFAULT_PLUGIN_SLUG).join("rename-fail").exists(),
+        workspace.join("plugins").join(DEFAULT_PLUGIN_SLUG).join("skills").join("rename-fail").exists(),
         "workspace dir should be rolled back to old name"
     );
 }

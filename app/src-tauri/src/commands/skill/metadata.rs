@@ -194,6 +194,10 @@ pub fn rename_skill(
 
     // Auto-commit: skill renamed
     if let Some(ref sp) = skills_path {
+        // Regenerate marketplace manifests
+        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
+            log::warn!("Manifest regeneration failed after rename: {}", e);
+        }
         let msg = format!("{}: renamed from {}", new_name, old_name);
         if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
             log::warn!("Git auto-commit failed ({}): {}", msg, e);
@@ -289,11 +293,20 @@ pub(crate) fn rename_skill_inner(
         tx.commit().map_err(&tx_err)?;
     }
 
+    // Look up the actual plugin slug for this skill from the DB
+    let plugin_slug: String = conn
+        .query_row(
+            "SELECT p.slug FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE s.name = ?1",
+            rusqlite::params![new_name],
+            |row| row.get(0),
+        )
+        .unwrap_or_else(|_| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+
     // Move directories on disk (DB already committed — if disk fails, reconciler can fix)
     // Use resolve_skill_dir to find the existing directory (nested or legacy)
     let workspace_root = Path::new(workspace_path);
-    let workspace_old = crate::skill_paths::resolve_skill_dir(workspace_root, crate::skill_paths::DEFAULT_PLUGIN_SLUG, old_name);
-    let workspace_new = crate::skill_paths::nested_skill_dir(workspace_root, crate::skill_paths::DEFAULT_PLUGIN_SLUG, new_name);
+    let workspace_old = crate::skill_paths::resolve_skill_dir(workspace_root, &plugin_slug, old_name);
+    let workspace_new = crate::skill_paths::nested_skill_dir(workspace_root, &plugin_slug, new_name);
     if workspace_old.exists() {
         // Guard against directory traversal
         let canonical_workspace = fs::canonicalize(workspace_path).map_err(|e| e.to_string())?;
@@ -313,8 +326,8 @@ pub(crate) fn rename_skill_inner(
 
     if let Some(sp) = skills_path {
         let skills_root = Path::new(sp);
-        let skills_old = crate::skill_paths::resolve_skill_dir(skills_root, crate::skill_paths::DEFAULT_PLUGIN_SLUG, old_name);
-        let skills_new = crate::skill_paths::nested_skill_dir(skills_root, crate::skill_paths::DEFAULT_PLUGIN_SLUG, new_name);
+        let skills_old = crate::skill_paths::resolve_skill_dir(skills_root, &plugin_slug, old_name);
+        let skills_new = crate::skill_paths::nested_skill_dir(skills_root, &plugin_slug, new_name);
         if skills_old.exists() {
             let canonical_skills = fs::canonicalize(sp).map_err(|e| e.to_string())?;
             let canonical_old = fs::canonicalize(&skills_old).map_err(|e| e.to_string())?;
