@@ -29,8 +29,9 @@ jobs:
       # Public upstream repo; no PAT required — uses default GITHUB_TOKEN.
       UPSTREAM_REPO: anthropics/skills
       UPSTREAM_REF: ${{ github.event.inputs.upstream_ref || 'main' }}
-      # Upstream is a flat skill; we nest it inside our plugin wrapper.
-      UPSTREAM_SKILL_PATH: skill-creator
+      # Upstream skills live under the repo's skills/ directory; we nest the
+      # selected skill inside our plugin wrapper.
+      UPSTREAM_SKILL_PATH: skills/skill-creator
       LOCAL_PLUGIN_PATH: agent-sources/plugins/skill-creator
       LOCAL_SKILL_PATH: agent-sources/plugins/skill-creator/skills/skill-creator
       SYNC_BRANCH: chore/sync-anthropic-skills-skill-creator
