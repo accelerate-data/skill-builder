@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 const DEFAULT_PLUGIN_SLUG: &str = "no-plugin";
 
-fn slugify_plugin_name(name: &str) -> String {
+pub fn slugify_plugin_name(name: &str) -> String {
     let mut slug = String::with_capacity(name.len());
     let mut last_dash = false;
     for ch in name.chars() {
