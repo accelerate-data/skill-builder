@@ -7,9 +7,7 @@ use crate::types::AvailableSkill;
 
 use super::catalog::{discover_skills_from_catalog, extract_plugin_path};
 use super::http::{build_github_client, fetch_repo_tree, get_default_branch};
-use super::import::{
-    compute_skill_content_hash, import_single_skill, merge_imported_fields,
-};
+use super::import::{compute_skill_content_hash, import_single_skill, merge_imported_fields};
 use super::url::{marketplace_manifest_path, parse_github_url_inner};
 
 // ---------------------------------------------------------------------------
@@ -514,6 +512,73 @@ pub async fn import_marketplace_to_library(
         .await
         {
             Ok(mut skill) => {
+                let final_version = match skill.version.clone() {
+                    Some(version) => version,
+                    None => {
+                        let msg = format!(
+                            "Imported skill '{}' is missing a version after normalization",
+                            skill.skill_name
+                        );
+                        log::error!("[import_marketplace_to_library] {}", msg);
+                        if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
+                            log::warn!(
+                                "[import_marketplace_to_library] cleanup failed for '{}': {}",
+                                skill.disk_path,
+                                cleanup_err
+                            );
+                        }
+                        results.push(MarketplaceImportResult {
+                            skill_name: skill.skill_name,
+                            success: false,
+                            error: Some(msg),
+                        });
+                        continue;
+                    }
+                };
+
+                if let Err(e) = (|| -> Result<(), String> {
+                    if crate::git::skill_version_tag_exists(
+                        skills_dir,
+                        &skill.skill_name,
+                        &final_version,
+                    )? {
+                        return Err(format!(
+                            "Tag '{}' already exists",
+                            crate::git::skill_version_tag_name(&skill.skill_name, &final_version)
+                        ));
+                    }
+
+                    crate::git::commit_all(
+                        skills_dir,
+                        &format!("{}: import from marketplace", skill.skill_name),
+                    )?;
+                    crate::git::create_skill_version_tag(
+                        skills_dir,
+                        &skill.skill_name,
+                        &final_version,
+                    )?;
+                    Ok(())
+                })() {
+                    log::error!(
+                        "[import_marketplace_to_library] failed to commit/tag '{}': {}",
+                        skill.skill_name,
+                        e
+                    );
+                    if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
+                        log::warn!(
+                            "[import_marketplace_to_library] cleanup failed for '{}': {}",
+                            skill.disk_path,
+                            cleanup_err
+                        );
+                    }
+                    results.push(MarketplaceImportResult {
+                        skill_name: skill.skill_name,
+                        success: false,
+                        error: Some(e),
+                    });
+                    continue;
+                }
+
                 let conn = db.0.lock().map_err(|e| {
                     log::error!(
                         "[import_marketplace_to_library] failed to acquire DB lock for '{}': {}",
@@ -556,13 +621,6 @@ pub async fn import_marketplace_to_library(
                         "[import_marketplace_to_library] failed to save imported_skills record for '{}': {}",
                         skill.skill_name, e
                     );
-                    if let Err(ce) = fs::remove_dir_all(&skill.disk_path) {
-                        log::warn!(
-                            "[import_marketplace_to_library] cleanup failed for '{}': {}",
-                            skill.disk_path,
-                            ce
-                        );
-                    }
                     results.push(MarketplaceImportResult {
                         skill_name: skill.skill_name,
                         success: false,

@@ -1329,4 +1329,40 @@ mod tests {
             "skill dir must be written to disk"
         );
     }
+
+    #[tokio::test]
+    async fn test_import_single_skill_defaults_missing_version_on_disk() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/owner/repo/main/my-skill/SKILL.md")
+            .with_status(200)
+            .with_body("---\nname: my-skill\ndescription: A description\n---\n# Body\n")
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let tmp = tempfile::tempdir().unwrap();
+        let tree = make_tree(&[("my-skill/SKILL.md", "blob")]);
+
+        let skill = super::import::import_single_skill(
+            &client,
+            &server.url(),
+            "owner",
+            "repo",
+            "main",
+            "my-skill",
+            &tree,
+            tmp.path(),
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let written =
+            std::fs::read_to_string(tmp.path().join("my-skill").join("SKILL.md")).unwrap();
+        assert_eq!(skill.version.as_deref(), Some("1.0.0"));
+        assert!(written.contains("version:"));
+        assert!(written.contains("1.0.0"));
+    }
 }

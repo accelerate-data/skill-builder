@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 
 use crate::db::Db;
 use crate::types::AppSettings;
@@ -78,6 +79,89 @@ pub(crate) fn run_settings_startup_migrations(conn: &rusqlite::Connection) -> Re
 
     if dirty {
         crate::db::write_settings(conn, &settings)?;
+    }
+
+    if let Some(skills_path) = settings.skills_path.as_deref() {
+        backfill_missing_skill_versions(conn, skills_path)?;
+    }
+
+    Ok(())
+}
+
+fn backfill_missing_skill_versions(
+    conn: &rusqlite::Connection,
+    skills_path: &str,
+) -> Result<(), String> {
+    let skills_root = Path::new(skills_path);
+    if !skills_root.exists() {
+        return Ok(());
+    }
+
+    for entry in
+        fs::read_dir(skills_root).map_err(|e| format!("Failed to read skills path: {}", e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read skills entry: {}", e))?;
+        let skill_dir = entry.path();
+        if !skill_dir.is_dir() {
+            continue;
+        }
+
+        let skill_name = entry.file_name().to_string_lossy().to_string();
+        if skill_name.starts_with('.') {
+            continue;
+        }
+
+        let skill_md = skill_dir.join("SKILL.md");
+        if !skill_md.exists() {
+            continue;
+        }
+
+        let content = fs::read_to_string(&skill_md)
+            .map_err(|e| format!("Failed to read '{}': {}", skill_md.display(), e))?;
+        let frontmatter = crate::commands::imported_skills::parse_frontmatter_full(&content);
+        if frontmatter.version.is_some() {
+            continue;
+        }
+        if crate::git::skill_has_any_tag(skills_root, &skill_name)? {
+            log::info!(
+                "[startup] skipping version backfill for '{}' because a tag already exists",
+                skill_name
+            );
+            continue;
+        }
+
+        let final_version =
+            crate::commands::imported_skills::frontmatter::ensure_skill_frontmatter_version(
+                &skill_md, None,
+            )?;
+        crate::git::commit_all(
+            skills_root,
+            &format!("{}: backfill imported skill version", skill_name),
+        )?;
+        crate::git::create_skill_version_tag(skills_root, &skill_name, &final_version)?;
+
+        crate::db::set_skill_behaviour(
+            conn,
+            &skill_name,
+            None,
+            Some(&final_version),
+            None,
+            None,
+            None,
+            None,
+        )?;
+        conn.execute(
+            "UPDATE imported_skills SET version = ?2 WHERE skill_name = ?1",
+            rusqlite::params![&skill_name, &final_version],
+        )
+        .map_err(|e| e.to_string())?;
+
+        log::info!(
+            "[startup] backfilled missing version for '{}' with tag {}/v{}",
+            skill_name,
+            skill_name,
+            final_version
+        );
     }
 
     Ok(())
@@ -417,6 +501,66 @@ pub fn update_github_identity(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_run_settings_startup_migrations_backfills_missing_skill_version() {
+        let conn = crate::db::create_test_db_for_tests();
+        let dir = tempfile::tempdir().unwrap();
+        let skills_path = dir.path().join("skills");
+        std::fs::create_dir_all(skills_path.join("legacy-skill")).unwrap();
+        crate::git::ensure_repo(&skills_path).unwrap();
+        std::fs::write(
+            skills_path.join("legacy-skill").join("SKILL.md"),
+            "---\nname: legacy-skill\ndescription: Legacy\n---\n# Body\n",
+        )
+        .unwrap();
+
+        let mut settings = crate::types::AppSettings::default();
+        settings.skills_path = Some(skills_path.to_str().unwrap().to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+        crate::db::upsert_skill_with_source(&conn, "legacy-skill", "imported", "domain").unwrap();
+
+        run_settings_startup_migrations(&conn).unwrap();
+
+        let updated =
+            std::fs::read_to_string(skills_path.join("legacy-skill").join("SKILL.md")).unwrap();
+        assert!(updated.contains("version: 1.0.0"));
+        assert!(
+            crate::git::skill_version_tag_exists(&skills_path, "legacy-skill", "1.0.0").unwrap()
+        );
+        let skill = crate::db::list_all_skills(&conn)
+            .unwrap()
+            .into_iter()
+            .find(|skill| skill.name == "legacy-skill")
+            .unwrap();
+        assert_eq!(skill.version.as_deref(), Some("1.0.0"));
+    }
+
+    #[test]
+    fn test_run_settings_startup_migrations_skips_when_tag_exists() {
+        let conn = crate::db::create_test_db_for_tests();
+        let dir = tempfile::tempdir().unwrap();
+        let skills_path = dir.path().join("skills");
+        let skill_dir = skills_path.join("legacy-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        crate::git::ensure_repo(&skills_path).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: legacy-skill\ndescription: Legacy\n---\n# Body\n",
+        )
+        .unwrap();
+        crate::git::commit_all(&skills_path, "legacy-skill: seed").unwrap();
+        crate::git::create_skill_version_tag(&skills_path, "legacy-skill", "1.0.0").unwrap();
+
+        let mut settings = crate::types::AppSettings::default();
+        settings.skills_path = Some(skills_path.to_str().unwrap().to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        run_settings_startup_migrations(&conn).unwrap();
+
+        let updated = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+        assert!(!updated.contains("version: 1.0.0"));
+    }
 
     #[test]
     fn test_normalize_path_no_change_needed() {
