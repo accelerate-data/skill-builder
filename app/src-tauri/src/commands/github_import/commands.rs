@@ -781,6 +781,13 @@ pub async fn import_marketplace_to_library(
     import_marketplace_entries_to_library(db, source_url, skill_paths, metadata_overrides, None).await
 }
 
+/// Import an entire plugin directory from a marketplace registry.
+///
+/// This follows the Claude Code plugin standard:
+/// 1. Download the whole plugin directory (plugin.json, skills/, agents/, hooks/, etc.)
+/// 2. Read plugin.json from disk for metadata
+/// 3. Enumerate skills from the downloaded skills/ directory
+/// 4. Create DB rows: plugin → skills → imported_skills
 #[tauri::command]
 pub async fn import_marketplace_plugin_to_library(
     db: tauri::State<'_, Db>,
@@ -788,14 +795,24 @@ pub async fn import_marketplace_plugin_to_library(
     plugin_path: String,
     plugin_name: String,
 ) -> Result<Vec<MarketplaceImportResult>, String> {
+    use super::import::{download_plugin_directory, read_plugin_json, enumerate_plugin_skills, compute_skill_content_hash};
+
+    log::info!(
+        "[import_marketplace_plugin_to_library] plugin='{}' path='{}' source='{}'",
+        plugin_name, plugin_path, source_url
+    );
+
     let repo_info = parse_github_url_inner(&source_url)?;
-    let token = {
+    let (workspace_path, skills_path, token) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings(&conn)?;
-        settings.github_oauth_token.clone()
+        let wp = settings.workspace_path.ok_or("Workspace path not initialized")?;
+        let sp = settings.skills_path.ok_or("Skills path not configured")?;
+        (wp, sp, settings.github_oauth_token.clone())
     };
+
     let client = build_github_client(token.as_deref());
-    let (_branch, tree) = fetch_repo_tree(
+    let (branch, tree) = fetch_repo_tree(
         &client,
         &repo_info.owner,
         &repo_info.repo,
@@ -803,40 +820,168 @@ pub async fn import_marketplace_plugin_to_library(
     )
     .await?;
 
-    let skills_prefix = if plugin_path.is_empty() {
-        "skills/".to_string()
-    } else {
-        format!("{}/skills/", plugin_path)
-    };
-    let skill_paths = tree
-        .into_iter()
-        .filter_map(|entry| {
-            let path = entry["path"].as_str()?;
-            let entry_type = entry["type"].as_str()?;
-            if entry_type != "blob" || !path.ends_with("/SKILL.md") {
-                return None;
-            }
-            let dir = path.strip_suffix("/SKILL.md")?;
-            let skill_name = dir.strip_prefix(&skills_prefix)?;
-            if skill_name.is_empty() || skill_name.contains('/') {
-                return None;
-            }
-            Some(dir.to_string())
-        })
-        .collect::<Vec<_>>();
+    let skills_root = Path::new(&skills_path);
+    let plugin_slug = crate::db::slugify_plugin_name(&plugin_name);
 
-    if skill_paths.is_empty() {
+    // --- Step 1: Download the entire plugin directory to disk ---
+    let dest_plugin_dir = skills_root.join("plugins").join(&plugin_slug);
+    download_plugin_directory(
+        &client,
+        "https://raw.githubusercontent.com",
+        &repo_info.owner,
+        &repo_info.repo,
+        &branch,
+        &plugin_path,
+        &tree,
+        &dest_plugin_dir,
+    )
+    .await?;
+
+    // --- Step 2: Read plugin.json from disk for metadata ---
+    let (pj_name, pj_description, pj_version) = read_plugin_json(&dest_plugin_dir);
+    let display_name = if pj_name.is_empty() { plugin_name.clone() } else { pj_name };
+
+    // --- Step 3: Create plugin row in DB ---
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::ensure_plugin(
+        &conn,
+        &plugin_slug,
+        &display_name,
+        "marketplace",
+        Some(&source_url),
+        pj_version.as_deref(),
+        false,
+    )?;
+
+    // --- Step 4: Enumerate skills from the downloaded plugin directory ---
+    let skills = enumerate_plugin_skills(&dest_plugin_dir);
+    if skills.is_empty() {
         return Err(format!("Plugin '{}' contains no importable skills", plugin_name));
     }
 
-    import_marketplace_entries_to_library(
-        db,
-        source_url,
-        skill_paths,
-        None,
-        Some(plugin_name),
-    )
-    .await
+    let mut results: Vec<MarketplaceImportResult> = Vec::new();
+    let imported_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    for (skill_name, skill_dir) in &skills {
+        // Read frontmatter from the downloaded SKILL.md
+        let skill_md_path = skill_dir.join("SKILL.md");
+        let skill_md_content = match std::fs::read_to_string(&skill_md_path) {
+            Ok(c) => c,
+            Err(e) => {
+                results.push(MarketplaceImportResult {
+                    skill_name: skill_name.clone(),
+                    success: false,
+                    error: Some(format!("Failed to read SKILL.md: {}", e)),
+                });
+                continue;
+            }
+        };
+
+        let fm = crate::commands::imported_skills::frontmatter::parse_frontmatter_full(&skill_md_content);
+        let version = fm.version.as_deref().unwrap_or("0.1.0");
+        let purpose = "domain";
+
+        // Step 4a: Create skill master row (with plugin FK)
+        let skill_master_id = match crate::db::upsert_skill_in_plugin(
+            &conn,
+            skill_name,
+            "marketplace",
+            purpose,
+            &plugin_slug,
+        ) {
+            Ok(id) => id,
+            Err(e) => {
+                results.push(MarketplaceImportResult {
+                    skill_name: skill_name.clone(),
+                    success: false,
+                    error: Some(format!("Failed to create skill master: {}", e)),
+                });
+                continue;
+            }
+        };
+
+        // Update frontmatter metadata on skill master
+        let _ = conn.execute(
+            "UPDATE skills SET description = ?2, version = ?3, model = ?4, argument_hint = ?5,
+                    user_invocable = ?6, disable_model_invocation = ?7, updated_at = datetime('now')
+             WHERE id = ?1",
+            rusqlite::params![
+                skill_master_id,
+                fm.description,
+                fm.version,
+                fm.model,
+                fm.argument_hint,
+                fm.user_invocable.map(|v| v as i32),
+                fm.disable_model_invocation.map(|v| v as i32),
+            ],
+        );
+
+        // Step 4b: Create imported_skills row (with skill master FK)
+        let skill_id = crate::commands::imported_skills::generate_skill_id(skill_name);
+        let imported_skill = crate::types::ImportedSkill {
+            skill_id,
+            skill_name: skill_name.clone(),
+            library_key: None,
+            is_active: true,
+            disk_path: skill_dir.to_string_lossy().to_string(),
+            imported_at: imported_at.clone(),
+            is_bundled: false,
+            description: fm.description.clone(),
+            purpose: Some(purpose.to_string()),
+            version: Some(version.to_string()),
+            model: fm.model.clone(),
+            argument_hint: fm.argument_hint.clone(),
+            user_invocable: fm.user_invocable,
+            disable_model_invocation: fm.disable_model_invocation,
+            marketplace_source_url: Some(source_url.clone()),
+            plugin_slug: Some(plugin_slug.clone()),
+            plugin_display_name: Some(display_name.clone()),
+            is_default_plugin: Some(false),
+        };
+
+        if let Err(e) = crate::db::upsert_imported_skill(&conn, &imported_skill, skill_master_id) {
+            results.push(MarketplaceImportResult {
+                skill_name: skill_name.clone(),
+                success: false,
+                error: Some(e),
+            });
+            continue;
+        }
+
+        // Set content hash for update detection
+        if let Some(hash) = compute_skill_content_hash(&skill_dir.to_string_lossy()) {
+            let _ = crate::db::set_imported_skill_content_hash(&conn, skill_name, &hash);
+        }
+
+        // Git: commit and tag
+        if let Err(e) = (|| -> Result<(), String> {
+            crate::git::commit_all(skills_root, &format!("{}: import from marketplace", skill_name))?;
+            if !crate::git::skill_version_tag_exists(skills_root, skill_name, version)? {
+                crate::git::create_skill_version_tag(skills_root, skill_name, version)?;
+            }
+            Ok(())
+        })() {
+            log::warn!("[import_marketplace_plugin_to_library] git operations failed for '{}': {}", skill_name, e);
+        }
+
+        results.push(MarketplaceImportResult {
+            skill_name: skill_name.clone(),
+            success: true,
+            error: None,
+        });
+    }
+
+    // --- Step 5: Regenerate manifests and update CLAUDE.md ---
+    if results.iter().any(|r| r.success) {
+        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(skills_root) {
+            log::warn!("[import_marketplace_plugin_to_library] manifest regeneration failed: {}", e);
+        }
+        if let Err(e) = crate::commands::workflow::update_skills_section(&workspace_path, &conn) {
+            log::warn!("[import_marketplace_plugin_to_library] CLAUDE.md update failed: {}", e);
+        }
+    }
+
+    Ok(results)
 }
 
 // ---------------------------------------------------------------------------
