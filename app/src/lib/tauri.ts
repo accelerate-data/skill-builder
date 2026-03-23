@@ -291,8 +291,8 @@ export const recordReconciliationCancel = (
 export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
   invoke("resolve_orphan", { skillName, action });
 
-export const resolveDiscovery = (skillName: string, action: string) =>
-  invoke<void>("resolve_discovery", { skillName, action });
+export const resolveDiscovery = (skillName: string, action: string, pluginSlug?: string | null) =>
+  invoke<void>("resolve_discovery", { skillName, action, pluginSlug: pluginSlug ?? null });
 
 // --- Feedback ---
 

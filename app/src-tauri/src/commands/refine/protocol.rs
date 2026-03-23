@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::agents::sidecar::SidecarConfig;
 use crate::commands::workflow::resolve_model_id;
 use crate::db::{self, Db};
+use crate::skill_paths::resolve_skill_dir;
 use crate::types::SecretString;
 
 /// Max agentic turns for the entire streaming session. Each user message may
@@ -27,8 +28,8 @@ pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
 }
 
-pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, skill_name: &str) {
-    let skill_workspace_dir = Path::new(workspace_path).join(skill_name);
+pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, plugin_slug: &str, skill_name: &str) {
+    let skill_workspace_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     if !skill_workspace_dir.exists() {
         if let Err(e) = std::fs::create_dir_all(&skill_workspace_dir) {
             log::warn!(
@@ -66,6 +67,7 @@ pub(super) fn load_refine_runtime_settings(
     let skills_path = settings
         .skills_path
         .unwrap_or_else(|| workspace_path.to_string());
+    let plugin_slug = super::resolve_skill_plugin_slug(db, skill_name)?;
     let settings_author = settings
         .github_user_email
         .clone()
@@ -77,7 +79,7 @@ pub(super) fn load_refine_runtime_settings(
         .map(|r| r.purpose.clone())
         .unwrap_or_else(|| "domain".to_string());
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-    let skill_md_path = Path::new(&skills_path).join(skill_name).join("SKILL.md");
+    let skill_md_path = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, skill_name).join("SKILL.md");
     let frontmatter = std::fs::read_to_string(&skill_md_path)
         .ok()
         .map(|content| crate::commands::imported_skills::parse_frontmatter_full(&content))
@@ -196,9 +198,26 @@ pub(super) fn build_refine_config(
 /// Build a follow-up prompt for subsequent messages in the streaming session.
 /// Just the user's message + optional file targeting. No command prefix —
 /// Claude already has the full context from the initial prompt.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn build_followup_prompt(
     user_message: &str,
     skills_path: &str,
+    skill_name: &str,
+    target_files: Option<&[String]>,
+) -> String {
+    build_followup_prompt_for_plugin(
+        user_message,
+        skills_path,
+        "no-plugin",
+        skill_name,
+        target_files,
+    )
+}
+
+pub(super) fn build_followup_prompt_for_plugin(
+    user_message: &str,
+    skills_path: &str,
+    plugin_slug: &str,
     skill_name: &str,
     target_files: Option<&[String]>,
 ) -> String {
@@ -206,7 +225,7 @@ pub(super) fn build_followup_prompt(
 
     if let Some(files) = target_files {
         if !files.is_empty() {
-            let skill_dir = Path::new(skills_path).join(skill_name);
+            let skill_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
             let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
             let abs_files: Vec<String> = files
                 .iter()
@@ -225,6 +244,7 @@ pub(super) fn build_followup_prompt(
 
 /// Build the refine prompt. Sends workspace context + the user's message.
 /// Claude decides which agent to invoke based on the message content.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn build_refine_prompt(
     skill_name: &str,
     workspace_path: &str,
@@ -232,9 +252,27 @@ pub(super) fn build_refine_prompt(
     user_message: &str,
     target_files: Option<&[String]>,
 ) -> String {
-    let workspace_dir = Path::new(workspace_path).join(skill_name);
+    build_refine_prompt_for_plugin(
+        skill_name,
+        workspace_path,
+        skills_path,
+        "no-plugin",
+        user_message,
+        target_files,
+    )
+}
+
+pub(super) fn build_refine_prompt_for_plugin(
+    skill_name: &str,
+    workspace_path: &str,
+    skills_path: &str,
+    plugin_slug: &str,
+    user_message: &str,
+    target_files: Option<&[String]>,
+) -> String {
+    let workspace_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let skill_output_dir = Path::new(skills_path).join(skill_name);
+    let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
 
     let mut prompt = format!(

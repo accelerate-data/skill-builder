@@ -228,33 +228,33 @@ function normalizeListSkills(value: unknown): unknown {
     if (!skill || typeof skill !== "object" || Array.isArray(skill)) return skill;
     const record = skill as Record<string, unknown>;
     const name = typeof record.name === "string" ? record.name : "";
+    const libraryKey =
+      typeof record.library_key === "string" || record.library_key === null
+        ? record.library_key
+        : (name || null);
+    const skillSource =
+      typeof record.skill_source === "string" || record.skill_source === null
+        ? record.skill_source
+        : "skill-builder";
+    const pluginSlug =
+      typeof record.plugin_slug === "string" || record.plugin_slug === null
+        ? record.plugin_slug
+        : "no-plugin";
+    const pluginDisplayName =
+      typeof record.plugin_display_name === "string" || record.plugin_display_name === null
+        ? record.plugin_display_name
+        : "No Plugin";
+    const isDefaultPlugin =
+      typeof record.is_default_plugin === "boolean" || record.is_default_plugin === null
+        ? record.is_default_plugin
+        : true;
     return {
-      library_key: name || null,
-      skill_source: "skill-builder",
-      plugin_slug: "no-plugin",
-      plugin_display_name: "No Plugin",
-      is_default_plugin: true,
       ...record,
-      library_key:
-        typeof record.library_key === "string" || record.library_key === null
-          ? record.library_key
-          : (name || null),
-      skill_source:
-        typeof record.skill_source === "string" || record.skill_source === null
-          ? record.skill_source
-          : "skill-builder",
-      plugin_slug:
-        typeof record.plugin_slug === "string" || record.plugin_slug === null
-          ? record.plugin_slug
-          : "no-plugin",
-      plugin_display_name:
-        typeof record.plugin_display_name === "string" || record.plugin_display_name === null
-          ? record.plugin_display_name
-          : "No Plugin",
-      is_default_plugin:
-        typeof record.is_default_plugin === "boolean" || record.is_default_plugin === null
-          ? record.is_default_plugin
-          : true,
+      library_key: libraryKey,
+      skill_source: skillSource,
+      plugin_slug: pluginSlug,
+      plugin_display_name: pluginDisplayName,
+      is_default_plugin: isDefaultPlugin,
     };
   });
 }

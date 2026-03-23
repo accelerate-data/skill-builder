@@ -1,4 +1,7 @@
 use crate::db::Db;
+use crate::skill_paths::{
+    ensure_nested_skill_dir, resolve_skill_dir, DEFAULT_PLUGIN_SLUG,
+};
 use crate::types::ReconciliationResult;
 use std::fs;
 use std::path::Path;
@@ -178,6 +181,7 @@ fn validate_path_within(parent: &Path, skill_name: &str, label: &str) -> Result<
 pub fn resolve_discovery(
     skill_name: String,
     action: String,
+    plugin_slug: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!("[resolve_discovery] skill={} action={}", skill_name, action);
@@ -197,34 +201,62 @@ pub fn resolve_discovery(
         .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
 
+    let plugin_slug = plugin_slug.unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string());
+
     match action.as_str() {
         "add-skill-builder" => {
             // Add as skill-builder with workflow_runs at step 5
-            crate::db::save_workflow_run(
-                &conn, &skill_name, 5, "completed", "domain",
-            )?;
+            let plugin_id = if plugin_slug == DEFAULT_PLUGIN_SLUG {
+                crate::db::ensure_default_plugin(&conn)?
+            } else {
+                crate::db::get_plugin_id_by_slug(&conn, &plugin_slug)?
+                    .unwrap_or_else(|| crate::db::create_plugin(&conn, &plugin_slug, "local", None, None).map(|(id, _)| id).unwrap())
+            };
+            crate::db::upsert_skill_in_plugin(&conn, &skill_name, "skill-builder", "domain", &plugin_slug)?;
+            conn.execute(
+                "INSERT INTO workflow_runs (skill_name, current_step, status, purpose, skill_id, updated_at)
+                 VALUES (?1, 5, 'completed', 'domain',
+                         (SELECT s.id FROM skills s JOIN plugins p ON p.id = s.plugin_id WHERE s.name = ?1 AND p.id = ?2),
+                         datetime('now') || 'Z')
+                 ON CONFLICT(skill_name) DO UPDATE SET current_step = 5, status = 'completed', purpose = 'domain', updated_at = datetime('now') || 'Z'",
+                rusqlite::params![&skill_name, plugin_id],
+            )
+            .map_err(|e| e.to_string())?;
             // Validate workspace path before creating directory
             let ws_path = Path::new(&workspace_path);
-            validate_path_within(ws_path, &skill_name, "workspace_path")?;
+            let workspace_dir = ensure_nested_skill_dir(ws_path, &plugin_slug, &skill_name)?;
+            if workspace_dir.exists() {
+                validate_path_within(ws_path, &skill_name, "workspace_path")?;
+            }
             // Create workspace marker
-            let workspace_dir = ws_path.join(&skill_name);
             let _ = fs::create_dir_all(&workspace_dir);
-            log::info!("[resolve_discovery] '{}': added as skill-builder (completed)", skill_name);
+            log::info!(
+                "[resolve_discovery] '{}': added as skill-builder (completed) in plugin '{}'",
+                skill_name,
+                plugin_slug
+            );
             Ok(())
         }
         "add-imported" => {
             // Add as imported, clear context folder — force skill_source to "imported"
-            crate::db::upsert_skill_with_source(&conn, &skill_name, "imported", "domain")?;
+            crate::db::upsert_skill_with_source_in_plugin(&conn, &skill_name, "imported", "domain", &plugin_slug)?;
             // Validate workspace_path before touching context filesystem
             let wp = Path::new(&workspace_path);
-            validate_path_within(wp, &skill_name, "workspace_path")?;
+            let workspace_root = resolve_skill_dir(wp, &plugin_slug, &skill_name);
+            if workspace_root.exists() {
+                validate_path_within(wp, &skill_name, "workspace_path")?;
+            }
             // Clear context folder
-            let context_dir = wp.join(&skill_name).join("context");
+            let context_dir = workspace_root.join("context");
             if context_dir.exists() {
                 let _ = fs::remove_dir_all(&context_dir);
                 log::info!("[resolve_discovery] '{}': cleared context folder", skill_name);
             }
-            log::info!("[resolve_discovery] '{}': added as imported", skill_name);
+            log::info!(
+                "[resolve_discovery] '{}': added as imported in plugin '{}'",
+                skill_name,
+                plugin_slug
+            );
             Ok(())
         }
         "remove" => {
@@ -232,7 +264,7 @@ pub fn resolve_discovery(
             let sp = Path::new(&skills_path);
             validate_path_within(sp, &skill_name, "skills_path")?;
             // Delete from disk
-            let skill_dir = sp.join(&skill_name);
+            let skill_dir = resolve_skill_dir(sp, &plugin_slug, &skill_name);
             if skill_dir.exists() {
                 fs::remove_dir_all(&skill_dir)
                     .map_err(|e| format!("Failed to remove '{}': {}", skill_name, e))?;

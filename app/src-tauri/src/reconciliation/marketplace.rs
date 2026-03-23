@@ -1,14 +1,17 @@
 use std::path::Path;
 
+use crate::skill_paths::resolve_skill_dir;
+
 /// Reconcile a marketplace skill: check that SKILL.md still exists on disk.
 /// If missing, delete from skills master (scenario 12).
 pub(crate) fn reconcile_marketplace(
     conn: &rusqlite::Connection,
     name: &str,
+    plugin_slug: &str,
     skills_path: &str,
     notifications: &mut Vec<String>,
 ) -> Result<(), String> {
-    let skill_md = Path::new(skills_path).join(name).join("SKILL.md");
+    let skill_md = resolve_skill_dir(Path::new(skills_path), plugin_slug, name).join("SKILL.md");
     if skill_md.exists() {
         // Scenario 11: SKILL.md exists — no action
         log::debug!(

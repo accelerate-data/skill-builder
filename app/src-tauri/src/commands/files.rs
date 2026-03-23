@@ -1,4 +1,5 @@
 use crate::db::Db;
+use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::SkillFileEntry;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -7,14 +8,29 @@ use std::path::{Component, Path, PathBuf};
 const MAX_COLLECT_DEPTH: u32 = 20;
 const ATTACHMENTS_DIR_NAME: &str = "skill-builder-attachments";
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn list_skill_files_with_roots(
     workspace_path: &str,
     skill_name: &str,
     allowed_roots: &[PathBuf],
 ) -> Result<Vec<SkillFileEntry>, String> {
+    list_skill_files_with_plugin_roots(
+        workspace_path,
+        skill_name,
+        DEFAULT_PLUGIN_SLUG,
+        allowed_roots,
+    )
+}
+
+fn list_skill_files_with_plugin_roots(
+    workspace_path: &str,
+    skill_name: &str,
+    plugin_slug: &str,
+    allowed_roots: &[PathBuf],
+) -> Result<Vec<SkillFileEntry>, String> {
     super::imported_skills::validate_skill_name(skill_name)?;
 
-    let skill_dir = Path::new(workspace_path).join(skill_name);
+    let skill_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     // Validate workspace_path is within allowed roots
     if skill_dir.exists() {
         let canonical = fs::canonicalize(&skill_dir)
@@ -45,7 +61,13 @@ pub fn list_skill_files(
 ) -> Result<Vec<SkillFileEntry>, String> {
     log::info!("[list_skill_files] skill_name={}", skill_name);
     let allowed_roots = get_allowed_roots(&db)?;
-    list_skill_files_with_roots(&workspace_path, &skill_name, &allowed_roots)
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::get_skill_master(&conn, &skill_name)?
+            .map(|skill| skill.plugin_slug)
+            .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string())
+    };
+    list_skill_files_with_plugin_roots(&workspace_path, &skill_name, &plugin_slug, &allowed_roots)
 }
 
 fn collect_entries(

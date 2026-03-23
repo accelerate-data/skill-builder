@@ -41,14 +41,14 @@ export function CostOverTimeChart({ data }: { data: UsageByDay[] }) {
 
       {/* Bars */}
       <div className="flex gap-px h-40">
-        {data.map((day) => {
+        {data.map((day, index) => {
           const val = getValue(day)
           const pct = (val / maxVal) * 100
           const label = metric === "cost" ? formatCost(val) : formatTokensShort(val)
           const tooltip = `${day.date}: ${metric === "cost" ? formatCost(day.total_cost) : formatTokens(day.total_tokens)} (${day.run_count} run${day.run_count !== 1 ? "s" : ""})`
           return (
             <div
-              key={day.date}
+              key={`${day.date}-${index}`}
               className="flex-1 min-w-[4px] max-w-[48px] flex flex-col justify-end group relative"
               title={tooltip}
             >
@@ -72,7 +72,7 @@ export function CostOverTimeChart({ data }: { data: UsageByDay[] }) {
       {/* X-axis labels */}
       <div className="flex gap-px">
         {data.map((day, i) => (
-          <div key={day.date} className="flex-1 min-w-[4px] max-w-[48px] text-center overflow-hidden">
+          <div key={`${day.date}-${i}`} className="flex-1 min-w-[4px] max-w-[48px] text-center overflow-hidden">
             {i % labelStep === 0 && (
               <span className="text-[10px] text-muted-foreground leading-none">
                 {formatDayLabel(day.date)}

@@ -11,6 +11,7 @@ use crate::agents::sidecar;
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
+use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::RefineSessionInfo;
 
 use protocol::*;
@@ -23,6 +24,13 @@ fn resolve_skills_path(db: &Db, workspace_path: &str) -> Result<String, String> 
     Ok(settings
         .skills_path
         .unwrap_or_else(|| workspace_path.to_string()))
+}
+
+pub(super) fn resolve_skill_plugin_slug(db: &Db, skill_name: &str) -> Result<String, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    Ok(crate::db::get_skill_master(&conn, skill_name)?
+        .map(|skill| skill.plugin_slug)
+        .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string()))
 }
 
 /// Plugins allowed for refine sessions. Must match `required_plugins` in
@@ -107,7 +115,8 @@ pub async fn start_refine_session(
     })?;
 
     // Verify SKILL.md exists
-    let skill_md = Path::new(&skills_path).join(&skill_name).join("SKILL.md");
+    let plugin_slug = resolve_skill_plugin_slug(&db, &skill_name)?;
+    let skill_md = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name).join("SKILL.md");
     if !skill_md.exists() {
         let msg = format!("SKILL.md not found at {}", skill_md.display());
         log::error!("[start_refine_session] {}", msg);
@@ -237,18 +246,20 @@ pub async fn send_refine_message(
         stream_started
     );
 
+    let plugin_slug = resolve_skill_plugin_slug(&db, &skill_name)?;
     let runtime = load_refine_runtime_settings(&db, &workspace_path, &skill_name)?;
-    ensure_skill_workspace_dir(&workspace_path, &skill_name);
+    ensure_skill_workspace_dir(&workspace_path, &plugin_slug, &skill_name);
 
     if !stream_started {
         // ─── First message: start streaming session ───────────────────────
         // All commands go through the same streaming config. No agent is
         // specified — Claude decides which agent to invoke based on the
         // user's message and the agents discovered from plugins.
-        let prompt = build_refine_prompt(
+        let prompt = build_refine_prompt_for_plugin(
             &skill_name,
             &workspace_path,
             &runtime.skills_path,
+            &plugin_slug,
             &user_message,
             target_files.as_deref(),
         );
@@ -309,9 +320,10 @@ pub async fn send_refine_message(
         Ok(agent_id)
     } else {
         // ─── Follow-up message: push into existing stream ─────────────────
-        let prompt = build_followup_prompt(
+        let prompt = build_followup_prompt_for_plugin(
             &user_message,
             &runtime.skills_path,
+            &plugin_slug,
             &skill_name,
             target_files.as_deref(),
         );
