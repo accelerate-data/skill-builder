@@ -88,6 +88,61 @@ pub fn reconcile_on_startup(
         }
     }
 
+    // ── Pass 1b: Plugin discovery — ensure DB has a row for every plugin dir on disk ──
+    let skills_dir = Path::new(skills_path);
+    if skills_dir.exists() {
+        let db_plugins: HashSet<String> = crate::db::list_plugins(conn)?
+            .into_iter()
+            .map(|p| p.slug)
+            .collect();
+
+        for entry in std::fs::read_dir(skills_dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let slug = entry.file_name().to_string_lossy().to_string();
+            if slug.starts_with('.') {
+                continue;
+            }
+            // Only consider directories that look like plugins (have skills/ or .claude-plugin/)
+            let is_plugin = path.join("skills").is_dir() || path.join(".claude-plugin").is_dir();
+            if !is_plugin {
+                continue;
+            }
+            if !db_plugins.contains(&slug) {
+                let display_name = crate::skill_paths::plugin_display_name(&slug);
+                log::info!("[reconcile] discovered plugin '{}' on disk, creating DB row", slug);
+                if let Err(e) = crate::db::ensure_plugin(conn, &slug, &display_name, "local", None, None, false) {
+                    log::warn!("[reconcile] failed to create plugin '{}': {}", slug, e);
+                }
+            }
+        }
+    }
+
+    // ── Pass 1c: Plugin cleanup — remove DB rows for plugins whose folders are gone ──
+    {
+        let db_plugins = crate::db::list_plugins(conn)?;
+        let skills_dir = Path::new(skills_path);
+        for plugin in &db_plugins {
+            if plugin.is_default {
+                continue;
+            }
+            let plugin_dir = skills_dir.join(&plugin.slug);
+            if !plugin_dir.exists() {
+                // Folder gone — try to delete the plugin row (will fail if it still has skills, which is correct)
+                match crate::db::delete_plugin_by_slug(conn, &plugin.slug) {
+                    Ok(()) => {
+                        log::info!("[reconcile] removed orphaned plugin '{}' — folder not on disk", plugin.slug);
+                    }
+                    Err(e) => {
+                        log::debug!("[reconcile] kept plugin '{}' despite missing folder: {}", plugin.slug, e);
+                    }
+                }
+            }
+        }
+    }
+
     // ── Pass 2: Discover skills on disk not in master ──
     let master_names: HashSet<String> = all_skills
         .iter()
@@ -211,16 +266,9 @@ pub fn reconcile_on_startup(
                 continue;
             } // skip dotfiles, .git, .trash
 
-            let has_nested_skills = std::fs::read_dir(&path)
-                .ok()
-                .map(|entries| {
-                    entries.flatten().any(|child| {
-                        let child_path = child.path();
-                        child_path.is_dir() && child_path.join("SKILL.md").is_file()
-                    })
-                })
-                .unwrap_or(false);
-            if has_nested_skills {
+            // Skip plugin directories — they have skills/ or .claude-plugin/
+            let is_plugin_dir = path.join("skills").is_dir() || path.join(".claude-plugin").is_dir();
+            if is_plugin_dir {
                 continue;
             }
 
