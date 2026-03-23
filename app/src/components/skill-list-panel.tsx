@@ -18,6 +18,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -43,6 +44,11 @@ interface UnifiedSkill {
   source: "builder" | "imported" | "marketplace";
   status: string | null;
   currentStep: string | null;
+}
+
+interface SkillMenuState {
+  isBuilder: boolean;
+  isComplete: boolean;
 }
 
 export interface SkillListPanelProps {
@@ -147,6 +153,13 @@ function mergeSkills(
     const bt = b.createdAt?.getTime() ?? 0;
     return bt - at;
   });
+}
+
+function getSkillMenuState(skill: UnifiedSkill): SkillMenuState {
+  return {
+    isBuilder: skill.source === "builder",
+    isComplete: isSkillComplete(skill) || skill.source !== "builder",
+  };
 }
 
 export function SkillListPanel({
@@ -385,7 +398,7 @@ export function SkillListPanel({
             ? (PURPOSE_SHORT_LABELS[skill.purpose as Purpose] ?? skill.purpose)
             : null;
 
-          const complete = isSkillComplete(skill) || skill.source !== "builder";
+          const menuState = getSkillMenuState(skill);
 
           return (
             <div
@@ -450,27 +463,38 @@ export function SkillListPanel({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                    {complete ? (
+                    {menuState.isComplete ? (
                       <>
-                        <DropdownMenuItem onSelect={() => handleOverview(skill.name)}>
-                          Overview
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => handleRefine(skill.name)}>
-                          Refine
-                        </DropdownMenuItem>
-                        {skill.source === "builder" && (
+                        {menuState.isBuilder && (
+                          <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
+                            WORKFLOW
+                          </DropdownMenuLabel>
+                        )}
+                        {menuState.isBuilder && (
                           <DropdownMenuItem onSelect={() => handleReview(skill.name)}>
                             Review
                           </DropdownMenuItem>
                         )}
-                        {skill.source === "builder" && (
-                          <DropdownMenuItem onSelect={() => setRestoreTarget(skill.name)}>
-                            Restore Version
+                        {menuState.isBuilder && (
+                          <DropdownMenuItem onSelect={() => handleRedo(skill.name)}>
+                            Redo workflow
                           </DropdownMenuItem>
                         )}
-                        {skill.source === "builder" && (
-                          <DropdownMenuItem onSelect={() => handleRedo(skill.name)}>
-                            Redo
+                        {menuState.isBuilder && <DropdownMenuSeparator />}
+                        <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
+                          SKILL
+                        </DropdownMenuLabel>
+                        <DropdownMenuItem onSelect={() => handleOverview(skill.name)}>
+                          Overview
+                        </DropdownMenuItem>
+                        {menuState.isBuilder && (
+                          <DropdownMenuItem onSelect={() => handleRefine(skill.name)}>
+                            Refine
+                          </DropdownMenuItem>
+                        )}
+                        {menuState.isBuilder && (
+                          <DropdownMenuItem onSelect={() => setRestoreTarget(skill.name)}>
+                            Restore version
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem onSelect={() => handleExport(skill)}>

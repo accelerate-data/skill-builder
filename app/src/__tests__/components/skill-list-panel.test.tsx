@@ -82,6 +82,12 @@ function makeImportedSkill(
   return { ...base, ...overrides };
 }
 
+async function openSkillMenu(skillName: string, user: ReturnType<typeof userEvent.setup>) {
+  const row = screen.getByText(skillName).closest('[role="button"]')!;
+  const moreBtn = row.querySelector('[aria-label="More actions"]')!;
+  await user.click(moreBtn);
+}
+
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
 const recentBuilder = makeBuilderSkill({
@@ -515,10 +521,7 @@ describe("SkillListPanel", () => {
 
     render(<SkillListPanel />);
 
-    // Open the dropdown via userEvent (Radix portals need proper pointer events)
-    const row = screen.getByText("review-skill").closest('[role="button"]')!;
-    const moreBtn = row.querySelector('[aria-label="More actions"]')!;
-    await user.click(moreBtn);
+    await openSkillMenu("review-skill", user);
 
     // Review item should be present
     const reviewItem = await screen.findByRole("menuitem", { name: "Review" });
@@ -540,15 +543,93 @@ describe("SkillListPanel", () => {
 
     render(<SkillListPanel />);
 
-    const row = screen.getByText("imported-no-review").closest('[role="button"]')!;
-    const moreBtn = row.querySelector('[aria-label="More actions"]')!;
-    await user.click(moreBtn);
+    await openSkillMenu("imported-no-review", user);
 
     // Wait for menu to render
     await screen.findByRole("menuitem", { name: "Overview" });
 
     // Review should NOT be present for imported skills
     expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
+  });
+
+  it("groups completed builder actions into workflow and skill sections", async () => {
+    const user = userEvent.setup();
+    const skill = makeBuilderSkill({ name: "grouped-builder", status: "completed" });
+    useSkillStore.setState({ skills: [skill] });
+
+    render(<SkillListPanel />);
+
+    await openSkillMenu("grouped-builder", user);
+
+    expect(screen.getByText("WORKFLOW")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Review" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Redo workflow" })).toBeInTheDocument();
+    expect(screen.getByText("SKILL")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveClass("text-destructive");
+  });
+
+  it("shows only valid lifecycle actions for imported skills", async () => {
+    const user = userEvent.setup();
+    const skill = makeImportedSkill({ skill_name: "imported-lifecycle-only" });
+    useImportedSkillsStore.setState({ skills: [skill] });
+
+    render(<SkillListPanel />);
+
+    await openSkillMenu("imported-lifecycle-only", user);
+
+    expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
+    expect(screen.getByText("SKILL")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Refine" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Restore version" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
+  });
+
+  it("uses the same non-builder menu structure for marketplace skills", async () => {
+    const user = userEvent.setup();
+    const skill = makeImportedSkill({
+      skill_name: "marketplace-menu",
+      marketplace_source_url: "https://example.com/registry",
+    });
+    useImportedSkillsStore.setState({ skills: [skill] });
+
+    render(<SkillListPanel />);
+
+    await openSkillMenu("marketplace-menu", user);
+
+    expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
+    expect(screen.getByText("SKILL")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the in-progress builder menu focused on resuming the workflow", async () => {
+    const user = userEvent.setup();
+    const skill = makeBuilderSkill({ name: "resume-builder", current_step: "Step 1" });
+    useSkillStore.setState({ skills: [skill] });
+
+    render(<SkillListPanel />);
+
+    await openSkillMenu("resume-builder", user);
+
+    expect(screen.getByRole("menuitem", { name: "Continue Building" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+    expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
+    expect(screen.queryByText("SKILL")).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Overview" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Refine" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Restore version" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
   });
 
   it("does not navigate when clicking the running skill itself", () => {
