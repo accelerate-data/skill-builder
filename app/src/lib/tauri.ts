@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, LibraryPlugin, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry } from "@/lib/types";
 
 // Re-export invoke for flexible Tauri command invocation
 export { invoke };
@@ -383,6 +383,9 @@ export const listImportedSkills = (sourceUrl?: string | null) =>
 
 export const deleteImportedSkill = (skillId: string) =>
   invoke<void>("delete_imported_skill", { skillId })
+
+export const listPlugins = () =>
+  invoke<LibraryPlugin[]>("list_plugins")
 
 export const createPluginFromSkills = (pluginName: string, skillKeys: string[]) =>
   invoke<string>("create_plugin_from_skills", { pluginName, skillKeys })

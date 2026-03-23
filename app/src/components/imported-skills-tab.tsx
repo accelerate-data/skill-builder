@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "@/lib/toast"
-import { FolderInput, Package, Trash2, FolderTree, ArrowRightLeft, Undo2 } from "lucide-react"
+import { FolderInput, Package, FolderTree } from "lucide-react"
 import { Github } from "@/components/icons/github"
 import {
   Card,
@@ -12,51 +12,21 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
 import { ImportSkillDialog } from "@/components/import-skill-dialog"
 import { CreatePluginDialog } from "@/components/create-plugin-dialog"
-import { moveSkillToPlugin, parseSkillFile, removeSkillFromPlugin } from "@/lib/tauri"
-import type { ImportedSkill } from "@/lib/types"
-import type { SkillFileMeta } from "@/lib/types"
-
-function formatRelativeTime(dateString: string): string {
-  try {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMinutes = Math.floor(diffMs / 60000)
-
-    if (diffMinutes < 1) return "just now"
-    if (diffMinutes < 60) return `${diffMinutes}m ago`
-    const diffHours = Math.floor(diffMinutes / 60)
-    if (diffHours < 24) return `${diffHours}h ago`
-    const diffDays = Math.floor(diffHours / 24)
-    if (diffDays < 30) return `${diffDays}d ago`
-    return date.toLocaleDateString()
-  } catch {
-    return ""
-  }
-}
-
-function sourceLabel(skill: ImportedSkill): string {
-  if (skill.marketplace_source_url) return "marketplace"
-  return "file"
-}
+import { listPlugins, parseSkillFile } from "@/lib/tauri"
+import type { LibraryPlugin, SkillFileMeta } from "@/lib/types"
 
 export function ImportedSkillsTab() {
-  const {
-    skills,
-    isLoading,
-    fetchSkills,
-    deleteSkill,
-  } = useImportedSkillsStore()
+  const [plugins, setPlugins] = useState<LibraryPlugin[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
   const [showGitHubImport, setShowGitHubImport] = useState(false)
-  const [selectedSkillKeys, setSelectedSkillKeys] = useState<Set<string>>(new Set())
+  const [createPluginOpen, setCreatePluginOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState("")
   const [importMeta, setImportMeta] = useState<SkillFileMeta>({
@@ -64,9 +34,21 @@ export function ImportedSkillsTab() {
     argument_hint: null, user_invocable: null, disable_model_invocation: null,
   })
 
+  const fetchPluginList = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const result = await listPlugins()
+      setPlugins(result)
+    } catch (err) {
+      console.error("event=fetch_plugins_failed error=%s", err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
-    fetchSkills()
-  }, [fetchSkills])
+    fetchPluginList()
+  }, [fetchPluginList])
 
   const handleImport = useCallback(async () => {
     const filePath = await open({
@@ -89,76 +71,8 @@ export function ImportedSkillsTab() {
     }
   }, [])
 
-  const handleDelete = useCallback(
-    async (skill: ImportedSkill) => {
-      const toastId = toast.loading(`Deleting "${skill.skill_name}"...`)
-      try {
-        await deleteSkill(skill.skill_id, fetchSkills)
-        toast.success(`Deleted "${skill.skill_name}"`, { id: toastId })
-      } catch (err) {
-        console.error("[imported-skills] delete failed:", err)
-        toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`, {
-          id: toastId,
-          duration: Infinity,
-          cause: err,
-          context: { operation: "imported_skills_delete", skillId: skill.skill_id },
-        })
-      }
-    },
-    [deleteSkill, fetchSkills]
-  )
-
-  const groupedSkills = skills.reduce<Record<string, ImportedSkill[]>>((acc, skill) => {
-    const group = skill.plugin_display_name ?? "No Plugin"
-    acc[group] ??= []
-    acc[group].push(skill)
-    return acc
-  }, {})
-
-  const pluginOptions = Array.from(
-    new Map(
-      skills
-        .filter((skill) => !skill.is_default_plugin && skill.plugin_slug)
-        .map((skill) => [skill.plugin_slug as string, skill.plugin_display_name ?? skill.plugin_slug as string])
-    ).entries()
-  )
-
-  const toggleSelected = (skill: ImportedSkill) => {
-    const key = skill.library_key ?? `imported:${skill.skill_id}`
-    setSelectedSkillKeys((current) => {
-      const next = new Set(current)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
-
-  const [createPluginOpen, setCreatePluginOpen] = useState(false)
-
-  const handleMoveToPlugin = useCallback(async (skill: ImportedSkill) => {
-    const suggestion = pluginOptions.map(([slug, label]) => `${label} (${slug})`).join(", ")
-    const pluginSlug = window.prompt(`Move to plugin slug${suggestion ? `\nAvailable: ${suggestion}` : ""}`)
-    if (!pluginSlug) return
-    const toastId = toast.loading(`Moving "${skill.skill_name}"...`)
-    try {
-      await moveSkillToPlugin(skill.library_key ?? `imported:${skill.skill_id}`, pluginSlug)
-      await fetchSkills()
-      toast.success(`Moved "${skill.skill_name}"`, { id: toastId })
-    } catch (err) {
-      toast.error(`Move failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId })
-    }
-  }, [fetchSkills, pluginOptions])
-
-  const handleRemoveFromPlugin = useCallback(async (skill: ImportedSkill) => {
-    const toastId = toast.loading(`Removing "${skill.skill_name}" from plugin...`)
-    try {
-      await removeSkillFromPlugin(skill.library_key ?? `imported:${skill.skill_id}`)
-      await fetchSkills()
-      toast.success(`Removed "${skill.skill_name}" from plugin`, { id: toastId })
-    } catch (err) {
-      toast.error(`Remove failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId })
-    }
-  }, [fetchSkills])
+  // Filter out the synthetic no-plugin from the display list
+  const displayPlugins = plugins.filter((p) => !p.is_default)
 
   return (
     <div className="space-y-6">
@@ -197,7 +111,7 @@ export function ImportedSkillsTab() {
             </div>
           ))}
         </div>
-      ) : skills.length === 0 ? (
+      ) : displayPlugins.length === 0 ? (
         <Card>
           <CardHeader className="text-center">
             <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-muted">
@@ -210,80 +124,21 @@ export function ImportedSkillsTab() {
           </CardHeader>
         </Card>
       ) : (
-        <div className="space-y-4">
-          {Object.entries(groupedSkills).map(([pluginName, pluginSkills]) => (
-            <div key={pluginName} className="rounded-md border">
-              <div className="flex items-center justify-between border-b bg-muted/50 px-4 py-2">
-                <div>
-                  <div className="text-sm font-medium">{pluginName}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {pluginSkills[0]?.is_default_plugin ? "Synthetic default plugin" : `${pluginSkills.length} skill${pluginSkills.length === 1 ? "" : "s"}`}
-                  </div>
-                </div>
+        <div className="space-y-1">
+          {displayPlugins.map((plugin) => (
+            <div
+              key={plugin.id}
+              className="flex items-center gap-4 rounded-md border px-4 py-3 hover:bg-muted/30 transition-colors"
+            >
+              <FolderTree className="size-4 shrink-0 text-muted-foreground" />
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium">{plugin.display_name}</span>
+                <span className="ml-2 text-xs text-muted-foreground">{plugin.slug}</span>
               </div>
-              {pluginSkills.map((skill) => {
-                const skillKey = skill.library_key ?? `imported:${skill.skill_id}`
-                const selectable = !!skill.is_default_plugin
-                return (
-                  <div
-                    key={skill.skill_id}
-                    className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      className="size-4"
-                      disabled={!selectable}
-                      checked={selectedSkillKeys.has(skillKey)}
-                      onChange={() => toggleSelected(skill)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-medium">{skill.skill_name}</span>
-                        {skill.is_bundled && (
-                          <Badge variant="secondary" className="text-xs">Built-in</Badge>
-                        )}
-                      </div>
-                      {skill.description && (
-                        <div className="text-xs text-muted-foreground">{skill.description}</div>
-                      )}
-                    </div>
-                    <div className="w-24 shrink-0">
-                      {skill.version ? (
-                        <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">&mdash;</span>
-                      )}
-                    </div>
-                    <div className="w-24 shrink-0">
-                      <span className="text-xs text-muted-foreground">{sourceLabel(skill)}</span>
-                    </div>
-                    <div className="w-28 shrink-0">
-                      <span className="text-xs text-muted-foreground">{formatRelativeTime(skill.imported_at)}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {skill.is_default_plugin ? (
-                        <Button variant="ghost" size="icon-sm" onClick={() => handleMoveToPlugin(skill)} title="Move to plugin">
-                          <ArrowRightLeft className="size-4" />
-                        </Button>
-                      ) : (
-                        <Button variant="ghost" size="icon-sm" onClick={() => handleRemoveFromPlugin(skill)} title="Remove from plugin">
-                          <Undo2 className="size-4" />
-                        </Button>
-                      )}
-                      {!skill.is_bundled && (
-                        <button
-                          type="button"
-                          className="text-muted-foreground hover:text-destructive transition-colors"
-                          aria-label={`Delete ${skill.skill_name}`}
-                          onClick={() => handleDelete(skill)}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
+              {plugin.version && (
+                <Badge variant="outline" className="text-xs font-mono">{plugin.version}</Badge>
+              )}
+              <Badge variant="secondary" className="text-xs">{plugin.source_type}</Badge>
             </div>
           ))}
         </div>
@@ -292,7 +147,7 @@ export function ImportedSkillsTab() {
       <GitHubImportDialog
         open={showGitHubImport}
         onOpenChange={setShowGitHubImport}
-        onImported={fetchSkills}
+        onImported={fetchPluginList}
         registries={marketplaceRegistries.filter(r => r.enabled)}
       />
 
@@ -301,13 +156,13 @@ export function ImportedSkillsTab() {
         onOpenChange={setImportOpen}
         filePath={importFile}
         meta={importMeta}
-        onImported={fetchSkills}
+        onImported={fetchPluginList}
       />
 
       <CreatePluginDialog
         open={createPluginOpen}
         onOpenChange={setCreatePluginOpen}
-        onCreated={fetchSkills}
+        onCreated={fetchPluginList}
       />
     </div>
   )
