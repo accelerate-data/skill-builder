@@ -192,11 +192,12 @@ If the commit reports "nothing to commit", skip tagging.
 
 ## Success Criteria
 
-- Purpose-appropriate structure chosen without rigid templates
-- Every decision from `decisions.json` addressed in the skill
-- SKILL.md frontmatter is valid (name, description, tools, version)
-- Reference files are complete and cross-referenced from SKILL.md
-- `evals.json` written with 3+ evaluation scenarios, deterministic `slug` values, `eval_name` values, and frozen expectations
+- Purpose-appropriate structure chosen without rigid templates.
+- All decisions from `decisions.json` addressed in the skill.
+- No reference to decisions or clarifications file in the skill.
+- SKILL.md frontmatter is valid (name, description, tools, version).
+- Reference files are complete and cross-referenced from SKILL.md.
+- `evals.json` written with 3+ evaluation scenarios, deterministic `slug` values, `eval_name` values, and frozen expectations.
 
 </instructions>
 
