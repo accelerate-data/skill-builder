@@ -38,16 +38,12 @@ Set `MOCK_SCENARIO` to switch between pre-built scenarios:
 
 The workflow guides you through building a skill in 6 steps:
 
-0. **Research** -- opus planner selects relevant research dimensions, parallel agents research them, opus consolidation produces clarification questions. If scope is too broad, recommends narrower skills instead
-1. **Review** -- you answer clarification questions (or review scope recommendation)
+1. **Research** -- opus planner selects relevant research dimensions, parallel agents research them, opus consolidation produces clarification questions. If scope is too broad, recommends narrower skills instead
 2. **Detailed Research** -- agents dive deeper per section, produce refinement questions
-3. **Review** -- you answer a second round of questions
-4. **Confirm Decisions** -- agent analyzes your answers, detects gaps and contradictions
-5. **Generate Skill** -- agent creates SKILL.md and reference files
+3. **Confirm Decisions** -- agent analyzes your answers, detects gaps and contradictions
+4. **Generate Skill** -- agent creates SKILL.md and reference files
 
-After Generate completes, you can **Refine** the skill (iterative chat with `/validate` and `/rewrite` commands) or mark it **Done**.
-
-Skills are organized by type: **domain** (business knowledge), **platform** (tool-specific), **source** (extraction patterns), and **data-engineering** (technical patterns).
+After Generate completes, you can **Refine** the skill interactively.
 
 Completed skills are version-controlled locally (auto-commits via git2) and can be pushed to a shared GitHub repository via branch + PR from the desktop app.
 
