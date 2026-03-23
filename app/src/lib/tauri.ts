@@ -387,6 +387,9 @@ export const deleteImportedSkill = (skillId: string) =>
 export const listPlugins = () =>
   invoke<LibraryPlugin[]>("list_plugins")
 
+export const deletePlugin = (pluginSlug: string) =>
+  invoke<void>("delete_plugin", { pluginSlug })
+
 export const createPluginFromSkills = (pluginName: string, skillKeys: string[]) =>
   invoke<string>("create_plugin_from_skills", { pluginName, skillKeys })
 

@@ -144,6 +144,36 @@ pub fn list_plugins(db: tauri::State<'_, Db>) -> Result<Vec<crate::types::Librar
 }
 
 #[tauri::command]
+pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<(), String> {
+    log::info!("[delete_plugin] slug={}", plugin_slug);
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = crate::db::read_settings(&conn)?;
+
+    // Delete from DB (will fail if plugin still has skills — FK RESTRICT)
+    crate::db::delete_plugin_by_slug(&conn, &plugin_slug)?;
+
+    // Remove from disk
+    if let Some(ref sp) = settings.skills_path {
+        let plugin_dir = std::path::Path::new(sp).join(&plugin_slug);
+        if plugin_dir.exists() {
+            std::fs::remove_dir_all(&plugin_dir)
+                .map_err(|e| format!("Failed to remove plugin directory: {}", e))?;
+        }
+        // Update marketplace.json
+        let skills_root = std::path::Path::new(sp);
+        if let Err(e) = crate::marketplace_manifest::write_marketplace_json(skills_root) {
+            log::warn!("[delete_plugin] manifest update failed: {}", e);
+        }
+        let msg = format!("{}: delete plugin", plugin_slug);
+        if let Err(e) = crate::git::commit_all(skills_root, &msg) {
+            log::warn!("[delete_plugin] git commit failed: {}", e);
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn create_plugin_from_skills(
     plugin_name: String,
     skill_keys: Vec<String>,

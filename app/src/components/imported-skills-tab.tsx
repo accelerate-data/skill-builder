@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "@/lib/toast"
-import { FolderInput, Package, FolderTree } from "lucide-react"
+import { FolderInput, Package, FolderTree, Trash2 } from "lucide-react"
 import { Github } from "@/components/icons/github"
 import {
   Card,
@@ -9,14 +9,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSettingsStore } from "@/stores/settings-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
 import { ImportSkillDialog } from "@/components/import-skill-dialog"
 import { CreatePluginDialog } from "@/components/create-plugin-dialog"
-import { listPlugins, parseSkillFile } from "@/lib/tauri"
+import { listPlugins, deletePlugin, parseSkillFile } from "@/lib/tauri"
 import type { LibraryPlugin, SkillFileMeta } from "@/lib/types"
 
 export function ImportedSkillsTab() {
@@ -71,7 +70,20 @@ export function ImportedSkillsTab() {
     }
   }, [])
 
-  // Filter out the synthetic no-plugin from the display list
+  const handleDeletePlugin = useCallback(async (plugin: LibraryPlugin) => {
+    const toastId = toast.loading(`Deleting plugin "${plugin.display_name}"...`)
+    try {
+      await deletePlugin(plugin.slug)
+      await fetchPluginList()
+      toast.success(`Deleted plugin "${plugin.display_name}"`, { id: toastId })
+    } catch (err) {
+      toast.error(
+        `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
+        { id: toastId },
+      )
+    }
+  }, [fetchPluginList])
+
   const displayPlugins = plugins.filter((p) => !p.is_default)
 
   return (
@@ -124,24 +136,42 @@ export function ImportedSkillsTab() {
           </CardHeader>
         </Card>
       ) : (
-        <div className="space-y-1">
-          {displayPlugins.map((plugin) => (
-            <div
-              key={plugin.id}
-              className="flex items-center gap-4 rounded-md border px-4 py-3 hover:bg-muted/30 transition-colors"
-            >
-              <FolderTree className="size-4 shrink-0 text-muted-foreground" />
-              <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium">{plugin.display_name}</span>
-                <span className="ml-2 text-xs text-muted-foreground">{plugin.slug}</span>
-              </div>
-              {plugin.version && (
-                <Badge variant="outline" className="text-xs font-mono">{plugin.version}</Badge>
-              )}
-              <Badge variant="secondary" className="text-xs">{plugin.source_type}</Badge>
-            </div>
-          ))}
-        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs text-muted-foreground">
+              <th className="pb-2 font-medium">Name</th>
+              <th className="pb-2 font-medium">Version</th>
+              <th className="pb-2 font-medium">Source</th>
+              <th className="pb-2 font-medium w-8" />
+            </tr>
+          </thead>
+          <tbody>
+            {displayPlugins.map((plugin) => (
+              <tr key={plugin.id} className="border-b last:border-b-0 hover:bg-muted/30 transition-colors">
+                <td className="py-2.5 pr-4">
+                  <div className="font-medium">{plugin.display_name}</div>
+                  <div className="text-xs text-muted-foreground">{plugin.slug}</div>
+                </td>
+                <td className="py-2.5 pr-4 text-muted-foreground font-mono text-xs">
+                  {plugin.version ?? "\u2014"}
+                </td>
+                <td className="py-2.5 pr-4 text-xs text-muted-foreground truncate max-w-[300px]">
+                  {plugin.source_url ?? plugin.source_type}
+                </td>
+                <td className="py-2.5">
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                    aria-label={`Delete ${plugin.display_name}`}
+                    onClick={() => handleDeletePlugin(plugin)}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
 
       <GitHubImportDialog

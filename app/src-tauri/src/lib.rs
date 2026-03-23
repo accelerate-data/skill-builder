@@ -344,6 +344,7 @@ pub fn run() {
             commands::imported_skills::listing::list_imported_skills,
             commands::imported_skills::lifecycle::delete_imported_skill,
             commands::imported_skills::lifecycle::list_plugins,
+            commands::imported_skills::lifecycle::delete_plugin,
             commands::imported_skills::lifecycle::create_plugin_from_skills,
             commands::imported_skills::lifecycle::move_skill_to_plugin,
             commands::imported_skills::lifecycle::remove_skill_from_plugin,
