@@ -392,3 +392,193 @@ pub(crate) fn compute_skill_content_hash(disk_path: &str) -> Option<String> {
     let digest = sha2::Sha256::digest(&bytes);
     Some(hex::encode(digest))
 }
+
+/// Download an entire plugin directory from GitHub into the local skills_path.
+///
+/// Downloads all files under `plugin_path` in the repo tree to
+/// `{dest_plugin_dir}/` preserving the relative directory structure.
+/// This includes `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/`, etc.
+pub(crate) async fn download_plugin_directory(
+    client: &reqwest::Client,
+    raw_base_url: &str,
+    owner: &str,
+    repo: &str,
+    branch: &str,
+    plugin_path: &str,
+    tree: &[serde_json::Value],
+    dest_plugin_dir: &Path,
+) -> Result<usize, String> {
+    let prefix = if plugin_path.is_empty() {
+        String::new()
+    } else if plugin_path.ends_with('/') {
+        plugin_path.to_string()
+    } else {
+        format!("{}/", plugin_path)
+    };
+
+    // Find all blob files under this plugin's directory
+    let files: Vec<&str> = tree
+        .iter()
+        .filter_map(|entry| {
+            let entry_path = entry["path"].as_str()?;
+            let entry_type = entry["type"].as_str()?;
+            if entry_type != "blob" {
+                return None;
+            }
+            if prefix.is_empty() {
+                Some(entry_path)
+            } else if entry_path.starts_with(&prefix) {
+                Some(entry_path)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if files.is_empty() {
+        return Err(format!("No files found under plugin path '{}'", plugin_path));
+    }
+
+    log::info!(
+        "[download_plugin_directory] downloading {} files from '{}'",
+        files.len(),
+        plugin_path
+    );
+
+    // Remove existing plugin dir if present (clean re-import)
+    if dest_plugin_dir.exists() {
+        fs::remove_dir_all(dest_plugin_dir)
+            .map_err(|e| format!("Failed to remove existing plugin directory: {}", e))?;
+    }
+
+    fs::create_dir_all(dest_plugin_dir)
+        .map_err(|e| format!("Failed to create plugin directory: {}", e))?;
+    let canonical_dest = dest_plugin_dir
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize destination: {}", e))?;
+
+    let mut downloaded = 0;
+    for file_path in &files {
+        let relative = if prefix.is_empty() {
+            file_path.to_string()
+        } else {
+            match file_path.strip_prefix(&prefix) {
+                Some(rel) => rel.to_string(),
+                None => continue,
+            }
+        };
+
+        if relative.is_empty() {
+            continue;
+        }
+
+        let out_path = dest_plugin_dir.join(&relative);
+
+        // Security: lexical check
+        if !out_path.starts_with(dest_plugin_dir) {
+            continue;
+        }
+
+        // Create parent directories and verify canonicalized path stays within dest
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create directory for '{}': {}", relative, e))?;
+            let canonical_parent = parent
+                .canonicalize()
+                .map_err(|e| format!("Failed to canonicalize parent: {}", e))?;
+            if !canonical_parent.starts_with(&canonical_dest) {
+                return Err(format!(
+                    "Path traversal detected: '{}' escapes destination",
+                    relative
+                ));
+            }
+        }
+
+        let raw_url = format!(
+            "{}/{}/{}/{}/{}",
+            raw_base_url, owner, repo, branch, file_path
+        );
+
+        let response = client
+            .get(&raw_url)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to download '{}': {}", file_path, e))?;
+
+        let content = response
+            .bytes()
+            .await
+            .map_err(|e| format!("Failed to read '{}': {}", file_path, e))?;
+
+        // Reject files larger than 10 MB
+        if content.len() > 10_000_000 {
+            return Err(format!(
+                "File '{}' too large: {} bytes (max 10 MB)",
+                file_path,
+                content.len()
+            ));
+        }
+
+        fs::write(&out_path, &content)
+            .map_err(|e| format!("Failed to write '{}': {}", out_path.display(), e))?;
+        downloaded += 1;
+    }
+
+    log::info!(
+        "[download_plugin_directory] downloaded {} files to '{}'",
+        downloaded,
+        dest_plugin_dir.display()
+    );
+
+    Ok(downloaded)
+}
+
+/// Read plugin.json from a downloaded plugin directory.
+/// Returns (name, description, version) — all optional except name which falls back to slug.
+pub(crate) fn read_plugin_json(plugin_dir: &Path) -> (String, Option<String>, Option<String>) {
+    let pj_path = plugin_dir.join(".claude-plugin").join("plugin.json");
+    if let Ok(content) = fs::read_to_string(&pj_path) {
+        if let Ok(pj) = serde_json::from_str::<serde_json::Value>(&content) {
+            let name = pj["name"].as_str().unwrap_or("").to_string();
+            let description = pj["description"].as_str().map(|s| s.to_string());
+            let version = pj["version"].as_str().map(|s| s.to_string());
+            if !name.is_empty() {
+                return (name, description, version);
+            }
+        }
+    }
+    // Fallback: derive name from directory
+    let fallback = plugin_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    (fallback, None, None)
+}
+
+/// Enumerate skills from a downloaded plugin directory on disk.
+/// Returns a list of (skill_name, skill_dir) pairs.
+pub(crate) fn enumerate_plugin_skills(plugin_dir: &Path) -> Vec<(String, std::path::PathBuf)> {
+    let skills_dir = plugin_dir.join("skills");
+    if !skills_dir.is_dir() {
+        return vec![];
+    }
+    let mut skills = Vec::new();
+    if let Ok(entries) = fs::read_dir(&skills_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            // Must have SKILL.md
+            if path.join("SKILL.md").is_file() {
+                skills.push((name, path));
+            }
+        }
+    }
+    skills.sort_by(|a, b| a.0.cmp(&b.0));
+    skills
+}
