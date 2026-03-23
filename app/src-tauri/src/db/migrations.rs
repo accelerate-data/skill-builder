@@ -1216,6 +1216,43 @@ pub(super) fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqli
     Ok(())
 }
 
+/// Ensure first-class plugin ownership exists even if migration 38 was marked applied
+/// before the schema rebuild actually ran.
+pub(super) fn repair_plugin_ownership_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let plugins_table_exists = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'plugins'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )? > 0;
+
+    let skill_cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(skills)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let has_plugin_id = skill_cols.iter().any(|c| c == "plugin_id");
+    if !plugins_table_exists || !has_plugin_id {
+        log::warn!(
+            "repair_plugin_ownership_schema: detected pre-plugin skills schema; rerunning migration 38 repair"
+        );
+        run_plugin_ownership_migration(conn)?;
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        "INSERT INTO plugins (slug, display_name, version, source_type, source_url, is_default)
+         SELECT 'no-plugin', 'No Plugin', NULL, 'synthetic', NULL, 1
+         WHERE NOT EXISTS (SELECT 1 FROM plugins WHERE slug = 'no-plugin');
+
+         UPDATE skills
+         SET plugin_id = (SELECT id FROM plugins WHERE slug = 'no-plugin')
+         WHERE plugin_id IS NULL;",
+    )?;
+
+    Ok(())
+}
+
 pub(super) fn run_workspace_skills_purpose_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     let has_column = conn
         .prepare("PRAGMA table_info(workspace_skills)")
