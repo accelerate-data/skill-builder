@@ -332,8 +332,8 @@ def main():
     parser.add_argument("--description", default=None, help="Override description to test")
     parser.add_argument(
         "--project-root",
-        default=None,
-        help="Explicit project root that contains `.claude/`. If omitted, the script discovers it from the current working directory.",
+        required=True,
+        help="Project root that contains `.claude/`.",
     )
     parser.add_argument("--num-workers", type=int, default=10, help="Number of parallel workers")
     parser.add_argument("--timeout", type=int, default=30, help="Timeout per query in seconds")
@@ -375,7 +375,7 @@ def main():
 
     name, original_description, _ = parse_skill_md(skill_path)
     description = args.description or original_description
-    project_root = Path(args.project_root).resolve() if args.project_root else find_project_root()
+    project_root = Path(args.project_root).resolve()
 
     if args.verbose:
         log(f"Evaluating description for {name}")

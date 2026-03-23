@@ -417,13 +417,14 @@ Tell the user: "This will take some time — I'll run the optimization loop in t
 
 Save the eval set to the workspace, then run in the background:
 
-```bash
-uv run scripts/run_loop.py \
-  --eval-set <path-to-trigger-eval.json> \
-  --skill-path <path-to-skill> \
-  --model <model-id-powering-this-session> \
-  --max-iterations 5 \
-  --verbose
+   ```bash
+   uv run scripts/run_loop.py \
+     --eval-set <path-to-trigger-eval.json> \
+     --skill-path <path-to-skill> \
+     --project-root <repo-root-containing-.claude> \
+     --model <model-id-powering-this-session> \
+     --max-iterations 5 \
+     --verbose
 ```
 
 Use the model ID from your system prompt (the one powering the current session) so the triggering test matches what the user actually experiences.

@@ -789,8 +789,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skill-path", required=True, help="Path to the skill directory.")
     parser.add_argument(
         "--project-root",
-        default=None,
-        help="Explicit project root that contains `.claude/`. If omitted, the script discovers it from the current working directory.",
+        required=True,
+        help="Project root that contains `.claude/`.",
     )
     parser.add_argument("--description", default=None, help="Override the starting description.")
     parser.add_argument("--num-workers", type=int, default=10, help="Number of parallel workers.")
@@ -818,7 +818,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
     skill_path = Path(args.skill_path).resolve()
-    project_root = Path(args.project_root).resolve() if args.project_root else find_project_root()
+    project_root = Path(args.project_root).resolve()
 
     if not (skill_path / "SKILL.md").exists():
         log(f"Error: No SKILL.md found at {skill_path}")
