@@ -171,7 +171,9 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 
 ## Phase 2: Invoke the skill
 
-Use the **Creating a skill section** in `skill-creator:skill-creator` skill to generate the skill.
+**This is important**
+
+Invoke the `skill-creator:skill-creator` skill using the **skill tool**.
 
 ## Phase 3: Commit and tag
 
