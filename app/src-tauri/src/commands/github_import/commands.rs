@@ -594,7 +594,7 @@ async fn import_marketplace_entries_to_library(
             .as_ref()
             .and_then(|m| m.get(skill_path.as_str()));
         // Marketplace layout: import into plugins/{slug}/skills/
-        let plugin_skills_dir = skills_root.join("plugins").join(&plugin_slug).join("skills");
+        let plugin_skills_dir = skills_root.join(&plugin_slug).join("skills");
         if let Err(e) = std::fs::create_dir_all(&plugin_skills_dir) {
             log::error!(
                 "[import_marketplace_entries_to_library] failed to create plugin skills dir {}: {}",
@@ -817,7 +817,7 @@ pub async fn import_marketplace_plugin_to_library(
     let plugin_slug = crate::db::slugify_plugin_name(&plugin_name);
 
     // --- Step 1: Download the entire plugin directory to disk ---
-    let dest_plugin_dir = skills_root.join("plugins").join(&plugin_slug);
+    let dest_plugin_dir = skills_root.join(&plugin_slug);
     download_plugin_directory(
         &client,
         "https://raw.githubusercontent.com",

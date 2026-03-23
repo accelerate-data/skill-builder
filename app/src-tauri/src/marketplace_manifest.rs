@@ -46,7 +46,7 @@ pub fn write_plugin_json(
     description: Option<&str>,
     version: Option<&str>,
 ) -> Result<(), String> {
-    let plugin_config_dir = root.join("plugins").join(plugin_slug).join(".claude-plugin");
+    let plugin_config_dir = root.join(plugin_slug).join(".claude-plugin");
     fs::create_dir_all(&plugin_config_dir)
         .map_err(|e| format!("Failed to create plugin config dir '{}': {}", plugin_config_dir.display(), e))?;
 
@@ -86,9 +86,10 @@ pub fn write_plugin_json(
     Ok(())
 }
 
-/// Scan `root/plugins/` and write `.claude-plugin/marketplace.json` at the root.
+/// Scan `root/` for plugin directories and write `.claude-plugin/marketplace.json` at the root.
+/// A directory is a plugin if it contains a `skills/` subdirectory or `.claude-plugin/plugin.json`.
 pub fn write_marketplace_json(root: &Path) -> Result<(), String> {
-    let plugins_dir = root.join("plugins");
+    let plugins_dir = root.to_path_buf();
     let mut plugin_entries = Vec::new();
 
     if plugins_dir.is_dir() {
@@ -105,8 +106,16 @@ pub fn write_marketplace_json(root: &Path) -> Result<(), String> {
                 continue;
             }
 
+            // Only include directories that are actual plugins (have skills/ or .claude-plugin/)
+            let dir = entry.path();
+            let has_skills = dir.join("skills").is_dir();
+            let has_plugin_json = dir.join(".claude-plugin").join("plugin.json").is_file();
+            if !has_skills && !has_plugin_json {
+                continue;
+            }
+
             // Read existing plugin.json for metadata
-            let pj_path = entry.path().join(".claude-plugin").join("plugin.json");
+            let pj_path = dir.join(".claude-plugin").join("plugin.json");
             let (description, version) = if pj_path.is_file() {
                 let content = fs::read_to_string(&pj_path).unwrap_or_default();
                 match serde_json::from_str::<PluginJson>(&content) {
@@ -119,7 +128,7 @@ pub fn write_marketplace_json(root: &Path) -> Result<(), String> {
 
             plugin_entries.push(MarketplacePluginEntry {
                 name: slug.clone(),
-                source: format!("./plugins/{}", slug),
+                source: format!("./{}", slug),
                 description,
                 version,
             });
@@ -146,17 +155,15 @@ pub fn write_marketplace_json(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Regenerate all manifests: ensure each plugin under `root/plugins/` has a
+/// Regenerate all manifests: ensure each plugin under `root/` has a
 /// `plugin.json`, then rewrite `marketplace.json`.
 pub fn regenerate_all_manifests(root: &Path) -> Result<(), String> {
-    let plugins_dir = root.join("plugins");
-    if !plugins_dir.is_dir() {
-        // No plugins directory — just write an empty marketplace.json
+    if !root.is_dir() {
         return write_marketplace_json(root);
     }
 
-    for entry in fs::read_dir(&plugins_dir)
-        .map_err(|e| format!("Failed to read plugins dir: {}", e))?
+    for entry in fs::read_dir(root)
+        .map_err(|e| format!("Failed to read root dir: {}", e))?
     {
         let entry = entry.map_err(|e| format!("Failed to read plugins entry: {}", e))?;
         let plugin_path = entry.path();
@@ -165,6 +172,13 @@ pub fn regenerate_all_manifests(root: &Path) -> Result<(), String> {
         }
         let slug = entry.file_name().to_string_lossy().to_string();
         if slug.starts_with('.') {
+            continue;
+        }
+
+        // Only process directories that are actual plugins
+        let has_skills = plugin_path.join("skills").is_dir();
+        let has_plugin_json = plugin_path.join(".claude-plugin").join("plugin.json").is_file();
+        if !has_skills && !has_plugin_json {
             continue;
         }
 
@@ -185,7 +199,7 @@ mod tests {
     #[test]
     fn write_plugin_json_creates_manifest() {
         let tmp = tempfile::tempdir().unwrap();
-        let plugin_dir = tmp.path().join("plugins").join("analytics");
+        let plugin_dir = tmp.path().join("analytics");
         fs::create_dir_all(plugin_dir.join("skills").join("report")).unwrap();
 
         write_plugin_json(tmp.path(), "analytics", "Analytics", Some("Analytics skills"), Some("1.0.0")).unwrap();
@@ -201,7 +215,7 @@ mod tests {
     #[test]
     fn write_plugin_json_preserves_existing_fields() {
         let tmp = tempfile::tempdir().unwrap();
-        let config_dir = tmp.path().join("plugins").join("analytics").join(".claude-plugin");
+        let config_dir = tmp.path().join("analytics").join(".claude-plugin");
         fs::create_dir_all(&config_dir).unwrap();
         fs::write(config_dir.join("plugin.json"), r#"{"name":"analytics","description":"existing desc","version":"2.0.0"}"#).unwrap();
 
@@ -219,11 +233,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
 
         // Create two plugins with plugin.json
-        let p1 = tmp.path().join("plugins").join("analytics").join(".claude-plugin");
+        let p1 = tmp.path().join("analytics").join(".claude-plugin");
         fs::create_dir_all(&p1).unwrap();
         fs::write(p1.join("plugin.json"), r#"{"name":"analytics","description":"Analytics skills","version":"1.0.0"}"#).unwrap();
 
-        let p2 = tmp.path().join("plugins").join("devops").join(".claude-plugin");
+        let p2 = tmp.path().join("devops").join(".claude-plugin");
         fs::create_dir_all(&p2).unwrap();
         fs::write(p2.join("plugin.json"), r#"{"name":"devops","description":"DevOps skills"}"#).unwrap();
 
@@ -238,10 +252,10 @@ mod tests {
         let plugins = content["plugins"].as_array().unwrap();
         assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0]["name"], "analytics");
-        assert_eq!(plugins[0]["source"], "./plugins/analytics");
+        assert_eq!(plugins[0]["source"], "./analytics");
         assert_eq!(plugins[0]["description"], "Analytics skills");
         assert_eq!(plugins[1]["name"], "devops");
-        assert_eq!(plugins[1]["source"], "./plugins/devops");
+        assert_eq!(plugins[1]["source"], "./devops");
     }
 
     #[test]
@@ -249,14 +263,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
 
         // Plugin with no plugin.json
-        let skills_dir = tmp.path().join("plugins").join("my-tool").join("skills").join("hello");
+        let skills_dir = tmp.path().join("my-tool").join("skills").join("hello");
         fs::create_dir_all(&skills_dir).unwrap();
         fs::write(skills_dir.join("SKILL.md"), "# hello").unwrap();
 
         regenerate_all_manifests(tmp.path()).unwrap();
 
         // plugin.json should now exist
-        let pj_path = tmp.path().join("plugins").join("my-tool").join(".claude-plugin").join("plugin.json");
+        let pj_path = tmp.path().join("my-tool").join(".claude-plugin").join("plugin.json");
         assert!(pj_path.is_file());
         let content: serde_json::Value = serde_json::from_str(&fs::read_to_string(&pj_path).unwrap()).unwrap();
         assert_eq!(content["name"], "My Tool");
@@ -267,9 +281,9 @@ mod tests {
     }
 
     #[test]
-    fn write_marketplace_json_handles_empty_plugins_dir() {
+    fn write_marketplace_json_handles_empty_root() {
         let tmp = tempfile::tempdir().unwrap();
-        fs::create_dir_all(tmp.path().join("plugins")).unwrap();
+        // Root exists but has no plugin subdirectories
 
         write_marketplace_json(tmp.path()).unwrap();
 

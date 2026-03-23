@@ -7,9 +7,9 @@ use std::fs;
 use std::path::Path;
 use tempfile::tempdir;
 
-/// Helper: build the nested skill path under a root directory (marketplace layout).
+/// Helper: build the nested skill path under a root directory.
 fn nested_skill(root: &str, skill_name: &str) -> std::path::PathBuf {
-    Path::new(root).join("plugins").join(DEFAULT_PLUGIN_SLUG).join("skills").join(skill_name)
+    Path::new(root).join(DEFAULT_PLUGIN_SLUG).join("skills").join(skill_name)
 }
 
 // ===== list_skills_inner tests =====
@@ -530,7 +530,7 @@ fn test_delete_skill_directory_traversal() {
     // The outside directory should still exist (not deleted)
     assert!(outside_dir.exists());
     // The legitimate skill should still exist (marketplace layout: plugins/no-plugin/skills/legit)
-    assert!(workspace.join("plugins").join(DEFAULT_PLUGIN_SLUG).join("skills").join("legit").exists());
+    assert!(workspace.join(DEFAULT_PLUGIN_SLUG).join("skills").join("legit").exists());
 }
 
 #[test]
@@ -1466,7 +1466,7 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
     .unwrap();
 
     // Create the skills-path directory (simulating a completed skill, marketplace layout)
-    let skills_plugin_dir = skills_dir.join("plugins").join(DEFAULT_PLUGIN_SLUG).join("skills");
+    let skills_plugin_dir = skills_dir.join(DEFAULT_PLUGIN_SLUG).join("skills");
     fs::create_dir_all(&skills_plugin_dir).unwrap();
     let skill_output = skills_plugin_dir.join("rename-fail");
     fs::create_dir_all(&skill_output).unwrap();
@@ -1500,7 +1500,7 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
     // The workspace directory should have been rolled back (old name preserved)
     // because rename_skill_inner rolls back workspace rename on skills rename failure
     assert!(
-        workspace.join("plugins").join(DEFAULT_PLUGIN_SLUG).join("skills").join("rename-fail").exists(),
+        workspace.join(DEFAULT_PLUGIN_SLUG).join("skills").join("rename-fail").exists(),
         "workspace dir should be rolled back to old name"
     );
 }
