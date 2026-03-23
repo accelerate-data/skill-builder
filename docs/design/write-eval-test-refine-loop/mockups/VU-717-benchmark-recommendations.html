@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VU-717: Benchmark Recommendations in Refine Chat</title>
+  <style>
+    :root {
+      --color-seafoam: oklch(0.720 0.125 155);
+      --color-pacific: oklch(0.680 0.120 210);
+      --color-background: oklch(0.956 0 0);
+      --color-card: oklch(1 0 0);
+      --color-foreground: oklch(0.145 0.005 250);
+      --color-muted-foreground: oklch(0.530 0.006 85);
+      --color-border: oklch(0.910 0.006 85);
+      --color-destructive: oklch(0.570 0.180 25);
+      --font-sans: "Inter Variable", system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono Variable", monospace;
+
+      /* Dark chat theme tokens */
+      --chat-bg: #0f1117;
+      --chat-panel-bg: #161b22;
+      --chat-message-bg: #1c2433;
+      --chat-assistant-bg: #1a2234;
+      --chat-border: #30363d;
+      --chat-text: #e6edf3;
+      --chat-text-muted: #8b949e;
+      --chat-text-dim: #6e7681;
+      --chat-accent: oklch(0.720 0.125 155);
+      --chat-accent-dim: oklch(0.720 0.125 155 / 0.15);
+      --chat-accent-border: oklch(0.720 0.125 155 / 0.4);
+      --chat-blue: oklch(0.680 0.120 210);
+      --chat-blue-dim: oklch(0.680 0.120 210 / 0.15);
+      --chat-warning: #e3b341;
+      --chat-success: #3fb950;
+      --chat-fail: #f85149;
+      --chat-neutral: #8b949e;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-background);
+      padding: 40px 20px;
+      color: var(--color-foreground);
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--color-foreground);
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--color-muted-foreground);
+      margin-bottom: 40px;
+    }
+
+    /* Two-column layout */
+    .screens {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+
+    .screen-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .screen-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-muted-foreground);
+      padding: 6px 10px;
+      background: oklch(0.910 0.006 85 / 0.4);
+      border-radius: 4px;
+      border: 1px solid var(--color-border);
+      display: inline-block;
+      align-self: flex-start;
+    }
+
+    .screen-label.state-b {
+      background: oklch(0.680 0.120 210 / 0.08);
+      border-color: oklch(0.680 0.120 210 / 0.3);
+      color: oklch(0.460 0.120 210);
+    }
+
+    /* ── Chat Window ──────────────────────────────────── */
+    .chat-window {
+      background: var(--chat-bg);
+      border-radius: 10px;
+      border: 1px solid var(--chat-border);
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.24), 0 2px 8px rgba(0,0,0,0.16);
+    }
+
+    /* Title bar */
+    .chat-titlebar {
+      background: var(--chat-panel-bg);
+      border-bottom: 1px solid var(--chat-border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .titlebar-dots {
+      display: flex;
+      gap: 5px;
+    }
+
+    .titlebar-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--chat-border);
+    }
+
+    .titlebar-dot.red   { background: #ff5f57; }
+    .titlebar-dot.yellow { background: #ffbd2e; }
+    .titlebar-dot.green { background: #28c840; }
+
+    .titlebar-title {
+      flex: 1;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--chat-text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .titlebar-skill-badge {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--chat-accent);
+      background: var(--chat-accent-dim);
+      border: 1px solid var(--chat-accent-border);
+      border-radius: 4px;
+      padding: 2px 7px;
+    }
+
+    /* Messages area */
+    .chat-messages {
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-height: 480px;
+    }
+
+    /* A message row */
+    .msg-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .msg-row.user {
+      flex-direction: row-reverse;
+    }
+
+    /* Avatar circles */
+    .avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      margin-top: 2px;
+    }
+
+    .avatar.assistant {
+      background: linear-gradient(135deg, oklch(0.720 0.125 155), oklch(0.600 0.130 175));
+    }
+
+    .avatar.user {
+      background: linear-gradient(135deg, oklch(0.680 0.120 210), oklch(0.560 0.130 230));
+    }
+
+    /* Bubble */
+    .bubble {
+      max-width: 88%;
+      background: var(--chat-message-bg);
+      border: 1px solid var(--chat-border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--chat-text);
+    }
+
+    .msg-row.user .bubble {
+      background: oklch(0.680 0.120 210 / 0.12);
+      border-color: oklch(0.680 0.120 210 / 0.25);
+      color: var(--chat-text);
+    }
+
+    .bubble p + p {
+      margin-top: 8px;
+    }
+
+    .bubble code {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      background: rgba(255,255,255,0.07);
+      border-radius: 3px;
+      padding: 1px 5px;
+      color: var(--chat-accent);
+    }
+
+    /* System / divider message */
+    .msg-system {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+    }
+
+    .msg-system-line {
+      flex: 1;
+      height: 1px;
+      background: var(--chat-border);
+    }
+
+    .msg-system-text {
+      font-size: 11px;
+      color: var(--chat-text-dim);
+      white-space: nowrap;
+      font-family: var(--font-mono);
+    }
+
+    /* ── Benchmark summary card inside bubble ── */
+    .benchmark-card {
+      margin-top: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--chat-border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .benchmark-card-header {
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.04);
+      border-bottom: 1px solid var(--chat-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .benchmark-card-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--chat-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-family: var(--font-mono);
+    }
+
+    .benchmark-run-id {
+      font-size: 10px;
+      color: var(--chat-text-dim);
+      font-family: var(--font-mono);
+    }
+
+    .benchmark-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      padding: 12px;
+      gap: 8px;
+    }
+
+    .stat-block {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .stat-value {
+      font-size: 22px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+
+    .stat-value.good  { color: var(--chat-success); }
+    .stat-value.bad   { color: var(--chat-fail); }
+    .stat-value.up    { color: var(--chat-warning); }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--chat-text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .stat-delta {
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .stat-delta.positive { color: var(--chat-success); }
+    .stat-delta.negative { color: var(--chat-fail); }
+    .stat-delta.neutral  { color: var(--chat-text-dim); }
+
+    /* Failing evals list */
+    .failing-evals {
+      border-top: 1px solid var(--chat-border);
+      padding: 10px 12px;
+    }
+
+    .failing-evals-title {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--chat-text-muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .eval-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: var(--chat-text-muted);
+      padding: 3px 0;
+    }
+
+    .eval-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .eval-dot.fail    { background: var(--chat-fail); }
+    .eval-dot.partial { background: var(--chat-warning); }
+
+    .eval-name {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--chat-text);
+    }
+
+    .eval-result {
+      margin-left: auto;
+      font-size: 10.5px;
+      font-family: var(--font-mono);
+      padding: 1px 6px;
+      border-radius: 3px;
+    }
+
+    .eval-result.fail {
+      background: oklch(0.570 0.180 25 / 0.18);
+      color: var(--chat-fail);
+      border: 1px solid oklch(0.570 0.180 25 / 0.3);
+    }
+
+    .eval-result.partial {
+      background: oklch(0.720 0.125 60 / 0.14);
+      color: var(--chat-warning);
+      border: 1px solid oklch(0.720 0.125 60 / 0.28);
+    }
+
+    /* ── Recommendations section inside bubble ── */
+    .recommendations {
+      margin-top: 14px;
+    }
+
+    .recommendations-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--chat-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .recommendations-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 12px;
+      background: var(--chat-accent);
+      border-radius: 2px;
+    }
+
+    .rec-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .rec-item {
+      display: flex;
+      gap: 10px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--chat-border);
+      border-radius: 7px;
+      padding: 10px 12px;
+    }
+
+    .rec-num {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--chat-accent-dim);
+      border: 1px solid var(--chat-accent-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--chat-accent);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .rec-text {
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--chat-text);
+    }
+
+    .rec-text em {
+      font-style: normal;
+      color: var(--chat-text-muted);
+      font-size: 11.5px;
+    }
+
+    /* ── Action row ── */
+    .action-prompt {
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--chat-text-muted);
+    }
+
+    .action-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 9px;
+    }
+
+    .btn-rec-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      border: 1px solid var(--chat-accent-border);
+      background: var(--chat-accent-dim);
+      color: var(--chat-accent);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.12s;
+    }
+
+    .btn-rec-num:hover {
+      background: oklch(0.720 0.125 155 / 0.28);
+    }
+
+    .btn-rec-num.selected {
+      background: var(--chat-accent);
+      color: #0f1117;
+      border-color: var(--chat-accent);
+    }
+
+    .btn-all {
+      height: 32px;
+      padding: 0 14px;
+      border-radius: 6px;
+      border: 1px solid var(--chat-border);
+      background: rgba(255,255,255,0.06);
+      color: var(--chat-text-muted);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    /* Chat input bar */
+    .chat-input-bar {
+      border-top: 1px solid var(--chat-border);
+      padding: 10px 14px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      background: var(--chat-panel-bg);
+    }
+
+    .chat-input-field {
+      flex: 1;
+      background: var(--chat-message-bg);
+      border: 1px solid var(--chat-border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12.5px;
+      color: var(--chat-text-dim);
+      font-family: var(--font-sans);
+    }
+
+    .chat-send-btn {
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      background: var(--chat-accent);
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* ── State B: Refining indicator ── */
+    .refining-bubble {
+      background: oklch(0.680 0.120 210 / 0.08);
+      border-color: oklch(0.680 0.120 210 / 0.22);
+    }
+
+    .refining-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .refining-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid oklch(0.680 0.120 210);
+      border-top-color: transparent;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .refining-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: oklch(0.680 0.120 210);
+    }
+
+    .refining-detail {
+      font-size: 12px;
+      color: var(--chat-text-muted);
+      line-height: 1.55;
+    }
+
+    .refining-steps {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .refining-step {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11.5px;
+      color: var(--chat-text-dim);
+    }
+
+    .step-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .step-dot.done    { background: var(--chat-success); }
+    .step-dot.active  { background: oklch(0.680 0.120 210); animation: pulse 1s ease-in-out infinite; }
+    .step-dot.pending { background: var(--chat-border); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.35; }
+    }
+
+    .step-text.done   { color: var(--chat-text-muted); }
+    .step-text.active { color: var(--chat-text); }
+    .step-text.pending { color: var(--chat-text-dim); }
+
+    /* rec highlight in state B */
+    .rec-item.highlighted {
+      border-color: oklch(0.680 0.120 210 / 0.4);
+      background: oklch(0.680 0.120 210 / 0.07);
+    }
+
+    .rec-num.blue-num {
+      background: oklch(0.680 0.120 210 / 0.15);
+      border-color: oklch(0.680 0.120 210 / 0.4);
+      color: oklch(0.680 0.120 210);
+    }
+
+    /* Timestamp on messages */
+    .msg-time {
+      font-size: 10px;
+      color: var(--chat-text-dim);
+      margin-top: 4px;
+      padding: 0 2px;
+    }
+
+    .msg-row.user .msg-time {
+      text-align: right;
+    }
+
+    .msg-col {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Page header meta */
+    .meta-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .meta-chip {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+    }
+
+    .meta-chip.issue {
+      background: oklch(0.720 0.125 155 / 0.1);
+      color: oklch(0.520 0.125 155);
+      border: 1px solid oklch(0.720 0.125 155 / 0.3);
+    }
+
+    .meta-chip.component {
+      background: oklch(0.910 0.006 85 / 0.5);
+      color: var(--color-muted-foreground);
+      border: 1px solid var(--color-border);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <h1>VU-717: Benchmark Recommendations in Refine Chat</h1>
+    <div class="meta-row">
+      <span class="meta-chip issue">VU-717</span>
+      <span class="meta-chip component">Refine Tab → Chat UI</span>
+      <span class="meta-chip component">skill: customer-support-triage</span>
+    </div>
+    <p class="subtitle">
+      Two states shown side-by-side: (A) after benchmark completes — assistant surfaces stats + numbered recommendations;
+      (B) user selects recommendation 2 — refine in progress with step tracker.
+    </p>
+
+    <div class="screens">
+
+      <!-- ═══════════════════════════════════════════════
+           STATE A — After benchmark completes
+      ════════════════════════════════════════════════ -->
+      <div class="screen-wrapper">
+        <span class="screen-label">State A — Benchmark complete, awaiting selection</span>
+
+        <div class="chat-window">
+          <!-- Title bar -->
+          <div class="chat-titlebar">
+            <div class="titlebar-dots">
+              <div class="titlebar-dot red"></div>
+              <div class="titlebar-dot yellow"></div>
+              <div class="titlebar-dot green"></div>
+            </div>
+            <div class="titlebar-title">Refine</div>
+            <div class="titlebar-skill-badge">customer-support-triage</div>
+          </div>
+
+          <!-- Messages -->
+          <div class="chat-messages">
+
+            <!-- System divider -->
+            <div class="msg-system">
+              <div class="msg-system-line"></div>
+              <div class="msg-system-text">session started · iteration 3</div>
+              <div class="msg-system-line"></div>
+            </div>
+
+            <!-- User triggers benchmark -->
+            <div class="msg-row user">
+              <div class="avatar user">YO</div>
+              <div class="msg-col">
+                <div class="bubble">
+                  <p>Run a benchmark to check how we're doing after the last round of examples.</p>
+                </div>
+                <div class="msg-time">2:14 PM</div>
+              </div>
+            </div>
+
+            <!-- Assistant acknowledges -->
+            <div class="msg-row">
+              <div class="avatar assistant">SB</div>
+              <div class="msg-col">
+                <div class="bubble">
+                  <p>Running benchmark — dispatching evals across <code>customer-support-triage@iter-3</code>…</p>
+                </div>
+                <div class="msg-time">2:14 PM</div>
+              </div>
+            </div>
+
+            <!-- System divider: benchmark done -->
+            <div class="msg-system">
+              <div class="msg-system-line"></div>
+              <div class="msg-system-text">benchmark run-id: bm-4f2a · completed in 47 s</div>
+              <div class="msg-system-line"></div>
+            </div>
+
+            <!-- Assistant: benchmark summary + recommendations -->
+            <div class="msg-row">
+              <div class="avatar assistant">SB</div>
+              <div class="msg-col">
+                <div class="bubble">
+                  <p>Benchmark finished. Here's what the evals found:</p>
+
+                  <!-- Benchmark stats card -->
+                  <div class="benchmark-card">
+                    <div class="benchmark-card-header">
+                      <span class="benchmark-card-title">Benchmark Summary</span>
+                      <span class="benchmark-run-id">bm-4f2a · iter-3 vs iter-2</span>
+                    </div>
+                    <div class="benchmark-stats">
+                      <div class="stat-block">
+                        <span class="stat-value good">71%</span>
+                        <span class="stat-label">Pass rate</span>
+                        <span class="stat-delta positive">▲ +8 pp</span>
+                      </div>
+                      <div class="stat-block">
+                        <span class="stat-value bad">5</span>
+                        <span class="stat-label">Failing evals</span>
+                        <span class="stat-delta negative">▼ −2 from iter-2</span>
+                      </div>
+                      <div class="stat-block">
+                        <span class="stat-value up">17</span>
+                        <span class="stat-label">Total evals</span>
+                        <span class="stat-delta neutral">no change</span>
+                      </div>
+                    </div>
+                    <div class="failing-evals">
+                      <div class="failing-evals-title">Failing / partial evals</div>
+                      <div class="eval-row">
+                        <div class="eval-dot fail"></div>
+                        <span class="eval-name">multi-step-return-escalation</span>
+                        <span class="eval-result fail">0 / 3</span>
+                      </div>
+                      <div class="eval-row">
+                        <div class="eval-dot fail"></div>
+                        <span class="eval-name">refund-policy-edge-case</span>
+                        <span class="eval-result fail">1 / 4</span>
+                      </div>
+                      <div class="eval-row">
+                        <div class="eval-dot fail"></div>
+                        <span class="eval-name">angry-customer-de-escalation</span>
+                        <span class="eval-result fail">0 / 2</span>
+                      </div>
+                      <div class="eval-row">
+                        <div class="eval-dot partial"></div>
+                        <span class="eval-name">subscription-cancellation-flow</span>
+                        <span class="eval-result partial">2 / 4</span>
+                      </div>
+                      <div class="eval-row">
+                        <div class="eval-dot partial"></div>
+                        <span class="eval-name">international-shipping-query</span>
+                        <span class="eval-result partial">1 / 2</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Recommendations -->
+                  <div class="recommendations">
+                    <div class="recommendations-title">Recommendations</div>
+                    <div class="rec-list">
+                      <div class="rec-item">
+                        <div class="rec-num">1</div>
+                        <div class="rec-text">
+                          The skill fails all <code>multi-step-return-escalation</code> cases — add 2–3 examples showing step-by-step escalation to Tier 2 with explicit handoff language.
+                          <br><em>Impacts: multi-step-return-escalation (0/3)</em>
+                        </div>
+                      </div>
+                      <div class="rec-item">
+                        <div class="rec-num">2</div>
+                        <div class="rec-text">
+                          Tone is too formal during angry-customer scenarios — update the persona prompt to permit empathy phrases like "I completely understand" before presenting solutions.
+                          <br><em>Impacts: angry-customer-de-escalation (0/2)</em>
+                        </div>
+                      </div>
+                      <div class="rec-item">
+                        <div class="rec-num">3</div>
+                        <div class="rec-text">
+                          Refund policy examples only cover standard 30-day window — add an edge-case example for expired warranties and a separate one for digital goods.
+                          <br><em>Impacts: refund-policy-edge-case (1/4)</em>
+                        </div>
+                      </div>
+                      <div class="rec-item">
+                        <div class="rec-num">4</div>
+                        <div class="rec-text">
+                          Subscription cancellation flow stops at confirmation but doesn't offer a pause option — add a branch example that presents the pause plan before final cancellation.
+                          <br><em>Impacts: subscription-cancellation-flow (2/4)</em>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Action prompt -->
+                  <div class="action-prompt">
+                    Which recommendation would you like to act on?
+                    <div class="action-buttons">
+                      <button class="btn-rec-num">1</button>
+                      <button class="btn-rec-num">2</button>
+                      <button class="btn-rec-num">3</button>
+                      <button class="btn-rec-num">4</button>
+                      <button class="btn-all">
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M8 3v10M3 8h10"/>
+                        </svg>
+                        Refine based on all
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+                <div class="msg-time">2:15 PM</div>
+              </div>
+            </div>
+
+          </div><!-- /chat-messages -->
+
+          <!-- Input bar -->
+          <div class="chat-input-bar">
+            <div class="chat-input-field" style="color: var(--chat-text-dim); font-size: 12px;">
+              Type a message or click a recommendation above…
+            </div>
+            <button class="chat-send-btn" aria-label="Send">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#0f1117" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 8h12M9 3l5 5-5 5"/>
+              </svg>
+            </button>
+          </div>
+        </div><!-- /chat-window -->
+      </div><!-- /screen-wrapper A -->
+
+
+      <!-- ═══════════════════════════════════════════════
+           STATE B — User clicked "2", refine in progress
+      ════════════════════════════════════════════════ -->
+      <div class="screen-wrapper">
+        <span class="screen-label state-b">State B — User selected recommendation 2, refining</span>
+
+        <div class="chat-window">
+          <!-- Title bar -->
+          <div class="chat-titlebar">
+            <div class="titlebar-dots">
+              <div class="titlebar-dot red"></div>
+              <div class="titlebar-dot yellow"></div>
+              <div class="titlebar-dot green"></div>
+            </div>
+            <div class="titlebar-title">Refine</div>
+            <div class="titlebar-skill-badge">customer-support-triage</div>
+          </div>
+
+          <!-- Messages -->
+          <div class="chat-messages">
+
+            <!-- System divider -->
+            <div class="msg-system">
+              <div class="msg-system-line"></div>
+              <div class="msg-system-text">session started · iteration 3</div>
+              <div class="msg-system-line"></div>
+            </div>
+
+            <!-- User triggers benchmark (condensed) -->
+            <div class="msg-row user">
+              <div class="avatar user">YO</div>
+              <div class="msg-col">
+                <div class="bubble">
+                  <p>Run a benchmark to check how we're doing after the last round of examples.</p>
+                </div>
+                <div class="msg-time">2:14 PM</div>
+              </div>
+            </div>
+
+            <!-- Assistant condensed prior message -->
+            <div class="msg-row">
+              <div class="avatar assistant">SB</div>
+              <div class="msg-col">
+                <div class="bubble">
+                  <p>Benchmark finished — pass rate <strong style="color: var(--chat-success);">71%</strong> (▲ +8 pp), 5 failing evals. Recommendations ready.</p>
+
+                  <!-- Show recommendations again, rec 2 highlighted -->
+                  <div class="recommendations" style="margin-top: 12px;">
+                    <div class="recommendations-title">Recommendations</div>
+                    <div class="rec-list">
+                      <div class="rec-item" style="opacity: 0.45;">
+                        <div class="rec-num">1</div>
+                        <div class="rec-text">
+                          Add step-by-step escalation examples for multi-step return workflows with explicit Tier 2 handoff language.
+                        </div>
+                      </div>
+                      <div class="rec-item highlighted">
+                        <div class="rec-num blue-num">2</div>
+                        <div class="rec-text">
+                          Update persona prompt to permit empathy phrases during angry-customer scenarios before presenting solutions.
+                          <br><em>Impacts: angry-customer-de-escalation (0/2)</em>
+                        </div>
+                      </div>
+                      <div class="rec-item" style="opacity: 0.45;">
+                        <div class="rec-num">3</div>
+                        <div class="rec-text">
+                          Add refund edge-case examples for expired warranties and digital goods.
+                        </div>
+                      </div>
+                      <div class="rec-item" style="opacity: 0.45;">
+                        <div class="rec-num">4</div>
+                        <div class="rec-text">
+                          Add pause-plan branch to subscription cancellation flow.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Action buttons — "2" selected state -->
+                  <div class="action-prompt" style="margin-top: 14px;">
+                    Which recommendation would you like to act on?
+                    <div class="action-buttons">
+                      <button class="btn-rec-num" style="opacity:0.4; pointer-events:none;">1</button>
+                      <button class="btn-rec-num selected">2</button>
+                      <button class="btn-rec-num" style="opacity:0.4; pointer-events:none;">3</button>
+                      <button class="btn-rec-num" style="opacity:0.4; pointer-events:none;">4</button>
+                      <button class="btn-all" style="opacity:0.4; pointer-events:none;">
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M8 3v10M3 8h10"/>
+                        </svg>
+                        Refine based on all
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="msg-time">2:15 PM</div>
+              </div>
+            </div>
+
+            <!-- User selects "2" -->
+            <div class="msg-row user">
+              <div class="avatar user">YO</div>
+              <div class="msg-col">
+                <div class="bubble">
+                  <p>2</p>
+                </div>
+                <div class="msg-time">2:15 PM</div>
+              </div>
+            </div>
+
+            <!-- Assistant: refining in progress -->
+            <div class="msg-row">
+              <div class="avatar assistant">SB</div>
+              <div class="msg-col">
+                <div class="bubble refining-bubble">
+                  <div class="refining-header">
+                    <div class="refining-icon"></div>
+                    <span class="refining-label">Refining based on recommendation 2…</span>
+                  </div>
+                  <div class="refining-detail">
+                    Updating persona prompt to allow empathy-first language in angry-customer scenarios, then regenerating affected examples.
+                  </div>
+                  <div class="refining-steps">
+                    <div class="refining-step">
+                      <div class="step-dot done"></div>
+                      <span class="step-text done">Analyzed failing assertions in <code style="font-size:10.5px;background:rgba(255,255,255,0.07);border-radius:3px;padding:1px 4px;">angry-customer-de-escalation</code></span>
+                    </div>
+                    <div class="refining-step">
+                      <div class="step-dot done"></div>
+                      <span class="step-text done">Drafted persona prompt patch — tone softened, empathy phrases unblocked</span>
+                    </div>
+                    <div class="refining-step">
+                      <div class="step-dot active"></div>
+                      <span class="step-text active">Generating 2 updated examples with revised tone guidance…</span>
+                    </div>
+                    <div class="refining-step">
+                      <div class="step-dot pending"></div>
+                      <span class="step-text pending">Validate examples pass structural checks</span>
+                    </div>
+                    <div class="refining-step">
+                      <div class="step-dot pending"></div>
+                      <span class="step-text pending">Write changes to skill file and commit iteration 4</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="msg-time">2:15 PM</div>
+              </div>
+            </div>
+
+          </div><!-- /chat-messages -->
+
+          <!-- Input bar — disabled while refining -->
+          <div class="chat-input-bar">
+            <div class="chat-input-field" style="color: var(--chat-text-dim); font-size: 12px; opacity: 0.5;">
+              Refining in progress — please wait…
+            </div>
+            <button class="chat-send-btn" style="opacity:0.4; cursor:not-allowed;" aria-label="Send" disabled>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#0f1117" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 8h12M9 3l5 5-5 5"/>
+              </svg>
+            </button>
+          </div>
+        </div><!-- /chat-window -->
+      </div><!-- /screen-wrapper B -->
+
+    </div><!-- /screens -->
+
+  </div><!-- /container -->
+</body>
+</html>
