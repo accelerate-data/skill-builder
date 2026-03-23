@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::path::Path;
 
 use crate::db::Db;
-use crate::types::AvailableSkill;
+use crate::types::{AvailablePlugin, AvailableSkill};
 
-use super::catalog::{discover_skills_from_catalog, extract_plugin_path};
+use super::catalog::{discover_plugins_from_catalog, discover_skills_from_catalog, extract_plugin_path};
 use super::http::{build_github_client, fetch_repo_tree, get_default_branch};
 use super::import::{compute_skill_content_hash, import_single_skill, merge_imported_fields};
 use super::url::{marketplace_manifest_path, parse_github_url_inner};
@@ -156,6 +155,122 @@ pub async fn list_github_skills(
         list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref())
             .await?;
     Ok(skills)
+}
+
+#[tauri::command]
+pub async fn list_github_plugins(
+    db: tauri::State<'_, Db>,
+    owner: String,
+    repo: String,
+    branch: String,
+    subpath: Option<String>,
+) -> Result<Vec<AvailablePlugin>, String> {
+    log::info!(
+        "[list_github_plugins] owner={} repo={} branch={} subpath={:?}",
+        owner,
+        repo,
+        branch,
+        subpath
+    );
+    let token = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[list_github_plugins] failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        let settings = crate::db::read_settings(&conn)?;
+        settings.github_oauth_token.clone()
+    };
+
+    let (_, plugins) =
+        list_github_plugins_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref())
+            .await?;
+    Ok(plugins)
+}
+
+pub(crate) async fn list_github_plugins_inner(
+    owner: &str,
+    repo: &str,
+    branch: &str,
+    subpath: Option<&str>,
+    token: Option<&str>,
+) -> Result<(Option<String>, Vec<AvailablePlugin>), String> {
+    let client = build_github_client(token);
+    let resolved_branch = if branch.is_empty() {
+        get_default_branch(&client, owner, repo)
+            .await
+            .unwrap_or_else(|_| "main".to_string())
+    } else {
+        get_default_branch(&client, owner, repo)
+            .await
+            .unwrap_or_else(|_| branch.to_string())
+    };
+
+    let manifest_path = marketplace_manifest_path(subpath);
+    let raw_url = format!(
+        "https://raw.githubusercontent.com/{}/{}/{}/{}",
+        owner, repo, resolved_branch, manifest_path
+    );
+
+    let response = client.get(&raw_url).send().await.map_err(|e| {
+        log::error!(
+            "[list_github_plugins_inner] failed to fetch marketplace.json for {}/{}: {}",
+            owner,
+            repo,
+            e
+        );
+        format!(
+            "marketplace.json not found at {} in {}/{}. Ensure the repository has this file.",
+            manifest_path, owner, repo
+        )
+    })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        log::error!(
+            "[list_github_plugins_inner] failed to fetch marketplace.json for {}/{}: HTTP {}",
+            owner,
+            repo,
+            status
+        );
+        return Err(format!(
+            "marketplace.json not found at {} in {}/{}. Ensure the repository has this file.",
+            manifest_path, owner, repo
+        ));
+    }
+
+    let body = response.text().await.map_err(|e| {
+        log::error!(
+            "[list_github_plugins_inner] failed to read marketplace.json body for {}/{}: {}",
+            owner,
+            repo,
+            e
+        );
+        format!("Failed to read marketplace.json: {}", e)
+    })?;
+
+    let marketplace: crate::types::MarketplaceJson = serde_json::from_str(&body).map_err(|e| {
+        log::error!(
+            "[list_github_plugins_inner] failed to parse marketplace.json for {}/{}: {}",
+            owner,
+            repo,
+            e
+        );
+        format!("Failed to parse marketplace.json: {}", e)
+    })?;
+
+    let plugin_root = marketplace
+        .metadata
+        .as_ref()
+        .and_then(|m| m.plugin_root.as_deref());
+    let plugins = discover_plugins_from_catalog(&marketplace.plugins, plugin_root, subpath);
+
+    log::info!(
+        "[list_github_plugins_inner] returning {} plugins from marketplace {}",
+        plugins.len(),
+        marketplace.name.as_deref().unwrap_or("unknown")
+    );
+
+    Ok((marketplace.name.clone(), plugins))
 }
 
 pub(crate) async fn list_github_skills_inner(
@@ -391,6 +506,196 @@ pub(crate) async fn list_github_skills_inner(
     Ok((marketplace.name.clone(), final_skills))
 }
 
+async fn import_marketplace_entries_to_library(
+    db: tauri::State<'_, Db>,
+    source_url: String,
+    skill_paths: Vec<String>,
+    metadata_overrides: Option<
+        std::collections::HashMap<String, crate::types::SkillMetadataOverride>,
+    >,
+    plugin_display_name_override: Option<String>,
+) -> Result<Vec<MarketplaceImportResult>, String> {
+    log::info!(
+        "[import_marketplace_entries_to_library] importing {} skills from {} (with_overrides={})",
+        skill_paths.len(),
+        source_url,
+        metadata_overrides.is_some()
+    );
+
+    // Read settings
+    let (workspace_path, skills_path, token) = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!(
+                "[import_marketplace_entries_to_library] failed to acquire DB lock: {}",
+                e
+            );
+            e.to_string()
+        })?;
+        let settings = crate::db::read_settings(&conn).map_err(|e| {
+            log::error!(
+                "[import_marketplace_entries_to_library] failed to read settings: {}",
+                e
+            );
+            e
+        })?;
+        let wp = settings.workspace_path.ok_or_else(|| "Workspace path not initialized".to_string())?;
+        let sp = settings.skills_path.ok_or_else(|| "Skills path not configured. Set it in Settings.".to_string())?;
+        (wp, sp, settings.github_oauth_token.clone())
+    };
+
+    let repo_info = parse_github_url_inner(&source_url)?;
+    let owner = &repo_info.owner;
+    let repo = &repo_info.repo;
+
+    let client = build_github_client(token.as_deref());
+    let (branch, tree) = fetch_repo_tree(&client, owner, repo, &repo_info.branch).await?;
+
+    let skills_dir = Path::new(&skills_path);
+    let mut results: Vec<MarketplaceImportResult> = Vec::new();
+
+    for skill_path in &skill_paths {
+        let plugin_path = extract_plugin_path(skill_path);
+        let plugin_display_name = plugin_display_name_override
+            .clone()
+            .unwrap_or_else(|| {
+                if plugin_path.is_empty() {
+                    repo.to_string()
+                } else {
+                    plugin_path.rsplit('/').next().unwrap_or(plugin_path).to_string()
+                }
+            });
+        let override_ref = metadata_overrides
+            .as_ref()
+            .and_then(|m| m.get(skill_path.as_str()));
+        match import_single_skill(
+            &client,
+            "https://raw.githubusercontent.com",
+            owner,
+            repo,
+            &branch,
+            skill_path,
+            &tree,
+            skills_dir,
+            true,
+            override_ref,
+        )
+        .await
+        {
+            Ok(mut skill) => {
+                let final_version = match skill.version.clone() {
+                    Some(version) => version,
+                    None => {
+                        let missing_skill_name = skill.skill_name.clone();
+                        results.push(MarketplaceImportResult {
+                            skill_name: missing_skill_name.clone(),
+                            success: false,
+                            error: Some(format!(
+                                "Imported skill '{}' is missing a version after normalization",
+                                missing_skill_name
+                            )),
+                        });
+                        continue;
+                    }
+                };
+
+                if let Err(e) = (|| -> Result<(), String> {
+                    if crate::git::skill_version_tag_exists(skills_dir, &skill.skill_name, &final_version)? {
+                        return Err(format!(
+                            "Tag '{}' already exists",
+                            crate::git::skill_version_tag_name(&skill.skill_name, &final_version)
+                        ));
+                    }
+                    crate::git::commit_all(skills_dir, &format!("{}: import from marketplace", skill.skill_name))?;
+                    crate::git::create_skill_version_tag(skills_dir, &skill.skill_name, &final_version)?;
+                    Ok(())
+                })() {
+                    results.push(MarketplaceImportResult {
+                        skill_name: skill.skill_name,
+                        success: false,
+                        error: Some(e),
+                    });
+                    continue;
+                }
+
+                let conn = db.0.lock().map_err(|e| e.to_string())?;
+                skill.marketplace_source_url = Some(source_url.clone());
+                let (_, plugin_slug) = crate::db::create_plugin(
+                    &conn,
+                    &plugin_display_name,
+                    "marketplace",
+                    Some(&source_url),
+                    None,
+                )?;
+                skill.plugin_slug = Some(plugin_slug.clone());
+                skill.plugin_display_name = Some(plugin_display_name.clone());
+                skill.is_default_plugin = Some(false);
+
+                let existing_imported =
+                    crate::db::get_imported_skill(&conn, &skill.skill_name).unwrap_or(None);
+                if let Some(ref existing) = existing_imported {
+                    merge_imported_fields(&mut skill, existing);
+                }
+
+                let purpose_for_master = skill.purpose.as_deref().unwrap_or("domain");
+                if let Err(e) = crate::db::upsert_skill_in_plugin(
+                    &conn,
+                    &skill.skill_name,
+                    "marketplace",
+                    purpose_for_master,
+                    &plugin_slug,
+                ) {
+                    log::warn!(
+                        "[import_marketplace_entries_to_library] failed to save marketplace skill for '{}': {}",
+                        skill.skill_name, e
+                    );
+                }
+
+                if let Err(e) = crate::db::upsert_imported_skill(&conn, &skill) {
+                    results.push(MarketplaceImportResult {
+                        skill_name: skill.skill_name,
+                        success: false,
+                        error: Some(e),
+                    });
+                    continue;
+                }
+
+                if let Some(hash) = compute_skill_content_hash(&skill.disk_path) {
+                    if let Err(e) =
+                        crate::db::set_imported_skill_content_hash(&conn, &skill.skill_name, &hash)
+                    {
+                        log::warn!("[import_marketplace_entries_to_library] failed to set content_hash for '{}': {}", skill.skill_name, e);
+                    }
+                }
+
+                results.push(MarketplaceImportResult {
+                    skill_name: skill.skill_name,
+                    success: true,
+                    error: None,
+                });
+            }
+            Err(e) => {
+                results.push(MarketplaceImportResult {
+                    skill_name: skill_path.clone(),
+                    success: false,
+                    error: Some(e),
+                });
+            }
+        }
+    }
+
+    if results.iter().any(|r| r.success) {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        if let Err(e) = crate::commands::workflow::update_skills_section(&workspace_path, &conn) {
+            log::warn!(
+                "[import_marketplace_entries_to_library] failed to update CLAUDE.md: {}",
+                e
+            );
+        }
+    }
+
+    Ok(results)
+}
+
 // ---------------------------------------------------------------------------
 // get_dashboard_skill_names
 // ---------------------------------------------------------------------------
@@ -429,287 +734,65 @@ pub async fn import_marketplace_to_library(
         std::collections::HashMap<String, crate::types::SkillMetadataOverride>,
     >,
 ) -> Result<Vec<MarketplaceImportResult>, String> {
-    log::info!(
-        "[import_marketplace_to_library] importing {} skills from {} (with_overrides={})",
-        skill_paths.len(),
-        source_url,
-        metadata_overrides.is_some()
-    );
+    import_marketplace_entries_to_library(db, source_url, skill_paths, metadata_overrides, None).await
+}
 
-    // Read settings
-    let (workspace_path, skills_path, token) = {
-        let conn = db.0.lock().map_err(|e| {
-            log::error!(
-                "[import_marketplace_to_library] failed to acquire DB lock: {}",
-                e
-            );
-            e.to_string()
-        })?;
-        let settings = crate::db::read_settings(&conn).map_err(|e| {
-            log::error!(
-                "[import_marketplace_to_library] failed to read settings: {}",
-                e
-            );
-            e
-        })?;
-        let wp = settings.workspace_path.ok_or_else(|| {
-            let msg = "Workspace path not initialized".to_string();
-            log::error!("[import_marketplace_to_library] {}", msg);
-            msg
-        })?;
-        let sp = settings.skills_path.ok_or_else(|| {
-            let msg = "Skills path not configured. Set it in Settings.".to_string();
-            log::error!("[import_marketplace_to_library] {}", msg);
-            msg
-        })?;
-        (wp, sp, settings.github_oauth_token.clone())
+#[tauri::command]
+pub async fn import_marketplace_plugin_to_library(
+    db: tauri::State<'_, Db>,
+    source_url: String,
+    plugin_path: String,
+    plugin_name: String,
+) -> Result<Vec<MarketplaceImportResult>, String> {
+    let repo_info = parse_github_url_inner(&source_url)?;
+    let token = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = crate::db::read_settings(&conn)?;
+        settings.github_oauth_token.clone()
     };
-
-    // Parse the registry URL into owner/repo/branch
-    let repo_info = parse_github_url_inner(&source_url).map_err(|e| {
-        log::error!(
-            "[import_marketplace_to_library] failed to parse source_url '{}': {}",
-            source_url,
-            e
-        );
-        e
-    })?;
-    let owner = &repo_info.owner;
-    let repo = &repo_info.repo;
-
     let client = build_github_client(token.as_deref());
-    let (branch, tree) = fetch_repo_tree(&client, owner, repo, &repo_info.branch)
-        .await
-        .map_err(|e| {
-            log::error!(
-                "[import_marketplace_to_library] failed to fetch repo tree for {}/{}: {}",
-                owner,
-                repo,
-                e
-            );
-            e
-        })?;
+    let (_branch, tree) = fetch_repo_tree(
+        &client,
+        &repo_info.owner,
+        &repo_info.repo,
+        &repo_info.branch,
+    )
+    .await?;
 
-    let skills_dir = Path::new(&skills_path);
-    let mut results: Vec<MarketplaceImportResult> = Vec::new();
-
-    for skill_path in &skill_paths {
-        let plugin_path = extract_plugin_path(skill_path);
-        let plugin_display_name = if plugin_path.is_empty() {
-            repo.to_string()
-        } else {
-            plugin_path
-                .rsplit('/')
-                .next()
-                .unwrap_or(plugin_path)
-                .to_string()
-        };
-        let override_ref = metadata_overrides
-            .as_ref()
-            .and_then(|m| m.get(skill_path.as_str()));
-        match import_single_skill(
-            &client,
-            "https://raw.githubusercontent.com",
-            owner,
-            repo,
-            &branch,
-            skill_path,
-            &tree,
-            skills_dir,
-            true,
-            override_ref,
-        )
-        .await
-        {
-            Ok(mut skill) => {
-                let final_version = match skill.version.clone() {
-                    Some(version) => version,
-                    None => {
-                        let msg = format!(
-                            "Imported skill '{}' is missing a version after normalization",
-                            skill.skill_name
-                        );
-                        log::error!("[import_marketplace_to_library] {}", msg);
-                        if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
-                            log::warn!(
-                                "[import_marketplace_to_library] cleanup failed for '{}': {}",
-                                skill.disk_path,
-                                cleanup_err
-                            );
-                        }
-                        results.push(MarketplaceImportResult {
-                            skill_name: skill.skill_name,
-                            success: false,
-                            error: Some(msg),
-                        });
-                        continue;
-                    }
-                };
-
-                if let Err(e) = (|| -> Result<(), String> {
-                    if crate::git::skill_version_tag_exists(
-                        skills_dir,
-                        &skill.skill_name,
-                        &final_version,
-                    )? {
-                        return Err(format!(
-                            "Tag '{}' already exists",
-                            crate::git::skill_version_tag_name(&skill.skill_name, &final_version)
-                        ));
-                    }
-
-                    crate::git::commit_all(
-                        skills_dir,
-                        &format!("{}: import from marketplace", skill.skill_name),
-                    )?;
-                    crate::git::create_skill_version_tag(
-                        skills_dir,
-                        &skill.skill_name,
-                        &final_version,
-                    )?;
-                    Ok(())
-                })() {
-                    log::error!(
-                        "[import_marketplace_to_library] failed to commit/tag '{}': {}",
-                        skill.skill_name,
-                        e
-                    );
-                    if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
-                        log::warn!(
-                            "[import_marketplace_to_library] cleanup failed for '{}': {}",
-                            skill.disk_path,
-                            cleanup_err
-                        );
-                    }
-                    results.push(MarketplaceImportResult {
-                        skill_name: skill.skill_name,
-                        success: false,
-                        error: Some(e),
-                    });
-                    continue;
-                }
-
-                let conn = db.0.lock().map_err(|e| {
-                    log::error!(
-                        "[import_marketplace_to_library] failed to acquire DB lock for '{}': {}",
-                        skill_path,
-                        e
-                    );
-                    e.to_string()
-                })?;
-
-                // Tag the skill with the registry it was imported from
-                skill.marketplace_source_url = Some(source_url.clone());
-                let (_, plugin_slug) = crate::db::create_plugin(
-                    &conn,
-                    &plugin_display_name,
-                    "marketplace",
-                    Some(&source_url),
-                    None,
-                )?;
-                skill.plugin_slug = Some(plugin_slug.clone());
-                skill.plugin_display_name = Some(plugin_display_name.clone());
-                skill.is_default_plugin = Some(false);
-
-                // Fetch existing imported skill metadata (if any) for merging on upgrade
-                let existing_imported =
-                    crate::db::get_imported_skill(&conn, &skill.skill_name).unwrap_or(None);
-
-                // Merge: new frontmatter value wins if Some, else fall back to existing installed value.
-                // Version and skill_name are intentionally NOT merged — keep the new values.
-                if let Some(ref existing) = existing_imported {
-                    merge_imported_fields(&mut skill, existing);
-                }
-
-                // Insert into skills master first so that skills.id is available as a FK
-                // when inserting into imported_skills below.
-                let purpose_for_master = skill.purpose.as_deref().unwrap_or("domain");
-                if let Err(e) = crate::db::upsert_skill_in_plugin(
-                    &conn,
-                    &skill.skill_name,
-                    "marketplace",
-                    purpose_for_master,
-                    &plugin_slug,
-                )
-                {
-                    log::warn!(
-                        "[import_marketplace_to_library] failed to save marketplace skill for '{}': {}",
-                        skill.skill_name, e
-                    );
-                }
-
-                // Upsert into imported_skills. Uses ON CONFLICT DO UPDATE so re-imports
-                // (e.g. after skills_path changed) succeed rather than hitting a UNIQUE
-                // constraint. skill_master_id FK is populated from the skills row above.
-                if let Err(e) = crate::db::upsert_imported_skill(&conn, &skill) {
-                    log::error!(
-                        "[import_marketplace_to_library] failed to save imported_skills record for '{}': {}",
-                        skill.skill_name, e
-                    );
-                    results.push(MarketplaceImportResult {
-                        skill_name: skill.skill_name,
-                        success: false,
-                        error: Some(e),
-                    });
-                    continue;
-                }
-
-                // Compute and store the content hash as the baseline for customization detection
-                if let Some(hash) = compute_skill_content_hash(&skill.disk_path) {
-                    if let Err(e) =
-                        crate::db::set_imported_skill_content_hash(&conn, &skill.skill_name, &hash)
-                    {
-                        log::warn!("[import_marketplace_to_library] failed to set content_hash for '{}': {}", skill.skill_name, e);
-                    }
-                }
-
-                log::info!(
-                    "[import_marketplace_to_library] imported '{}' to '{}'",
-                    skill.skill_name,
-                    skill.disk_path
-                );
-                results.push(MarketplaceImportResult {
-                    skill_name: skill.skill_name,
-                    success: true,
-                    error: None,
-                });
+    let skills_prefix = if plugin_path.is_empty() {
+        "skills/".to_string()
+    } else {
+        format!("{}/skills/", plugin_path)
+    };
+    let skill_paths = tree
+        .into_iter()
+        .filter_map(|entry| {
+            let path = entry["path"].as_str()?;
+            let entry_type = entry["type"].as_str()?;
+            if entry_type != "blob" || !path.ends_with("/SKILL.md") {
+                return None;
             }
-            Err(e) => {
-                log::error!(
-                    "[import_marketplace_to_library] failed to import '{}': {}",
-                    skill_path,
-                    e
-                );
-                results.push(MarketplaceImportResult {
-                    skill_name: skill_path.clone(),
-                    success: false,
-                    error: Some(e),
-                });
+            let dir = path.strip_suffix("/SKILL.md")?;
+            let skill_name = dir.strip_prefix(&skills_prefix)?;
+            if skill_name.is_empty() || skill_name.contains('/') {
+                return None;
             }
-        }
+            Some(dir.to_string())
+        })
+        .collect::<Vec<_>>();
+
+    if skill_paths.is_empty() {
+        return Err(format!("Plugin '{}' contains no importable skills", plugin_name));
     }
 
-    // Regenerate CLAUDE.md with imported skills section (only if at least one succeeded)
-    if results.iter().any(|r| r.success) {
-        let conn = db.0.lock().map_err(|e| {
-            log::error!("[import_marketplace_to_library] failed to acquire DB lock for CLAUDE.md update: {}", e);
-            e.to_string()
-        })?;
-        if let Err(e) = crate::commands::workflow::update_skills_section(&workspace_path, &conn) {
-            log::warn!(
-                "[import_marketplace_to_library] failed to update CLAUDE.md: {}",
-                e
-            );
-        }
-    }
-
-    log::info!(
-        "[import_marketplace_to_library] done: {} succeeded, {} failed",
-        results.iter().filter(|r| r.success).count(),
-        results.iter().filter(|r| !r.success).count()
-    );
-
-    Ok(results)
+    import_marketplace_entries_to_library(
+        db,
+        source_url,
+        skill_paths,
+        None,
+        Some(plugin_name),
+    )
+    .await
 }
 
 // ---------------------------------------------------------------------------
