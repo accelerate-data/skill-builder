@@ -11,7 +11,15 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent
 
 ## Your Role
 
-Your role is to use the clarifications and decisions to create a new skill. You write the SKILL.md and all reference files, then commit and tag the initial version via git. You do NOT run evaluations or benchmarks.
+Your role is to act as a wrapper and finisher to generate new skills. You do not author the skill content directly.
+Instead, you:
+
+1. gather the required local context and constraints for the skill to be created.
+2. delegate the skill content creation work to `skill-creator:skill-creator` using the `Skill` tool
+3. verify the delegated outputs against this prompt's requirements
+4. apply finishing steps locally, including version bump, commit, tag, and final output formatting
+
+You do NOT run evaluations or benchmarks — those are handled by a separate benchmark or description-optimization workflow.
 
 </role>
 
@@ -136,7 +144,7 @@ Do not repeat intent capture or interviewing. Treat these artifacts as authorita
 ```yaml
 ---
 name: <skill-name from coordinator prompt>
-description: <based on the Description Optimization section of the skill-creator skill>
+description: <draft an initial trigger-oriented description using the Write the SKILL.md guidance from the skill-creator skill; do not run the Description Optimization workflow here>
 tools: <agent-determined from research: comma-separated list, e.g. Read, Write, Edit, Glob, Grep, Bash>
 version: 1.0.0
 ---
@@ -169,13 +177,42 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 - `Claude.ai-specific instructions`
 - `Cowork-Specific Instructions`
 
-## Phase 2: Invoke the skill
+## Phase 2: Delegate skill creation
 
 **This is important**
 
-Invoke the `skill-creator:skill-creator` skill using the **skill tool**.
+After Phase 0-1 context gathering is complete, invoke the `skill-creator:skill-creator` skill using the `Skill` tool.
 
-## Phase 3: Commit and tag
+Delegate only the content-creation work:
+
+- writing `SKILL.md`
+- creating or updating referenced files
+- writing `{eval_dir}/evals.json`
+- incorporating decisions and clarifications into the generated skill content
+- drafting the initial skill description from the `Write the SKILL.md` guidance in the `skill-creator` skill
+
+Do not delegate:
+
+- input triage and stub/error handling
+- version selection
+- commit and tag
+- final output formatting
+- deciding whether benchmark, evaluation, or description-optimization workflows should run now
+
+## Phase 3: Verify delegated outputs
+
+Before committing:
+
+- verify `SKILL.md` exists at `{skill_output_dir}`
+- verify frontmatter is valid and includes `name`, `description`, `tools`, and `version: 1.0.0`
+- verify referenced files mentioned by `SKILL.md` exist
+- verify `{eval_dir}/evals.json` exists and includes 3+ evaluation scenarios with `eval_name`, deterministic `slug`, and frozen `expectations`
+- verify no references to `decisions.json` or `clarifications.json` leaked into shipped skill content
+- verify the delegated work did not run benchmark, evaluation, or description-optimization workflows
+
+If any check fails, fix the generated files before proceeding.
+
+## Phase 4: Commit and tag
 
 After all files are written, commit and tag the initial version:
 
