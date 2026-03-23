@@ -454,3 +454,25 @@ export interface AnswerEvaluationOutput {
   reasoning: string
   per_question: PerQuestionEntry[]
 }
+
+// --- Test case management (Evals tab) ---
+
+export interface TestCase {
+  id: number
+  eval_name: string
+  slug: string
+  prompt: string
+  expected_output: string
+  files: string[]
+  expectations: string[]
+}
+
+export interface EvalsFile {
+  skill_name: string
+  evals: TestCase[]
+}
+
+export interface IterationMeta {
+  iteration: number
+  path: string
+}

@@ -18,6 +18,7 @@ import { getSkillContentForRefine } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
+import { WorkspaceEvals } from "./workspace-evals";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
 
 interface WorkspaceShellProps {
@@ -153,9 +154,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
           </TabsContent>
 
           <TabsContent value="evals" className="flex-1 overflow-y-auto p-6">
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              Evals coming soon.
-            </div>
+            <WorkspaceEvals skill={skill} workspacePath={workspacePath} />
           </TabsContent>
         </Tabs>
 
