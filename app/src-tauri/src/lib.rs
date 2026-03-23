@@ -375,6 +375,10 @@ pub fn run() {
             commands::workflow::evaluation::read_latest_benchmark,
             commands::imported_skills::upload::parse_skill_file,
             commands::imported_skills::upload::import_skill_from_file,
+            commands::evals::list_test_cases,
+            commands::evals::save_test_case,
+            commands::evals::delete_test_case,
+            commands::evals::list_iterations,
         ])
         .on_window_event(|window, event| {
             use tauri::{Emitter, Manager};

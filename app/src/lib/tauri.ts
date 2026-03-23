@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, IterationMeta } from "@/lib/types";
 
 // Re-export invoke for flexible Tauri command invocation
 export { invoke };
@@ -621,3 +621,17 @@ export const readLatestBenchmark = (skillName: string, workspacePath: string) =>
     "read_latest_benchmark",
     { skillName, workspacePath },
   );
+
+// --- Test case management (Evals tab) ---
+
+export const listTestCases = (skillName: string, workspacePath: string) =>
+  invoke<TestCase[]>("list_test_cases", { skillName, workspacePath });
+
+export const saveTestCase = (skillName: string, workspacePath: string, testCase: TestCase) =>
+  invoke<TestCase>("save_test_case", { skillName, workspacePath, testCase });
+
+export const deleteTestCase = (skillName: string, workspacePath: string, id: number) =>
+  invoke<void>("delete_test_case", { skillName, workspacePath, id });
+
+export const listIterations = (skillName: string, workspacePath: string) =>
+  invoke<IterationMeta[]>("list_iterations", { skillName, workspacePath });
