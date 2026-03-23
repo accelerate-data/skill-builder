@@ -37,8 +37,7 @@
       "../../agent-sources/agents/": "agent-sources/agents",
       "../../agent-sources/plugins/": "agent-sources/plugins",
       "../../agent-sources/skills/": "agent-sources/skills",
-      "../../agent-sources/workspace/": "workspace",
-      "resources/node/": "node"
+      "../../agent-sources/workspace/": "workspace"
     },
     "icon": [
       "icons/32x32.png",
