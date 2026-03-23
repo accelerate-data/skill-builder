@@ -137,6 +137,13 @@ fn move_skill_directories(
 }
 
 #[tauri::command]
+pub fn list_plugins(db: tauri::State<'_, Db>) -> Result<Vec<crate::types::LibraryPlugin>, String> {
+    log::info!("[list_plugins]");
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::list_plugins(&conn)
+}
+
+#[tauri::command]
 pub fn create_plugin_from_skills(
     plugin_name: String,
     skill_keys: Vec<String>,
