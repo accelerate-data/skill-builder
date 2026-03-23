@@ -2,7 +2,8 @@
 name: skill-test
 description: >
   Analytics engineer framing and dbt-specific evaluation rubric for skill test runs.
-version: 1.0.0
+metadata:
+  version: 1.0.0
 user-invocable: false
 ---
 

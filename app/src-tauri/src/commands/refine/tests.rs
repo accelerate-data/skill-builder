@@ -940,6 +940,7 @@ fn test_user_context_written_to_file() {
     let ctx = crate::commands::workflow::user_context::format_user_context(
         None,
         &[],
+        None,
         Some("Healthcare"),
         Some("Analytics Lead"),
         Some(r#"{"audience":"Data engineers","challenges":"Legacy ETL"}"#),
@@ -964,6 +965,7 @@ fn test_no_user_context_when_fields_empty() {
     let ctx = crate::commands::workflow::user_context::format_user_context(
         None,
         &[],
+        None,
         None,
         None,
         None,

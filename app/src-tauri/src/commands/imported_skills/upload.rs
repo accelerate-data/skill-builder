@@ -68,6 +68,10 @@ pub fn import_skill_from_file(
         .skills_path
         .ok_or_else(|| "Skills path not configured. Set it in Settings.".to_string())?;
     let workspace_path = settings.workspace_path.unwrap_or_default();
+    let preferred_author = settings
+        .github_user_email
+        .clone()
+        .or(settings.github_user_login.clone());
     import_skill_from_file_inner(
         &conn,
         &file_path,
@@ -85,6 +89,7 @@ pub fn import_skill_from_file(
         force_overwrite,
         &skills_path,
         &workspace_path,
+        preferred_author.as_deref(),
     )
 }
 
@@ -102,6 +107,7 @@ fn import_skill_from_file_inner(
     force_overwrite: bool,
     skills_path: &str,
     workspace_path: &str,
+    preferred_author: Option<&str>,
 ) -> Result<String, String> {
     validate_skill_name(name)?;
 
@@ -156,16 +162,18 @@ fn import_skill_from_file_inner(
     extract_archive(&mut archive2, &prefix, &dest_dir)?;
 
     let skills_repo = Path::new(skills_path);
-    let final_version = match super::frontmatter::ensure_skill_frontmatter_version(
+    let normalized_frontmatter = match super::frontmatter::ensure_skill_frontmatter_metadata(
         &dest_dir.join("SKILL.md"),
         version,
+        preferred_author,
     ) {
-        Ok(final_version) => final_version,
+        Ok(normalized) => normalized,
         Err(e) => {
             let _ = std::fs::remove_dir_all(&dest_dir);
             return Err(e);
         }
     };
+    let final_version = normalized_frontmatter.version.clone();
 
     let import_git_result = (|| -> Result<(), String> {
         if crate::git::skill_version_tag_exists(skills_repo, name, &final_version)? {
@@ -274,6 +282,7 @@ mod tests {
             false,
             skills_path.to_str().unwrap(),
             "",
+            Some("hb@acceleratedata.ai"),
         );
 
         assert!(result.is_ok(), "expected import to succeed: {:?}", result);
@@ -291,7 +300,7 @@ mod tests {
         assert!(
             std::fs::read_to_string(skills_path.join("imported-skill").join("SKILL.md"))
                 .unwrap()
-                .contains("version: 1.0.0")
+                .contains("metadata:\n  version: \"1.0.0\"\n  author: \"hb@acceleratedata.ai\"")
         );
     }
 
@@ -333,6 +342,7 @@ mod tests {
             false,
             skills_path.to_str().unwrap(),
             "",
+            Some("hb@acceleratedata.ai"),
         )
         .unwrap_err();
 

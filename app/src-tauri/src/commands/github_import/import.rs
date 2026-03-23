@@ -30,12 +30,9 @@ pub(crate) fn merge_imported_fields(skill: &mut ImportedSkill, existing: &Import
 
 /// Wrap a YAML string value in double quotes, escaping backslashes, double
 /// quotes, and newlines so that user-supplied values cannot inject extra keys.
+#[cfg(test)]
 pub(crate) fn yaml_quote(s: &str) -> String {
-    let escaped = s
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n");
-    format!("\"{}\"", escaped)
+    crate::commands::imported_skills::frontmatter::yaml_quote_scalar(s)
 }
 
 /// Rewrite the SKILL.md frontmatter block in the destination directory with values from `fm`.
@@ -74,24 +71,7 @@ pub(crate) fn rewrite_skill_md(
         existing.clone()
     };
 
-    // Build new frontmatter YAML block
-    let mut yaml = String::new();
-    let mut add_field = |key: &str, val: &Option<String>| {
-        if let Some(v) = val {
-            yaml.push_str(&format!("{}: {}\n", key, yaml_quote(v)));
-        }
-    };
-    add_field("name", &fm.name);
-    add_field("description", &fm.description);
-    add_field("version", &fm.version);
-    add_field("model", &fm.model);
-    add_field("argument-hint", &fm.argument_hint);
-    if let Some(user_inv) = fm.user_invocable {
-        yaml.push_str(&format!("user-invocable: {}\n", user_inv));
-    }
-    if let Some(disable) = fm.disable_model_invocation {
-        yaml.push_str(&format!("disable-model-invocation: {}\n", disable));
-    }
+    let yaml = crate::commands::imported_skills::frontmatter::render_frontmatter_yaml(fm);
 
     let new_content = format!("---\n{}---\n{}", yaml, body);
     fs::write(&skill_md_path, new_content)
@@ -200,6 +180,9 @@ pub(crate) async fn import_single_skill(
         fm.version = Some(
             super::super::imported_skills::frontmatter::DEFAULT_IMPORTED_SKILL_VERSION.to_string(),
         );
+    }
+    if fm.author.is_none() {
+        fm.author = Some(owner.to_string());
     }
 
     // purpose is set by the caller at import time (DB-only), not read from frontmatter.

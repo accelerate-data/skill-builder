@@ -68,7 +68,11 @@ pub(crate) fn read_workflow_settings(
     let run_row = crate::db::get_workflow_run(&conn, skill_name)
         .ok()
         .flatten();
-    let author_login = run_row.as_ref().and_then(|r| r.author_login.clone());
+    let author_login = settings
+        .github_user_email
+        .clone()
+        .or(settings.github_user_login.clone())
+        .or_else(|| run_row.as_ref().and_then(|r| r.author_login.clone()));
     let created_at = run_row.as_ref().map(|r| r.created_at.clone());
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
     // Metadata fields are read exclusively from the `skills` master table.

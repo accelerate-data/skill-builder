@@ -44,6 +44,7 @@ async fn run_workflow_step_inner(
         workspace_path,
         skill_name,
         &settings.tags,
+        settings.author_login.as_deref(),
         settings.industry.as_deref(),
         settings.function_role.as_deref(),
         settings.intake_json.as_deref(),
@@ -319,6 +320,7 @@ pub async fn run_answer_evaluator(
         &workspace_path,
         &skill_name,
         &[], // answer evaluator doesn't need full metadata
+        None,
         industry.as_deref(),
         function_role.as_deref(),
         intake_json.as_deref(),

@@ -9,6 +9,7 @@ pub fn write_user_context_file(
     workspace_path: &str,
     skill_name: &str,
     tags: &[String],
+    author: Option<&str>,
     industry: Option<&str>,
     function_role: Option<&str>,
     intake_json: Option<&str>,
@@ -23,6 +24,7 @@ pub fn write_user_context_file(
     let Some(ctx) = format_user_context(
         Some(skill_name),
         tags,
+        author,
         industry,
         function_role,
         intake_json,
@@ -80,6 +82,7 @@ pub fn write_user_context_file(
 pub fn format_user_context(
     name: Option<&str>,
     tags: &[String],
+    author: Option<&str>,
     industry: Option<&str>,
     function_role: Option<&str>,
     intake_json: Option<&str>,
@@ -112,6 +115,7 @@ pub fn format_user_context(
     // --- Skill identity ---
     let mut skill_parts: Vec<String> = Vec::new();
     push_field(&mut skill_parts, "Name", name);
+    push_field(&mut skill_parts, "Author", author);
     if let Some(p) = purpose.filter(|s| !s.is_empty()) {
         let label = match p {
             "domain" => "Business process knowledge",
