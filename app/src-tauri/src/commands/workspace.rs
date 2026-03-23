@@ -192,6 +192,149 @@ fn cleanup_stale_snapshots(workspace_path: &str) {
     }
 }
 
+/// Migrate the skills folder from old nested layout (`{slug}/{skill}/`) to
+/// the Claude Code plugin marketplace layout (`plugins/{slug}/skills/{skill}/`).
+///
+/// Idempotent: if `plugins/` already has content, skips the move phase and only
+/// regenerates manifests. Non-fatal: logs warnings on failure, never crashes.
+fn migrate_to_marketplace_layout(skills_path: &str) {
+    let root = Path::new(skills_path);
+    if !root.exists() {
+        return;
+    }
+
+    let plugins_dir = root.join("plugins");
+
+    // Guard: if plugins/ exists and has content, migration is already done.
+    // Just ensure manifests are up-to-date.
+    if plugins_dir.is_dir() {
+        let has_content = fs::read_dir(&plugins_dir)
+            .map(|mut d| d.next().is_some())
+            .unwrap_or(false);
+        if has_content {
+            if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(root) {
+                log::warn!("[migrate_marketplace] manifest regeneration failed: {}", e);
+            }
+            return;
+        }
+    }
+
+    // Discover skills using the legacy layout scanner
+    let locations = match crate::skill_paths::enumerate_skill_locations_legacy(root) {
+        Ok(locs) => locs,
+        Err(e) => {
+            log::warn!("[migrate_marketplace] legacy enumeration failed: {}", e);
+            return;
+        }
+    };
+
+    if locations.is_empty() {
+        // Nothing to migrate — just create the structure and manifests
+        if let Err(e) = fs::create_dir_all(&plugins_dir) {
+            log::warn!("[migrate_marketplace] failed to create plugins/: {}", e);
+        }
+        if let Err(e) = crate::marketplace_manifest::write_marketplace_json(root) {
+            log::warn!("[migrate_marketplace] failed to write marketplace.json: {}", e);
+        }
+        return;
+    }
+
+    log::info!(
+        "[migrate_marketplace] migrating {} skill(s) to marketplace layout at {}",
+        locations.len(),
+        skills_path
+    );
+
+    // Create plugins/ directory
+    if let Err(e) = fs::create_dir_all(&plugins_dir) {
+        log::warn!("[migrate_marketplace] failed to create plugins/: {}", e);
+        return;
+    }
+
+    // Collect old plugin directory paths for cleanup
+    let mut old_plugin_dirs: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
+
+    // Move each skill to the new location
+    for loc in &locations {
+        let new_dir = plugins_dir
+            .join(&loc.plugin_slug)
+            .join("skills")
+            .join(&loc.skill_name);
+
+        if new_dir.exists() {
+            log::debug!(
+                "[migrate_marketplace] {} already at target, skipping",
+                loc.skill_name
+            );
+            continue;
+        }
+
+        if let Some(parent) = new_dir.parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                log::warn!(
+                    "[migrate_marketplace] mkdir failed for {}: {}",
+                    parent.display(),
+                    e
+                );
+                continue;
+            }
+        }
+
+        // Track old parent dir for cleanup
+        if !loc.is_default_plugin {
+            old_plugin_dirs.insert(root.join(&loc.plugin_slug));
+        }
+
+        match fs::rename(&loc.dir, &new_dir) {
+            Ok(()) => {
+                log::info!(
+                    "[migrate_marketplace] moved {} -> {}",
+                    loc.dir.display(),
+                    new_dir.display()
+                );
+            }
+            Err(e) => {
+                log::warn!(
+                    "[migrate_marketplace] failed to move {} -> {}: {}",
+                    loc.dir.display(),
+                    new_dir.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    // Clean up empty old plugin directories at root
+    for old_dir in &old_plugin_dirs {
+        if !old_dir.exists() {
+            continue;
+        }
+        let is_empty = fs::read_dir(old_dir)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false);
+        if is_empty {
+            if let Err(e) = fs::remove_dir(old_dir) {
+                log::warn!(
+                    "[migrate_marketplace] failed to remove empty dir {}: {}",
+                    old_dir.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    // Write manifests
+    if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(root) {
+        log::warn!("[migrate_marketplace] manifest write failed: {}", e);
+    }
+
+    // Git commit the reorganization
+    match crate::git::commit_all(root, "migrate to marketplace plugin layout") {
+        Ok(_) => log::info!("[migrate_marketplace] committed layout migration"),
+        Err(e) => log::warn!("[migrate_marketplace] git commit failed: {}", e),
+    }
+}
+
 /// Initialize the workspace directory on app startup.
 /// Creates `<data_dir>/workspace` if it doesn't exist, updates settings,
 /// and deploys bundled agents to `.claude/`.
@@ -277,6 +420,8 @@ pub fn init_workspace(
                         log::warn!("Failed to create initial snapshot at {}: {}", sp, e);
                     }
                 }
+                // Migrate skills folder to marketplace plugin layout
+                migrate_to_marketplace_layout(sp);
             }
         }
     }
@@ -538,5 +683,92 @@ mod tests {
         cleanup_stale_snapshots(workspace.path().to_str().unwrap());
 
         assert!(skill_dir.join("references").exists(), "non-snapshot dirs should remain");
+    }
+
+    // --- migrate_to_marketplace_layout tests ---
+
+    #[test]
+    fn test_migrate_marketplace_moves_old_nested_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Create old nested layout: root/analytics/weekly-report/SKILL.md
+        let old_skill = root.join("analytics").join("weekly-report");
+        fs::create_dir_all(&old_skill).unwrap();
+        fs::write(old_skill.join("SKILL.md"), "# weekly report").unwrap();
+        fs::create_dir_all(old_skill.join("references")).unwrap();
+
+        // Initialize git so commit_all works
+        let _ = crate::git::ensure_repo(root);
+
+        migrate_to_marketplace_layout(root.to_str().unwrap());
+
+        // Skill should be at marketplace path
+        let new_skill = root.join("plugins").join("analytics").join("skills").join("weekly-report");
+        assert!(new_skill.join("SKILL.md").is_file(), "SKILL.md should be at marketplace path");
+        assert!(new_skill.join("references").is_dir(), "references/ should be moved");
+
+        // Old directory should be gone
+        assert!(!old_skill.exists(), "old nested dir should be removed");
+        assert!(!root.join("analytics").exists(), "empty old plugin dir should be cleaned up");
+
+        // Manifests should exist
+        assert!(root.join(".claude-plugin").join("marketplace.json").is_file());
+        assert!(root.join("plugins").join("analytics").join(".claude-plugin").join("plugin.json").is_file());
+    }
+
+    #[test]
+    fn test_migrate_marketplace_moves_legacy_flat_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Create legacy flat layout: root/my-skill/SKILL.md
+        let old_skill = root.join("my-skill");
+        fs::create_dir_all(&old_skill).unwrap();
+        fs::write(old_skill.join("SKILL.md"), "# my skill").unwrap();
+
+        let _ = crate::git::ensure_repo(root);
+
+        migrate_to_marketplace_layout(root.to_str().unwrap());
+
+        // Skill should be at marketplace path under no-plugin
+        let new_skill = root.join("plugins").join("no-plugin").join("skills").join("my-skill");
+        assert!(new_skill.join("SKILL.md").is_file());
+    }
+
+    #[test]
+    fn test_migrate_marketplace_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Create marketplace layout directly
+        let skill = root.join("plugins").join("analytics").join("skills").join("report");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), "# report").unwrap();
+
+        let _ = crate::git::ensure_repo(root);
+
+        // Run migration twice — should not crash or move anything
+        migrate_to_marketplace_layout(root.to_str().unwrap());
+        migrate_to_marketplace_layout(root.to_str().unwrap());
+
+        // Skill should still be at the same place
+        assert!(skill.join("SKILL.md").is_file());
+        // Manifests should exist
+        assert!(root.join(".claude-plugin").join("marketplace.json").is_file());
+    }
+
+    #[test]
+    fn test_migrate_marketplace_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        let _ = crate::git::ensure_repo(root);
+
+        migrate_to_marketplace_layout(root.to_str().unwrap());
+
+        // Should create plugins/ and marketplace.json even with no skills
+        assert!(root.join("plugins").is_dir());
+        assert!(root.join(".claude-plugin").join("marketplace.json").is_file());
     }
 }

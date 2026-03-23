@@ -156,7 +156,7 @@
     },
     "rust_support": {
       "path": "app/src-tauri/src/",
-      "description": "Top-level Rust support modules (not commands or DB): cleanup.rs (future-step artifact cleanup), fs_utils.rs (canonical copy_dir_recursive with symlink guard — single implementation used by all recursive directory copies), fs_validation.rs (detect_furthest_step, has_skill_output, path validation helpers), git.rs (git commit/init helpers for skill output repos), logging.rs (structured logging setup, log-level management)."
+      "description": "Top-level Rust support modules (not commands or DB): cleanup.rs (future-step artifact cleanup), fs_utils.rs (canonical copy_dir_recursive with symlink guard — single implementation used by all recursive directory copies), fs_validation.rs (detect_furthest_step, has_skill_output, path validation helpers), git.rs (git commit/init helpers for skill output repos), logging.rs (structured logging setup, log-level management), marketplace_manifest.rs (write/regenerate local marketplace.json and per-plugin plugin.json for Claude Code plugin marketplace layout), skill_paths.rs (path helpers for marketplace plugin directory structure)."
     },
     "frontend_test_utils": {
       "path": "app/src/test/",

@@ -6,6 +6,7 @@ mod fs_utils;
 mod fs_validation;
 pub mod git;
 mod logging;
+mod marketplace_manifest;
 mod reconciliation;
 mod skill_paths;
 mod types;

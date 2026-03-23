@@ -551,7 +551,7 @@ async fn import_marketplace_entries_to_library(
     let client = build_github_client(token.as_deref());
     let (branch, tree) = fetch_repo_tree(&client, owner, repo, &repo_info.branch).await?;
 
-    let skills_dir = Path::new(&skills_path);
+    let skills_root = Path::new(&skills_path);
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
 
     // --- Step 1: Create plugins first (one per unique plugin path) ---
@@ -594,6 +594,21 @@ async fn import_marketplace_entries_to_library(
         let override_ref = metadata_overrides
             .as_ref()
             .and_then(|m| m.get(skill_path.as_str()));
+        // Marketplace layout: import into plugins/{slug}/skills/
+        let plugin_skills_dir = skills_root.join("plugins").join(&plugin_slug).join("skills");
+        if let Err(e) = std::fs::create_dir_all(&plugin_skills_dir) {
+            log::error!(
+                "[import_marketplace_entries_to_library] failed to create plugin skills dir {}: {}",
+                plugin_skills_dir.display(),
+                e
+            );
+            results.push(MarketplaceImportResult {
+                skill_name: skill_path.clone(),
+                success: false,
+                error: Some(format!("Failed to create plugin skills directory: {}", e)),
+            });
+            continue;
+        }
         match import_single_skill(
             &client,
             "https://raw.githubusercontent.com",
@@ -602,7 +617,7 @@ async fn import_marketplace_entries_to_library(
             &branch,
             skill_path,
             &tree,
-            skills_dir,
+            &plugin_skills_dir,
             true,
             override_ref,
         )
@@ -626,14 +641,14 @@ async fn import_marketplace_entries_to_library(
                 };
 
                 if let Err(e) = (|| -> Result<(), String> {
-                    if crate::git::skill_version_tag_exists(skills_dir, &skill.skill_name, &final_version)? {
+                    if crate::git::skill_version_tag_exists(skills_root, &skill.skill_name, &final_version)? {
                         return Err(format!(
                             "Tag '{}' already exists",
                             crate::git::skill_version_tag_name(&skill.skill_name, &final_version)
                         ));
                     }
-                    crate::git::commit_all(skills_dir, &format!("{}: import from marketplace", skill.skill_name))?;
-                    crate::git::create_skill_version_tag(skills_dir, &skill.skill_name, &final_version)?;
+                    crate::git::commit_all(skills_root, &format!("{}: import from marketplace", skill.skill_name))?;
+                    crate::git::create_skill_version_tag(skills_root, &skill.skill_name, &final_version)?;
                     Ok(())
                 })() {
                     results.push(MarketplaceImportResult {
@@ -705,6 +720,14 @@ async fn import_marketplace_entries_to_library(
     }
 
     if results.iter().any(|r| r.success) {
+        // Regenerate marketplace manifests after successful imports
+        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(skills_root) {
+            log::warn!(
+                "[import_marketplace_entries_to_library] failed to regenerate manifests: {}",
+                e
+            );
+        }
+
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         if let Err(e) = crate::commands::workflow::update_skills_section(&workspace_path, &conn) {
             log::warn!(
