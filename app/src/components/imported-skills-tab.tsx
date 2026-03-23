@@ -136,7 +136,6 @@ export function ImportedSkillsTab() {
     const pluginName = window.prompt("New plugin name")
     if (!pluginName) return
     const skillKeys = Array.from(selectedSkillKeys)
-    if (skillKeys.length === 0) return
     const toastId = toast.loading(`Creating plugin "${pluginName}"...`)
     try {
       await createPluginFromSkills(pluginName, skillKeys)
@@ -193,7 +192,6 @@ export function ImportedSkillsTab() {
         <Button
           variant="secondary"
           className="w-40"
-          disabled={selectedSkillKeys.size === 0}
           onClick={handleCreatePlugin}
         >
           <FolderTree className="size-4" />

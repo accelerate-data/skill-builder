@@ -146,6 +146,21 @@ pub fn create_plugin_from_skills(
     let settings = crate::db::read_settings(&conn)?;
     let (_plugin_id, plugin_slug) =
         crate::db::create_plugin(&conn, &plugin_name, "local", None, None)?;
+
+    // Write plugin directory and manifests to disk
+    if let Some(ref sp) = settings.skills_path {
+        let skills_root = std::path::Path::new(sp);
+        // Create the plugin dir with skills/ subfolder and plugin.json
+        let plugin_skills_dir = skills_root.join("plugins").join(&plugin_slug).join("skills");
+        std::fs::create_dir_all(&plugin_skills_dir).map_err(|e| format!("Failed to create plugin directory: {}", e))?;
+        crate::marketplace_manifest::write_plugin_json(skills_root, &plugin_slug, &plugin_name, None, None)?;
+        crate::marketplace_manifest::write_marketplace_json(skills_root)?;
+        let msg = format!("{}: create plugin", plugin_slug);
+        if let Err(e) = crate::git::commit_all(skills_root, &msg) {
+            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        }
+    }
+
     for skill_key in skill_keys {
         let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;
         let (_, skills_target) = move_skill_directories(
