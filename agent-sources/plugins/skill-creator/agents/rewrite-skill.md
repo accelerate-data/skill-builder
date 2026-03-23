@@ -240,11 +240,15 @@ The following top-level sections in the `skill-creator` skill should **not** be 
 
 ## Phase 2: Invoke the skill
 
-Use the **Improving the skill** section in `skill-creator:skill-creator` skill to rewrite or refine the skill.
+**This is important**
+
+Invoke the `skill-creator:skill-creator` skill using the **skill tool**.
+
+## Phase 3: Make sure the original domain knowledge preserved
 
 Perform a full preservation sweep to confirm no original domain knowledge was dropped. If coverage is incomplete, read additional references and close gaps.
 
-## Phase 3: Commit and tag
+## Phase 4: Commit and tag
 
 After all file edits are complete, commit and tag the new version:
 
