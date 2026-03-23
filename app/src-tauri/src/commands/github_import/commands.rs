@@ -494,6 +494,16 @@ pub async fn import_marketplace_to_library(
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
 
     for skill_path in &skill_paths {
+        let plugin_path = extract_plugin_path(skill_path);
+        let plugin_display_name = if plugin_path.is_empty() {
+            repo.to_string()
+        } else {
+            plugin_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(plugin_path)
+                .to_string()
+        };
         let override_ref = metadata_overrides
             .as_ref()
             .and_then(|m| m.get(skill_path.as_str()));
@@ -590,6 +600,16 @@ pub async fn import_marketplace_to_library(
 
                 // Tag the skill with the registry it was imported from
                 skill.marketplace_source_url = Some(source_url.clone());
+                let (_, plugin_slug) = crate::db::create_plugin(
+                    &conn,
+                    &plugin_display_name,
+                    "marketplace",
+                    Some(&source_url),
+                    None,
+                )?;
+                skill.plugin_slug = Some(plugin_slug.clone());
+                skill.plugin_display_name = Some(plugin_display_name.clone());
+                skill.is_default_plugin = Some(false);
 
                 // Fetch existing imported skill metadata (if any) for merging on upgrade
                 let existing_imported =
@@ -604,8 +624,13 @@ pub async fn import_marketplace_to_library(
                 // Insert into skills master first so that skills.id is available as a FK
                 // when inserting into imported_skills below.
                 let purpose_for_master = skill.purpose.as_deref().unwrap_or("domain");
-                if let Err(e) =
-                    crate::db::save_marketplace_skill(&conn, &skill.skill_name, purpose_for_master)
+                if let Err(e) = crate::db::upsert_skill_in_plugin(
+                    &conn,
+                    &skill.skill_name,
+                    "marketplace",
+                    purpose_for_master,
+                    &plugin_slug,
+                )
                 {
                     log::warn!(
                         "[import_marketplace_to_library] failed to save marketplace skill for '{}': {}",

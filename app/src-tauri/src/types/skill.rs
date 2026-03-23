@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillSummary {
     pub name: String,
+    #[serde(default)]
+    pub library_key: Option<String>,
     pub current_step: Option<String>,
     pub status: Option<String>,
     pub last_modified: Option<String>,
@@ -36,6 +38,12 @@ pub struct SkillSummary {
     pub user_invocable: Option<bool>,
     #[serde(default, rename = "disableModelInvocation")]
     pub disable_model_invocation: Option<bool>,
+    #[serde(default)]
+    pub plugin_slug: Option<String>,
+    #[serde(default)]
+    pub plugin_display_name: Option<String>,
+    #[serde(default)]
+    pub is_default_plugin: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +66,8 @@ pub struct SkillFileEntry {
 pub struct ImportedSkill {
     pub skill_id: String,
     pub skill_name: String,
+    #[serde(default)]
+    pub library_key: Option<String>,
     pub is_active: bool,
     pub disk_path: String,
     pub imported_at: String,
@@ -81,6 +91,25 @@ pub struct ImportedSkill {
     /// Source registry URL this skill was imported from. NULL for bundled/manually uploaded skills.
     #[serde(default)]
     pub marketplace_source_url: Option<String>,
+    #[serde(default)]
+    pub plugin_slug: Option<String>,
+    #[serde(default)]
+    pub plugin_display_name: Option<String>,
+    #[serde(default)]
+    pub is_default_plugin: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibraryPlugin {
+    pub id: i64,
+    pub slug: String,
+    pub display_name: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    pub source_type: String,
+    #[serde(default)]
+    pub source_url: Option<String>,
+    pub is_default: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -157,4 +186,3 @@ pub struct SkillCommit {
     /// Semver version (e.g. "1.0.0") if this commit is tagged, None otherwise.
     pub version: Option<String>,
 }
-

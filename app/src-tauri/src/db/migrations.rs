@@ -41,6 +41,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (36, run_consolidate_workspace_skills_migration),
 
     (37, run_fk_cascade_migration),
+    (38, run_plugin_ownership_migration),
 ];
 
 pub(super) fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -75,6 +76,18 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         "CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS plugins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
+            version TEXT,
+            source_type TEXT NOT NULL DEFAULT 'synthetic',
+            source_url TEXT,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
         );
 
 
@@ -156,6 +169,141 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             deleted_at   TEXT
         );",
     )
+}
+
+pub(super) fn run_plugin_ownership_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS plugins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
+            version TEXT,
+            source_type TEXT NOT NULL DEFAULT 'synthetic',
+            source_url TEXT,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
+        );
+
+        INSERT INTO plugins (slug, display_name, version, source_type, source_url, is_default)
+        SELECT 'no-plugin', 'No Plugin', NULL, 'synthetic', NULL, 1
+        WHERE NOT EXISTS (SELECT 1 FROM plugins WHERE slug = 'no-plugin');",
+    )?;
+
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS skills_new;
+        CREATE TABLE skills_new (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL,
+            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'imported')),
+            plugin_id    INTEGER NOT NULL REFERENCES plugins(id),
+            purpose      TEXT,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            deleted_at   TEXT,
+            description  TEXT,
+            version      TEXT,
+            model        TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER,
+            disable_model_invocation INTEGER,
+            UNIQUE (plugin_id, name)
+        );
+
+        INSERT INTO skills_new (
+            id, name, skill_source, plugin_id, purpose, created_at, updated_at, deleted_at,
+            description, version, model, argument_hint, user_invocable, disable_model_invocation
+        )
+        SELECT
+            s.id,
+            s.name,
+            s.skill_source,
+            COALESCE(p.id, np.id),
+            s.purpose,
+            s.created_at,
+            s.updated_at,
+            s.deleted_at,
+            s.description,
+            s.version,
+            s.model,
+            s.argument_hint,
+            s.user_invocable,
+            s.disable_model_invocation
+        FROM skills s
+        CROSS JOIN (SELECT id FROM plugins WHERE slug = 'no-plugin') np
+        LEFT JOIN plugins p
+            ON p.slug = CASE
+                WHEN s.skill_source = 'marketplace'
+                    THEN 'marketplace-' || lower(replace(replace(COALESCE(s.name, ''), ' ', '-'), '_', '-'))
+                ELSE 'no-plugin'
+            END;
+
+        DROP TABLE skills;
+        ALTER TABLE skills_new RENAME TO skills;",
+    )?;
+
+    conn.execute_batch(
+        "INSERT INTO plugins (slug, display_name, version, source_type, source_url, is_default)
+         SELECT DISTINCT
+            'marketplace-' || lower(replace(replace(i.skill_name, ' ', '-'), '_', '-')),
+            COALESCE(NULLIF(i.skill_name, ''), 'Imported Plugin'),
+            NULL,
+            'marketplace',
+            i.marketplace_source_url,
+            0
+         FROM imported_skills i
+         WHERE i.marketplace_source_url IS NOT NULL
+           AND NOT EXISTS (
+                SELECT 1 FROM plugins p
+                WHERE p.slug = 'marketplace-' || lower(replace(replace(i.skill_name, ' ', '-'), '_', '-'))
+           );",
+    )?;
+
+    conn.execute_batch(
+        "UPDATE skills
+         SET plugin_id = (
+            SELECT COALESCE(p.id, np.id)
+            FROM (SELECT id FROM plugins WHERE slug = 'no-plugin') np
+            LEFT JOIN plugins p
+              ON p.slug = CASE
+                  WHEN skills.skill_source = 'marketplace'
+                      THEN 'marketplace-' || lower(replace(replace(skills.name, ' ', '-'), '_', '-'))
+                  ELSE 'no-plugin'
+              END
+         );",
+    )?;
+
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS imported_skills_new;
+        CREATE TABLE imported_skills_new (
+            skill_id TEXT PRIMARY KEY,
+            skill_name TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            disk_path TEXT NOT NULL,
+            imported_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            is_bundled INTEGER NOT NULL DEFAULT 0,
+            purpose TEXT,
+            version TEXT,
+            model TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER,
+            disable_model_invocation INTEGER,
+            skill_master_id INTEGER NOT NULL UNIQUE REFERENCES skills(id) ON DELETE CASCADE,
+            content_hash TEXT,
+            marketplace_source_url TEXT
+        );
+        INSERT INTO imported_skills_new
+            SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+                   purpose, version, model, argument_hint, user_invocable,
+                   disable_model_invocation, skill_master_id, content_hash,
+                   marketplace_source_url
+            FROM imported_skills;
+        DROP TABLE imported_skills;
+        ALTER TABLE imported_skills_new RENAME TO imported_skills;",
+    )?;
+
+    log::info!("migration 38: added first-class plugin ownership");
+    Ok(())
 }
 
 pub(super) fn run_add_skill_type_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -1657,4 +1805,3 @@ pub(super) fn run_fk_cascade_migration(conn: &Connection) -> Result<(), rusqlite
     log::info!("migration 37: added ON DELETE CASCADE to 8 child table FK columns");
     Ok(())
 }
-

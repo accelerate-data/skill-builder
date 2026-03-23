@@ -94,6 +94,7 @@ export type GitHubAuthResult =
 
 export interface SkillSummary {
   name: string
+  library_key?: string | null
   current_step: string | null
   status: string | null
   last_modified: string | null
@@ -111,6 +112,9 @@ export interface SkillSummary {
   argumentHint?: string | null
   userInvocable?: boolean | null
   disableModelInvocation?: boolean | null
+  plugin_slug?: string | null
+  plugin_display_name?: string | null
+  is_default_plugin?: boolean | null
 }
 
 export interface SkillCommit {
@@ -324,6 +328,7 @@ export interface UsageByDay {
 export interface ImportedSkill {
   skill_id: string
   skill_name: string
+  library_key: string | null
   description: string | null
   is_active: boolean
   disk_path: string
@@ -337,6 +342,19 @@ export interface ImportedSkill {
   disable_model_invocation: boolean | null
   /** Source registry URL this skill was imported from. null for bundled/manually uploaded skills. */
   marketplace_source_url: string | null
+  plugin_slug: string | null
+  plugin_display_name: string | null
+  is_default_plugin: boolean | null
+}
+
+export interface LibraryPlugin {
+  id: number
+  slug: string
+  display_name: string
+  version: string | null
+  source_type: string
+  source_url: string | null
+  is_default: boolean
 }
 
 export interface GitHubRepoInfo {

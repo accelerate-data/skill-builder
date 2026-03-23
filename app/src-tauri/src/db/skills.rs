@@ -2,6 +2,138 @@ use crate::types::{SkillMasterRow, WorkflowRunRow, WorkflowStepRow};
 use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashMap;
 
+const DEFAULT_PLUGIN_SLUG: &str = "no-plugin";
+
+fn slugify_plugin_name(name: &str) -> String {
+    let mut slug = String::with_capacity(name.len());
+    let mut last_dash = false;
+    for ch in name.chars() {
+        let mapped = match ch {
+            'a'..='z' | '0'..='9' => Some(ch),
+            'A'..='Z' => Some(ch.to_ascii_lowercase()),
+            _ => Some('-'),
+        };
+        if let Some(c) = mapped {
+            if c == '-' {
+                if !last_dash {
+                    slug.push(c);
+                }
+                last_dash = true;
+            } else {
+                slug.push(c);
+                last_dash = false;
+            }
+        }
+    }
+    let slug = slug.trim_matches('-');
+    if slug.is_empty() {
+        DEFAULT_PLUGIN_SLUG.to_string()
+    } else {
+        slug.to_string()
+    }
+}
+
+pub fn ensure_plugin(
+    conn: &Connection,
+    slug: &str,
+    display_name: &str,
+    source_type: &str,
+    source_url: Option<&str>,
+    version: Option<&str>,
+    is_default: bool,
+) -> Result<i64, String> {
+    conn.execute(
+        "INSERT INTO plugins (slug, display_name, version, source_type, source_url, is_default, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now') || 'Z')
+         ON CONFLICT(slug) DO UPDATE SET
+             display_name = excluded.display_name,
+             version = COALESCE(excluded.version, plugins.version),
+             source_type = excluded.source_type,
+             source_url = COALESCE(excluded.source_url, plugins.source_url),
+             is_default = excluded.is_default,
+             updated_at = datetime('now') || 'Z'",
+        rusqlite::params![
+            slug,
+            display_name,
+            version,
+            source_type,
+            source_url,
+            if is_default { 1 } else { 0 },
+        ],
+    )
+    .map_err(|e| format!("ensure_plugin: {}", e))?;
+    conn.query_row(
+        "SELECT id FROM plugins WHERE slug = ?1",
+        rusqlite::params![slug],
+        |row| row.get(0),
+    )
+    .map_err(|e| format!("ensure_plugin id lookup: {}", e))
+}
+
+pub fn ensure_default_plugin(conn: &Connection) -> Result<i64, String> {
+    ensure_plugin(
+        conn,
+        DEFAULT_PLUGIN_SLUG,
+        "No Plugin",
+        "synthetic",
+        None,
+        None,
+        true,
+    )
+}
+
+pub fn get_plugin_id_by_slug(conn: &Connection, slug: &str) -> Result<Option<i64>, String> {
+    conn.query_row(
+        "SELECT id FROM plugins WHERE slug = ?1",
+        rusqlite::params![slug],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("get_plugin_id_by_slug: {}", e))
+}
+
+pub fn list_plugins(conn: &Connection) -> Result<Vec<crate::types::LibraryPlugin>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, slug, display_name, version, source_type, source_url, is_default
+             FROM plugins
+             ORDER BY is_default DESC, display_name ASC",
+        )
+        .map_err(|e| format!("list_plugins: {}", e))?;
+    let rows = stmt.query_map([], |row| {
+        Ok(crate::types::LibraryPlugin {
+            id: row.get(0)?,
+            slug: row.get(1)?,
+            display_name: row.get(2)?,
+            version: row.get(3)?,
+            source_type: row.get(4)?,
+            source_url: row.get(5)?,
+            is_default: row.get::<_, i32>(6)? != 0,
+        })
+    })
+    .map_err(|e| format!("list_plugins query: {}", e))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("list_plugins collect: {}", e))
+}
+
+pub fn create_plugin(
+    conn: &Connection,
+    display_name: &str,
+    source_type: &str,
+    source_url: Option<&str>,
+    version: Option<&str>,
+) -> Result<(i64, String), String> {
+    let base_slug = slugify_plugin_name(display_name);
+    let mut slug = base_slug.clone();
+    let mut suffix = 2;
+    while get_plugin_id_by_slug(conn, &slug)?.is_some() {
+        slug = format!("{base_slug}-{suffix}");
+        suffix += 1;
+    }
+    let id = ensure_plugin(conn, &slug, display_name, source_type, source_url, version, false)?;
+    Ok((id, slug))
+}
+
 // --- Skills Master ---
 
 /// Upsert a row in the `skills` master table. Used by `save_workflow_run` (skill-builder)
@@ -12,13 +144,31 @@ pub fn upsert_skill(
     skill_source: &str,
     purpose: &str,
 ) -> Result<i64, String> {
+    upsert_skill_in_plugin(conn, name, skill_source, purpose, DEFAULT_PLUGIN_SLUG)
+}
+
+pub fn upsert_skill_in_plugin(
+    conn: &Connection,
+    name: &str,
+    skill_source: &str,
+    purpose: &str,
+    plugin_slug: &str,
+) -> Result<i64, String> {
     log::debug!("upsert_skill: name={} skill_source={}", name, skill_source);
+    let plugin_id = if plugin_slug == DEFAULT_PLUGIN_SLUG {
+        ensure_default_plugin(conn)?
+    } else {
+        get_plugin_id_by_slug(conn, plugin_slug)?
+            .ok_or_else(|| format!("Unknown plugin slug '{}'", plugin_slug))?
+    };
     conn.execute(
-        "INSERT INTO skills (name, skill_source, purpose, updated_at)
-         VALUES (?1, ?2, ?3, datetime('now'))
-         ON CONFLICT(name) DO UPDATE SET
-             purpose = ?3, updated_at = datetime('now'), deleted_at = NULL",
-        rusqlite::params![name, skill_source, purpose],
+        "INSERT INTO skills (name, skill_source, plugin_id, purpose, updated_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+         ON CONFLICT(plugin_id, name) DO UPDATE SET
+             purpose = excluded.purpose,
+             updated_at = datetime('now'),
+             deleted_at = NULL",
+        rusqlite::params![name, skill_source, plugin_id, purpose],
     )
     .map_err(|e| {
         log::error!("upsert_skill: failed to upsert '{}': {}", name, e);
@@ -26,8 +176,8 @@ pub fn upsert_skill(
     })?;
     let id: i64 = conn
         .query_row(
-            "SELECT id FROM skills WHERE name = ?1",
-            rusqlite::params![name],
+            "SELECT id FROM skills WHERE name = ?1 AND plugin_id = ?2",
+            rusqlite::params![name, plugin_id],
             |row| row.get(0),
         )
         .map_err(|e| {
@@ -47,17 +197,36 @@ pub fn upsert_skill_with_source(
     skill_source: &str,
     purpose: &str,
 ) -> Result<i64, String> {
+    upsert_skill_with_source_in_plugin(conn, name, skill_source, purpose, DEFAULT_PLUGIN_SLUG)
+}
+
+pub fn upsert_skill_with_source_in_plugin(
+    conn: &Connection,
+    name: &str,
+    skill_source: &str,
+    purpose: &str,
+    plugin_slug: &str,
+) -> Result<i64, String> {
     log::debug!(
         "upsert_skill_with_source: name={} skill_source={}",
         name,
         skill_source
     );
+    let plugin_id = if plugin_slug == DEFAULT_PLUGIN_SLUG {
+        ensure_default_plugin(conn)?
+    } else {
+        get_plugin_id_by_slug(conn, plugin_slug)?
+            .ok_or_else(|| format!("Unknown plugin slug '{}'", plugin_slug))?
+    };
     conn.execute(
-        "INSERT INTO skills (name, skill_source, purpose, updated_at)
-         VALUES (?1, ?2, ?3, datetime('now'))
-         ON CONFLICT(name) DO UPDATE SET
-             skill_source = ?2, purpose = ?3, updated_at = datetime('now'), deleted_at = NULL",
-        rusqlite::params![name, skill_source, purpose],
+        "INSERT INTO skills (name, skill_source, plugin_id, purpose, updated_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+         ON CONFLICT(plugin_id, name) DO UPDATE SET
+             skill_source = excluded.skill_source,
+             purpose = excluded.purpose,
+             updated_at = datetime('now'),
+             deleted_at = NULL",
+        rusqlite::params![name, skill_source, plugin_id, purpose],
     )
     .map_err(|e| {
         log::error!(
@@ -69,8 +238,8 @@ pub fn upsert_skill_with_source(
     })?;
     let id: i64 = conn
         .query_row(
-            "SELECT id FROM skills WHERE name = ?1",
-            rusqlite::params![name],
+            "SELECT id FROM skills WHERE name = ?1 AND plugin_id = ?2",
+            rusqlite::params![name, plugin_id],
             |row| row.get(0),
         )
         .map_err(|e| {
@@ -88,11 +257,14 @@ pub fn upsert_skill_with_source(
 pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, skill_source, purpose, created_at, updated_at,
-                    description, version, model, argument_hint, user_invocable, disable_model_invocation
-             FROM skills
-             WHERE COALESCE(deleted_at, '') = ''
-             ORDER BY name",
+            "SELECT s.id, s.name, s.skill_source,
+                    p.id, p.slug, p.display_name, p.is_default,
+                    s.purpose, s.created_at, s.updated_at,
+                    s.description, s.version, s.model, s.argument_hint, s.user_invocable, s.disable_model_invocation
+             FROM skills s
+             JOIN plugins p ON p.id = s.plugin_id
+             WHERE COALESCE(s.deleted_at, '') = ''
+             ORDER BY p.display_name, s.name",
         )
         .map_err(|e| {
             log::error!("list_all_skills: failed to prepare query: {}", e);
@@ -105,15 +277,19 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
                 id: row.get(0)?,
                 name: row.get(1)?,
                 skill_source: row.get(2)?,
-                purpose: row.get(3)?,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
-                description: row.get(6)?,
-                version: row.get(7)?,
-                model: row.get(8)?,
-                argument_hint: row.get(9)?,
-                user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-                disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+                plugin_id: row.get(3)?,
+                plugin_slug: row.get(4)?,
+                plugin_display_name: row.get(5)?,
+                plugin_is_default: row.get::<_, i32>(6)? != 0,
+                purpose: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+                description: row.get(10)?,
+                version: row.get(11)?,
+                model: row.get(12)?,
+                argument_hint: row.get(13)?,
+                user_invocable: row.get::<_, Option<i32>>(14)?.map(|v| v != 0),
+                disable_model_invocation: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
             })
         })
         .map_err(|e| {
@@ -134,29 +310,44 @@ pub fn get_skill_master(
     conn: &Connection,
     skill_name: &str,
 ) -> Result<Option<SkillMasterRow>, String> {
+    get_skill_master_in_plugin(conn, skill_name, DEFAULT_PLUGIN_SLUG)
+}
+
+pub fn get_skill_master_in_plugin(
+    conn: &Connection,
+    skill_name: &str,
+    plugin_slug: &str,
+) -> Result<Option<SkillMasterRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, skill_source, purpose, created_at, updated_at,
-                    description, version, model, argument_hint, user_invocable, disable_model_invocation
-             FROM skills
-             WHERE name = ?1 AND COALESCE(deleted_at, '') = ''",
+            "SELECT s.id, s.name, s.skill_source,
+                    p.id, p.slug, p.display_name, p.is_default,
+                    s.purpose, s.created_at, s.updated_at,
+                    s.description, s.version, s.model, s.argument_hint, s.user_invocable, s.disable_model_invocation
+             FROM skills s
+             JOIN plugins p ON p.id = s.plugin_id
+             WHERE s.name = ?1 AND p.slug = ?2 AND COALESCE(s.deleted_at, '') = ''",
         )
         .map_err(|e| e.to_string())?;
 
-    let result = stmt.query_row(rusqlite::params![skill_name], |row| {
+    let result = stmt.query_row(rusqlite::params![skill_name, plugin_slug], |row| {
         Ok(SkillMasterRow {
             id: row.get(0)?,
             name: row.get(1)?,
             skill_source: row.get(2)?,
-            purpose: row.get(3)?,
-            created_at: row.get(4)?,
-            updated_at: row.get(5)?,
-            description: row.get(6)?,
-            version: row.get(7)?,
-            model: row.get(8)?,
-            argument_hint: row.get(9)?,
-            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+            plugin_id: row.get(3)?,
+            plugin_slug: row.get(4)?,
+            plugin_display_name: row.get(5)?,
+            plugin_is_default: row.get::<_, i32>(6)? != 0,
+            purpose: row.get(7)?,
+            created_at: row.get(8)?,
+            updated_at: row.get(9)?,
+            description: row.get(10)?,
+            version: row.get(11)?,
+            model: row.get(12)?,
+            argument_hint: row.get(13)?,
+            user_invocable: row.get::<_, Option<i32>>(14)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
         })
     });
 
@@ -169,6 +360,10 @@ pub fn get_skill_master(
 
 /// Delete a skill from the master table by name.
 pub fn delete_skill(conn: &Connection, name: &str) -> Result<(), String> {
+    delete_skill_in_plugin(conn, name, DEFAULT_PLUGIN_SLUG)
+}
+
+pub fn delete_skill_in_plugin(conn: &Connection, name: &str, plugin_slug: &str) -> Result<(), String> {
     log::info!("delete_skill: name={}", name);
     conn.execute(
         "UPDATE skills
@@ -177,8 +372,9 @@ pub fn delete_skill(conn: &Connection, name: &str) -> Result<(), String> {
                ELSE deleted_at
              END,
              updated_at = datetime('now')
-         WHERE name = ?1",
-        rusqlite::params![name],
+         WHERE name = ?1
+           AND plugin_id = COALESCE((SELECT id FROM plugins WHERE slug = ?2), -1)",
+        rusqlite::params![name, plugin_slug],
     )
     .map_err(|e| {
         log::error!("delete_skill: failed to delete '{}': {}", name, e);
@@ -200,9 +396,20 @@ pub fn get_workflow_run_id(conn: &Connection, skill_name: &str) -> Result<Option
 
 /// Get the `skills.id` integer for a given skill name. Returns None if not found.
 pub fn get_skill_master_id(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
+    get_skill_master_id_in_plugin(conn, skill_name, DEFAULT_PLUGIN_SLUG)
+}
+
+pub fn get_skill_master_id_in_plugin(
+    conn: &Connection,
+    skill_name: &str,
+    plugin_slug: &str,
+) -> Result<Option<i64>, String> {
     conn.query_row(
-        "SELECT id FROM skills WHERE name = ?1",
-        rusqlite::params![skill_name],
+        "SELECT s.id
+         FROM skills s
+         JOIN plugins p ON p.id = s.plugin_id
+         WHERE s.name = ?1 AND p.slug = ?2",
+        rusqlite::params![skill_name, plugin_slug],
         |row| row.get(0),
     )
     .optional()
@@ -239,10 +446,29 @@ pub fn save_marketplace_skill(
     purpose: &str,
 ) -> Result<(), String> {
     log::info!("save_marketplace_skill: name={}", skill_name);
-    upsert_skill(conn, skill_name, "marketplace", purpose).map_err(|e| {
+    upsert_skill_in_plugin(conn, skill_name, "marketplace", purpose, DEFAULT_PLUGIN_SLUG).map_err(|e| {
         log::error!("save_marketplace_skill: failed for '{}': {}", skill_name, e);
         e
     })?;
+    Ok(())
+}
+
+pub fn move_skill_to_plugin(
+    conn: &Connection,
+    skill_name: &str,
+    from_plugin_slug: &str,
+    to_plugin_slug: &str,
+) -> Result<(), String> {
+    let target_plugin_id = get_plugin_id_by_slug(conn, to_plugin_slug)?
+        .ok_or_else(|| format!("Unknown plugin slug '{}'", to_plugin_slug))?;
+    conn.execute(
+        "UPDATE skills
+         SET plugin_id = ?3, updated_at = datetime('now') || 'Z'
+         WHERE name = ?1
+           AND plugin_id = COALESCE((SELECT id FROM plugins WHERE slug = ?2), -1)",
+        rusqlite::params![skill_name, from_plugin_slug, target_plugin_id],
+    )
+    .map_err(|e| format!("move_skill_to_plugin: {}", e))?;
     Ok(())
 }
 
@@ -618,4 +844,3 @@ pub fn get_all_tags(conn: &Connection) -> Result<Vec<String>, String> {
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
 }
-

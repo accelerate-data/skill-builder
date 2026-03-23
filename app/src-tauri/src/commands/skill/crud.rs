@@ -56,6 +56,11 @@ pub(crate) fn list_skills_inner(
         .into_iter()
         .map(|master| {
             let tags = tags_map.get(&master.name).cloned().unwrap_or_default();
+            let library_key = if master.skill_source == "skill-builder" {
+                Some(master.name.clone())
+            } else {
+                Some(format!("imported:{}", master.id))
+            };
 
             if master.skill_source == "skill-builder" {
                 // For skill-builder: workflow_runs provides step state and workflow-specific fields.
@@ -63,6 +68,7 @@ pub(crate) fn list_skills_inner(
                 if let Some(run) = runs_map.get(&master.name) {
                     return SkillSummary {
                         name: run.skill_name.clone(),
+                        library_key,
                         current_step: Some(format!("Step {}", run.current_step)),
                         status: Some(run.status.clone()),
                         last_modified: Some(run.updated_at.clone()),
@@ -81,6 +87,9 @@ pub(crate) fn list_skills_inner(
                         argument_hint: master.argument_hint.clone(),
                         user_invocable: master.user_invocable,
                         disable_model_invocation: master.disable_model_invocation,
+                        plugin_slug: Some(master.plugin_slug.clone()),
+                        plugin_display_name: Some(master.plugin_display_name.clone()),
+                        is_default_plugin: Some(master.plugin_is_default),
                     };
                 }
             }
@@ -89,6 +98,7 @@ pub(crate) fn list_skills_inner(
             // show as completed with master data. Frontmatter fields all come from skills master.
             SkillSummary {
                 name: master.name.clone(),
+                library_key,
                 current_step: Some("Step 5".to_string()),
                 status: Some("completed".to_string()),
                 last_modified: Some(master.updated_at.clone()),
@@ -107,6 +117,9 @@ pub(crate) fn list_skills_inner(
                 argument_hint: master.argument_hint.clone(),
                 user_invocable: master.user_invocable,
                 disable_model_invocation: master.disable_model_invocation,
+                plugin_slug: Some(master.plugin_slug.clone()),
+                plugin_display_name: Some(master.plugin_display_name.clone()),
+                is_default_plugin: Some(master.plugin_is_default),
             }
         })
         .collect();

@@ -364,6 +364,7 @@ pub(crate) async fn import_single_skill(
     Ok(ImportedSkill {
         skill_id,
         skill_name,
+        library_key: None,
         is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,
@@ -377,6 +378,9 @@ pub(crate) async fn import_single_skill(
         user_invocable: fm.user_invocable,
         disable_model_invocation: fm.disable_model_invocation,
         marketplace_source_url: None,
+        plugin_slug: None,
+        plugin_display_name: None,
+        is_default_plugin: None,
     })
 }
 

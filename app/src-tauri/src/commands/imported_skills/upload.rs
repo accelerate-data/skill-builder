@@ -122,7 +122,10 @@ fn import_skill_from_file_inner(
     // Conflict check
     let existing_source: Option<String> = conn
         .query_row(
-            "SELECT skill_source FROM skills WHERE name = ?1",
+            "SELECT s.skill_source
+             FROM skills s
+             JOIN plugins p ON p.id = s.plugin_id
+             WHERE s.name = ?1 AND p.slug = 'no-plugin'",
             rusqlite::params![&name],
             |row| row.get::<_, String>(0),
         )
@@ -193,7 +196,7 @@ fn import_skill_from_file_inner(
     }
 
     // Write to skills master table
-    crate::db::upsert_skill_with_source(conn, name, "imported", "domain")?;
+    crate::db::upsert_skill_with_source_in_plugin(conn, name, "imported", "domain", "no-plugin")?;
 
     // Update description (not mirrored by upsert_imported_skill)
     conn.execute(
@@ -208,6 +211,7 @@ fn import_skill_from_file_inner(
     let skill = crate::types::ImportedSkill {
         skill_id,
         skill_name: name.to_string(),
+        library_key: None,
         is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,
@@ -220,6 +224,9 @@ fn import_skill_from_file_inner(
         user_invocable,
         disable_model_invocation,
         marketplace_source_url: None,
+        plugin_slug: Some("no-plugin".to_string()),
+        plugin_display_name: Some("No Plugin".to_string()),
+        is_default_plugin: Some(true),
     };
     crate::db::upsert_imported_skill(conn, &skill)?;
 

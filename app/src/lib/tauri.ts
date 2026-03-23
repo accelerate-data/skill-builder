@@ -157,6 +157,9 @@ export const packageSkill = (
   workspacePath: string,
 ) => invoke<PackageResult>("package_skill", { skillName, workspacePath });
 
+export const packagePlugin = (pluginSlug: string) =>
+  invoke<PackageResult>("package_plugin", { pluginSlug });
+
 export const resetWorkflowStep = (
   workspacePath: string,
   skillName: string,
@@ -380,6 +383,15 @@ export const listImportedSkills = (sourceUrl?: string | null) =>
 
 export const deleteImportedSkill = (skillId: string) =>
   invoke<void>("delete_imported_skill", { skillId })
+
+export const createPluginFromSkills = (pluginName: string, skillKeys: string[]) =>
+  invoke<string>("create_plugin_from_skills", { pluginName, skillKeys })
+
+export const moveSkillToPlugin = (skillKey: string, pluginSlug: string) =>
+  invoke<void>("move_skill_to_plugin", { skillKey, pluginSlug })
+
+export const removeSkillFromPlugin = (skillKey: string) =>
+  invoke<void>("remove_skill_from_plugin", { skillKey })
 
 // --- GitHub Import ---
 

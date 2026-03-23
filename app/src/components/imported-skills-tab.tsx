@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "@/lib/toast"
-import { FolderInput, Package, Trash2 } from "lucide-react"
+import { FolderInput, Package, Trash2, FolderTree, ArrowRightLeft, Undo2 } from "lucide-react"
 import { Github } from "@/components/icons/github"
 import {
   Card,
@@ -16,7 +16,7 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
 import { ImportSkillDialog } from "@/components/import-skill-dialog"
-import { parseSkillFile } from "@/lib/tauri"
+import { createPluginFromSkills, moveSkillToPlugin, parseSkillFile, removeSkillFromPlugin } from "@/lib/tauri"
 import type { ImportedSkill } from "@/lib/types"
 import type { SkillFileMeta } from "@/lib/types"
 
@@ -55,6 +55,7 @@ export function ImportedSkillsTab() {
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
   const [showGitHubImport, setShowGitHubImport] = useState(false)
+  const [selectedSkillKeys, setSelectedSkillKeys] = useState<Set<string>>(new Set())
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState("")
   const [importMeta, setImportMeta] = useState<SkillFileMeta>({
@@ -106,6 +107,72 @@ export function ImportedSkillsTab() {
     [deleteSkill, fetchSkills]
   )
 
+  const groupedSkills = skills.reduce<Record<string, ImportedSkill[]>>((acc, skill) => {
+    const group = skill.plugin_display_name ?? "No Plugin"
+    acc[group] ??= []
+    acc[group].push(skill)
+    return acc
+  }, {})
+
+  const pluginOptions = Array.from(
+    new Map(
+      skills
+        .filter((skill) => !skill.is_default_plugin && skill.plugin_slug)
+        .map((skill) => [skill.plugin_slug as string, skill.plugin_display_name ?? skill.plugin_slug as string])
+    ).entries()
+  )
+
+  const toggleSelected = (skill: ImportedSkill) => {
+    const key = skill.library_key ?? `imported:${skill.skill_id}`
+    setSelectedSkillKeys((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const handleCreatePlugin = useCallback(async () => {
+    const pluginName = window.prompt("New plugin name")
+    if (!pluginName) return
+    const skillKeys = Array.from(selectedSkillKeys)
+    if (skillKeys.length === 0) return
+    const toastId = toast.loading(`Creating plugin "${pluginName}"...`)
+    try {
+      await createPluginFromSkills(pluginName, skillKeys)
+      setSelectedSkillKeys(new Set())
+      await fetchSkills()
+      toast.success(`Created plugin "${pluginName}"`, { id: toastId })
+    } catch (err) {
+      toast.error(`Create plugin failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId })
+    }
+  }, [fetchSkills, selectedSkillKeys])
+
+  const handleMoveToPlugin = useCallback(async (skill: ImportedSkill) => {
+    const suggestion = pluginOptions.map(([slug, label]) => `${label} (${slug})`).join(", ")
+    const pluginSlug = window.prompt(`Move to plugin slug${suggestion ? `\nAvailable: ${suggestion}` : ""}`)
+    if (!pluginSlug) return
+    const toastId = toast.loading(`Moving "${skill.skill_name}"...`)
+    try {
+      await moveSkillToPlugin(skill.library_key ?? `imported:${skill.skill_id}`, pluginSlug)
+      await fetchSkills()
+      toast.success(`Moved "${skill.skill_name}"`, { id: toastId })
+    } catch (err) {
+      toast.error(`Move failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId })
+    }
+  }, [fetchSkills, pluginOptions])
+
+  const handleRemoveFromPlugin = useCallback(async (skill: ImportedSkill) => {
+    const toastId = toast.loading(`Removing "${skill.skill_name}" from plugin...`)
+    try {
+      await removeSkillFromPlugin(skill.library_key ?? `imported:${skill.skill_id}`)
+      await fetchSkills()
+      toast.success(`Removed "${skill.skill_name}" from plugin`, { id: toastId })
+    } catch (err) {
+      toast.error(`Remove failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId })
+    }
+  }, [fetchSkills])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
@@ -122,6 +189,15 @@ export function ImportedSkillsTab() {
         <Button className="w-36" onClick={handleImport}>
           <FolderInput className="size-4" />
           Upload
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-40"
+          disabled={selectedSkillKeys.size === 0}
+          onClick={handleCreatePlugin}
+        >
+          <FolderTree className="size-4" />
+          Create Plugin
         </Button>
       </div>
 
@@ -148,55 +224,80 @@ export function ImportedSkillsTab() {
           </CardHeader>
         </Card>
       ) : (
-        <div className="rounded-md border">
-          <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
-            <span className="flex-1">Name</span>
-            <span className="w-24">Version</span>
-            <span className="w-24">Source</span>
-            <span className="w-28">Imported</span>
-            <span className="w-8" />
-          </div>
-          {skills.map((skill) => (
-            <div
-              key={skill.skill_id}
-              className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium">{skill.skill_name}</span>
-                  {skill.is_bundled && (
-                    <Badge variant="secondary" className="text-xs">Built-in</Badge>
-                  )}
+        <div className="space-y-4">
+          {Object.entries(groupedSkills).map(([pluginName, pluginSkills]) => (
+            <div key={pluginName} className="rounded-md border">
+              <div className="flex items-center justify-between border-b bg-muted/50 px-4 py-2">
+                <div>
+                  <div className="text-sm font-medium">{pluginName}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {pluginSkills[0]?.is_default_plugin ? "Synthetic default plugin" : `${pluginSkills.length} skill${pluginSkills.length === 1 ? "" : "s"}`}
+                  </div>
                 </div>
-                {skill.description && (
-                  <div className="text-xs text-muted-foreground">{skill.description}</div>
-                )}
               </div>
-              <div className="w-24 shrink-0">
-                {skill.version ? (
-                  <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">&mdash;</span>
-                )}
-              </div>
-              <div className="w-24 shrink-0">
-                <span className="text-xs text-muted-foreground">{sourceLabel(skill)}</span>
-              </div>
-              <div className="w-28 shrink-0">
-                <span className="text-xs text-muted-foreground">{formatRelativeTime(skill.imported_at)}</span>
-              </div>
-              <div className="w-8 shrink-0 flex items-center justify-end">
-                {!skill.is_bundled && (
-                  <button
-                    type="button"
-                    className="text-muted-foreground hover:text-destructive transition-colors"
-                    aria-label={`Delete ${skill.skill_name}`}
-                    onClick={() => handleDelete(skill)}
+              {pluginSkills.map((skill) => {
+                const skillKey = skill.library_key ?? `imported:${skill.skill_id}`
+                const selectable = !!skill.is_default_plugin
+                return (
+                  <div
+                    key={skill.skill_id}
+                    className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
                   >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                )}
-              </div>
+                    <input
+                      type="checkbox"
+                      className="size-4"
+                      disabled={!selectable}
+                      checked={selectedSkillKeys.has(skillKey)}
+                      onChange={() => toggleSelected(skill)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium">{skill.skill_name}</span>
+                        {skill.is_bundled && (
+                          <Badge variant="secondary" className="text-xs">Built-in</Badge>
+                        )}
+                      </div>
+                      {skill.description && (
+                        <div className="text-xs text-muted-foreground">{skill.description}</div>
+                      )}
+                    </div>
+                    <div className="w-24 shrink-0">
+                      {skill.version ? (
+                        <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">&mdash;</span>
+                      )}
+                    </div>
+                    <div className="w-24 shrink-0">
+                      <span className="text-xs text-muted-foreground">{sourceLabel(skill)}</span>
+                    </div>
+                    <div className="w-28 shrink-0">
+                      <span className="text-xs text-muted-foreground">{formatRelativeTime(skill.imported_at)}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {skill.is_default_plugin ? (
+                        <Button variant="ghost" size="icon-sm" onClick={() => handleMoveToPlugin(skill)} title="Move to plugin">
+                          <ArrowRightLeft className="size-4" />
+                        </Button>
+                      ) : (
+                        <Button variant="ghost" size="icon-sm" onClick={() => handleRemoveFromPlugin(skill)} title="Remove from plugin">
+                          <Undo2 className="size-4" />
+                        </Button>
+                      )}
+                      {!skill.is_bundled && (
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:text-destructive transition-colors"
+                          aria-label={`Delete ${skill.skill_name}`}
+                          onClick={() => handleDelete(skill)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           ))}
         </div>
