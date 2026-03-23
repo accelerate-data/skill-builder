@@ -290,14 +290,20 @@ pub(crate) fn rename_skill_inner(
     }
 
     // Move directories on disk (DB already committed — if disk fails, reconciler can fix)
-    let workspace_old = Path::new(workspace_path).join(old_name);
-    let workspace_new = Path::new(workspace_path).join(new_name);
+    // Use resolve_skill_dir to find the existing directory (nested or legacy)
+    let workspace_root = Path::new(workspace_path);
+    let workspace_old = crate::skill_paths::resolve_skill_dir(workspace_root, crate::skill_paths::DEFAULT_PLUGIN_SLUG, old_name);
+    let workspace_new = crate::skill_paths::nested_skill_dir(workspace_root, crate::skill_paths::DEFAULT_PLUGIN_SLUG, new_name);
     if workspace_old.exists() {
         // Guard against directory traversal
         let canonical_workspace = fs::canonicalize(workspace_path).map_err(|e| e.to_string())?;
         let canonical_old = fs::canonicalize(&workspace_old).map_err(|e| e.to_string())?;
         if !canonical_old.starts_with(&canonical_workspace) {
             return Err("Invalid skill path".to_string());
+        }
+        // Ensure the parent directory for the new nested path exists
+        if let Some(parent) = workspace_new.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         fs::rename(&workspace_old, &workspace_new).map_err(|e| {
             log::error!("[rename_skill] Failed to rename workspace dir: {}", e);
@@ -306,13 +312,18 @@ pub(crate) fn rename_skill_inner(
     }
 
     if let Some(sp) = skills_path {
-        let skills_old = Path::new(sp).join(old_name);
-        let skills_new = Path::new(sp).join(new_name);
+        let skills_root = Path::new(sp);
+        let skills_old = crate::skill_paths::resolve_skill_dir(skills_root, crate::skill_paths::DEFAULT_PLUGIN_SLUG, old_name);
+        let skills_new = crate::skill_paths::nested_skill_dir(skills_root, crate::skill_paths::DEFAULT_PLUGIN_SLUG, new_name);
         if skills_old.exists() {
             let canonical_skills = fs::canonicalize(sp).map_err(|e| e.to_string())?;
             let canonical_old = fs::canonicalize(&skills_old).map_err(|e| e.to_string())?;
             if !canonical_old.starts_with(&canonical_skills) {
                 return Err("Invalid skill path".to_string());
+            }
+            // Ensure the parent directory for the new nested path exists
+            if let Some(parent) = skills_new.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
             fs::rename(&skills_old, &skills_new).map_err(|e| {
                 log::error!("[rename_skill] Failed to rename skills dir: {}", e);
