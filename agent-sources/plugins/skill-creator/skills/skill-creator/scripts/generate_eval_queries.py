@@ -31,7 +31,7 @@ def log(message: str) -> None:
 
 def parse_skill_md(skill_path: Path) -> tuple[str, str, str]:
     content = (skill_path / "SKILL.md").read_text(encoding="utf-8")
-    lines = content.split("\n")
+    lines = content.splitlines()
 
     if not lines or lines[0].strip() != "---":
         raise ValueError("SKILL.md is missing frontmatter (expected opening `---`).")
@@ -202,7 +202,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--skill-path", required=True, help="Path to skill directory")
-    parser.add_argument("--model", required=True, help="Model to use for generating queries")
+    parser.add_argument("--model", default=None, help="Model for Claude (default: user's configured model)")
     parser.add_argument(
         "--count", type=int, default=20, help="Number of queries to generate (default: 20)"
     )
