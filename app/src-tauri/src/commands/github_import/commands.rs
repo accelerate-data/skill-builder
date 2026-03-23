@@ -524,7 +524,7 @@ async fn import_marketplace_entries_to_library(
     );
 
     // Read settings
-    let (workspace_path, skills_path, token) = {
+    let (skills_path, token) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!(
                 "[import_marketplace_entries_to_library] failed to acquire DB lock: {}",
@@ -539,9 +539,8 @@ async fn import_marketplace_entries_to_library(
             );
             e
         })?;
-        let wp = settings.workspace_path.ok_or_else(|| "Workspace path not initialized".to_string())?;
         let sp = settings.skills_path.ok_or_else(|| "Skills path not configured. Set it in Settings.".to_string())?;
-        (wp, sp, settings.github_oauth_token.clone())
+        (sp, settings.github_oauth_token.clone())
     };
 
     let repo_info = parse_github_url_inner(&source_url)?;
@@ -728,13 +727,8 @@ async fn import_marketplace_entries_to_library(
             );
         }
 
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        if let Err(e) = crate::commands::workflow::update_skills_section(&workspace_path, &conn) {
-            log::warn!(
-                "[import_marketplace_entries_to_library] failed to update CLAUDE.md: {}",
-                e
-            );
-        }
+        // No CLAUDE.md update needed — import is for Skill Builder management,
+        // not Claude Code runtime discovery.
     }
 
     Ok(results)
@@ -803,12 +797,11 @@ pub async fn import_marketplace_plugin_to_library(
     );
 
     let repo_info = parse_github_url_inner(&source_url)?;
-    let (workspace_path, skills_path, token) = {
+    let (skills_path, token) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings(&conn)?;
-        let wp = settings.workspace_path.ok_or("Workspace path not initialized")?;
         let sp = settings.skills_path.ok_or("Skills path not configured")?;
-        (wp, sp, settings.github_oauth_token.clone())
+        (sp, settings.github_oauth_token.clone())
     };
 
     let client = build_github_client(token.as_deref());
@@ -975,9 +968,6 @@ pub async fn import_marketplace_plugin_to_library(
     if results.iter().any(|r| r.success) {
         if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(skills_root) {
             log::warn!("[import_marketplace_plugin_to_library] manifest regeneration failed: {}", e);
-        }
-        if let Err(e) = crate::commands::workflow::update_skills_section(&workspace_path, &conn) {
-            log::warn!("[import_marketplace_plugin_to_library] CLAUDE.md update failed: {}", e);
         }
     }
 
