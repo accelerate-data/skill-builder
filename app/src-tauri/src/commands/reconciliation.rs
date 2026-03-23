@@ -209,8 +209,8 @@ pub fn resolve_discovery(
             let plugin_id = if plugin_slug == DEFAULT_PLUGIN_SLUG {
                 crate::db::ensure_default_plugin(&conn)?
             } else {
-                crate::db::get_plugin_id_by_slug(&conn, &plugin_slug)?
-                    .unwrap_or_else(|| crate::db::create_plugin(&conn, &plugin_slug, "local", None, None).map(|(id, _)| id).unwrap())
+                let display_name = crate::skill_paths::plugin_display_name(&plugin_slug);
+                crate::db::ensure_plugin(&conn, &plugin_slug, &display_name, "local", None, None, false)?
             };
             crate::db::upsert_skill_in_plugin(&conn, &skill_name, "skill-builder", "domain", &plugin_slug)?;
             conn.execute(

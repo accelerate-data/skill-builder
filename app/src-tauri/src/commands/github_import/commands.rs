@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use crate::db::Db;
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use crate::types::{AvailablePlugin, AvailableSkill};
 
 use super::catalog::{discover_plugins_from_catalog, discover_skills_from_catalog, extract_plugin_path};
@@ -553,9 +554,12 @@ async fn import_marketplace_entries_to_library(
     let skills_dir = Path::new(&skills_path);
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
 
+    // --- Step 1: Create plugins first (one per unique plugin path) ---
+    // Group skill_paths by plugin, create each plugin row in the DB once.
+    let mut plugin_slug_cache: std::collections::HashMap<String, (String, String)> = std::collections::HashMap::new();
     for skill_path in &skill_paths {
         let plugin_path = extract_plugin_path(skill_path);
-        let plugin_display_name = plugin_display_name_override
+        let display_name = plugin_display_name_override
             .clone()
             .unwrap_or_else(|| {
                 if plugin_path.is_empty() {
@@ -564,6 +568,29 @@ async fn import_marketplace_entries_to_library(
                     plugin_path.rsplit('/').next().unwrap_or(plugin_path).to_string()
                 }
             });
+        if !plugin_slug_cache.contains_key(plugin_path) {
+            let slug = crate::db::slugify_plugin_name(&display_name);
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            crate::db::ensure_plugin(
+                &conn,
+                &slug,
+                &display_name,
+                "marketplace",
+                Some(&source_url),
+                None,
+                false,
+            )?;
+            plugin_slug_cache.insert(plugin_path.to_string(), (slug, display_name));
+        }
+    }
+
+    // --- Step 2: Import skills, referencing the already-created plugin ---
+    for skill_path in &skill_paths {
+        let plugin_path = extract_plugin_path(skill_path);
+        let (plugin_slug, plugin_display_name) = plugin_slug_cache
+            .get(plugin_path)
+            .cloned()
+            .unwrap_or_else(|| (DEFAULT_PLUGIN_SLUG.to_string(), "No Plugin".to_string()));
         let override_ref = metadata_overrides
             .as_ref()
             .and_then(|m| m.get(skill_path.as_str()));
@@ -619,13 +646,7 @@ async fn import_marketplace_entries_to_library(
 
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
                 skill.marketplace_source_url = Some(source_url.clone());
-                let (_, plugin_slug) = crate::db::create_plugin(
-                    &conn,
-                    &plugin_display_name,
-                    "marketplace",
-                    Some(&source_url),
-                    None,
-                )?;
+                // Plugin was already created in step 1 — just reference it
                 skill.plugin_slug = Some(plugin_slug.clone());
                 skill.plugin_display_name = Some(plugin_display_name.clone());
                 skill.is_default_plugin = Some(false);
