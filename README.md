@@ -15,7 +15,7 @@ npm run sidecar:build   # Bundle the Node.js agent runner
 npm run dev             # Start in dev mode
 ```
 
-Configure your Anthropic API key and workspace folder in Settings before running workflows.
+Configure your Anthropic API key in Settings before running workflows. The app manages its workspace directory automatically.
 
 **Mock mode** -- for UI development without API calls:
 
@@ -36,26 +36,25 @@ Set `MOCK_SCENARIO` to switch between pre-built scenarios:
 
 ## How It Works
 
-The workflow guides you through building a skill in 6 steps:
+The workflow guides you through these core stages:
 
-1. **Research** -- opus planner selects relevant research dimensions, parallel agents research them, opus consolidation produces clarification questions. If scope is too broad, recommends narrower skills instead
-2. **Detailed Research** -- agents dive deeper per section, produce refinement questions
-3. **Confirm Decisions** -- agent analyzes your answers, detects gaps and contradictions
-4. **Generate Skill** -- agent creates SKILL.md and reference files
+1. **Research** -- agents select and research relevant dimensions, then generate clarification questions. If scope is too broad, they recommend narrower skill directions.
+2. **Detailed Research** -- agents dig deeper into each section and produce follow-up refinement questions.
+3. **Confirm Decisions** -- an agent analyzes your answers, detects gaps and contradictions, and prepares the final decision set.
+4. **Generate Skill** -- the app writes `SKILL.md` and any supporting reference files.
+5. **Refine** -- after generation, you can iteratively revise the skill through the desktop UI.
 
-After Generate completes, you can **Refine** the skill interactively.
-
-Completed skills are version-controlled locally (auto-commits via git2) and can be pushed to a shared GitHub repository via branch + PR from the desktop app.
+Generated skills are version-controlled locally and can be prepared for branch-and-PR workflows from the desktop app.
 
 ## Architecture
 
 ```text
 skill-builder/
-├── agents/                          # Agent prompts
 ├── agent-sources/
-│   └── workspace/
-│       ├── CLAUDE.md                # Agent instructions (auto-loaded by SDK)
-│       └── skills/                  # Skill references bundled into the app
+│   ├── agents/                      # Top-level agent prompts
+│   ├── plugins/                     # Plugin-owned agents and skills
+│   ├── skills/                      # Bundled skills
+│   └── workspace/                   # Workspace instructions deployed at startup
 ├── app/                             # Desktop application
 │   ├── src/                         # React 19 + Tailwind 4 + shadcn/ui
 │   ├── src-tauri/                   # Rust backend (Tauri 2 + SQLite)
@@ -76,6 +75,7 @@ npm run test:agents:structural  # Agent structural checks (free, no API key)
 ```
 
 See [`app/tests/README.md`](app/tests/README.md) for all test levels.
+For Rust-to-E2E mapping and cross-layer test selection, see [`TEST_MANIFEST.md`](TEST_MANIFEST.md).
 
 ## Contributing
 
