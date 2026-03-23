@@ -151,7 +151,7 @@ pub fn create_plugin_from_skills(
     if let Some(ref sp) = settings.skills_path {
         let skills_root = std::path::Path::new(sp);
         // Create the plugin dir with skills/ subfolder and plugin.json
-        let plugin_skills_dir = skills_root.join("plugins").join(&plugin_slug).join("skills");
+        let plugin_skills_dir = skills_root.join(&plugin_slug).join("skills");
         std::fs::create_dir_all(&plugin_skills_dir).map_err(|e| format!("Failed to create plugin directory: {}", e))?;
         crate::marketplace_manifest::write_plugin_json(skills_root, &plugin_slug, &plugin_name, None, None)?;
         crate::marketplace_manifest::write_marketplace_json(skills_root)?;
