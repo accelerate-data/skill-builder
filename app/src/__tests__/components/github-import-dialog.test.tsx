@@ -7,37 +7,29 @@ import {
   mockInvokeCommands,
   resetTauriMocks,
 } from "@/test/mocks/tauri";
-import type { AvailableSkill } from "@/lib/types";
+import type { AvailablePlugin } from "@/lib/types";
 
 import GitHubImportDialog from "@/components/github-import-dialog";
 import { toast } from "@/lib/toast";
 
 const DEFAULT_REPO_INFO = { owner: "acme", repo: "skills", branch: "main", subpath: null };
 
-const sampleSkills: AvailableSkill[] = [
+const samplePlugins: AvailablePlugin[] = [
   {
-    path: "skills/sales-analytics",
-    name: "Sales Analytics",
-    plugin_name: null,
-    description: "Analyze your sales pipeline",
-    purpose: "skill-builder",
-    version: null,
-    model: null,
-    argument_hint: null,
-    user_invocable: null,
-    disable_model_invocation: null,
+    path: "plugins/analytics-pack",
+    name: "analytics-pack",
+    description: "Analytics and reporting tools",
+    version: "1.0.0",
+    skill_count: 0,
+    skill_names: [],
   },
   {
-    path: "skills/hr-metrics",
-    name: "HR Metrics",
-    plugin_name: null,
+    path: "plugins/hr-pack",
+    name: "hr-pack",
     description: null,
-    purpose: "skill-builder",
-    version: null,
-    model: null,
-    argument_hint: null,
-    user_invocable: null,
-    disable_model_invocation: null,
+    version: "2.0.0",
+    skill_count: 0,
+    skill_names: [],
   },
 ];
 
@@ -66,7 +58,7 @@ describe("GitHubImportDialog", () => {
     it("shows spinner while loading", () => {
       mockInvoke.mockImplementation(() => new Promise(() => {}));
       renderDialog();
-      expect(screen.getByText("Loading skills...")).toBeInTheDocument();
+      expect(screen.getByText("Loading plugins...")).toBeInTheDocument();
     });
   });
 
@@ -83,130 +75,98 @@ describe("GitHubImportDialog", () => {
         expect(screen.getByText("Invalid GitHub URL")).toBeInTheDocument();
       });
       expect(screen.getByRole("button", { name: /Retry/i })).toBeInTheDocument();
-      expect(screen.queryByText("Loading skills...")).not.toBeInTheDocument();
-    });
-
-    it("hides skill list after browse fails", async () => {
-      mockInvoke.mockImplementation((cmd: string) => {
-        if (cmd === "parse_github_url") return Promise.reject(new Error("Network error"));
-        return Promise.reject(new Error(`Unmocked command: ${cmd}`));
-      });
-
-      renderDialog();
-
-      await waitFor(() => {
-        expect(screen.queryByText("Loading skills...")).not.toBeInTheDocument();
-      });
-
-      expect(screen.queryByRole("button", { name: /Import/i })).not.toBeInTheDocument();
     });
   });
 
   describe("Empty state", () => {
-    it("shows no skill rows when list_github_skills returns empty array", async () => {
+    it("shows no plugin rows when list_github_plugins returns empty array", async () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
-        list_github_skills: [],
-        get_dashboard_skill_names: [],
+        list_github_plugins: [],
         list_skills: [],
       });
 
       renderDialog();
 
       await waitFor(() => {
-        expect(screen.queryByText("Loading skills...")).not.toBeInTheDocument();
+        expect(screen.queryByText("Loading plugins...")).not.toBeInTheDocument();
       });
-      expect(screen.queryByRole("button", { name: /Import/i })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/Install /i)).not.toBeInTheDocument();
     });
   });
 
-  describe("Skill list", () => {
+  describe("Plugin list", () => {
     beforeEach(() => {
       resetTauriMocks();
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
-        list_github_skills: sampleSkills,
-        get_dashboard_skill_names: [],
+        list_github_plugins: samplePlugins,
         list_skills: [],
       });
     });
 
-    it("shows skill name for each skill", async () => {
+    it("shows plugin name for each plugin", async () => {
       renderDialog();
 
       await waitFor(() => {
-        expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
+        expect(screen.getByText("analytics-pack")).toBeInTheDocument();
       });
-      expect(screen.getByText("HR Metrics")).toBeInTheDocument();
+      expect(screen.getByText("hr-pack")).toBeInTheDocument();
     });
 
     it("shows description text when description is present", async () => {
       renderDialog();
 
       await waitFor(() => {
-        expect(screen.getByText("Analyze your sales pipeline")).toBeInTheDocument();
+        expect(screen.getByText("Analytics and reporting tools")).toBeInTheDocument();
       });
     });
 
-    it("does not show description text when description is null", async () => {
+    it("shows install buttons for each plugin", async () => {
       renderDialog();
 
       await waitFor(() => {
-        expect(screen.getByText("HR Metrics")).toBeInTheDocument();
+        expect(screen.getByLabelText("Install analytics-pack")).toBeInTheDocument();
       });
-      expect(screen.queryByText("No description")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Install hr-pack")).toBeInTheDocument();
     });
 
-    it("shows description in edit form when edit button is clicked", async () => {
-      const user = userEvent.setup();
-      renderDialog();
-
-      await waitFor(() => {
-        expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
-      });
-
-      const allButtons = screen.getAllByRole("button") as HTMLElement[];
-      const editButtons = allButtons.filter((btn) => !btn.textContent?.trim());
-      await user.click(editButtons[0]);
-
-      await waitFor(() => {
-        expect(screen.getByText("Edit & Import Skill")).toBeInTheDocument();
-      });
-      expect(screen.getByDisplayValue("Analyze your sales pipeline")).toBeInTheDocument();
-    });
-
-    it("does not show skills filtered out by typeFilter", async () => {
-      const mixed: AvailableSkill[] = [
-        { path: "skills/a", name: "Skill A", plugin_name: null, description: null, purpose: "skill-builder", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
-        { path: "skills/b", name: "Skill B", plugin_name: null, description: null, purpose: "domain", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
-        { path: "skills/c", name: "Skill C", plugin_name: null, description: null, purpose: null, version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
-      ];
+    it("shows Installed badge when plugin already exists locally", async () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
-        list_github_skills: mixed,
-        get_dashboard_skill_names: [],
-        list_skills: [],
+        list_github_plugins: samplePlugins,
+        list_skills: [
+          {
+            name: "analytics-helper",
+            library_key: "skill-builder:analytics-pack:analytics-helper",
+            current_step: null,
+            status: null,
+            last_modified: null,
+            tags: [],
+            purpose: "domain",
+            skill_source: "marketplace",
+            author_login: null,
+            author_avatar: null,
+            intake_json: null,
+            source: null,
+            description: null,
+            version: "1.0.0",
+            model: null,
+            argumentHint: null,
+            userInvocable: null,
+            disableModelInvocation: null,
+            plugin_slug: "analytics-pack",
+            plugin_display_name: "analytics-pack",
+            is_default_plugin: false,
+          },
+        ],
       });
 
-      renderDialog({ typeFilter: ["skill-builder"] });
-
-      await waitFor(() => {
-        expect(screen.getByText("Skill A")).toBeInTheDocument();
-      });
-      expect(screen.queryByText("Skill B")).not.toBeInTheDocument();
-      expect(screen.queryByText("Skill C")).not.toBeInTheDocument();
-    });
-
-    it("shows edit buttons for each skill", async () => {
       renderDialog();
 
       await waitFor(() => {
-        expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
+        expect(screen.getByText("Installed")).toBeInTheDocument();
       });
-
-      const allButtons = screen.getAllByRole("button") as HTMLElement[];
-      const editButtons = allButtons.filter((btn) => !btn.textContent?.trim());
-      expect(editButtons).toHaveLength(2);
     });
   });
 
@@ -218,138 +178,81 @@ describe("GitHubImportDialog", () => {
       onImported.mockReset().mockResolvedValue(undefined);
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
-        list_github_skills: sampleSkills,
-        get_dashboard_skill_names: [],
+        list_github_plugins: samplePlugins,
         list_skills: [],
       });
     });
 
-    async function waitForSkillEditButtons(): Promise<HTMLElement[]> {
-      await waitFor(() => {
-        expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
-      });
-      const allButtons = screen.getAllByRole("button") as HTMLElement[];
-      return allButtons.filter((btn) => !btn.textContent?.trim());
-    }
-
-    it("shows an edit button for each skill", async () => {
-      renderDialog({ onImported });
-
-      const editButtons = await waitForSkillEditButtons();
-      expect(editButtons).toHaveLength(2);
-    });
-
-    it("opens edit form when skill edit button is clicked", async () => {
-      const user = userEvent.setup();
-      renderDialog({ onImported });
-
-      const editButtons = await waitForSkillEditButtons();
-
-      await user.click(editButtons[0]);
-
-      await waitFor(() => {
-        expect(screen.getByText("Edit & Import Skill")).toBeInTheDocument();
-      });
-      expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
-    });
-
-    it("calls import_marketplace_to_library with skill path and metadata override on Confirm Import", async () => {
+    it("calls import_marketplace_plugin_to_library when install is clicked", async () => {
       const user = userEvent.setup();
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
-        list_github_skills: sampleSkills,
-        get_dashboard_skill_names: [],
+        list_github_plugins: samplePlugins,
         list_skills: [],
-        import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
+        import_marketplace_plugin_to_library: [{ skill_name: "analytics-helper", success: true, error: null }],
       });
 
       renderDialog({ onImported });
 
-      const editButtons = await waitForSkillEditButtons();
-      await user.click(editButtons[0]);
-
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+        expect(screen.getByLabelText("Install analytics-pack")).toBeInTheDocument();
       });
 
-      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
+      await user.click(screen.getByLabelText("Install analytics-pack"));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith("import_marketplace_to_library", expect.objectContaining({
-          skillPaths: ["skills/sales-analytics"],
-        }));
+        expect(mockInvoke).toHaveBeenCalledWith(
+          "import_marketplace_plugin_to_library",
+          expect.objectContaining({
+            pluginPath: "plugins/analytics-pack",
+            pluginName: "analytics-pack",
+          }),
+        );
       });
     });
 
-    it("calls onImported and fires success toast on successful import", async () => {
+    it("calls onImported and fires success toast on successful plugin import", async () => {
       const user = userEvent.setup();
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
-        list_github_skills: sampleSkills,
-        get_dashboard_skill_names: [],
+        list_github_plugins: samplePlugins,
         list_skills: [],
-        import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
+        import_marketplace_plugin_to_library: [{ skill_name: "analytics-helper", success: true, error: null }],
       });
 
       renderDialog({ onImported });
 
-      const editButtons = await waitForSkillEditButtons();
-      await user.click(editButtons[0]);
-
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+        expect(screen.getByLabelText("Install analytics-pack")).toBeInTheDocument();
       });
 
-      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
+      await user.click(screen.getByLabelText("Install analytics-pack"));
 
       await waitFor(() => {
         expect(onImported).toHaveBeenCalledOnce();
       });
-      expect(toast.success).toHaveBeenCalledWith('Imported "Sales Analytics"');
+      expect(toast.success).toHaveBeenCalledWith('Imported plugin "analytics-pack"');
     });
 
-    it("shows 'Already installed' when result has 'already exists' error", async () => {
+    it("shows Installed when plugin import only returns already-exists failures", async () => {
       const user = userEvent.setup();
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
-        list_github_skills: sampleSkills,
-        get_dashboard_skill_names: [],
+        list_github_plugins: samplePlugins,
         list_skills: [],
-        import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: false, error: "already exists" }],
+        import_marketplace_plugin_to_library: [{ skill_name: "analytics-helper", success: false, error: "already exists" }],
       });
 
       renderDialog({ onImported });
 
-      const editButtons = await waitForSkillEditButtons();
-      await user.click(editButtons[0]);
-
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+        expect(screen.getByLabelText("Install analytics-pack")).toBeInTheDocument();
       });
 
-      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
+      await user.click(screen.getByLabelText("Install analytics-pack"));
 
       await waitFor(() => {
-        expect(screen.getByText("Already installed")).toBeInTheDocument();
-      });
-      expect(onImported).not.toHaveBeenCalled();
-    });
-
-    it("closes edit form without importing when Cancel is clicked", async () => {
-      const user = userEvent.setup();
-      renderDialog({ onImported });
-
-      const editButtons = await waitForSkillEditButtons();
-      await user.click(editButtons[0]);
-
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole("button", { name: /Cancel/i }));
-
-      await waitFor(() => {
-        expect(screen.queryByText("Edit & Import Skill")).not.toBeInTheDocument();
+        expect(screen.getByText("Installed")).toBeInTheDocument();
       });
       expect(onImported).not.toHaveBeenCalled();
     });
@@ -359,8 +262,7 @@ describe("GitHubImportDialog", () => {
     it("renders one tab per registry", async () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
-        list_github_skills: sampleSkills,
-        get_dashboard_skill_names: [],
+        list_github_plugins: samplePlugins,
         list_skills: [],
       });
 
@@ -374,11 +276,6 @@ describe("GitHubImportDialog", () => {
         expect(screen.getByText("Registry A")).toBeInTheDocument();
       });
       expect(screen.getByText("Registry B")).toBeInTheDocument();
-    });
-
-    it("shows no-registries message when registries array is empty", () => {
-      renderDialog({ registries: [] });
-      expect(screen.getAllByText(/No enabled registries/)).toHaveLength(2);
     });
   });
 });

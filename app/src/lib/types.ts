@@ -381,6 +381,15 @@ export interface AvailableSkill {
   disable_model_invocation: boolean | null
 }
 
+export interface AvailablePlugin {
+  path: string
+  name: string
+  description: string | null
+  version: string | null
+  skill_count: number
+  skill_names: string[]
+}
+
 export interface SkillMetadataOverride {
   name: string
   description: string

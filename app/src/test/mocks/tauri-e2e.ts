@@ -165,10 +165,15 @@ const mockResponses: Record<string, unknown> = {
   list_skill_files: [],
   // GitHub import
   parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
+  list_github_plugins: [
+    { path: "plugins/analytics", name: "analytics", description: "Analytics plugin", version: "1.0.0", skill_count: 0, skill_names: [] },
+    { path: "plugins/reporting", name: "reporting", description: "Reporting plugin", version: "1.0.0", skill_count: 0, skill_names: [] },
+  ],
   list_github_skills: [
     { path: "skills/analytics", name: "analytics", domain: "Data", description: "Analytics skill" },
     { path: "skills/reporting", name: "reporting", domain: "Data", description: "Reporting skill" },
   ],
+  import_marketplace_plugin_to_library: [{ success: true, error: null }],
   import_github_skills: [
     {
       skill_id: "imported-001",

@@ -167,6 +167,16 @@ pub struct AvailableSkill {
     pub disable_model_invocation: Option<bool>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailablePlugin {
+    pub path: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub version: Option<String>,
+    pub skill_count: usize,
+    pub skill_names: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SkillMetadataOverride {
     pub name: Option<String>,
