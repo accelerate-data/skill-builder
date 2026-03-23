@@ -1,61 +1,48 @@
 # Usage
 
-The Usage page shows a summary of API costs and token consumption across all skill builds, refine sessions, and test runs.
+Usage lives in **Settings → Usage**.
+
+It summarizes cost and token usage for workflow runs, refine sessions, and other tracked agent activity.
 
 ---
 
-## What's on this screen
+## What is on this screen
 
-**Summary cards** (top row)
+### Summary cards
 
-| Card | What it shows |
-|---|---|
-| Total Spent (USD) | Cumulative API cost across all runs |
-| Total Runs | Number of agent runs |
-| Avg Cost/Run | Average cost per individual agent run |
+- **Total Spent (USD)**
+- **Total Runs**
+- **Avg Cost/Run**
 
-**Cost by Step** bar chart — lists each activity type with total cost, agent run count, and a proportional bar. Activity types include: Research, Review, Detailed Research, Confirm Decisions, Generate Skill, Refine, and Test.
+### Filters and controls
 
-**Cost by Model** bar chart — same breakdown grouped by Claude model (Haiku, Sonnet, Opus).
+- date-range buttons such as **7d**, **14d**, **30d**, **90d**, and **All**
+- an optional skill filter
+- **Hide cancelled runs**
+- **Reset**
 
-**Cost Over Time** chart — a daily bar chart showing cost or token usage over the selected date range. Use the **Cost / Tokens** toggle in the top-right corner of the chart to switch between the two views. Hover over a bar to see the date, value, and run count.
+### Breakdown and history
 
-**Step History** table — a flat, sortable table of individual agent runs. Each row shows:
+- **Cost by Step**
+- **Cost by Model**
+- **Cost Over Time**
+- **Step History**
 
-| Column | What it shows |
-|---|---|
-| Date | Timestamp of the run |
-| Skill | Skill name |
-| Step | Activity type with a color-coded dot |
-| Model | Claude model used (Haiku, Sonnet, or Opus) |
-| Status | Check icon (completed), X icon (error), or dimmed X (cancelled) |
-| Cost | Total API cost for the run |
-| Tokens | Total token count for the run |
-
-Click any column header to sort; click again to reverse the sort direction.
+The Step History area supports step and model filtering in addition to sorting.
 
 ---
 
-## Filters
+## Reset usage data
 
-**Date range** — Select a time window using the segmented control: **7d**, **14d**, **30d**, **90d**, or **All time**. All charts and the table update to reflect the selected range.
+Click **Reset** to open **Reset Usage Data**.
 
-**Skill filter** — When multiple skills have usage data, a dropdown appears to filter by a specific skill.
-
-**Step filter** — In the Step History table header, a dropdown lets you filter by a specific activity type (e.g. only Research runs, only Refine sessions).
-
-**Model filter** — When multiple models have been used, a dropdown in the Step History header filters by model family.
-
-**Hide cancelled runs** checkbox — Filters out runs that were cancelled before completion. Useful for seeing only completed work.
-
----
-
-## Controls
-
-**Reset** button — Permanently deletes all usage data. A confirmation dialog appears before deletion. This action cannot be undone.
+Confirm with **Reset All Data** to permanently delete usage history.
 
 ---
 
 ## Empty state
 
-When no usage data exists for the selected date range and filters, the page shows a centered message: *"No usage data yet. Run an agent to start tracking costs."*
+When no usage has been recorded for the current filters, the section shows:
+
+- `No usage data yet.`
+- `Run an agent to start tracking costs.`

@@ -2,70 +2,74 @@
 
 ## First-time setup
 
-The setup screen appears on first launch. You need two things before you can build skills.
+On first launch, Skill Builder opens a setup screen. You need:
+
+1. An Anthropic API key
+2. A Skills Folder path
 
 **How to complete setup**
 
-1. Enter your Anthropic API key in the **Anthropic API Key** field (starts with `sk-ant-`). A link to the Anthropic console is shown below the field if you need to create a key.
-2. Click **Test** to confirm the key is valid. The button changes to **Valid** when accepted.
-3. Review the **Skills Folder** path. This is where finished skill files are saved. Click **Browse** to choose a different folder.
-4. Click **Get Started**. The button is disabled until both fields have values.
+1. Enter your API key in **Anthropic API Key**.
+2. Click **Test** to validate it. The button changes to **Valid** after a successful check.
+3. Review the **Skills Folder**. This is where completed skills are saved. Click **Browse** to change it.
+4. Click **Get Started**.
+
+The button is enabled when both fields have values. Validation is recommended but not required to continue.
 
 ---
 
 ## What happens at startup
 
-After the setup screen (or on subsequent launches), the app performs several background tasks before showing the dashboard.
+Before the main UI appears, the app may show a few startup surfaces:
 
 ### Splash screen
 
-A brief splash screen appears while the app initializes the agent sidecar. It dismisses automatically once the sidecar is ready.
+A splash screen appears while the Node sidecar is initialized.
 
 ### Startup reconciliation
 
-The app scans the workspace and skills folder for changes that may have occurred outside the app (for example, files added or removed manually). If the app detects changes, a **Startup Reconciliation** dialog appears.
+If Skill Builder detects changes on disk that are not reflected in its database, it shows **Startup Reconciliation**.
 
-- The dialog lists notifications describing what was found (e.g. discovered skills, missing artifacts).
-- **Discovered skills** appear as individual rows. For each one, you can choose to **Import** (add it to the app's tracking) or **Delete** (remove the files).
-- Click **Apply** to accept the reconciliation, or **Skip** to dismiss without changes. Skipping means no automatic changes are applied — you can resolve issues manually later.
+- Notifications summarize what changed.
+- Discovered skills must be resolved one by one.
+- For each discovered skill you can choose **Add to Library** or **Remove**.
+- When the dialog requires changes to be applied, the footer actions are **Continue Without Applying** and **Apply Reconciliation**.
 
-### Orphan resolution
+### Orphaned skills
 
-If the app finds skills tracked in its database that no longer have matching files on disk, an **Orphan Resolution** dialog appears. For each orphaned skill you can choose:
+If the database still references builder skills whose workspace files are gone, the app shows **Orphaned Skills Found**.
 
-- **Keep** — Reset the skill to its initial state (preserves the database record).
-- **Delete** — Remove the skill record from the database.
-
-### Marketplace updates
-
-If you have enabled marketplace registries in [Settings](settings.md), the app checks for available skill updates at startup.
-
-- **Auto-update on:** Non-customized skills are updated silently. A summary toast lists what was updated. Skills you have edited after importing are never auto-updated.
-- **Auto-update off:** Notification toasts appear for available updates with an **Upgrade** button. Clicking the button navigates to the appropriate screen (Dashboard for library skills, Settings → Skills for workspace skills).
+- **Keep** preserves the record and resets that skill back to step 0.
+- **Delete** removes the orphaned record.
 
 ---
 
-## What's in the app
+## App layout
 
-| Screen | What you do there |
+The app has three primary surfaces:
+
+| Surface | What it does |
 |---|---|
-| [Dashboard](dashboard.md) | Create, manage, and import skills |
-| [Workflow](workflow/overview.md) | Build a skill step by step with AI agents |
-| [Refine](refine.md) | Chat with an agent to edit a finished skill |
-| [Test](test.md) | Compare how Claude behaves with and without a skill |
-| [Settings](settings.md) | Configure API key, model, GitHub, and workspace |
-| [Usage](usage.md) | View cost and token usage |
+| [Dashboard](dashboard.md) | Shows the skill list and, when a skill is selected, its workspace tabs |
+| [Workflow](workflow/overview.md) | Runs the 4-step builder flow for Skill Builder skills |
+| [Settings](settings.md) | Holds app configuration, imports, marketplace settings, GitHub, and usage |
+
+Two important areas are embedded inside those surfaces rather than being standalone routes:
+
+- [Refine](refine.md) is a workspace tab on the dashboard for builder skills.
+- [Evals](test.md) is also a workspace tab, but it is currently a placeholder.
+- [Usage](usage.md) lives in **Settings → Usage**.
 
 ---
 
 ## Quick concepts
 
-**Skill** — A knowledge package (a `SKILL.md` file plus optional reference files) that teaches Claude your team's specific processes, terminology, and standards.
+**Skill** — A `SKILL.md` file plus optional `references/*.md` files.
 
-**Skill source** — Where a skill came from:
+**Skill source**
 
-- **Skill Builder** — built by you using the workflow
-- **Marketplace** — imported from a GitHub-hosted registry
-- **Imported** — imported from a `.skill` package file
+- **Skill Builder**: built in the workflow
+- **Marketplace**: imported from a GitHub-backed registry
+- **Imported**: uploaded from a package file
 
-**Workspace** — A local app-managed folder (`app_local_data_dir()/workspace`) where agent working files and logs are kept. Skills are saved separately in your Skills Folder.
+**Workspace** — The app-managed working area for builder runs, refine sessions, and related artifacts. Completed skills are saved separately in your Skills Folder.

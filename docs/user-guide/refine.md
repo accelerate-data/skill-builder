@@ -1,100 +1,95 @@
-# Refine
+# Workspace: Refine
 
-The Refine page lets you edit a skill by chatting with an agent. Describe a change, the agent updates the files, and you can preview the diff before reviewing.
+Refine is a workspace tab for builder skills. It lets you chat with an agent, update `SKILL.md` or `references/*.md`, and inspect the resulting preview or diff.
 
----
+You can reach it from:
 
-## What's on this screen
-
-The page has three zones:
-
-- **Top bar** — skill picker dropdown
-- **Main area** — two columns: Chat panel (left) and Preview panel (right), separated by a draggable divider
-- **Status bar** — pinned to the bottom; shows agent status, skill name, model, and elapsed time while running
+- **More actions → Refine** on a completed skill
+- the **Refine** tab inside the selected skill’s workspace shell
 
 ---
 
-## How to make a change request
+## What is on this screen
 
-1. Select a skill from the **skill picker** in the top bar.
-2. Wait for the preview panel to load the skill files.
-3. Type your request in the input bar at the bottom of the chat panel (e.g. *"Add an example for handling edge cases"*).
-4. Press **Enter** or click the **send** button (arrow icon). The agent streams its response in the chat.
+The Refine tab has two parts:
 
-> **Enter** sends. **Shift+Enter** adds a newline.
+- a **Chat** panel on the left
+- an optional **file viewer** panel that slides in from the right
 
----
-
-## How to target a specific file
-
-1. In the input bar, type `@` to open the file picker popup.
-2. Use arrow keys or click to select a file (e.g. `SKILL.md`).
-3. A badge labelled `@SKILL.md` appears above the textarea. Add your message and send.
-4. To remove the file target before sending, click the **×** on the badge.
+There is no standalone Refine route with a top-bar skill picker in the current app.
 
 ---
 
-## How to use commands
+## Start a request
 
-Type `/` in the input bar to open the command picker:
+1. Open a builder skill and switch to **Refine**.
+2. Type your request in the editor at the bottom of the chat.
+3. Press **Enter** to send, or click the send button.
 
-| Command | What it does |
-|---|---|
-| `/rewrite` | Rewrites the skill from scratch based on your instructions |
-| `/validate` | Checks the skill for issues and reports them |
+`Shift+Enter` inserts a newline.
 
-Select a command, add any extra instructions, then send. You can combine a command with `@filename` to scope it to a specific file.
-
----
-
-## How to review a diff
-
-After the agent finishes, click **Diff** in the preview panel toolbar. Green `+` lines are additions; red `-` lines are removals. Click **Preview** to return to rendered markdown.
-
-> **Diff** is disabled until the agent has made at least one change.
+When the agent is running, the send button turns into a square **Cancel** button.
 
 ---
 
-## How to resize the panels
+## Target files or agents with `@`
 
-- Click and drag the vertical divider between the chat and preview panels. It moves between 20% and 80% of the window width.
-- Or focus the divider and use the **Left/Right arrow keys** to move it in 2% steps.
+Type `@` in the editor to open the mention picker.
 
----
+The picker can show:
 
-## How to switch skills
+- skill files such as `SKILL.md` or `references/...`
+- available refine agents
 
-Click the skill picker in the top bar and select a different skill. The chat clears, a new session starts, and the preview loads the new skill's files.
-
-> Switching skills is disabled while the agent is running.
+If you mention a file, it appears as a badge above the editor and is sent as part of the request context.
 
 ---
 
-## Controls reference
+## Quick-start suggestions
 
-| Control | Location | What it does |
-|---|---|---|
-| Skill picker | Top bar | Select which skill to refine |
-| Textarea | Chat input bar | Type your change request |
-| Send button (arrow icon) | Chat input bar | Send the message |
-| `@` file picker | Chat input bar | Target a specific skill file |
-| `/` command picker | Chat input bar | Attach a `/rewrite` or `/validate` command |
-| Badge × buttons | Chat input bar | Remove a file target or command before sending |
-| File picker button | Preview panel toolbar | Switch which file is shown in the preview |
-| Diff / Preview toggle | Preview panel toolbar | Switch between rendered markdown and line diff |
+When the chat is empty, Refine shows suggestion chips such as:
+
+- `Validate this skill`
+- `Improve the skill`
+- `Run benchmarks`
+
+These fill the editor for you. They are plain prompts, not slash commands.
+
+The current Refine UI does not expose a `/rewrite` or `/validate` command picker.
 
 ---
 
-## States
+## Review changed files
 
-**No skill selected** — chat shows: *"Select a skill to start refining"*
+After a successful run, Refine shows **Changed** pills below the agent turn for modified authored files.
 
-**Skill selected, no messages** — chat shows: *"Send a message to start refining"*
+Click a pill to open the right-side file viewer. In that panel you can:
 
-**Session limit reached** — a banner appears above the input bar: *"This refine session has reached its limit. Select the skill again to start a new session."* The input bar is disabled. Re-select the skill from the picker to start fresh.
+- switch files
+- toggle between **Diff** and **Preview** when a diff exists
+- resize the panel by dragging the left edge
+- close it with the close button or `Esc`
 
-**Scope block** — an amber banner appears: *"Scope recommendation active — refine is blocked until resolved."* with a **Go to Workflow →** link. The input bar is disabled until you resolve the scope recommendation in the workflow.
+The file viewer can also be opened from the file button in the workspace header.
 
-**Agent running** — the textarea and send button are disabled. The skill picker is also disabled.
+---
 
-**Navigating away while agent runs** — a dialog appears: *"Agent Running — An agent is still running. Leaving will abandon it and end the session."* Click **Stay** or **Leave**.
+## States and guards
+
+**No skill selected**
+
+The tab shows `Select a skill to start refining`.
+
+**Scope blocked**
+
+If the workflow marked the skill scope as too broad, Refine shows a warning banner and disables input until the workflow is resolved.
+
+**Session exhausted**
+
+If the refine session reaches its limit, the tab shows:
+
+`This refine session has reached its limit. Select the skill again to start a new session.`
+
+**Leaving while a run is active**
+
+If you switch away from Refine during a running turn, the app shows an **Agent Running** dialog and asks whether to **Stay** or **Leave**.
