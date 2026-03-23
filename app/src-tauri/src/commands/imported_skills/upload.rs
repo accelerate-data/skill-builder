@@ -195,17 +195,17 @@ fn import_skill_from_file_inner(
         return Err(e);
     }
 
-    // Write to skills master table
-    crate::db::upsert_skill_with_source_in_plugin(conn, name, "imported", "domain", "no-plugin")?;
+    // Step 1: Create/update skill master row (linked to no-plugin)
+    let skill_master_id = crate::db::upsert_skill_with_source_in_plugin(conn, name, "imported", "domain", "no-plugin")?;
 
-    // Update description (not mirrored by upsert_imported_skill)
+    // Update description on skill master
     conn.execute(
-        "UPDATE skills SET description = ?2 WHERE name = ?1",
-        rusqlite::params![name, description],
+        "UPDATE skills SET description = ?2 WHERE id = ?1",
+        rusqlite::params![skill_master_id, description],
     )
     .map_err(|e| e.to_string())?;
 
-    // Build ImportedSkill and upsert to imported_skills + mirror frontmatter to skills master
+    // Step 2: Create/update imported_skills row (linked to skill master)
     let skill_id = generate_skill_id(name);
     let imported_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let skill = crate::types::ImportedSkill {
@@ -228,7 +228,7 @@ fn import_skill_from_file_inner(
         plugin_display_name: Some("No Plugin".to_string()),
         is_default_plugin: Some(true),
     };
-    crate::db::upsert_imported_skill(conn, &skill)?;
+    crate::db::upsert_imported_skill(conn, &skill, skill_master_id)?;
 
     // Regenerate CLAUDE.md
     if !workspace_path.is_empty() {

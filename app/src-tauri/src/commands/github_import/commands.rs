@@ -657,21 +657,21 @@ async fn import_marketplace_entries_to_library(
                     merge_imported_fields(&mut skill, existing);
                 }
 
+                // Step 2a: Create/update skill master row (with plugin FK)
+                // Step 2b: Create/update imported_skills row (with skill master FK)
                 let purpose_for_master = skill.purpose.as_deref().unwrap_or("domain");
-                if let Err(e) = crate::db::upsert_skill_in_plugin(
-                    &conn,
-                    &skill.skill_name,
-                    "marketplace",
-                    purpose_for_master,
-                    &plugin_slug,
-                ) {
-                    log::warn!(
-                        "[import_marketplace_entries_to_library] failed to save marketplace skill for '{}': {}",
-                        skill.skill_name, e
-                    );
-                }
-
-                if let Err(e) = crate::db::upsert_imported_skill(&conn, &skill) {
+                let db_result: Result<(), String> = (|| {
+                    let skill_master_id = crate::db::upsert_skill_in_plugin(
+                        &conn,
+                        &skill.skill_name,
+                        "marketplace",
+                        purpose_for_master,
+                        &plugin_slug,
+                    )?;
+                    crate::db::upsert_imported_skill(&conn, &skill, skill_master_id)?;
+                    Ok(())
+                })();
+                if let Err(e) = db_result {
                     results.push(MarketplaceImportResult {
                         skill_name: skill.skill_name,
                         success: false,

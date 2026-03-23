@@ -124,23 +124,12 @@ pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result
     Ok(())
 }
 
-/// Upsert a marketplace-imported skill. Uses `INSERT OR REPLACE` so that re-importing
-/// (e.g. after the skills_path setting changed or files were manually deleted) always
-/// updates the existing record rather than failing with a UNIQUE constraint.
-/// Also mirrors frontmatter fields to the `skills` master table (canonical store).
-pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
-    let plugin_slug = resolve_plugin_slug(skill);
-    let skill_master_id = match get_skill_master_id_in_plugin(conn, &skill.skill_name, plugin_slug)?
-    {
-        Some(id) => id,
-        None => upsert_skill_with_source_in_plugin(
-            conn,
-            &skill.skill_name,
-            resolve_skill_source(skill),
-            skill.purpose.as_deref().unwrap_or("domain"),
-            plugin_slug,
-        )?,
-    };
+/// Upsert an imported skill row, linking it to an existing skill master row.
+///
+/// The caller must have already created the skill master row (via `upsert_skill_in_plugin`)
+/// and passes the resulting `skill_master_id`. This function only writes to the
+/// `imported_skills` table and mirrors frontmatter fields back to the skill master.
+pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill, skill_master_id: i64) -> Result<(), String> {
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
              purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
