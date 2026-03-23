@@ -113,25 +113,25 @@ export function updateQuery(
 
 /**
  * Returns a Tailwind CSS color class for a score (0.0-1.0 or as passed/total).
- * High (>=80%): text-green-600
- * Medium (>=60%): text-yellow-600
- * Low (<60%): text-red-600
- * Handles division by zero by returning red.
+ * High (>=80%): text-[var(--color-seafoam)] (brand seafoam via CSS variable)
+ * Medium (>=60%): text-amber-600 dark:text-amber-400 (approved warning pattern)
+ * Low (<60%): text-destructive (shadcn semantic destructive color)
+ * Zero total edge case: text-muted-foreground (muted text for undefined)
  */
 export function scoreColor(passed: number, total: number): string {
   if (total === 0) {
-    return 'text-red-600';
+    return 'text-muted-foreground';
   }
 
   const percentage = (passed / total) * 100;
 
   if (percentage >= 80) {
-    return 'text-green-600';
+    return 'text-[var(--color-seafoam)]';
   }
 
   if (percentage >= 60) {
-    return 'text-yellow-600';
+    return 'text-amber-600 dark:text-amber-400';
   }
 
-  return 'text-red-600';
+  return 'text-destructive';
 }

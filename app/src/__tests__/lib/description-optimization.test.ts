@@ -261,35 +261,35 @@ describe('updateQuery', () => {
 });
 
 describe('scoreColor', () => {
-  it('returns green for high score (>=80%)', () => {
-    expect(scoreColor(8, 10)).toBe('text-green-600');
-    expect(scoreColor(80, 100)).toBe('text-green-600');
-    expect(scoreColor(4, 5)).toBe('text-green-600');
-    expect(scoreColor(1, 1)).toBe('text-green-600');
+  it('returns seafoam for high score (>=80%)', () => {
+    expect(scoreColor(8, 10)).toBe('text-[var(--color-seafoam)]');
+    expect(scoreColor(80, 100)).toBe('text-[var(--color-seafoam)]');
+    expect(scoreColor(4, 5)).toBe('text-[var(--color-seafoam)]');
+    expect(scoreColor(1, 1)).toBe('text-[var(--color-seafoam)]');
   });
 
-  it('returns yellow for medium score (>=60% and <80%)', () => {
-    expect(scoreColor(6, 10)).toBe('text-yellow-600');
-    expect(scoreColor(60, 100)).toBe('text-yellow-600');
-    expect(scoreColor(3, 5)).toBe('text-yellow-600');
-    expect(scoreColor(7, 10)).toBe('text-yellow-600');
-    expect(scoreColor(79, 100)).toBe('text-yellow-600');
+  it('returns amber for medium score (>=60% and <80%)', () => {
+    expect(scoreColor(6, 10)).toBe('text-amber-600 dark:text-amber-400');
+    expect(scoreColor(60, 100)).toBe('text-amber-600 dark:text-amber-400');
+    expect(scoreColor(3, 5)).toBe('text-amber-600 dark:text-amber-400');
+    expect(scoreColor(7, 10)).toBe('text-amber-600 dark:text-amber-400');
+    expect(scoreColor(79, 100)).toBe('text-amber-600 dark:text-amber-400');
   });
 
-  it('returns red for low score (<60%)', () => {
-    expect(scoreColor(5, 10)).toBe('text-red-600');
-    expect(scoreColor(0, 10)).toBe('text-red-600');
-    expect(scoreColor(59, 100)).toBe('text-red-600');
-    expect(scoreColor(1, 5)).toBe('text-red-600');
+  it('returns destructive for low score (<60%)', () => {
+    expect(scoreColor(5, 10)).toBe('text-destructive');
+    expect(scoreColor(0, 10)).toBe('text-destructive');
+    expect(scoreColor(59, 100)).toBe('text-destructive');
+    expect(scoreColor(1, 5)).toBe('text-destructive');
   });
 
-  it('handles 0/0 gracefully (returns red)', () => {
-    expect(scoreColor(0, 0)).toBe('text-red-600');
+  it('handles 0/0 gracefully (returns muted-foreground)', () => {
+    expect(scoreColor(0, 0)).toBe('text-muted-foreground');
   });
 
   it('handles fractional scores', () => {
-    expect(scoreColor(0.8, 1)).toBe('text-green-600');
-    expect(scoreColor(0.6, 1)).toBe('text-yellow-600');
-    expect(scoreColor(0.5, 1)).toBe('text-red-600');
+    expect(scoreColor(0.8, 1)).toBe('text-[var(--color-seafoam)]');
+    expect(scoreColor(0.6, 1)).toBe('text-amber-600 dark:text-amber-400');
+    expect(scoreColor(0.5, 1)).toBe('text-destructive');
   });
 });
