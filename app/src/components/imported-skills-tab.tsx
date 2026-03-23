@@ -15,7 +15,8 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
 import { ImportSkillDialog } from "@/components/import-skill-dialog"
-import { createPluginFromSkills, moveSkillToPlugin, parseSkillFile, removeSkillFromPlugin } from "@/lib/tauri"
+import { CreatePluginDialog } from "@/components/create-plugin-dialog"
+import { moveSkillToPlugin, parseSkillFile, removeSkillFromPlugin } from "@/lib/tauri"
 import type { ImportedSkill } from "@/lib/types"
 import type { SkillFileMeta } from "@/lib/types"
 
@@ -131,20 +132,7 @@ export function ImportedSkillsTab() {
     })
   }
 
-  const handleCreatePlugin = useCallback(async () => {
-    const pluginName = window.prompt("New plugin name")
-    if (!pluginName) return
-    const skillKeys = Array.from(selectedSkillKeys)
-    const toastId = toast.loading(`Creating plugin "${pluginName}"...`)
-    try {
-      await createPluginFromSkills(pluginName, skillKeys)
-      setSelectedSkillKeys(new Set())
-      await fetchSkills()
-      toast.success(`Created plugin "${pluginName}"`, { id: toastId })
-    } catch (err) {
-      toast.error(`Create plugin failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId })
-    }
-  }, [fetchSkills, selectedSkillKeys])
+  const [createPluginOpen, setCreatePluginOpen] = useState(false)
 
   const handleMoveToPlugin = useCallback(async (skill: ImportedSkill) => {
     const suggestion = pluginOptions.map(([slug, label]) => `${label} (${slug})`).join(", ")
@@ -191,7 +179,7 @@ export function ImportedSkillsTab() {
         <Button
           variant="secondary"
           className="w-40"
-          onClick={handleCreatePlugin}
+          onClick={() => setCreatePluginOpen(true)}
         >
           <FolderTree className="size-4" />
           Create Plugin
@@ -313,6 +301,12 @@ export function ImportedSkillsTab() {
         filePath={importFile}
         meta={importMeta}
         onImported={fetchSkills}
+      />
+
+      <CreatePluginDialog
+        open={createPluginOpen}
+        onOpenChange={setCreatePluginOpen}
+        onCreated={fetchSkills}
       />
     </div>
   )
