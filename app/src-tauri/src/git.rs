@@ -133,6 +133,64 @@ pub fn commit_all(path: &Path, message: &str) -> Result<Option<String>, String> 
     Ok(Some(oid.to_string()))
 }
 
+pub fn skill_version_tag_name(skill_name: &str, version: &str) -> String {
+    format!("{}/v{}", skill_name, version)
+}
+
+pub fn skill_version_tag_exists(
+    path: &Path,
+    skill_name: &str,
+    version: &str,
+) -> Result<bool, String> {
+    let repo = ensure_repo(path)?;
+    let tag_name = skill_version_tag_name(skill_name, version);
+    let exists = repo
+        .find_reference(&format!("refs/tags/{}", tag_name))
+        .is_ok();
+    Ok(exists)
+}
+
+pub fn skill_has_any_tag(path: &Path, skill_name: &str) -> Result<bool, String> {
+    let repo = ensure_repo(path)?;
+    let pattern = format!("{}/*", skill_name);
+    let tags = repo
+        .tag_names(Some(&pattern))
+        .map_err(|e| format!("Failed to list tags: {}", e))?;
+    Ok(tags.iter().flatten().next().is_some())
+}
+
+pub fn create_skill_version_tag(
+    path: &Path,
+    skill_name: &str,
+    version: &str,
+) -> Result<String, String> {
+    let repo = ensure_repo(path)?;
+    let tag_name = skill_version_tag_name(skill_name, version);
+    if repo
+        .find_reference(&format!("refs/tags/{}", tag_name))
+        .is_ok()
+    {
+        return Err(format!("Tag '{}' already exists", tag_name));
+    }
+
+    let head = repo
+        .head()
+        .map_err(|e| format!("Failed to resolve HEAD for tag '{}': {}", tag_name, e))?
+        .peel(git2::ObjectType::Commit)
+        .map_err(|e| {
+            format!(
+                "Failed to peel HEAD to commit for tag '{}': {}",
+                tag_name, e
+            )
+        })?;
+
+    repo.tag_lightweight(&tag_name, &head, false)
+        .map_err(|e| format!("Failed to create tag '{}': {}", tag_name, e))?;
+
+    log::info!("[git] Created tag '{}'", tag_name);
+    Ok(tag_name)
+}
+
 /// Return names of top-level directories that exist on disk but are not in the HEAD tree.
 /// Skips dotfile/hidden directories.
 pub fn get_untracked_dirs(path: &Path) -> Result<Vec<String>, String> {
@@ -390,8 +448,7 @@ pub fn extract_skill_at_tag(
         tag_name,
         dest_dir.display()
     );
-    let repo = Repository::open(repo_path)
-        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
     let reference = repo
         .find_reference(&format!("refs/tags/{}", tag_name))
@@ -474,7 +531,9 @@ pub fn resolve_benchmark_baseline(
                     let snapshot_str = dest.to_string_lossy().replace('\\', "/");
                     log::info!(
                         "[git] resolve_benchmark_baseline: skill='{}' tag='{}' snapshot={}",
-                        skill_name, tag, snapshot_str
+                        skill_name,
+                        tag,
+                        snapshot_str
                     );
                     BenchmarkBaseline {
                         mode: "prior_version".to_string(),
@@ -484,7 +543,8 @@ pub fn resolve_benchmark_baseline(
                 Err(e) => {
                     log::warn!(
                         "[git] resolve_benchmark_baseline: skill='{}' extraction failed: {}",
-                        skill_name, e
+                        skill_name,
+                        e
                     );
                     BenchmarkBaseline {
                         mode: "no_skill".to_string(),
@@ -859,6 +919,55 @@ mod tests {
         assert_eq!(latest_skill_semver(dir.path(), "skill-b").unwrap(), "1.0.0");
     }
 
+    #[test]
+    fn test_create_skill_version_tag_creates_expected_tag() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
+        commit_all(dir.path(), "v1").unwrap();
+
+        let tag_name = create_skill_version_tag(dir.path(), "my-skill", "1.0.0").unwrap();
+
+        assert_eq!(tag_name, "my-skill/v1.0.0");
+        assert!(skill_version_tag_exists(dir.path(), "my-skill", "1.0.0").unwrap());
+    }
+
+    #[test]
+    fn test_create_skill_version_tag_rejects_collision() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
+        commit_all(dir.path(), "v1").unwrap();
+        create_skill_version_tag(dir.path(), "my-skill", "1.0.0").unwrap();
+
+        let err = create_skill_version_tag(dir.path(), "my-skill", "1.0.0").unwrap_err();
+        assert!(err.contains("already exists"));
+    }
+
+    #[test]
+    fn test_skill_has_any_tag_is_skill_scoped() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let a_dir = dir.path().join("skill-a");
+        let b_dir = dir.path().join("skill-b");
+        std::fs::create_dir_all(&a_dir).unwrap();
+        std::fs::create_dir_all(&b_dir).unwrap();
+        std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
+        std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
+        commit_all(dir.path(), "seed").unwrap();
+        create_skill_version_tag(dir.path(), "skill-a", "1.0.0").unwrap();
+
+        assert!(skill_has_any_tag(dir.path(), "skill-a").unwrap());
+        assert!(!skill_has_any_tag(dir.path(), "skill-b").unwrap());
+    }
+
     // --- get_history version field ---
 
     #[test]
@@ -885,9 +994,18 @@ mod tests {
         assert_eq!(history.len(), 3);
 
         // Find commits by message and verify version tags
-        let created = history.iter().find(|c| c.message.contains("created")).unwrap();
-        let updated = history.iter().find(|c| c.message.contains("updated")).unwrap();
-        let refined = history.iter().find(|c| c.message.contains("refined")).unwrap();
+        let created = history
+            .iter()
+            .find(|c| c.message.contains("created"))
+            .unwrap();
+        let updated = history
+            .iter()
+            .find(|c| c.message.contains("updated"))
+            .unwrap();
+        let refined = history
+            .iter()
+            .find(|c| c.message.contains("refined"))
+            .unwrap();
 
         assert_eq!(created.version.as_deref(), Some("1.0.0"));
         assert_eq!(updated.version, None);

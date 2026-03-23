@@ -195,6 +195,12 @@ pub(crate) async fn import_single_skill(
         .map_err(|e| format!("Failed to read SKILL.md content: {}", e))?;
 
     let mut fm = super::super::imported_skills::parse_frontmatter_full(&skill_md_content);
+    let version_was_missing = fm.version.is_none();
+    if version_was_missing {
+        fm.version = Some(
+            super::super::imported_skills::frontmatter::DEFAULT_IMPORTED_SKILL_VERSION.to_string(),
+        );
+    }
 
     // purpose is set by the caller at import time (DB-only), not read from frontmatter.
     let override_purpose: Option<String> = metadata_override.and_then(|ov| ov.purpose.clone());
@@ -341,8 +347,8 @@ pub(crate) async fn import_single_skill(
             .map_err(|e| format!("Failed to write '{}': {}", out_path.display(), e))?;
     }
 
-    // Rewrite SKILL.md with updated frontmatter if a metadata override was applied
-    if metadata_override.is_some() {
+    // Rewrite SKILL.md if overrides changed frontmatter or if we injected a default version.
+    if metadata_override.is_some() || version_was_missing {
         log::info!(
             "[import_single_skill] rewriting SKILL.md frontmatter for '{}'",
             skill_name

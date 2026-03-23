@@ -1,3 +1,7 @@
+use std::path::Path;
+
+pub(crate) const DEFAULT_IMPORTED_SKILL_VERSION: &str = "1.0.0";
+
 /// Parsed YAML frontmatter fields from a SKILL.md file.
 #[derive(Default)]
 pub(crate) struct Frontmatter {
@@ -121,9 +125,69 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     }
 }
 
+pub(crate) fn ensure_skill_frontmatter_version(
+    skill_md_path: &Path,
+    preferred_version: Option<&str>,
+) -> Result<String, String> {
+    let content = std::fs::read_to_string(skill_md_path)
+        .map_err(|e| format!("Failed to read '{}': {}", skill_md_path.display(), e))?;
+    let normalized = content.replace("\r\n", "\n");
+    let frontmatter = parse_frontmatter_full(&normalized);
+
+    let requested_version = preferred_version
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string);
+    let final_version = requested_version
+        .or(frontmatter.version.clone())
+        .unwrap_or_else(|| DEFAULT_IMPORTED_SKILL_VERSION.to_string());
+
+    if frontmatter.version.as_deref() == Some(final_version.as_str()) {
+        return Ok(final_version);
+    }
+
+    if !normalized.starts_with("---") {
+        return Err(format!(
+            "SKILL.md at '{}' is missing YAML frontmatter",
+            skill_md_path.display()
+        ));
+    }
+
+    let mut lines: Vec<String> = normalized.split('\n').map(str::to_string).collect();
+    let closing_idx = lines
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(idx, line)| (line.trim() == "---").then_some(idx))
+        .ok_or_else(|| {
+            format!(
+                "SKILL.md at '{}' has an unclosed YAML frontmatter block",
+                skill_md_path.display()
+            )
+        })?;
+
+    if let Some(version_idx) = lines
+        .iter()
+        .enumerate()
+        .skip(1)
+        .take(closing_idx.saturating_sub(1))
+        .find_map(|(idx, line)| line.trim_start().starts_with("version:").then_some(idx))
+    {
+        lines[version_idx] = format!("version: {}", final_version);
+    } else {
+        lines.insert(closing_idx, format!("version: {}", final_version));
+    }
+
+    std::fs::write(skill_md_path, lines.join("\n"))
+        .map_err(|e| format!("Failed to write '{}': {}", skill_md_path.display(), e))?;
+
+    Ok(final_version)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn valid_frontmatter() {
@@ -150,7 +214,10 @@ mod tests {
         let content = "---\r\nname: CRLF Skill\r\ndescription: Works with Windows line endings\r\n---\r\nBody.\r\n";
         let fm = parse_frontmatter_full(content);
         assert_eq!(fm.name.as_deref(), Some("CRLF Skill"));
-        assert_eq!(fm.description.as_deref(), Some("Works with Windows line endings"));
+        assert_eq!(
+            fm.description.as_deref(),
+            Some("Works with Windows line endings")
+        );
     }
 
     #[test]
@@ -193,5 +260,41 @@ mod tests {
         let fm = parse_frontmatter_full(content);
         assert!(fm.name.is_none());
         assert!(fm.description.is_none());
+    }
+
+    #[test]
+    fn ensure_skill_frontmatter_version_adds_default_version() {
+        let dir = tempdir().unwrap();
+        let skill_md = dir.path().join("SKILL.md");
+        std::fs::write(
+            &skill_md,
+            "---\nname: Test Skill\ndescription: A test\ntrigger: do thing\n---\n# Body\n",
+        )
+        .unwrap();
+
+        let version = ensure_skill_frontmatter_version(&skill_md, None).unwrap();
+        let updated = std::fs::read_to_string(&skill_md).unwrap();
+
+        assert_eq!(version, "1.0.0");
+        assert!(updated.contains("version: 1.0.0"));
+        assert!(updated.contains("trigger: do thing"));
+    }
+
+    #[test]
+    fn ensure_skill_frontmatter_version_preserves_existing_unknown_fields() {
+        let dir = tempdir().unwrap();
+        let skill_md = dir.path().join("SKILL.md");
+        std::fs::write(
+            &skill_md,
+            "---\nname: Test Skill\ndescription: A test\ntrigger: do thing\nversion: 0.1.0\n---\n# Body\n",
+        )
+        .unwrap();
+
+        let version = ensure_skill_frontmatter_version(&skill_md, Some("2.1.0")).unwrap();
+        let updated = std::fs::read_to_string(&skill_md).unwrap();
+
+        assert_eq!(version, "2.1.0");
+        assert!(updated.contains("trigger: do thing"));
+        assert!(updated.contains("version: 2.1.0"));
     }
 }
