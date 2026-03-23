@@ -163,11 +163,11 @@ function mergeSkills(
     currentStep: null,
   }));
 
-  // Sort by creation date descending — newest skill first, stable across edits
+  // Sort by plugin slug (groups skills by plugin), then by creation date descending within each plugin
   return [...fromBuilder, ...fromImported].sort((a, b) => {
-    if (a.pluginDisplayName !== b.pluginDisplayName) {
+    if (a.pluginSlug !== b.pluginSlug) {
       if (a.isDefaultPlugin !== b.isDefaultPlugin) return a.isDefaultPlugin ? -1 : 1;
-      return a.pluginDisplayName.localeCompare(b.pluginDisplayName);
+      return a.pluginSlug.localeCompare(b.pluginSlug);
     }
     const at = a.createdAt?.getTime() ?? 0;
     const bt = b.createdAt?.getTime() ?? 0;
