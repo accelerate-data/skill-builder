@@ -356,10 +356,10 @@ describe("skill-creator plugin structure", () => {
     );
     const content = fs.readFileSync(skillPath, "utf8");
 
-    // Aggregation + optimization scripts via python -m under scripts/
-    expect(content).toMatch(/python3 -m scripts\.aggregate_benchmark/);
-    expect(content).toMatch(/python3 -m scripts\.run_loop/);
-    expect(content).toMatch(/python3 -m scripts\.package_skill/);
+    // Aggregation + optimization scripts via uv under scripts/
+    expect(content).toMatch(/uv run scripts\/aggregate_benchmark\.py/);
+    expect(content).toMatch(/uv run scripts\/run_loop\.py/);
+    expect(content).toMatch(/uv run scripts\/package_skill\.py/);
 
     // Eval viewer launched via generate_review.py (relative or with skill-creator-path placeholder)
     expect(content).toMatch(/generate_review\.py/);

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 """Improve a skill description based on eval results.
 
 Takes eval results (from run_eval.py) and generates an improved description
@@ -10,11 +14,68 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-from scripts.utils import parse_skill_md
+
+def emit_json(payload: dict) -> None:
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+
+
+def log(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+def parse_skill_md(skill_path: Path) -> tuple[str, str, str]:
+    content = (skill_path / "SKILL.md").read_text(encoding="utf-8")
+    lines = content.split("\n")
+
+    if not lines or lines[0].strip() != "---":
+        raise ValueError("SKILL.md is missing frontmatter (expected opening `---`).")
+
+    end_idx = None
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            end_idx = index
+            break
+
+    if end_idx is None:
+        raise ValueError("SKILL.md is missing frontmatter (expected closing `---`).")
+
+    name = ""
+    description = ""
+    frontmatter_lines = lines[1:end_idx]
+    idx = 0
+    while idx < len(frontmatter_lines):
+        line = frontmatter_lines[idx]
+        if line.startswith("name:"):
+            name = line[len("name:") :].strip().strip('"').strip("'")
+        elif line.startswith("description:"):
+            value = line[len("description:") :].strip()
+            if value in {">", "|", ">-", "|-"}:
+                continuation_lines: list[str] = []
+                idx += 1
+                while idx < len(frontmatter_lines) and (
+                    frontmatter_lines[idx].startswith("  ") or frontmatter_lines[idx].startswith("\t")
+                ):
+                    continuation_lines.append(frontmatter_lines[idx].strip())
+                    idx += 1
+                description = " ".join(continuation_lines)
+                continue
+            description = value.strip('"').strip("'")
+        idx += 1
+
+    return name, description, content
+
+
+def ensure_claude_available() -> None:
+    if shutil.which("claude") is None:
+        raise RuntimeError(
+            "The `claude` CLI is not available on PATH. Install it or run this script in an environment where `claude` is available."
+        )
 
 
 def _call_claude(prompt: str, model: str | None, timeout: int = 300) -> str:
@@ -192,7 +253,15 @@ Please respond with only the new description text in <new_description> tags, not
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Improve a skill description based on eval results")
+    parser = argparse.ArgumentParser(
+        description="Improve a skill description based on eval results.",
+        epilog=(
+            "Examples:\n"
+            "  uv run scripts/improve_description.py --skill-path ./my-skill --eval-results ./eval.json --model sonnet\n"
+            "  uv run scripts/improve_description.py --skill-path ./my-skill --eval-results ./eval.json --history ./history.json --model sonnet"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--eval-results", required=True, help="Path to eval results JSON (from run_eval.py)")
     parser.add_argument("--skill-path", required=True, help="Path to skill directory")
     parser.add_argument("--history", default=None, help="Path to history JSON (previous attempts)")
@@ -200,34 +269,81 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Print thinking to stderr")
     args = parser.parse_args()
 
-    skill_path = Path(args.skill_path)
+    skill_path = Path(args.skill_path).resolve()
     if not (skill_path / "SKILL.md").exists():
-        print(f"Error: No SKILL.md found at {skill_path}", file=sys.stderr)
+        log(f"Error: No SKILL.md found at {skill_path}")
+        emit_json(
+            {
+                "ok": False,
+                "skill_path": str(skill_path),
+                "error": f"No SKILL.md found at {skill_path}",
+                "hint": "Pass --skill-path pointing at the skill directory.",
+            }
+        )
         sys.exit(1)
 
-    eval_results = json.loads(Path(args.eval_results).read_text())
+    try:
+        ensure_claude_available()
+        eval_results = json.loads(Path(args.eval_results).read_text(encoding="utf-8"))
+    except (RuntimeError, OSError, json.JSONDecodeError) as exc:
+        log(f"Error: {exc}")
+        emit_json(
+            {
+                "ok": False,
+                "skill_path": str(skill_path),
+                "eval_results_path": args.eval_results,
+                "error": str(exc),
+                "hint": "Provide valid JSON from run_eval.py and ensure the `claude` CLI is installed.",
+            }
+        )
+        sys.exit(1)
     history = []
     if args.history:
-        history = json.loads(Path(args.history).read_text())
+        try:
+            history = json.loads(Path(args.history).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            log(f"Error: {exc}")
+            emit_json(
+                {
+                    "ok": False,
+                    "skill_path": str(skill_path),
+                    "history_path": args.history,
+                    "error": str(exc),
+                    "hint": "Pass a JSON history file or omit --history.",
+                }
+            )
+            sys.exit(1)
 
     name, _, content = parse_skill_md(skill_path)
     current_description = eval_results["description"]
 
     if args.verbose:
-        print(f"Current: {current_description}", file=sys.stderr)
-        print(f"Score: {eval_results['summary']['passed']}/{eval_results['summary']['total']}", file=sys.stderr)
+        log(f"Current description: {current_description}")
+        log(f"Score: {eval_results['summary']['passed']}/{eval_results['summary']['total']}")
 
-    new_description = improve_description(
-        skill_name=name,
-        skill_content=content,
-        current_description=current_description,
-        eval_results=eval_results,
-        history=history,
-        model=args.model,
-    )
+    try:
+        new_description = improve_description(
+            skill_name=name,
+            skill_content=content,
+            current_description=current_description,
+            eval_results=eval_results,
+            history=history,
+            model=args.model,
+        )
+    except RuntimeError as exc:
+        log(f"Error: {exc}")
+        emit_json(
+            {
+                "ok": False,
+                "skill_path": str(skill_path),
+                "error": str(exc),
+                "hint": "Confirm Claude CLI auth is working and retry.",
+            }
+        )
+        sys.exit(1)
 
     if args.verbose:
-        print(f"Improved: {new_description}", file=sys.stderr)
+        log(f"Improved description: {new_description}")
 
     # Output as JSON with both the new description and updated history
     output = {
@@ -240,7 +356,7 @@ def main():
             "results": eval_results["results"],
         }],
     }
-    print(json.dumps(output, indent=2))
+    emit_json({"ok": True, **output})
 
 
 if __name__ == "__main__":

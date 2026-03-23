@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 """Run trigger evaluation for a skill description.
 
 Tests whether a skill's description causes Claude to trigger (read the skill)
@@ -9,6 +13,7 @@ import argparse
 import json
 import os
 import select
+import shutil
 import subprocess
 import sys
 import time
@@ -16,7 +21,63 @@ import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from scripts.utils import parse_skill_md
+
+def emit_json(payload: dict) -> None:
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+
+
+def log(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+def parse_skill_md(skill_path: Path) -> tuple[str, str, str]:
+    content = (skill_path / "SKILL.md").read_text(encoding="utf-8")
+    lines = content.split("\n")
+
+    if not lines or lines[0].strip() != "---":
+        raise ValueError("SKILL.md is missing frontmatter (expected opening `---`).")
+
+    end_idx = None
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            end_idx = index
+            break
+
+    if end_idx is None:
+        raise ValueError("SKILL.md is missing frontmatter (expected closing `---`).")
+
+    name = ""
+    description = ""
+    frontmatter_lines = lines[1:end_idx]
+    idx = 0
+    while idx < len(frontmatter_lines):
+        line = frontmatter_lines[idx]
+        if line.startswith("name:"):
+            name = line[len("name:") :].strip().strip('"').strip("'")
+        elif line.startswith("description:"):
+            value = line[len("description:") :].strip()
+            if value in {">", "|", ">-", "|-"}:
+                continuation_lines: list[str] = []
+                idx += 1
+                while idx < len(frontmatter_lines) and (
+                    frontmatter_lines[idx].startswith("  ") or frontmatter_lines[idx].startswith("\t")
+                ):
+                    continuation_lines.append(frontmatter_lines[idx].strip())
+                    idx += 1
+                description = " ".join(continuation_lines)
+                continue
+            description = value.strip('"').strip("'")
+        idx += 1
+
+    return name, description, content
+
+
+def ensure_claude_available() -> None:
+    if shutil.which("claude") is None:
+        raise RuntimeError(
+            "The `claude` CLI is not available on PATH. Install it or run this script in an environment where `claude` is available."
+        )
 
 
 def find_project_root() -> Path:
@@ -221,7 +282,7 @@ def run_eval(
             try:
                 query_triggers[query].append(future.result())
             except Exception as e:
-                print(f"Warning: query failed: {e}", file=sys.stderr)
+                log(f"Warning: query failed: {e}")
                 query_triggers[query].append(False)
 
     for query, triggers in query_triggers.items():
@@ -257,10 +318,23 @@ def run_eval(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run trigger evaluation for a skill description")
+    parser = argparse.ArgumentParser(
+        description="Run trigger evaluation for a skill description.",
+        epilog=(
+            "Examples:\n"
+            "  uv run scripts/run_eval.py --skill-path ./my-skill --eval-set ./evals.json --project-root /repo\n"
+            "  uv run scripts/run_eval.py --skill-path ./my-skill --eval-set ./evals.json --description \"Use this skill...\""
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--eval-set", required=True, help="Path to eval set JSON file")
     parser.add_argument("--skill-path", required=True, help="Path to skill directory")
     parser.add_argument("--description", default=None, help="Override description to test")
+    parser.add_argument(
+        "--project-root",
+        default=None,
+        help="Explicit project root that contains `.claude/`. If omitted, the script discovers it from the current working directory.",
+    )
     parser.add_argument("--num-workers", type=int, default=10, help="Number of parallel workers")
     parser.add_argument("--timeout", type=int, default=30, help="Timeout per query in seconds")
     parser.add_argument("--runs-per-query", type=int, default=3, help="Number of runs per query")
@@ -269,19 +343,43 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Print progress to stderr")
     args = parser.parse_args()
 
-    eval_set = json.loads(Path(args.eval_set).read_text())
-    skill_path = Path(args.skill_path)
+    skill_path = Path(args.skill_path).resolve()
 
-    if not (skill_path / "SKILL.md").exists():
-        print(f"Error: No SKILL.md found at {skill_path}", file=sys.stderr)
+    try:
+        ensure_claude_available()
+        eval_set = json.loads(Path(args.eval_set).read_text(encoding="utf-8"))
+    except (RuntimeError, OSError, json.JSONDecodeError) as exc:
+        log(f"Error: {exc}")
+        emit_json(
+            {
+                "ok": False,
+                "skill_path": str(skill_path),
+                "eval_set_path": args.eval_set,
+                "error": str(exc),
+                "hint": "Provide a valid eval JSON file and ensure the `claude` CLI is installed.",
+            }
+        )
         sys.exit(1)
 
-    name, original_description, content = parse_skill_md(skill_path)
+    if not (skill_path / "SKILL.md").exists():
+        log(f"Error: No SKILL.md found at {skill_path}")
+        emit_json(
+            {
+                "ok": False,
+                "skill_path": str(skill_path),
+                "error": f"No SKILL.md found at {skill_path}",
+                "hint": "Pass --skill-path pointing at the skill directory.",
+            }
+        )
+        sys.exit(1)
+
+    name, original_description, _ = parse_skill_md(skill_path)
     description = args.description or original_description
-    project_root = find_project_root()
+    project_root = Path(args.project_root).resolve() if args.project_root else find_project_root()
 
     if args.verbose:
-        print(f"Evaluating: {description}", file=sys.stderr)
+        log(f"Evaluating description for {name}")
+        log(f"Project root: {project_root}")
 
     output = run_eval(
         eval_set=eval_set,
@@ -297,13 +395,13 @@ def main():
 
     if args.verbose:
         summary = output["summary"]
-        print(f"Results: {summary['passed']}/{summary['total']} passed", file=sys.stderr)
+        log(f"Results: {summary['passed']}/{summary['total']} passed")
         for r in output["results"]:
             status = "PASS" if r["pass"] else "FAIL"
             rate_str = f"{r['triggers']}/{r['runs']}"
-            print(f"  [{status}] rate={rate_str} expected={r['should_trigger']}: {r['query'][:70]}", file=sys.stderr)
+            log(f"  [{status}] rate={rate_str} expected={r['should_trigger']}: {r['query'][:70]}")
 
-    print(json.dumps(output, indent=2))
+    emit_json({"ok": True, "project_root": str(project_root), **output})
 
 
 if __name__ == "__main__":
