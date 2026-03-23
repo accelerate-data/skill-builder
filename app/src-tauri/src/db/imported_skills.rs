@@ -323,6 +323,19 @@ pub fn delete_imported_skill_by_skill_id(conn: &Connection, skill_id: &str) -> R
     Ok(())
 }
 
+pub fn update_imported_skill_disk_path(
+    conn: &Connection,
+    skill_id: &str,
+    disk_path: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE imported_skills SET disk_path = ?2 WHERE skill_id = ?1",
+        rusqlite::params![skill_id, disk_path],
+    )
+    .map_err(|e| format!("update_imported_skill_disk_path: {}", e))?;
+    Ok(())
+}
+
 
 /// Update the content_hash for imported skill rows identified by skill_name.
 pub fn set_imported_skill_content_hash(

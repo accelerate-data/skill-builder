@@ -2,6 +2,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 
 use crate::db::Db;
+use crate::skill_paths::resolve_skill_dir;
 use crate::types::PackageResult;
 
 use super::evaluation::read_skills_path;
@@ -44,10 +45,10 @@ pub(crate) async fn package_plugin_inner(
             .into_iter()
             .find(|p| p.slug == plugin_slug)
             .ok_or_else(|| format!("Plugin '{}' not found", plugin_slug))?;
-        let skill_names: Vec<String> = crate::db::list_all_skills(&conn)?
+        let skill_names: Vec<(String, String)> = crate::db::list_all_skills(&conn)?
             .into_iter()
             .filter(|skill| skill.plugin_slug == plugin.slug)
-            .map(|skill| skill.name)
+            .map(|skill| (skill.plugin_slug, skill.name))
             .collect();
         (plugin, skill_names)
     };
@@ -104,7 +105,7 @@ pub(crate) fn create_skill_zip(source_dir: &Path, output_path: &Path) -> Result<
 
 pub(crate) fn create_plugin_zip(
     skills_root: &Path,
-    skill_names: &[String],
+    skill_names: &[(String, String)],
     _plugin_slug: &str,
     plugin_display_name: &str,
     output_path: &Path,
@@ -121,8 +122,8 @@ pub(crate) fn create_plugin_zip(
     zip.write_all(plugin_json.to_string().as_bytes())
         .map_err(|e| format!("Failed to write plugin.json: {}", e))?;
 
-    for skill_name in skill_names {
-        let source_dir = skills_root.join(skill_name);
+    for (skill_plugin_slug, skill_name) in skill_names {
+        let source_dir = resolve_skill_dir(skills_root, skill_plugin_slug, skill_name);
         if !source_dir.exists() {
             continue;
         }

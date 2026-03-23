@@ -27,6 +27,10 @@ interface ReconciliationAckDialogProps {
 
 type ResolutionState = "pending" | "resolving" | "resolved"
 
+function discoveryKey(skill: DiscoveredSkill): string {
+  return `${skill.plugin_slug ?? "no-plugin"}:${skill.name}`
+}
+
 function scenarioDescription(skill: DiscoveredSkill): string {
   if (skill.scenario === "9b") {
     return "Complete skill with all artifacts"
@@ -53,35 +57,42 @@ export default function ReconciliationAckDialog({
         discoveredSkills.length,
       )
       setResolutions(
-        Object.fromEntries(discoveredSkills.map((s) => [s.name, "pending" as ResolutionState])),
+        Object.fromEntries(discoveredSkills.map((s) => [discoveryKey(s), "pending" as ResolutionState])),
       )
     }
   }, [open, notifications.length, discoveredSkills])
 
   const allDiscoveriesResolved =
     discoveredSkills.length === 0 ||
-    discoveredSkills.every((s) => resolutions[s.name] === "resolved")
+    discoveredSkills.every((s) => resolutions[discoveryKey(s)] === "resolved")
 
   const handleResolve = useCallback(
-    async (skillName: string, action: string) => {
+    async (skill: DiscoveredSkill, action: string) => {
+      const key = discoveryKey(skill)
       console.log(
-        "[reconciliation-ack] resolving discovery: skill=%s action=%s",
-        skillName,
+        "[reconciliation-ack] resolving discovery: skill=%s plugin=%s action=%s",
+        skill.name,
+        skill.plugin_slug ?? "no-plugin",
         action,
       )
-      setResolutions((prev) => ({ ...prev, [skillName]: "resolving" }))
+      setResolutions((prev) => ({ ...prev, [key]: "resolving" }))
       try {
-        await resolveDiscovery(skillName, action)
-        setResolutions((prev) => ({ ...prev, [skillName]: "resolved" }))
+        if (skill.plugin_slug) {
+          await resolveDiscovery(skill.name, action, skill.plugin_slug)
+        } else {
+          await resolveDiscovery(skill.name, action)
+        }
+        setResolutions((prev) => ({ ...prev, [key]: "resolved" }))
       } catch (err) {
         console.error(
-          "[reconciliation-ack] failed to resolve discovery: skill=%s action=%s error=%o",
-          skillName,
+          "[reconciliation-ack] failed to resolve discovery: skill=%s plugin=%s action=%s error=%o",
+          skill.name,
+          skill.plugin_slug ?? "no-plugin",
           action,
           err,
         )
         // Revert to pending so user can retry
-        setResolutions((prev) => ({ ...prev, [skillName]: "pending" }))
+        setResolutions((prev) => ({ ...prev, [key]: "pending" }))
       }
     },
     [],
@@ -123,7 +134,7 @@ export default function ReconciliationAckDialog({
               </h4>
               <ul className="flex flex-col gap-2">
                 {discoveredSkills.map((skill) => {
-                  const state = resolutions[skill.name] ?? "pending"
+                  const state = resolutions[discoveryKey(skill)] ?? "pending"
                   const isResolving = state === "resolving"
                   const isResolved = state === "resolved"
                   const addAction =
@@ -131,7 +142,7 @@ export default function ReconciliationAckDialog({
 
                   return (
                     <li
-                      key={skill.name}
+                      key={discoveryKey(skill)}
                       className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
                     >
                       <div className="min-w-0 flex-1">
@@ -140,6 +151,7 @@ export default function ReconciliationAckDialog({
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {scenarioDescription(skill)}
+                          {skill.plugin_display_name ? ` in ${skill.plugin_display_name}` : ""}
                         </p>
                       </div>
 
@@ -151,7 +163,7 @@ export default function ReconciliationAckDialog({
                             size="sm"
                             variant="outline"
                             disabled={isResolving}
-                            onClick={() => handleResolve(skill.name, addAction)}
+                            onClick={() => handleResolve(skill, addAction)}
                           >
                             {isResolving ? (
                               <Loader2 className="mr-1 size-3 animate-spin" />
@@ -164,7 +176,7 @@ export default function ReconciliationAckDialog({
                             size="sm"
                             variant="ghost"
                             disabled={isResolving}
-                            onClick={() => handleResolve(skill.name, "remove")}
+                            onClick={() => handleResolve(skill, "remove")}
                           >
                             {isResolving ? (
                               <Loader2 className="mr-1 size-3 animate-spin" />

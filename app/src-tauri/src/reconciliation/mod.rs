@@ -2,6 +2,7 @@ mod marketplace;
 mod skill_builder;
 
 use crate::fs_validation::{detect_furthest_step, detect_furthest_step_with_options};
+use crate::skill_paths::{enumerate_skill_locations, resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::{DiscoveredSkill, ReconciliationResult};
 use std::collections::HashSet;
 use std::path::Path;
@@ -62,7 +63,13 @@ pub fn reconcile_on_startup(
                 )?;
             }
             "marketplace" => {
-                marketplace::reconcile_marketplace(conn, &skill.name, skills_path, &mut notifications)?;
+                marketplace::reconcile_marketplace(
+                    conn,
+                    &skill.name,
+                    &skill.plugin_slug,
+                    skills_path,
+                    &mut notifications,
+                )?;
             }
             "imported" => {
                 // Imported skills have no reconciliation checks (per design doc)
@@ -82,26 +89,22 @@ pub fn reconcile_on_startup(
     }
 
     // ── Pass 2: Discover skills on disk not in master ──
-    let master_names: HashSet<String> = all_skills.iter().map(|s| s.name.clone()).collect();
+    let master_names: HashSet<String> = all_skills
+        .iter()
+        .map(|s| format!("{}:{}", s.plugin_slug, s.name))
+        .collect();
     let mut discovered_skills = Vec::new();
     let skills_dir = Path::new(skills_path);
     if skills_dir.exists() {
-        for entry in std::fs::read_dir(skills_dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-        {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') {
-                continue;
-            } // skip dotfiles
+        for discovered in crate::skill_paths::enumerate_skill_locations(skills_dir)? {
+            let path = discovered.dir;
+            let name = discovered.skill_name;
+            let plugin_slug = discovered.plugin_slug;
+            let plugin_display_name = discovered.plugin_display_name;
+            let is_default_plugin = discovered.is_default_plugin;
+            let discovery_key = format!("{}:{}", plugin_slug, name);
 
-            // Already in master? Skip.
-            if master_names.contains(&name) {
+            if master_names.contains(&discovery_key) {
                 continue;
             }
 
@@ -132,7 +135,7 @@ pub fn reconcile_on_startup(
                 notifications.push(format!("'{}' removed — no SKILL.md found on disk", name));
             } else {
                 // Has SKILL.md — check context artifacts
-                let workspace_marker = Path::new(workspace_path).join(&name);
+                let workspace_marker = resolve_skill_dir(Path::new(workspace_path), &plugin_slug, &name);
                 // Create a temporary workspace marker for detect_furthest_step (it requires one)
                 let created_marker = if !workspace_marker.exists() {
                     std::fs::create_dir_all(&workspace_marker).ok();
@@ -158,6 +161,9 @@ pub fn reconcile_on_startup(
                     );
                     discovered_skills.push(DiscoveredSkill {
                         name: name.clone(),
+                        plugin_slug: Some(plugin_slug.clone()),
+                        plugin_display_name: Some(plugin_display_name.clone()),
+                        is_default_plugin: Some(is_default_plugin),
                         detected_step: 3,
                         scenario: "9b".to_string(),
                     });
@@ -170,6 +176,9 @@ pub fn reconcile_on_startup(
                     );
                     discovered_skills.push(DiscoveredSkill {
                         name: name.clone(),
+                        plugin_slug: Some(plugin_slug.clone()),
+                        plugin_display_name: Some(plugin_display_name.clone()),
+                        is_default_plugin: Some(is_default_plugin),
                         detected_step,
                         scenario: "9c".to_string(),
                     });
@@ -182,7 +191,10 @@ pub fn reconcile_on_startup(
     // This catches anything missed by Pass 1 and Pass 2 — defensive catch-all.
     // Skip skills pending user action from Pass 2 discovery.
     let discovered_names: HashSet<String> =
-        discovered_skills.iter().map(|d| d.name.clone()).collect();
+        discovered_skills
+            .iter()
+            .map(|d| format!("{}:{}", d.plugin_slug.as_deref().unwrap_or(DEFAULT_PLUGIN_SLUG), d.name))
+            .collect();
     if skills_dir.exists() {
         let trash_dir = skills_dir.join(".trash");
         for entry in std::fs::read_dir(skills_dir)
@@ -199,7 +211,22 @@ pub fn reconcile_on_startup(
                 continue;
             } // skip dotfiles, .git, .trash
 
-            if !master_names.contains(&name) && !discovered_names.contains(&name) {
+            let has_nested_skills = std::fs::read_dir(&path)
+                .ok()
+                .map(|entries| {
+                    entries.flatten().any(|child| {
+                        let child_path = child.path();
+                        child_path.is_dir() && child_path.join("SKILL.md").is_file()
+                    })
+                })
+                .unwrap_or(false);
+            if has_nested_skills {
+                continue;
+            }
+
+            let entry_key = format!("{}:{}", DEFAULT_PLUGIN_SLUG, name);
+
+            if !master_names.contains(&entry_key) && !discovered_names.contains(&entry_key) {
                 // Not in master after all reconciliation — move to .trash/
                 let dest = trash_dir.join(&name);
                 if let Err(e) = std::fs::create_dir_all(&trash_dir) {
@@ -386,7 +413,7 @@ pub fn preview_reconcile_on_startup(
                 }
             }
             "marketplace" => {
-                let skill_md = Path::new(skills_path).join(&skill.name).join("SKILL.md");
+                let skill_md = resolve_skill_dir(Path::new(skills_path), &skill.plugin_slug, &skill.name).join("SKILL.md");
                 if !skill_md.exists() {
                     notifications.push(format!(
                         "'{}' marketplace skill removed — SKILL.md not found on disk",
@@ -399,20 +426,20 @@ pub fn preview_reconcile_on_startup(
     }
 
     // Preview discovery (read-only)
-    let master_names: HashSet<String> = all_skills.iter().map(|s| s.name.clone()).collect();
+    let master_names: HashSet<String> = all_skills
+        .iter()
+        .map(|s| format!("{}:{}", s.plugin_slug, s.name))
+        .collect();
     let skills_dir = Path::new(skills_path);
     if skills_dir.exists() {
-        for entry in std::fs::read_dir(skills_dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-        {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') || master_names.contains(&name) {
+        for discovered in enumerate_skill_locations(skills_dir)? {
+            let path = discovered.dir;
+            let name = discovered.skill_name;
+            let plugin_slug = discovered.plugin_slug;
+            let plugin_display_name = discovered.plugin_display_name;
+            let is_default_plugin = discovered.is_default_plugin;
+            let discovery_key = format!("{}:{}", plugin_slug, name);
+            if name.starts_with('.') || master_names.contains(&discovery_key) {
                 continue;
             }
 
@@ -422,9 +449,9 @@ pub fn preview_reconcile_on_startup(
                 continue;
             }
 
-            let workspace_root = Path::new(workspace_path).join(&name);
-            let legacy_root = Path::new(skills_path).join(&name);
-            let skill_root = Path::new(skills_path).join(&name);
+            let workspace_root = resolve_skill_dir(Path::new(workspace_path), &plugin_slug, &name);
+            let legacy_root = resolve_skill_dir(Path::new(skills_path), DEFAULT_PLUGIN_SLUG, &name);
+            let skill_root = resolve_skill_dir(Path::new(skills_path), &plugin_slug, &name);
             let has_step0 = workspace_root.join("context/clarifications.json").exists()
                 || legacy_root.join("context/clarifications.json").exists();
             let has_step2 = workspace_root.join("context/decisions.json").exists()
@@ -441,6 +468,9 @@ pub fn preview_reconcile_on_startup(
             };
             discovered_skills.push(DiscoveredSkill {
                 name,
+                plugin_slug: Some(plugin_slug),
+                plugin_display_name: Some(plugin_display_name),
+                is_default_plugin: Some(is_default_plugin),
                 detected_step,
                 scenario: if detected_step == 3 {
                     "9b".to_string()

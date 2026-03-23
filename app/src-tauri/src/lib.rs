@@ -7,6 +7,7 @@ mod fs_validation;
 pub mod git;
 mod logging;
 mod reconciliation;
+mod skill_paths;
 mod types;
 
 use std::fs;

@@ -1,4 +1,7 @@
 use crate::db::Db;
+use crate::skill_paths::{
+    ensure_nested_skill_dir, resolve_skill_dir, skill_library_key, DEFAULT_PLUGIN_SLUG,
+};
 use crate::types::SkillSummary;
 use std::fs;
 use std::path::Path;
@@ -57,7 +60,7 @@ pub(crate) fn list_skills_inner(
         .map(|master| {
             let tags = tags_map.get(&master.name).cloned().unwrap_or_default();
             let library_key = if master.skill_source == "skill-builder" {
-                Some(master.name.clone())
+                Some(skill_library_key(&master.plugin_slug, &master.name))
             } else {
                 Some(format!("imported:{}", master.id))
             };
@@ -150,7 +153,8 @@ fn filter_by_skill_md_exists(skills_path: &str, completed: Vec<SkillSummary>) ->
     completed
         .into_iter()
         .filter(|s| {
-            let skill_md = Path::new(skills_path).join(&s.name).join("SKILL.md");
+            let plugin_slug = s.plugin_slug.as_deref().unwrap_or(DEFAULT_PLUGIN_SLUG);
+            let skill_md = resolve_skill_dir(Path::new(skills_path), plugin_slug, &s.name).join("SKILL.md");
             let exists = skill_md.exists();
             if !exists {
                 log::debug!(
@@ -264,7 +268,8 @@ pub(crate) fn create_skill_inner(
 ) -> Result<(), String> {
     super::super::imported_skills::validate_skill_name(name)?;
     // Check for collision in workspace_path (working directory)
-    let base = Path::new(workspace_path).join(name);
+    let workspace_root = Path::new(workspace_path);
+    let base = crate::skill_paths::nested_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name);
     if base.exists() {
         return Err(format!(
             "Skill '{}' already exists in workspace directory ({})",
@@ -275,7 +280,7 @@ pub(crate) fn create_skill_inner(
 
     // Check for collision in skills_path (skill output directory)
     if let Some(sp) = skills_path {
-        let skill_output = Path::new(sp).join(name);
+        let skill_output = crate::skill_paths::nested_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name);
         if skill_output.exists() {
             return Err(format!(
                 "Skill '{}' already exists in skills output directory ({})",
@@ -287,11 +292,13 @@ pub(crate) fn create_skill_inner(
 
     if let Some(sp) = skills_path {
         // Workspace dir holds runtime context; skill output remains in skills_path
+        ensure_nested_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name)?;
         fs::create_dir_all(base.join("context")).map_err(|e| e.to_string())?;
-        let skill_output = Path::new(sp).join(name);
+        let skill_output = ensure_nested_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name)?;
         fs::create_dir_all(skill_output.join("references")).map_err(|e| e.to_string())?;
     } else {
         // No skills_path — workspace holds everything including context
+        ensure_nested_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name)?;
         fs::create_dir_all(base.join("context")).map_err(|e| e.to_string())?;
     }
 
@@ -404,7 +411,7 @@ pub(crate) fn delete_skill_inner(
         skills_path
     );
 
-    let base = Path::new(workspace_path).join(name);
+    let base = resolve_skill_dir(Path::new(workspace_path), DEFAULT_PLUGIN_SLUG, name);
 
     // Delete workspace working directory if it exists
     if base.exists() {
@@ -425,7 +432,7 @@ pub(crate) fn delete_skill_inner(
 
     // Delete skill output directory if skills_path is configured and directory exists
     if let Some(sp) = skills_path {
-        let output_dir = Path::new(sp).join(name);
+        let output_dir = resolve_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name);
         if output_dir.exists() {
             let canonical_sp = fs::canonicalize(sp).map_err(|e| e.to_string())?;
             let canonical_out = fs::canonicalize(&output_dir).map_err(|e| e.to_string())?;

@@ -1,4 +1,5 @@
 use crate::db::Db;
+use crate::skill_paths::{ensure_nested_skill_dir, resolve_skill_dir};
 use std::fs;
 use std::path::Path;
 
@@ -83,16 +84,56 @@ pub(crate) fn delete_imported_skill_inner(
 fn resolve_skill_target(
     conn: &rusqlite::Connection,
     skill_key: &str,
-) -> Result<(String, String), String> {
+) -> Result<(String, String, Option<String>), String> {
     if let Some(skill_id) = skill_key.strip_prefix("imported:") {
         let imported = crate::db::get_imported_skill_by_id(conn, skill_id)?
             .ok_or_else(|| format!("Imported skill '{}' not found", skill_id))?;
         return Ok((
             imported.skill_name,
             imported.plugin_slug.unwrap_or_else(|| "no-plugin".to_string()),
+            Some(skill_id.to_string()),
         ));
     }
-    Ok((skill_key.to_string(), "no-plugin".to_string()))
+    Ok((skill_key.to_string(), "no-plugin".to_string(), None))
+}
+
+fn move_skill_directories(
+    workspace_path: Option<&str>,
+    skills_path: Option<&str>,
+    skill_name: &str,
+    from_plugin_slug: &str,
+    to_plugin_slug: &str,
+) -> Result<(Option<String>, Option<String>), String> {
+    let mut workspace_target = None;
+    let mut skills_target = None;
+
+    if let Some(workspace_path) = workspace_path {
+        let source = resolve_skill_dir(Path::new(workspace_path), from_plugin_slug, skill_name);
+        if source.exists() {
+            let target = ensure_nested_skill_dir(Path::new(workspace_path), to_plugin_slug, skill_name)?;
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
+            }
+            fs::rename(&source, &target)
+                .map_err(|e| format!("Failed to move workspace dir '{}' -> '{}': {}", source.display(), target.display(), e))?;
+            workspace_target = Some(target.to_string_lossy().to_string());
+        }
+    }
+
+    if let Some(skills_path) = skills_path {
+        let source = resolve_skill_dir(Path::new(skills_path), from_plugin_slug, skill_name);
+        if source.exists() {
+            let target = ensure_nested_skill_dir(Path::new(skills_path), to_plugin_slug, skill_name)?;
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
+            }
+            fs::rename(&source, &target)
+                .map_err(|e| format!("Failed to move skills dir '{}' -> '{}': {}", source.display(), target.display(), e))?;
+            skills_target = Some(target.to_string_lossy().to_string());
+        }
+    }
+
+    Ok((workspace_target, skills_target))
 }
 
 #[tauri::command]
@@ -102,11 +143,22 @@ pub fn create_plugin_from_skills(
     db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = crate::db::read_settings(&conn)?;
     let (_plugin_id, plugin_slug) =
         crate::db::create_plugin(&conn, &plugin_name, "local", None, None)?;
     for skill_key in skill_keys {
-        let (skill_name, current_plugin_slug) = resolve_skill_target(&conn, &skill_key)?;
+        let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;
+        let (_, skills_target) = move_skill_directories(
+            settings.workspace_path.as_deref(),
+            settings.skills_path.as_deref(),
+            &skill_name,
+            &current_plugin_slug,
+            &plugin_slug,
+        )?;
         crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)?;
+        if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
+            crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
+        }
     }
     Ok(plugin_slug)
 }
@@ -118,8 +170,22 @@ pub fn move_skill_to_plugin(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let (skill_name, current_plugin_slug) = resolve_skill_target(&conn, &skill_key)?;
+    let settings = crate::db::read_settings(&conn)?;
+    let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;
+    let (_, skills_target) = move_skill_directories(
+        settings.workspace_path.as_deref(),
+        settings.skills_path.as_deref(),
+        &skill_name,
+        &current_plugin_slug,
+        &plugin_slug,
+    )?;
     crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)
+        .and_then(|_| {
+            if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
+                crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
+            }
+            Ok(())
+        })
 }
 
 #[tauri::command]
@@ -128,9 +194,23 @@ pub fn remove_skill_from_plugin(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let (skill_name, current_plugin_slug) = resolve_skill_target(&conn, &skill_key)?;
+    let settings = crate::db::read_settings(&conn)?;
+    let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;
     crate::db::ensure_default_plugin(&conn)?;
+    let (_, skills_target) = move_skill_directories(
+        settings.workspace_path.as_deref(),
+        settings.skills_path.as_deref(),
+        &skill_name,
+        &current_plugin_slug,
+        "no-plugin",
+    )?;
     crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, "no-plugin")
+        .and_then(|_| {
+            if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
+                crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
+            }
+            Ok(())
+        })
 }
 
 #[tauri::command]

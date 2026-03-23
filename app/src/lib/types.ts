@@ -189,6 +189,9 @@ export interface OrphanSkill {
 
 export interface DiscoveredSkill {
   name: string
+  plugin_slug?: string | null
+  plugin_display_name?: string | null
+  is_default_plugin?: boolean | null
   detected_step: number
   scenario: string
 }
