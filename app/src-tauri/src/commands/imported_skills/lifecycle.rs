@@ -14,11 +14,10 @@ pub(crate) fn delete_imported_skill_inner(
     workspace_path: &str,
 ) -> Result<(), String> {
     // Look up skill
-    let skill = crate::db::get_imported_skill_by_id(conn, skill_id)?
-        .ok_or_else(|| {
-            log::error!("[delete_imported_skill] skill_id={} not found", skill_id);
-            format!("Imported skill with id '{}' not found", skill_id)
-        })?;
+    let skill = crate::db::get_imported_skill_by_id(conn, skill_id)?.ok_or_else(|| {
+        log::error!("[delete_imported_skill] skill_id={} not found", skill_id);
+        format!("Imported skill with id '{}' not found", skill_id)
+    })?;
 
     let skill_name = skill.skill_name.clone();
     validate_skill_name(&skill_name)?;
@@ -98,6 +97,7 @@ mod tests {
         ImportedSkill {
             skill_id: id.to_string(),
             skill_name: name.to_string(),
+            plugin_name: None,
             is_active: true,
             disk_path: std::env::temp_dir()
                 .join(name)
@@ -125,7 +125,10 @@ mod tests {
         let result = delete_imported_skill_inner(&conn, "del-happy-id", "");
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
         let after = crate::db::get_imported_skill_by_id(&conn, "del-happy-id").unwrap();
-        assert!(after.is_none(), "skill should have been removed from imported_skills");
+        assert!(
+            after.is_none(),
+            "skill should have been removed from imported_skills"
+        );
     }
 
     #[test]

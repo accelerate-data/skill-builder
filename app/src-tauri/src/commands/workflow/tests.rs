@@ -1,25 +1,25 @@
 use std::path::{Path, PathBuf};
 
+use super::claude_md::generate_skills_section;
 use super::deploy::{
     copy_agents_to_claude_dir, copy_directory_recursive, copy_managed_plugins_to_claude_dir,
-    workspace_already_copied, mark_workspace_copied, invalidate_workspace_cache,
+    invalidate_workspace_cache, mark_workspace_copied, workspace_already_copied,
+};
+use super::evaluation::get_step_output_files;
+use super::guards::{
+    make_agent_id, parse_decisions_guard, parse_scope_recommendation,
+    validate_decisions_exist_inner, workflow_step_runtime_label,
 };
 use super::output_format::{
     answer_evaluator_output_format, materialize_answer_evaluation_output_value,
     materialize_workflow_step_output_value,
 };
 use super::packaging::create_skill_zip;
-use super::guards::{
-    make_agent_id, parse_decisions_guard, parse_scope_recommendation,
-    validate_decisions_exist_inner, workflow_step_runtime_label,
-};
 use super::prompt::build_prompt;
-use super::user_context::{format_user_context, write_user_context_file};
 use super::step_config::{
     build_betas, get_step_config, thinking_budget_for_step, workflow_output_format_for_agent,
 };
-use super::evaluation::get_step_output_files;
-use super::claude_md::{generate_skills_section};
+use super::user_context::{format_user_context, write_user_context_file};
 
 fn valid_clarifications_value() -> serde_json::Value {
     serde_json::json!({
@@ -52,7 +52,6 @@ fn valid_clarifications_value() -> serde_json::Value {
         "notes": []
     })
 }
-
 
 #[test]
 fn test_get_step_config_valid_steps() {
@@ -98,10 +97,22 @@ fn test_get_step_output_files_unknown_step() {
 
 #[test]
 fn test_step_config_canonical_agent_names() {
-    assert_eq!(get_step_config(0).unwrap().agent_name, "skill-content-researcher:research-orchestrator");
-    assert_eq!(get_step_config(1).unwrap().agent_name, "skill-content-researcher:detailed-research");
-    assert_eq!(get_step_config(2).unwrap().agent_name, "skill-content-researcher:confirm-decisions");
-    assert_eq!(get_step_config(3).unwrap().agent_name, "skill-creator:generate-skill");
+    assert_eq!(
+        get_step_config(0).unwrap().agent_name,
+        "skill-content-researcher:research-orchestrator"
+    );
+    assert_eq!(
+        get_step_config(1).unwrap().agent_name,
+        "skill-content-researcher:detailed-research"
+    );
+    assert_eq!(
+        get_step_config(2).unwrap().agent_name,
+        "skill-content-researcher:confirm-decisions"
+    );
+    assert_eq!(
+        get_step_config(3).unwrap().agent_name,
+        "skill-creator:generate-skill"
+    );
 }
 
 #[test]
@@ -126,15 +137,23 @@ fn test_step_config_canonical_required_plugins() {
 
 #[test]
 fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
-    assert!(workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").is_some());
-    assert!(workflow_output_format_for_agent("skill-content-researcher:detailed-research").is_some());
-    assert!(workflow_output_format_for_agent("skill-content-researcher:confirm-decisions").is_some());
+    assert!(
+        workflow_output_format_for_agent("skill-content-researcher:research-orchestrator")
+            .is_some()
+    );
+    assert!(
+        workflow_output_format_for_agent("skill-content-researcher:detailed-research").is_some()
+    );
+    assert!(
+        workflow_output_format_for_agent("skill-content-researcher:confirm-decisions").is_some()
+    );
     assert!(workflow_output_format_for_agent("skill-creator:generate-skill").is_some());
 }
 
 #[test]
 fn test_research_output_format_requires_artifact_fields() {
-    let format = workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").unwrap();
+    let format =
+        workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").unwrap();
     let required = format["schema"]["required"]
         .as_array()
         .expect("required array");
@@ -145,7 +164,8 @@ fn test_research_output_format_requires_artifact_fields() {
 
 #[test]
 fn test_detailed_research_output_format_requires_clarifications_payload() {
-    let format = workflow_output_format_for_agent("skill-content-researcher:detailed-research").unwrap();
+    let format =
+        workflow_output_format_for_agent("skill-content-researcher:detailed-research").unwrap();
     let required = format["schema"]["required"]
         .as_array()
         .expect("required array");
@@ -210,8 +230,7 @@ fn test_materialize_answer_evaluation_rejects_invalid_payload() {
     });
 
     let err =
-        materialize_answer_evaluation_output_value(&workspace_dir, &invalid_payload)
-            .unwrap_err();
+        materialize_answer_evaluation_output_value(&workspace_dir, &invalid_payload).unwrap_err();
     assert!(err.contains("Invalid answer evaluation output"));
     assert!(!workspace_dir.join("answer-evaluation.json").exists());
 }
@@ -229,8 +248,7 @@ fn test_materialize_answer_evaluation_rejects_missing_per_question_array() {
         "total_count": 1,
         "reasoning": "One answer provided."
     });
-    let err = materialize_answer_evaluation_output_value(&workspace_dir, &payload)
-        .unwrap_err();
+    let err = materialize_answer_evaluation_output_value(&workspace_dir, &payload).unwrap_err();
     assert!(err.contains("invalid answer evaluation output"));
     assert!(err.contains("per_question"));
 }
@@ -251,8 +269,7 @@ fn test_materialize_answer_evaluation_rejects_vague_without_reason() {
             {"question_id": "Q1", "verdict": "vague"}
         ]
     });
-    let err = materialize_answer_evaluation_output_value(&workspace_dir, &payload)
-        .unwrap_err();
+    let err = materialize_answer_evaluation_output_value(&workspace_dir, &payload).unwrap_err();
     assert!(err.contains("reason is required for vague verdict"));
 }
 
@@ -303,8 +320,7 @@ fn test_materialize_step0_validation_failure_keeps_existing_files() {
         }
     });
 
-    let err = materialize_workflow_step_output_value(&skill_root, 0, &invalid_payload)
-        .unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 0, &invalid_payload).unwrap_err();
     assert!(err.contains("Invalid research_output"));
     assert_eq!(
         std::fs::read_to_string(context_dir.join("clarifications.json")).unwrap(),
@@ -359,9 +375,8 @@ fn test_materialize_step1_writes_clarifications_only() {
 fn test_materialize_step0_rejects_non_object_payload() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 0, &serde_json::json!(null))
-            .unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 0, &serde_json::json!(null))
+        .unwrap_err();
     assert!(err.contains("structured_output must be a JSON object"));
 }
 
@@ -375,8 +390,7 @@ fn test_materialize_step0_rejects_wrong_status() {
         "question_count": 1,
         "research_output": valid_clarifications_value()
     });
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap_err();
     assert!(err.contains("structured_output.status must be 'research_complete'"));
 }
 
@@ -391,8 +405,7 @@ fn test_materialize_step0_rejects_missing_or_invalid_numeric_fields() {
         "research_output": valid_clarifications_value()
     });
     let err_missing_dimensions =
-        materialize_workflow_step_output_value(&skill_root, 0, &missing_dimensions)
-            .unwrap_err();
+        materialize_workflow_step_output_value(&skill_root, 0, &missing_dimensions).unwrap_err();
     assert!(err_missing_dimensions.contains("invalid research step output"));
     assert!(err_missing_dimensions.contains("dimensions_selected"));
 
@@ -402,12 +415,9 @@ fn test_materialize_step0_rejects_missing_or_invalid_numeric_fields() {
         "question_count": "one",
         "research_output": valid_clarifications_value()
     });
-    let err_non_integer_question_count = materialize_workflow_step_output_value(
-        &skill_root,
-        0,
-        &non_integer_question_count,
-    )
-    .unwrap_err();
+    let err_non_integer_question_count =
+        materialize_workflow_step_output_value(&skill_root, 0, &non_integer_question_count)
+            .unwrap_err();
     assert!(err_non_integer_question_count.contains("invalid research step output"));
 }
 
@@ -421,8 +431,7 @@ fn test_materialize_step0_rejects_missing_or_invalid_research_output() {
         "dimensions_selected": 1,
         "question_count": 1
     });
-    let err_missing =
-        materialize_workflow_step_output_value(&skill_root, 0, &missing).unwrap_err();
+    let err_missing = materialize_workflow_step_output_value(&skill_root, 0, &missing).unwrap_err();
     assert!(err_missing.contains("invalid research step output"));
     assert!(err_missing.contains("research_output"));
 
@@ -459,8 +468,7 @@ fn test_materialize_step0_rejects_missing_or_invalid_research_output() {
         }
     });
     let err_invalid_nested =
-        materialize_workflow_step_output_value(&skill_root, 0, &invalid_nested)
-            .unwrap_err();
+        materialize_workflow_step_output_value(&skill_root, 0, &invalid_nested).unwrap_err();
     assert!(err_invalid_nested.contains("Invalid research_output"));
     assert!(err_invalid_nested.contains("is_other must be a boolean"));
 }
@@ -475,8 +483,7 @@ fn test_materialize_step1_rejects_wrong_status() {
         "section_count": 1,
         "clarifications_json": valid_clarifications_value()
     });
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
     assert!(err.contains("structured_output.status must be 'detailed_research_complete'"));
 }
 
@@ -490,12 +497,9 @@ fn test_materialize_step1_rejects_missing_or_invalid_numeric_fields() {
         "section_count": 1,
         "clarifications_json": valid_clarifications_value()
     });
-    let err_missing_refinement_count = materialize_workflow_step_output_value(
-        &skill_root,
-        1,
-        &missing_refinement_count,
-    )
-    .unwrap_err();
+    let err_missing_refinement_count =
+        materialize_workflow_step_output_value(&skill_root, 1, &missing_refinement_count)
+            .unwrap_err();
     assert!(err_missing_refinement_count.contains("invalid detailed research output"));
     assert!(err_missing_refinement_count.contains("refinement_count"));
 
@@ -505,12 +509,9 @@ fn test_materialize_step1_rejects_missing_or_invalid_numeric_fields() {
         "section_count": "one",
         "clarifications_json": valid_clarifications_value()
     });
-    let err_non_integer_section_count = materialize_workflow_step_output_value(
-        &skill_root,
-        1,
-        &non_integer_section_count,
-    )
-    .unwrap_err();
+    let err_non_integer_section_count =
+        materialize_workflow_step_output_value(&skill_root, 1, &non_integer_section_count)
+            .unwrap_err();
     assert!(err_non_integer_section_count.contains("invalid detailed research output"));
 }
 
@@ -523,8 +524,7 @@ fn test_materialize_step1_rejects_missing_clarifications_json() {
         "refinement_count": 1,
         "section_count": 1
     });
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
     assert!(err.contains("invalid detailed research output"));
     assert!(err.contains("clarifications_json"));
 }
@@ -554,8 +554,7 @@ fn test_materialize_step1_validation_failure_keeps_existing_clarifications() {
             "notes": "not-an-array"
         }
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 1, &invalid_payload)
-        .unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 1, &invalid_payload).unwrap_err();
     assert!(err.contains("Invalid clarifications_json"));
     assert_eq!(
         std::fs::read_to_string(context_dir.join("clarifications.json")).unwrap(),
@@ -586,8 +585,7 @@ fn test_materialize_step1_rejects_invalid_answer_evaluator_notes_shape() {
         }
     });
 
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
     assert!(err.contains("answer_evaluator_notes must be an array when present"));
 }
 
@@ -715,9 +713,8 @@ fn test_materialize_step2_revised_conflict_decisions_do_not_trigger_guard() {
 fn test_materialize_step2_rejects_null_payload() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
-            .unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
+        .unwrap_err();
     assert!(err.contains("structured_output must be a JSON object"));
 }
 
@@ -826,8 +823,7 @@ fn test_materialize_step3_rejects_wrong_status() {
     let payload = serde_json::json!({
         "status": "decisions_complete"
     });
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
     assert!(err.contains("must be 'generated', 'rewritten', or 'complete'|'partial'|'skipped'"));
 }
 
@@ -842,9 +838,12 @@ fn test_build_prompt_all_three_paths() {
         5,
     );
     assert!(prompt.contains("my-skill"));
-    assert!(prompt
-        .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
-    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
+    assert!(
+        prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill")
+    );
+    assert!(prompt.contains(
+        "The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"
+    ));
     assert!(prompt.contains("Read user-context.md from the workspace directory"));
     assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
 }
@@ -914,9 +913,12 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
     );
 
     assert!(prompt.contains("The skill name is: my-skill"));
-    assert!(prompt
-        .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
-    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
+    assert!(
+        prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill")
+    );
+    assert!(prompt.contains(
+        "The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"
+    ));
     assert!(prompt.contains("Read user-context.md from the workspace directory"));
     assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
     assert!(prompt.contains("do not create any directories"));
@@ -1109,7 +1111,12 @@ fn test_delete_step_output_files_nonexistent_dir_is_ok() {
     let tmp = tempfile::tempdir().unwrap();
     let skills_path = tmp.path().to_str().unwrap();
     let nonexistent = std::env::temp_dir().join("nonexistent");
-    crate::cleanup::delete_step_output_files(nonexistent.to_str().unwrap(), "no-skill", 0, skills_path);
+    crate::cleanup::delete_step_output_files(
+        nonexistent.to_str().unwrap(),
+        "no-skill",
+        0,
+        skills_path,
+    );
 }
 
 #[test]
@@ -1270,8 +1277,7 @@ fn test_copy_agents_to_claude_dir() {
     assert!(!claude_agents_dir.join("README.txt").exists());
 
     // Verify content
-    let content =
-        std::fs::read_to_string(claude_agents_dir.join("research-entities.md")).unwrap();
+    let content = std::fs::read_to_string(claude_agents_dir.join("research-entities.md")).unwrap();
     assert_eq!(content, "# Research Entities");
 }
 
@@ -1305,12 +1311,10 @@ fn test_copy_managed_plugins_replaces_managed_and_preserves_unmanaged() {
     std::fs::create_dir_all(&unmanaged).unwrap();
     std::fs::write(unmanaged.join("README.md"), "keep me").unwrap();
 
-    copy_managed_plugins_to_claude_dir(&src_plugins, workspace.path().to_str().unwrap())
-        .unwrap();
+    copy_managed_plugins_to_claude_dir(&src_plugins, workspace.path().to_str().unwrap()).unwrap();
 
     let replaced =
-        std::fs::read_to_string(claude_plugins_dir.join("skill-creator").join("SKILL.md"))
-            .unwrap();
+        std::fs::read_to_string(claude_plugins_dir.join("skill-creator").join("SKILL.md")).unwrap();
     assert_eq!(replaced, "new plugin content");
     assert!(claude_plugins_dir
         .join("skill-creator")
@@ -1318,8 +1322,7 @@ fn test_copy_managed_plugins_replaces_managed_and_preserves_unmanaged() {
         .exists());
 
     let preserved =
-        std::fs::read_to_string(claude_plugins_dir.join("user-plugin").join("README.md"))
-            .unwrap();
+        std::fs::read_to_string(claude_plugins_dir.join("user-plugin").join("README.md")).unwrap();
     assert_eq!(preserved, "keep me");
 }
 
@@ -1365,8 +1368,7 @@ fn test_validate_decisions_missing() {
     let workspace = tmp.path().join("workspace");
     std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
 
-    let result =
-        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
+    let result = validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("decisions.json was not found"));
 }
@@ -1385,8 +1387,7 @@ fn test_validate_decisions_found_in_workspace_context() {
     )
     .unwrap();
 
-    let result =
-        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
+    let result = validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
     assert!(result.is_ok());
 }
 
@@ -1405,8 +1406,7 @@ fn test_validate_decisions_rejects_empty_file() {
     )
     .unwrap();
 
-    let result =
-        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
+    let result = validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("decisions.json was not found"));
 }
@@ -1479,7 +1479,8 @@ fn test_write_user_context_file_all_fields() {
     let workspace_dir = tmp.path().join("my-skill");
     // Directory doesn't need to pre-exist — create_dir_all handles it
 
-    let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines"}"#;
+    let intake =
+        r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines"}"#;
     write_user_context_file(
         workspace_path,
         "my-skill",
@@ -1657,13 +1658,21 @@ fn test_build_betas_none() {
 #[test]
 fn test_workspace_already_copied_returns_false_for_unknown() {
     // Use a unique path to avoid interference from other tests
-    let path = format!("{}/test-workspace-unknown-{}", std::env::temp_dir().display(), std::process::id());
+    let path = format!(
+        "{}/test-workspace-unknown-{}",
+        std::env::temp_dir().display(),
+        std::process::id()
+    );
     assert!(!workspace_already_copied(&path));
 }
 
 #[test]
 fn test_mark_workspace_copied_then_already_copied() {
-    let path = format!("{}/test-workspace-mark-{}", std::env::temp_dir().display(), std::process::id());
+    let path = format!(
+        "{}/test-workspace-mark-{}",
+        std::env::temp_dir().display(),
+        std::process::id()
+    );
     assert!(!workspace_already_copied(&path));
     mark_workspace_copied(&path);
     assert!(workspace_already_copied(&path));
@@ -1671,8 +1680,16 @@ fn test_mark_workspace_copied_then_already_copied() {
 
 #[test]
 fn test_workspace_copy_cache_is_per_workspace() {
-    let path_a = format!("{}/test-ws-a-{}", std::env::temp_dir().display(), std::process::id());
-    let path_b = format!("{}/test-ws-b-{}", std::env::temp_dir().display(), std::process::id());
+    let path_a = format!(
+        "{}/test-ws-a-{}",
+        std::env::temp_dir().display(),
+        std::process::id()
+    );
+    let path_b = format!(
+        "{}/test-ws-b-{}",
+        std::env::temp_dir().display(),
+        std::process::id()
+    );
     mark_workspace_copied(&path_a);
     assert!(workspace_already_copied(&path_a));
     assert!(!workspace_already_copied(&path_b));
@@ -1680,7 +1697,11 @@ fn test_workspace_copy_cache_is_per_workspace() {
 
 #[test]
 fn test_invalidate_workspace_cache() {
-    let path = format!("{}/test-ws-invalidate-{}", std::env::temp_dir().display(), std::process::id());
+    let path = format!(
+        "{}/test-ws-invalidate-{}",
+        std::env::temp_dir().display(),
+        std::process::id()
+    );
     mark_workspace_copied(&path);
     assert!(workspace_already_copied(&path));
     invalidate_workspace_cache(&path);
@@ -1730,7 +1751,11 @@ fn test_reset_cleans_workspace_context_files() {
 fn test_scope_recommendation_true() {
     let mut f = tempfile::NamedTempFile::new().unwrap();
     use std::io::Write as _;
-    write!(f, r#"{{"metadata":{{"scope_recommendation":true,"original_dimensions":8}},"sections":[]}}"#).unwrap();
+    write!(
+        f,
+        r#"{{"metadata":{{"scope_recommendation":true,"original_dimensions":8}},"sections":[]}}"#
+    )
+    .unwrap();
     assert!(parse_scope_recommendation(f.path()));
 }
 
@@ -1932,7 +1957,14 @@ fn test_format_user_context_partial_intake() {
 fn test_build_prompt_includes_user_context_md_instruction() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), skills.to_str().unwrap(), None, None, 5);
+    let prompt = build_prompt(
+        "test-skill",
+        ws.to_str().unwrap(),
+        skills.to_str().unwrap(),
+        None,
+        None,
+        5,
+    );
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
@@ -1941,7 +1973,14 @@ fn test_build_prompt_includes_user_context_md_instruction() {
 fn test_build_prompt_without_user_context() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), skills.to_str().unwrap(), None, None, 5);
+    let prompt = build_prompt(
+        "test-skill",
+        ws.to_str().unwrap(),
+        skills.to_str().unwrap(),
+        None,
+        None,
+        5,
+    );
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
@@ -2011,7 +2050,8 @@ fn test_save_clarifications_content_writes_pretty_json() {
     let workspace_str = workspace_path.to_string_lossy().to_string();
     let payload = valid_clarifications_value().to_string();
 
-    super::evaluation::save_clarifications_content("my-skill".to_string(), workspace_str, payload).unwrap();
+    super::evaluation::save_clarifications_content("my-skill".to_string(), workspace_str, payload)
+        .unwrap();
     let saved = std::fs::read_to_string(
         workspace_path
             .join("my-skill")
@@ -2055,9 +2095,12 @@ fn test_save_clarifications_content_rejects_invalid_schema() {
         "notes": []
     });
 
-    let err =
-        super::evaluation::save_clarifications_content("my-skill".to_string(), workspace_str, invalid.to_string())
-            .unwrap_err();
+    let err = super::evaluation::save_clarifications_content(
+        "my-skill".to_string(),
+        workspace_str,
+        invalid.to_string(),
+    )
+    .unwrap_err();
     assert!(err.contains("priority_questions must be an array"));
 }
 
@@ -2099,6 +2142,7 @@ fn test_generate_skills_section_single_active_skill() {
     let skill = crate::types::ImportedSkill {
         skill_id: "bundled-test-practices".to_string(),
         skill_name: "test-practices".to_string(),
+        plugin_name: None,
         is_active: true,
         disk_path,
         imported_at: "2000-01-01T00:00:00Z".to_string(),
@@ -2148,6 +2192,7 @@ fn test_generate_skills_section_inactive_skill_excluded() {
     let skill = crate::types::ImportedSkill {
         skill_id: "bundled-test-practices".to_string(),
         skill_name: "test-practices".to_string(),
+        plugin_name: None,
         is_active: false,
         disk_path: format!("{}/skills/test-practices", std::env::temp_dir().display()),
         imported_at: "2000-01-01T00:00:00Z".to_string(),
@@ -2190,6 +2235,7 @@ fn test_generate_skills_section_multiple_skills_same_format() {
     let bundled = crate::types::ImportedSkill {
         skill_id: "bundled-test-practices".to_string(),
         skill_name: "test-practices".to_string(),
+        plugin_name: None,
         is_active: true,
         disk_path: disk_path1,
         imported_at: "2000-01-01T00:00:00Z".to_string(),
@@ -2206,6 +2252,7 @@ fn test_generate_skills_section_multiple_skills_same_format() {
     let imported = crate::types::ImportedSkill {
         skill_id: "imp-data-analytics-123".to_string(),
         skill_name: "data-analytics".to_string(),
+        plugin_name: None,
         is_active: true,
         disk_path: disk_path2,
         imported_at: "2025-01-15T10:00:00Z".to_string(),
@@ -2269,6 +2316,7 @@ fn test_generate_skills_section_no_trigger_no_path() {
     let skill = crate::types::ImportedSkill {
         skill_id: "imp-my-skill-1".to_string(),
         skill_name: "my-skill".to_string(),
+        plugin_name: None,
         is_active: true,
         disk_path,
         imported_at: "2025-01-01T00:00:00Z".to_string(),
@@ -2317,60 +2365,161 @@ fn test_generate_skills_section_no_trigger_no_path() {
 
 #[test]
 fn test_format_user_context_returns_none_when_all_empty() {
-    let result = format_user_context(None, &[], None, None, None, None, None, None, None, None, None, None);
-    assert!(result.is_none(), "should return None when no fields are provided");
+    let result = format_user_context(
+        None,
+        &[],
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+    assert!(
+        result.is_none(),
+        "should return None when no fields are provided"
+    );
 }
 
 #[test]
 fn test_format_user_context_includes_name_and_tags() {
     let tags = vec!["finance".to_string(), "analytics".to_string()];
     let result = format_user_context(
-        Some("my-skill"), &tags, None, None, None, None, None, None, None, None, None, None,
+        Some("my-skill"),
+        &tags,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     );
     let text = result.unwrap();
     assert!(text.contains("## User Context"), "should have heading");
     assert!(text.contains("**Name**: my-skill"), "should include name");
-    assert!(text.contains("**Tags**: finance, analytics"), "should include tags");
+    assert!(
+        text.contains("**Tags**: finance, analytics"),
+        "should include tags"
+    );
 }
 
 #[test]
 fn test_format_user_context_includes_purpose_label_mapping() {
     let result = format_user_context(
-        None, &[], None, None, None, None, Some("domain"), None, None, None, None, None,
+        None,
+        &[],
+        None,
+        None,
+        None,
+        None,
+        Some("domain"),
+        None,
+        None,
+        None,
+        None,
+        None,
     );
     let text = result.unwrap();
-    assert!(text.contains("Business process knowledge"), "domain purpose should map to label");
+    assert!(
+        text.contains("Business process knowledge"),
+        "domain purpose should map to label"
+    );
 }
 
 #[test]
 fn test_format_user_context_includes_profile_section() {
     let result = format_user_context(
-        None, &[], Some("Healthcare"), Some("Data Engineer"), None, None, None, None, None, None, None, None,
+        None,
+        &[],
+        Some("Healthcare"),
+        Some("Data Engineer"),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     );
     let text = result.unwrap();
-    assert!(text.contains("### About You"), "should have profile heading");
-    assert!(text.contains("**Industry**: Healthcare"), "should include industry");
-    assert!(text.contains("**Function**: Data Engineer"), "should include function");
+    assert!(
+        text.contains("### About You"),
+        "should have profile heading"
+    );
+    assert!(
+        text.contains("**Industry**: Healthcare"),
+        "should include industry"
+    );
+    assert!(
+        text.contains("**Function**: Data Engineer"),
+        "should include function"
+    );
 }
 
 #[test]
 fn test_format_user_context_includes_configuration() {
     let result = format_user_context(
-        None, &[], None, None, None, None, None, Some("1.0"), Some("claude-sonnet-4-6"), Some("/ask"), Some(true), Some(false),
+        None,
+        &[],
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some("1.0"),
+        Some("claude-sonnet-4-6"),
+        Some("/ask"),
+        Some(true),
+        Some(false),
     );
     let text = result.unwrap();
-    assert!(text.contains("### Configuration"), "should have config heading");
+    assert!(
+        text.contains("### Configuration"),
+        "should have config heading"
+    );
     assert!(text.contains("**Version**: 1.0"), "should include version");
-    assert!(text.contains("**Preferred Model**: claude-sonnet-4-6"), "should include model");
-    assert!(text.contains("**Argument Hint**: /ask"), "should include argument hint");
-    assert!(text.contains("**User Invocable**: true"), "should include user_invocable");
-    assert!(text.contains("**Disable Model Invocation**: false"), "should include dmi");
+    assert!(
+        text.contains("**Preferred Model**: claude-sonnet-4-6"),
+        "should include model"
+    );
+    assert!(
+        text.contains("**Argument Hint**: /ask"),
+        "should include argument hint"
+    );
+    assert!(
+        text.contains("**User Invocable**: true"),
+        "should include user_invocable"
+    );
+    assert!(
+        text.contains("**Disable Model Invocation**: false"),
+        "should include dmi"
+    );
 }
 
 #[test]
 fn test_format_user_context_skips_inherit_model() {
     let result = format_user_context(
-        None, &[], None, None, None, None, None, None, Some("inherit"), None, None, None,
+        None,
+        &[],
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some("inherit"),
+        None,
+        None,
+        None,
     );
     // "inherit" model should be filtered out — if nothing else is set, result is None
     assert!(result.is_none(), "inherit model alone should produce None");
@@ -2380,11 +2529,28 @@ fn test_format_user_context_skips_inherit_model() {
 fn test_format_user_context_includes_intake_json_context() {
     let intake = r#"{"context": "We use Snowflake and dbt for data pipelines."}"#;
     let result = format_user_context(
-        None, &[], None, None, Some(intake), None, None, None, None, None, None, None,
+        None,
+        &[],
+        None,
+        None,
+        Some(intake),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     );
     let text = result.unwrap();
-    assert!(text.contains("### What Claude Needs to Know"), "should include intake context heading");
-    assert!(text.contains("Snowflake and dbt"), "should include intake content");
+    assert!(
+        text.contains("### What Claude Needs to Know"),
+        "should include intake context heading"
+    );
+    assert!(
+        text.contains("Snowflake and dbt"),
+        "should include intake content"
+    );
 }
 
 #[test]
@@ -2395,14 +2561,32 @@ fn test_write_user_context_file_creates_file() {
     let tags = vec!["tag1".to_string()];
 
     write_user_context_file(
-        workspace_path, skill_name, &tags, Some("Tech"), None, None, Some("A test skill"), Some("domain"), None, None, None, None, None,
+        workspace_path,
+        skill_name,
+        &tags,
+        Some("Tech"),
+        None,
+        None,
+        Some("A test skill"),
+        Some("domain"),
+        None,
+        None,
+        None,
+        None,
+        None,
     );
 
     let ctx_path = tmp.path().join(skill_name).join("user-context.md");
     assert!(ctx_path.exists(), "user-context.md should be created");
     let content = std::fs::read_to_string(&ctx_path).unwrap();
-    assert!(content.contains("# User Context"), "should contain user context heading");
-    assert!(content.contains("A test skill"), "should contain description");
+    assert!(
+        content.contains("# User Context"),
+        "should contain user context heading"
+    );
+    assert!(
+        content.contains("A test skill"),
+        "should contain description"
+    );
 }
 
 // =============================================================================
@@ -2415,13 +2599,22 @@ use super::claude_md::extract_customization_section;
 fn test_extract_customization_section_returns_content_after_marker() {
     let content = "# Base\nSome base content.\n\n## Customization\n\nMy custom instructions.\n";
     let result = extract_customization_section(content);
-    assert!(result.starts_with("## Customization"), "should start with the heading");
-    assert!(result.contains("My custom instructions."), "should include user content");
+    assert!(
+        result.starts_with("## Customization"),
+        "should start with the heading"
+    );
+    assert!(
+        result.contains("My custom instructions."),
+        "should include user content"
+    );
 }
 
 #[test]
 fn test_extract_customization_section_returns_empty_when_missing() {
     let content = "# Base\nSome content without customization section.\n";
     let result = extract_customization_section(content);
-    assert!(result.is_empty(), "should return empty when marker not found");
+    assert!(
+        result.is_empty(),
+        "should return empty when marker not found"
+    );
 }

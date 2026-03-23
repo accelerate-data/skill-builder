@@ -88,6 +88,7 @@ pub fn create_test_db() -> rusqlite::Connection {
         CREATE TABLE IF NOT EXISTS imported_skills (
             skill_id TEXT PRIMARY KEY,
             skill_name TEXT NOT NULL UNIQUE,
+            plugin_name TEXT,
             is_active INTEGER NOT NULL DEFAULT 1,
             disk_path TEXT NOT NULL,
             imported_at TEXT NOT NULL DEFAULT (datetime('now')),

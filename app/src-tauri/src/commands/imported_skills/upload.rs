@@ -200,6 +200,7 @@ fn import_skill_from_file_inner(
     let skill = crate::types::ImportedSkill {
         skill_id,
         skill_name: name.to_string(),
+        plugin_name: None,
         is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,

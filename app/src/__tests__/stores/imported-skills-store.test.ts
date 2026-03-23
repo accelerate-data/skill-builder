@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { mockInvoke, mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
+import {
+  mockInvoke,
+  mockInvokeCommands,
+  resetTauriMocks,
+} from "@/test/mocks/tauri";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import type { ImportedSkill } from "@/lib/types";
 
@@ -7,6 +11,7 @@ const sampleSkills: ImportedSkill[] = [
   {
     skill_id: "id-1",
     skill_name: "sales-analytics",
+    plugin_name: null,
     description: "Analytics skill for sales data",
     is_active: true,
     disk_path: "/skills/sales-analytics",
@@ -23,6 +28,7 @@ const sampleSkills: ImportedSkill[] = [
   {
     skill_id: "id-2",
     skill_name: "hr-metrics",
+    plugin_name: null,
     description: null,
     is_active: true,
     disk_path: "/skills/hr-metrics",
@@ -66,7 +72,9 @@ describe("useImportedSkillsStore", () => {
       expect(state.skills[0].skill_name).toBe("sales-analytics");
       expect(state.isLoading).toBe(false);
       expect(state.error).toBeNull();
-      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills", { sourceUrl: null });
+      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills", {
+        sourceUrl: null,
+      });
     });
 
     it("sets error on failure", async () => {
@@ -85,7 +93,7 @@ describe("useImportedSkillsStore", () => {
       mockInvoke.mockReturnValue(
         new Promise<ImportedSkill[]>((resolve) => {
           resolvePromise = resolve;
-        })
+        }),
       );
 
       const promise = useImportedSkillsStore.getState().fetchSkills();

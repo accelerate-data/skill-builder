@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  mockInvoke,
-  resetTauriMocks,
-} from "@/test/mocks/tauri";
+import { mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
@@ -27,7 +24,9 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("react-markdown", () => ({
-  default: ({ children }: { children: string }) => <div data-testid="markdown">{children}</div>,
+  default: ({ children }: { children: string }) => (
+    <div data-testid="markdown">{children}</div>
+  ),
 }));
 
 vi.mock("remark-gfm", () => ({
@@ -62,6 +61,7 @@ const sampleSkills: ImportedSkill[] = [
   {
     skill_id: "id-1",
     skill_name: "sales-analytics",
+    plugin_name: "analytics-suite",
     description: "Analytics skill for sales data",
     is_active: true,
     disk_path: "/skills/sales-analytics",
@@ -78,6 +78,7 @@ const sampleSkills: ImportedSkill[] = [
   {
     skill_id: "id-2",
     skill_name: "hr-metrics",
+    plugin_name: null,
     description: null,
     is_active: true,
     disk_path: "/skills/hr-metrics",
@@ -123,7 +124,9 @@ describe("ImportedSkillsTab", () => {
     render(<ImportedSkillsTab />);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills", { sourceUrl: null });
+      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills", {
+        sourceUrl: null,
+      });
     });
 
     const skeletons = document.querySelectorAll(".animate-pulse");
@@ -135,7 +138,9 @@ describe("ImportedSkillsTab", () => {
     render(<ImportedSkillsTab />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Upload" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Upload" }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -150,7 +155,17 @@ describe("ImportedSkillsTab", () => {
   });
 
   it("Marketplace button is enabled when a registry is configured", async () => {
-    useSettingsStore.getState().setSettings({ marketplaceRegistries: [{ name: "Test", source_url: "https://github.com/owner/skills", enabled: true }] });
+    useSettingsStore
+      .getState()
+      .setSettings({
+        marketplaceRegistries: [
+          {
+            name: "Test",
+            source_url: "https://github.com/owner/skills",
+            enabled: true,
+          },
+        ],
+      });
     setupMocks();
     render(<ImportedSkillsTab />);
 
@@ -165,7 +180,9 @@ describe("ImportedSkillsTab", () => {
     render(<ImportedSkillsTab />);
 
     await waitFor(() => {
-      expect(screen.getByText("sales-analytics")).toBeInTheDocument();
+      expect(
+        screen.getByText("analytics-suite:sales-analytics"),
+      ).toBeInTheDocument();
     });
     expect(screen.getByText("hr-metrics")).toBeInTheDocument();
   });
@@ -175,14 +192,18 @@ describe("ImportedSkillsTab", () => {
     render(<ImportedSkillsTab />);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills", { sourceUrl: null });
+      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills", {
+        sourceUrl: null,
+      });
     });
 
     await waitFor(() => {
       expect(screen.getByText("No imported skills")).toBeInTheDocument();
     });
     expect(
-      screen.getByText("Import a .skill package or browse the marketplace to add skills.")
+      screen.getByText(
+        "Import a .skill package or browse the marketplace to add skills.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -191,9 +212,15 @@ describe("ImportedSkillsTab", () => {
     render(<ImportedSkillsTab />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Delete sales-analytics/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: /Delete analytics-suite:sales-analytics/i,
+        }),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /Delete hr-metrics/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Delete hr-metrics/i }),
+    ).toBeInTheDocument();
   });
 
   it("does not render delete button for bundled skills", async () => {
@@ -201,6 +228,7 @@ describe("ImportedSkillsTab", () => {
       ...sampleSkills[0],
       skill_id: "id-bundled",
       skill_name: "bundled-skill",
+      plugin_name: null,
       is_bundled: true,
     };
     setupMocks([bundledSkill]);
@@ -209,7 +237,9 @@ describe("ImportedSkillsTab", () => {
     await waitFor(() => {
       expect(screen.getByText("bundled-skill")).toBeInTheDocument();
     });
-    expect(screen.queryByRole("button", { name: /Delete bundled-skill/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Delete bundled-skill/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows Built-in badge for bundled skill", async () => {
@@ -217,12 +247,14 @@ describe("ImportedSkillsTab", () => {
       ...sampleSkills[0],
       skill_id: "id-bundled",
       skill_name: "bundled-skill",
+      plugin_name: null,
       is_bundled: true,
     };
     const nonBundledSkill: ImportedSkill = {
       ...sampleSkills[1],
       skill_id: "id-regular",
       skill_name: "regular-skill",
+      plugin_name: null,
       is_bundled: false,
     };
     setupMocks([bundledSkill, nonBundledSkill]);
@@ -253,6 +285,9 @@ describe("ImportedSkillsTab", () => {
     await user.click(importButton);
 
     await new Promise((r) => setTimeout(r, 50));
-    expect(mockInvoke).not.toHaveBeenCalledWith("import_skill_from_file", expect.anything());
+    expect(mockInvoke).not.toHaveBeenCalledWith(
+      "import_skill_from_file",
+      expect.anything(),
+    );
   });
 });

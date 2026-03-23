@@ -1,6 +1,6 @@
+use super::migrations::*;
 use super::*;
 use crate::types::{AppSettings, ImportedSkill};
-use super::migrations::*;
 
 fn create_test_db() -> Connection {
     create_test_db_for_tests()
@@ -177,16 +177,13 @@ fn test_migration_count_matches_expected() {
         super::mark_migration_applied(&conn, version).unwrap();
     }
     let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM schema_migrations",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
         .unwrap();
     let expected = super::NUMBERED_MIGRATIONS.len() as i64;
     assert_eq!(
-        count,
-        expected,
+        count, expected,
         "Expected {expected} migrations in schema_migrations; got {count}. \
          Did you add a migration without registering it in NUMBERED_MIGRATIONS, or remove one?"
     );
@@ -512,12 +509,14 @@ fn test_backfill_migration_populates_skills_from_workflow_runs() {
         "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, source)
          VALUES ('created-skill', 'sales', 3, 'in_progress', 'domain', 'created')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
     conn.execute(
         "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, source)
          VALUES ('mkt-skill', 'analytics', 5, 'completed', 'platform', 'marketplace')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Run the skills table + backfill migrations
     run_skills_table_migration(&conn).unwrap();
@@ -996,8 +995,8 @@ fn test_persist_agent_run_shutdown_does_not_overwrite_completed() {
 
     // Then attempt to overwrite with shutdown (partial/zero data)
     persist_agent_run(
-        &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown", 0, 0, 0, 0, 0.0, 0, 0, None,
-        None, 0, 0, None, ws,
+        &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown", 0, 0, 0, 0, 0.0, 0, 0, None, None,
+        0, 0, None, ws,
     )
     .unwrap();
 
@@ -1016,15 +1015,15 @@ fn test_persist_agent_run_shutdown_overwrites_running() {
 
     // First persist as running (agent start)
     persist_agent_run(
-        &conn, "agent-1", "my-skill", 0, "sonnet", "running", 0, 0, 0, 0, 0.0, 0, 0, None,
-        None, 0, 0, None, ws,
+        &conn, "agent-1", "my-skill", 0, "sonnet", "running", 0, 0, 0, 0, 0.0, 0, 0, None, None, 0,
+        0, None, ws,
     )
     .unwrap();
 
     // Then shutdown with partial data — should succeed
     persist_agent_run(
-        &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown", 500, 200, 0, 0, 0.05, 3000, 0,
-        None, None, 0, 0, None, ws,
+        &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown", 500, 200, 0, 0, 0.05, 3000, 0, None,
+        None, 0, 0, None, ws,
     )
     .unwrap();
 
@@ -1085,8 +1084,8 @@ fn test_get_usage_summary_correct_aggregates() {
     .unwrap();
     // Running agents are included (toggle hides zero-cost sessions, not individual statuses)
     persist_agent_run(
-        &conn, "agent-3", "skill-a", 5, "sonnet", "running", 100, 50, 0, 0, 0.01, 0, 0, None,
-        None, 0, 0, None, ws,
+        &conn, "agent-3", "skill-a", 5, "sonnet", "running", 100, 50, 0, 0, 0.01, 0, 0, None, None,
+        0, 0, None, ws,
     )
     .unwrap();
 
@@ -1804,8 +1803,8 @@ fn test_composite_pk_upsert_same_agent_and_model() {
 
     // Insert then update same agent_id + model — should replace, not duplicate
     persist_agent_run(
-        &conn, "agent-1", "skill-a", 1, "sonnet", "running", 0, 0, 0, 0, 0.0, 0, 0, None, None,
-        0, 0, None, None,
+        &conn, "agent-1", "skill-a", 1, "sonnet", "running", 0, 0, 0, 0, 0.0, 0, 0, None, None, 0,
+        0, None, None,
     )
     .unwrap();
     persist_agent_run(
@@ -2591,6 +2590,7 @@ fn test_list_active_skills() {
     let skill1 = ImportedSkill {
         skill_id: "imp-1".to_string(),
         skill_name: "active-with-trigger".to_string(),
+        plugin_name: None,
         is_active: true,
         disk_path: "/tmp/s1".to_string(),
         imported_at: "2025-01-01 00:00:00".to_string(),
@@ -2610,6 +2610,7 @@ fn test_list_active_skills() {
     let skill2 = ImportedSkill {
         skill_id: "imp-2".to_string(),
         skill_name: "active-no-trigger".to_string(),
+        plugin_name: None,
         is_active: true,
         disk_path: "/tmp/s2".to_string(),
         imported_at: "2025-01-01 00:00:00".to_string(),
@@ -2629,6 +2630,7 @@ fn test_list_active_skills() {
     let skill3 = ImportedSkill {
         skill_id: "imp-3".to_string(),
         skill_name: "inactive-with-trigger".to_string(),
+        plugin_name: None,
         is_active: false,
         disk_path: "/tmp/s3".to_string(),
         imported_at: "2025-01-01 00:00:00".to_string(),
@@ -2660,7 +2662,7 @@ fn test_delete_imported_skill_by_name() {
     let skill = ImportedSkill {
         skill_id: "id-del".to_string(),
         skill_name: "delete-me".to_string(),
-
+        plugin_name: None,
         is_active: true,
         disk_path: "/tmp/delete-me".to_string(),
         imported_at: "2024-01-01".to_string(),
@@ -3083,10 +3085,15 @@ fn test_has_active_session_with_live_pid_uses_skill_id_fk() {
 fn test_migration_35_drops_workflow_runs_metadata_columns() {
     let conn = create_test_db();
     // After migration 35, these 6 columns must not exist in workflow_runs
-    let columns_removed = ["description", "version", "model", "argument_hint", "user_invocable", "disable_model_invocation"];
-    let mut stmt = conn
-        .prepare("PRAGMA table_info(workflow_runs)")
-        .unwrap();
+    let columns_removed = [
+        "description",
+        "version",
+        "model",
+        "argument_hint",
+        "user_invocable",
+        "disable_model_invocation",
+    ];
+    let mut stmt = conn.prepare("PRAGMA table_info(workflow_runs)").unwrap();
     let column_names: Vec<String> = stmt
         .query_map([], |row| row.get::<_, String>(1))
         .unwrap()
@@ -3112,7 +3119,10 @@ fn test_migration_36_drops_workspace_skills_table() {
             |row| row.get(0),
         )
         .unwrap();
-    assert!(!exists, "workspace_skills table should have been dropped by migration 36");
+    assert!(
+        !exists,
+        "workspace_skills table should have been dropped by migration 36"
+    );
 }
 
 #[test]
@@ -3126,8 +3136,12 @@ fn test_list_imported_skills_filtered() {
     let skill = ImportedSkill {
         skill_id: "imp-test-1".to_string(),
         skill_name: "test-skill".to_string(),
+        plugin_name: Some("analytics".to_string()),
         is_active: true,
-        disk_path: std::env::temp_dir().join("test-skill").to_string_lossy().to_string(),
+        disk_path: std::env::temp_dir()
+            .join("test-skill")
+            .to_string_lossy()
+            .to_string(),
         imported_at: "2025-01-01T00:00:00Z".to_string(),
         is_bundled: false,
         description: None,
@@ -3144,11 +3158,14 @@ fn test_list_imported_skills_filtered() {
     let all = list_imported_skills_filtered(&conn, None).unwrap();
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].skill_name, "test-skill");
+    assert_eq!(all[0].plugin_name.as_deref(), Some("analytics"));
 
-    let filtered = list_imported_skills_filtered(&conn, Some("https://github.com/acme/skills")).unwrap();
+    let filtered =
+        list_imported_skills_filtered(&conn, Some("https://github.com/acme/skills")).unwrap();
     assert_eq!(filtered.len(), 1);
 
-    let no_match = list_imported_skills_filtered(&conn, Some("https://github.com/other/repo")).unwrap();
+    let no_match =
+        list_imported_skills_filtered(&conn, Some("https://github.com/other/repo")).unwrap();
     assert!(no_match.is_empty());
 }
 
@@ -3158,8 +3175,12 @@ fn test_get_imported_skill_by_id() {
     let skill = ImportedSkill {
         skill_id: "imp-test-byid".to_string(),
         skill_name: "test-byid".to_string(),
+        plugin_name: None,
         is_active: true,
-        disk_path: std::env::temp_dir().join("test-byid").to_string_lossy().to_string(),
+        disk_path: std::env::temp_dir()
+            .join("test-byid")
+            .to_string_lossy()
+            .to_string(),
         imported_at: "2025-01-01T00:00:00Z".to_string(),
         is_bundled: false,
         description: None,
@@ -3187,8 +3208,12 @@ fn test_delete_imported_skill_by_skill_id() {
     let skill = ImportedSkill {
         skill_id: "imp-test-del".to_string(),
         skill_name: "test-del".to_string(),
+        plugin_name: None,
         is_active: true,
-        disk_path: std::env::temp_dir().join("test-del").to_string_lossy().to_string(),
+        disk_path: std::env::temp_dir()
+            .join("test-del")
+            .to_string_lossy()
+            .to_string(),
         imported_at: "2025-01-01T00:00:00Z".to_string(),
         is_bundled: false,
         description: None,
@@ -3201,12 +3226,15 @@ fn test_delete_imported_skill_by_skill_id() {
         marketplace_source_url: None,
     };
     insert_imported_skill(&conn, &skill).unwrap();
-    assert!(get_imported_skill_by_id(&conn, "imp-test-del").unwrap().is_some());
+    assert!(get_imported_skill_by_id(&conn, "imp-test-del")
+        .unwrap()
+        .is_some());
 
     delete_imported_skill_by_skill_id(&conn, "imp-test-del").unwrap();
-    assert!(get_imported_skill_by_id(&conn, "imp-test-del").unwrap().is_none());
+    assert!(get_imported_skill_by_id(&conn, "imp-test-del")
+        .unwrap()
+        .is_none());
 }
-
 
 #[test]
 fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
@@ -3214,6 +3242,7 @@ fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
     let imported = ImportedSkill {
         skill_id: "imp-market-skill".to_string(),
         skill_name: "market-skill".to_string(),
+        plugin_name: Some("analytics".to_string()),
         is_active: true,
         disk_path: "/tmp/market-skill".to_string(),
         imported_at: "2025-01-01T00:00:00Z".to_string(),
@@ -3259,7 +3288,8 @@ fn test_migration_34_converts_ghost_running_rows_to_shutdown() {
           total_cost, duration_ms, workflow_session_id)
          VALUES ('ghost-agent', 'my-skill', 1, 'haiku', 'running', 0, 0, 0.0, 0, 'session-abc')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Also insert a completed row — migration must not touch it
     conn.execute(
@@ -3319,7 +3349,10 @@ fn test_foreign_keys_enabled_after_init() {
     let fk_enabled: bool = conn
         .pragma_query_value(None, "foreign_keys", |row| row.get(0))
         .unwrap();
-    assert!(fk_enabled, "PRAGMA foreign_keys must be ON after init_db / create_test_db_for_tests");
+    assert!(
+        fk_enabled,
+        "PRAGMA foreign_keys must be ON after init_db / create_test_db_for_tests"
+    );
 }
 
 #[test]

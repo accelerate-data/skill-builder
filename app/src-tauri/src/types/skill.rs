@@ -58,6 +58,8 @@ pub struct SkillFileEntry {
 pub struct ImportedSkill {
     pub skill_id: String,
     pub skill_name: String,
+    #[serde(default)]
+    pub plugin_name: Option<String>,
     pub is_active: bool,
     pub disk_path: String,
     pub imported_at: String,
@@ -157,4 +159,3 @@ pub struct SkillCommit {
     /// Semver version (e.g. "1.0.0") if this commit is tagged, None otherwise.
     pub version: Option<String>,
 }
-

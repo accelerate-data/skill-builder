@@ -2,7 +2,13 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSkillStore } from "@/stores/skill-store";
-import { Lock, MoreHorizontal, PanelLeftClose, Plus, Search } from "lucide-react";
+import {
+  Lock,
+  MoreHorizontal,
+  PanelLeftClose,
+  Plus,
+  Search,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -32,11 +38,19 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
 import { PURPOSE_SHORT_LABELS } from "@/lib/types";
-import { listSkills, exportSkill, packageSkill, saveExportTo, resetWorkflowStep, getExternallyLockedSkills } from "@/lib/tauri";
+import {
+  listSkills,
+  exportSkill,
+  packageSkill,
+  saveExportTo,
+  resetWorkflowStep,
+  getExternallyLockedSkills,
+} from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 interface UnifiedSkill {
   name: string;
+  displayName: string;
   description: string | null;
   purpose: string | null;
   lastModified: Date | null;
@@ -44,6 +58,12 @@ interface UnifiedSkill {
   source: "builder" | "imported" | "marketplace";
   status: string | null;
   currentStep: string | null;
+}
+
+function formatImportedSkillName(skill: ImportedSkill): string {
+  return skill.plugin_name
+    ? `${skill.plugin_name}:${skill.skill_name}`
+    : skill.skill_name;
 }
 
 interface SkillMenuState {
@@ -85,16 +105,25 @@ function getStatusDot(skill: UnifiedSkill, isRunning: boolean): DotStyle {
   const pulse = isRunning ? " animate-dot-pulse" : "";
 
   if (skill.source === "marketplace") {
-    return { className: pulse.trim(), style: { backgroundColor: "var(--color-pacific)" } };
+    return {
+      className: pulse.trim(),
+      style: { backgroundColor: "var(--color-pacific)" },
+    };
   }
 
   if (skill.source === "imported") {
-    return { className: pulse.trim(), style: { backgroundColor: "var(--color-violet)" } };
+    return {
+      className: pulse.trim(),
+      style: { backgroundColor: "var(--color-violet)" },
+    };
   }
 
   // Completed builder skill → seafoam
   if (isSkillComplete(skill)) {
-    return { className: pulse.trim(), style: { backgroundColor: "var(--color-seafoam)" } };
+    return {
+      className: pulse.trim(),
+      style: { backgroundColor: "var(--color-seafoam)" },
+    };
   }
 
   const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
@@ -115,22 +144,27 @@ function mergeSkills(
 ): UnifiedSkill[] {
   const fromBuilder: UnifiedSkill[] = builderSkills.map((s) => ({
     name: s.name,
+    displayName: s.name,
     description: s.description ?? null,
     purpose: s.purpose,
     lastModified: s.last_modified ? new Date(s.last_modified) : null,
     createdAt: s.created_at ? new Date(s.created_at) : null,
-    source: s.skill_source === "marketplace" ? "marketplace" : ("builder" as const),
+    source:
+      s.skill_source === "marketplace" ? "marketplace" : ("builder" as const),
     status: s.status,
     currentStep: s.current_step,
   }));
 
   const fromImported: UnifiedSkill[] = importedSkills.map((s) => ({
     name: s.skill_name,
+    displayName: formatImportedSkillName(s),
     description: s.description,
     purpose: s.purpose,
     lastModified: new Date(s.imported_at),
     createdAt: new Date(s.imported_at),
-    source: s.marketplace_source_url ? ("marketplace" as const) : ("imported" as const),
+    source: s.marketplace_source_url
+      ? ("marketplace" as const)
+      : ("imported" as const),
     status: null,
     currentStep: null,
   }));
@@ -142,9 +176,16 @@ function mergeSkills(
   for (const s of fromImported) {
     if (!byName.has(s.name)) {
       byName.set(s.name, s);
-    } else if (s.source !== "builder" && byName.get(s.name)!.source === "builder") {
+    } else if (
+      s.source !== "builder" &&
+      byName.get(s.name)!.source === "builder"
+    ) {
       // Builder record exists but imported entry indicates non-builder origin — override source.
-      byName.set(s.name, { ...byName.get(s.name)!, source: s.source });
+      byName.set(s.name, {
+        ...byName.get(s.name)!,
+        displayName: s.displayName,
+        source: s.source,
+      });
     }
   }
 
@@ -176,7 +217,9 @@ export function SkillListPanel({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [redoTarget, setRedoTarget] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
-  const [externalLockedSkills, setExternalLockedSkills] = useState<Set<string>>(new Set());
+  const [externalLockedSkills, setExternalLockedSkills] = useState<Set<string>>(
+    new Set(),
+  );
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const builderSkills = useSkillStore((s) => s.skills);
@@ -204,7 +247,9 @@ export function SkillListPanel({
   useEffect(() => {
     getExternallyLockedSkills()
       .then((names) => setExternalLockedSkills(new Set(names)))
-      .catch(() => { /* non-fatal */ });
+      .catch(() => {
+        /* non-fatal */
+      });
   }, [pathname]);
 
   // Sort by creation date (newest first) — stable across edits since created_at never changes.
@@ -226,12 +271,16 @@ export function SkillListPanel({
   }, []);
 
   const runningAgent = Object.values(runs).find(
-    (r) => r.status === "running" && (r.runSource === "workflow" || r.runSource === "refine"),
+    (r) =>
+      r.status === "running" &&
+      (r.runSource === "workflow" || r.runSource === "refine"),
   );
   const runningSkillName = runningAgent?.skillName ?? null;
 
-  const filteredSkills = unifiedSkills.filter((s) =>
-    s.name.toLowerCase().includes(search.toLowerCase()),
+  const filteredSkills = unifiedSkills.filter(
+    (s) =>
+      s.name.toLowerCase().includes(search.toLowerCase()) ||
+      s.displayName.toLowerCase().includes(search.toLowerCase()),
   );
 
   function handleRowClick(skill: UnifiedSkill) {
@@ -275,7 +324,11 @@ export function SkillListPanel({
       if (savePath) {
         await saveExportTo(zipPath, savePath);
         toast.success(`Saved to ${savePath}`, { id: toastId });
-        console.log("event=skill_exported skill=%s dest=%s", skill.name, savePath);
+        console.log(
+          "event=skill_exported skill=%s dest=%s",
+          skill.name,
+          savePath,
+        );
       } else {
         toast.dismiss(toastId);
       }
@@ -284,7 +337,11 @@ export function SkillListPanel({
         `Export failed: ${err instanceof Error ? err.message : String(err)}`,
         { id: toastId },
       );
-      console.error("event=skill_export_failed skill=%s error=%s", skill.name, err);
+      console.error(
+        "event=skill_export_failed skill=%s error=%s",
+        skill.name,
+        err,
+      );
     }
   }
 
@@ -300,10 +357,20 @@ export function SkillListPanel({
       // Reset store so persistence hook re-hydrates from DB (picks up the step reset).
       useWorkflowStore.getState().reset();
       setRedoTarget(null);
-      navigate({ to: "/skill/$skillName", params: { skillName }, state: { autoStart: true } });
+      navigate({
+        to: "/skill/$skillName",
+        params: { skillName },
+        state: { autoStart: true },
+      });
     } catch (err) {
-      toast.error(`Failed to reset workflow: ${err instanceof Error ? err.message : String(err)}`);
-      console.error("event=skill_redo_failed skill=%s error=%s", skillName, err);
+      toast.error(
+        `Failed to reset workflow: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      console.error(
+        "event=skill_redo_failed skill=%s error=%s",
+        skillName,
+        err,
+      );
     }
   }
 
@@ -332,7 +399,11 @@ export function SkillListPanel({
     console.log("event=skill_continue skill=%s", skillName);
     localStorage.setItem("last-selected-skill", skillName);
     setSelectedSkill(skillName);
-    navigate({ to: "/skill/$skillName", params: { skillName }, state: { autoStart: true } });
+    navigate({
+      to: "/skill/$skillName",
+      params: { skillName },
+      state: { autoStart: true },
+    });
   }
 
   function handleDelete(skill: UnifiedSkill) {
@@ -392,7 +463,9 @@ export function SkillListPanel({
       {/* Skill rows */}
       <ScrollArea className="flex-1">
         {filteredSkills.map((skill) => {
-          const isLocked = (!!runningSkillName && skill.name !== runningSkillName) || externalLockedSkills.has(skill.name);
+          const isLocked =
+            (!!runningSkillName && skill.name !== runningSkillName) ||
+            externalLockedSkills.has(skill.name);
           const isRunning = skill.name === runningSkillName;
           const isSelected = skill.name === selectedSkill;
           const dot = getStatusDot(skill, isRunning);
@@ -415,7 +488,11 @@ export function SkillListPanel({
                 !isSelected && !isLocked && "hover:bg-accent/50",
                 isLocked && "cursor-not-allowed opacity-[0.45]",
               )}
-              style={isSelected ? { borderLeftColor: "var(--color-pacific)" } : undefined}
+              style={
+                isSelected
+                  ? { borderLeftColor: "var(--color-pacific)" }
+                  : undefined
+              }
               onClick={() => handleRowClick(skill)}
               onKeyDown={(e) => {
                 if (!isLocked && (e.key === "Enter" || e.key === " ")) {
@@ -433,7 +510,9 @@ export function SkillListPanel({
 
               {/* Name + purpose */}
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-base font-medium">{skill.name}</span>
+                <span className="truncate text-base font-medium">
+                  {skill.displayName}
+                </span>
                 {purposeLabel && (
                   <span className="truncate text-[13px] text-muted-foreground">
                     {purposeLabel}
@@ -464,7 +543,10 @@ export function SkillListPanel({
                       <MoreHorizontal className="size-3" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuContent
+                    align="end"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {menuState.isComplete ? (
                       <>
                         {menuState.isBuilder && (
@@ -473,12 +555,16 @@ export function SkillListPanel({
                           </DropdownMenuLabel>
                         )}
                         {menuState.isBuilder && (
-                          <DropdownMenuItem onSelect={() => handleReview(skill.name)}>
+                          <DropdownMenuItem
+                            onSelect={() => handleReview(skill.name)}
+                          >
                             Review
                           </DropdownMenuItem>
                         )}
                         {menuState.isBuilder && (
-                          <DropdownMenuItem onSelect={() => handleRedo(skill.name)}>
+                          <DropdownMenuItem
+                            onSelect={() => handleRedo(skill.name)}
+                          >
                             Redo workflow
                           </DropdownMenuItem>
                         )}
@@ -486,16 +572,22 @@ export function SkillListPanel({
                         <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
                           SKILL
                         </DropdownMenuLabel>
-                        <DropdownMenuItem onSelect={() => handleOverview(skill.name)}>
+                        <DropdownMenuItem
+                          onSelect={() => handleOverview(skill.name)}
+                        >
                           Overview
                         </DropdownMenuItem>
                         {menuState.showsLifecycleActions && (
-                          <DropdownMenuItem onSelect={() => handleRefine(skill.name)}>
+                          <DropdownMenuItem
+                            onSelect={() => handleRefine(skill.name)}
+                          >
                             Refine
                           </DropdownMenuItem>
                         )}
                         {menuState.showsLifecycleActions && (
-                          <DropdownMenuItem onSelect={() => setRestoreTarget(skill.name)}>
+                          <DropdownMenuItem
+                            onSelect={() => setRestoreTarget(skill.name)}
+                          >
                             Restore version
                           </DropdownMenuItem>
                         )}
@@ -504,7 +596,9 @@ export function SkillListPanel({
                         </DropdownMenuItem>
                       </>
                     ) : (
-                      <DropdownMenuItem onSelect={() => handleContinueBuilding(skill.name)}>
+                      <DropdownMenuItem
+                        onSelect={() => handleContinueBuilding(skill.name)}
+                      >
                         Continue Building
                       </DropdownMenuItem>
                     )}
@@ -533,7 +627,9 @@ export function SkillListPanel({
             localStorage.setItem("last-selected-skill", createdName);
             setSelectedSkill(createdName);
             if (workspacePath) {
-              listSkills(workspacePath).then(setSkills).catch(() => {});
+              listSkills(workspacePath)
+                .then(setSkills)
+                .catch(() => {});
             }
           }}
         />
@@ -546,23 +642,37 @@ export function SkillListPanel({
         onOpenChange={setDeleteOpen}
         onDeleted={() => {
           setDeleteTarget(null);
-          if (workspacePath) listSkills(workspacePath).then(setSkills).catch(() => {});
+          if (workspacePath)
+            listSkills(workspacePath)
+              .then(setSkills)
+              .catch(() => {});
         }}
       />
 
-      <Dialog open={redoTarget !== null} onOpenChange={(open) => { if (!open) setRedoTarget(null); }}>
+      <Dialog
+        open={redoTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRedoTarget(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Redo Workflow?</DialogTitle>
             <DialogDescription>
-              This will reset the workflow to Step 1 and overwrite all generated artifacts and files for &ldquo;{redoTarget}&rdquo;. This cannot be undone.
+              This will reset the workflow to Step 1 and overwrite all generated
+              artifacts and files for &ldquo;{redoTarget}&rdquo;. This cannot be
+              undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setRedoTarget(null)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setRedoTarget(null)}>
+              Cancel
+            </Button>
             <Button
               variant="destructive"
-              onClick={() => { if (redoTarget) confirmRedo(redoTarget); }}
+              onClick={() => {
+                if (redoTarget) confirmRedo(redoTarget);
+              }}
             >
               Redo
             </Button>
@@ -575,10 +685,15 @@ export function SkillListPanel({
           skillName={restoreTarget}
           workspacePath={workspacePath}
           open={!!restoreTarget}
-          onOpenChange={(open) => { if (!open) setRestoreTarget(null); }}
+          onOpenChange={(open) => {
+            if (!open) setRestoreTarget(null);
+          }}
           onRestored={() => {
             setRestoreTarget(null);
-            if (workspacePath) listSkills(workspacePath).then(setSkills).catch(() => {});
+            if (workspacePath)
+              listSkills(workspacePath)
+                .then(setSkills)
+                .catch(() => {});
           }}
         />
       )}

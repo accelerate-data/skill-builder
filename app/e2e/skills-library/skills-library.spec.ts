@@ -6,6 +6,7 @@ const SAMPLE_SKILLS = [
   {
     skill_id: "skill-001",
     skill_name: "analytics-helper",
+    plugin_name: "analytics-suite",
     description: "Generates analytics dashboards",
     is_active: true,
     disk_path: `${E2E_SKILLS_PATH}/analytics-helper`,
@@ -22,6 +23,7 @@ const SAMPLE_SKILLS = [
   {
     skill_id: "skill-002",
     skill_name: "sql-expert",
+    plugin_name: null,
     description: "SQL query optimization",
     is_active: false,
     disk_path: `${E2E_SKILLS_PATH}/sql-expert`,
@@ -59,9 +61,13 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await page.getByRole("button", { name: "Import" }).first().click();
   });
 
-  test("lists imported skills with name, version, and source", async ({ page }) => {
+  test("lists imported skills with name, version, and source", async ({
+    page,
+  }) => {
     // Both skills should be visible
-    await expect(page.getByText("analytics-helper")).toBeVisible();
+    await expect(
+      page.getByText("analytics-suite:analytics-helper"),
+    ).toBeVisible();
     await expect(page.getByText("sql-expert")).toBeVisible();
 
     // Version badges should be visible
@@ -73,7 +79,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(sourceLabels.first()).toBeVisible();
   });
 
-  test("delete button visible for non-bundled skill and hidden for bundled", async ({ page }) => {
+  test("delete button visible for non-bundled skill and hidden for bundled", async ({
+    page,
+  }) => {
     // Non-bundled skill (analytics-helper) should have a delete button
     const deleteAnalytics = page.getByLabel("Delete analytics-helper");
     await expect(deleteAnalytics).toBeVisible();
@@ -88,7 +96,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await deleteButton.click();
 
     // After clicking delete, a success toast should appear
-    await expect(page.getByText('Deleted "analytics-helper"')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Deleted "analytics-helper"')).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
   test("shows empty state when no imported skills", async ({ page }) => {
@@ -103,7 +113,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     await expect(page.getByText("No imported skills")).toBeVisible();
     await expect(
-      page.getByText("Import a .skill package or browse the marketplace to add skills.")
+      page.getByText(
+        "Import a .skill package or browse the marketplace to add skills.",
+      ),
     ).toBeVisible();
   });
 });

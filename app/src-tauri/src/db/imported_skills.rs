@@ -19,7 +19,6 @@ pub fn hydrate_skill_metadata(skill: &mut ImportedSkill) {
     }
 }
 
-
 /// Hydrate description for a list of skills from their on-disk SKILL.md files.
 /// Convenience wrapper for batch hydration after releasing the DB lock.
 pub fn hydrate_skills_metadata(skills: &mut [ImportedSkill]) {
@@ -32,12 +31,13 @@ pub fn hydrate_skills_metadata(skills: &mut [ImportedSkill]) {
 pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
     let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+        "INSERT INTO imported_skills (skill_id, skill_name, plugin_name, is_active, disk_path, imported_at, is_bundled,
              purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
+            skill.plugin_name,
             skill.is_active as i32,
             skill.disk_path,
             skill.imported_at,
@@ -69,11 +69,12 @@ pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result
 pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
     let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+        "INSERT INTO imported_skills (skill_id, skill_name, plugin_name, is_active, disk_path, imported_at, is_bundled,
              purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
          ON CONFLICT(skill_name) DO UPDATE SET
              skill_id = excluded.skill_id,
+             plugin_name = excluded.plugin_name,
              disk_path = excluded.disk_path,
              imported_at = excluded.imported_at,
              purpose = excluded.purpose,
@@ -87,6 +88,7 @@ pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
+            skill.plugin_name,
             skill.is_active as i32,
             skill.disk_path,
             skill.imported_at,
@@ -160,7 +162,7 @@ pub fn get_imported_skill(
 
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+            "SELECT skill_id, skill_name, plugin_name, is_active, disk_path, imported_at, is_bundled,
                     purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
              FROM imported_skills WHERE skill_master_id = ?1",
         )
@@ -170,23 +172,23 @@ pub fn get_imported_skill(
         Ok(ImportedSkill {
             skill_id: row.get(0)?,
             skill_name: row.get(1)?,
-            is_active: row.get::<_, i32>(2)? != 0,
-            disk_path: row.get(3)?,
-            imported_at: row.get(4)?,
-            is_bundled: row.get::<_, i32>(5)? != 0,
+            plugin_name: row.get(2)?,
+            is_active: row.get::<_, i32>(3)? != 0,
+            disk_path: row.get(4)?,
+            imported_at: row.get(5)?,
+            is_bundled: row.get::<_, i32>(6)? != 0,
             description: None,
-            purpose: row.get(6)?,
-            version: row.get(7)?,
-            model: row.get(8)?,
-            argument_hint: row.get(9)?,
-            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-            marketplace_source_url: row.get(12)?,
+            purpose: row.get(7)?,
+            version: row.get(8)?,
+            model: row.get(9)?,
+            argument_hint: row.get(10)?,
+            user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
+            marketplace_source_url: row.get(13)?,
         })
     });
 
     match result {
-
         Ok(skill) => Ok(Some(skill)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
@@ -197,7 +199,7 @@ pub fn get_imported_skill(
 pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+            "SELECT skill_id, skill_name, plugin_name, is_active, disk_path, imported_at, is_bundled,
                     purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
              FROM imported_skills
              WHERE is_active = 1
@@ -210,22 +212,22 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
             Ok(ImportedSkill {
                 skill_id: row.get(0)?,
                 skill_name: row.get(1)?,
-                is_active: row.get::<_, i32>(2)? != 0,
-                disk_path: row.get(3)?,
-                imported_at: row.get(4)?,
-                is_bundled: row.get::<_, i32>(5)? != 0,
+                plugin_name: row.get(2)?,
+                is_active: row.get::<_, i32>(3)? != 0,
+                disk_path: row.get(4)?,
+                imported_at: row.get(5)?,
+                is_bundled: row.get::<_, i32>(6)? != 0,
                 description: None,
-                purpose: row.get(6)?,
-                version: row.get(7)?,
-                model: row.get(8)?,
-                argument_hint: row.get(9)?,
-                user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-                disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-                marketplace_source_url: row.get(12)?,
+                purpose: row.get(7)?,
+                version: row.get(8)?,
+                model: row.get(9)?,
+                argument_hint: row.get(10)?,
+                user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+                disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
+                marketplace_source_url: row.get(13)?,
             })
         })
         .map_err(|e| e.to_string())?;
-
 
     let skills: Vec<ImportedSkill> = rows
         .collect::<Result<Vec<_>, _>>()
@@ -241,38 +243,41 @@ pub fn list_imported_skills_filtered(
 ) -> Result<Vec<ImportedSkill>, String> {
     let query = match source_url {
         Some(_) => {
-            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+            "SELECT skill_id, skill_name, plugin_name, is_active, disk_path, imported_at, is_bundled,
                     purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
              FROM imported_skills
              WHERE marketplace_source_url = ?1
              ORDER BY imported_at DESC"
         }
         None => {
-            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+            "SELECT skill_id, skill_name, plugin_name, is_active, disk_path, imported_at, is_bundled,
                     purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
              FROM imported_skills
              ORDER BY imported_at DESC"
         }
     };
 
-    let mut stmt = conn.prepare(query).map_err(|e| format!("list_imported_skills_filtered: {}", e))?;
+    let mut stmt = conn
+        .prepare(query)
+        .map_err(|e| format!("list_imported_skills_filtered: {}", e))?;
 
     let row_mapper = |row: &rusqlite::Row| {
         Ok(ImportedSkill {
             skill_id: row.get(0)?,
             skill_name: row.get(1)?,
-            is_active: row.get::<_, i32>(2)? != 0,
-            disk_path: row.get(3)?,
-            imported_at: row.get(4)?,
-            is_bundled: row.get::<_, i32>(5)? != 0,
+            plugin_name: row.get(2)?,
+            is_active: row.get::<_, i32>(3)? != 0,
+            disk_path: row.get(4)?,
+            imported_at: row.get(5)?,
+            is_bundled: row.get::<_, i32>(6)? != 0,
             description: None,
-            purpose: row.get(6)?,
-            version: row.get(7)?,
-            model: row.get(8)?,
-            argument_hint: row.get(9)?,
-            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-            marketplace_source_url: row.get(12)?,
+            purpose: row.get(7)?,
+            version: row.get(8)?,
+            model: row.get(9)?,
+            argument_hint: row.get(10)?,
+            user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
+            marketplace_source_url: row.get(13)?,
         })
     };
 
@@ -281,7 +286,6 @@ pub fn list_imported_skills_filtered(
         None => stmt.query_map([], row_mapper),
     }
     .map_err(|e| format!("list_imported_skills_filtered query: {}", e))?;
-
 
     let skills: Vec<ImportedSkill> = results
         .collect::<Result<Vec<_>, _>>()
@@ -297,7 +301,7 @@ pub fn get_imported_skill_by_id(
 ) -> Result<Option<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+            "SELECT skill_id, skill_name, plugin_name, is_active, disk_path, imported_at, is_bundled,
                     purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
              FROM imported_skills WHERE skill_id = ?1",
         )
@@ -307,23 +311,23 @@ pub fn get_imported_skill_by_id(
         Ok(ImportedSkill {
             skill_id: row.get(0)?,
             skill_name: row.get(1)?,
-            is_active: row.get::<_, i32>(2)? != 0,
-            disk_path: row.get(3)?,
-            imported_at: row.get(4)?,
-            is_bundled: row.get::<_, i32>(5)? != 0,
+            plugin_name: row.get(2)?,
+            is_active: row.get::<_, i32>(3)? != 0,
+            disk_path: row.get(4)?,
+            imported_at: row.get(5)?,
+            is_bundled: row.get::<_, i32>(6)? != 0,
             description: None,
-            purpose: row.get(6)?,
-            version: row.get(7)?,
-            model: row.get(8)?,
-            argument_hint: row.get(9)?,
-            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-            marketplace_source_url: row.get(12)?,
+            purpose: row.get(7)?,
+            version: row.get(8)?,
+            model: row.get(9)?,
+            argument_hint: row.get(10)?,
+            user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
+            marketplace_source_url: row.get(13)?,
         })
     });
 
     match result {
-
         Ok(skill) => Ok(Some(skill)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(format!("get_imported_skill_by_id: {}", e)),
@@ -339,7 +343,6 @@ pub fn delete_imported_skill_by_skill_id(conn: &Connection, skill_id: &str) -> R
     .map_err(|e| format!("delete_imported_skill_by_skill_id: {}", e))?;
     Ok(())
 }
-
 
 /// Update the content_hash for an imported skill row identified by skill_name.
 pub fn set_imported_skill_content_hash(
@@ -388,7 +391,7 @@ pub fn get_imported_skill_by_name_and_source(
     source_url: &str,
 ) -> Result<Option<ImportedSkill>, String> {
     let mut stmt = conn.prepare(
-        "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
+        "SELECT skill_id, skill_name, plugin_name, is_active, disk_path, imported_at, is_bundled,
                 purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
          FROM imported_skills WHERE skill_name = ?1 AND marketplace_source_url = ?2"
     ).map_err(|e| format!("get_imported_skill_by_name_and_source: {}", e))?;
@@ -397,23 +400,23 @@ pub fn get_imported_skill_by_name_and_source(
         Ok(ImportedSkill {
             skill_id: row.get(0)?,
             skill_name: row.get(1)?,
-            is_active: row.get::<_, i32>(2)? != 0,
-            disk_path: row.get(3)?,
-            imported_at: row.get(4)?,
-            is_bundled: row.get::<_, i32>(5)? != 0,
+            plugin_name: row.get(2)?,
+            is_active: row.get::<_, i32>(3)? != 0,
+            disk_path: row.get(4)?,
+            imported_at: row.get(5)?,
+            is_bundled: row.get::<_, i32>(6)? != 0,
             description: None,
-            purpose: row.get(6)?,
-            version: row.get(7)?,
-            model: row.get(8)?,
-            argument_hint: row.get(9)?,
-            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-            marketplace_source_url: row.get(12)?,
+            purpose: row.get(7)?,
+            version: row.get(8)?,
+            model: row.get(9)?,
+            argument_hint: row.get(10)?,
+            user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
+            marketplace_source_url: row.get(13)?,
         })
     });
 
     match result {
-
         Ok(skill) => Ok(Some(skill)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(format!("get_imported_skill_by_name_and_source: {}", e)),

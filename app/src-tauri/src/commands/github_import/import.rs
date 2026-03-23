@@ -8,6 +8,9 @@ use crate::types::ImportedSkill;
 /// Merge existing field values into a new `ImportedSkill`: each field on `skill`
 /// is left unchanged if already `Some`, otherwise falls back to the `existing` value.
 pub(crate) fn merge_imported_fields(skill: &mut ImportedSkill, existing: &ImportedSkill) {
+    if skill.plugin_name.is_none() {
+        skill.plugin_name = existing.plugin_name.clone();
+    }
     if skill.purpose.is_none() {
         skill.purpose = existing.purpose.clone();
     }
@@ -381,6 +384,7 @@ pub(crate) async fn import_single_skill(
     Ok(ImportedSkill {
         skill_id,
         skill_name,
+        plugin_name: None,
         is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,

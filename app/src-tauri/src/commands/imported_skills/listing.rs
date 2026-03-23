@@ -77,6 +77,7 @@ mod tests {
         let skill = ImportedSkill {
             skill_id: "listing-test-id".to_string(),
             skill_name: "listing-test".to_string(),
+            plugin_name: None,
             is_active: true,
             disk_path: std::env::temp_dir()
                 .join("listing-test")

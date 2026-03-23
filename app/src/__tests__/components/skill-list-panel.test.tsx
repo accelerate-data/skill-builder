@@ -10,9 +10,20 @@ const mockNavigate = vi.fn();
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockNavigate,
-  useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => unknown }) =>
-    select({ location: { pathname: "/" } }),
-  Link: ({ to, children, className }: { to: string; children: React.ReactNode; className?: string }) => (
+  useRouterState: ({
+    select,
+  }: {
+    select: (s: { location: { pathname: string } }) => unknown;
+  }) => select({ location: { pathname: "/" } }),
+  Link: ({
+    to,
+    children,
+    className,
+  }: {
+    to: string;
+    children: React.ReactNode;
+    className?: string;
+  }) => (
     <a href={to} className={className}>
       {children}
     </a>
@@ -37,7 +48,9 @@ import { SkillListPanel } from "@/components/skill-list-panel";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): SkillSummary {
+function makeBuilderSkill(
+  overrides: Partial<SkillSummary> & { name: string },
+): SkillSummary {
   const base: SkillSummary = {
     name: overrides.name,
     current_step: null,
@@ -66,6 +79,7 @@ function makeImportedSkill(
   const base: ImportedSkill = {
     skill_id: `id-${overrides.skill_name}`,
     skill_name: overrides.skill_name,
+    plugin_name: null,
     description: null,
     is_active: true,
     disk_path: `/skills/${overrides.skill_name}`,
@@ -82,7 +96,10 @@ function makeImportedSkill(
   return { ...base, ...overrides };
 }
 
-async function openSkillMenu(skillName: string, user: ReturnType<typeof userEvent.setup>) {
+async function openSkillMenu(
+  skillName: string,
+  user: ReturnType<typeof userEvent.setup>,
+) {
   const row = screen.getByText(skillName).closest('[role="button"]')!;
   const moreBtn = row.querySelector('[aria-label="More actions"]')!;
   await user.click(moreBtn);
@@ -152,7 +169,9 @@ describe("SkillListPanel", () => {
     render(<SkillListPanel />);
 
     // Skill rows have aria-selected; other buttons ("+", "More actions") do not
-    const rows = screen.getAllByRole("button").filter((r) => r.hasAttribute("aria-selected"));
+    const rows = screen
+      .getAllByRole("button")
+      .filter((r) => r.hasAttribute("aria-selected"));
     const names = rows.map((r) => r.querySelector(".text-base")?.textContent);
     expect(names).toEqual(["recent-skill", "older-skill", "imported-skill"]);
   });
@@ -161,13 +180,24 @@ describe("SkillListPanel", () => {
 
   it("filters rows by search input (case-insensitive)", () => {
     useSkillStore.setState({ skills: [recentBuilder, olderBuilder] });
+    useImportedSkillsStore.setState({
+      skills: [
+        makeImportedSkill({
+          skill_name: "sales-analytics",
+          plugin_name: "analytics-suite",
+        }),
+      ],
+    });
 
     render(<SkillListPanel />);
 
     const input = screen.getByPlaceholderText("Search skills…");
-    fireEvent.change(input, { target: { value: "OLDER" } });
+    fireEvent.change(input, { target: { value: "analytics-suite" } });
 
-    expect(screen.getByText("older-skill")).toBeInTheDocument();
+    expect(
+      screen.getByText("analytics-suite:sales-analytics"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("older-skill")).not.toBeInTheDocument();
     expect(screen.queryByText("recent-skill")).not.toBeInTheDocument();
   });
 
@@ -195,7 +225,10 @@ describe("SkillListPanel", () => {
   });
 
   it("renders amber dot for step-1 skill", () => {
-    const skill = makeBuilderSkill({ name: "step1-skill", current_step: "Step 1" });
+    const skill = makeBuilderSkill({
+      name: "step1-skill",
+      current_step: "Step 1",
+    });
     useSkillStore.setState({ skills: [skill] });
 
     render(<SkillListPanel />);
@@ -205,7 +238,10 @@ describe("SkillListPanel", () => {
   });
 
   it("renders yellow dot for step-2 skill", () => {
-    const skill = makeBuilderSkill({ name: "step2-skill", current_step: "Step 2" });
+    const skill = makeBuilderSkill({
+      name: "step2-skill",
+      current_step: "Step 2",
+    });
     useSkillStore.setState({ skills: [skill] });
 
     render(<SkillListPanel />);
@@ -225,13 +261,17 @@ describe("SkillListPanel", () => {
   });
 
   it("renders violet dot for imported (uploaded) skill", () => {
-    const skill = makeImportedSkill({ skill_name: "imp-skill" });
+    const skill = makeImportedSkill({
+      skill_name: "imp-skill",
+      plugin_name: "analytics-suite",
+    });
     useImportedSkillsStore.setState({ skills: [skill] });
 
     render(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-imp-skill");
     expect(dot.style.backgroundColor).toBe("var(--color-violet)");
+    expect(screen.getByText("analytics-suite:imp-skill")).toBeInTheDocument();
   });
 
   it("renders blue dot for marketplace skill", () => {
@@ -250,7 +290,10 @@ describe("SkillListPanel", () => {
   // ── Pulse animation ───────────────────────────────────────────────────────
 
   it("applies animate-dot-pulse when an active workflow run exists for the skill", () => {
-    const skill = makeBuilderSkill({ name: "running-skill", current_step: "Step 1" });
+    const skill = makeBuilderSkill({
+      name: "running-skill",
+      current_step: "Step 1",
+    });
     useSkillStore.setState({ skills: [skill] });
     useAgentStore.setState((state) => ({
       runs: {
@@ -278,7 +321,10 @@ describe("SkillListPanel", () => {
   });
 
   it("does NOT apply animate-dot-pulse when no active run exists", () => {
-    const skill = makeBuilderSkill({ name: "idle-skill", current_step: "Step 1" });
+    const skill = makeBuilderSkill({
+      name: "idle-skill",
+      current_step: "Step 1",
+    });
     useSkillStore.setState({ skills: [skill] });
 
     render(<SkillListPanel />);
@@ -290,7 +336,10 @@ describe("SkillListPanel", () => {
   // ── Single-skill lock ─────────────────────────────────────────────────────
 
   it("locks other rows while a workflow is running; running row is not locked", () => {
-    const skillA = makeBuilderSkill({ name: "skill-a", current_step: "Step 1" });
+    const skillA = makeBuilderSkill({
+      name: "skill-a",
+      current_step: "Step 1",
+    });
     const skillB = makeBuilderSkill({ name: "skill-b", status: "completed" });
     useSkillStore.setState({ skills: [skillA, skillB] });
     useAgentStore.setState((state) => ({
@@ -349,7 +398,9 @@ describe("SkillListPanel", () => {
 
     render(<SkillListPanel />);
 
-    const skillBRow = screen.getByText("locked-skill-b").closest('[role="button"]');
+    const skillBRow = screen
+      .getByText("locked-skill-b")
+      .closest('[role="button"]');
     expect(skillBRow?.className).toMatch(/cursor-not-allowed/);
     // Locked row shows the Lock icon (no "More actions" button inside it)
     const moreBtn = skillBRow?.querySelector('[aria-label="More actions"]');
@@ -373,7 +424,9 @@ describe("SkillListPanel", () => {
 
     render(<SkillListPanel />);
 
-    const recentRow = screen.getByText("recent-skill").closest('[role="button"]');
+    const recentRow = screen
+      .getByText("recent-skill")
+      .closest('[role="button"]');
     expect(recentRow?.getAttribute("aria-selected")).toBe("true");
   });
 
@@ -389,7 +442,9 @@ describe("SkillListPanel", () => {
 
     render(<SkillListPanel />);
 
-    const recentRow = screen.getByText("recent-skill").closest('[role="button"]');
+    const recentRow = screen
+      .getByText("recent-skill")
+      .closest('[role="button"]');
     expect(recentRow?.getAttribute("aria-selected")).toBe("true");
   });
 
@@ -400,7 +455,9 @@ describe("SkillListPanel", () => {
     useSkillStore.setState({ skills: [skill] });
 
     render(<SkillListPanel />);
-    fireEvent.click(screen.getByText("new-workflow").closest('[role="button"]')!);
+    fireEvent.click(
+      screen.getByText("new-workflow").closest('[role="button"]')!,
+    );
 
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/skill/$skillName",
@@ -409,7 +466,10 @@ describe("SkillListPanel", () => {
   });
 
   it("navigates to /skill/$skillName when clicking a step-1 skill", () => {
-    const skill = makeBuilderSkill({ name: "step1-nav", current_step: "Step 1" });
+    const skill = makeBuilderSkill({
+      name: "step1-nav",
+      current_step: "Step 1",
+    });
     useSkillStore.setState({ skills: [skill] });
 
     render(<SkillListPanel />);
@@ -447,7 +507,10 @@ describe("SkillListPanel", () => {
   it("does not navigate or call onSelectSkill when clicking a locked row", () => {
     const onSelectSkill = vi.fn();
     const skillA = makeBuilderSkill({ name: "running-skill" });
-    const skillB = makeBuilderSkill({ name: "locked-skill", status: "completed" });
+    const skillB = makeBuilderSkill({
+      name: "locked-skill",
+      status: "completed",
+    });
     useSkillStore.setState({ skills: [skillA, skillB] });
     useAgentStore.setState((state) => ({
       runs: {
@@ -469,7 +532,9 @@ describe("SkillListPanel", () => {
     }));
 
     render(<SkillListPanel onSelectSkill={onSelectSkill} />);
-    fireEvent.click(screen.getByText("locked-skill").closest('[role="button"]')!);
+    fireEvent.click(
+      screen.getByText("locked-skill").closest('[role="button"]')!,
+    );
 
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(onSelectSkill).not.toHaveBeenCalled();
@@ -477,8 +542,14 @@ describe("SkillListPanel", () => {
 
   it("locks other rows while a refine agent is running", () => {
     const onSelectSkill = vi.fn();
-    const skillA = makeBuilderSkill({ name: "refine-skill", status: "completed" });
-    const skillB = makeBuilderSkill({ name: "other-skill", status: "completed" });
+    const skillA = makeBuilderSkill({
+      name: "refine-skill",
+      status: "completed",
+    });
+    const skillB = makeBuilderSkill({
+      name: "other-skill",
+      status: "completed",
+    });
     useSkillStore.setState({ skills: [skillA, skillB] });
     useAgentStore.setState((state) => ({
       runs: {
@@ -516,7 +587,10 @@ describe("SkillListPanel", () => {
 
   it("shows Review menu item for completed builder skills and navigates to workflow in review mode", async () => {
     const user = userEvent.setup();
-    const skill = makeBuilderSkill({ name: "review-skill", status: "completed" });
+    const skill = makeBuilderSkill({
+      name: "review-skill",
+      status: "completed",
+    });
     useSkillStore.setState({ skills: [skill] });
 
     render(<SkillListPanel />);
@@ -549,12 +623,17 @@ describe("SkillListPanel", () => {
     await screen.findByRole("menuitem", { name: "Overview" });
 
     // Review should NOT be present for imported skills
-    expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Review" }),
+    ).not.toBeInTheDocument();
   });
 
   it("groups completed builder actions into workflow and skill sections", async () => {
     const user = userEvent.setup();
-    const skill = makeBuilderSkill({ name: "grouped-builder", status: "completed" });
+    const skill = makeBuilderSkill({
+      name: "grouped-builder",
+      status: "completed",
+    });
     useSkillStore.setState({ skills: [skill] });
 
     render(<SkillListPanel />);
@@ -562,14 +641,28 @@ describe("SkillListPanel", () => {
     await openSkillMenu("grouped-builder", user);
 
     expect(screen.getByText("WORKFLOW")).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Review" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Redo workflow" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Review" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Redo workflow" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("SKILL")).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveClass("text-destructive");
+    expect(
+      screen.getByRole("menuitem", { name: "Overview" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Refine" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Restore version" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Export" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveClass(
+      "text-destructive",
+    );
   });
 
   it("shows the lifecycle section for imported skills without workflow-only actions", async () => {
@@ -583,12 +676,24 @@ describe("SkillListPanel", () => {
 
     expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
     expect(screen.getByText("SKILL")).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Overview" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Refine" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Restore version" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Export" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Review" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Redo workflow" }),
+    ).not.toBeInTheDocument();
   });
 
   it("uses the same non-builder menu structure for marketplace skills", async () => {
@@ -605,38 +710,72 @@ describe("SkillListPanel", () => {
 
     expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
     expect(screen.getByText("SKILL")).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Overview" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Refine" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Restore version" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Export" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Review" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Redo workflow" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the in-progress builder menu focused on resuming the workflow", async () => {
     const user = userEvent.setup();
-    const skill = makeBuilderSkill({ name: "resume-builder", current_step: "Step 1" });
+    const skill = makeBuilderSkill({
+      name: "resume-builder",
+      current_step: "Step 1",
+    });
     useSkillStore.setState({ skills: [skill] });
 
     render(<SkillListPanel />);
 
     await openSkillMenu("resume-builder", user);
 
-    expect(screen.getByRole("menuitem", { name: "Continue Building" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Continue Building" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Delete" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
     expect(screen.queryByText("SKILL")).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Overview" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Refine" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Restore version" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Overview" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Refine" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Review" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Restore version" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Redo workflow" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Export" }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not navigate when clicking the running skill itself", () => {
     const onSelectSkill = vi.fn();
-    const skill = makeBuilderSkill({ name: "running-skill", current_step: "Step 2" });
+    const skill = makeBuilderSkill({
+      name: "running-skill",
+      current_step: "Step 2",
+    });
     useSkillStore.setState({ skills: [skill] });
     useAgentStore.setState((state) => ({
       runs: {
@@ -658,7 +797,9 @@ describe("SkillListPanel", () => {
     }));
 
     render(<SkillListPanel onSelectSkill={onSelectSkill} />);
-    fireEvent.click(screen.getByText("running-skill").closest('[role="button"]')!);
+    fireEvent.click(
+      screen.getByText("running-skill").closest('[role="button"]')!,
+    );
 
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(onSelectSkill).not.toHaveBeenCalled();

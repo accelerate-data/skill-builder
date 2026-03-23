@@ -417,6 +417,53 @@ pub struct MarketplaceImportResult {
     pub error: Option<String>,
 }
 
+async fn fetch_plugin_name_for_skill_path(
+    client: &reqwest::Client,
+    owner: &str,
+    repo: &str,
+    branch: &str,
+    skill_path: &str,
+) -> Option<String> {
+    let plugin_path = extract_plugin_path(skill_path);
+    let plugin_json_path = if plugin_path.is_empty() {
+        ".claude-plugin/plugin.json".to_string()
+    } else {
+        format!("{}/.claude-plugin/plugin.json", plugin_path)
+    };
+    let url = format!(
+        "https://raw.githubusercontent.com/{}/{}/{}/{}",
+        owner, repo, branch, plugin_json_path
+    );
+
+    match client.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => resp
+            .text()
+            .await
+            .ok()
+            .and_then(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
+            .and_then(|value| value["name"].as_str().map(str::trim).map(str::to_string))
+            .filter(|name| !name.is_empty()),
+        Ok(resp) => {
+            log::debug!(
+                "[import_marketplace_to_library] plugin metadata unavailable for '{}' at '{}' (status={})",
+                skill_path,
+                plugin_json_path,
+                resp.status()
+            );
+            None
+        }
+        Err(err) => {
+            log::warn!(
+                "[import_marketplace_to_library] failed to fetch plugin metadata for '{}' from '{}': {}",
+                skill_path,
+                plugin_json_path,
+                err
+            );
+            None
+        }
+    }
+}
+
 /// Import one or more skills from a marketplace registry into the Skill Library.
 /// `source_url` is the registry URL the caller is operating on (caller already knows which registry).
 /// Each successfully imported skill gets a `workflow_runs` row with `source='marketplace'`.
@@ -492,6 +539,8 @@ pub async fn import_marketplace_to_library(
 
     let skills_dir = Path::new(&skills_path);
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
+    let mut plugin_name_cache: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
 
     for skill_path in &skill_paths {
         let override_ref = metadata_overrides
@@ -512,6 +561,18 @@ pub async fn import_marketplace_to_library(
         .await
         {
             Ok(mut skill) => {
+                let plugin_path = extract_plugin_path(skill_path).to_string();
+                let plugin_name = if let Some(cached) = plugin_name_cache.get(&plugin_path) {
+                    cached.clone()
+                } else {
+                    let fetched =
+                        fetch_plugin_name_for_skill_path(&client, owner, repo, &branch, skill_path)
+                            .await;
+                    plugin_name_cache.insert(plugin_path.clone(), fetched.clone());
+                    fetched
+                };
+                skill.plugin_name = plugin_name;
+
                 let final_version = match skill.version.clone() {
                     Some(version) => version,
                     None => {

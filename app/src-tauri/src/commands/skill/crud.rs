@@ -113,9 +113,7 @@ pub(crate) fn list_skills_inner(
 
     if let Some(source_url) = source_url {
         let mut stmt = conn
-            .prepare(
-                "SELECT skill_name FROM imported_skills WHERE marketplace_source_url = ?1",
-            )
+            .prepare("SELECT skill_name FROM imported_skills WHERE marketplace_source_url = ?1")
             .map_err(|e| format!("list_skills_inner source filter prepare: {}", e))?;
         let scoped_names: std::collections::HashSet<String> = stmt
             .query_map(rusqlite::params![source_url], |row| row.get::<_, String>(0))
@@ -297,14 +295,22 @@ pub(crate) fn create_skill_inner(
 
             if let Some(login) = author_login {
                 crate::db::set_skill_author(conn, name, login, author_avatar).map_err(|e| {
-                    log::warn!("[create_skill_inner] set_skill_author failed for {}: {}", name, e);
+                    log::warn!(
+                        "[create_skill_inner] set_skill_author failed for {}: {}",
+                        name,
+                        e
+                    );
                     e
                 })?;
             }
 
             if let Some(ij) = intake_json {
                 crate::db::set_skill_intake(conn, name, Some(ij)).map_err(|e| {
-                    log::warn!("[create_skill_inner] set_skill_intake failed for {}: {}", name, e);
+                    log::warn!(
+                        "[create_skill_inner] set_skill_intake failed for {}: {}",
+                        name,
+                        e
+                    );
                     e
                 })?;
             }
@@ -325,8 +331,13 @@ pub(crate) fn create_skill_inner(
                     argument_hint,
                     user_invocable,
                     disable_model_invocation,
-                ).map_err(|e| {
-                    log::warn!("[create_skill_inner] set_skill_behaviour failed for {}: {}", name, e);
+                )
+                .map_err(|e| {
+                    log::warn!(
+                        "[create_skill_inner] set_skill_behaviour failed for {}: {}",
+                        name,
+                        e
+                    );
                     e
                 })?;
             }
