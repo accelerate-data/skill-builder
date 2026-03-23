@@ -31,9 +31,13 @@ vi.mock("@/lib/tauri", () => ({
   packageSkill: vi.fn(),
   saveExportTo: vi.fn(),
   resetWorkflowStep: vi.fn(),
+  createPluginFromSkills: vi.fn(),
+  moveSkillToPlugin: vi.fn(),
+  removeSkillFromPlugin: vi.fn(),
 }));
 
 import { SkillListPanel } from "@/components/skill-list-panel";
+import { createPluginFromSkills, moveSkillToPlugin, removeSkillFromPlugin } from "@/lib/tauri";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -253,6 +257,72 @@ describe("SkillListPanel", () => {
 
     const dot = screen.getByLabelText("status-dot-imported:id-mkt-skill");
     expect(dot.style.backgroundColor).toBe("var(--color-pacific)");
+  });
+
+  it("creates a plugin from a builder skill in the main sidebar", async () => {
+    const user = userEvent.setup();
+    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("Analytics Pack");
+    useSkillStore.setState({ skills: [recentBuilder] });
+
+    render(<SkillListPanel />);
+
+    await openSkillMenu("recent-skill", user);
+    await user.click(screen.getByRole("menuitem", { name: "Create plugin" }));
+
+    expect(promptSpy).toHaveBeenCalled();
+    expect(createPluginFromSkills).toHaveBeenCalledWith("Analytics Pack", ["recent-skill"]);
+    promptSpy.mockRestore();
+  });
+
+  it("moves a builder skill to another existing plugin from the main sidebar", async () => {
+    const user = userEvent.setup();
+    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("analytics-pack");
+    useSkillStore.setState({
+      skills: [
+        recentBuilder,
+        makeBuilderSkill({
+          name: "plugin-skill",
+          library_key: "skill-builder:analytics-pack:plugin-skill",
+          plugin_slug: "analytics-pack",
+          plugin_display_name: "Analytics Pack",
+          is_default_plugin: false,
+          status: "completed",
+          created_at: new Date(Date.now() - 120_000).toISOString(),
+        }),
+      ],
+    });
+
+    render(<SkillListPanel />);
+
+    await openSkillMenu("recent-skill", user);
+    await user.click(screen.getByRole("menuitem", { name: "Move to plugin" }));
+
+    expect(promptSpy).toHaveBeenCalled();
+    expect(moveSkillToPlugin).toHaveBeenCalledWith("recent-skill", "analytics-pack");
+    promptSpy.mockRestore();
+  });
+
+  it("removes a builder skill from its plugin from the main sidebar", async () => {
+    const user = userEvent.setup();
+    useSkillStore.setState({
+      skills: [
+        makeBuilderSkill({
+          name: "plugin-skill",
+          library_key: "skill-builder:analytics-pack:plugin-skill",
+          plugin_slug: "analytics-pack",
+          plugin_display_name: "Analytics Pack",
+          is_default_plugin: false,
+          status: "completed",
+        }),
+      ],
+    });
+
+    render(<SkillListPanel />);
+
+    await openSkillMenu("plugin-skill", user);
+    await user.click(screen.getByRole("menuitem", { name: "Remove from plugin" }));
+
+    expect(removeSkillFromPlugin).toHaveBeenCalledWith("skill-builder:analytics-pack:plugin-skill");
   });
 
   // ── Pulse animation ───────────────────────────────────────────────────────
