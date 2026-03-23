@@ -193,6 +193,56 @@ fn test_migration_count_matches_expected() {
 }
 
 #[test]
+fn test_repair_plugin_ownership_schema_recovers_when_migration_38_was_only_marked_applied() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    run_migrations(&conn).unwrap();
+
+    for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+        if version == 38 {
+            super::mark_migration_applied(&conn, version).unwrap();
+            continue;
+        }
+        migrate_fn(&conn).unwrap();
+        super::mark_migration_applied(&conn, version).unwrap();
+    }
+
+    let has_plugin_id_before: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('skills') WHERE name = 'plugin_id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(has_plugin_id_before, 0);
+
+    run_marketplace_source_url_migration(&conn).unwrap();
+    repair_plugin_ownership_schema(&conn).unwrap();
+
+    let has_plugin_id_after: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('skills') WHERE name = 'plugin_id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(has_plugin_id_after, 1);
+
+    let default_plugin_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM plugins WHERE slug = 'no-plugin'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(default_plugin_count, 1);
+
+    save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
+    let skill = get_skill_master(&conn, "test-skill").unwrap().unwrap();
+    assert_eq!(skill.plugin_slug, "no-plugin");
+}
+
+#[test]
 fn test_workflow_run_crud() {
     let conn = create_test_db();
     save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();
