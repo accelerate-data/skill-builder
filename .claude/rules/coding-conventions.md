@@ -47,11 +47,19 @@ Applies to: frontend TypeScript, Rust backend, Node.js sidecar.
 Organize logic into three explicit layers:
 
 - **Data** — types, interfaces, and raw values. No logic.
-- **Calculations** — pure functions that take data and return data.
-  No side effects, no I/O, no state mutations. Unit-test these in isolation.
+- **Calculations** — pure functions: data in, data out.
+  No side effects, no I/O, no store reads. Unit-test in isolation.
 - **Actions** — the only layer allowed to mutate state, call APIs,
   write to the DB, invoke Tauri commands, or trigger side effects.
   Actions call calculations; calculations never call actions.
+
+### Where each layer lives
+
+| Layer | Frontend | Rust | Sidecar |
+|---|---|---|---|
+| Data | `lib/types.ts`, `lib/display-types.ts` | `types/` | `display-types.ts`, `agent-events.ts` |
+| Calculations | `lib/*.ts` (pure functions) | pure helper fns called by commands | `lib/`, `message-classifier.ts`, `tool-summaries.ts` |
+| Actions | `stores/*.ts` actions, `hooks/` with side effects | `#[tauri::command]` handlers | `message-processor.ts`, `run-agent.ts` |
 
 ### Rules
 
@@ -60,6 +68,21 @@ Organize logic into three explicit layers:
 - An action may call calculations to derive the next state before writing it.
 - New business logic goes into a calculation first; wrap in an action only when
   a side effect is needed.
+- Inline derivations in component renders (`filter`/`map`/`reduce` with logic)
+  must be extracted to `lib/` — not inlined in JSX or moved to a Zustand selector.
+- Async actions follow the same rule: call the calculation first,
+  then `await` the side effect, then `set()`.
+- A React hook that only derives values is a calculation — extract the derivation
+  to `lib/`. A hook with `useEffect`, `invoke()`, or `set()` is an action and
+  belongs in `hooks/`.
+
+### Testing
+
+| Layer | Where tests live | Pattern |
+|---|---|---|
+| Frontend calculations | `app/src/__tests__/lib/` | Pass all inputs explicitly — no store mocking needed |
+| Rust calculations | Inline `#[cfg(test)]` at end of the same `.rs` file | `use super::*;` + `tempfile` for filesystem fixtures |
+| Sidecar calculations | `app/sidecar/__tests__/<module>.test.ts` | Vitest, pure input/output, no mocking |
 
 ### Examples
 
@@ -85,4 +108,21 @@ addMessage: (msg) => set((s) => {
   const messages = [...s.messages, msg];
   return { messages, hasUnread: countUnread(messages) > 0 };
 })
+```
+
+**Rust** — pure helper vs. command:
+
+```rust
+// Calculation: pure, no DB/IO
+pub(crate) fn workspace_context_dir(workspace_path: &str, skill_name: &str) -> PathBuf {
+    Path::new(workspace_path).join(skill_name).join("context")
+}
+
+// Action: command calls the helper, then does I/O
+#[tauri::command]
+pub fn get_eval_path(skill_name: String, workspace_path: String) -> String {
+    workspace_context_dir(&workspace_path, &skill_name)
+        .to_string_lossy()
+        .into_owned()
+}
 ```
