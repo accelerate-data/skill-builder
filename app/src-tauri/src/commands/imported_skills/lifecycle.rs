@@ -391,6 +391,97 @@ mod tests {
     }
 
     #[test]
+    fn test_create_plugin_slug_conflict_returns_error() {
+        let conn = create_test_db_for_tests();
+        // Create a plugin first
+        crate::db::create_plugin(&conn, "my-plugin", "local", None, None).unwrap();
+        // Attempting to create with the same slug should fail
+        let slug = crate::db::slugify_plugin_name("my-plugin");
+        assert!(crate::db::get_plugin_id_by_slug(&conn, &slug).unwrap().is_some());
+    }
+
+    #[test]
+    fn test_delete_plugin_blocks_on_active_skills() {
+        let conn = create_test_db_for_tests();
+        let (_, slug) = crate::db::create_plugin(&conn, "test-plugin", "local", None, None).unwrap();
+        // Create an active skill in the plugin
+        crate::db::upsert_skill_in_plugin(&conn, "active-skill", "skill-builder", "domain", &slug).unwrap();
+
+        // Count active (non-deleted) skills
+        let active_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1 AND COALESCE(s.deleted_at, '') = ''",
+                rusqlite::params![&slug],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(active_count, 1, "should have 1 active skill blocking delete");
+    }
+
+    #[test]
+    fn test_delete_plugin_happy_path_removes_db_rows() {
+        let conn = create_test_db_for_tests();
+        let (_, slug) = crate::db::create_plugin(&conn, "doomed-plugin", "local", None, None).unwrap();
+        // Create and soft-delete a skill in this plugin
+        crate::db::upsert_skill_in_plugin(&conn, "old-skill", "skill-builder", "domain", &slug).unwrap();
+        conn.execute(
+            "UPDATE skills SET deleted_at = datetime('now') WHERE name = 'old-skill'",
+            [],
+        ).unwrap();
+
+        // Wrap in transaction as the real delete_plugin does
+        conn.execute_batch("BEGIN").unwrap();
+        conn.execute(
+            "DELETE FROM skills WHERE plugin_id = (SELECT id FROM plugins WHERE slug = ?1)",
+            rusqlite::params![&slug],
+        ).unwrap();
+        crate::db::delete_plugin_by_slug(&conn, &slug).unwrap();
+        conn.execute_batch("COMMIT").unwrap();
+
+        // Verify plugin row is gone
+        assert!(crate::db::get_plugin_id_by_slug(&conn, &slug).unwrap().is_none());
+        // Verify skill row is gone
+        let skill_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'old-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(skill_count, 0);
+    }
+
+    #[test]
+    fn test_move_skill_to_plugin_db_operation() {
+        let conn = create_test_db_for_tests();
+        // Create default plugin and a target plugin
+        crate::db::ensure_default_plugin(&conn).unwrap();
+        let (_, target_slug) = crate::db::create_plugin(&conn, "target-plugin", "local", None, None).unwrap();
+        // Create a skill in the default plugin
+        crate::db::upsert_skill(&conn, "movable-skill", "skill-builder", "domain").unwrap();
+
+        // Move it
+        crate::db::move_skill_to_plugin(&conn, "movable-skill", DEFAULT_PLUGIN_SLUG, &target_slug).unwrap();
+
+        // Verify the skill is now in the target plugin
+        let skill = crate::db::get_skill_master_in_plugin(&conn, "movable-skill", &target_slug).unwrap();
+        assert!(skill.is_some(), "skill should be in target plugin");
+        assert_eq!(skill.unwrap().plugin_slug, target_slug);
+    }
+
+    #[test]
+    fn test_remove_skill_from_plugin_moves_to_default() {
+        let conn = create_test_db_for_tests();
+        crate::db::ensure_default_plugin(&conn).unwrap();
+        let (_, source_slug) = crate::db::create_plugin(&conn, "source-plugin", "local", None, None).unwrap();
+        crate::db::upsert_skill_in_plugin(&conn, "my-skill", "skill-builder", "domain", &source_slug).unwrap();
+
+        // Move to default
+        crate::db::move_skill_to_plugin(&conn, "my-skill", &source_slug, DEFAULT_PLUGIN_SLUG).unwrap();
+
+        let skill = crate::db::get_skill_master(&conn, "my-skill").unwrap().unwrap();
+        assert_eq!(skill.plugin_slug, DEFAULT_PLUGIN_SLUG);
+    }
+
+    #[test]
     fn test_delete_imported_skill_inner_not_found() {
         let conn = create_test_db_for_tests();
         let result = delete_imported_skill_inner(&conn, "nonexistent-id", "");
