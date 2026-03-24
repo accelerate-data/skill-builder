@@ -25,7 +25,7 @@ pub fn list_skills_for_documents(db: tauri::State<'_, Db>) -> Result<Vec<SkillId
             "SELECT s.id, s.name, p.slug, p.display_name, (p.slug = 'skills') AS is_default
              FROM skills s
              JOIN plugins p ON s.plugin_id = p.id
-             WHERE s.deleted_at IS NULL
+             WHERE COALESCE(s.deleted_at, '') = ''
              ORDER BY (p.slug != 'skills'), s.name ASC",
         )
         .map_err(|e| e.to_string())?;
