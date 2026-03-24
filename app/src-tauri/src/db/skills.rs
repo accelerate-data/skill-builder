@@ -1,4 +1,4 @@
-use crate::types::{SkillMasterRow, WorkflowRunRow, WorkflowStepRow};
+use crate::types::SkillMasterRow;
 use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashMap;
 
@@ -394,17 +394,6 @@ pub fn delete_skill_in_plugin(conn: &Connection, name: &str, plugin_slug: &str) 
     Ok(())
 }
 
-/// Get the `workflow_runs.id` integer for a given `skill_name`. Returns None if not found.
-pub fn get_workflow_run_id(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
-    conn.query_row(
-        "SELECT id FROM workflow_runs WHERE skill_name = ?1",
-        rusqlite::params![skill_name],
-        |row| row.get(0),
-    )
-    .optional()
-    .map_err(|e| e.to_string())
-}
-
 /// Get the `skills.id` integer for a given skill name. Returns None if not found.
 pub fn get_skill_master_id(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
     get_skill_master_id_in_plugin(conn, skill_name, DEFAULT_PLUGIN_SLUG)
@@ -427,28 +416,6 @@ pub fn get_skill_master_id_in_plugin(
     .map_err(|e| e.to_string())
 }
 
-// --- Workflow Run ---
-
-pub fn save_workflow_run(
-    conn: &Connection,
-    skill_name: &str,
-    current_step: i32,
-    status: &str,
-    purpose: &str,
-) -> Result<(), String> {
-    // Ensure the skills master row exists (skill-builder source)
-    let skill_id = upsert_skill(conn, skill_name, "skill-builder", purpose)?;
-    conn.execute(
-        "INSERT INTO workflow_runs (skill_name, current_step, status, purpose, skill_id, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now') || 'Z')
-         ON CONFLICT(skill_name) DO UPDATE SET
-             current_step = ?2, status = ?3, purpose = ?4, skill_id = ?5, updated_at = datetime('now') || 'Z'",
-        rusqlite::params![skill_name, current_step, status, purpose, skill_id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 pub fn move_skill_to_plugin(
     conn: &Connection,
     skill_name: &str,
@@ -465,47 +432,6 @@ pub fn move_skill_to_plugin(
         rusqlite::params![skill_name, from_plugin_slug, target_plugin_id],
     )
     .map_err(|e| format!("move_skill_to_plugin: {}", e))?;
-    Ok(())
-}
-
-pub fn set_skill_author(
-    conn: &Connection,
-    skill_name: &str,
-    author_login: &str,
-    author_avatar: Option<&str>,
-) -> Result<(), String> {
-    conn.execute(
-        "UPDATE workflow_runs SET author_login = ?2, author_avatar = ?3 WHERE skill_name = ?1",
-        rusqlite::params![skill_name, author_login, author_avatar],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[cfg(test)]
-pub fn set_skill_display_name(
-    conn: &Connection,
-    skill_name: &str,
-    display_name: Option<&str>,
-) -> Result<(), String> {
-    conn.execute(
-        "UPDATE workflow_runs SET display_name = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
-        rusqlite::params![skill_name, display_name],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn set_skill_intake(
-    conn: &Connection,
-    skill_name: &str,
-    intake_json: Option<&str>,
-) -> Result<(), String> {
-    conn.execute(
-        "UPDATE workflow_runs SET intake_json = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
-        rusqlite::params![skill_name, intake_json],
-    )
-    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -547,207 +473,6 @@ pub fn set_skill_behaviour(
     )
     .map_err(|e| e.to_string())?;
 
-    Ok(())
-}
-
-pub fn get_workflow_run(
-    conn: &Connection,
-    skill_name: &str,
-) -> Result<Option<WorkflowRunRow>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT skill_name, current_step, status, purpose, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created')
-             FROM workflow_runs WHERE skill_name = ?1",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let result = stmt.query_row(rusqlite::params![skill_name], |row| {
-        Ok(WorkflowRunRow {
-            skill_name: row.get(0)?,
-            current_step: row.get(1)?,
-            status: row.get(2)?,
-            purpose: row.get(3)?,
-            created_at: row.get(4)?,
-            updated_at: row.get(5)?,
-            author_login: row.get(6)?,
-            author_avatar: row.get(7)?,
-            display_name: row.get(8)?,
-            intake_json: row.get(9)?,
-            source: row.get(10)?,
-        })
-    });
-
-    match result {
-        Ok(run) => Ok(Some(run)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-pub fn get_purpose(conn: &Connection, skill_name: &str) -> Result<String, String> {
-    get_workflow_run(conn, skill_name).map(|opt| {
-        opt.map(|run| run.purpose)
-            .unwrap_or_else(|| "domain".to_string())
-    })
-}
-
-pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT skill_name, current_step, status, purpose, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created')
-             FROM workflow_runs ORDER BY skill_name",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(WorkflowRunRow {
-                skill_name: row.get(0)?,
-                current_step: row.get(1)?,
-                status: row.get(2)?,
-                purpose: row.get(3)?,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
-                author_login: row.get(6)?,
-                author_avatar: row.get(7)?,
-                display_name: row.get(8)?,
-                intake_json: row.get(9)?,
-                source: row.get(10)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
-
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
-}
-
-pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), String> {
-    // Look up FK ids before deleting the parent rows
-    let wr_id = get_workflow_run_id(conn, skill_name)?
-        .ok_or_else(|| format!("Workflow run not found for skill '{}'", skill_name))?;
-    let s_id = get_skill_master_id(conn, skill_name)?
-        .ok_or_else(|| format!("Skill '{}' not found in skills master", skill_name))?;
-
-    // Delete workflow-state child rows by FK columns only.
-    // Usage history tables (agent_runs/workflow_sessions) are intentionally retained.
-    conn.execute(
-        "DELETE FROM workflow_artifacts WHERE workflow_run_id = ?1",
-        rusqlite::params![wr_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    conn.execute(
-        "DELETE FROM workflow_steps WHERE workflow_run_id = ?1",
-        rusqlite::params![wr_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    conn.execute(
-        "DELETE FROM skill_locks WHERE skill_id = ?1",
-        rusqlite::params![s_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    conn.execute(
-        "DELETE FROM skill_tags WHERE skill_id = ?1",
-        rusqlite::params![s_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    // Delete from imported_skills to prevent stale rows blocking re-import
-    conn.execute(
-        "DELETE FROM imported_skills WHERE skill_master_id = ?1",
-        rusqlite::params![s_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    conn.execute(
-        "DELETE FROM workflow_runs WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
-
-    // Also delete from skills master table
-    delete_skill(conn, skill_name)?;
-    Ok(())
-}
-
-// --- Workflow Steps ---
-
-pub fn save_workflow_step(
-    conn: &Connection,
-    skill_name: &str,
-    step_id: i32,
-    status: &str,
-) -> Result<(), String> {
-    let now = chrono::Utc::now().to_rfc3339();
-    let (started, completed) = match status {
-        "in_progress" => (Some(now.clone()), None),
-        "completed" => (None, Some(now)),
-        _ => (None, None),
-    };
-
-    let workflow_run_id = get_workflow_run_id(conn, skill_name)?;
-
-    conn.execute(
-        "INSERT INTO workflow_steps (skill_name, step_id, status, started_at, completed_at, workflow_run_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT(skill_name, step_id) DO UPDATE SET
-             status = ?3,
-             started_at = COALESCE(?4, started_at),
-             completed_at = ?5,
-             workflow_run_id = COALESCE(?6, workflow_run_id)",
-        rusqlite::params![skill_name, step_id, status, started, completed, workflow_run_id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn get_workflow_steps(
-    conn: &Connection,
-    skill_name: &str,
-) -> Result<Vec<WorkflowStepRow>, String> {
-    let wr_id = match get_workflow_run_id(conn, skill_name)? {
-        Some(id) => id,
-        None => return Ok(vec![]),
-    };
-
-    let mut stmt = conn
-        .prepare(
-            "SELECT skill_name, step_id, status, started_at, completed_at
-             FROM workflow_steps WHERE workflow_run_id = ?1 ORDER BY step_id",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map(rusqlite::params![wr_id], |row| {
-            Ok(WorkflowStepRow {
-                skill_name: row.get(0)?,
-                step_id: row.get(1)?,
-                status: row.get(2)?,
-                started_at: row.get(3)?,
-                completed_at: row.get(4)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
-}
-
-pub fn reset_workflow_steps_from(
-    conn: &Connection,
-    skill_name: &str,
-    from_step: i32,
-) -> Result<(), String> {
-    let wr_id = match get_workflow_run_id(conn, skill_name)? {
-        Some(id) => id,
-        None => return Ok(()),
-    };
-    conn.execute(
-        "UPDATE workflow_steps SET status = 'pending', started_at = NULL, completed_at = NULL
-         WHERE workflow_run_id = ?1 AND step_id >= ?2",
-        rusqlite::params![wr_id, from_step],
-    )
-    .map_err(|e| e.to_string())?;
     Ok(())
 }
 

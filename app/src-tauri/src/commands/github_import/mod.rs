@@ -3,12 +3,16 @@ mod catalog;
 pub mod commands;
 mod http;
 mod import;
+pub mod updates;
 pub mod url;
 
 pub use commands::{
-    check_marketplace_updates, check_marketplace_url, check_skill_customized,
+    check_marketplace_url, check_skill_customized,
     get_dashboard_skill_names, import_marketplace_to_library, list_github_skills,
-    MarketplaceImportResult, MarketplaceUpdateResult, RegistryNameInfo, SkillUpdateInfo,
+    MarketplaceImportResult,
+};
+pub use updates::{
+    check_marketplace_updates, MarketplaceUpdateResult, RegistryNameInfo, SkillUpdateInfo,
 };
 pub(crate) use http::{build_github_client, get_default_branch};
 pub(crate) use import::compute_skill_content_hash;
@@ -26,7 +30,7 @@ mod tests {
     use crate::types::AvailableSkill;
 
     use super::catalog::{discover_skills_from_catalog, extract_plugin_path};
-    use super::commands::{collect_updates_for_installed, InstalledMarketplaceSkill};
+    use super::updates::{collect_updates_for_installed, InstalledMarketplaceSkill};
     use super::import::{rewrite_skill_md, yaml_quote};
     use super::url::{marketplace_manifest_path, parse_github_url_inner};
 

@@ -357,7 +357,7 @@ pub fn run() {
             commands::github_import::commands::import_marketplace_to_library,
             commands::github_import::commands::import_marketplace_plugin_to_library,
             commands::github_import::commands::get_dashboard_skill_names,
-            commands::github_import::commands::check_marketplace_updates,
+            commands::github_import::updates::check_marketplace_updates,
             commands::github_import::commands::check_skill_customized,
             commands::usage::get_usage_summary,
             commands::usage::get_usage_by_step,
