@@ -453,6 +453,29 @@ pub async fn cancel_refine_turn(
     Ok(())
 }
 
+/// Generic cancel: sends stream_cancel to the sidecar for any running agent.
+/// Callers supply both skill_name and session_id directly (e.g. from agent-store).
+#[tauri::command]
+pub async fn cancel_agent_run(
+    skill_name: String,
+    session_id: String,
+    pool: tauri::State<'_, SidecarPool>,
+) -> Result<(), String> {
+    log::info!(
+        "[cancel_agent_run] skill='{}' session='{}'",
+        skill_name,
+        session_id
+    );
+    if let Err(err) = pool.send_stream_cancel(&skill_name, &session_id).await {
+        log::warn!(
+            "[cancel_agent_run] Failed to send stream_cancel for skill '{}': {}",
+            skill_name,
+            err
+        );
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn answer_refine_question(
     session_id: String,

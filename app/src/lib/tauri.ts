@@ -445,6 +445,9 @@ export const closeRefineSession = (sessionId: string) =>
 export const cancelRefineTurn = (sessionId: string) =>
   invoke<void>("cancel_refine_turn", { sessionId })
 
+export const cancelAgentRun = (skillName: string, sessionId: string) =>
+  invoke<void>("cancel_agent_run", { skillName, sessionId })
+
 export const answerRefineQuestion = (
   sessionId: string,
   agentId: string,

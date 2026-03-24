@@ -13,7 +13,9 @@ import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useSkillStore } from "@/stores/skill-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
+import { useAgentStore } from "@/stores/agent-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
+import { cancelAgentRun } from "@/lib/tauri";
 
 export function AppLayout() {
   const isConfigured = useSettingsStore((s) => s.isConfigured);
@@ -62,6 +64,17 @@ export function AppLayout() {
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault();
         setPanelCollapsed((prev) => !prev);
+      }
+      if (e.key === "Escape") {
+        const runs = useAgentStore.getState().runs;
+        const running = Object.values(runs).find(
+          (r) => r.status === "running" && r.skillName && r.sessionId,
+        );
+        if (running) {
+          cancelAgentRun(running.skillName!, running.sessionId!).catch((err) => {
+            console.error("[app-layout] escape: cancel failed", err);
+          });
+        }
       }
     };
 
