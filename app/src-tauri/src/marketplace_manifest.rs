@@ -38,6 +38,66 @@ struct PluginJson {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
+/// Ensure a plugin is listed in marketplace.json. If the plugin slug is not
+/// already present, append it. If marketplace.json doesn't exist, create it.
+pub fn ensure_plugin_in_marketplace(root: &Path, slug: &str, display_name: &str) -> Result<(), String> {
+    let mj_path = root.join(".claude-plugin").join("marketplace.json");
+
+    let mut marketplace = if mj_path.is_file() {
+        let content = fs::read_to_string(&mj_path)
+            .map_err(|e| format!("Failed to read marketplace.json: {}", e))?;
+        serde_json::from_str::<LocalMarketplaceJson>(&content)
+            .unwrap_or_else(|_| LocalMarketplaceJson {
+                name: "skill-builder-local".to_string(),
+                owner: MarketplaceOwner { name: "Skill Builder".to_string() },
+                plugins: vec![],
+            })
+    } else {
+        LocalMarketplaceJson {
+            name: "skill-builder-local".to_string(),
+            owner: MarketplaceOwner { name: "Skill Builder".to_string() },
+            plugins: vec![],
+        }
+    };
+
+    // Check if already listed
+    let already_listed = marketplace.plugins.iter().any(|p| {
+        let s = p.source.strip_prefix("./").unwrap_or(&p.source).trim_end_matches('/');
+        s == slug
+    });
+
+    if !already_listed {
+        // Read plugin.json for metadata
+        let pj_path = root.join(slug).join(".claude-plugin").join("plugin.json");
+        let (description, version) = if pj_path.is_file() {
+            let content = fs::read_to_string(&pj_path).unwrap_or_default();
+            match serde_json::from_str::<PluginJson>(&content) {
+                Ok(pj) => (pj.description, pj.version),
+                Err(_) => (None, None),
+            }
+        } else {
+            (None, None)
+        };
+
+        marketplace.plugins.push(MarketplacePluginEntry {
+            name: display_name.to_string(),
+            source: format!("./{}", slug),
+            description,
+            version,
+        });
+
+        let config_dir = root.join(".claude-plugin");
+        fs::create_dir_all(&config_dir)
+            .map_err(|e| format!("Failed to create .claude-plugin dir: {}", e))?;
+        let json = serde_json::to_string_pretty(&marketplace)
+            .map_err(|e| format!("Failed to serialize marketplace.json: {}", e))?;
+        fs::write(&mj_path, json)
+            .map_err(|e| format!("Failed to write marketplace.json: {}", e))?;
+    }
+
+    Ok(())
+}
+
 /// Read `{root}/.claude-plugin/marketplace.json` and return a map of
 /// plugin slug → display name from each plugin entry's `name` field.
 /// The slug is derived from the `source` path (last segment after `./`).
