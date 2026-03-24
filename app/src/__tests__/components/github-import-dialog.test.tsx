@@ -83,6 +83,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_plugins: [],
+        list_plugins: [],
         list_skills: [],
       });
 
@@ -101,6 +102,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_plugins: samplePlugins,
+        list_plugins: [],
         list_skills: [],
       });
     });
@@ -135,31 +137,19 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_plugins: samplePlugins,
-        list_skills: [
+        list_plugins: [
           {
-            name: "analytics-helper",
-            library_key: "skill-builder:analytics-pack:analytics-helper",
-            current_step: null,
-            status: null,
-            last_modified: null,
-            tags: [],
-            purpose: "domain",
-            skill_source: "marketplace",
-            author_login: null,
-            author_avatar: null,
-            intake_json: null,
-            source: null,
-            description: null,
-            version: "1.0.0",
-            model: null,
-            argumentHint: null,
-            userInvocable: null,
-            disableModelInvocation: null,
-            plugin_slug: "analytics-pack",
-            plugin_display_name: "analytics-pack",
-            is_default_plugin: false,
+            id: 1,
+            slug: "analytics-pack",
+            display_name: "analytics-pack",
+            version: null,
+            source_type: "marketplace",
+            source_url: null,
+            is_default: false,
+            upgrade_locked: false,
           },
         ],
+        list_skills: [],
       });
 
       renderDialog();
@@ -179,6 +169,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_plugins: samplePlugins,
+        list_plugins: [],
         list_skills: [],
       });
     });
@@ -188,6 +179,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_plugins: samplePlugins,
+        list_plugins: [],
         list_skills: [],
         import_marketplace_plugin_to_library: [{ skill_name: "analytics-helper", success: true, error: null }],
       });
@@ -216,6 +208,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_plugins: samplePlugins,
+        list_plugins: [],
         list_skills: [],
         import_marketplace_plugin_to_library: [{ skill_name: "analytics-helper", success: true, error: null }],
       });
@@ -239,6 +232,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_plugins: samplePlugins,
+        list_plugins: [],
         list_skills: [],
         import_marketplace_plugin_to_library: [{ skill_name: "analytics-helper", success: false, error: "already exists" }],
       });
@@ -263,6 +257,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_plugins: samplePlugins,
+        list_plugins: [],
         list_skills: [],
       });
 

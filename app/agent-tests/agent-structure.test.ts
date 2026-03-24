@@ -12,7 +12,6 @@ const EXPECTED_AGENTS = [
 const PLUGIN_AGENTS: Record<string, string> = {
   "generate-skill": "skill-creator/agents/generate-skill.md",
   "rewrite-skill": "skill-creator/agents/rewrite-skill.md",
-  "research-orchestrator": "skill-content-researcher/agents/research-orchestrator.md",
   "detailed-research": "skill-content-researcher/agents/detailed-research.md",
   "confirm-decisions": "skill-content-researcher/agents/confirm-decisions.md",
 };
@@ -139,17 +138,6 @@ describe("read directive compliance", () => {
 });
 
 describe("Research scope guard contract prompts", () => {
-  it("research orchestrator is thin and calls research skill directly", () => {
-    const content = fs.readFileSync(
-      resolveAgentPath("research-orchestrator"),
-      "utf8"
-    );
-    expect(content).toMatch(/thin wrapper/i);
-    expect(content).toMatch(/skill-content-researcher:research/);
-    expect(content).not.toMatch(/skill-content-researcher:research-agent/);
-    expect(content).not.toMatch(/Preflight scope guard requirements:/i);
-  });
-
   it("research skill does not run preflight and emits low-score scope recommendation", () => {
     const content = fs.readFileSync(
       path.join(
@@ -211,17 +199,6 @@ describe("Research scope guard contract prompts", () => {
 //   - materialize_answer_evaluation_output_value() → answer-evaluator path
 
 describe("Agent output contracts (backend protocol alignment)", () => {
-  it("research-orchestrator returns research_complete envelope", () => {
-    const content = fs.readFileSync(
-      resolveAgentPath("research-orchestrator"),
-      "utf8"
-    );
-    expect(content).toMatch(/status.*research_complete/);
-    expect(content).toMatch(/dimensions_selected/);
-    expect(content).toMatch(/question_count/);
-    expect(content).toMatch(/research_output/);
-  });
-
   it("confirm-decisions returns version/metadata/decisions shape", () => {
     const content = fs.readFileSync(
       resolveAgentPath("confirm-decisions"),
