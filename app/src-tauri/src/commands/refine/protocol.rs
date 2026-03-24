@@ -29,18 +29,20 @@ pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
 }
 
-pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, plugin_slug: &str, skill_name: &str) {
-    let skill_workspace_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, skill_name: &str) {
+    // Workspace is always flat: workspace_path/skill_name/
+    // It is NOT organized by plugin (unlike the skills library).
+    let skill_workspace_dir = Path::new(workspace_path).join(skill_name);
     if !skill_workspace_dir.exists() {
         if let Err(e) = std::fs::create_dir_all(&skill_workspace_dir) {
             log::warn!(
-                "[send_refine_message] failed to create skill workspace dir '{}': {}",
+                "[ensure_skill_workspace_dir] failed to create skill workspace dir '{}': {}",
                 skill_workspace_dir.display(),
                 e
             );
         } else {
             log::debug!(
-                "[send_refine_message] created skill workspace dir '{}'",
+                "[ensure_skill_workspace_dir] created skill workspace dir '{}'",
                 skill_workspace_dir.display()
             );
         }
@@ -52,6 +54,9 @@ pub(super) fn load_refine_runtime_settings(
     workspace_path: &str,
     skill_name: &str,
 ) -> Result<RefineRuntimeSettings, String> {
+    // Resolve plugin slug before acquiring conn to avoid re-entrant lock deadlock.
+    let plugin_slug = super::resolve_skill_plugin_slug(db, skill_name)?;
+
     let conn = db.0.lock().map_err(|e| {
         log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -68,7 +73,6 @@ pub(super) fn load_refine_runtime_settings(
     let skills_path = settings
         .skills_path
         .unwrap_or_else(|| workspace_path.to_string());
-    let plugin_slug = super::resolve_skill_plugin_slug(db, skill_name)?;
     let settings_author = settings
         .github_user_email
         .clone()
@@ -253,8 +257,8 @@ pub(super) fn build_refine_prompt_with_output_dir(
     user_message: &str,
     target_files: Option<&[String]>,
 ) -> String {
-    let plugin_slug = DEFAULT_PLUGIN_SLUG; // workspace dir layout uses default slug
-    let workspace_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    // Workspace is always flat: workspace_path/skill_name/
+    let workspace_dir = Path::new(workspace_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
 

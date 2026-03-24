@@ -385,6 +385,7 @@ pub fn test_insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> R
 
 /// Return the `disk_path` for an imported skill regardless of which plugin owns it.
 /// Returns `None` if the skill has no `imported_skills` row (i.e. it is a builder skill).
+#[allow(dead_code)]
 pub fn get_imported_skill_disk_path(conn: &Connection, skill_name: &str) -> Result<Option<String>, String> {
     let s_id = match get_skill_master_id_any_plugin(conn, skill_name)? {
         Some(id) => id,
