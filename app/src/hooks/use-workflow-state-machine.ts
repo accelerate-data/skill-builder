@@ -324,6 +324,10 @@ export function useWorkflowStateMachine({
         workflowState.clearInitializing();
       }
       toast.error(`Step ${step + 1} failed`, { duration: Infinity });
+    } else if (activeRunStatus === "shutdown") {
+      setActiveAgent(null);
+      setRunning(false);
+      updateStepStatus(step, "pending");
     }
   }, [activeRunStatus, activeAgentId, extractStructuredResultPayload, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, clearInitializing]);
 
