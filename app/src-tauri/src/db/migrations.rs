@@ -186,8 +186,8 @@ pub(super) fn run_plugin_ownership_migration(conn: &Connection) -> Result<(), ru
         );
 
         INSERT INTO plugins (slug, display_name, version, source_type, source_url, is_default)
-        SELECT 'no-plugin', 'No Plugin', NULL, 'synthetic', NULL, 1
-        WHERE NOT EXISTS (SELECT 1 FROM plugins WHERE slug = 'no-plugin');",
+        SELECT 'skills', 'Skills', NULL, 'synthetic', NULL, 1
+        WHERE NOT EXISTS (SELECT 1 FROM plugins WHERE slug = 'skills');",
     )?;
 
     conn.execute_batch(
@@ -230,12 +230,12 @@ pub(super) fn run_plugin_ownership_migration(conn: &Connection) -> Result<(), ru
             s.user_invocable,
             s.disable_model_invocation
         FROM skills s
-        CROSS JOIN (SELECT id FROM plugins WHERE slug = 'no-plugin') np
+        CROSS JOIN (SELECT id FROM plugins WHERE slug = 'skills') np
         LEFT JOIN plugins p
             ON p.slug = CASE
                 WHEN s.skill_source = 'marketplace'
                     THEN 'marketplace-' || lower(replace(replace(COALESCE(s.name, ''), ' ', '-'), '_', '-'))
-                ELSE 'no-plugin'
+                ELSE 'skills'
             END;
 
         DROP TABLE skills;
@@ -263,12 +263,12 @@ pub(super) fn run_plugin_ownership_migration(conn: &Connection) -> Result<(), ru
         "UPDATE skills
          SET plugin_id = (
             SELECT COALESCE(p.id, np.id)
-            FROM (SELECT id FROM plugins WHERE slug = 'no-plugin') np
+            FROM (SELECT id FROM plugins WHERE slug = 'skills') np
             LEFT JOIN plugins p
               ON p.slug = CASE
                   WHEN skills.skill_source = 'marketplace'
                       THEN 'marketplace-' || lower(replace(replace(skills.name, ' ', '-'), '_', '-'))
-                  ELSE 'no-plugin'
+                  ELSE 'skills'
               END
          );",
     )?;
@@ -1240,20 +1240,25 @@ pub(super) fn repair_plugin_ownership_schema(conn: &Connection) -> Result<(), ru
         return Ok(());
     }
 
+    // Ensure the default plugin exists — could be under legacy 'no-plugin' or current 'skills' slug
     conn.execute_batch(
         "INSERT INTO plugins (slug, display_name, version, source_type, source_url, is_default)
-         SELECT 'no-plugin', 'No Plugin', NULL, 'synthetic', NULL, 1
-         WHERE NOT EXISTS (SELECT 1 FROM plugins WHERE slug = 'no-plugin');
-
-         UPDATE skills
-         SET plugin_id = (SELECT id FROM plugins WHERE slug = 'no-plugin')
-         WHERE plugin_id IS NULL;",
+         SELECT 'skills', 'Skills', NULL, 'synthetic', NULL, 1
+         WHERE NOT EXISTS (SELECT 1 FROM plugins WHERE slug = 'skills')
+           AND NOT EXISTS (SELECT 1 FROM plugins WHERE slug = 'no-plugin');",
     )?;
 
-    // Rename legacy 'no-plugin' slug to 'skills'
+    // Rename legacy 'no-plugin' to 'skills' if it still exists
     conn.execute_batch(
         "UPDATE plugins SET slug = 'skills', display_name = 'Skills'
          WHERE slug = 'no-plugin';",
+    )?;
+
+    // Point orphaned skills at the default plugin
+    conn.execute_batch(
+        "UPDATE skills
+         SET plugin_id = (SELECT id FROM plugins WHERE slug = 'skills')
+         WHERE plugin_id IS NULL;",
     )?;
 
     Ok(())
