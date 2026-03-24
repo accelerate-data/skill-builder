@@ -582,7 +582,7 @@ Return JSON only:
   const hasCapabilityFraming = /enable|what.*can|capabilities|should.*do|designed to/.test(allQuestionText);
   const hasScopeQuestion = /narrow|broad|scope|range|coverage|how wide|how specific/.test(allQuestionText);
   const hasTypicalRequestQuestion = /typical|request|example|common.*use|use case|dbt|silver|gold/.test(allQuestionText);
-  const hasSuccessDefinition = /success|outcome|done|complete|measure|looks like|good result|goal/.test(allQuestionText);
+  const hasSuccessDefinition = /success|outcome|done|complet|measur|looks like|good result|goal|valid|accept|expected output|qualit|finish|deliverable|standard|how.*know|when.*consider/.test(allQuestionText);
 
   return finalizeScenario(
     "research-scoping-quality",
