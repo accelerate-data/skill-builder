@@ -258,9 +258,11 @@ tests:
       - type: contains
         value: '"ok":true'
       - type: contains
-        value: '"blockedMessage":true'
+        value: '"scopeStubWritten":true'
       - type: contains
-        value: '"noFileEdits":true'
+        value: '"scopeStubHeading":true'
+      - type: contains
+        value: '"blockedMessage":true'
       - type: contains
         value: '"failures":[]'
   - description: validate-skill-scope-guard
