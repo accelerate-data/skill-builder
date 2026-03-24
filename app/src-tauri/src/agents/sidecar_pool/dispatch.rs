@@ -550,7 +550,10 @@ impl SidecarPool {
         let transcript_first_line = build_transcript_first_line(&config);
 
         // Create per-request JSONL transcript file alongside chat storage:
-        //   {cwd}/{skill_name}/logs/{step_label}-{iso_timestamp}.jsonl
+        //   {cwd}/logs/{step_label}-{iso_timestamp}.jsonl
+        //
+        // config.cwd is already the skill root (workspace/{plugin_slug}/{skill_name}),
+        // so the logs directory is simply cwd/logs.
         //
         // When transcript_log_dir is set, transcripts are written there instead.
         // This allows agents whose cwd differs from the workspace (e.g. test
@@ -566,7 +569,7 @@ impl SidecarPool {
             let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
             let log_dir = match transcript_log_dir {
                 Some(dir) => PathBuf::from(dir),
-                None => Path::new(&config.cwd).join(skill_name).join("logs"),
+                None => Path::new(&config.cwd).join("logs"),
             };
             let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
 
@@ -793,7 +796,7 @@ impl SidecarPool {
             let step_label = extract_step_label(agent_id, skill_name);
             let now = chrono::Local::now();
             let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
-            let log_dir = Path::new(&config.cwd).join(skill_name).join("logs");
+            let log_dir = Path::new(&config.cwd).join("logs");
             let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
 
             if let Ok(mut f) =
