@@ -3,6 +3,7 @@ import { Loader2, Plus, RefreshCw, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -119,6 +120,9 @@ export function EvalForm({
           <DialogTitle>
             {isEdit ? "Edit Eval" : "Review Generated Eval"}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            {isEdit ? "Edit the eval name, prompt, and expectations." : "Review and edit the generated eval before adding it."}
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-0">

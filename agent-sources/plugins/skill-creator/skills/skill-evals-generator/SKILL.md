@@ -14,8 +14,13 @@ that `skill-creator` applies when writing test cases for a new skill.
 Follow the **Test Cases** section of `skill-creator/SKILL.md` (path: resolve via
 `references/pluggable.md` → `SKILL_CREATOR_ROOT/SKILL.md`). The key principles:
 
-- Write realistic user prompts — the kind of thing a real user would actually say, not a
-  description of what to test
+- Write realistic user prompts — open-ended questions with concrete context (table names,
+  layer names, tool names), as if a real user typed them. The prompt triggers the skill;
+  the expectations capture what the response must contain.
+  Anti-pattern: "Review my model and confirm it uses the correct SCD2 config" — this is
+  evaluation language and belongs in expectations, not the prompt.
+  Good pattern: "I'm setting up SCD2 for dim_customer in our mart layer — what snapshot
+  configuration and naming conventions should I follow on dbt-fabric?"
 - Write 2–4 atomic, objectively verifiable expectations — each a single statement that can
   be graded pass/fail without subjective judgment
 - Assign a short human-readable `eval_name` and a deterministic `slug` derived from it

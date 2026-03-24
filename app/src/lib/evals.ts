@@ -182,7 +182,14 @@ Write the eval as a JSON file to \`${skillsPath}/${skillName}/evals/pending-eval
 
 Rules:
 - The scenario must differ from all existing evals listed above
-- The prompt must be a concrete, realistic request a user would send
+- The prompt is the message sent TO the skill — write it as a natural user question or task
+  request, as if a real user typed it. Include realistic context (table names, column names,
+  layer names, tool names) and end with an open question
+- NEVER use evaluation language in the prompt: "review", "confirm", "validate",
+  "check if X follows Y", "verify", "ensure it follows" — those belong in expectations
+- BAD:  "Review my snapshot and confirm it follows SCD2 naming conventions for the gold layer"
+- GOOD: "I'm adding a dbt snapshot for dim_customer to track SCD2 history in our gold/mart
+  layer on dbt-fabric. What's the correct configuration and naming convention to use?"
 - Include 2–4 expectations; each must be a single, objectively verifiable statement
 - Write ONLY the JSON file — no other output, no explanation
 `;
@@ -230,7 +237,14 @@ Write the eval as a JSON file to \`${skillsPath}/${skillName}/evals/pending-eval
 \`\`\`
 
 Rules:
-- The prompt must be a concrete, realistic request a user would send for the scenario above
+- The prompt is the message sent TO the skill — write it as a natural user question or task
+  request, as if a real user typed it. Include realistic context (table names, column names,
+  layer names, tool names) and end with an open question
+- NEVER use evaluation language in the prompt: "review", "confirm", "validate",
+  "check if X follows Y", "verify", "ensure it follows" — those belong in expectations
+- BAD:  "Review my snapshot and confirm it follows SCD2 naming conventions for the gold layer"
+- GOOD: "I'm adding a dbt snapshot for dim_customer to track SCD2 history in our gold/mart
+  layer on dbt-fabric. What's the correct configuration and naming convention to use?"
 - Include 2–4 expectations; each must be a single, objectively verifiable statement
 - Write ONLY the JSON file — no other output, no explanation
 `;

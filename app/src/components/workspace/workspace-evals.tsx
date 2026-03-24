@@ -242,6 +242,9 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
     setDraftIntent(newIntent);
     setError(null);
     try {
+      // Discard existing pending-eval.json so the agent can create it fresh
+      // (Write tool requires the file not to exist, or to have been read first in the same session)
+      await discardPendingEval(skillName, workspacePath);
       const prompt = buildRegenPrompt(newIntent, skillCtx.skill_content, skillName, workspacePath);
       const agentId = crypto.randomUUID();
       const cwd = `${workspacePath}/${skillName}`;
