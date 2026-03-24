@@ -424,6 +424,18 @@ pub fn get_skill_master_id(conn: &Connection, skill_name: &str) -> Result<Option
     get_skill_master_id_in_plugin(conn, skill_name, DEFAULT_PLUGIN_SLUG)
 }
 
+/// Look up a skill's row ID across all plugins (not just the default one).
+/// Used by lock acquisition, which must work for imported and marketplace skills.
+pub fn get_skill_master_id_any_plugin(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
+    conn.query_row(
+        "SELECT id FROM skills WHERE name = ?1 AND deleted_at IS NULL LIMIT 1",
+        rusqlite::params![skill_name],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
 pub fn get_skill_master_id_in_plugin(
     conn: &Connection,
     skill_name: &str,
@@ -653,5 +665,22 @@ mod tests {
         let plugins = list_plugins(&conn).expect("list_plugins");
         let default_plugin = plugins.iter().find(|p| p.is_default).expect("default plugin exists");
         assert!(!default_plugin.upgrade_locked, "non-marketplace plugin must not be locked");
+    }
+
+    #[test]
+    fn get_skill_master_id_any_plugin_finds_imported_skill() {
+        let conn = create_test_db_for_tests();
+        ensure_plugin(&conn, "ext-plugin", "Ext Plugin", "marketplace", Some("https://example.com/ext"), None, false)
+            .expect("ensure_plugin");
+        upsert_skill_in_plugin(&conn, "ext-skill", "marketplace", "domain", "ext-plugin")
+            .expect("upsert skill");
+
+        // get_skill_master_id (default-plugin-only) should NOT find it
+        let default_id = get_skill_master_id(&conn, "ext-skill").expect("query ok");
+        assert!(default_id.is_none(), "default-plugin lookup must not find skills in other plugins");
+
+        // get_skill_master_id_any_plugin SHOULD find it
+        let any_id = get_skill_master_id_any_plugin(&conn, "ext-skill").expect("query ok");
+        assert!(any_id.is_some(), "any-plugin lookup must find skills in non-default plugins");
     }
 }
