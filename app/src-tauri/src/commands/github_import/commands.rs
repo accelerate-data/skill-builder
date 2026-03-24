@@ -553,47 +553,19 @@ async fn import_marketplace_entries_to_library(
     let skills_root = Path::new(&skills_path);
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
 
-    // --- Step 1: Create plugins first (one per unique plugin path) ---
-    // Group skill_paths by plugin, create each plugin row in the DB once.
-    let mut plugin_slug_cache: std::collections::HashMap<String, (String, String)> = std::collections::HashMap::new();
-    for skill_path in &skill_paths {
-        let plugin_path = extract_plugin_path(skill_path);
-        let display_name = plugin_display_name_override
-            .clone()
-            .unwrap_or_else(|| {
-                if plugin_path.is_empty() {
-                    repo.to_string()
-                } else {
-                    plugin_path.rsplit('/').next().unwrap_or(plugin_path).to_string()
-                }
-            });
-        if !plugin_slug_cache.contains_key(plugin_path) {
-            let slug = crate::db::slugify_plugin_name(&display_name);
-            let conn = db.0.lock().map_err(|e| e.to_string())?;
-            crate::db::ensure_plugin(
-                &conn,
-                &slug,
-                &display_name,
-                "marketplace",
-                Some(&source_url),
-                None,
-                false,
-            )?;
-            plugin_slug_cache.insert(plugin_path.to_string(), (slug, display_name));
-        }
+    // Individual skill imports always go into no-plugin.
+    // Use import_marketplace_plugin_to_library for full plugin imports.
+    let plugin_slug = DEFAULT_PLUGIN_SLUG.to_string();
+    let plugin_display_name = "No Plugin".to_string();
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::ensure_default_plugin(&conn)?;
     }
 
-    // --- Step 2: Import skills, referencing the already-created plugin ---
     for skill_path in &skill_paths {
-        let plugin_path = extract_plugin_path(skill_path);
-        let (plugin_slug, plugin_display_name) = plugin_slug_cache
-            .get(plugin_path)
-            .cloned()
-            .unwrap_or_else(|| (DEFAULT_PLUGIN_SLUG.to_string(), "No Plugin".to_string()));
         let override_ref = metadata_overrides
             .as_ref()
             .and_then(|m| m.get(skill_path.as_str()));
-        // Marketplace layout: import into plugins/{slug}/skills/
         let plugin_skills_dir = skills_root.join(&plugin_slug).join("skills");
         if let Err(e) = std::fs::create_dir_all(&plugin_skills_dir) {
             log::error!(

@@ -89,6 +89,13 @@ export function ImportedSkillsTab() {
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Button
+          className="w-40"
+          onClick={() => setCreatePluginOpen(true)}
+        >
+          <FolderTree className="size-4" />
+          Create Plugin
+        </Button>
+        <Button
           variant="outline"
           className="w-36"
           onClick={() => setShowGitHubImport(true)}
@@ -98,17 +105,9 @@ export function ImportedSkillsTab() {
           <Github className="size-4" />
           Marketplace
         </Button>
-        <Button className="w-36" onClick={handleImport}>
+        <Button variant="outline" className="w-36" onClick={handleImport}>
           <FolderInput className="size-4" />
           Upload
-        </Button>
-        <Button
-          variant="secondary"
-          className="w-40"
-          onClick={() => setCreatePluginOpen(true)}
-        >
-          <FolderTree className="size-4" />
-          Create Plugin
         </Button>
       </div>
 
