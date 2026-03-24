@@ -121,6 +121,10 @@ async fn run_workflow_step_inner(
         required_plugins,
     );
 
+    // Step 0 invokes the research skill directly via prompt (no agent system prompt).
+    // This ensures AskUserQuestion is one level deep and intercepted by the streaming session.
+    let use_agent_system_prompt = step_id != 0;
+
     let mut config = SidecarConfig {
         prompt,
         model: if use_agent_system_prompt {
