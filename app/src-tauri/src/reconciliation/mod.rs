@@ -245,57 +245,71 @@ pub fn reconcile_on_startup(
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Phase 1e: Soft-delete orphaned builder skills
+    // ════════════════════════════════════════════════════════════════════════
+    // Phase 1e: Reconcile orphaned builder skills against skills_path
     //
-    // A builder skill is orphaned when ALL of the following are true:
-    //   - no SKILL.md output in skills_path (never completed)
-    //   - workspace context dir has no files (never used)
-    //   - created more than 1 hour ago (grace period for brand-new skills)
+    // Signal: does the skill have a directory in skills_path?
+    // create_skill always creates this directory immediately, so any skill
+    // that was legitimately created has a presence here regardless of how
+    // far the workflow has progressed.
     //
-    // This cleans up test/abandoned skills that accumulate in the DB without
-    // any on-disk evidence of activity.
+    // Pass A: restore skills that were previously soft-deleted but DO have
+    //         a directory in skills_path (recovers from over-aggressive
+    //         prior cleanup runs).
+    // Pass B: soft-delete active skills that have NO directory in
+    //         skills_path — genuine orphans with no on-disk footprint.
     // ════════════════════════════════════════════════════════════════════════
     {
-        let now_secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
-        const GRACE_SECS: i64 = 3600; // 1 hour
+        let skills_dir = Path::new(skills_path);
 
-        let all_builder_skills = crate::db::list_all_skills(conn)?;
-        for skill in &all_builder_skills {
-            if skill.skill_source != "skill-builder" {
-                continue;
+        // Returns true if the skill has ANY directory in skills_path,
+        // checking both the current nested layout and the legacy flat layout.
+        let skill_dir_exists = |plugin_slug: &str, name: &str| -> bool {
+            let new_path = crate::skill_paths::nested_skill_dir(skills_dir, plugin_slug, name);
+            let legacy_path = skills_dir.join(name);
+            new_path.exists() || legacy_path.exists()
+        };
+
+        // Pass A: restore incorrectly soft-deleted skills that have a dir
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT s.name, p.slug \
+                     FROM skills s JOIN plugins p ON s.plugin_id = p.id \
+                     WHERE s.skill_source = 'skill-builder' \
+                       AND COALESCE(s.deleted_at, '') != ''",
+                )
+                .map_err(|e| e.to_string())?;
+            let soft_deleted: Vec<(String, String)> = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(|e| e.to_string())?
+                .filter_map(|r| r.ok())
+                .collect();
+            for (name, plugin_slug) in &soft_deleted {
+                if skill_dir_exists(plugin_slug, name) {
+                    log::info!(
+                        "[reconcile] restoring '{}': directory found in skills_path",
+                        name
+                    );
+                    let _ = conn.execute(
+                        "UPDATE skills \
+                         SET deleted_at = '', updated_at = datetime('now') \
+                         WHERE name = ?1",
+                        rusqlite::params![name],
+                    );
+                }
             }
-            // Skip if completed output exists
-            if crate::fs_validation::has_skill_output(&skill.plugin_slug, &skill.name, skills_path) {
-                continue;
-            }
-            // Skip if workspace context dir has any files (active/in-progress)
-            let context_dir = crate::skill_paths::workspace_skill_dir(
-                Path::new(workspace_path),
-                &skill.plugin_slug,
-                &skill.name,
-            )
-            .join("context");
-            let has_context_files = std::fs::read_dir(&context_dir)
-                .map(|mut d| d.next().is_some())
-                .unwrap_or(false);
-            if has_context_files {
-                continue;
-            }
-            // Grace period: skip skills created within the last hour
-            // created_at format: "2024-01-01T00:00:00Z"
-            let created_secs = chrono::DateTime::parse_from_rfc3339(&skill.created_at)
-                .map(|dt| dt.timestamp())
-                .unwrap_or(0);
-            if now_secs - created_secs < GRACE_SECS {
+        }
+
+        // Pass B: soft-delete active skills with no directory in skills_path
+        let all_builder = crate::db::list_all_skills(conn)?;
+        for skill in all_builder.iter().filter(|s| s.skill_source == "skill-builder") {
+            if skill_dir_exists(&skill.plugin_slug, &skill.name) {
                 continue;
             }
             log::info!(
-                "[reconcile] soft-deleting orphaned builder skill '{}' in plugin '{}' \
-                 (no output, no workspace content, created_at={})",
-                skill.name, skill.plugin_slug, skill.created_at
+                "[reconcile] soft-deleting '{}' in plugin '{}': no directory in skills_path",
+                skill.name, skill.plugin_slug
             );
             if let Err(e) = conn.execute(
                 "UPDATE skills \
@@ -304,12 +318,12 @@ pub fn reconcile_on_startup(
                 rusqlite::params![&skill.name],
             ) {
                 log::warn!(
-                    "[reconcile] failed to soft-delete orphaned skill '{}': {}",
+                    "[reconcile] failed to soft-delete '{}': {}",
                     skill.name, e
                 );
             } else {
                 notifications.push(format!(
-                    "'{}' removed — no content found on disk",
+                    "'{}' removed — no directory found in skills_path",
                     skill.name
                 ));
             }
