@@ -245,6 +245,78 @@ pub fn reconcile_on_startup(
     }
 
     // ════════════════════════════════════════════════════════════════════════
+    // Phase 1e: Soft-delete orphaned builder skills
+    //
+    // A builder skill is orphaned when ALL of the following are true:
+    //   - no SKILL.md output in skills_path (never completed)
+    //   - workspace context dir has no files (never used)
+    //   - created more than 1 hour ago (grace period for brand-new skills)
+    //
+    // This cleans up test/abandoned skills that accumulate in the DB without
+    // any on-disk evidence of activity.
+    // ════════════════════════════════════════════════════════════════════════
+    {
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        const GRACE_SECS: i64 = 3600; // 1 hour
+
+        let all_builder_skills = crate::db::list_all_skills(conn)?;
+        for skill in &all_builder_skills {
+            if skill.skill_source != "skill-builder" {
+                continue;
+            }
+            // Skip if completed output exists
+            if crate::fs_validation::has_skill_output(&skill.plugin_slug, &skill.name, skills_path) {
+                continue;
+            }
+            // Skip if workspace context dir has any files (active/in-progress)
+            let context_dir = crate::skill_paths::workspace_skill_dir(
+                Path::new(workspace_path),
+                &skill.plugin_slug,
+                &skill.name,
+            )
+            .join("context");
+            let has_context_files = std::fs::read_dir(&context_dir)
+                .map(|mut d| d.next().is_some())
+                .unwrap_or(false);
+            if has_context_files {
+                continue;
+            }
+            // Grace period: skip skills created within the last hour
+            // created_at format: "2024-01-01T00:00:00Z"
+            let created_secs = chrono::DateTime::parse_from_rfc3339(&skill.created_at)
+                .map(|dt| dt.timestamp())
+                .unwrap_or(0);
+            if now_secs - created_secs < GRACE_SECS {
+                continue;
+            }
+            log::info!(
+                "[reconcile] soft-deleting orphaned builder skill '{}' in plugin '{}' \
+                 (no output, no workspace content, created_at={})",
+                skill.name, skill.plugin_slug, skill.created_at
+            );
+            if let Err(e) = conn.execute(
+                "UPDATE skills \
+                 SET deleted_at = datetime('now') || 'Z', updated_at = datetime('now') \
+                 WHERE name = ?1 AND COALESCE(deleted_at, '') = ''",
+                rusqlite::params![&skill.name],
+            ) {
+                log::warn!(
+                    "[reconcile] failed to soft-delete orphaned skill '{}': {}",
+                    skill.name, e
+                );
+            } else {
+                notifications.push(format!(
+                    "'{}' removed — no content found on disk",
+                    skill.name
+                ));
+            }
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
     // Phase 2: Workflow recon (incomplete skills only)
     // ════════════════════════════════════════════════════════════════════════
 

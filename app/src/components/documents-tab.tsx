@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useDocumentStore } from "@/stores/document-store"
 import {
@@ -150,7 +149,7 @@ function AssignmentPicker({ scope, setScope, selectedSkillIds, toggle, skills, i
       </div>
 
       {scope === "skill" && (
-        <ScrollArea className="max-h-56">
+        <div className="overflow-y-auto max-h-[min(240px,50vh)] -mx-1 px-1">
           {skills.length === 0 ? (
             <p className="text-xs text-muted-foreground px-1">No skills found</p>
           ) : (
@@ -174,7 +173,7 @@ function AssignmentPicker({ scope, setScope, selectedSkillIds, toggle, skills, i
               </div>
             ))
           )}
-        </ScrollArea>
+        </div>
       )}
     </div>
   )
@@ -234,7 +233,7 @@ function AssignmentCell({ doc, skills, onChange }: AssignmentCellProps) {
         {label}
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-sm flex flex-col max-h-[85vh]">
           <DialogHeader>
             <DialogTitle className="text-base">Assign "{doc.name}"</DialogTitle>
           </DialogHeader>
