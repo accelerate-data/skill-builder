@@ -81,10 +81,17 @@ pub(crate) fn delete_imported_skill_inner(
     Ok(())
 }
 
+/// Parse a skill key into (skill_name, plugin_slug, imported_skill_id).
+///
+/// Key formats:
+/// - `imported:{skill_id}` → look up imported skill
+/// - `skill-builder:{plugin_slug}:{skill_name}` → library key
+/// - `{skill_name}` → legacy, assumes default plugin
 fn resolve_skill_target(
     conn: &rusqlite::Connection,
     skill_key: &str,
 ) -> Result<(String, String, Option<String>), String> {
+    // Imported skill key
     if let Some(skill_id) = skill_key.strip_prefix("imported:") {
         let imported = crate::db::get_imported_skill_by_id(conn, skill_id)?
             .ok_or_else(|| format!("Imported skill '{}' not found", skill_id))?;
@@ -94,6 +101,13 @@ fn resolve_skill_target(
             Some(skill_id.to_string()),
         ));
     }
+    // Library key: skill-builder:{plugin_slug}:{skill_name}
+    if let Some(rest) = skill_key.strip_prefix("skill-builder:") {
+        if let Some((plugin_slug, skill_name)) = rest.split_once(':') {
+            return Ok((skill_name.to_string(), plugin_slug.to_string(), None));
+        }
+    }
+    // Legacy: bare skill name
     Ok((skill_key.to_string(), DEFAULT_PLUGIN_SLUG.to_string(), None))
 }
 
