@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, IterationMeta } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, IterationMeta, PendingEval, SkillEvalContext } from "@/lib/types";
 
 // Re-export invoke for flexible Tauri command invocation
 export { invoke };
@@ -635,3 +635,12 @@ export const deleteTestCase = (skillName: string, workspacePath: string, id: num
 
 export const listIterations = (skillName: string, workspacePath: string) =>
   invoke<IterationMeta[]>("list_iterations", { skillName, workspacePath });
+
+export const readSkillContextForEvalGen = (skillName: string, workspacePath: string) =>
+  invoke<SkillEvalContext>("read_skill_context_for_eval_gen", { skillName, workspacePath });
+
+export const readPendingEval = (skillName: string, workspacePath: string) =>
+  invoke<PendingEval>("read_pending_eval", { skillName, workspacePath });
+
+export const discardPendingEval = (skillName: string, workspacePath: string) =>
+  invoke<void>("discard_pending_eval", { skillName, workspacePath });

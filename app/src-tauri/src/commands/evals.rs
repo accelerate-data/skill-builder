@@ -12,9 +12,22 @@ pub struct TestCase {
     pub eval_name: String,
     pub slug: String,
     pub prompt: String,
-    pub expected_output: String,
     pub files: Vec<String>,
     pub expectations: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingEval {
+    pub eval_name: String,
+    pub slug: String,
+    pub prompt: String,
+    pub expectations: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillEvalContext {
+    pub skill_content: String,
+    pub existing_evals: Vec<TestCase>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +49,19 @@ fn evals_json_path(workspace_path: &str, skill_name: &str) -> PathBuf {
         .join(skill_name)
         .join("evals")
         .join("evals.json")
+}
+
+fn pending_eval_path(workspace_path: &str, skill_name: &str) -> PathBuf {
+    Path::new(workspace_path)
+        .join(skill_name)
+        .join("evals")
+        .join("pending-eval.json")
+}
+
+fn skill_md_path(workspace_path: &str, skill_name: &str) -> PathBuf {
+    Path::new(workspace_path)
+        .join(skill_name)
+        .join("SKILL.md")
 }
 
 fn evals_workspace_dir(workspace_path: &str, skill_name: &str) -> PathBuf {
@@ -257,6 +283,101 @@ pub fn list_iterations(
     Ok(iterations)
 }
 
+/// Read the skill definition and existing evals to provide context to the eval generator agent.
+/// Returns empty skill_content if SKILL.md does not exist yet.
+#[tauri::command]
+pub fn read_skill_context_for_eval_gen(
+    skill_name: String,
+    workspace_path: String,
+) -> Result<SkillEvalContext, String> {
+    log::info!("[read_skill_context_for_eval_gen] skill={}", skill_name);
+    validate_skill_name(&skill_name)?;
+
+    let skill_md = skill_md_path(&workspace_path, &skill_name);
+    let skill_content = if skill_md.is_file() {
+        std::fs::read_to_string(&skill_md).map_err(|e| {
+            log::error!(
+                "[read_skill_context_for_eval_gen] failed to read '{}': {}",
+                skill_md.display(),
+                e
+            );
+            format!("Failed to read SKILL.md: {}", e)
+        })?
+    } else {
+        log::debug!(
+            "[read_skill_context_for_eval_gen] SKILL.md not found at '{}', using empty content",
+            skill_md.display()
+        );
+        String::new()
+    };
+
+    let data = read_evals_file(&workspace_path, &skill_name)?;
+    Ok(SkillEvalContext {
+        skill_content,
+        existing_evals: data.evals,
+    })
+}
+
+/// Read a pending generated eval from `{workspace}/{skill}/evals/pending-eval.json`.
+/// Returns an error if the file does not exist (caller should only invoke after generation completes).
+#[tauri::command]
+pub fn read_pending_eval(
+    skill_name: String,
+    workspace_path: String,
+) -> Result<PendingEval, String> {
+    log::info!("[read_pending_eval] skill={}", skill_name);
+    validate_skill_name(&skill_name)?;
+
+    let path = pending_eval_path(&workspace_path, &skill_name);
+    if !path.is_file() {
+        return Err(format!(
+            "pending-eval.json not found at '{}'",
+            path.display()
+        ));
+    }
+    let content = std::fs::read_to_string(&path).map_err(|e| {
+        log::error!(
+            "[read_pending_eval] failed to read '{}': {}",
+            path.display(),
+            e
+        );
+        format!("Failed to read pending-eval.json: {}", e)
+    })?;
+    serde_json::from_str(&content).map_err(|e| {
+        log::error!(
+            "[read_pending_eval] failed to parse '{}': {}",
+            path.display(),
+            e
+        );
+        format!("Failed to parse pending-eval.json: {}", e)
+    })
+}
+
+/// Delete `{workspace}/{skill}/evals/pending-eval.json` if it exists.
+/// No-op if the file is absent.
+#[tauri::command]
+pub fn discard_pending_eval(
+    skill_name: String,
+    workspace_path: String,
+) -> Result<(), String> {
+    log::info!("[discard_pending_eval] skill={}", skill_name);
+    validate_skill_name(&skill_name)?;
+
+    let path = pending_eval_path(&workspace_path, &skill_name);
+    if path.is_file() {
+        std::fs::remove_file(&path).map_err(|e| {
+            log::error!(
+                "[discard_pending_eval] failed to remove '{}': {}",
+                path.display(),
+                e
+            );
+            format!("Failed to discard pending-eval.json: {}", e)
+        })?;
+        log::debug!("[discard_pending_eval] removed pending-eval.json for skill={}", skill_name);
+    }
+    Ok(())
+}
+
 // --- Tests ---
 
 #[cfg(test)]
@@ -270,8 +391,16 @@ mod tests {
             eval_name: name.to_string(),
             slug: name.to_lowercase().replace(' ', "-"),
             prompt: format!("Prompt for {}", name),
-            expected_output: format!("Expected output for {}", name),
             files: vec![],
+            expectations: vec!["assertion one".to_string()],
+        }
+    }
+
+    fn make_pending_eval(name: &str) -> PendingEval {
+        PendingEval {
+            eval_name: name.to_string(),
+            slug: name.to_lowercase().replace(' ', "-"),
+            prompt: format!("Prompt for {}", name),
             expectations: vec!["assertion one".to_string()],
         }
     }
@@ -376,5 +505,71 @@ mod tests {
         assert_eq!(result[0].iteration, 3);
         assert_eq!(result[1].iteration, 2);
         assert_eq!(result[2].iteration, 1);
+    }
+
+    #[test]
+    fn read_skill_context_returns_empty_content_when_no_skill_md() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let ctx = read_skill_context_for_eval_gen("my-skill".to_string(), workspace.to_string()).unwrap();
+        assert!(ctx.skill_content.is_empty());
+        assert!(ctx.existing_evals.is_empty());
+    }
+
+    #[test]
+    fn read_skill_context_reads_skill_md_and_evals() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+
+        // Write SKILL.md
+        let skill_dir = tmp.path().join("my-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# My Skill\nDoes something.").unwrap();
+
+        // Save an eval
+        let tc = make_test_case(0, "Scenario One");
+        save_test_case("my-skill".to_string(), workspace.to_string(), tc).unwrap();
+
+        let ctx = read_skill_context_for_eval_gen("my-skill".to_string(), workspace.to_string()).unwrap();
+        assert!(ctx.skill_content.contains("My Skill"));
+        assert_eq!(ctx.existing_evals.len(), 1);
+        assert_eq!(ctx.existing_evals[0].eval_name, "Scenario One");
+    }
+
+    #[test]
+    fn read_pending_eval_returns_error_when_absent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let result = read_pending_eval("my-skill".to_string(), workspace.to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn read_and_discard_pending_eval() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+
+        // Write a pending-eval.json
+        let evals_dir = tmp.path().join("my-skill").join("evals");
+        fs::create_dir_all(&evals_dir).unwrap();
+        let pending = make_pending_eval("Generated Eval");
+        let json = serde_json::to_string(&pending).unwrap();
+        fs::write(evals_dir.join("pending-eval.json"), json).unwrap();
+
+        let result = read_pending_eval("my-skill".to_string(), workspace.to_string()).unwrap();
+        assert_eq!(result.eval_name, "Generated Eval");
+
+        discard_pending_eval("my-skill".to_string(), workspace.to_string()).unwrap();
+
+        let after = read_pending_eval("my-skill".to_string(), workspace.to_string());
+        assert!(after.is_err());
+    }
+
+    #[test]
+    fn discard_pending_eval_is_noop_when_absent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        // Should not error
+        discard_pending_eval("my-skill".to_string(), workspace.to_string()).unwrap();
     }
 }

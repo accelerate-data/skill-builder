@@ -379,6 +379,9 @@ pub fn run() {
             commands::evals::save_test_case,
             commands::evals::delete_test_case,
             commands::evals::list_iterations,
+            commands::evals::read_skill_context_for_eval_gen,
+            commands::evals::read_pending_eval,
+            commands::evals::discard_pending_eval,
         ])
         .on_window_event(|window, event| {
             use tauri::{Emitter, Manager};
