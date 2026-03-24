@@ -34,20 +34,23 @@ pub fn reconcile_startup(
         skills_path
     );
 
-    let result = if apply {
-        // Reconcile orphaned workflow sessions from crashed instances
-        match crate::db::reconcile_orphaned_sessions(&conn) {
-            Ok(count) if count > 0 => {
-                log::info!("Reconciled {} orphaned workflow session(s)", count);
-            }
-            Err(e) => {
-                log::warn!("Failed to reconcile orphaned sessions: {}", e);
-            }
-            _ => {}
+    // Always run full reconciliation — Phase 1 (plugin recon) is idempotent
+    // and must run even in preview mode to discover plugins on disk.
+    // Phase 2 (workflow recon) only touches incomplete skills.
+    match crate::db::reconcile_orphaned_sessions(&conn) {
+        Ok(count) if count > 0 => {
+            log::info!("Reconciled {} orphaned workflow session(s)", count);
         }
+        Err(e) => {
+            log::warn!("Failed to reconcile orphaned sessions: {}", e);
+        }
+        _ => {}
+    }
 
-        let result =
-            crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
+    let result =
+        crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
+
+    if apply {
 
         // Auto-commit new skill folders added while offline.
         // This is non-fatal: log warnings but don't block startup.
@@ -92,10 +95,7 @@ pub fn reconcile_startup(
             );
         }
 
-        result
-    } else {
-        crate::reconciliation::preview_reconcile_on_startup(&conn, &workspace_path, &skills_path)?
-    };
+    }
 
     if !apply {
         let details = serde_json::to_string(&serde_json::json!({
