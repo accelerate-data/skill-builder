@@ -1,13 +1,12 @@
 use std::ffi::OsStr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::Db;
-use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-use crate::skill_paths::resolve_skill_dir;
+use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::SkillFileContent;
 
-use super::{resolve_skill_plugin_slug, resolve_skills_path};
+use super::{resolve_skill_output_dir, resolve_skills_path};
 
 // ─── get_skill_content_for_refine ────────────────────────────────────────────
 
@@ -28,11 +27,11 @@ pub fn get_skill_content_for_refine(
         );
         e
     })?;
-    let plugin_slug = resolve_skill_plugin_slug(&db, &skill_name).map_err(|e| {
-        log::error!("[get_skill_content_for_refine] Failed to resolve plugin slug: {}", e);
+    let skill_root = resolve_skill_output_dir(&db, &skill_name, &skills_path).map_err(|e| {
+        log::error!("[get_skill_content_for_refine] Failed to resolve skill output dir: {}", e);
         e
     })?;
-    get_skill_content_inner_for_plugin(&skill_name, &skills_path, &plugin_slug).map_err(|e| {
+    get_skill_content_from_dir(&skill_root).map_err(|e| {
         log::error!("[get_skill_content_for_refine] {}", e);
         e
     })
@@ -52,12 +51,12 @@ pub(crate) fn get_skill_content_inner_for_plugin(
     plugin_slug: &str,
 ) -> Result<Vec<SkillFileContent>, String> {
     let skill_root = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
+    get_skill_content_from_dir(&skill_root)
+}
+
+pub(crate) fn get_skill_content_from_dir(skill_root: &PathBuf) -> Result<Vec<SkillFileContent>, String> {
     if !skill_root.exists() {
-        return Err(format!(
-            "Skill '{}' not found at {}",
-            skill_name,
-            skill_root.display()
-        ));
+        return Err(format!("Skill directory not found at {}", skill_root.display()));
     }
 
     log::debug!(

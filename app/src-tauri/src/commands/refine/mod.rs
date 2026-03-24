@@ -33,6 +33,29 @@ pub(super) fn resolve_skill_plugin_slug(db: &Db, skill_name: &str) -> Result<Str
         .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string()))
 }
 
+/// Resolve the directory that contains SKILL.md for the given skill.
+///
+/// For imported/marketplace skills the canonical location is `imported_skills.disk_path`.
+/// For builder skills it is computed from `skills_path + plugin_slug + skill_name`.
+pub(super) fn resolve_skill_output_dir(
+    db: &Db,
+    skill_name: &str,
+    skills_path: &str,
+) -> Result<std::path::PathBuf, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    if let Some(disk_path) = crate::db::get_imported_skill_disk_path(&conn, skill_name)? {
+        return Ok(std::path::PathBuf::from(disk_path));
+    }
+    let plugin_slug = crate::db::get_skill_master(&conn, skill_name)?
+        .map(|s| s.plugin_slug)
+        .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string());
+    Ok(resolve_skill_dir(
+        std::path::Path::new(skills_path),
+        &plugin_slug,
+        skill_name,
+    ))
+}
+
 /// Plugins allowed for refine sessions. Must match `required_plugins` in
 /// `build_refine_config` so the picker shows exactly the agents the SDK loads.
 const REFINE_ALLOWED_PLUGINS: &[&str] = &["skill-content-researcher", "skill-creator"];
@@ -115,8 +138,7 @@ pub async fn start_refine_session(
     })?;
 
     // Verify SKILL.md exists
-    let plugin_slug = resolve_skill_plugin_slug(&db, &skill_name)?;
-    let skill_md = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name).join("SKILL.md");
+    let skill_md = resolve_skill_output_dir(&db, &skill_name, &skills_path)?.join("SKILL.md");
     if !skill_md.exists() {
         let msg = format!("SKILL.md not found at {}", skill_md.display());
         log::error!("[start_refine_session] {}", msg);
@@ -249,17 +271,17 @@ pub async fn send_refine_message(
     let plugin_slug = resolve_skill_plugin_slug(&db, &skill_name)?;
     let runtime = load_refine_runtime_settings(&db, &workspace_path, &skill_name)?;
     ensure_skill_workspace_dir(&workspace_path, &plugin_slug, &skill_name);
+    let skill_output_dir = resolve_skill_output_dir(&db, &skill_name, &runtime.skills_path)?;
 
     if !stream_started {
         // ─── First message: start streaming session ───────────────────────
         // All commands go through the same streaming config. No agent is
         // specified — Claude decides which agent to invoke based on the
         // user's message and the agents discovered from plugins.
-        let prompt = build_refine_prompt_for_plugin(
+        let prompt = build_refine_prompt_with_output_dir(
             &skill_name,
             &workspace_path,
-            &runtime.skills_path,
-            &plugin_slug,
+            &skill_output_dir,
             &user_message,
             target_files.as_deref(),
         );
@@ -320,10 +342,9 @@ pub async fn send_refine_message(
         Ok(agent_id)
     } else {
         // ─── Follow-up message: push into existing stream ─────────────────
-        let prompt = build_followup_prompt_for_plugin(
+        let prompt = build_followup_prompt_with_output_dir(
             &user_message,
-            &runtime.skills_path,
-            &plugin_slug,
+            &skill_output_dir,
             &skill_name,
             target_files.as_deref(),
         );
