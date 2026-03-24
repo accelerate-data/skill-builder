@@ -46,14 +46,9 @@ pub fn import_skill_from_file(
     argument_hint: Option<String>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
-    force_overwrite: bool,
     db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
-    log::info!(
-        "[import_skill_from_file] name={} force_overwrite={}",
-        name,
-        force_overwrite
-    );
+    log::info!("[import_skill_from_file] name={}", name);
 
     validate_skill_name(&name)?;
 
@@ -87,7 +82,6 @@ pub fn import_skill_from_file(
         argument_hint,
         user_invocable,
         disable_model_invocation,
-        force_overwrite,
         &skills_path,
         &workspace_path,
         preferred_author.as_deref(),
@@ -105,7 +99,6 @@ fn import_skill_from_file_inner(
     argument_hint: Option<String>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
-    force_overwrite: bool,
     skills_path: &str,
     workspace_path: &str,
     preferred_author: Option<&str>,
@@ -142,8 +135,11 @@ fn import_skill_from_file_inner(
         ));
     }
 
-    // Extract all files to {skills_path}/{name}/
-    let dest_dir = Path::new(skills_path).join(name);
+    // Extract to plugin-nested path: {skills_path}/{default_slug}/skills/{name}/
+    let dest_dir = crate::skill_paths::nested_skill_dir(Path::new(skills_path), default_slug, name);
+    if let Some(parent) = dest_dir.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
     // Re-open archive (consumed during prefix scan)
     let zip_file2 =
@@ -183,7 +179,7 @@ fn import_skill_from_file_inner(
         return Err(e);
     }
 
-    // Step 1: Create/update skill master row (linked to no-plugin)
+    // Step 1: Create/update skill master row (linked to default plugin)
     let skill_master_id = crate::db::upsert_skill_with_source_in_plugin(conn, name, "imported", "domain", DEFAULT_PLUGIN_SLUG)?;
 
     // Update description on skill master
@@ -274,7 +270,6 @@ mod tests {
             None,
             None,
             None,
-            false,
             skills_path.to_str().unwrap(),
             "",
             Some("hb@acceleratedata.ai"),
@@ -293,7 +288,7 @@ mod tests {
             Some("1.0.0")
         );
         assert!(
-            std::fs::read_to_string(skills_path.join("imported-skill").join("SKILL.md"))
+            std::fs::read_to_string(skills_path.join(crate::skill_paths::DEFAULT_PLUGIN_SLUG).join("skills").join("imported-skill").join("SKILL.md"))
                 .unwrap()
                 .contains("metadata:\n  version: \"1.0.0\"\n  author: \"hb@acceleratedata.ai\"")
         );
@@ -334,7 +329,6 @@ mod tests {
             None,
             None,
             None,
-            false,
             skills_path.to_str().unwrap(),
             "",
             Some("hb@acceleratedata.ai"),

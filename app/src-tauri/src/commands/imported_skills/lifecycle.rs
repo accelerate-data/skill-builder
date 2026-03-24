@@ -164,14 +164,24 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
         ));
     }
 
-    // Hard-delete any soft-deleted skills so FK RESTRICT doesn't block plugin deletion
-    conn.execute(
-        "DELETE FROM skills WHERE plugin_id = (SELECT id FROM plugins WHERE slug = ?1)",
-        rusqlite::params![&plugin_slug],
-    ).map_err(|e| format!("Failed to clean up deleted skills: {}", e))?;
+    // Wrap multi-table delete in a transaction
+    conn.execute_batch("BEGIN").map_err(|e| format!("Failed to begin transaction: {}", e))?;
+    let db_result = (|| -> Result<(), String> {
+        // Hard-delete any soft-deleted skills so FK RESTRICT doesn't block plugin deletion
+        conn.execute(
+            "DELETE FROM skills WHERE plugin_id = (SELECT id FROM plugins WHERE slug = ?1)",
+            rusqlite::params![&plugin_slug],
+        ).map_err(|e| format!("Failed to clean up deleted skills: {}", e))?;
 
-    // Now delete the plugin row
-    crate::db::delete_plugin_by_slug(&conn, &plugin_slug)?;
+        // Now delete the plugin row
+        crate::db::delete_plugin_by_slug(&conn, &plugin_slug)?;
+        Ok(())
+    })();
+    if let Err(e) = &db_result {
+        let _ = conn.execute_batch("ROLLBACK");
+        return Err(e.clone());
+    }
+    conn.execute_batch("COMMIT").map_err(|e| format!("Failed to commit: {}", e))?;
 
     // Remove from disk
     if let Some(ref sp) = settings.skills_path {
@@ -200,6 +210,7 @@ pub fn create_plugin_from_skills(
     skill_keys: Vec<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
+    log::info!("[create_plugin_from_skills] name={} skill_count={}", plugin_name, skill_keys.len());
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
 
@@ -249,6 +260,7 @@ pub fn move_skill_to_plugin(
     plugin_slug: String,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
+    log::info!("[move_skill_to_plugin] skill_key={} plugin_slug={}", skill_key, plugin_slug);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
     let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;
@@ -273,6 +285,7 @@ pub fn remove_skill_from_plugin(
     skill_key: String,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
+    log::info!("[remove_skill_from_plugin] skill_key={}", skill_key);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
     let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;

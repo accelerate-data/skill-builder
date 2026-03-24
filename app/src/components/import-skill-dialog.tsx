@@ -75,7 +75,6 @@ export function ImportSkillDialog({
           argumentHint: argumentHint || null,
           userInvocable,
           disableModelInvocation,
-          forceOverwrite: false,
         })
         onOpenChange(false)
         toast.success(`Imported "${name.trim()}"`)
