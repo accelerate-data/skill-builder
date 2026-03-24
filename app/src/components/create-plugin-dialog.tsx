@@ -18,12 +18,15 @@ interface CreatePluginDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: () => void
+  /** If provided, moves this skill into the new plugin after creation */
+  initialSkillKey?: string
 }
 
 export function CreatePluginDialog({
   open,
   onOpenChange,
   onCreated,
+  initialSkillKey,
 }: CreatePluginDialogProps) {
   const [name, setName] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -35,7 +38,8 @@ export function CreatePluginDialog({
     setSubmitting(true)
     const toastId = toast.loading(`Creating plugin "${name}"...`)
     try {
-      await createPluginFromSkills(name, [])
+      const skillKeys = initialSkillKey ? [initialSkillKey] : []
+      await createPluginFromSkills(name, skillKeys)
       toast.success(`Created plugin "${name}"`, { id: toastId })
       setName("")
       onOpenChange(false)
@@ -48,7 +52,7 @@ export function CreatePluginDialog({
     } finally {
       setSubmitting(false)
     }
-  }, [name, isValidName, onOpenChange, onCreated])
+  }, [name, isValidName, initialSkillKey, onOpenChange, onCreated])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -56,7 +60,9 @@ export function CreatePluginDialog({
         <DialogHeader>
           <DialogTitle>Create Plugin</DialogTitle>
           <DialogDescription>
-            Create a new empty plugin. You can add skills to it later.
+            {initialSkillKey
+              ? "Create a new plugin and move the selected skill into it."
+              : "Create a new empty plugin. You can add skills to it later."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
