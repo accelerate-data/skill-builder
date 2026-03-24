@@ -525,6 +525,80 @@ Return JSON only with status, dimensions_selected, question_count, and research_
   );
 }
 
+function runResearchScopingQuality({ budgetUsd }) {
+  const dir = makeTempDir("research-quality");
+  const skillName = "inventory-tracking";
+  createFixtureScoping(dir, skillName);
+  writeFile(
+    path.join(dir, "workspace", skillName, "user-context.md"),
+    `## User Context
+
+### Skill
+
+**Purpose**: Business process knowledge (domain)
+**Description**: inventory tracking for retail stores
+
+### About You
+
+**Industry**: Retail
+**Function**: Analytics Engineering
+`,
+  );
+  const workspaceContext = loadWorkspaceContext();
+  const agentInstructions = loadAgentInstructions("research-orchestrator");
+  const prompt = `You are the research-orchestrator agent for the skill-builder plugin.
+
+Skill type: domain
+Skill name: ${skillName}
+Context directory: ${dir}/workspace/${skillName}/context
+Workspace directory: ${dir}/workspace/${skillName}
+
+<workspace-instructions>
+${workspaceContext}
+</workspace-instructions>
+<agent-instructions>
+${agentInstructions}
+</agent-instructions>
+
+Return JSON only:
+{
+  "status": "research_complete",
+  "dimensions_selected": <number>,
+  "question_count": <number>,
+  "research_output": { "<canonical clarifications object>" }
+}`;
+
+  const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 260_000, cwd: dir });
+  const response = parseAgentJsonOutput(stdout);
+  const researchOutput = response?.research_output ?? null;
+
+  // Collect all question text across all sections for semantic matching
+  const allQuestionText = (researchOutput?.sections ?? [])
+    .flatMap((s) => (s?.questions ?? []).map((q) => `${q?.title ?? ""} ${q?.text ?? ""}`))
+    .join(" ")
+    .toLowerCase();
+
+  // Semantic checks — keyword patterns, not literal strings
+  const hasCapabilityFraming = /enable|what.*can|capabilities|should.*do|designed to/.test(allQuestionText);
+  const hasScopeQuestion = /narrow|broad|scope|range|coverage|how wide|how specific/.test(allQuestionText);
+  const hasTypicalRequestQuestion = /typical|request|example|common.*use|use case|dbt|silver|gold/.test(allQuestionText);
+  const hasSuccessDefinition = /success|outcome|done|complete|measure|looks like|good result|goal/.test(allQuestionText);
+
+  return finalizeScenario(
+    "research-scoping-quality",
+    {
+      statusResearchComplete: response?.status === "research_complete",
+      hasQuestions: Number(response?.question_count ?? 0) > 0,
+      hasCapabilityFraming,
+      hasScopeQuestion,
+      hasTypicalRequestQuestion,
+      hasSuccessDefinition,
+    },
+    [],
+    [],
+  );
+}
+
 function runDetailedResearch({ budgetUsd }) {
   const dir = makeTempDir("detailed-research");
   const skillName = DEFAULT_SKILL_NAME;
@@ -1167,6 +1241,7 @@ function runSkillTestContract() {
 const scenarioHandlers = {
   "research-orchestrator": runResearchOrchestrator,
   "research-orchestrator-scope-guard": runResearchOrchestratorScopeGuard,
+  "research-scoping-quality": runResearchScopingQuality,
   "detailed-research": runDetailedResearch,
   "detailed-research-scope-guard": runDetailedResearchScopeGuard,
   "detailed-research-all-clear": runDetailedResearchAllClear,

@@ -47,6 +47,26 @@ tests:
         value: '"hasScopeReasonOrNotes":true'
       - type: contains
         value: '"failures":[]'
+  - description: research-scoping-quality
+    vars:
+      scenario: research-scoping-quality
+    assert:
+      - type: contains
+        value: '"ok":true'
+      - type: contains
+        value: '"statusResearchComplete":true'
+      - type: contains
+        value: '"hasQuestions":true'
+      - type: contains
+        value: '"hasCapabilityFraming":true'
+      - type: contains
+        value: '"hasScopeQuestion":true'
+      - type: contains
+        value: '"hasTypicalRequestQuestion":true'
+      - type: contains
+        value: '"hasSuccessDefinition":true'
+      - type: contains
+        value: '"failures":[]'
   - description: detailed-research-normal
     vars:
       scenario: detailed-research
