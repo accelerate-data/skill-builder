@@ -23,7 +23,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { save } from "@tauri-apps/plugin-dialog";
 import { toast } from "@/lib/toast";
 import SkillDialog from "@/components/skill-dialog";
 import DeleteSkillDialog from "@/components/delete-skill-dialog";
@@ -37,12 +36,9 @@ import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
 import { PURPOSE_SHORT_LABELS } from "@/lib/types";
 import {
   getExternallyLockedSkills,
-  exportSkill,
   listSkills,
-  packageSkill,
   removeSkillFromPlugin,
   resetWorkflowStep,
-  saveExportTo,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
@@ -287,38 +283,7 @@ export function SkillListPanel({
     }
   }
 
-  async function handleExport(skill: UnifiedSkill) {
-    const toastId = toast.loading("Exporting skill...");
-    try {
-      // Builder skills live in the workspace — use package_skill.
-      // Imported/marketplace skills are in the installed-skills DB — use export_skill.
-      let zipPath: string;
-      if (skill.source === "builder") {
-        if (!workspacePath) throw new Error("Workspace path not set");
-        const result = await packageSkill(skill.name, workspacePath);
-        zipPath = result.file_path;
-      } else {
-        zipPath = await exportSkill(skill.name);
-      }
-      const savePath = await save({
-        defaultPath: `${skill.name}.zip`,
-        filters: [{ name: "Zip Archive", extensions: ["zip"] }],
-      });
-      if (savePath) {
-        await saveExportTo(zipPath, savePath);
-        toast.success(`Saved to ${savePath}`, { id: toastId });
-        console.log("event=skill_exported skill=%s dest=%s", skill.name, savePath);
-      } else {
-        toast.dismiss(toastId);
-      }
-    } catch (err) {
-      toast.error(
-        `Export failed: ${err instanceof Error ? err.message : String(err)}`,
-        { id: toastId },
-      );
-      console.error("event=skill_export_failed skill=%s error=%s", skill.name, err);
-    }
-  }
+
 
   function handleRedo(skillName: string) {
     setRedoTarget(skillName);
@@ -572,9 +537,6 @@ export function SkillListPanel({
                             Restore version
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuItem onSelect={() => handleExport(skill)}>
-                          Export
-                        </DropdownMenuItem>
                         {skill.source !== "marketplace" && (
                           <>
                             <DropdownMenuSeparator />
