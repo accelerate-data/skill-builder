@@ -13,6 +13,12 @@ fn nested_skill(root: &str, skill_name: &str) -> std::path::PathBuf {
     crate::skill_paths::nested_skill_dir(Path::new(root), DEFAULT_PLUGIN_SLUG, skill_name)
 }
 
+/// Helper: flat workspace skill path: workspace/{name}/
+/// Workspace is always flat — use this for workspace assertions.
+fn flat_skill(workspace: &str, skill_name: &str) -> std::path::PathBuf {
+    Path::new(workspace).join(skill_name)
+}
+
 // ===== list_skills_inner tests =====
 
 #[test]
@@ -347,8 +353,8 @@ fn test_delete_skill_with_skills_path() {
 
     delete_skill_inner(workspace, "full-delete", Some(&conn), Some(skills_path)).unwrap();
 
-    // Workspace dir should be gone
-    assert!(!nested_skill(workspace, "full-delete").exists());
+    // Workspace dir should be gone (flat path)
+    assert!(!flat_skill(workspace, "full-delete").exists());
     // Skills output dir should be gone
     assert!(!output_dir.exists());
     // DB should be clean
@@ -530,8 +536,8 @@ fn test_delete_skill_directory_traversal() {
 
     // The outside directory should still exist (not deleted)
     assert!(outside_dir.exists());
-    // The legitimate skill should still exist (marketplace layout: plugins/no-plugin/skills/legit)
-    assert!(workspace.join(DEFAULT_PLUGIN_SLUG).join("legit").exists());
+    // The legitimate skill should still exist (flat workspace layout)
+    assert!(workspace.join("legit").exists());
 }
 
 #[test]
@@ -747,8 +753,8 @@ fn test_create_skill_collision_in_workspace() {
     let skills_dir = tempdir().unwrap();
     let skills_path = skills_dir.path().to_str().unwrap();
 
-    // Create the skill directory in workspace manually (simulating a pre-existing nested dir)
-    fs::create_dir_all(nested_skill(workspace, "colliding-skill")).unwrap();
+    // Create the skill directory in workspace manually (simulating a pre-existing flat dir)
+    fs::create_dir_all(flat_skill(workspace, "colliding-skill")).unwrap();
 
     let result = create_skill_inner(
         workspace,
@@ -849,14 +855,14 @@ fn test_create_skill_no_collision() {
     );
     assert!(result.is_ok());
 
-    // Verify the workspace working directory was created (nested under default plugin)
-    assert!(nested_skill(workspace, "new-skill").exists());
+    // Verify the workspace working directory was created (flat layout)
+    assert!(flat_skill(workspace, "new-skill").exists());
 
     // Verify skill output directories were created in skills_path (nested under default plugin)
     let skill_output = nested_skill(skills_path, "new-skill");
     assert!(skill_output.join("references").exists());
-    // Context is workspace-owned.
-    assert!(nested_skill(workspace, "new-skill").join("context").exists());
+    // Context is workspace-owned (flat layout).
+    assert!(flat_skill(workspace, "new-skill").join("context").exists());
 }
 
 #[test]
@@ -1106,9 +1112,9 @@ fn test_rename_skill_basic() {
     )
     .unwrap();
 
-    // Workspace dirs moved (nested under default plugin)
-    assert!(!nested_skill(workspace, "old-name").exists());
-    assert!(nested_skill(workspace, "new-name").exists());
+    // Workspace dirs moved (flat layout)
+    assert!(!flat_skill(workspace, "old-name").exists());
+    assert!(flat_skill(workspace, "new-name").exists());
 
     // Skills dirs moved (nested under default plugin)
     assert!(!nested_skill(skills_path, "old-name").exists());
@@ -1297,7 +1303,7 @@ fn test_rename_skill_disk_rollback_on_db_failure() {
         None,
     )
     .unwrap();
-    assert!(nested_skill(workspace, "will-rollback").exists());
+    assert!(flat_skill(workspace, "will-rollback").exists());
 
     // To force the DB transaction to fail, we drop the workflow_runs table
     // after creating the skill, so the INSERT in the transaction will fail.
@@ -1354,13 +1360,13 @@ fn test_rename_skill_disk_rollback_on_db_failure() {
         .unwrap_err()
         .contains("Failed to rename skill in database"));
 
-    // Workspace dir should be rolled back to original name (nested under default plugin)
+    // Workspace dir should be rolled back to original name (flat layout)
     assert!(
-        nested_skill(workspace, "will-rollback").exists(),
+        flat_skill(workspace, "will-rollback").exists(),
         "Workspace dir should be rolled back to original name"
     );
     assert!(
-        !nested_skill(workspace, "rollback-target").exists(),
+        !flat_skill(workspace, "rollback-target").exists(),
         "New workspace dir should not exist after rollback"
     );
 
@@ -1407,8 +1413,8 @@ fn test_rename_skill_inner_happy_path_renames_db_and_disk() {
     )
     .unwrap();
 
-    // Confirm the workspace directory was created on disk (nested under default plugin).
-    assert!(nested_skill(workspace, "original-skill").exists());
+    // Confirm the workspace directory was created on disk (flat layout).
+    assert!(flat_skill(workspace, "original-skill").exists());
 
     rename_skill_inner("original-skill", "renamed-skill", workspace, &mut conn, None).unwrap();
 
@@ -1422,13 +1428,13 @@ fn test_rename_skill_inner_happy_path_renames_db_and_disk() {
     let old_run = crate::db::get_workflow_run(&conn, "original-skill").unwrap();
     assert!(old_run.is_none(), "old workflow_run name should be gone");
 
-    // Workspace directory renamed on disk (nested under default plugin).
+    // Workspace directory renamed on disk (flat layout).
     assert!(
-        nested_skill(workspace, "renamed-skill").exists(),
+        flat_skill(workspace, "renamed-skill").exists(),
         "workspace dir should be renamed"
     );
     assert!(
-        !nested_skill(workspace, "original-skill").exists(),
+        !flat_skill(workspace, "original-skill").exists(),
         "old workspace dir should not exist after rename"
     );
 }
@@ -1499,9 +1505,10 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
     );
 
     // The workspace directory should have been rolled back (old name preserved)
-    // because rename_skill_inner rolls back workspace rename on skills rename failure
+    // because rename_skill_inner rolls back workspace rename on skills rename failure.
+    // Workspace is flat, so expect workspace/rename-fail (not workspace/skills/rename-fail).
     assert!(
-        workspace.join(DEFAULT_PLUGIN_SLUG).join("rename-fail").exists(),
+        workspace.join("rename-fail").exists(),
         "workspace dir should be rolled back to old name"
     );
 }
