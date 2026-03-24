@@ -121,13 +121,22 @@ async fn run_workflow_step_inner(
         run_source: Some("workflow".to_string()),
     };
 
+    let log_dir = crate::skill_paths::workspace_skill_dir(
+        Path::new(workspace_path),
+        &settings.plugin_slug,
+        skill_name,
+    )
+    .join("logs")
+    .to_string_lossy()
+    .into_owned();
+
     sidecar::spawn_sidecar(
         agent_id.clone(),
         config,
         pool.clone(),
         app.clone(),
         skill_name.to_string(),
-        None,
+        Some(log_dir),
     )
     .await?;
 
@@ -389,13 +398,22 @@ pub async fn run_answer_evaluator(
         run_source: None,
     };
 
+    let log_dir = crate::skill_paths::workspace_skill_dir(
+        Path::new(&workspace_path),
+        &plugin_slug,
+        &skill_name,
+    )
+    .join("logs")
+    .to_string_lossy()
+    .into_owned();
+
     sidecar::spawn_sidecar(
         agent_id.clone(),
         config,
         pool.inner().clone(),
         app.clone(),
         skill_name,
-        None,
+        Some(log_dir),
     )
     .await?;
 
