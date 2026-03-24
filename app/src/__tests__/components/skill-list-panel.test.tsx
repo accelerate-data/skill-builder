@@ -61,8 +61,8 @@ function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): 
     argumentHint: null,
     userInvocable: null,
     disableModelInvocation: null,
-    plugin_slug: "no-plugin",
-    plugin_display_name: "No Plugin",
+    plugin_slug: "skills",
+    plugin_display_name: "Skills",
     is_default_plugin: true,
   };
   return { ...base, ...overrides };
@@ -87,8 +87,8 @@ function makeImportedSkill(
     user_invocable: null,
     disable_model_invocation: null,
     marketplace_source_url: null,
-    plugin_slug: "no-plugin",
-    plugin_display_name: "No Plugin",
+    plugin_slug: "skills",
+    plugin_display_name: "Skills",
     is_default_plugin: true,
   };
   return { ...base, ...overrides };

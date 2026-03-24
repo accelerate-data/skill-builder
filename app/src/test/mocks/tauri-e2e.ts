@@ -244,7 +244,7 @@ function normalizeListSkills(value: unknown): unknown {
     const pluginSlug =
       typeof record.plugin_slug === "string" || record.plugin_slug === null
         ? record.plugin_slug
-        : "no-plugin";
+        : "skills";
     const pluginDisplayName =
       typeof record.plugin_display_name === "string" || record.plugin_display_name === null
         ? record.plugin_display_name

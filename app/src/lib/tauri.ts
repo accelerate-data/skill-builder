@@ -574,7 +574,6 @@ export const importSkillFromFile = (params: {
   argumentHint?: string | null
   userInvocable?: boolean | null
   disableModelInvocation?: boolean | null
-  forceOverwrite: boolean
 }): Promise<string> =>
   invoke<string>("import_skill_from_file", {
     filePath: params.filePath,
@@ -585,7 +584,6 @@ export const importSkillFromFile = (params: {
     argumentHint: params.argumentHint ?? null,
     userInvocable: params.userInvocable ?? null,
     disableModelInvocation: params.disableModelInvocation ?? null,
-    forceOverwrite: params.forceOverwrite,
   })
 
 // --- Additional typed wrappers ---

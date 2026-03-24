@@ -339,7 +339,7 @@ fn test_delete_skill_with_skills_path() {
     )
     .unwrap();
 
-    // Simulate skill output in skills_path (as would happen after build step, nested under no-plugin)
+    // Simulate skill output in skills_path (as would happen after build step, nested under default plugin)
     let output_dir = nested_skill(skills_path, "full-delete");
     fs::create_dir_all(output_dir.join("references")).unwrap();
     fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
@@ -848,10 +848,10 @@ fn test_create_skill_no_collision() {
     );
     assert!(result.is_ok());
 
-    // Verify the workspace working directory was created (nested under no-plugin)
+    // Verify the workspace working directory was created (nested under default plugin)
     assert!(nested_skill(workspace, "new-skill").exists());
 
-    // Verify skill output directories were created in skills_path (nested under no-plugin)
+    // Verify skill output directories were created in skills_path (nested under default plugin)
     let skill_output = nested_skill(skills_path, "new-skill");
     assert!(skill_output.join("references").exists());
     // Context is workspace-owned.
@@ -1105,11 +1105,11 @@ fn test_rename_skill_basic() {
     )
     .unwrap();
 
-    // Workspace dirs moved (nested under no-plugin)
+    // Workspace dirs moved (nested under default plugin)
     assert!(!nested_skill(workspace, "old-name").exists());
     assert!(nested_skill(workspace, "new-name").exists());
 
-    // Skills dirs moved (nested under no-plugin)
+    // Skills dirs moved (nested under default plugin)
     assert!(!nested_skill(skills_path, "old-name").exists());
     assert!(nested_skill(skills_path, "new-name").exists());
 
@@ -1353,7 +1353,7 @@ fn test_rename_skill_disk_rollback_on_db_failure() {
         .unwrap_err()
         .contains("Failed to rename skill in database"));
 
-    // Workspace dir should be rolled back to original name (nested under no-plugin)
+    // Workspace dir should be rolled back to original name (nested under default plugin)
     assert!(
         nested_skill(workspace, "will-rollback").exists(),
         "Workspace dir should be rolled back to original name"
@@ -1406,7 +1406,7 @@ fn test_rename_skill_inner_happy_path_renames_db_and_disk() {
     )
     .unwrap();
 
-    // Confirm the workspace directory was created on disk (nested under no-plugin).
+    // Confirm the workspace directory was created on disk (nested under default plugin).
     assert!(nested_skill(workspace, "original-skill").exists());
 
     rename_skill_inner("original-skill", "renamed-skill", workspace, &mut conn, None).unwrap();
@@ -1421,7 +1421,7 @@ fn test_rename_skill_inner_happy_path_renames_db_and_disk() {
     let old_run = crate::db::get_workflow_run(&conn, "original-skill").unwrap();
     assert!(old_run.is_none(), "old workflow_run name should be gone");
 
-    // Workspace directory renamed on disk (nested under no-plugin).
+    // Workspace directory renamed on disk (nested under default plugin).
     assert!(
         nested_skill(workspace, "renamed-skill").exists(),
         "workspace dir should be renamed"

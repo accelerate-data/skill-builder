@@ -553,7 +553,7 @@ async fn import_marketplace_entries_to_library(
     let skills_root = Path::new(&skills_path);
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
 
-    // Individual skill imports always go into no-plugin.
+    // Individual skill imports always go into the default plugin.
     // Use import_marketplace_plugin_to_library for full plugin imports.
     let plugin_slug = DEFAULT_PLUGIN_SLUG.to_string();
     let plugin_display_name = crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME.to_string();
@@ -635,7 +635,7 @@ async fn import_marketplace_entries_to_library(
                 // Plugin was already created in step 1 — just reference it
                 skill.plugin_slug = Some(plugin_slug.clone());
                 skill.plugin_display_name = Some(plugin_display_name.clone());
-                skill.is_default_plugin = Some(false);
+                skill.is_default_plugin = Some(plugin_slug == DEFAULT_PLUGIN_SLUG);
 
                 let existing_imported =
                     crate::db::get_imported_skill(&conn, &skill.skill_name).unwrap_or(None);

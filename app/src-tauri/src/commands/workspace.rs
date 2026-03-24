@@ -722,7 +722,7 @@ mod tests {
 
         migrate_to_marketplace_layout(root.to_str().unwrap());
 
-        // Skill should be at marketplace path under no-plugin
+        // Skill should be at plugin path under default plugin (skills)
         let new_skill = root.join("skills").join("skills").join("my-skill");
         assert!(new_skill.join("SKILL.md").is_file());
     }
