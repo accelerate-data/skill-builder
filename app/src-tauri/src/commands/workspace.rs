@@ -213,9 +213,7 @@ fn migrate_to_marketplace_layout(skills_path: &str) {
         })
         .unwrap_or(false);
     if has_plugin_layout {
-        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(root) {
-            log::warn!("[migrate_marketplace] manifest regeneration failed: {}", e);
-        }
+        // Plugin layout already exists — marketplace.json is git-backed source of truth, do not regenerate
         return;
     }
 
@@ -747,8 +745,7 @@ mod tests {
 
         // Skill should still be at the same place
         assert!(skill.join("SKILL.md").is_file());
-        // Manifests should exist
-        assert!(root.join(".claude-plugin").join("marketplace.json").is_file());
+        // marketplace.json is not regenerated on idempotent runs (git-backed source of truth)
     }
 
     #[test]

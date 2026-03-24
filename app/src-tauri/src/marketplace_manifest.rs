@@ -38,6 +38,36 @@ struct PluginJson {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
+/// Read `{root}/.claude-plugin/marketplace.json` and return a map of
+/// plugin slug → display name from each plugin entry's `name` field.
+/// The slug is derived from the `source` path (last segment after `./`).
+pub fn read_plugin_display_names(root: &Path) -> std::collections::HashMap<String, String> {
+    let mj_path = root.join(".claude-plugin").join("marketplace.json");
+    let mut names = std::collections::HashMap::new();
+    if !mj_path.is_file() {
+        return names;
+    }
+    let content = match fs::read_to_string(&mj_path) {
+        Ok(c) => c,
+        Err(_) => return names,
+    };
+    let marketplace: LocalMarketplaceJson = match serde_json::from_str(&content) {
+        Ok(m) => m,
+        Err(_) => return names,
+    };
+    for entry in &marketplace.plugins {
+        // Derive slug from source path: "./my-plugin" → "my-plugin"
+        let slug = entry.source
+            .strip_prefix("./")
+            .unwrap_or(&entry.source)
+            .trim_end_matches('/');
+        if !slug.is_empty() {
+            names.insert(slug.to_string(), entry.name.clone());
+        }
+    }
+    names
+}
+
 /// Write or update a single plugin's `.claude-plugin/plugin.json`.
 pub fn write_plugin_json(
     root: &Path,
