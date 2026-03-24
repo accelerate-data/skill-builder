@@ -109,12 +109,15 @@ export interface SkillSummary {
   description?: string | null
   version?: string | null
   model?: string | null
+  /** camelCase to match Rust serde rename: `#[serde(rename = "argumentHint")]`. ImportedSkill uses snake_case because its Rust struct has no rename. */
   argumentHint?: string | null
+  /** camelCase to match Rust serde rename. */
   userInvocable?: boolean | null
+  /** camelCase to match Rust serde rename. */
   disableModelInvocation?: boolean | null
-  plugin_slug?: string | null
-  plugin_display_name?: string | null
-  is_default_plugin?: boolean | null
+  plugin_slug: string
+  plugin_display_name: string
+  is_default_plugin: boolean
 }
 
 export interface SkillCommit {
@@ -340,9 +343,9 @@ export interface ImportedSkill {
   disable_model_invocation: boolean | null
   /** Source registry URL this skill was imported from. null for bundled/manually uploaded skills. */
   marketplace_source_url: string | null
-  plugin_slug: string | null
-  plugin_display_name: string | null
-  is_default_plugin: boolean | null
+  plugin_slug: string
+  plugin_display_name: string
+  is_default_plugin: boolean
 }
 
 export interface LibraryPlugin {

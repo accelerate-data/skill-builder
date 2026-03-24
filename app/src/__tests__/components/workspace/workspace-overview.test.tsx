@@ -40,6 +40,9 @@ const baseSkill: SkillSummary = {
   argumentHint: null,
   userInvocable: null,
   disableModelInvocation: null,
+  plugin_slug: "skills",
+  plugin_display_name: "Skills",
+  is_default_plugin: true,
 };
 
 describe("WorkspaceOverview", () => {
