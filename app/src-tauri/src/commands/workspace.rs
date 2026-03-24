@@ -59,6 +59,17 @@ fn migrate_workspace_layout(workspace_path: &str) {
     }
 }
 
+/// Move context files from `skills_path` into `workspace`.
+///
+/// Handles both the legacy flat layout and the current plugin layout:
+///
+/// - Legacy flat:  `{skills_path}/{skill}/context/`
+///                 → `{workspace}/{DEFAULT_PLUGIN_SLUG}/{skill}/context/`
+///
+/// - Plugin layout: `{skills_path}/{plugin}/skills/{skill}/context/`
+///                  → `{workspace}/{plugin}/{skill}/context/`
+///
+/// Idempotent: skips any target context dir that already has content.
 fn migrate_context_from_skills_path(workspace_path: &str, skills_path: &str) {
     let skills_root = Path::new(skills_path);
     if !skills_root.is_dir() {
@@ -79,103 +90,133 @@ fn migrate_context_from_skills_path(workspace_path: &str, skills_path: &str) {
 
     for entry in entries.flatten() {
         let file_name = entry.file_name();
-        let skill_name = file_name.to_string_lossy();
-        if skill_name.starts_with('.') {
+        let dir_name = file_name.to_string_lossy();
+        if dir_name.starts_with('.') {
             continue;
         }
-        let skill_dir = entry.path();
-        if !skill_dir.is_dir() {
-            continue;
-        }
-
-        let legacy_context = skill_dir.join("context");
-        if !legacy_context.is_dir() {
+        let dir_path = entry.path();
+        if !dir_path.is_dir() {
             continue;
         }
 
-        let workspace_skill_dir = Path::new(workspace_path).join(skill_name.as_ref());
-        let target_context = workspace_skill_dir.join("context");
-        if let Err(e) = fs::create_dir_all(&target_context) {
+        let skills_subdir = dir_path.join("skills");
+        if skills_subdir.is_dir() {
+            // Plugin layout: scan {plugin}/skills/{skill}/context/
+            let plugin_slug = dir_name.as_ref();
+            let Ok(skill_entries) = fs::read_dir(&skills_subdir) else { continue };
+            for skill_entry in skill_entries.flatten() {
+                let skill_name = skill_entry.file_name();
+                let skill_name_str = skill_name.to_string_lossy();
+                if skill_name_str.starts_with('.') { continue; }
+                let skill_dir = skill_entry.path();
+                if !skill_dir.is_dir() { continue; }
+                let legacy_context = skill_dir.join("context");
+                if !legacy_context.is_dir() { continue; }
+                let target_context = Path::new(workspace_path)
+                    .join(plugin_slug)
+                    .join(skill_name_str.as_ref())
+                    .join("context");
+                move_context_files(&legacy_context, &target_context);
+            }
+        } else {
+            // Legacy flat layout: {skill}/context/ — flat skills belonged to the default plugin
+            let legacy_context = dir_path.join("context");
+            if !legacy_context.is_dir() { continue; }
+            let target_context = Path::new(workspace_path)
+                .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+                .join(dir_name.as_ref())
+                .join("context");
+            move_context_files(&legacy_context, &target_context);
+        }
+    }
+}
+
+/// Move files from `legacy_context` into `target_context`.
+/// Creates `target_context` if needed. Skips if target already has content.
+fn move_context_files(legacy_context: &Path, target_context: &Path) {
+    if let Err(e) = fs::create_dir_all(target_context) {
+        log::warn!(
+            "[init_workspace] failed to create workspace context dir {}: {}",
+            target_context.display(),
+            e
+        );
+        return;
+    }
+
+    let target_has_content = fs::read_dir(target_context)
+        .map(|mut d| d.next().is_some())
+        .unwrap_or(false);
+    if target_has_content {
+        return;
+    }
+
+    let legacy_entries = match fs::read_dir(legacy_context) {
+        Ok(entries) => entries,
+        Err(e) => {
             log::warn!(
-                "[init_workspace] failed to create workspace context dir {}: {}",
-                target_context.display(),
+                "[init_workspace] failed to read legacy context dir {}: {}",
+                legacy_context.display(),
                 e
             );
+            return;
+        }
+    };
+
+    for legacy_entry in legacy_entries.flatten() {
+        let src = legacy_entry.path();
+        let dst = target_context.join(legacy_entry.file_name());
+        if dst.exists() {
             continue;
         }
-
-        let target_has_content = fs::read_dir(&target_context)
-            .map(|mut d| d.next().is_some())
-            .unwrap_or(false);
-        if target_has_content {
-            continue;
-        }
-
-        let legacy_entries = match fs::read_dir(&legacy_context) {
-            Ok(entries) => entries,
-            Err(e) => {
-                log::warn!(
-                    "[init_workspace] failed to read legacy context dir {}: {}",
-                    legacy_context.display(),
-                    e
-                );
-                continue;
-            }
-        };
-
-        for legacy_entry in legacy_entries.flatten() {
-            let src = legacy_entry.path();
-            let dst = target_context.join(legacy_entry.file_name());
-            if dst.exists() {
-                continue;
-            }
-            if let Err(rename_err) = fs::rename(&src, &dst) {
-                if src.is_file() {
-                    if let Err(copy_err) = fs::copy(&src, &dst) {
-                        log::warn!(
-                            "[init_workspace] failed to migrate context file {} -> {}: {} ({})",
-                            src.display(),
-                            dst.display(),
-                            rename_err,
-                            copy_err
-                        );
-                        continue;
-                    }
-                    let _ = fs::remove_file(&src);
-                } else {
+        if let Err(rename_err) = fs::rename(&src, &dst) {
+            if src.is_file() {
+                if let Err(copy_err) = fs::copy(&src, &dst) {
                     log::warn!(
-                        "[init_workspace] failed to migrate context entry {} -> {}: {}",
+                        "[init_workspace] failed to migrate context file {} -> {}: {} ({})",
                         src.display(),
                         dst.display(),
-                        rename_err
+                        rename_err,
+                        copy_err
                     );
+                    continue;
                 }
+                let _ = fs::remove_file(&src);
+            } else {
+                log::warn!(
+                    "[init_workspace] failed to migrate context entry {} -> {}: {}",
+                    src.display(),
+                    dst.display(),
+                    rename_err
+                );
             }
         }
+    }
 
-        let legacy_empty = fs::read_dir(&legacy_context)
-            .map(|mut d| d.next().is_none())
-            .unwrap_or(false);
-        if legacy_empty {
-            let _ = fs::remove_dir(&legacy_context);
-        }
+    let legacy_empty = fs::read_dir(legacy_context)
+        .map(|mut d| d.next().is_none())
+        .unwrap_or(false);
+    if legacy_empty {
+        let _ = fs::remove_dir(legacy_context);
     }
 }
 
 /// Remove stale `skill-snapshot` directories left by prior benchmark runs
 /// that were interrupted by crash, cancellation, or error.
 /// Non-fatal by design: startup must continue even if cleanup fails.
+///
+/// Scans two levels deep to cover both the legacy flat workspace layout
+/// (`{workspace}/{skill}/skill-snapshot/`) and the current plugin layout
+/// (`{workspace}/{plugin}/{skill}/skill-snapshot/`).
 fn cleanup_stale_snapshots(workspace_path: &str) {
     let base = Path::new(workspace_path);
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
-    };
+    let Ok(entries) = fs::read_dir(base) else { return };
     for entry in entries.flatten() {
-        if !entry.path().is_dir() {
+        let path = entry.path();
+        if !path.is_dir() {
             continue;
         }
-        let snapshot_dir = entry.path().join("skill-snapshot");
+        // Legacy flat layout: {workspace}/{skill}/skill-snapshot/
+        let snapshot_dir = path.join("skill-snapshot");
         if snapshot_dir.is_dir() {
             match fs::remove_dir_all(&snapshot_dir) {
                 Ok(()) => log::info!(
@@ -187,6 +228,28 @@ fn cleanup_stale_snapshots(workspace_path: &str) {
                     snapshot_dir.display(),
                     e
                 ),
+            }
+        }
+        // Plugin layout: {workspace}/{plugin}/{skill}/skill-snapshot/
+        let Ok(children) = fs::read_dir(&path) else { continue };
+        for child in children.flatten() {
+            let child_path = child.path();
+            if !child_path.is_dir() {
+                continue;
+            }
+            let snapshot_dir = child_path.join("skill-snapshot");
+            if snapshot_dir.is_dir() {
+                match fs::remove_dir_all(&snapshot_dir) {
+                    Ok(()) => log::info!(
+                        "[init_workspace] cleaned up stale snapshot at {}",
+                        snapshot_dir.display()
+                    ),
+                    Err(e) => log::warn!(
+                        "[init_workspace] failed to clean up stale snapshot at {}: {}",
+                        snapshot_dir.display(),
+                        e
+                    ),
+                }
             }
         }
     }
