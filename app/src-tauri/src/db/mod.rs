@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 
+pub mod documents;
 pub mod imported_skills;
 pub mod locks;
 pub mod migrations;
@@ -11,6 +12,7 @@ pub mod skills;
 pub mod usage;
 pub mod workflow;
 
+pub use documents::*;
 pub use imported_skills::*;
 pub use locks::*;
 pub use settings::*;

@@ -384,6 +384,7 @@ pub fn run() {
             commands::imported_skills::upload::parse_skill_file,
             commands::imported_skills::upload::import_skill_from_file,
             commands::documents::list_documents,
+            commands::documents::list_skills_for_documents,
             commands::documents::add_document_file,
             commands::documents::add_document_url,
             commands::documents::add_document_folder,

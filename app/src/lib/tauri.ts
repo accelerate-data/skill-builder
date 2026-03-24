@@ -1,11 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, LibraryPlugin, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry } from "@/lib/types";
+import type { AppSettings, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, LibraryPlugin, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, Document } from "@/lib/types";
 
 // Re-export invoke for flexible Tauri command invocation
 export { invoke };
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry } from "@/lib/types";
+export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry, Document } from "@/lib/types";
 
 // --- Settings ---
 
@@ -644,3 +644,43 @@ export const readLatestBenchmark = (skillName: string, workspacePath: string) =>
     "read_latest_benchmark",
     { skillName, workspacePath },
   );
+
+// --- Documents ---
+
+export interface SkillIdName { id: number; name: string }
+
+export const listDocuments = () =>
+  invoke<Document[]>("list_documents");
+
+export const listSkillsForDocuments = () =>
+  invoke<SkillIdName[]>("list_skills_for_documents");
+
+export const addDocumentFile = (
+  name: string,
+  content: string,
+  scope: "all" | "skill",
+  skillIds: number[],
+) => invoke<Document>("add_document_file", { name, content, scope, skillIds });
+
+export const addDocumentUrl = (
+  name: string,
+  url: string,
+  scope: "all" | "skill",
+  skillIds: number[],
+) => invoke<Document>("add_document_url", { name, url, scope, skillIds });
+
+export const addDocumentFolder = (
+  name: string,
+  folderPath: string,
+  scope: "all" | "skill",
+  skillIds: number[],
+) => invoke<Document[]>("add_document_folder", { name, folderPath, scope, skillIds });
+
+export const updateDocument = (
+  id: number,
+  scope: "all" | "skill",
+  skillIds: number[],
+) => invoke<Document>("update_document", { id, scope, skillIds });
+
+export const deleteDocument = (id: number) =>
+  invoke<void>("delete_document", { id });

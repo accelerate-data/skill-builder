@@ -114,6 +114,7 @@ pub(super) fn load_refine_runtime_settings(
         None,
         None,
         None,
+        &[], // refine does not inject documents
     );
 
     Ok(RefineRuntimeSettings {

@@ -59,6 +59,18 @@ export interface AppSettings {
   auto_update: boolean
 }
 
+export interface Document {
+  id: number
+  name: string
+  source_type: "file" | "url" | "folder"
+  source_url: string | null
+  file_path: string
+  scope: "all" | "skill"
+  skill_ids: number[]
+  created_at: string
+  updated_at: string
+}
+
 export interface SkillUpdateInfo {
   name: string
   path: string

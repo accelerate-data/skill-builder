@@ -56,6 +56,7 @@ async fn run_workflow_step_inner(
         settings.argument_hint.as_deref(),
         settings.user_invocable,
         settings.disable_model_invocation,
+        &settings.documents,
     );
 
     let prompt = build_prompt(
@@ -349,6 +350,7 @@ pub async fn run_answer_evaluator(
         None,
         None,
         None,
+        &[], // answer evaluator doesn't inject documents
     );
 
     let prompt = build_evaluator_prompt(&skill_name, &workspace_path, &plugin_slug, &skills_path);
