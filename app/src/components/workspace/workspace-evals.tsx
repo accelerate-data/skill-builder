@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Pencil, Play, Sparkles, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,7 +32,17 @@ import {
   suggestEvalPlaceholder,
   truncatePrompt,
 } from "@/lib/evals";
+import {
+  buildEvaluateSkillPrompt,
+  buildRefinePrefill,
+  evalProgressPercent,
+  parseEvalStructuredOutput,
+} from "@/lib/eval-run";
 import { useAgentStore } from "@/stores/agent-store";
+import { useEvalRunStore } from "@/stores/eval-run-store";
+import { useRefineStore } from "@/stores/refine-store";
+import { Progress } from "@/components/ui/progress";
+import { EvalRunBenchmarkCard } from "./eval-run-benchmark-card";
 import { EvalForm } from "./eval-form";
 import { EvalIntentDialog } from "./eval-intent-dialog";
 
@@ -41,9 +51,11 @@ const EVAL_GEN_MODEL = "claude-sonnet-4-6";
 interface WorkspaceEvalsProps {
   skill: SkillSummary | ImportedSkill;
   workspacePath: string | null;
+  /** Called after setting refine pre-fill — navigates the shell to the Refine tab. */
+  onNavigateToRefine?: () => void;
 }
 
-export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
+export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: WorkspaceEvalsProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
 
   const [evals, setEvals] = useState<TestCase[]>([]);
@@ -76,7 +88,23 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
   const [evalQueue, setEvalQueue] = useState<TestCase[]>([]);
   const [queueSelected, setQueueSelected] = useState<Set<string>>(new Set());
 
+  // Run selection + execution state (component-local per state-management rules)
+  const [selectedRunIds, setSelectedRunIds] = useState<Set<number>>(new Set());
+  const [runCount, setRunCount] = useState<1 | 3>(1);
+  const [isRunningEvals, setIsRunningEvals] = useState(false);
+  const [evalRunAgentId, setEvalRunAgentId] = useState<string | null>(null);
+  const [gradedCount, setGradedCount] = useState(0);
+  const [gradingEvalName, setGradingEvalName] = useState<string | null>(null);
+  const [totalEvalRunCount, setTotalEvalRunCount] = useState(0);
+
+  // Cross-tab benchmark result (from Zustand store — persists to Refine tab)
+  const benchmark = useEvalRunStore((s) => s.benchmark);
+  const analystNotes = useEvalRunStore((s) => s.analystNotes);
+
   const runs = useAgentStore((s) => s.runs);
+  const evalRunDisplayItems = useAgentStore(
+    (s) => s.runs[evalRunAgentId ?? ""]?.displayItems ?? [],
+  );
 
   // --- Actions ---
 
@@ -142,6 +170,50 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runs, regenAgentId]);
+
+  // Watch eval run display items for structuredOutput progress events
+  useEffect(() => {
+    if (!evalRunAgentId || evalRunDisplayItems.length === 0) return;
+    const last = evalRunDisplayItems[evalRunDisplayItems.length - 1];
+    const event = parseEvalStructuredOutput(last?.structuredOutput);
+    if (!event) return;
+
+    if (event.type === "eval_graded") {
+      setGradedCount(event.runIndex * event.totalEvals + event.evalIndex + 1);
+      setGradingEvalName(event.evalName);
+      console.log(
+        "event=eval_graded skill=%s run=%d eval=%d/%d name=%s pass_rate=%s",
+        skillName, event.runIndex, event.evalIndex + 1, event.totalEvals,
+        event.evalName, event.grading.pass_rate,
+      );
+    } else if (event.type === "complete") {
+      useEvalRunStore.getState().setEvalRunResult(event.benchmark, event.analyst_notes);
+      console.log(
+        "event=eval_run_complete skill=%s iteration=%d avg_pass_rate=%s",
+        skillName, event.iteration, event.benchmark.aggregate_summary.avg_pass_rate,
+      );
+      void load();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evalRunDisplayItems, evalRunAgentId]);
+
+  // Watch eval run agent for terminal state
+  useEffect(() => {
+    if (!evalRunAgentId) return;
+    const run = runs[evalRunAgentId];
+    if (!run) return;
+    if (run.status === "completed" || run.status === "error" || run.status === "shutdown") {
+      setIsRunningEvals(false);
+      if (run.status !== "completed") {
+        console.error(
+          "event=eval_run status=failure skill=%s agent_id=%s status=%s",
+          skillName, evalRunAgentId, run.status,
+        );
+        setEvalRunAgentId(null);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runs, evalRunAgentId]);
 
   async function handleOpenIntentDialog() {
     if (!workspacePath || isGenerating || isRegenerating) return;
@@ -404,6 +476,87 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
     }
   }
 
+  function handleToggleRunId(id: number) {
+    setSelectedRunIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleToggleAllRun() {
+    if (selectedRunIds.size === evals.length && evals.length > 0) {
+      setSelectedRunIds(new Set());
+    } else {
+      setSelectedRunIds(new Set(evals.map((e) => e.id)));
+    }
+  }
+
+  async function handleRunSelected() {
+    if (!workspacePath || selectedRunIds.size === 0 || isRunningEvals) return;
+    const evalIds = [...selectedRunIds].sort((a, b) => a - b);
+
+    setIsRunningEvals(true);
+    setGradedCount(0);
+    setTotalEvalRunCount(evalIds.length * runCount);
+    setGradingEvalName(null);
+    useEvalRunStore.getState().clearEvalRunResult();
+
+    const agentId = crypto.randomUUID();
+    const prompt = buildEvaluateSkillPrompt({ skillName, workspacePath, evalIds, runCount });
+
+    try {
+      await startAgent(
+        agentId,
+        prompt,
+        "claude-sonnet-4-6",
+        `${workspacePath}/${skillName}`,
+        ["Read", "Write", "Glob", "Agent"],
+        undefined, // maxTurns — let agent decide
+        undefined,
+        undefined,
+        skillName,
+        "evaluate-skill",
+        "skill-creator:evaluate-skill",
+        undefined,
+        undefined,
+        undefined,
+        `synthetic:evals:${skillName}`,
+        "test",
+      );
+
+      useAgentStore.getState().registerRun(
+        agentId,
+        "claude-sonnet-4-6",
+        skillName,
+        "test",
+        `synthetic:evals:${skillName}`,
+      );
+
+      setEvalRunAgentId(agentId);
+      console.log(
+        "event=eval_run status=started skill=%s agent_id=%s eval_ids=%s run_count=%d",
+        skillName, agentId, JSON.stringify(evalIds), runCount,
+      );
+    } catch (err) {
+      console.error("event=eval_run status=start_failure skill=%s error=%s", skillName, err);
+      setIsRunningEvals(false);
+      setTotalEvalRunCount(0);
+    }
+  }
+
+  function handleRefine() {
+    if (!benchmark) return;
+    const msg = buildRefinePrefill(benchmark, analystNotes);
+    useRefineStore.getState().setPendingInitialMessage(msg);
+    onNavigateToRefine?.();
+    console.log(
+      "event=eval_refine_navigate skill=%s iteration=%d",
+      skillName, benchmark.iteration,
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -423,19 +576,21 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
 
   const latestIteration = iterations[0]?.iteration ?? 0;
   const selectedCount = queueSelected.size;
+  const allRunSelected = evals.length > 0 && selectedRunIds.size === evals.length;
+  const someRunSelected = selectedRunIds.size > 0 && !allRunSelected;
 
   return (
     <div className="flex flex-col gap-6">
       {/* Evals section */}
       <section>
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold tracking-tight">Evals</h2>
             <p className="text-xs text-muted-foreground">
               Managed in <span className="font-mono">{skillName}/evals/evals.json</span>
             </p>
           </div>
-          <Button size="sm" onClick={handleOpenIntentDialog} disabled={isGenerating || isRegenerating}>
+          <Button size="sm" onClick={handleOpenIntentDialog} disabled={isGenerating || isRegenerating || isRunningEvals}>
             {isGenerating ? (
               <>
                 <Loader2 className="mr-1.5 size-3.5 animate-spin" />
@@ -449,6 +604,62 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
             )}
           </Button>
         </div>
+
+        {/* Run controls bar — only when evals exist */}
+        {evals.length > 0 && (
+          <div className="mb-3 flex items-center gap-2">
+            <Checkbox
+              checked={allRunSelected}
+              data-state={someRunSelected ? "indeterminate" : undefined}
+              onCheckedChange={handleToggleAllRun}
+              aria-label="Select all evals to run"
+              disabled={isRunningEvals}
+            />
+            <span className="text-xs text-muted-foreground">
+              {selectedRunIds.size > 0 ? `${selectedRunIds.size} selected` : "Select to run"}
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              {/* Run count toggle */}
+              <div className="inline-flex overflow-hidden rounded-md border">
+                <button
+                  type="button"
+                  className={`px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${runCount === 1 ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
+                  style={runCount === 1 ? { background: "var(--color-pacific)" } : {}}
+                  onClick={() => setRunCount(1)}
+                  disabled={isRunningEvals}
+                >
+                  1×
+                </button>
+                <button
+                  type="button"
+                  className={`border-l px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${runCount === 3 ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
+                  style={runCount === 3 ? { background: "var(--color-pacific)" } : {}}
+                  onClick={() => setRunCount(3)}
+                  disabled={isRunningEvals}
+                >
+                  3×
+                </button>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => void handleRunSelected()}
+                disabled={selectedRunIds.size === 0 || isRunningEvals || isGenerating}
+              >
+                {isRunningEvals ? (
+                  <>
+                    <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                    Running…
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-1.5 size-3.5" />
+                    Run selected ({selectedRunIds.size})
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Generation banner */}
         {isGenerating && (
@@ -467,6 +678,31 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
               <p className="text-xs text-muted-foreground">
                 Reading skill definition and crafting a test scenario.
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Eval run progress banner */}
+        {isRunningEvals && (
+          <div
+            className="mb-4 flex items-center gap-3 rounded-lg border px-4 py-3 text-sm"
+            style={{ borderColor: "color-mix(in oklch, var(--color-pacific), transparent 70%)", background: "color-mix(in oklch, var(--color-pacific), transparent 94%)" }}
+          >
+            <Loader2
+              className="size-4 shrink-0 animate-spin"
+              style={{ color: "var(--color-pacific)" }}
+            />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium" style={{ color: "var(--color-pacific)" }}>
+                Grading eval {gradedCount} of {totalEvalRunCount}
+                {gradingEvalName && (
+                  <span className="font-normal text-foreground"> — {gradingEvalName}</span>
+                )}
+              </p>
+              <Progress
+                value={evalProgressPercent(gradedCount, selectedRunIds.size, runCount)}
+                className="mt-1.5 h-1"
+              />
             </div>
           </div>
         )}
@@ -531,7 +767,8 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
         ) : (
           <div className="flex flex-col gap-2">
             {/* Header row */}
-            <div className="grid grid-cols-[1fr_2fr_auto_auto] items-center gap-4 px-3 pb-1">
+            <div className="grid grid-cols-[auto_1fr_2fr_auto_auto] items-center gap-4 px-3 pb-1">
+              <span className="sr-only">Select</span>
               <span className="text-xs font-medium text-muted-foreground">Name</span>
               <span className="text-xs font-medium text-muted-foreground">Prompt</span>
               <span className="text-xs font-medium text-muted-foreground">Assertions</span>
@@ -543,14 +780,26 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
                 key={tc.id}
                 tc={tc}
                 expanded={expandedId === tc.id}
+                selected={selectedRunIds.has(tc.id)}
                 onToggle={() => setExpandedId(expandedId === tc.id ? null : tc.id)}
+                onToggleRun={() => handleToggleRunId(tc.id)}
                 onEdit={() => openEdit(tc)}
                 onDelete={() => setDeleteTarget(tc)}
+                disabled={isRunningEvals}
               />
             ))}
           </div>
         )}
       </section>
+
+      {/* Benchmark result card — shown after evaluate-skill completes */}
+      {benchmark && (
+        <EvalRunBenchmarkCard
+          benchmark={benchmark}
+          analystNotes={analystNotes}
+          onRefine={handleRefine}
+        />
+      )}
 
       {/* Iteration History section */}
       {iterations.length > 0 && (
@@ -646,16 +895,26 @@ function EmptyState({ onGenerate, isGenerating }: { onGenerate: () => void; isGe
 interface EvalRowProps {
   tc: TestCase;
   expanded: boolean;
+  selected: boolean;
   onToggle: () => void;
+  onToggleRun: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  disabled?: boolean;
 }
 
-function EvalRow({ tc, expanded, onToggle, onEdit, onDelete }: EvalRowProps) {
+function EvalRow({ tc, expanded, selected, onToggle, onToggleRun, onEdit, onDelete, disabled }: EvalRowProps) {
   return (
     <div className="rounded-lg border bg-card transition-shadow duration-150 hover:shadow-sm">
       {/* Summary row */}
-      <div className="grid grid-cols-[1fr_2fr_auto_auto] items-center gap-4 px-3 py-2.5">
+      <div className="grid grid-cols-[auto_1fr_2fr_auto_auto] items-center gap-4 px-3 py-2.5">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={onToggleRun}
+          aria-label={`Select ${tc.eval_name} to run`}
+          disabled={disabled}
+          className="shrink-0"
+        />
         <button
           type="button"
           className="flex items-center gap-1.5 text-left"
@@ -687,6 +946,7 @@ function EvalRow({ tc, expanded, onToggle, onEdit, onDelete }: EvalRowProps) {
             onClick={onEdit}
             title="Edit eval"
             aria-label="Edit eval"
+            disabled={disabled}
           >
             <Pencil className="size-3.5" />
           </Button>
@@ -698,6 +958,7 @@ function EvalRow({ tc, expanded, onToggle, onEdit, onDelete }: EvalRowProps) {
             onClick={onDelete}
             title="Delete eval"
             aria-label="Delete eval"
+            disabled={disabled}
           >
             <Trash2 className="size-3.5" />
           </Button>
