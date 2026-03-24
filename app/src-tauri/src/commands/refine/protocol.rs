@@ -247,6 +247,16 @@ pub(super) fn build_refine_prompt(
          All directories already exist — never create directories with mkdir or any other method.\n\n\
          ROUTING:\n\
          - For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.\n\
+         - BENCHMARK FEEDBACK: If the user's message contains benchmark results, eval notes, or analyst \
+         observations about the skill's performance, treat it as benchmark feedback (not a direct modification \
+         request). Do NOT run a new benchmark. Instead: \
+         (1) Analyze the notes and identify the top actionable improvements (typically 3-5). \
+         (2) For each, write a short bold title and one sentence tying it to a specific failing eval, \
+         assertion, or pattern. \
+         (3) Call AskUserQuestion with the recommendations as numbered options — include \
+         \\\"Address all recommendations\\\" as the final option. \
+         (4) When the user selects an option, launch skill-creator:rewrite-skill to implement that \
+         specific improvement, exactly as you would for a direct refine request.\n\
          - CONSTRAINT: You may only refine, evaluate, benchmark, or validate the existing skill '{skill_name}'. Do NOT create new skills. \
          If the user asks to create a new skill, decline and direct them to the dashboard.",
     );
