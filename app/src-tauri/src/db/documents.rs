@@ -19,6 +19,7 @@ pub struct DocumentRecord {
 #[derive(Debug, Clone)]
 pub struct DocumentContent {
     pub name: String,
+    pub file_path: String,
     pub content: String,
 }
 
@@ -187,7 +188,7 @@ pub fn db_documents_for_skill(
                 } else {
                     raw
                 };
-                contents.push(DocumentContent { name, content });
+                contents.push(DocumentContent { name, file_path, content });
             }
             Err(e) => {
                 log::warn!(
@@ -271,6 +272,7 @@ mod tests {
         let contents = db_documents_for_skill(&conn, skill_id).unwrap();
         assert_eq!(contents.len(), 1);
         assert_eq!(contents[0].content, "Hello document");
+        assert_eq!(contents[0].file_path, file_path.to_str().unwrap());
     }
 
     #[test]
