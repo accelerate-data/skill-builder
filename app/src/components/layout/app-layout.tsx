@@ -16,7 +16,7 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
-import { cancelRefineTurn, cancelAgentRun } from "@/lib/tauri";
+import { cancelRefineTurn, cancelWorkflowStep } from "@/lib/tauri";
 
 export function AppLayout() {
   const isConfigured = useSettingsStore((s) => s.isConfigured);
@@ -75,14 +75,14 @@ export function AppLayout() {
           });
           return;
         }
-        // Workflow step (one-shot): cancel via agentId (= request_id in sidecar).
+        // Workflow step (streaming): cancel via agentId → session lookup in backend.
         const runs = useAgentStore.getState().runs;
         const running = Object.values(runs).find(
           (r): r is typeof r & { skillName: string } =>
             r.status === "running" && r.runSource === "workflow" && !!r.skillName,
         );
         if (running) {
-          cancelAgentRun(running.skillName, running.agentId).catch((err) => {
+          cancelWorkflowStep(running.agentId).catch((err) => {
             console.error("[app-layout] escape: cancel workflow step failed", err);
           });
         }

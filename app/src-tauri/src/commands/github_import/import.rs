@@ -94,7 +94,8 @@ pub(crate) async fn import_single_skill(
     branch: &str,
     skill_path: &str,
     tree: &[serde_json::Value],
-    skills_dir: &Path,
+    skills_root: &Path,
+    plugin_slug: &str,
     overwrite: bool,
     metadata_override: Option<&crate::types::SkillMetadataOverride>,
 ) -> Result<ImportedSkill, String> {
@@ -237,7 +238,7 @@ pub(crate) async fn import_single_skill(
     }
 
     // Check if skill directory already exists on disk
-    let dest_dir = skills_dir.join(&skill_name);
+    let dest_dir = crate::skill_paths::nested_skill_dir(skills_root, plugin_slug, &skill_name);
     if dest_dir.exists() {
         if overwrite {
             log::debug!(
@@ -378,9 +379,9 @@ pub(crate) async fn import_single_skill(
         user_invocable: fm.user_invocable,
         disable_model_invocation: fm.disable_model_invocation,
         marketplace_source_url: None,
-        plugin_slug: None,
+        plugin_slug: Some(plugin_slug.to_string()),
         plugin_display_name: None,
-        is_default_plugin: None,
+        is_default_plugin: Some(plugin_slug == crate::skill_paths::DEFAULT_PLUGIN_SLUG),
     })
 }
 

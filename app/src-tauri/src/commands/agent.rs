@@ -162,6 +162,7 @@ pub async fn start_agent(
         workflow_session_id,
         usage_session_id,
         run_source,
+        transcript_log_dir: None,
     };
 
     sidecar::spawn_sidecar(

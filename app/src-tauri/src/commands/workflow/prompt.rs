@@ -49,6 +49,30 @@ pub(crate) fn build_prompt(
     prompt
 }
 
+/// Build the prompt for step 0 (research) — invokes the research skill directly
+/// so AskUserQuestion is one level deep and intercepted by the streaming session.
+pub(crate) fn build_step0_prompt(
+    skill_name: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+    max_dimensions: u32,
+) -> String {
+    let workspace_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    format!(
+        "The skill name is: {}. The workspace directory is: {}. \
+         Read user-context.md from the workspace directory. \
+         Derive context_dir as workspace_dir/context. \
+         All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. \
+         Read only the specific files named in your instructions and write files directly. \
+         The maximum research dimensions before scope warning is: {}. \
+         Use the skill-content-researcher:research to produce clarification questions which will be used to write the skill.",
+        skill_name,
+        workspace_str,
+        max_dimensions,
+    )
+}
+
 /// Build the lighter prompt used by the answer-evaluator agent.
 pub(crate) fn build_evaluator_prompt(
     skill_name: &str,

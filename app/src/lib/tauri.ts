@@ -448,6 +448,9 @@ export const cancelRefineTurn = (sessionId: string) =>
 export const cancelAgentRun = (skillName: string, agentId: string) =>
   invoke<void>("cancel_agent_run", { skillName, agentId })
 
+export const cancelWorkflowStep = (agentId: string) =>
+  invoke<void>("cancel_workflow_step", { agentId })
+
 export const answerRefineQuestion = (
   sessionId: string,
   agentId: string,
@@ -456,6 +459,18 @@ export const answerRefineQuestion = (
   answers: Record<string, unknown>,
 ) => invoke<void>("answer_refine_question", {
   sessionId,
+  agentId,
+  toolUseId,
+  questions,
+  answers,
+})
+
+export const answerWorkflowStepQuestion = (
+  agentId: string,
+  toolUseId: string,
+  questions: unknown,
+  answers: Record<string, unknown>,
+) => invoke<void>("answer_workflow_step_question", {
   agentId,
   toolUseId,
   questions,
