@@ -35,7 +35,7 @@ vi.mock("@/lib/tauri", () => ({
 }));
 
 import { SkillListPanel } from "@/components/skill-list-panel";
-import { createPluginFromSkills, moveSkillToPlugin, removeSkillFromPlugin } from "@/lib/tauri";
+import { removeSkillFromPlugin } from "@/lib/tauri";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
