@@ -277,7 +277,14 @@ pub fn move_skill_to_plugin(
                 crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
             }
             Ok(())
-        })
+        })?;
+    // Update marketplace.json to reflect the move
+    if let Some(ref sp) = settings.skills_path {
+        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(std::path::Path::new(sp)) {
+            log::warn!("[move_skill_to_plugin] manifest update failed: {}", e);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -303,7 +310,14 @@ pub fn remove_skill_from_plugin(
                 crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
             }
             Ok(())
-        })
+        })?;
+    // Update marketplace.json to reflect the move
+    if let Some(ref sp) = settings.skills_path {
+        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(std::path::Path::new(sp)) {
+            log::warn!("[remove_skill_from_plugin] manifest update failed: {}", e);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]

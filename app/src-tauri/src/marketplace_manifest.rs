@@ -381,4 +381,182 @@ mod tests {
         let content: serde_json::Value = serde_json::from_str(&fs::read_to_string(&mj_path).unwrap()).unwrap();
         assert_eq!(content["plugins"].as_array().unwrap().len(), 0);
     }
+
+    // ── ensure_plugin_in_marketplace tests ──
+
+    #[test]
+    fn ensure_plugin_in_marketplace_creates_file_if_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        // No marketplace.json exists yet
+        ensure_plugin_in_marketplace(tmp.path(), "analytics", "Analytics").unwrap();
+
+        let mj_path = tmp.path().join(".claude-plugin").join("marketplace.json");
+        assert!(mj_path.is_file());
+        let content: serde_json::Value = serde_json::from_str(&fs::read_to_string(&mj_path).unwrap()).unwrap();
+        let plugins = content["plugins"].as_array().unwrap();
+        assert_eq!(plugins.len(), 1);
+        assert_eq!(plugins[0]["name"], "Analytics");
+        assert_eq!(plugins[0]["source"], "./analytics");
+    }
+
+    #[test]
+    fn ensure_plugin_in_marketplace_appends_if_not_listed() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Create marketplace.json with one plugin
+        let config = tmp.path().join(".claude-plugin");
+        fs::create_dir_all(&config).unwrap();
+        fs::write(config.join("marketplace.json"), r#"{
+            "name": "test",
+            "owner": {"name": "Test"},
+            "plugins": [{"name": "existing", "source": "./existing"}]
+        }"#).unwrap();
+
+        ensure_plugin_in_marketplace(tmp.path(), "new-plugin", "New Plugin").unwrap();
+
+        let content: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(config.join("marketplace.json")).unwrap()
+        ).unwrap();
+        let plugins = content["plugins"].as_array().unwrap();
+        assert_eq!(plugins.len(), 2);
+        assert_eq!(plugins[1]["name"], "New Plugin");
+        assert_eq!(plugins[1]["source"], "./new-plugin");
+    }
+
+    #[test]
+    fn ensure_plugin_in_marketplace_skips_if_already_listed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = tmp.path().join(".claude-plugin");
+        fs::create_dir_all(&config).unwrap();
+        fs::write(config.join("marketplace.json"), r#"{
+            "name": "test",
+            "owner": {"name": "Test"},
+            "plugins": [{"name": "My Plugin", "source": "./my-plugin"}]
+        }"#).unwrap();
+
+        ensure_plugin_in_marketplace(tmp.path(), "my-plugin", "My Plugin Updated").unwrap();
+
+        let content: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(config.join("marketplace.json")).unwrap()
+        ).unwrap();
+        let plugins = content["plugins"].as_array().unwrap();
+        // Should still be 1 — not duplicated
+        assert_eq!(plugins.len(), 1);
+        // Name should NOT be updated (only append, not modify)
+        assert_eq!(plugins[0]["name"], "My Plugin");
+    }
+
+    // ── Marketplace.json mutation coverage ──
+
+    #[test]
+    fn regenerate_includes_new_plugin_after_create() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Start with one plugin
+        let p1 = tmp.path().join("existing").join("skills").join("s1");
+        fs::create_dir_all(&p1).unwrap();
+        fs::write(p1.join("SKILL.md"), "# s1").unwrap();
+        regenerate_all_manifests(tmp.path()).unwrap();
+
+        // Create a new plugin
+        let p2 = tmp.path().join("new-plugin").join("skills").join("s2");
+        fs::create_dir_all(&p2).unwrap();
+        fs::write(p2.join("SKILL.md"), "# s2").unwrap();
+        regenerate_all_manifests(tmp.path()).unwrap();
+
+        let mj: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(tmp.path().join(".claude-plugin").join("marketplace.json")).unwrap()
+        ).unwrap();
+        let names: Vec<&str> = mj["plugins"].as_array().unwrap()
+            .iter().filter_map(|p| p["name"].as_str()).collect();
+        assert!(names.contains(&"existing"), "existing plugin should be listed");
+        assert!(names.contains(&"new-plugin"), "new plugin should be listed");
+    }
+
+    #[test]
+    fn regenerate_removes_plugin_after_delete() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Create two plugins
+        let p1 = tmp.path().join("keep").join("skills").join("s1");
+        fs::create_dir_all(&p1).unwrap();
+        fs::write(p1.join("SKILL.md"), "# s1").unwrap();
+        let p2 = tmp.path().join("remove-me").join("skills").join("s2");
+        fs::create_dir_all(&p2).unwrap();
+        fs::write(p2.join("SKILL.md"), "# s2").unwrap();
+        regenerate_all_manifests(tmp.path()).unwrap();
+
+        // Delete one plugin folder
+        fs::remove_dir_all(tmp.path().join("remove-me")).unwrap();
+        regenerate_all_manifests(tmp.path()).unwrap();
+
+        let mj: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(tmp.path().join(".claude-plugin").join("marketplace.json")).unwrap()
+        ).unwrap();
+        let names: Vec<&str> = mj["plugins"].as_array().unwrap()
+            .iter().filter_map(|p| p["name"].as_str()).collect();
+        assert!(names.contains(&"keep"));
+        assert!(!names.contains(&"remove-me"), "deleted plugin should be gone from marketplace.json");
+    }
+
+    #[test]
+    fn regenerate_updates_after_skill_added_to_plugin() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Plugin with one skill
+        let s1 = tmp.path().join("my-plugin").join("skills").join("skill-a");
+        fs::create_dir_all(&s1).unwrap();
+        fs::write(s1.join("SKILL.md"), "# a").unwrap();
+        regenerate_all_manifests(tmp.path()).unwrap();
+
+        // Add a second skill
+        let s2 = tmp.path().join("my-plugin").join("skills").join("skill-b");
+        fs::create_dir_all(&s2).unwrap();
+        fs::write(s2.join("SKILL.md"), "# b").unwrap();
+        regenerate_all_manifests(tmp.path()).unwrap();
+
+        // Plugin should still be listed (regenerate doesn't remove it)
+        let mj: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(tmp.path().join(".claude-plugin").join("marketplace.json")).unwrap()
+        ).unwrap();
+        let plugins = mj["plugins"].as_array().unwrap();
+        assert_eq!(plugins.len(), 1);
+        assert_eq!(plugins[0]["name"], "my-plugin");
+    }
+
+    #[test]
+    fn read_display_names_returns_marketplace_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = tmp.path().join(".claude-plugin");
+        fs::create_dir_all(&config).unwrap();
+        fs::write(config.join("marketplace.json"), r#"{
+            "name": "test",
+            "owner": {"name": "Test"},
+            "plugins": [
+                {"name": "My Analytics", "source": "./analytics"},
+                {"name": "DevOps Tools", "source": "./devops"}
+            ]
+        }"#).unwrap();
+
+        let names = read_plugin_display_names(tmp.path());
+        assert_eq!(names.get("analytics").unwrap(), "My Analytics");
+        assert_eq!(names.get("devops").unwrap(), "DevOps Tools");
+        assert_eq!(names.len(), 2);
+    }
+
+    #[test]
+    fn default_plugin_layout_no_double_nesting() {
+        // Default plugin skills go in root/skills/{name}/ not root/skills/skills/{name}/
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_dir = crate::skill_paths::nested_skill_dir(
+            tmp.path(), crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill"
+        );
+        assert_eq!(
+            skill_dir,
+            tmp.path().join(crate::skill_paths::DEFAULT_PLUGIN_SLUG).join("my-skill"),
+            "default plugin should not have skills/ intermediate directory"
+        );
+        // Non-default plugin should have skills/ intermediate
+        let other_dir = crate::skill_paths::nested_skill_dir(tmp.path(), "analytics", "report");
+        assert_eq!(
+            other_dir,
+            tmp.path().join("analytics").join("skills").join("report")
+        );
+    }
 }
