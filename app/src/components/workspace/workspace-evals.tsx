@@ -43,6 +43,7 @@ import { useEvalRunStore } from "@/stores/eval-run-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { Progress } from "@/components/ui/progress";
 import { EvalRunBenchmarkCard } from "./eval-run-benchmark-card";
+import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { EvalForm } from "./eval-form";
 import { EvalIntentDialog } from "./eval-intent-dialog";
 
@@ -706,6 +707,13 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
                 className="mt-1.5 h-1"
               />
             </div>
+          </div>
+        )}
+
+        {/* Agent output panel — visible during and after the eval run */}
+        {evalRunAgentId && (
+          <div className="mb-4">
+            <AgentOutputPanel agentId={evalRunAgentId} />
           </div>
         )}
 
