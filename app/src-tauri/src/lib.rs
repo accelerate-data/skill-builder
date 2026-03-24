@@ -283,6 +283,7 @@ pub fn run() {
         .manage(agents::sidecar_pool::SidecarPool::new())
         .manage(CloseGuardState::default())
         .manage(commands::refine::RefineSessionManager::new())
+        .manage(commands::workflow::runtime::WorkflowStepSessionManager::new())
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,
             commands::node::check_node,
@@ -327,6 +328,7 @@ pub fn run() {
             commands::workflow::runtime::run_answer_evaluator,
             commands::workflow::output_format::materialize_answer_evaluation_output,
             commands::workflow::runtime::log_gate_decision,
+            commands::workflow::runtime::answer_workflow_step_question,
             commands::sidecar_lifecycle::cleanup_skill_sidecar,
             commands::sidecar_lifecycle::graceful_shutdown,
             commands::sidecar_lifecycle::allow_app_exit,

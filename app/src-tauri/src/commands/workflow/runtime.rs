@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Mutex;
 
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
@@ -19,13 +21,36 @@ use super::step_config::{
 };
 use super::user_context::write_user_context_file;
 
-/// Core logic for launching a single workflow step. Builds the prompt,
-/// constructs the sidecar config, and spawns the agent. Returns the agent_id.
+// ─── Session management ──────────────────────────────────────────────────────
+
+/// In-memory state for a single workflow step streaming session.
+/// Keyed by agent_id in WorkflowStepSessionManager.
+pub struct WorkflowStepSession {
+    pub skill_name: String,
+    pub session_id: String,
+}
+
+/// Manages active workflow step streaming sessions. Registered as Tauri managed state.
+/// Allows `answer_workflow_step_question` to look up the session for a given agent.
+pub struct WorkflowStepSessionManager(pub Mutex<HashMap<String, WorkflowStepSession>>);
+
+impl WorkflowStepSessionManager {
+    pub fn new() -> Self {
+        Self(Mutex::new(HashMap::new()))
+    }
+}
+
+// ─── run_workflow_step_inner ─────────────────────────────────────────────────
+
+/// Core logic for launching a single workflow step via streaming. Builds the prompt,
+/// constructs the sidecar config, and starts a streaming session. Returns the agent_id.
 ///
-/// Used by `run_workflow_step` to avoid duplicating step logic.
+/// Each step gets its own streaming session so AskUserQuestion callbacks can be
+/// routed back to the correct sidecar via send_stream_question_answer.
 async fn run_workflow_step_inner(
     app: &tauri::AppHandle,
     pool: &SidecarPool,
+    sessions: &WorkflowStepSessionManager,
     skill_name: &str,
     step_id: u32,
     workspace_path: &str,
@@ -87,7 +112,7 @@ async fn run_workflow_step_inner(
         required_plugins,
     );
 
-    let config = SidecarConfig {
+    let mut config = SidecarConfig {
         prompt,
         model: None,
         api_key: settings.api_key.clone(),
@@ -121,24 +146,42 @@ async fn run_workflow_step_inner(
         run_source: Some("workflow".to_string()),
     };
 
-    let log_dir = crate::skill_paths::workspace_skill_dir(
-        Path::new(workspace_path),
-        &settings.plugin_slug,
-        skill_name,
-    )
-    .join("logs")
-    .to_string_lossy()
-    .into_owned();
+    // Resolve SDK cli.js path (same as spawn_sidecar does internally)
+    if config.path_to_claude_code_executable.is_none() {
+        if let Ok(cli_path) = sidecar::resolve_sdk_cli_path_public(app) {
+            config.path_to_claude_code_executable = Some(cli_path);
+        }
+    }
 
-    sidecar::spawn_sidecar(
-        agent_id.clone(),
-        config,
-        pool.clone(),
-        app.clone(),
-        skill_name.to_string(),
-        Some(log_dir),
-    )
-    .await?;
+    let session_id = uuid::Uuid::new_v4().to_string();
+    log::debug!(
+        "[run_workflow_step] starting stream session=[REDACTED] agent={} cwd={}",
+        agent_id,
+        config.cwd,
+    );
+
+    pool.send_stream_start(skill_name, &session_id, &agent_id, config, app)
+        .await
+        .map_err(|e| {
+            log::error!(
+                "[run_workflow_step] Failed to start stream for agent={}: {}",
+                agent_id,
+                e
+            );
+            e
+        })?;
+
+    // Register session so answer_workflow_step_question can route answers
+    {
+        let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
+        map.insert(
+            agent_id.clone(),
+            WorkflowStepSession {
+                skill_name: skill_name.to_string(),
+                session_id,
+            },
+        );
+    }
 
     Ok(agent_id)
 }
@@ -149,6 +192,7 @@ pub async fn run_workflow_step(
     app: tauri::AppHandle,
     pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
+    sessions: tauri::State<'_, WorkflowStepSessionManager>,
     skill_name: String,
     step_id: u32,
     workspace_path: String,
@@ -263,6 +307,7 @@ pub async fn run_workflow_step(
     run_workflow_step_inner(
         &app,
         pool.inner(),
+        sessions.inner(),
         &skill_name,
         step_id,
         &workspace_path,
@@ -281,6 +326,68 @@ pub async fn run_workflow_step(
         e
     })
 }
+
+// ─── answer_workflow_step_question ───────────────────────────────────────────
+
+/// Route an AskUserQuestion answer back to the active workflow step streaming session.
+///
+/// The frontend calls this when the user submits an answer to a question posed
+/// by a workflow step agent (step 0–3). The session is looked up by agent_id
+/// and the answer is forwarded to the sidecar via send_stream_question_answer.
+#[tauri::command]
+pub async fn answer_workflow_step_question(
+    agent_id: String,
+    tool_use_id: String,
+    questions: serde_json::Value,
+    answers: serde_json::Value,
+    sessions: tauri::State<'_, WorkflowStepSessionManager>,
+    pool: tauri::State<'_, SidecarPool>,
+) -> Result<(), String> {
+    log::info!(
+        "[answer_workflow_step_question] agent={} tool={}",
+        agent_id,
+        tool_use_id
+    );
+
+    let (skill_name, session_id) = {
+        let map = sessions.0.lock().map_err(|e| {
+            log::error!(
+                "[answer_workflow_step_question] Failed to acquire session lock: {}",
+                e
+            );
+            e.to_string()
+        })?;
+        let session = map.get(&agent_id).ok_or_else(|| {
+            let msg = format!(
+                "No workflow step session found for agent_id={}",
+                agent_id
+            );
+            log::error!("[answer_workflow_step_question] {}", msg);
+            msg
+        })?;
+        (session.skill_name.clone(), session.session_id.clone())
+    };
+
+    pool.send_stream_question_answer(
+        &skill_name,
+        &session_id,
+        &agent_id,
+        &tool_use_id,
+        questions,
+        answers,
+    )
+    .await
+    .map_err(|e| {
+        log::error!(
+            "[answer_workflow_step_question] Failed to send answer for agent={}: {}",
+            agent_id,
+            e
+        );
+        e
+    })
+}
+
+// ─── run_answer_evaluator ────────────────────────────────────────────────────
 
 /// Run the answer-evaluator agent (Haiku) to assess clarification answer quality.
 /// Returns the agent ID for the frontend to subscribe to completion events.

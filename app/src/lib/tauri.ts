@@ -462,6 +462,18 @@ export const answerRefineQuestion = (
   answers,
 })
 
+export const answerWorkflowStepQuestion = (
+  agentId: string,
+  toolUseId: string,
+  questions: unknown,
+  answers: Record<string, unknown>,
+) => invoke<void>("answer_workflow_step_question", {
+  agentId,
+  toolUseId,
+  questions,
+  answers,
+})
+
 export const sendRefineMessage = (
   sessionId: string,
   userMessage: string,
