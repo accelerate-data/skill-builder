@@ -462,9 +462,8 @@ pub async fn cancel_agent_run(
     pool: tauri::State<'_, SidecarPool>,
 ) -> Result<(), String> {
     log::info!(
-        "[cancel_agent_run] skill='{}' session='{}'",
-        skill_name,
-        session_id
+        "[cancel_agent_run] skill='{}' session=[REDACTED]",
+        skill_name
     );
     if let Err(err) = pool.send_stream_cancel(&skill_name, &session_id).await {
         log::warn!(
