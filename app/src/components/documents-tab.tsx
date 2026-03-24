@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Trash2, Link, FolderOpen, Upload, Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useDocumentStore } from "@/stores/document-store"
 import {
@@ -97,6 +98,32 @@ function AddUrlDialog({ skills, onAdd, onClose }: AddUrlDialogProps) {
 // Assignment picker (reusable)
 // ---------------------------------------------------------------------------
 
+interface PluginGroup {
+  pluginSlug: string
+  pluginDisplayName: string
+  isDefaultPlugin: boolean
+  skills: SkillIdName[]
+}
+
+function buildPluginGroups(skills: SkillIdName[]): PluginGroup[] {
+  const map = new Map<string, PluginGroup>()
+  for (const s of skills) {
+    if (!map.has(s.plugin_slug)) {
+      map.set(s.plugin_slug, {
+        pluginSlug: s.plugin_slug,
+        pluginDisplayName: s.plugin_display_name,
+        isDefaultPlugin: s.is_default_plugin,
+        skills: [],
+      })
+    }
+    map.get(s.plugin_slug)!.skills.push(s)
+  }
+  // Default plugin first, then alphabetical
+  return Array.from(map.values()).sort((a, b) =>
+    a.isDefaultPlugin ? -1 : b.isDefaultPlugin ? 1 : a.pluginDisplayName.localeCompare(b.pluginDisplayName)
+  )
+}
+
 interface AssignmentPickerProps {
   scope: "all" | "skill"
   setScope: (s: "all" | "skill") => void
@@ -107,37 +134,47 @@ interface AssignmentPickerProps {
 }
 
 function AssignmentPicker({ scope, setScope, selectedSkillIds, toggle, skills, inline }: AssignmentPickerProps) {
+  const pluginGroups = useMemo(() => buildPluginGroups(skills), [skills])
+  const hasMultiplePlugins = pluginGroups.length > 1
+
   return (
-    <div className={inline ? "space-y-3" : undefined}>
+    <div className="space-y-3">
       {inline && <Label>Assign to</Label>}
-      <RadioGroup value={scope} onValueChange={(v) => setScope(v as "all" | "skill")} className="space-y-1">
-        <div className="flex items-center gap-2">
-          <RadioGroupItem value="all" id="scope-all" />
-          <Label htmlFor="scope-all" className="text-sm font-normal cursor-pointer">All skills</Label>
-        </div>
-        <div className="flex items-center gap-2">
-          <RadioGroupItem value="skill" id="scope-skill" />
-          <Label htmlFor="scope-skill" className="text-sm font-normal cursor-pointer">Specific skills</Label>
-        </div>
-      </RadioGroup>
+      <div className="flex items-center justify-between pb-2 border-b">
+        <Label htmlFor="scope-all-toggle" className="text-sm font-medium cursor-pointer">All skills</Label>
+        <Switch
+          id="scope-all-toggle"
+          checked={scope === "all"}
+          onCheckedChange={(v) => setScope(v ? "all" : "skill")}
+        />
+      </div>
 
       {scope === "skill" && (
-        <div className="ml-5 space-y-1 max-h-40 overflow-y-auto">
+        <ScrollArea className="max-h-56">
           {skills.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No skills found</p>
+            <p className="text-xs text-muted-foreground px-1">No skills found</p>
           ) : (
-            skills.map((s) => (
-              <div key={s.id} className="flex items-center gap-2">
-                <Checkbox
-                  id={`skill-${s.id}`}
-                  checked={selectedSkillIds.includes(s.id)}
-                  onCheckedChange={() => toggle(s.id)}
-                />
-                <Label htmlFor={`skill-${s.id}`} className="text-sm font-normal cursor-pointer">{s.name}</Label>
+            pluginGroups.map((group) => (
+              <div key={group.pluginSlug}>
+                {(!group.isDefaultPlugin || hasMultiplePlugins) && (
+                  <div className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {group.pluginDisplayName}
+                  </div>
+                )}
+                {group.skills.map((s) => (
+                  <div key={s.id} className="flex items-center gap-2 px-1 py-1 rounded hover:bg-accent/50 cursor-pointer">
+                    <Checkbox
+                      id={`skill-${s.id}`}
+                      checked={selectedSkillIds.includes(s.id)}
+                      onCheckedChange={() => toggle(s.id)}
+                    />
+                    <Label htmlFor={`skill-${s.id}`} className="text-sm font-normal cursor-pointer">{s.name}</Label>
+                  </div>
+                ))}
               </div>
             ))
           )}
-        </div>
+        </ScrollArea>
       )}
     </div>
   )
@@ -177,13 +214,16 @@ function AssignmentCell({ doc, skills, onChange }: AssignmentCellProps) {
     }
   }
 
-  const label = doc.scope === "all"
-    ? "All skills"
-    : doc.skill_ids.length === 0
-    ? "No skills"
-    : doc.skill_ids.length === 1
-    ? (skills.find((s) => s.id === doc.skill_ids[0])?.name ?? "1 skill")
-    : `${doc.skill_ids.length} skills`
+  const label = (() => {
+    if (doc.scope === "all") return "All skills"
+    if (doc.skill_ids.length === 0) return "No skills"
+    if (doc.skill_ids.length === 1) return skills.find((s) => s.id === doc.skill_ids[0])?.name ?? "1 skill"
+    const assigned = skills.filter((s) => doc.skill_ids.includes(s.id))
+    const pluginCount = new Set(assigned.map((s) => s.plugin_slug)).size
+    return pluginCount > 1
+      ? `${doc.skill_ids.length} skills · ${pluginCount} plugins`
+      : `${doc.skill_ids.length} skills`
+  })()
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -192,7 +232,7 @@ function AssignmentCell({ doc, skills, onChange }: AssignmentCellProps) {
           {label}
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-4 space-y-3">
+      <PopoverContent className="w-80 p-4 space-y-3">
         <AssignmentPicker scope={scope} setScope={setScope} selectedSkillIds={selectedSkillIds} toggle={toggle} skills={skills} />
         <div className="flex justify-end">
           <Button size="sm" onClick={save} disabled={saving}>

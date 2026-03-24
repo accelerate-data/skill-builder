@@ -647,7 +647,13 @@ export const readLatestBenchmark = (skillName: string, workspacePath: string) =>
 
 // --- Documents ---
 
-export interface SkillIdName { id: number; name: string }
+export interface SkillIdName {
+  id: number
+  name: string
+  plugin_slug: string
+  plugin_display_name: string
+  is_default_plugin: boolean
+}
 
 export const listDocuments = () =>
   invoke<Document[]>("list_documents");

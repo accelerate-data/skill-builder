@@ -4,25 +4,42 @@ use crate::db::{db_delete_document, db_get_document, db_insert_document, db_list
     db_set_document_skills, db_update_document_scope, DocumentRecord, Db};
 use crate::DataDir;
 
-/// Lightweight skill id+name pair for the document assignment UI.
+/// Lightweight skill id+name pair with plugin metadata for the document assignment UI.
 #[derive(Debug, serde::Serialize)]
 pub struct SkillIdName {
     pub id: i64,
     pub name: String,
+    pub plugin_slug: String,
+    pub plugin_display_name: String,
+    pub is_default_plugin: bool,
 }
 
-/// List all non-deleted skills with their integer IDs for document assignment.
+/// List all non-deleted skills with plugin metadata for document assignment.
+/// Default plugin ("skills") is returned first; within each plugin skills are sorted by name.
 #[tauri::command]
 pub fn list_skills_for_documents(db: tauri::State<'_, Db>) -> Result<Vec<SkillIdName>, String> {
     log::info!("list_skills_for_documents");
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, name FROM skills WHERE deleted_at IS NULL ORDER BY name ASC",
+            "SELECT s.id, s.name, p.slug, p.display_name, (p.slug = 'skills') AS is_default
+             FROM skills s
+             JOIN plugins p ON s.plugin_id = p.id
+             WHERE s.deleted_at IS NULL
+             ORDER BY (p.slug != 'skills'), s.name ASC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([], |r| Ok(SkillIdName { id: r.get(0)?, name: r.get(1)? }))
+        .query_map([], |r| {
+            let is_default: i64 = r.get(4)?;
+            Ok(SkillIdName {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                plugin_slug: r.get(2)?,
+                plugin_display_name: r.get(3)?,
+                is_default_plugin: is_default != 0,
+            })
+        })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
