@@ -21,23 +21,6 @@ pub fn list_imported_skills(
     Ok(skills)
 }
 
-#[tauri::command]
-pub async fn export_skill(skill_name: String, db: tauri::State<'_, Db>) -> Result<String, String> {
-    log::info!("[export_skill] skill_name={}", skill_name);
-    let plugin_slug = {
-        let conn = db.0.lock().map_err(|e| {
-            log::error!("[export_skill] Failed to acquire DB lock: {}", e);
-            e.to_string()
-        })?;
-        crate::db::get_imported_skill(&conn, &skill_name)?
-            .and_then(|skill| skill.plugin_slug)
-            .ok_or_else(|| format!("Skill '{}' not found", skill_name))?
-    };
-    let result = crate::commands::workflow::packaging::package_plugin_inner(&db, &plugin_slug).await?;
-    log::info!("[export_skill] exported plugin '{}' to {}", plugin_slug, result.file_path);
-    Ok(result.file_path)
-}
-
 #[cfg(test)]
 mod tests {
     use crate::db::create_test_db_for_tests;
