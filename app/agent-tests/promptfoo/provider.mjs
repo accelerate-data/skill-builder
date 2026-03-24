@@ -1087,7 +1087,6 @@ function runRefineSkillScopeGuard({ budgetUsd }) {
   });
   const workspaceContext = loadWorkspaceContext();
   const refineInstructions = loadRefineInstructions();
-  const before = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   const prompt = `You are rewrite-skill.
 Skill directory: ${dir}/${skillName}
 Context directory: ${dir}/workspace/${skillName}/context
@@ -1096,10 +1095,11 @@ Workspace directory: ${dir}/workspace/${skillName}
 <agent-instructions>${refineInstructions}</agent-instructions>
 Current user message: update description`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 120_000, cwd: dir });
-  const after = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
+  const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   return finalizeScenario("rewrite-skill-scope-guard", {
-    blockedMessage: /Scope recommendation active\. Blocked until resolved\./i.test(stdout),
-    noFileEdits: before === after,
+    scopeStubWritten: /scope_recommendation:\s*true/.test(content),
+    scopeStubHeading: /## Scope Recommendation Active/.test(content),
+    blockedMessage: /scope recommendation/i.test(stdout),
   });
 }
 
