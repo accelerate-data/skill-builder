@@ -22,7 +22,7 @@ pub(crate) use deploy::{
 };
 
 // claude_md
-pub(crate) use claude_md::{rebuild_claude_md, update_skills_section};
+pub(crate) use claude_md::rebuild_claude_md;
 
 // evaluation
 pub(crate) use evaluation::get_step_output_files;

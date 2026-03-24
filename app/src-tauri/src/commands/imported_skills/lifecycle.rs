@@ -63,16 +63,6 @@ pub(crate) fn delete_imported_skill_inner(
         skill.plugin_slug.as_deref().unwrap_or(DEFAULT_PLUGIN_SLUG),
     )?;
 
-    // Regenerate CLAUDE.md
-    if !workspace_path.is_empty() {
-        if let Err(e) = crate::commands::workflow::update_skills_section(workspace_path, conn) {
-            log::warn!(
-                "[delete_imported_skill] update_skills_section failed: {}",
-                e
-            );
-        }
-    }
-
     log::info!(
         "[delete_imported_skill] deleted skill_id={} name={}",
         skill_id,
@@ -350,7 +340,11 @@ pub fn set_plugin_upgrade_lock(
 }
 
 #[tauri::command]
-pub fn delete_imported_skill(skill_id: String, db: tauri::State<'_, Db>) -> Result<(), String> {
+pub fn delete_imported_skill(
+    skill_id: String,
+    app: tauri::AppHandle,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
     log::info!("delete_imported_skill: skill_id={}", skill_id);
     let conn = db.0.lock().map_err(|e| {
         log::error!("[delete_imported_skill] Failed to acquire DB lock: {}", e);
@@ -358,7 +352,14 @@ pub fn delete_imported_skill(skill_id: String, db: tauri::State<'_, Db>) -> Resu
     })?;
     let settings = crate::db::read_settings(&conn)?;
     let workspace_path = settings.workspace_path.unwrap_or_default();
-    delete_imported_skill_inner(&conn, &skill_id, &workspace_path)
+    delete_imported_skill_inner(&conn, &skill_id, &workspace_path)?;
+    let (_, claude_md_src) = crate::commands::workflow::resolve_prompt_source_dirs_public(&app);
+    if claude_md_src.is_file() && !workspace_path.is_empty() {
+        if let Err(e) = crate::commands::workflow::rebuild_claude_md(&claude_md_src, &workspace_path) {
+            log::warn!("[delete_imported_skill] rebuild_claude_md failed: {}", e);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
