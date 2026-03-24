@@ -511,7 +511,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 {/* Skills output location (create mode only) */}
                 {!isEdit && skillsPath && skillName && (
                   <p className="text-xs text-muted-foreground">
-                    Output: <code className="text-xs">{skillsPath}/{skillName}/</code>
+                    Output: <code className="text-xs">{skillsPath}/skills/{skillName}/</code>
                   </p>
                 )}
               </>
