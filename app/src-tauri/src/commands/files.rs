@@ -403,55 +403,6 @@ pub fn write_file(path: String, content: String, db: tauri::State<'_, Db>) -> Re
     })
 }
 
-/// Copy a packaged export file (zip/skill) to a user-chosen destination.
-///
-/// The destination is not constrained to the app's allowed
-/// roots because it was explicitly chosen by the user through the OS file-save
-/// dialog. The source must still be within an allowed root so we cannot be
-/// used to exfiltrate arbitrary app-internal files.
-#[tauri::command]
-pub fn save_export_to(src: String, dest: String, db: tauri::State<'_, Db>) -> Result<(), String> {
-    log::info!("[save_export_to] src={} dest={}", src, dest);
-    let allowed_roots = get_allowed_roots(&db)?;
-    save_export_to_impl(&src, &dest, &allowed_roots)
-}
-
-fn save_export_to_impl(src: &str, dest: &str, allowed_roots: &[PathBuf]) -> Result<(), String> {
-    let src_path = Path::new(src);
-    reject_traversal(src_path)?;
-    let canonical_src = fs::canonicalize(src_path)
-        .map_err(|e| format!("Source not found '{}': {}", src_path.display(), e))?;
-    if !is_within_allowed_roots(&canonical_src, allowed_roots) {
-        // Also allow sources in the system temp dir (e.g. export_skill output).
-        // Canonicalize temp_dir so the \\?\ prefix on Windows matches canonical_src.
-        let temp_dir = std::env::temp_dir();
-        let canonical_temp = fs::canonicalize(&temp_dir).unwrap_or(temp_dir);
-        if !canonical_src.starts_with(&canonical_temp) {
-            log::error!("[save_export_to] source outside allowed roots: {}", canonical_src.display());
-            return Err(format!(
-                "Source '{}' is outside allowed roots",
-                canonical_src.display()
-            ));
-        }
-    }
-
-    let dest_path = Path::new(dest);
-    reject_traversal(dest_path)?;
-    if let Some(parent) = dest_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create destination directory: {}", e))?;
-        }
-    }
-
-    fs::copy(&canonical_src, dest_path)
-        .map(|_| ())
-        .map_err(|e| {
-            log::error!("[save_export_to] copy failed: {}", e);
-            format!("Failed to save export: {}", e)
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -780,53 +731,4 @@ mod tests {
         assert!(err.contains("too large"), "expected 'too large' in error: {}", err);
     }
 
-    #[test]
-    fn test_save_export_to_from_temp_dir_succeeds() {
-        // Source is in the system temp dir — allowed even with empty allowed_roots.
-        let src_dir = tempdir().unwrap();
-        let src = src_dir.path().join("export.zip");
-        fs::write(&src, b"zip-content").unwrap();
-
-        let dest_dir = tempdir().unwrap();
-        let dest = dest_dir.path().join("export.zip");
-
-        let result =
-            save_export_to_impl(src.to_str().unwrap(), dest.to_str().unwrap(), &[]);
-        assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
-
-        let content = fs::read(&dest).unwrap();
-        assert_eq!(content, b"zip-content");
-    }
-
-    #[test]
-    fn test_save_export_to_outside_roots_fails() {
-        // Source is in a directory that is neither in allowed_roots nor in temp dir.
-        // Use a separate tempdir as allowed_roots, so src_dir is truly outside.
-        let src_dir = tempdir().unwrap();
-        let allowed_dir = tempdir().unwrap();
-        let src = src_dir.path().join("evil.zip");
-        fs::write(&src, b"data").unwrap();
-
-        let dest_dir = tempdir().unwrap();
-        let dest = dest_dir.path().join("out.zip");
-
-        // allowed_roots points elsewhere; src_dir is not in the system temp dir
-        // (it IS in temp dir on most OSes, so we point allowed_roots at a *different*
-        // canonical temp subdir and check that the path outside that dir is rejected
-        // when it also isn't in the system temp root).
-        //
-        // To make the test deterministic we instead pass the source from a location
-        // that is provably not the system temp dir by using a fixed non-existent path.
-        let fake_src = allowed_dir.path().join("other").join("missing.zip");
-        // This path doesn't exist, so canonicalize will fail → "Source not found" error.
-        let result =
-            save_export_to_impl(fake_src.to_str().unwrap(), dest.to_str().unwrap(), &[]);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.contains("Source not found") || err.contains("outside allowed roots"),
-            "unexpected error: {}",
-            err
-        );
-    }
 }

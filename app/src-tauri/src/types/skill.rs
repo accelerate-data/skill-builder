@@ -47,12 +47,6 @@ pub struct SkillSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PackageResult {
-    pub file_path: String,
-    pub size_bytes: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillFileEntry {
     pub name: String,
     pub relative_path: String,

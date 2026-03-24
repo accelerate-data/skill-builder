@@ -81,8 +81,7 @@ const mockResponses: Record<string, unknown> = {
   run_workflow_step: "agent-001",
   run_parallel_agents: { agent_id_a: "agent-001", agent_id_b: "agent-002" },
 
-  package_skill: { file_path: `${E2E_ROOT}/package/my-skill.skill`, size_bytes: 12345 },
-  // Workflow state
+// Workflow state
   get_workflow_state: { run: null, steps: [] },
   save_workflow_state: undefined,
   capture_step_artifacts: [],
@@ -160,8 +159,7 @@ const mockResponses: Record<string, unknown> = {
     is_bundled: false,
   },
   delete_imported_skill: undefined,
-  export_skill: `${E2E_ROOT}/export/test-skill.zip`,
-  get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
+get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
   list_skill_files: [],
   // GitHub import
   parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
