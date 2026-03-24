@@ -602,26 +602,30 @@ export function SkillListPanel({
                         <DropdownMenuItem onSelect={() => handleExport(skill)}>
                           Export
                         </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
-                          PLUGIN
-                        </DropdownMenuLabel>
-                        <DropdownMenuGroup>
-                          {skill.isDefaultPlugin ? (
-                            <DropdownMenuItem onSelect={() => handleCreatePlugin(skill)}>
-                              Create plugin
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onSelect={() => handleRemoveFromPlugin(skill)}>
-                              Remove from plugin
-                            </DropdownMenuItem>
-                          )}
-                          {pluginOptions.some(([slug]) => slug !== skill.pluginSlug) && (
-                            <DropdownMenuItem onSelect={() => handleMoveToPlugin(skill)}>
-                              Move to plugin
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuGroup>
+                        {skill.source !== "marketplace" && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
+                              PLUGIN
+                            </DropdownMenuLabel>
+                            <DropdownMenuGroup>
+                              {skill.isDefaultPlugin ? (
+                                <DropdownMenuItem onSelect={() => handleCreatePlugin(skill)}>
+                                  Create plugin
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem onSelect={() => handleRemoveFromPlugin(skill)}>
+                                  Remove from plugin
+                                </DropdownMenuItem>
+                              )}
+                              {pluginOptions.some(([slug]) => slug !== skill.pluginSlug) && (
+                                <DropdownMenuItem onSelect={() => handleMoveToPlugin(skill)}>
+                                  Move to plugin
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuGroup>
+                          </>
+                        )}
                       </>
                     ) : (
                       <DropdownMenuItem onSelect={() => handleContinueBuilding(skill.name)}>
