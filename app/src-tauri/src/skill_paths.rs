@@ -17,9 +17,15 @@ pub fn skill_library_key(plugin_slug: &str, skill_name: &str) -> String {
     format!("skill-builder:{plugin_slug}:{skill_name}")
 }
 
-/// Skill directory: `root/{slug}/skills/{name}`
+/// Skill directory.
+/// - Default plugin: `root/skills/{name}` (skills directly inside the plugin folder)
+/// - Other plugins: `root/{slug}/skills/{name}`
 pub fn nested_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    root.join(plugin_slug).join("skills").join(skill_name)
+    if plugin_slug == DEFAULT_PLUGIN_SLUG {
+        root.join(plugin_slug).join(skill_name)
+    } else {
+        root.join(plugin_slug).join("skills").join(skill_name)
+    }
 }
 
 /// Plugin directory: `root/{slug}`
@@ -84,14 +90,21 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
             continue;
         }
 
-        // Plugin layout: root/{slug}/skills/*/
-        let skills_subdir = path.join("skills");
-        if skills_subdir.is_dir() {
-            let is_default = name == DEFAULT_PLUGIN_SLUG;
-            for skill_entry in fs::read_dir(&skills_subdir)
-                .map_err(|e| format!("Failed to read '{}': {}", skills_subdir.display(), e))?
+        let is_default = name == DEFAULT_PLUGIN_SLUG;
+
+        // Default plugin: skills are directly in root/skills/*/
+        // Other plugins: skills are in root/{slug}/skills/*/
+        let scan_dir = if is_default {
+            path.clone()
+        } else {
+            path.join("skills")
+        };
+
+        if scan_dir.is_dir() && (is_default || path.join("skills").is_dir() || path.join(".claude-plugin").is_dir()) {
+            for skill_entry in fs::read_dir(&scan_dir)
+                .map_err(|e| format!("Failed to read '{}': {}", scan_dir.display(), e))?
             {
-                let skill_entry = skill_entry.map_err(|e| format!("Failed to read entry in '{}': {}", skills_subdir.display(), e))?;
+                let skill_entry = skill_entry.map_err(|e| format!("Failed to read entry in '{}': {}", scan_dir.display(), e))?;
                 let skill_path = skill_entry.path();
                 if !skill_path.is_dir() {
                     continue;

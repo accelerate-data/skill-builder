@@ -243,12 +243,10 @@ fn migrate_to_marketplace_layout(skills_path: &str) {
     // Collect old plugin directory paths for cleanup
     let mut old_plugin_dirs: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
 
-    // Move each skill to the new location: root/{slug}/skills/{name}
+    // Move each skill to the new location using nested_skill_dir
+    // (default plugin: root/skills/{name}, others: root/{slug}/skills/{name})
     for loc in &locations {
-        let new_dir = root
-            .join(&loc.plugin_slug)
-            .join("skills")
-            .join(&loc.skill_name);
+        let new_dir = crate::skill_paths::nested_skill_dir(root, &loc.plugin_slug, &loc.skill_name);
 
         if new_dir.exists() {
             log::debug!(
@@ -723,7 +721,7 @@ mod tests {
         migrate_to_marketplace_layout(root.to_str().unwrap());
 
         // Skill should be at plugin path under default plugin (skills)
-        let new_skill = root.join("skills").join("skills").join("my-skill");
+        let new_skill = root.join("skills").join("my-skill");
         assert!(new_skill.join("SKILL.md").is_file());
     }
 
