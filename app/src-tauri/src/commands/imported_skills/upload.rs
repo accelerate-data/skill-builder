@@ -46,6 +46,7 @@ pub fn import_skill_from_file(
     argument_hint: Option<String>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
+    app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
     log::info!("[import_skill_from_file] name={}", name);
@@ -68,7 +69,7 @@ pub fn import_skill_from_file(
         .github_user_email
         .clone()
         .or(settings.github_user_login.clone());
-    import_skill_from_file_inner(
+    let skill_id = import_skill_from_file_inner(
         &conn,
         &file_path,
         &name,
@@ -85,7 +86,14 @@ pub fn import_skill_from_file(
         &skills_path,
         &workspace_path,
         preferred_author.as_deref(),
-    )
+    )?;
+    let (_, claude_md_src) = crate::commands::workflow::resolve_prompt_source_dirs_public(&app);
+    if claude_md_src.is_file() && !workspace_path.is_empty() {
+        if let Err(e) = crate::commands::workflow::rebuild_claude_md(&claude_md_src, &workspace_path) {
+            log::warn!("[import_skill_from_file] rebuild_claude_md failed: {}", e);
+        }
+    }
+    Ok(skill_id)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -213,16 +221,6 @@ fn import_skill_from_file_inner(
         is_default_plugin: Some(true),
     };
     crate::db::upsert_imported_skill(conn, &skill, skill_master_id)?;
-
-    // Regenerate CLAUDE.md
-    if !workspace_path.is_empty() {
-        if let Err(e) = crate::commands::workflow::update_skills_section(workspace_path, conn) {
-            log::warn!(
-                "[import_skill_from_file] update_skills_section failed: {}",
-                e
-            );
-        }
-    }
 
     log::info!(
         "[import_skill_from_file] imported '{}' to '{}'",

@@ -375,7 +375,7 @@ pub fn init_workspace(
         let (_, claude_md_src) = super::workflow::resolve_prompt_source_dirs_public(app);
         if claude_md_src.is_file() {
             if let Err(e) =
-                super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path, &conn)
+                super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path)
             {
                 log::warn!("Failed to rebuild CLAUDE.md on startup: {}", e);
             }
@@ -461,7 +461,7 @@ pub fn clear_workspace(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Resul
         let (_, claude_md_src) = super::workflow::resolve_prompt_source_dirs_public(&app);
         if claude_md_src.is_file() {
             if let Err(e) =
-                super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path, &conn)
+                super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path)
             {
                 log::warn!("Failed to rebuild CLAUDE.md on clear: {}", e);
             }
