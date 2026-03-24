@@ -267,18 +267,20 @@ pub(crate) fn create_skill_inner(
     disable_model_invocation: Option<bool>,
 ) -> Result<(), String> {
     super::super::imported_skills::validate_skill_name(name)?;
-    // Check for collision in workspace_path (working directory)
+    // Workspace is always flat: workspace_path/{skill_name}/
+    // It is never organized by plugin (unlike the skills library).
     let workspace_root = Path::new(workspace_path);
-    let base = crate::skill_paths::nested_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name);
-    if base.exists() {
+    let workspace_skill_dir = workspace_root.join(name);
+    if workspace_skill_dir.exists() {
         return Err(format!(
             "Skill '{}' already exists in workspace directory ({})",
             name,
-            base.display()
+            workspace_skill_dir.display()
         ));
     }
 
-    // Check for collision in skills_path (skill output directory)
+    // Check for collision in skills_path (skill output directory).
+    // Skills library IS organized by plugin (default plugin: skills/{name}).
     if let Some(sp) = skills_path {
         let skill_output = crate::skill_paths::nested_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name);
         if skill_output.exists() {
@@ -290,16 +292,13 @@ pub(crate) fn create_skill_inner(
         }
     }
 
+    // Create flat workspace dir and context subdir.
+    fs::create_dir_all(workspace_skill_dir.join("context")).map_err(|e| e.to_string())?;
+
     if let Some(sp) = skills_path {
-        // Workspace dir holds runtime context; skill output remains in skills_path
-        ensure_nested_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name)?;
-        fs::create_dir_all(base.join("context")).map_err(|e| e.to_string())?;
+        // Skill output (SKILL.md, references/) lives in skills_path, plugin-organised.
         let skill_output = ensure_nested_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name)?;
         fs::create_dir_all(skill_output.join("references")).map_err(|e| e.to_string())?;
-    } else {
-        // No skills_path — workspace holds everything including context
-        ensure_nested_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name)?;
-        fs::create_dir_all(base.join("context")).map_err(|e| e.to_string())?;
     }
 
     let purpose = purpose.unwrap_or("domain");

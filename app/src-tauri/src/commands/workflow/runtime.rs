@@ -212,13 +212,14 @@ pub async fn run_workflow_step(
                     e
                 );
             }
-            if let Err(e) = std::fs::create_dir_all(&context_dir) {
-                log::warn!(
-                    "[run_workflow_step] step=0 failed to recreate context dir {}: {}",
-                    context_dir.display(),
-                    e
-                );
-            }
+        }
+        // Always ensure context dir exists (covers first run and old skills with wrong path).
+        if let Err(e) = std::fs::create_dir_all(&context_dir) {
+            log::warn!(
+                "[run_workflow_step] step=0 failed to create context dir {}: {}",
+                context_dir.display(),
+                e
+            );
         }
         crate::cleanup::delete_step_output_files(
             &workspace_path,
