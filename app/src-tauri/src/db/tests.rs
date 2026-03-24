@@ -230,7 +230,7 @@ fn test_repair_plugin_ownership_schema_recovers_when_migration_38_was_only_marke
 
     let default_plugin_count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM plugins WHERE slug = 'no-plugin'",
+            "SELECT COUNT(*) FROM plugins WHERE slug = 'skills'",
             [],
             |row| row.get(0),
         )
