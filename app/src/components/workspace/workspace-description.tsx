@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,14 +31,23 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   const [progress, setProgress] = useState<OptimizationIteration[]>([]);
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  const [applied, setApplied] = useState(false);
 
   const unlistenRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      unlistenRef.current?.();
+      unlistenRef.current = null;
+    };
+  }, []);
 
   const model = skill.model ?? preferredModel ?? "sonnet";
 
   async function handleGenerateQueries() {
     setIsGeneratingQueries(true);
-    setError(null);
+    setGenerateError(null);
     try {
       const generated = await generateEvalQueries(skill.name, workspacePath, model);
       setQueries(generated);
@@ -49,7 +58,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
+      setGenerateError(msg);
       console.error(
         "event=eval_queries_generation_failed operation=generateEvalQueries skill=%s error=%s",
         skill.name,
@@ -64,6 +73,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     setResult(null);
     setProgress([]);
     setError(null);
+    setApplied(false);
     setIsRunning(true);
 
     console.log(
@@ -114,6 +124,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
 
   async function handleApply() {
     if (!result) return;
+    setError(null);
     try {
       await applyDescription(skill.name, workspacePath, result.best_description);
       console.log(
@@ -121,6 +132,8 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
         skill.name,
       );
       setResult(null);
+      setApplied(true);
+      setTimeout(() => setApplied(false), 3000);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -215,6 +228,10 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           <Plus className="h-3 w-3" />
           Add query
         </button>
+
+        {generateError && (
+          <p className="text-xs text-destructive mt-2">{generateError}</p>
+        )}
       </div>
 
       {/* Section B: Optimization Runner */}
@@ -224,7 +241,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           <Button
             size="sm"
             onClick={handleRunOptimization}
-            disabled={queries.length === 0 || isRunning}
+            disabled={queries.length === 0 || queries.every(q => !q.should_trigger) || isRunning}
           >
             {isRunning ? (
               <>
@@ -240,7 +257,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
         {isRunning && (
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">
-              Running iteration {progress.length} of ?
+              Running… (iteration {progress.length})
             </p>
             {latestProgress && (
               <p className="text-sm">
@@ -262,10 +279,20 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           </div>
         )}
 
+        {queries.length > 0 && queries.every(q => !q.should_trigger) && (
+          <p className="text-xs text-muted-foreground mt-2">Enable at least one query to run optimization.</p>
+        )}
+
         {error && (
           <p className="text-sm text-destructive mt-2">{error}</p>
         )}
       </div>
+
+      {applied && (
+        <div className="rounded-lg border bg-card p-3 text-sm" style={{ color: "var(--color-seafoam)" }}>
+          Description applied successfully.
+        </div>
+      )}
 
       {/* Section C: Optimization Results */}
       {result !== null && (
