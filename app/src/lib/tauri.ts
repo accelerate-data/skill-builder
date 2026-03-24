@@ -382,9 +382,20 @@ export const deletePlugin = (pluginSlug: string) =>
 export const createPluginFromSkills = (pluginName: string, skillKeys: string[]) =>
   invoke<string>("create_plugin_from_skills", { pluginName, skillKeys })
 
+/**
+ * Move a skill to a different plugin.
+ * @param skillKey - Compound key: "skill-builder:{pluginSlug}:{skillName}" for builder skills,
+ *                   "imported:{skillId}" for imported skills
+ * @param pluginSlug - Target plugin slug
+ */
 export const moveSkillToPlugin = (skillKey: string, pluginSlug: string) =>
   invoke<void>("move_skill_to_plugin", { skillKey, pluginSlug })
 
+/**
+ * Remove a skill from its current plugin, returning it to the default plugin.
+ * @param skillKey - Compound key: "skill-builder:{pluginSlug}:{skillName}" for builder skills,
+ *                   "imported:{skillId}" for imported skills
+ */
 export const removeSkillFromPlugin = (skillKey: string) =>
   invoke<void>("remove_skill_from_plugin", { skillKey })
 

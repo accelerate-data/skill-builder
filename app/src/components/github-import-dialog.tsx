@@ -101,8 +101,8 @@ export default function GitHubImportDialog({
       const summaries = await listSkills(workspacePath ?? "", registry.source_url)
       const installedPluginNames = new Set(
         summaries
-          .filter((s: SkillSummary) => !!s.plugin_display_name && s.skill_source === "marketplace")
-          .map((s: SkillSummary) => s.plugin_display_name as string),
+          .filter((s: SkillSummary) => s.skill_source === "marketplace")
+          .map((s: SkillSummary) => s.plugin_display_name),
       )
       const preStates = new Map<string, PluginState>()
       for (const plugin of available) {

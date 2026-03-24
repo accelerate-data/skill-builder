@@ -23,6 +23,9 @@ const sampleSkill: SkillSummary = {
   author_avatar: null,
   intake_json: null,
   description: "A skill for managing sales pipelines",
+  plugin_slug: "skills",
+  plugin_display_name: "Skills",
+  is_default_plugin: true,
 };
 
 /** Navigate to step 2 by clicking Next */

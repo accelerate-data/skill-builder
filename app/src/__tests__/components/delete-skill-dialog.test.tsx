@@ -17,6 +17,9 @@ const sampleSkill: SkillSummary = {
   author_login: null,
   author_avatar: null,
   intake_json: null,
+  plugin_slug: "skills",
+  plugin_display_name: "Skills",
+  is_default_plugin: true,
 };
 
 describe("DeleteSkillDialog", () => {

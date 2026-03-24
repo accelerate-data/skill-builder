@@ -112,6 +112,9 @@ function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     argumentHint: "[org-url]",
     userInvocable: true,
     disableModelInvocation: false,
+    plugin_slug: "skills",
+    plugin_display_name: "Skills",
+    is_default_plugin: true,
     ...overrides,
   };
 }
