@@ -261,9 +261,8 @@ pub async fn send_refine_message(
         stream_started
     );
 
-    let plugin_slug = resolve_skill_plugin_slug(&db, &skill_name)?;
     let runtime = load_refine_runtime_settings(&db, &workspace_path, &skill_name)?;
-    ensure_skill_workspace_dir(&workspace_path, &plugin_slug, &skill_name);
+    ensure_skill_workspace_dir(&workspace_path, &skill_name);
     let skill_output_dir = resolve_skill_output_dir(&db, &skill_name, &runtime.skills_path)?;
 
     if !stream_started {
