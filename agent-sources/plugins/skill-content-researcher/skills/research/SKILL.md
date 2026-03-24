@@ -18,10 +18,16 @@ The overall flow is as follows
 - Validate final payload against `references/schemas.md`
 - Return the canonical `clarifications.json` object as top-level JSON
 
+The research should focus on producing high-quality, actionable clarifications that directly inform skill-building. The research output should be framed around enabling clear answers to:
+
+- What should this skill enable Claude to do? (with concrete options)
+- Is the domain narrow or broad and if not correct (too wide or too narrow), what should the scope be?
+- What does a typical request look like when creating or modifying dbt models used to create silver and gold tables and how will this skill help?
+- What does success look like?
+
 ## Step 1 — Select Dimension Set
 
-Read `references/dimension-sets.md` and select the matching section.
-Use table below to resolve `purpose` to one dimension set from `references/dimension-sets.md`
+Extract `purpose` from the `**Purpose**` field in `user_context`. Read `references/dimension-sets.md` and resolve it to the matching dimension set using the table below.
 
 | Purpose (label or token) | Dimension set |
 | --- | --- |
@@ -135,3 +141,6 @@ Proactively think about edge cases, input/output formats, example files, success
 4. If the research task fails for a selected dimension:
    - Remove the dimension from `metadata.research_plan.selected_dimensions`.
    - Update the score of that dimension in `metadata.research_plan.dimension_scores` as `1` with reason `Research task failed`. This is not an error.
+5. If all selected dimension research tasks fail:
+   - Return the error envelope with `metadata.error.code: "all_dimensions_failed"` and `metadata.error.message: "all selected dimension research tasks failed"`.
+   - Set `metadata.research_plan.selected_dimensions` to `[]` and `dimensions_selected` to `0`.
