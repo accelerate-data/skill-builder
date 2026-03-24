@@ -267,10 +267,10 @@ pub(crate) fn create_skill_inner(
     disable_model_invocation: Option<bool>,
 ) -> Result<(), String> {
     super::super::imported_skills::validate_skill_name(name)?;
-    // Workspace is always flat: workspace_path/{skill_name}/
-    // It is never organized by plugin (unlike the skills library).
+    // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
+    // New skills are always created in the default plugin.
     let workspace_root = Path::new(workspace_path);
-    let workspace_skill_dir = workspace_root.join(name);
+    let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name);
     if workspace_skill_dir.exists() {
         return Err(format!(
             "Skill '{}' already exists in workspace directory ({})",
@@ -292,7 +292,7 @@ pub(crate) fn create_skill_inner(
         }
     }
 
-    // Create flat workspace dir and context subdir.
+    // Create plugin-organised workspace dir and context subdir.
     fs::create_dir_all(workspace_skill_dir.join("context")).map_err(|e| e.to_string())?;
 
     if let Some(sp) = skills_path {
@@ -398,12 +398,20 @@ pub fn delete_skill(
         );
     }
 
-    delete_skill_inner(&workspace_path, &name, Some(&conn), skills_path.as_deref())
+    // Look up plugin slug so we clean the right workspace dir.
+    let plugin_slug = crate::db::get_skill_master_any_plugin(&conn, &name)
+        .ok()
+        .flatten()
+        .map(|m| m.plugin_slug)
+        .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string());
+
+    delete_skill_inner(&workspace_path, &name, &plugin_slug, Some(&conn), skills_path.as_deref())
 }
 
 pub(crate) fn delete_skill_inner(
     workspace_path: &str,
     name: &str,
+    plugin_slug: &str,
     conn: Option<&rusqlite::Connection>,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
@@ -414,7 +422,7 @@ pub(crate) fn delete_skill_inner(
         skills_path
     );
 
-    let base = resolve_skill_dir(Path::new(workspace_path), DEFAULT_PLUGIN_SLUG, name);
+    let base = crate::skill_paths::resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, name);
 
     // Delete workspace working directory if it exists
     if base.exists() {

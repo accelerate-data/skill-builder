@@ -262,7 +262,7 @@ pub async fn send_refine_message(
     );
 
     let runtime = load_refine_runtime_settings(&db, &workspace_path, &skill_name)?;
-    ensure_skill_workspace_dir(&workspace_path, &skill_name);
+    ensure_skill_workspace_dir(&workspace_path, &runtime.plugin_slug, &skill_name);
     let skill_output_dir = resolve_skill_output_dir(&db, &skill_name, &runtime.skills_path)?;
 
     if !stream_started {
@@ -273,6 +273,7 @@ pub async fn send_refine_message(
         let prompt = build_refine_prompt_with_output_dir(
             &skill_name,
             &workspace_path,
+            &runtime.plugin_slug,
             &skill_output_dir,
             &user_message,
             target_files.as_deref(),

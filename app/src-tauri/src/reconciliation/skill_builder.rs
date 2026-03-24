@@ -7,6 +7,7 @@ use std::path::Path;
 pub(crate) fn reconcile_skill_builder(
     conn: &rusqlite::Connection,
     name: &str,
+    plugin_slug: &str,
     workspace_path: &str,
     skills_path: &str,
     notifications: &mut Vec<String>,
@@ -43,7 +44,7 @@ pub(crate) fn reconcile_skill_builder(
 
     if maybe_run.is_none() {
         // Scenario 10: master row exists but no workflow_runs row — auto-create
-        let disk_step = detect_furthest_step(workspace_path, name, skills_path)
+        let disk_step = detect_furthest_step(workspace_path, plugin_slug, name, skills_path)
             .map(|s| s as i32)
             .unwrap_or(0);
         let status = if disk_step >= 3 {
@@ -69,7 +70,7 @@ pub(crate) fn reconcile_skill_builder(
     let run = maybe_run.unwrap();
 
     // Scenario 5: workspace dir missing → recreate transient scratch space
-    let skill_dir = Path::new(workspace_path).join(name);
+    let skill_dir = crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, name);
     if !skill_dir.exists() {
         let context_dir = skill_dir.join("context");
         match std::fs::create_dir_all(&context_dir) {
@@ -94,7 +95,7 @@ pub(crate) fn reconcile_skill_builder(
     );
 
     // Reconcile DB step state against disk evidence
-    let maybe_disk_step = detect_furthest_step(workspace_path, name, skills_path);
+    let maybe_disk_step = detect_furthest_step(workspace_path, plugin_slug, name, skills_path);
 
     log::debug!(
         "[reconcile] '{}': disk furthest step = {:?}",
@@ -193,7 +194,7 @@ pub(crate) fn reconcile_skill_builder(
         }
 
         // Clean up any files from steps beyond the reconciled disk point
-        cleanup_future_steps(workspace_path, name, disk_step, skills_path);
+        cleanup_future_steps(workspace_path, name, plugin_slug, disk_step, skills_path);
     } else if run.current_step > 0 {
         // Scenario 4: No output files found but DB thinks we're past step 0 — reset
         log::info!(
@@ -202,7 +203,7 @@ pub(crate) fn reconcile_skill_builder(
         );
         crate::db::save_workflow_run(conn, name, 0, "pending", &run.purpose)?;
         crate::db::reset_workflow_steps_from(conn, name, 0)?;
-        cleanup_future_steps(workspace_path, name, -1, skills_path);
+        cleanup_future_steps(workspace_path, name, plugin_slug, -1, skills_path);
         notifications.push(format!(
             "'{}' was reset from step {} to step 1 (no output files found)",
             name,
@@ -220,7 +221,7 @@ pub(crate) fn reconcile_skill_builder(
     }
 
     // Warn if a completed skill is missing its skills_path output
-    if run.status == "completed" && !has_skill_output(name, skills_path) {
+    if run.status == "completed" && !has_skill_output(plugin_slug, name, skills_path) {
         log::warn!(
             "[reconcile] '{}': completed skill has no output in skills_path — may have been moved or deleted",
             name

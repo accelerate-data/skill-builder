@@ -42,6 +42,7 @@ async fn run_workflow_step_inner(
     // Refreshed before every step to pick up mid-workflow settings edits.
     write_user_context_file(
         workspace_path,
+        &settings.plugin_slug,
         skill_name,
         &settings.tags,
         settings.author_login.as_deref(),
@@ -60,6 +61,7 @@ async fn run_workflow_step_inner(
     let prompt = build_prompt(
         skill_name,
         workspace_path,
+        &settings.plugin_slug,
         &settings.skills_path,
         settings.author_login.as_deref(),
         settings.created_at.as_deref(),
@@ -167,7 +169,12 @@ pub async fn run_workflow_step(
     );
 
     // Gate: reject disabled steps when guard conditions are active
-    let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
+    let context_dir = crate::skill_paths::workspace_skill_dir(
+        Path::new(&workspace_path),
+        &settings.plugin_slug,
+        &skill_name,
+    )
+    .join("context");
 
     if step_id >= 1 {
         let clarifications_path = context_dir.join("clarifications.json");
@@ -224,6 +231,7 @@ pub async fn run_workflow_step(
         crate::cleanup::delete_step_output_files(
             &workspace_path,
             &skill_name,
+            &settings.plugin_slug,
             0,
             &settings.skills_path,
         );
@@ -236,6 +244,7 @@ pub async fn run_workflow_step(
         crate::cleanup::clean_step_output(
             &workspace_path,
             &skill_name,
+            &settings.plugin_slug,
             step_id,
             &settings.skills_path,
         );
@@ -280,7 +289,7 @@ pub async fn run_answer_evaluator(
 
     // Read settings from DB — same pattern as read_workflow_settings but without
     // step-specific validation (this is a gate, not a workflow step).
-    let (api_key, skills_path, industry, function_role, intake_json, preferred_model) = {
+    let (api_key, skills_path, plugin_slug, industry, function_role, intake_json, preferred_model) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
@@ -304,11 +313,18 @@ pub async fn run_answer_evaluator(
             .ok()
             .flatten();
         let ij = run_row.as_ref().and_then(|r| r.intake_json.clone());
+        // Look up plugin slug for this skill so workspace path resolves correctly.
+        let slug = crate::db::get_skill_master_any_plugin(&conn, &skill_name)
+            .ok()
+            .flatten()
+            .map(|m| m.plugin_slug)
+            .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
         // Answer evaluator is a lightweight gate — always use Haiku for cost efficiency.
         let model = resolve_model_id("haiku");
         (
             key,
             sp,
+            slug,
             settings.industry,
             settings.function_role,
             ij,
@@ -319,6 +335,7 @@ pub async fn run_answer_evaluator(
     // Write user-context.md so the agent can read it (same as workflow steps)
     write_user_context_file(
         &workspace_path,
+        &plugin_slug,
         &skill_name,
         &[], // answer evaluator doesn't need full metadata
         None,
@@ -334,7 +351,7 @@ pub async fn run_answer_evaluator(
         None,
     );
 
-    let prompt = build_evaluator_prompt(&skill_name, &workspace_path, &skills_path);
+    let prompt = build_evaluator_prompt(&skill_name, &workspace_path, &plugin_slug, &skills_path);
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
     log::info!(

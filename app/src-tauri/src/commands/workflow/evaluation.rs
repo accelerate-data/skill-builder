@@ -464,9 +464,16 @@ pub fn reset_workflow_step(
         log::warn!("Git auto-commit failed ({}): {}", msg, e);
     }
 
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::get_skill_master_any_plugin(&conn, &skill_name)?
+            .map(|m| m.plugin_slug)
+            .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string())
+    };
     crate::cleanup::delete_step_output_files(
         &workspace_path,
         &skill_name,
+        &plugin_slug,
         from_step_id,
         &skills_path,
     );
@@ -522,9 +529,16 @@ pub fn navigate_back_to_step(
 
     // Delete output files only for steps AFTER the target; target step keeps its files.
     let delete_from = target_step_id + 1;
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::get_skill_master_any_plugin(&conn, &skill_name)?
+            .map(|m| m.plugin_slug)
+            .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string())
+    };
     crate::cleanup::delete_step_output_files(
         &workspace_path,
         &skill_name,
+        &plugin_slug,
         delete_from,
         &skills_path,
     );
@@ -572,6 +586,13 @@ pub fn preview_step_reset(
     let skills_path = read_skills_path(&db)
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
 
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::get_skill_master_any_plugin(&conn, &skill_name)?
+            .map(|m| m.plugin_slug)
+            .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string())
+    };
+
     let step_names = [
         "Research",
         "Detailed Research",
@@ -582,7 +603,7 @@ pub fn preview_step_reset(
     let mut result = Vec::new();
     for step_id in from_step_id..=3 {
         let existing_files =
-            crate::cleanup::list_step_output_files(&workspace_path, &skill_name, step_id, &skills_path);
+            crate::cleanup::list_step_output_files(&workspace_path, &skill_name, &plugin_slug, step_id, &skills_path);
 
         if !existing_files.is_empty() {
             let name = step_names

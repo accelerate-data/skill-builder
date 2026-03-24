@@ -5,6 +5,7 @@ use super::step_config::resolve_model_id;
 
 /// Shared settings extracted from the DB, used by `run_workflow_step`.
 pub(crate) struct WorkflowSettings {
+    pub plugin_slug: String,
     pub skills_path: String,
     pub api_key: crate::types::SecretString,
     pub preferred_model: String,
@@ -56,9 +57,21 @@ pub(crate) fn read_workflow_settings(
     let industry = settings.industry;
     let function_role = settings.function_role;
 
+    // Metadata fields are read exclusively from the `skills` master table.
+    // This is the canonical source since migration 24 moved these columns
+    // from `workflow_runs` to `skills`, and migration 35 dropped them from
+    // `workflow_runs` entirely. Never read metadata from `workflow_runs` or
+    // from frontend-supplied payload — always call `get_skill_master_any_plugin` here.
+    // Use any-plugin lookup so non-default-plugin skills are found correctly.
+    let master_row = crate::db::get_skill_master_any_plugin(&conn, skill_name).ok().flatten();
+    let plugin_slug = master_row
+        .as_ref()
+        .map(|m| m.plugin_slug.clone())
+        .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+
     // Validate prerequisites (step 3 requires decisions.json)
     if step_id == 3 {
-        validate_decisions_exist_inner(skill_name, workspace_path, &skills_path)?;
+        validate_decisions_exist_inner(skill_name, workspace_path, &plugin_slug, &skills_path)?;
     }
 
     // Get skill purpose
@@ -75,12 +88,6 @@ pub(crate) fn read_workflow_settings(
         .or_else(|| run_row.as_ref().and_then(|r| r.author_login.clone()));
     let created_at = run_row.as_ref().map(|r| r.created_at.clone());
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-    // Metadata fields are read exclusively from the `skills` master table.
-    // This is the canonical source since migration 24 moved these columns
-    // from `workflow_runs` to `skills`, and migration 35 dropped them from
-    // `workflow_runs` entirely. Never read metadata from `workflow_runs` or
-    // from frontend-supplied payload — always call `get_skill_master` here.
-    let master_row = crate::db::get_skill_master(&conn, skill_name).ok().flatten();
     let description = master_row.as_ref().and_then(|m| m.description.clone());
     let version = master_row.as_ref().and_then(|m| m.version.clone());
     let skill_model = master_row.as_ref().and_then(|m| m.model.clone());
@@ -93,6 +100,7 @@ pub(crate) fn read_workflow_settings(
         .unwrap_or_default();
 
     Ok(WorkflowSettings {
+        plugin_slug,
         skills_path,
         api_key,
         preferred_model,

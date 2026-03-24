@@ -1,17 +1,20 @@
 use super::*;
 use crate::commands::test_utils::create_test_db;
 use crate::commands::workflow::get_step_output_files;
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use std::path::Path;
 
 /// Create a skill working directory on disk with a context/ dir.
+/// Uses plugin-organised layout: workspace/{DEFAULT_PLUGIN_SLUG}/{name}/context/
 fn create_skill_dir(workspace: &Path, name: &str, _domain: &str) {
-    let skill_dir = workspace.join(name);
+    let skill_dir = crate::skill_paths::workspace_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name);
     std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 }
 
 /// Create step output files on disk for the given step.
+/// Uses plugin-organised layout: workspace/{DEFAULT_PLUGIN_SLUG}/{name}/...
 fn create_step_output(workspace: &Path, name: &str, step_id: u32) {
-    let skill_dir = workspace.join(name);
+    let skill_dir = crate::skill_paths::workspace_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name);
     std::fs::create_dir_all(skill_dir.join("context")).unwrap();
     for file in get_step_output_files(step_id) {
         let path = skill_dir.join(file);
@@ -227,7 +230,7 @@ fn test_missing_workspace_dir_is_recreated() {
     assert_eq!(run.current_step, 0);
 
     // Workspace dir should have been recreated
-    assert!(tmp.path().join("my-skill").join("context").exists());
+    assert!(tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill").join("context").exists());
 }
 
 // --- Normal case ---
@@ -622,7 +625,7 @@ fn test_reconcile_mixed_scenarios() {
     assert!(result.orphans.is_empty());
 
     // db-only skill's workspace dir should have been recreated
-    assert!(tmp.path().join("db-only").join("context").exists());
+    assert!(tmp.path().join(DEFAULT_PLUGIN_SLUG).join("db-only").join("context").exists());
 
     // DB records for all skills should still be present
     assert!(crate::db::get_workflow_run(&conn, "db-only")
@@ -832,7 +835,7 @@ fn test_missing_workspace_dir_recreated_for_in_progress_skill() {
 
     // Workspace dir should have been recreated
     assert!(
-        tmp.path().join("my-skill").join("context").exists(),
+        tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill").join("context").exists(),
         "workspace context dir should be recreated"
     );
 
@@ -1218,10 +1221,10 @@ fn test_cleanup_future_steps_with_negative_step() {
     create_step_output(tmp.path(), "my-skill", 4);
     create_step_output(tmp.path(), "my-skill", 5);
 
-    crate::cleanup::cleanup_future_steps(workspace, "my-skill", -1, workspace);
+    crate::cleanup::cleanup_future_steps(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, -1, workspace);
 
     // All step output should be deleted
-    let skill_dir = tmp.path().join("my-skill");
+    let skill_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
     // Step 0 file (clarifications.json in context/)
     let step0_file = skill_dir.join("context").join("clarifications.json");
     assert!(!step0_file.exists(), "step 0 output should be cleaned");
@@ -1555,7 +1558,7 @@ fn test_pass2_scenario_9c_with_some_context() {
 
     // Create step 0 output + SKILL.md but no step 4
     create_step_output(skills_tmp.path(), "some-context-skill", 0);
-    let skill_dir = skills_tmp.path().join("some-context-skill");
+    let skill_dir = crate::skill_paths::workspace_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "some-context-skill");
     std::fs::write(skill_dir.join("SKILL.md"), "# Some context skill").unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -1704,7 +1707,7 @@ fn test_reconcile_skill_builder_resets_stale_in_progress_steps() {
     create_skill_dir(tmp.path(), name, "");
 
     let mut notifications = Vec::new();
-    super::skill_builder::reconcile_skill_builder(&conn, name, workspace, skills_path, &mut notifications).unwrap();
+    super::skill_builder::reconcile_skill_builder(&conn, name, DEFAULT_PLUGIN_SLUG, workspace, skills_path, &mut notifications).unwrap();
 
     // The stale in_progress step should be reset to pending
     let steps = crate::db::get_workflow_steps(&conn, name).unwrap();
@@ -1729,7 +1732,7 @@ fn test_reconcile_skill_builder_scenario_10_missing_workflow_run() {
     create_step_output(tmp.path(), name, 0);
 
     let mut notifications = Vec::new();
-    super::skill_builder::reconcile_skill_builder(&conn, name, workspace, skills_path, &mut notifications).unwrap();
+    super::skill_builder::reconcile_skill_builder(&conn, name, DEFAULT_PLUGIN_SLUG, workspace, skills_path, &mut notifications).unwrap();
 
     // Should auto-create workflow_runs row
     let run = crate::db::get_workflow_run(&conn, name).unwrap();
@@ -1751,10 +1754,10 @@ fn test_reconcile_skill_builder_recreates_missing_workspace_dir() {
     crate::db::save_workflow_run(&conn, name, 0, "pending", "domain").unwrap();
 
     let mut notifications = Vec::new();
-    super::skill_builder::reconcile_skill_builder(&conn, name, workspace, skills_path, &mut notifications).unwrap();
+    super::skill_builder::reconcile_skill_builder(&conn, name, DEFAULT_PLUGIN_SLUG, workspace, skills_path, &mut notifications).unwrap();
 
     // The workspace dir should be recreated (scenario 5)
-    let skill_dir = tmp.path().join(name);
+    let skill_dir = crate::skill_paths::workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, name);
     assert!(skill_dir.exists(), "workspace dir should be recreated");
     assert!(skill_dir.join("context").exists(), "context subdir should be created");
 }

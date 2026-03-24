@@ -22,6 +22,7 @@ pub(super) struct RefineRuntimeSettings {
     pub refine_prompt_suggestions: bool,
     pub model: String,
     pub skills_path: String,
+    pub plugin_slug: String,
 }
 
 
@@ -29,10 +30,13 @@ pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
 }
 
-pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, skill_name: &str) {
-    // Workspace is always flat: workspace_path/skill_name/
-    // It is NOT organized by plugin (unlike the skills library).
-    let skill_workspace_dir = Path::new(workspace_path).join(skill_name);
+pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, plugin_slug: &str, skill_name: &str) {
+    // Workspace is plugin-organised: workspace_path/{plugin_slug}/skill_name/
+    let skill_workspace_dir = crate::skill_paths::workspace_skill_dir(
+        Path::new(workspace_path),
+        plugin_slug,
+        skill_name,
+    );
     if !skill_workspace_dir.exists() {
         if let Err(e) = std::fs::create_dir_all(&skill_workspace_dir) {
             log::warn!(
@@ -96,6 +100,7 @@ pub(super) fn load_refine_runtime_settings(
 
     crate::commands::workflow::write_user_context_file(
         workspace_path,
+        &plugin_slug,
         skill_name,
         &[],
         author_for_context.as_deref(),
@@ -120,6 +125,7 @@ pub(super) fn load_refine_runtime_settings(
         refine_prompt_suggestions: settings.refine_prompt_suggestions,
         model,
         skills_path,
+        plugin_slug,
     })
 }
 
@@ -253,12 +259,17 @@ pub(super) fn build_followup_prompt_for_plugin(
 pub(super) fn build_refine_prompt_with_output_dir(
     skill_name: &str,
     workspace_path: &str,
+    plugin_slug: &str,
     skill_output_dir: &std::path::Path,
     user_message: &str,
     target_files: Option<&[String]>,
 ) -> String {
-    // Workspace is always flat: workspace_path/skill_name/
-    let workspace_dir = Path::new(workspace_path).join(skill_name);
+    // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
+    let workspace_dir = crate::skill_paths::workspace_skill_dir(
+        Path::new(workspace_path),
+        plugin_slug,
+        skill_name,
+    );
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
 
@@ -345,7 +356,7 @@ pub(super) fn build_refine_prompt_for_plugin(
     user_message: &str,
     target_files: Option<&[String]>,
 ) -> String {
-    let workspace_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_dir = crate::skill_paths::resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
