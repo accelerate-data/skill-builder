@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useDocumentStore } from "@/stores/document-store"
 import {
   addDocumentFile,
@@ -181,7 +181,7 @@ function AssignmentPicker({ scope, setScope, selectedSkillIds, toggle, skills, i
 }
 
 // ---------------------------------------------------------------------------
-// Assigned-to popover in table row
+// Assignment dialog (modal) for table row
 // ---------------------------------------------------------------------------
 
 interface AssignmentCellProps {
@@ -226,22 +226,28 @@ function AssignmentCell({ doc, skills, onChange }: AssignmentCellProps) {
   })()
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button className="text-sm text-left underline decoration-dotted text-muted-foreground hover:text-foreground transition-colors duration-150">
-          {label}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 p-4 space-y-3">
-        <AssignmentPicker scope={scope} setScope={setScope} selectedSkillIds={selectedSkillIds} toggle={toggle} skills={skills} />
-        <div className="flex justify-end">
-          <Button size="sm" onClick={save} disabled={saving}>
-            {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}
-            Save
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+    <>
+      <button
+        className="text-sm text-left underline decoration-dotted text-muted-foreground hover:text-foreground transition-colors duration-150"
+        onClick={() => setOpen(true)}
+      >
+        {label}
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">Assign "{doc.name}"</DialogTitle>
+          </DialogHeader>
+          <AssignmentPicker scope={scope} setScope={setScope} selectedSkillIds={selectedSkillIds} toggle={toggle} skills={skills} />
+          <div className="flex justify-end pt-1">
+            <Button size="sm" onClick={save} disabled={saving}>
+              {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
