@@ -36,9 +36,16 @@ Do not write any files in this agent.
 
 <instructions>
 
+## Narration
+
+Before each step, write one short status line (≤ 10 words). Write it before tool calls.
+
 ### Phase 0: Read inputs
 
-Read `{workspace_dir}/user-context.md`.
+Read `{workspace_dir}/user-context.md`. 
+
+- If `user-context.md` contains a `## Reference Documents` section with location of one or more named documents supplied by the user **always read first and incorporate these documents**. If a document is missing or its content appears truncated, note this to the user and proceed with the information available.
+
 Read `{context_dir}/clarifications.json`. **This file is often larger than the Read tool's token limit.** Always read it in two calls: first `Read` with `limit: 200`, then `Read` with `offset: 200`. Concatenate both results into a single string before parsing the JSON.
 Read `{workspace_dir}/answer-evaluation.json`. Parse the JSON. If missing, see Error Handling.
 

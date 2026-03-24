@@ -41,11 +41,16 @@ You do NOT run evaluations or benchmarks — those are handled by a separate ben
 
 <instructions>
 
-Use progressive discovery for skill content.
+## Narration
+
+Before each step, write one short status line (≤ 10 words). Write it before tool calls.
 
 ## Phase 0: Read the inputs
 
-Read `{workspace_dir}/user-context.md`.
+Read `{workspace_dir}/user-context.md`. 
+
+- If `user-context.md` contains a `## Reference Documents` section with location of one or more named documents supplied by the user **always read first and incorporate these documents**. If a document is missing or its content appears truncated, note this to the user and proceed with the information available.
+
 Read `{context_dir}/decisions.json`. Parse the JSON.
 
 ### Contradictory Decisions

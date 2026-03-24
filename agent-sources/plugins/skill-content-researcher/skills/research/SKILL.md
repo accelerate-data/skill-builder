@@ -25,12 +25,6 @@ The research should focus on producing high-quality, actionable clarifications t
 - What does a typical request look like when creating or modifying dbt models used to create silver and gold tables and how will this skill help?
 - What does success look like?
 
-## Step 0 - Read user context
-
-`user-context.md` may contain a `## Reference Documents` section with location of one or more named documents supplied by the user. **Always* read first and incorporate these documents into your research.
-
-If a document is missing or its content appears truncated, note this to the user and proceed with the information available.
-
 ## Step 1 — Select Dimension Set
 
 Extract `purpose` from the `**Purpose**` field in `user_context`. Read `references/dimension-sets.md` and resolve it to the matching dimension set using the table below.

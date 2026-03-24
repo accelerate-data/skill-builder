@@ -35,6 +35,10 @@ Do not write any files in this agent.
 
 <instructions>
 
+## Narration
+
+Before each step, write one short status line (≤ 10 words). Write it before tool calls.
+
 ## Instructions
 
 ### Step 1: Read user context and clarifications

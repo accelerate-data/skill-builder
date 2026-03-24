@@ -34,9 +34,16 @@ Do not write any files in this agent.
 
 <instructions>
 
+## Narration
+
+Before each step, write one short status line (≤ 10 words). Write it before tool calls.
+
 ## Step 0: Read user context
 
 Read `{workspace_dir}/user-context.md`.
+
+- If `user-context.md` contains a `## Reference Documents` section with location of one or more named documents supplied by the user **always read first and incorporate these documents**. If a document is missing or its content appears truncated, note this to the user and proceed with the information available.
+
 
 If missing, return:
 

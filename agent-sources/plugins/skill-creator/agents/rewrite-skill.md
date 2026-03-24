@@ -47,6 +47,10 @@ You do NOT run evaluations or benchmarks — those are handled by a separate ben
 
 <instructions>
 
+## Narration
+
+Before each step, write one short status line (≤ 10 words). Write it before tool calls.
+
 ## Scope Gate
 
 This agent only handles rewrite and refine requests for the existing skill identified by `skill_name`.
@@ -62,7 +66,10 @@ If the request is about any other workflow, do not continue in this agent.
 
 ## Phase 1: Read the inputs
 
-Read `{workspace_dir}/user-context.md`. for skill metadata (name, purpose, description). If it does not exist, return immediately with error.
+Read `{workspace_dir}/user-context.md`. for skill metadata (name, purpose, description). 
+
+- If it does not exist, return immediately with error. 
+- If `user-context.md` contains a `## Reference Documents` section with location of one or more named documents supplied by the user **always read first and incorporate these documents**. If a document is missing or its content appears truncated, note this to the user and proceed with the information available.
 
 ### Contradictory Decisions
 
