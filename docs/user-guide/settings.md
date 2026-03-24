@@ -69,11 +69,13 @@ The action bar provides:
 
 - **Create Plugin** — create a new empty plugin
 - **Marketplace** — browse and install plugins from configured registries (disabled until at least one enabled registry exists in **Marketplace**)
-- **Upload** — import a `.skill`, `.zip`, or `.plugin.zip` package
+- **Upload** — import a skill package from a `.skill` or `.zip` file
 
-Below the actions, a table lists all installed plugins with their display name, slug, version, and source. Click the trash icon on a row to delete a plugin (the default **Skills** plugin cannot be deleted).
+Below the actions, a table lists installed non-default plugins with their display name, slug, version, and source. Click the trash icon on a row to delete a plugin.
 
-When no plugins exist, an empty state card reads "No plugins" with a prompt to browse the marketplace or upload a package.
+The default **Skills** plugin is managed automatically and does not appear as a row in this table.
+
+When no non-default plugins exist, an empty state card reads "No plugins".
 
 ---
 
