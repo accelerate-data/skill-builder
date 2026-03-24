@@ -431,6 +431,99 @@
     .checklist li { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
     .checklist li:last-child { margin-bottom: 0; }
     .checkbox { width: 14px; height: 14px; border: 1.5px solid var(--color-border); border-radius: 3px; flex-shrink: 0; }
+
+    /* ── Agent output panel (State 2) ── */
+    .agent-output-card {
+      margin: 8px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--color-card);
+    }
+
+    .agent-output-header {
+      padding: 5px 10px;
+      background: color-mix(in oklch, var(--color-background), transparent 20%);
+      border-bottom: 1px solid var(--color-border);
+      display: flex; align-items: center; gap: 6px;
+      font-size: 10px; font-weight: 600;
+      color: var(--color-muted-foreground);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+
+    .agent-output-scroll {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+
+    .ao-item {
+      display: flex; align-items: flex-start; gap: 7px;
+      padding: 4px 10px;
+      font-size: 11px; line-height: 1.5;
+    }
+
+    .ao-item:hover { background: var(--color-background); }
+
+    .ao-icon {
+      width: 15px; height: 15px; border-radius: 3px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 8px; font-weight: 700; flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .ao-tool  { background: color-mix(in oklch, var(--color-pacific),  transparent 88%); color: var(--color-pacific); }
+    .ao-done  { background: color-mix(in oklch, var(--color-seafoam),  transparent 88%); color: oklch(0.500 0.100 155); }
+    .ao-agent { background: color-mix(in oklch, var(--color-pacific),  transparent 82%); color: var(--color-pacific); }
+    .ao-event-pass { background: color-mix(in oklch, var(--color-seafoam), transparent 82%); color: oklch(0.500 0.100 155); font-size:9px; }
+    .ao-event-warn { background: color-mix(in oklch, var(--color-amber),   transparent 82%); color: oklch(0.540 0.120 60); font-size:9px; }
+    .ao-spin {
+      width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+      border: 1.5px solid color-mix(in oklch, var(--color-pacific), transparent 65%);
+      border-top-color: var(--color-pacific);
+      animation: spin 0.8s linear infinite;
+    }
+
+    .ao-body { flex: 1; min-width: 0; }
+    .ao-label { font-weight: 600; }
+    .ao-dim   { color: var(--color-muted-foreground); }
+    .ao-mono  { font-family: var(--font-mono); font-size: 10px; color: var(--color-muted-foreground); }
+
+    .ao-subagent-preview {
+      margin-top: 3px;
+      padding: 4px 8px;
+      background: var(--color-background);
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      font-size: 10px; color: var(--color-muted-foreground);
+      line-height: 1.5;
+      font-style: italic;
+    }
+
+    .ao-pill {
+      display: inline-flex; align-items: center;
+      padding: 1px 6px; border-radius: 9999px;
+      font-size: 10px; font-weight: 600; font-family: var(--font-mono);
+    }
+
+    .ao-pill-pass { background: color-mix(in oklch, var(--color-seafoam), transparent 85%); color: oklch(0.500 0.100 155); }
+    .ao-pill-warn { background: color-mix(in oklch, var(--color-amber),   transparent 85%); color: oklch(0.540 0.120 60); }
+
+    .ao-divider { height: 1px; background: var(--color-border); margin: 3px 0; }
+
+    .ao-section {
+      padding: 3px 10px 1px;
+      font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--color-muted-foreground);
+    }
+
+    .agent-output-footer {
+      padding: 4px 10px;
+      border-top: 1px solid var(--color-border);
+      background: color-mix(in oklch, var(--color-background), transparent 20%);
+      font-size: 10px; color: var(--color-muted-foreground);
+      display: flex; align-items: center; gap: 5px;
+    }
   </style>
 </head>
 <body>
@@ -567,49 +660,136 @@
       <div class="progress-banner">
         <div class="spinner-muted"></div>
         <div class="progress-text" style="flex:1;">
-          <strong>Grading eval 1 of 2</strong> — Incremental model config
+          <strong>Grading eval 2 of 3</strong> — DQ test generation
           <div class="progress-track" style="margin-top:5px;">
-            <div class="progress-fill" style="width:25%;"></div>
+            <div class="progress-fill" style="width:55%;"></div>
           </div>
         </div>
-        <span style="font-size:10px;color:var(--color-muted-foreground);">1 / 2</span>
+        <span style="font-size:10px;color:var(--color-muted-foreground);">55%</span>
+      </div>
+
+      <!-- Agent output panel -->
+      <div class="agent-output-card">
+        <div class="agent-output-header">
+          <div class="spinner-muted" style="width:9px;height:9px;border-width:1.5px;"></div>
+          Agent output
+        </div>
+        <div class="agent-output-scroll">
+
+          <div class="ao-section">Eval 1 · Incremental model config ✓</div>
+
+          <div class="ao-item">
+            <div class="ao-icon ao-done">R</div>
+            <div class="ao-body">
+              <span class="ao-label">Read</span>
+              <span class="ao-dim" style="margin-left:5px;">evals.json — 3 test cases</span>
+            </div>
+          </div>
+
+          <div class="ao-item">
+            <div class="ao-icon ao-agent">⬡</div>
+            <div class="ao-body">
+              <span class="ao-label">Subagent</span>
+              <span class="ao-dim" style="margin-left:5px;">skill execution</span>
+              <div class="ao-subagent-preview">"For a Fabric incremental model with 3-day CDC lag, use strategy=merge with unique_key on surrogate_key…"</div>
+            </div>
+          </div>
+
+          <div class="ao-item">
+            <div class="ao-icon ao-agent">⬡</div>
+            <div class="ao-body">
+              <span class="ao-label">Subagent</span>
+              <span class="ao-dim" style="margin-left:5px;">grader — 4 assertions</span>
+              <div class="ao-subagent-preview">✓ uses merge strategy · ✓ unique_key present · ✓ lag config correct · ✓ Fabric dialect valid</div>
+            </div>
+          </div>
+
+          <div class="ao-item">
+            <div class="ao-icon ao-done">W</div>
+            <div class="ao-body">
+              <span class="ao-label">Write</span>
+              <span class="ao-mono" style="margin-left:5px;">run-0/eval-1/grading.json</span>
+            </div>
+          </div>
+
+          <div class="ao-item">
+            <div class="ao-icon ao-event-pass">✓</div>
+            <div class="ao-body" style="display:flex;align-items:center;gap:6px;">
+              <span class="ao-dim" style="font-weight:600;">eval graded</span>
+              <span class="ao-pill ao-pill-pass">4 / 4 · 100%</span>
+              <span class="ao-dim">Incremental model config</span>
+            </div>
+          </div>
+
+          <div class="ao-divider"></div>
+          <div class="ao-section">Eval 2 · DQ test generation (in progress…)</div>
+
+          <div class="ao-item">
+            <div class="ao-icon ao-agent">⬡</div>
+            <div class="ao-body">
+              <span class="ao-label">Subagent</span>
+              <span class="ao-dim" style="margin-left:5px;">skill execution</span>
+              <div class="ao-subagent-preview">"For row-count reconciliation between bronze and gold layers, add a dbt test with…"</div>
+            </div>
+          </div>
+
+          <div class="ao-item">
+            <div class="ao-icon ao-agent">⬡</div>
+            <div class="ao-body">
+              <span class="ao-label">Subagent</span>
+              <span class="ao-dim" style="margin-left:5px;">grader — 4 assertions</span>
+              <div class="ao-subagent-preview" style="color:var(--color-pacific);">Evaluating assertions…</div>
+            </div>
+          </div>
+
+          <!-- live cursor -->
+          <div class="ao-item" style="opacity:0.65;">
+            <div class="ao-spin"></div>
+            <span class="ao-dim" style="font-style:italic;">grading DQ test generation…</span>
+          </div>
+
+        </div>
+        <div class="agent-output-footer">
+          <div class="spinner-muted" style="width:9px;height:9px;border-width:1.5px;"></div>
+          evaluate-skill agent running
+        </div>
       </div>
 
       <!-- Eval list, running state -->
       <div class="eval-list-header" style="padding:5px 12px;">
         <div class="cb indeterminate">–</div>
-        <span style="font-size:10px;font-weight:600;color:var(--color-muted-foreground);">2 selected · running</span>
+        <span style="font-size:10px;font-weight:600;color:var(--color-muted-foreground);">3 selected · running</span>
       </div>
       <div class="eval-list">
         <div class="eval-row selected">
           <div class="cb checked">✓</div>
-          <span class="status-dot" style="background:var(--color-pacific);animation:dot-pulse 1.2s ease-in-out infinite;"></span>
+          <span class="status-dot" style="background:var(--color-seafoam);"></span>
           <span class="eval-name">Incremental model config</span>
+          <span class="eval-meta">4 expectations</span>
+          <span class="prev-score" style="color:var(--color-seafoam);">4/4</span>
+        </div>
+        <div class="eval-row selected">
+          <div class="cb checked">✓</div>
+          <span class="status-dot" style="background:var(--color-pacific);animation:dot-pulse 1.2s ease-in-out infinite;"></span>
+          <span class="eval-name">DQ test generation</span>
           <span class="eval-meta">4 expectations</span>
           <span class="prev-score" style="color:var(--color-pacific);">…</span>
         </div>
-        <div class="eval-row" style="opacity:0.55;">
-          <div class="cb"></div>
-          <span class="status-dot" style="background:var(--color-seafoam);"></span>
-          <span class="eval-name">Late-arrival handling</span>
-          <span class="eval-meta">3 expectations</span>
-          <span class="prev-score" style="color:var(--color-seafoam);">3/3</span>
-        </div>
-        <div class="eval-row selected" style="opacity:0.55;">
+        <div class="eval-row selected" style="opacity:0.5;">
           <div class="cb checked">✓</div>
           <span class="status-dot" style="background:var(--color-border);"></span>
-          <span class="eval-name">DQ test generation</span>
-          <span class="eval-meta">4 expectations</span>
+          <span class="eval-name">Late-arrival handling</span>
+          <span class="eval-meta">3 expectations</span>
           <span class="prev-score">queued</span>
         </div>
-        <div class="eval-row" style="opacity:0.4;">
+        <div class="eval-row" style="opacity:0.35;">
           <div class="cb"></div>
           <span class="status-dot" style="background:var(--color-destructive);"></span>
           <span class="eval-name">Source freshness checks</span>
           <span class="eval-meta">3 expectations</span>
           <span class="prev-score" style="color:var(--color-destructive);">1/3</span>
         </div>
-        <div class="eval-row" style="opacity:0.4;">
+        <div class="eval-row" style="opacity:0.35;">
           <div class="cb"></div>
           <span class="status-dot" style="border:1.5px solid var(--color-border);background:transparent;"></span>
           <span class="eval-name">Enum validation</span>
@@ -620,9 +800,10 @@
     </div>
 
     <div class="note">
-      <strong>Progress events</strong> come from the agent's <code class="code">eval_graded</code> JSON output, which the sidecar forwards as
-      <code class="code">DisplayItem.structuredOutput</code>. The UI increments its counter on each event.
-      Non-selected rows and unrun rows show at reduced opacity during the run.
+      <strong>Agent output panel</strong> uses the same <code class="code">AgentOutputPanel</code> component as the workflow —
+      it renders <code class="code">DisplayItem[]</code> from the agent store (tool summaries, subagent previews, text).
+      <code class="code">eval_graded</code> structured output events update the progress banner and flip the status dot on each eval row from pulsing-blue → seafoam green.
+      Non-selected and unrun rows show at reduced opacity during the run.
     </div>
   </section>
 

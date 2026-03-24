@@ -838,6 +838,13 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
           </div>
         )}
 
+        {/* Agent output panel — visible during and after the eval run */}
+        {evalRunAgentId && (
+          <div className="mb-4">
+            <AgentOutputPanel agentId={evalRunAgentId} />
+          </div>
+        )}
+
         {/* Queue banner */}
         {evalQueue.length > 0 && (
           <div className="mb-4 rounded-lg border" style={{ borderColor: "color-mix(in oklch, var(--color-pacific), transparent 72%)" }}>
