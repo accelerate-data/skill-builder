@@ -19,6 +19,7 @@ import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
 import { WorkspaceEvals } from "./workspace-evals";
+import { WorkspaceDescription } from "./workspace-description";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
 
 interface WorkspaceShellProps {
@@ -130,7 +131,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="refine">Refine</TabsTrigger>
             <TabsTrigger value="evals">Evals</TabsTrigger>
-            <TabsTrigger value="description" disabled>
+            <TabsTrigger value="description">
               Description
             </TabsTrigger>
           </TabsList>
@@ -155,6 +156,19 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
 
           <TabsContent value="evals" className="flex-1 overflow-y-auto p-6">
             <WorkspaceEvals skill={skill} workspacePath={workspacePath} />
+          </TabsContent>
+
+          <TabsContent value="description" className="flex-1 overflow-y-auto p-6">
+            {"name" in skill ? (
+              <WorkspaceDescription
+                skill={skill as SkillSummary}
+                workspacePath={workspacePath ?? ""}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Description optimization is not available for imported skills.
+              </div>
+            )}
           </TabsContent>
         </Tabs>
 
