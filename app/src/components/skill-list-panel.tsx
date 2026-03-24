@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSkillStore } from "@/stores/skill-store";
-import { Lock, MoreHorizontal, PanelLeftClose, Plus, Search } from "lucide-react";
+import { PanelLeftClose, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,33 +14,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { toast } from "@/lib/toast";
 import SkillDialog from "@/components/skill-dialog";
 import DeleteSkillDialog from "@/components/delete-skill-dialog";
 import RestoreVersionDialog from "@/components/workspace/restore-version-dialog";
 import { CreatePluginDialog } from "@/components/create-plugin-dialog";
 import { MoveToPluginDialog } from "@/components/move-to-plugin-dialog";
+import { SkillRow } from "@/components/skill-row";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import {
   useUnifiedSkills,
-  getStatusDot,
-  getSkillMenuState,
   isSkillComplete,
 } from "@/hooks/use-unified-skills";
 import type { UnifiedSkill } from "@/hooks/use-unified-skills";
-import type { SkillSummary, Purpose } from "@/lib/types";
-import { PURPOSE_SHORT_LABELS } from "@/lib/types";
+import type { SkillSummary } from "@/lib/types";
 import {
   getExternallyLockedSkills,
   listSkills,
@@ -54,19 +43,6 @@ export interface SkillListPanelProps {
   onCreateSkill?: () => void;
   onCollapse?: () => void;
   className?: string;
-}
-
-function formatRelativeDate(date: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export function SkillListPanel({
@@ -169,8 +145,6 @@ export function SkillListPanel({
       navigate({ to: "/skill/$skillName", params: { skillName: skill.name } });
     }
   }
-
-
 
   function handleRedo(skillName: string) {
     setRedoTarget(skillName);
@@ -314,162 +288,29 @@ export function SkillListPanel({
           const isLocked = (!!runningSkillName && skill.name !== runningSkillName) || externalLockedSkills.has(skill.name);
           const isRunning = skill.name === runningSkillName;
           const isSelected = skill.key === selectedSkill;
-          const dot = getStatusDot(skill, isRunning);
-          const purposeLabel = skill.purpose
-            ? (PURPOSE_SHORT_LABELS[skill.purpose as Purpose] ?? skill.purpose)
-            : null;
-
-          const menuState = getSkillMenuState(skill);
           const showPluginHeader = index === 0 || filteredSkills[index - 1]?.pluginSlug !== skill.pluginSlug;
 
           return (
-            <div key={skill.key}>
-              {showPluginHeader && (
-                <div className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  {skill.pluginDisplayName}
-                </div>
-              )}
-              <div
-                role="button"
-                tabIndex={isLocked ? -1 : 0}
-                aria-selected={isSelected}
-                className={cn(
-                  "group flex h-[46px] cursor-pointer items-center gap-2 px-3 transition-colors",
-                  isSelected && "border-l-2 bg-muted/60 pl-[10px]",
-                  !isSelected && "border-l-2 border-l-transparent",
-                  !isSelected && !isLocked && "hover:bg-accent/50",
-                  isLocked && "cursor-not-allowed opacity-[0.45]",
-                )}
-                style={isSelected ? { borderLeftColor: "var(--color-pacific)" } : undefined}
-                onClick={() => handleRowClick(skill)}
-                onKeyDown={(e) => {
-                  if (!isLocked && (e.key === "Enter" || e.key === " ")) {
-                    e.preventDefault();
-                    handleRowClick(skill);
-                  }
-                }}
-              >
-              {/* Status dot */}
-              <div
-                className={cn("size-2 shrink-0 rounded-full", dot.className)}
-                style={dot.style}
-                aria-label={`status-dot-${skill.key}`}
-              />
-
-              {/* Name + purpose */}
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-base font-medium">{skill.name}</span>
-                {purposeLabel && (
-                  <span className="truncate text-[13px] text-muted-foreground">
-                    {purposeLabel}
-                  </span>
-                )}
-              </div>
-
-              {/* Timestamp */}
-              {skill.lastModified && (
-                <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                  {formatRelativeDate(skill.lastModified)}
-                </span>
-              )}
-
-              {/* More button / Lock icon */}
-              {isLocked ? (
-                <Lock className="size-[10px] shrink-0 text-muted-foreground" />
-              ) : (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="size-5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-                      aria-label="More actions"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MoreHorizontal className="size-3" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                    {menuState.isComplete ? (
-                      <>
-                        {menuState.isBuilder && (
-                          <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
-                            WORKFLOW
-                          </DropdownMenuLabel>
-                        )}
-                        {menuState.isBuilder && (
-                          <DropdownMenuItem onSelect={() => handleReview(skill.name)}>
-                            Review
-                          </DropdownMenuItem>
-                        )}
-                        {menuState.isBuilder && (
-                          <DropdownMenuItem onSelect={() => handleRedo(skill.name)}>
-                            Redo workflow
-                          </DropdownMenuItem>
-                        )}
-                        {menuState.isBuilder && <DropdownMenuSeparator />}
-                        <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
-                          SKILL
-                        </DropdownMenuLabel>
-                        <DropdownMenuItem onSelect={() => handleOverview(skill.key)}>
-                          Overview
-                        </DropdownMenuItem>
-                        {menuState.showsLifecycleActions && (
-                          <DropdownMenuItem onSelect={() => handleRefine(skill.key)}>
-                            Refine
-                          </DropdownMenuItem>
-                        )}
-                        {menuState.showsLifecycleActions && (
-                          <DropdownMenuItem onSelect={() => setRestoreTarget(skill.name)}>
-                            Restore version
-                          </DropdownMenuItem>
-                        )}
-                        {skill.source !== "marketplace" && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
-                              PLUGIN
-                            </DropdownMenuLabel>
-                            <DropdownMenuGroup>
-                              {skill.isDefaultPlugin ? (
-                                <DropdownMenuItem onSelect={() => handleCreatePlugin(skill)}>
-                                  Create plugin
-                                </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem onSelect={() => handleRemoveFromPlugin(skill)}>
-                                  Remove from plugin
-                                </DropdownMenuItem>
-                              )}
-                              {pluginOptions.some(([slug]) => slug !== skill.pluginSlug) && (
-                                <DropdownMenuItem onSelect={() => handleMoveToPlugin(skill)}>
-                                  Move to plugin
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuGroup>
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <DropdownMenuItem onSelect={() => handleContinueBuilding(skill.name)}>
-                        Continue Building
-                      </DropdownMenuItem>
-                    )}
-                    {skill.isDefaultPlugin && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onSelect={() => handleDelete(skill)}
-                          className="text-destructive focus:text-destructive"
-                        >
-                          Delete
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-              </div>
-            </div>
+            <SkillRow
+              key={skill.key}
+              skill={skill}
+              isSelected={isSelected}
+              isLocked={isLocked}
+              isRunning={isRunning}
+              showPluginHeader={showPluginHeader}
+              onRowClick={handleRowClick}
+              onReview={handleReview}
+              onRedo={handleRedo}
+              onOverview={handleOverview}
+              onRefine={handleRefine}
+              onContinueBuilding={handleContinueBuilding}
+              onRestore={(name) => setRestoreTarget(name)}
+              onDelete={handleDelete}
+              onCreatePlugin={handleCreatePlugin}
+              onMoveToPlugin={handleMoveToPlugin}
+              onRemoveFromPlugin={handleRemoveFromPlugin}
+              pluginOptions={pluginOptions}
+            />
           );
         })}
       </ScrollArea>
