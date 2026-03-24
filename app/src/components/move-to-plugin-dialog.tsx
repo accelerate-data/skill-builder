@@ -48,17 +48,12 @@ export function MoveToPluginDialog({
   const handleSubmit = useCallback(async () => {
     if (!selected) return
     setSubmitting(true)
-    const toastId = toast.loading(`Moving "${skillName}"...`)
     try {
       await moveSkillToPlugin(skillKey, selected)
-      toast.success(`Moved "${skillName}" to ${selected}`, { id: toastId })
       onOpenChange(false)
       onMoved()
     } catch (err) {
-      toast.error(
-        `Move failed: ${err instanceof Error ? err.message : String(err)}`,
-        { id: toastId },
-      )
+      toast.error(`Move failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setSubmitting(false)
     }
