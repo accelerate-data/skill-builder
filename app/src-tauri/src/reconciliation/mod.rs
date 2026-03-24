@@ -301,9 +301,9 @@ pub fn reconcile_on_startup(
             }
         }
 
-        // Pass B: soft-delete active skills with no directory in skills_path
+        // Pass B: soft-delete active skills (builder or imported) with no directory in skills_path
         let all_builder = crate::db::list_all_skills(conn)?;
-        for skill in all_builder.iter().filter(|s| s.skill_source == "skill-builder") {
+        for skill in &all_builder {
             if skill_dir_exists(&skill.plugin_slug, &skill.name) {
                 continue;
             }
