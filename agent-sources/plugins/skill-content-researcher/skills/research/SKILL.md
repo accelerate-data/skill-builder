@@ -9,6 +9,7 @@ user_invocable: false
 Given a `purpose`, produce clarification questions which can be used for writing the skill.
 The overall flow is as follows
 
+- Understand the user's intent and the skill's purpose
 - Resolve `purpose` to one dimension set from `references/dimension-sets.md`
 - Score all candidate dimensions using `references/scoring-rubric.md`
 - Emit scope recommendation output when rubric `topic_relevance` is `not_relevant`.
@@ -18,12 +19,20 @@ The overall flow is as follows
 - Validate final payload against `references/schemas.md`
 - Return the canonical `clarifications.json` object as top-level JSON
 
-The research should focus on producing high-quality, actionable clarifications that directly inform skill-building. The research output should be framed around enabling clear answers to:
+## Step 0 - Capture Intent
 
-- What should this skill enable Claude to do? (with concrete options)
-- Is the domain narrow or broad and if not correct (too wide or too narrow), what should the scope be?
-- What does a typical request look like when creating or modifying dbt models used to create silver and gold tables and how will this skill help?
-- What does success look like?
+The research should focus on producing high-quality, actionable clarifications that directly inform skill-building.
+
+Start by understanding the user's intent. The user may need to fill the gaps, and should confirm before proceeding to the next step.
+
+1. What should this skill enable Claude to do?
+2. When should this skill trigger? (what user phrases/contexts)
+3. What's the expected output format?
+4. Who's the typical user?
+
+Proactively ask questions about edge cases, input/output formats, example files, success criteria, and dependencies.
+
+Check available MCPs - if useful for research (searching docs, finding similar skills, looking up best practices), research in parallel via subagents if available, otherwise inline. Come prepared with context to reduce burden on the user.
 
 ## Step 1 — Select Dimension Set
 
@@ -100,7 +109,7 @@ Proactively think about edge cases, input/output formats, example files, success
 ## Step 5 — Consolidate
 
 - Use `references/consolidation-handoff.md` to produce `clarifications_json`.
-- Return the results as JSON only (no wrappers and no additional text).
+- Construct the result object internally — **do not emit it as visible text output**. Pass it directly to `StructuredOutput` using the schema below.
 
   ```json
   {
