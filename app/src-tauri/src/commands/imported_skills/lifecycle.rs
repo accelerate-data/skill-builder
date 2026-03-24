@@ -333,6 +333,22 @@ pub fn remove_skill_from_plugin(
     Ok(())
 }
 
+/// Enable or disable upgrade locking for a plugin by slug.
+/// Pass `locked = false` to allow the plugin to receive updates again.
+#[tauri::command]
+pub fn set_plugin_upgrade_lock(
+    plugin_slug: String,
+    locked: bool,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    log::info!("[set_plugin_upgrade_lock] slug={} locked={}", plugin_slug, locked);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[set_plugin_upgrade_lock] failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    crate::db::set_plugin_upgrade_locked(&conn, &plugin_slug, locked)
+}
+
 #[tauri::command]
 pub fn delete_imported_skill(skill_id: String, db: tauri::State<'_, Db>) -> Result<(), String> {
     log::info!("delete_imported_skill: skill_id={}", skill_id);

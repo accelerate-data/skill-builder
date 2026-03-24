@@ -42,6 +42,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
 
     (37, run_fk_cascade_migration),
     (38, run_plugin_ownership_migration),
+    (39, run_plugin_upgrade_locked_migration),
 ];
 
 pub(super) fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -1854,5 +1855,25 @@ pub(super) fn run_fk_cascade_migration(conn: &Connection) -> Result<(), rusqlite
     )?;
 
     log::info!("migration 37: added ON DELETE CASCADE to 8 child table FK columns");
+    Ok(())
+}
+
+/// Migration 39: Add `upgrade_locked` flag to the `plugins` table.
+/// When any skill in a marketplace plugin is edited, the whole plugin is locked
+/// from auto-update and manual upgrade until the user explicitly unlocks it.
+pub(super) fn run_plugin_upgrade_locked_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let has_upgrade_locked = conn
+        .prepare("PRAGMA table_info(plugins)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| r.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).any(|n| n == "upgrade_locked"))
+        })
+        .unwrap_or(false);
+    if !has_upgrade_locked {
+        conn.execute_batch(
+            "ALTER TABLE plugins ADD COLUMN upgrade_locked INTEGER NOT NULL DEFAULT 0;",
+        )?;
+        log::info!("migration 39: added upgrade_locked column to plugins");
+    }
     Ok(())
 }

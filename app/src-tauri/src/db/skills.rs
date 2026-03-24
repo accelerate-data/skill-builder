@@ -119,7 +119,7 @@ pub fn get_plugin_id_by_slug(conn: &Connection, slug: &str) -> Result<Option<i64
 pub fn list_plugins(conn: &Connection) -> Result<Vec<crate::types::LibraryPlugin>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, slug, display_name, version, source_type, source_url, is_default
+            "SELECT id, slug, display_name, version, source_type, source_url, is_default, COALESCE(upgrade_locked, 0)
              FROM plugins
              ORDER BY is_default DESC, display_name ASC",
         )
@@ -133,11 +133,36 @@ pub fn list_plugins(conn: &Connection) -> Result<Vec<crate::types::LibraryPlugin
             source_type: row.get(4)?,
             source_url: row.get(5)?,
             is_default: row.get::<_, i32>(6)? != 0,
+            upgrade_locked: row.get::<_, i32>(7)? != 0,
         })
     })
     .map_err(|e| format!("list_plugins query: {}", e))?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("list_plugins collect: {}", e))
+}
+
+/// Set the `upgrade_locked` flag on a plugin by slug.
+pub fn set_plugin_upgrade_locked(conn: &Connection, slug: &str, locked: bool) -> Result<(), String> {
+    conn.execute(
+        "UPDATE plugins SET upgrade_locked = ?2, updated_at = datetime('now') || 'Z' WHERE slug = ?1",
+        rusqlite::params![slug, if locked { 1i32 } else { 0i32 }],
+    )
+    .map_err(|e| format!("set_plugin_upgrade_locked: {}", e))?;
+    Ok(())
+}
+
+/// Lock the plugin that owns `skill_name` against upgrades.
+/// Only applies to marketplace plugins (source_type = 'marketplace').
+/// This is a no-op for builder or non-marketplace plugins.
+pub fn lock_plugin_for_skill(conn: &Connection, skill_name: &str) -> Result<(), String> {
+    conn.execute(
+        "UPDATE plugins SET upgrade_locked = 1, updated_at = datetime('now') || 'Z'
+         WHERE id = (SELECT plugin_id FROM skills WHERE name = ?1 AND deleted_at IS NULL)
+           AND source_type = 'marketplace'",
+        rusqlite::params![skill_name],
+    )
+    .map_err(|e| format!("lock_plugin_for_skill: {}", e))?;
+    Ok(())
 }
 
 pub fn create_plugin(
@@ -564,4 +589,69 @@ pub fn get_all_tags(conn: &Connection) -> Result<Vec<String>, String> {
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::create_test_db_for_tests;
+
+    #[test]
+    fn upgrade_locked_column_exists_and_defaults_to_false() {
+        let conn = create_test_db_for_tests();
+        // Default plugin is created by migrations; verify upgrade_locked defaults to 0.
+        let plugins = list_plugins(&conn).expect("list_plugins should succeed");
+        assert!(!plugins.is_empty(), "at least the default plugin should exist");
+        for p in &plugins {
+            assert!(!p.upgrade_locked, "upgrade_locked should default to false for plugin '{}'", p.slug);
+        }
+    }
+
+    #[test]
+    fn set_plugin_upgrade_locked_toggles_flag() {
+        let conn = create_test_db_for_tests();
+        ensure_plugin(&conn, "test-pkg", "Test Pkg", "marketplace", Some("https://example.com/pkg"), None, false)
+            .expect("ensure_plugin");
+
+        // Lock it
+        set_plugin_upgrade_locked(&conn, "test-pkg", true).expect("set locked");
+        let plugins = list_plugins(&conn).expect("list_plugins");
+        let p = plugins.iter().find(|p| p.slug == "test-pkg").expect("plugin exists");
+        assert!(p.upgrade_locked, "upgrade_locked should be true after locking");
+
+        // Unlock it
+        set_plugin_upgrade_locked(&conn, "test-pkg", false).expect("set unlocked");
+        let plugins = list_plugins(&conn).expect("list_plugins");
+        let p = plugins.iter().find(|p| p.slug == "test-pkg").expect("plugin exists");
+        assert!(!p.upgrade_locked, "upgrade_locked should be false after unlocking");
+    }
+
+    #[test]
+    fn lock_plugin_for_skill_locks_marketplace_plugin() {
+        let conn = create_test_db_for_tests();
+        // Create a marketplace plugin and a skill in it.
+        ensure_plugin(&conn, "mkt-pkg", "Mkt Pkg", "marketplace", Some("https://example.com/mkt"), None, false)
+            .expect("ensure_plugin");
+        upsert_skill_in_plugin(&conn, "mkt-skill", "marketplace", "domain", "mkt-pkg")
+            .expect("upsert skill");
+
+        lock_plugin_for_skill(&conn, "mkt-skill").expect("lock_plugin_for_skill");
+
+        let plugins = list_plugins(&conn).expect("list_plugins");
+        let p = plugins.iter().find(|p| p.slug == "mkt-pkg").expect("plugin exists");
+        assert!(p.upgrade_locked, "marketplace plugin should be locked after editing a skill");
+    }
+
+    #[test]
+    fn lock_plugin_for_skill_no_op_for_non_marketplace_plugin() {
+        let conn = create_test_db_for_tests();
+        // The default plugin is source_type = 'synthetic', not 'marketplace'.
+        upsert_skill(&conn, "builder-skill", "skill-builder", "domain").expect("upsert skill");
+
+        lock_plugin_for_skill(&conn, "builder-skill").expect("lock_plugin_for_skill");
+
+        let plugins = list_plugins(&conn).expect("list_plugins");
+        let default_plugin = plugins.iter().find(|p| p.is_default).expect("default plugin exists");
+        assert!(!default_plugin.upgrade_locked, "non-marketplace plugin must not be locked");
+    }
 }
