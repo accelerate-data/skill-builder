@@ -120,7 +120,7 @@ export function ImportedSkillsTab() {
             </div>
             <CardTitle>No plugins</CardTitle>
             <CardDescription>
-              Browse the marketplace or upload a plugin package to get started.
+              Browse the marketplace or upload a skill package to get started.
             </CardDescription>
           </CardHeader>
         </Card>

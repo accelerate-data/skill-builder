@@ -73,6 +73,6 @@ Two important areas are embedded inside those surfaces rather than being standal
 
 - **Skill Builder**: built in the workflow
 - **Marketplace**: imported from a GitHub-backed registry
-- **Imported**: uploaded from a package file
+- **Imported**: uploaded from a single-skill package file
 
 **Workspace** — The app-managed working area for builder runs, refine sessions, and related artifacts. Completed skills are saved separately in your Skills Folder.

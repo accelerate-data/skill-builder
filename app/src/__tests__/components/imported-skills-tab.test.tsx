@@ -150,7 +150,7 @@ describe("ImportedSkillsTab", () => {
       expect(screen.getByText("No plugins")).toBeInTheDocument();
     });
     expect(
-      screen.getByText("Browse the marketplace or upload a plugin package to get started.")
+      screen.getByText("Browse the marketplace or upload a skill package to get started.")
     ).toBeInTheDocument();
   });
 

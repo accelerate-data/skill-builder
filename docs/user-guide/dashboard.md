@@ -58,7 +58,7 @@ The app navigates directly into the [workflow](workflow/overview.md) for the new
 
 ## Search the skill list
 
-Use the search field above the list. It filters the visible skill rows by name.
+Use the search field above the list. It filters the visible skill rows by skill name and plugin name.
 
 There is no grid/list toggle or multi-filter bar in the current dashboard UI.
 
@@ -109,9 +109,28 @@ These show:
 - **Continue Building**
 - **Delete** (when in the default plugin)
 
-### Imported or marketplace skills
+### Uploaded skills
 
-These use the same workspace shell. Plugin actions are not available for marketplace-source skills.
+Uploaded skills use the same workspace shell. Their menu can include:
+
+- **Overview**
+- **Refine** (opens the tab, but Refine itself is not available for uploaded skills)
+- **Restore version**
+- **Create plugin** when the skill is still in the default **Skills** plugin
+- **Remove from plugin** when the skill is in a non-default plugin
+- **Move to plugin** when another eligible plugin exists
+- **Delete** when the skill is in the default plugin
+
+### Marketplace skills
+
+Marketplace skills also use the workspace shell. Their menu can include:
+
+- **Overview**
+- **Refine** (opens the tab, but Refine itself is not available for marketplace skills)
+- **Restore version**
+- **Delete** when the skill is in the default plugin
+
+Marketplace skills do not show the **Plugin** section in the skill menu.
 
 ---
 
@@ -125,7 +144,9 @@ For builder skills, it can include:
 - **Benchmark Results** when a benchmark exists
 - **Version History**
 
-For marketplace skills, the source can appear as the marketplace URL.
+For marketplace skills, the source appears as the marketplace URL when one is recorded.
+
+For uploaded skills, the source appears as **Uploaded**.
 
 ---
 
