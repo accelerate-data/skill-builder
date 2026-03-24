@@ -157,13 +157,25 @@ pub fn reconcile_on_startup(
                 "domain",
                 &loc.plugin_slug,
             ) {
-                Ok(_id) => {
-                    // Create a workflow_runs row at step 3 (completed) since SKILL.md exists
+                Ok(skill_id) => {
+                    // Create a workflow_runs row at step 3 (completed) since SKILL.md exists.
+                    // Insert directly using the known skill_id to avoid save_workflow_run's
+                    // upsert_skill call which always targets the default plugin and would create
+                    // a duplicate skills row for non-default-plugin skills.
                     let disk_step = detect_furthest_step(workspace_path, &loc.plugin_slug, &loc.skill_name, skills_path)
                         .map(|s| s as i32)
                         .unwrap_or(3);
                     let status = if disk_step >= 3 { "completed" } else { "pending" };
-                    crate::db::save_workflow_run(conn, &loc.skill_name, disk_step, status, "domain")?;
+                    conn.execute(
+                        "INSERT INTO workflow_runs \
+                             (skill_name, current_step, status, purpose, skill_id, updated_at) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now') || 'Z') \
+                         ON CONFLICT(skill_name) DO UPDATE SET \
+                             current_step = ?2, status = ?3, purpose = ?4, \
+                             skill_id = ?5, updated_at = datetime('now') || 'Z'",
+                        rusqlite::params![loc.skill_name, disk_step, status, "domain", skill_id],
+                    )
+                    .map_err(|e| e.to_string())?;
                     discovered_skills.push(DiscoveredSkill {
                         name: loc.skill_name.clone(),
                         plugin_slug: Some(loc.plugin_slug.clone()),
@@ -214,16 +226,35 @@ pub fn reconcile_on_startup(
                     plugin.slug
                 );
                 // Hard-delete all skills then the plugin
-                let _ = conn.execute(
+                if let Err(e) = conn.execute(
                     "DELETE FROM skills WHERE plugin_id = ?1",
                     rusqlite::params![plugin.id],
-                );
+                ) {
+                    log::warn!(
+                        "[reconcile] marketplace plugin '{}': failed to delete skills: {}, skipping plugin delete",
+                        plugin.slug, e
+                    );
+                    continue;
+                }
                 if let Err(e) = crate::db::delete_plugin_by_slug(conn, &plugin.slug) {
                     log::warn!("[reconcile] failed to delete marketplace plugin '{}': {}", plugin.slug, e);
                 } else {
-                    // Remove from disk too
+                    // Remove from disk — guard against path traversal via a crafted plugin slug
                     let plugin_dir = skills_dir.join(&plugin.slug);
-                    let _ = std::fs::remove_dir_all(&plugin_dir);
+                    if plugin_dir.exists() {
+                        let safe = std::fs::canonicalize(skills_dir)
+                            .and_then(|base| std::fs::canonicalize(&plugin_dir).map(|t| (base, t)))
+                            .map(|(base, target)| target.starts_with(&base))
+                            .unwrap_or(false);
+                        if safe {
+                            let _ = std::fs::remove_dir_all(&plugin_dir);
+                        } else {
+                            log::warn!(
+                                "[reconcile] marketplace plugin '{}': skipping disk delete — path traversal guard triggered",
+                                plugin.slug
+                            );
+                        }
+                    }
                     notifications.push(format!(
                         "Marketplace plugin '{}' removed — skill with missing SKILL.md detected",
                         plugin.slug
@@ -245,8 +276,7 @@ pub fn reconcile_on_startup(
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // ════════════════════════════════════════════════════════════════════════
-    // Phase 1e: Reconcile orphaned builder skills against skills_path
+    // Phase 1e: Reconcile skills against skills_path
     //
     // Signal: does the skill have a directory in skills_path?
     // create_skill always creates this directory immediately, so any skill
@@ -258,16 +288,26 @@ pub fn reconcile_on_startup(
     //         prior cleanup runs).
     // Pass B: soft-delete active skills that have NO directory in
     //         skills_path — genuine orphans with no on-disk footprint.
+    //
+    // Wrapped in BEGIN IMMEDIATE so Pass A and Pass B see a consistent
+    // DB snapshot and a concurrent IPC call cannot race between them.
     // ════════════════════════════════════════════════════════════════════════
-    {
-        let skills_dir = Path::new(skills_path);
+    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+    let phase1e_result: Result<Vec<String>, String> = (|| {
+        let mut phase_notifs: Vec<String> = Vec::new();
+        let skills_dir_1e = Path::new(skills_path);
 
-        // Returns true if the skill has ANY directory in skills_path,
-        // checking both the current nested layout and the legacy flat layout.
+        // Returns true if the skill has ANY directory in skills_path, checking
+        // both the current nested layout and the legacy flat layout.
+        //
+        // Guard: skip the legacy flat check when name == DEFAULT_PLUGIN_SLUG
+        // to avoid a false positive — skills_path/skills/ is the default
+        // plugin directory itself, not a skill named "skills".
         let skill_dir_exists = |plugin_slug: &str, name: &str| -> bool {
-            let new_path = crate::skill_paths::nested_skill_dir(skills_dir, plugin_slug, name);
-            let legacy_path = skills_dir.join(name);
-            new_path.exists() || legacy_path.exists()
+            let new_path = crate::skill_paths::nested_skill_dir(skills_dir_1e, plugin_slug, name);
+            let legacy_exists =
+                name != DEFAULT_PLUGIN_SLUG && skills_dir_1e.join(name).exists();
+            new_path.exists() || legacy_exists
         };
 
         // Pass A: restore incorrectly soft-deleted skills that have a dir
@@ -288,22 +328,32 @@ pub fn reconcile_on_startup(
             for (name, plugin_slug) in &soft_deleted {
                 if skill_dir_exists(plugin_slug, name) {
                     log::info!(
-                        "[reconcile] restoring '{}': directory found in skills_path",
-                        name
+                        "[reconcile] restoring '{}' in plugin '{}': directory found in skills_path",
+                        name, plugin_slug
                     );
-                    let _ = conn.execute(
+                    // Use NULL (not '') so all active-check idioms agree.
+                    // Scope by plugin_id to avoid touching same-named skills in other plugins.
+                    if let Err(e) = conn.execute(
                         "UPDATE skills \
-                         SET deleted_at = '', updated_at = datetime('now') \
-                         WHERE name = ?1",
-                        rusqlite::params![name],
-                    );
+                         SET deleted_at = NULL, updated_at = datetime('now') \
+                         WHERE name = ?1 \
+                           AND plugin_id = (SELECT id FROM plugins WHERE slug = ?2 LIMIT 1)",
+                        rusqlite::params![name, plugin_slug],
+                    ) {
+                        log::warn!("[reconcile] failed to restore '{}': {}", name, e);
+                    } else {
+                        phase_notifs.push(format!(
+                            "'{}' restored — directory found in skills_path",
+                            name
+                        ));
+                    }
                 }
             }
         }
 
         // Pass B: soft-delete active skills (builder or imported) with no directory in skills_path
-        let all_builder = crate::db::list_all_skills(conn)?;
-        for skill in &all_builder {
+        let all_active = crate::db::list_all_skills(conn)?;
+        for skill in &all_active {
             if skill_dir_exists(&skill.plugin_slug, &skill.name) {
                 continue;
             }
@@ -311,22 +361,33 @@ pub fn reconcile_on_startup(
                 "[reconcile] soft-deleting '{}' in plugin '{}': no directory in skills_path",
                 skill.name, skill.plugin_slug
             );
+            // Scope by plugin_id to avoid touching same-named skills in other plugins.
             if let Err(e) = conn.execute(
                 "UPDATE skills \
                  SET deleted_at = datetime('now') || 'Z', updated_at = datetime('now') \
-                 WHERE name = ?1 AND COALESCE(deleted_at, '') = ''",
-                rusqlite::params![&skill.name],
+                 WHERE name = ?1 \
+                   AND plugin_id = (SELECT id FROM plugins WHERE slug = ?2 LIMIT 1) \
+                   AND COALESCE(deleted_at, '') = ''",
+                rusqlite::params![&skill.name, &skill.plugin_slug],
             ) {
-                log::warn!(
-                    "[reconcile] failed to soft-delete '{}': {}",
-                    skill.name, e
-                );
+                log::warn!("[reconcile] failed to soft-delete '{}': {}", skill.name, e);
             } else {
-                notifications.push(format!(
+                phase_notifs.push(format!(
                     "'{}' removed — no directory found in skills_path",
                     skill.name
                 ));
             }
+        }
+        Ok(phase_notifs)
+    })();
+    match phase1e_result {
+        Ok(phase_notifs) => {
+            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            notifications.extend(phase_notifs);
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            return Err(e);
         }
     }
 

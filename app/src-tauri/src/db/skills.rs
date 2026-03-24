@@ -157,7 +157,7 @@ pub fn set_plugin_upgrade_locked(conn: &Connection, slug: &str, locked: bool) ->
 pub fn lock_plugin_for_skill(conn: &Connection, skill_name: &str) -> Result<(), String> {
     conn.execute(
         "UPDATE plugins SET upgrade_locked = 1, updated_at = datetime('now') || 'Z'
-         WHERE id = (SELECT plugin_id FROM skills WHERE name = ?1 AND deleted_at IS NULL)
+         WHERE id = (SELECT plugin_id FROM skills WHERE name = ?1 AND COALESCE(deleted_at, '') = '' LIMIT 1)
            AND source_type = 'marketplace'",
         rusqlite::params![skill_name],
     )
