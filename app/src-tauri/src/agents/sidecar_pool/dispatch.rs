@@ -965,6 +965,22 @@ impl SidecarPool {
         result
     }
 
+    /// Cancel a one-shot agent_request by request_id (= agent_id).
+    /// The sidecar matches `currentRequestId` and calls `currentAbort.abort()`.
+    pub async fn send_cancel(&self, skill_name: &str, request_id: &str) -> Result<(), String> {
+        let message = serde_json::json!({
+            "type": "cancel",
+            "request_id": request_id,
+        });
+        let result = self.write_to_sidecar_stdin(skill_name, &message).await;
+        if let Err(ref e) = result {
+            log::warn!("[send_cancel] Failed for request '[REDACTED]' on skill '{}': {}", skill_name, e);
+        } else {
+            log::info!("[send_cancel] request=[REDACTED] on skill '{}'", skill_name);
+        }
+        result
+    }
+
     /// Close a streaming session.
     pub async fn send_stream_end(&self, skill_name: &str, session_id: &str) -> Result<(), String> {
         let message = serde_json::json!({

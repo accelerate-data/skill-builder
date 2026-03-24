@@ -14,8 +14,9 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { useSkillStore } from "@/stores/skill-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
+import { useRefineStore } from "@/stores/refine-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
-import { cancelAgentRun } from "@/lib/tauri";
+import { cancelRefineTurn, cancelAgentRun } from "@/lib/tauri";
 
 export function AppLayout() {
   const isConfigured = useSettingsStore((s) => s.isConfigured);
@@ -66,14 +67,23 @@ export function AppLayout() {
         setPanelCollapsed((prev) => !prev);
       }
       if (e.key === "Escape") {
+        // Refine (streaming): cancel via session UUID from RefineSessionManager.
+        const refineStore = useRefineStore.getState();
+        if (refineStore.isRunning && refineStore.sessionId) {
+          cancelRefineTurn(refineStore.sessionId).catch((err) => {
+            console.error("[app-layout] escape: cancel refine failed", err);
+          });
+          return;
+        }
+        // Workflow step (one-shot): cancel via agentId (= request_id in sidecar).
         const runs = useAgentStore.getState().runs;
         const running = Object.values(runs).find(
-          (r): r is typeof r & { skillName: string; sessionId: string } =>
-            r.status === "running" && !!r.skillName && !!r.sessionId,
+          (r): r is typeof r & { skillName: string } =>
+            r.status === "running" && r.runSource === "workflow" && !!r.skillName,
         );
         if (running) {
-          cancelAgentRun(running.skillName, running.sessionId).catch((err) => {
-            console.error("[app-layout] escape: cancel failed", err);
+          cancelAgentRun(running.skillName, running.agentId).catch((err) => {
+            console.error("[app-layout] escape: cancel workflow step failed", err);
           });
         }
       }
