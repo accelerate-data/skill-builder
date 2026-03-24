@@ -273,6 +273,9 @@ pub(super) fn run_plugin_ownership_migration(conn: &Connection) -> Result<(), ru
          );",
     )?;
 
+    // Sanitize orphaned rows that would violate NOT NULL on skill_master_id
+    conn.execute_batch("DELETE FROM imported_skills WHERE skill_master_id IS NULL;")?;
+
     conn.execute_batch(
         "DROP TABLE IF EXISTS imported_skills_new;
         CREATE TABLE imported_skills_new (

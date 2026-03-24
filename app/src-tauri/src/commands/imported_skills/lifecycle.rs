@@ -197,12 +197,13 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
     }
     conn.execute_batch("COMMIT").map_err(|e| format!("Failed to commit: {}", e))?;
 
-    // Remove from disk
+    // Remove from disk (non-fatal — DB is authoritative; reconciler will not resurrect deleted plugins)
     if let Some(ref sp) = settings.skills_path {
         let plugin_dir = std::path::Path::new(sp).join(&plugin_slug);
         if plugin_dir.exists() {
-            std::fs::remove_dir_all(&plugin_dir)
-                .map_err(|e| format!("Failed to remove plugin directory: {}", e))?;
+            if let Err(e) = std::fs::remove_dir_all(&plugin_dir) {
+                log::warn!("[delete_plugin] disk removal failed (non-fatal): {}", e);
+            }
         }
         // Update marketplace.json
         let skills_root = std::path::Path::new(sp);
@@ -278,6 +279,9 @@ pub fn move_skill_to_plugin(
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
     let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;
+    // DB first — if this fails, disk is unchanged and the user can retry
+    crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)?;
+    // Disk second — if this fails, reconciliation can recover from DB as authority
     let (_, skills_target) = move_skill_directories(
         settings.workspace_path.as_deref(),
         settings.skills_path.as_deref(),
@@ -285,13 +289,9 @@ pub fn move_skill_to_plugin(
         &current_plugin_slug,
         &plugin_slug,
     )?;
-    crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)
-        .and_then(|_| {
-            if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
-                crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
-            }
-            Ok(())
-        })?;
+    if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
+        crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
+    }
     // Update marketplace.json to reflect the move
     if let Some(ref sp) = settings.skills_path {
         if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(std::path::Path::new(sp)) {
@@ -311,6 +311,9 @@ pub fn remove_skill_from_plugin(
     let settings = crate::db::read_settings(&conn)?;
     let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;
     crate::db::ensure_default_plugin(&conn)?;
+    // DB first — if this fails, disk is unchanged and the user can retry
+    crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, DEFAULT_PLUGIN_SLUG)?;
+    // Disk second — if this fails, reconciliation can recover from DB as authority
     let (_, skills_target) = move_skill_directories(
         settings.workspace_path.as_deref(),
         settings.skills_path.as_deref(),
@@ -318,13 +321,9 @@ pub fn remove_skill_from_plugin(
         &current_plugin_slug,
         DEFAULT_PLUGIN_SLUG,
     )?;
-    crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, DEFAULT_PLUGIN_SLUG)
-        .and_then(|_| {
-            if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
-                crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
-            }
-            Ok(())
-        })?;
+    if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
+        crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
+    }
     // Update marketplace.json to reflect the move
     if let Some(ref sp) = settings.skills_path {
         if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(std::path::Path::new(sp)) {
