@@ -153,31 +153,76 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
 
-    // Check for active (non-deleted) skills — refuse to delete if any exist
     let active_count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1 AND COALESCE(s.deleted_at, '') = ''",
+            "SELECT COUNT(*) FROM skills s JOIN plugins p ON s.plugin_id = p.id \
+             WHERE p.slug = ?1 AND COALESCE(s.deleted_at, '') = ''",
             rusqlite::params![&plugin_slug],
             |row| row.get(0),
         )
         .unwrap_or(0);
-    if active_count > 0 {
-        return Err(format!(
-            "Cannot delete plugin '{}' — it still has {} active skill(s). Remove them first.",
-            plugin_slug, active_count
-        ));
-    }
+    log::info!("[delete_plugin] slug={} active_skills={}", plugin_slug, active_count);
 
-    // Wrap multi-table delete in a transaction
+    // Wrap all deletes in a transaction — clean up all dependent rows before
+    // removing the plugin row itself.
     conn.execute_batch("BEGIN").map_err(|e| format!("Failed to begin transaction: {}", e))?;
     let db_result = (|| -> Result<(), String> {
-        // Hard-delete any soft-deleted skills so FK RESTRICT doesn't block plugin deletion
+        // Remove child rows that reference workflow_runs (by workflow_run_id FK).
+        conn.execute(
+            "DELETE FROM workflow_artifacts WHERE workflow_run_id IN \
+             (SELECT wr.id FROM workflow_runs wr \
+              JOIN skills s ON wr.skill_name = s.name \
+              JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
+            rusqlite::params![&plugin_slug],
+        ).map_err(|e| format!("Failed to delete workflow_artifacts: {}", e))?;
+
+        conn.execute(
+            "DELETE FROM workflow_steps WHERE workflow_run_id IN \
+             (SELECT wr.id FROM workflow_runs wr \
+              JOIN skills s ON wr.skill_name = s.name \
+              JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
+            rusqlite::params![&plugin_slug],
+        ).map_err(|e| format!("Failed to delete workflow_steps: {}", e))?;
+
+        // Remove child rows that reference skills (by skill_id FK).
+        conn.execute(
+            "DELETE FROM skill_locks WHERE skill_id IN \
+             (SELECT s.id FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
+            rusqlite::params![&plugin_slug],
+        ).map_err(|e| format!("Failed to delete skill_locks: {}", e))?;
+
+        conn.execute(
+            "DELETE FROM skill_tags WHERE skill_id IN \
+             (SELECT s.id FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
+            rusqlite::params![&plugin_slug],
+        ).map_err(|e| format!("Failed to delete skill_tags: {}", e))?;
+
+        conn.execute(
+            "DELETE FROM document_skills WHERE skill_id IN \
+             (SELECT s.id FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
+            rusqlite::params![&plugin_slug],
+        ).map_err(|e| format!("Failed to delete document_skills: {}", e))?;
+
+        conn.execute(
+            "DELETE FROM imported_skills WHERE skill_master_id IN \
+             (SELECT s.id FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
+            rusqlite::params![&plugin_slug],
+        ).map_err(|e| format!("Failed to delete imported_skills: {}", e))?;
+
+        // Remove workflow_runs (references skill_name, not skill_id).
+        conn.execute(
+            "DELETE FROM workflow_runs WHERE skill_name IN \
+             (SELECT s.name FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
+            rusqlite::params![&plugin_slug],
+        ).map_err(|e| format!("Failed to delete workflow_runs: {}", e))?;
+
+        // Hard-delete all skills (both active and soft-deleted) in this plugin.
         conn.execute(
             "DELETE FROM skills WHERE plugin_id = (SELECT id FROM plugins WHERE slug = ?1)",
             rusqlite::params![&plugin_slug],
-        ).map_err(|e| format!("Failed to clean up deleted skills: {}", e))?;
+        ).map_err(|e| format!("Failed to delete skills: {}", e))?;
 
-        // Now delete the plugin row
+        // Delete the plugin row.
         crate::db::delete_plugin_by_slug(&conn, &plugin_slug)?;
         Ok(())
     })();
@@ -187,15 +232,24 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
     }
     conn.execute_batch("COMMIT").map_err(|e| format!("Failed to commit: {}", e))?;
 
-    // Remove from disk (non-fatal — DB is authoritative; reconciler will not resurrect deleted plugins)
+    // Remove workspace plugin directory (non-fatal).
+    if let Some(ref wp) = settings.workspace_path {
+        let workspace_plugin_dir = std::path::Path::new(wp).join(&plugin_slug);
+        if workspace_plugin_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&workspace_plugin_dir) {
+                log::warn!("[delete_plugin] workspace dir removal failed (non-fatal): {}", e);
+            }
+        }
+    }
+
+    // Remove skills-path plugin directory, update manifest, git commit (non-fatal).
     if let Some(ref sp) = settings.skills_path {
         let plugin_dir = std::path::Path::new(sp).join(&plugin_slug);
         if plugin_dir.exists() {
             if let Err(e) = std::fs::remove_dir_all(&plugin_dir) {
-                log::warn!("[delete_plugin] disk removal failed (non-fatal): {}", e);
+                log::warn!("[delete_plugin] skills dir removal failed (non-fatal): {}", e);
             }
         }
-        // Update marketplace.json
         let skills_root = std::path::Path::new(sp);
         if let Err(e) = crate::marketplace_manifest::write_marketplace_json(skills_root) {
             log::warn!("[delete_plugin] manifest update failed: {}", e);

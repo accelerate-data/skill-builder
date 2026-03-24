@@ -1,4 +1,5 @@
-import { Lock } from "lucide-react";
+import { Lock, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { SkillContextMenu } from "@/components/skill-context-menu";
 import {
   getStatusDot,
@@ -26,6 +27,7 @@ export interface SkillRowProps {
   onCreatePlugin: (skill: UnifiedSkill) => void;
   onMoveToPlugin: (skill: UnifiedSkill) => void;
   onRemoveFromPlugin: (skill: UnifiedSkill) => void;
+  onDeletePlugin: (pluginSlug: string, pluginDisplayName: string) => void;
   pluginOptions: [string, string][];
 }
 
@@ -59,6 +61,7 @@ export function SkillRow({
   onCreatePlugin,
   onMoveToPlugin,
   onRemoveFromPlugin,
+  onDeletePlugin,
   pluginOptions,
 }: SkillRowProps) {
   const dot = getStatusDot(skill, isRunning);
@@ -70,8 +73,24 @@ export function SkillRow({
   return (
     <div>
       {showPluginHeader && (
-        <div className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          {skill.pluginDisplayName}
+        <div className="group/plugin-header flex items-center px-3 pb-1 pt-3">
+          <span className="flex-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            {skill.pluginDisplayName}
+          </span>
+          {!skill.isDefaultPlugin && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-5 opacity-0 group-hover/plugin-header:opacity-100 transition-opacity"
+              title={`Delete plugin "${skill.pluginDisplayName}"`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeletePlugin(skill.pluginSlug ?? "", skill.pluginDisplayName);
+              }}
+            >
+              <Trash2 className="size-3 text-muted-foreground" />
+            </Button>
+          )}
         </div>
       )}
       <div
