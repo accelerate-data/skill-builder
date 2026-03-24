@@ -58,6 +58,12 @@ pub struct SidecarConfig {
     /// Run source: "workflow", "refine", or "test".
     #[serde(rename = "runSource", skip_serializing_if = "Option::is_none")]
     pub run_source: Option<String>,
+    /// Override the log directory for the JSONL transcript. When set, transcripts
+    /// are written here instead of the default `{cwd}/logs/`. Allows the cwd to
+    /// remain at the workspace root (for SDK .claude/ discovery) while logs land
+    /// in the skill-specific workspace subdir.
+    #[serde(rename = "transcriptLogDir", skip_serializing_if = "Option::is_none")]
+    pub transcript_log_dir: Option<String>,
 }
 
 impl std::fmt::Debug for SidecarConfig {
@@ -196,6 +202,7 @@ mod tests {
             workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
+            transcript_log_dir: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -242,6 +249,7 @@ mod tests {
             workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
+            transcript_log_dir: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -278,6 +286,7 @@ mod tests {
             workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
+            transcript_log_dir: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -317,6 +326,7 @@ mod tests {
             workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
+            transcript_log_dir: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();

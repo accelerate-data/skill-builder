@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::Db;
-use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::{RefineDiff, RefineFileDiff, RefineFinalizeResult, SkillFileContent};
 
 use super::content::get_skill_content_inner_for_plugin;
@@ -205,10 +205,13 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
 pub fn clean_benchmark_snapshot(
     skill_name: String,
     workspace_path: String,
+    db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!("[clean_benchmark_snapshot] skill={}", skill_name);
     validate_skill_name(&skill_name)?;
-    let workspace_skill_root = resolve_skill_dir(Path::new(&workspace_path), DEFAULT_PLUGIN_SLUG, &skill_name);
+    let plugin_slug = super::resolve_skill_plugin_slug(&db, &skill_name)
+        .unwrap_or_else(|_| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+    let workspace_skill_root = resolve_workspace_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name);
     cleanup_skill_snapshot(&workspace_skill_root);
     Ok(())
 }

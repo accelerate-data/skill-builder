@@ -566,20 +566,6 @@ async fn import_marketplace_entries_to_library(
         let override_ref = metadata_overrides
             .as_ref()
             .and_then(|m| m.get(skill_path.as_str()));
-        let plugin_skills_dir = skills_root.join(&plugin_slug).join("skills");
-        if let Err(e) = std::fs::create_dir_all(&plugin_skills_dir) {
-            log::error!(
-                "[import_marketplace_entries_to_library] failed to create plugin skills dir {}: {}",
-                plugin_skills_dir.display(),
-                e
-            );
-            results.push(MarketplaceImportResult {
-                skill_name: skill_path.clone(),
-                success: false,
-                error: Some(format!("Failed to create plugin skills directory: {}", e)),
-            });
-            continue;
-        }
         match import_single_skill(
             &client,
             "https://raw.githubusercontent.com",
@@ -588,7 +574,8 @@ async fn import_marketplace_entries_to_library(
             &branch,
             skill_path,
             &tree,
-            &plugin_skills_dir,
+            &skills_root,
+            &plugin_slug,
             true,
             override_ref,
         )
@@ -632,10 +619,9 @@ async fn import_marketplace_entries_to_library(
 
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
                 skill.marketplace_source_url = Some(source_url.clone());
-                // Plugin was already created in step 1 — just reference it
-                skill.plugin_slug = Some(plugin_slug.clone());
+                // plugin_slug and is_default_plugin are already set by import_single_skill.
+                // Set display_name here since it comes from the marketplace DB record.
                 skill.plugin_display_name = Some(plugin_display_name.clone());
-                skill.is_default_plugin = Some(plugin_slug == DEFAULT_PLUGIN_SLUG);
 
                 let existing_imported =
                     crate::db::get_imported_skill(&conn, &skill.skill_name).unwrap_or(None);

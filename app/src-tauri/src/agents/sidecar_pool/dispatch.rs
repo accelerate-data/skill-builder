@@ -796,7 +796,10 @@ impl SidecarPool {
             let step_label = extract_step_label(agent_id, skill_name);
             let now = chrono::Local::now();
             let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
-            let log_dir = Path::new(&config.cwd).join("logs");
+            let log_dir = match &config.transcript_log_dir {
+                Some(dir) => std::path::PathBuf::from(dir),
+                None => Path::new(&config.cwd).join("logs"),
+            };
             let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
 
             if let Ok(mut f) =
@@ -1240,6 +1243,7 @@ mod tests {
             workflow_session_id: Some("session-123".to_string()),
             usage_session_id: None,
             run_source: Some("workflow".to_string()),
+            transcript_log_dir: None,
         }
     }
 

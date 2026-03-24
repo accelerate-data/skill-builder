@@ -1262,6 +1262,7 @@ mod tests {
             "my-skill",
             &tree,
             tmp.path(),
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             false,
             None,
         )
@@ -1309,6 +1310,7 @@ mod tests {
             "my-skill",
             &tree,
             tmp.path(),
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             false,
             Some(&override_),
         )
@@ -1319,11 +1321,13 @@ mod tests {
             "import should succeed when override supplies a name; got: {:?}",
             result
         );
-        assert_eq!(result.unwrap().skill_name, "override-name");
-        assert!(
-            tmp.path().join("override-name").exists(),
-            "skill dir must be written to disk"
+        assert_eq!(result.as_ref().unwrap().skill_name, "override-name");
+        let expected_dir = crate::skill_paths::nested_skill_dir(
+            tmp.path(),
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "override-name",
         );
+        assert!(expected_dir.exists(), "skill dir must be written to disk");
     }
 
     #[tokio::test]
@@ -1349,14 +1353,20 @@ mod tests {
             "my-skill",
             &tree,
             tmp.path(),
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             false,
             None,
         )
         .await
         .unwrap();
 
+        let skill_dir = crate::skill_paths::nested_skill_dir(
+            tmp.path(),
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+        );
         let written =
-            std::fs::read_to_string(tmp.path().join("my-skill").join("SKILL.md")).unwrap();
+            std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
         assert_eq!(skill.version.as_deref(), Some("1.0.0"));
         assert!(written.contains("metadata:"));
         assert!(written.contains("version: \"1.0.0\""));
