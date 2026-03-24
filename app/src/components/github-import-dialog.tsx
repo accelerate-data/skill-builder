@@ -11,8 +11,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { parseGitHubUrl, listGitHubPlugins, importMarketplacePluginToLibrary, listSkills } from "@/lib/tauri"
-import type { AvailablePlugin, GitHubRepoInfo, SkillSummary, MarketplaceRegistry } from "@/lib/types"
+import { parseGitHubUrl, listGitHubPlugins, importMarketplacePluginToLibrary, listPlugins } from "@/lib/tauri"
+import type { AvailablePlugin, GitHubRepoInfo, MarketplaceRegistry } from "@/lib/types"
 
 interface GitHubImportDialogProps {
   open: boolean
@@ -20,7 +20,6 @@ interface GitHubImportDialogProps {
   onImported: () => Promise<void>
   registries: MarketplaceRegistry[]
   typeFilter?: string[]
-  workspacePath?: string
 }
 
 type PluginState = "idle" | "importing" | "imported" | "exists"
@@ -41,7 +40,6 @@ export default function GitHubImportDialog({
   onImported,
   typeFilter: _typeFilter,
   registries,
-  workspacePath,
 }: GitHubImportDialogProps) {
   const [tabStates, setTabStates] = useState<Record<string, TabState>>({})
   const [activeTab, setActiveTab] = useState<string>("")
@@ -98,15 +96,14 @@ export default function GitHubImportDialog({
         info.subpath ?? undefined,
       )
 
-      const summaries = await listSkills(workspacePath ?? "", registry.source_url)
-      const installedPluginNames = new Set(
-        summaries
-          .filter((s: SkillSummary) => s.skill_source === "marketplace")
-          .map((s: SkillSummary) => s.plugin_display_name),
-      )
+      // Check which plugins are already installed by slug (not display name)
+      const dbPlugins = await listPlugins()
+      const installedSlugs = new Set(dbPlugins.map((p) => p.slug))
       const preStates = new Map<string, PluginState>()
       for (const plugin of available) {
-        if (installedPluginNames.has(plugin.name)) {
+        // Derive slug from plugin name (same logic as backend slugify_plugin_name)
+        const slug = plugin.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+        if (installedSlugs.has(slug)) {
           preStates.set(plugin.path, "exists")
         }
       }
@@ -123,7 +120,7 @@ export default function GitHubImportDialog({
         [tabKey]: { ...EMPTY_TAB, error: err instanceof Error ? err.message : String(err) }
       }))
     }
-  }, [workspacePath])
+  }, [])
 
   useEffect(() => {
     if (open && registries.length > 0) {
@@ -132,7 +129,7 @@ export default function GitHubImportDialog({
       browseRegistry(first)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, workspacePath])
+  }, [open])
 
   const handleTabChange = useCallback((tabKey: string) => {
     setActiveTab(tabKey)
