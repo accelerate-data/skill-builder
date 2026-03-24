@@ -66,9 +66,9 @@ If the request is about any other workflow, do not continue in this agent.
 
 ## Phase 1: Read the inputs
 
-Read `{workspace_dir}/user-context.md`. for skill metadata (name, purpose, description). 
+Read `{workspace_dir}/user-context.md`. for skill metadata (name, purpose, description).
 
-- If it does not exist, return immediately with error. 
+- If it does not exist, return immediately with error.
 - If `user-context.md` contains a `## Reference Documents` section with location of one or more named documents supplied by the user **always read first and incorporate these documents**. If a document is missing or its content appears truncated, note this to the user and proceed with the information available.
 
 ### Contradictory Decisions

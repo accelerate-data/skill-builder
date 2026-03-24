@@ -4,11 +4,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 const mockGetStepAgentRuns = vi.fn();
 const mockReadFile = vi.fn();
 const mockListSkillFiles = vi.fn();
+const mockGetContextFileContent = vi.fn();
 
 vi.mock("@/lib/tauri", () => ({
   getStepAgentRuns: (...args: unknown[]) => mockGetStepAgentRuns(...args),
   readFile: (...args: unknown[]) => mockReadFile(...args),
   listSkillFiles: (...args: unknown[]) => mockListSkillFiles(...args),
+  getContextFileContent: (...args: unknown[]) => mockGetContextFileContent(...args),
   writeFile: vi.fn(),
 }));
 
@@ -99,6 +101,10 @@ beforeEach(() => {
     if (path.includes("clarifications.json")) return Promise.resolve(clarificationsJson);
     return Promise.resolve(null);
   });
+  mockGetContextFileContent.mockImplementation((_skill: string, _workspace: string, filename: string) => {
+    if (filename === "clarifications.json") return Promise.resolve(clarificationsJson);
+    return Promise.resolve(null);
+  });
 });
 
 describe("WorkflowStepComplete collapsible clarifications coverage", () => {
@@ -109,6 +115,7 @@ describe("WorkflowStepComplete collapsible clarifications coverage", () => {
         stepId={0}
         outputFiles={["context/clarifications.json"]}
         skillName="my-skill"
+        workspacePath="/workspace"
         skillsPath="/skills"
         clarificationsEditable
       />
@@ -127,6 +134,7 @@ describe("WorkflowStepComplete collapsible clarifications coverage", () => {
         stepId={0}
         outputFiles={["context/clarifications.json"]}
         skillName="my-skill"
+        workspacePath="/workspace"
         skillsPath="/skills"
         reviewMode
       />
@@ -145,6 +153,7 @@ describe("WorkflowStepComplete collapsible clarifications coverage", () => {
         stepId={1}
         outputFiles={["context/clarifications.json"]}
         skillName="my-skill"
+        workspacePath="/workspace"
         skillsPath="/skills"
         clarificationsEditable
       />
@@ -163,6 +172,7 @@ describe("WorkflowStepComplete collapsible clarifications coverage", () => {
         stepId={1}
         outputFiles={["context/clarifications.json"]}
         skillName="my-skill"
+        workspacePath="/workspace"
         skillsPath="/skills"
         reviewMode
       />

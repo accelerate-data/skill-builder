@@ -375,23 +375,18 @@ pub fn get_clarifications_content(
     })
 }
 
-#[tauri::command]
-pub fn save_clarifications_content(
-    skill_name: String,
-    workspace_path: String,
+pub(crate) fn save_clarifications_content_inner(
+    skill_name: &str,
+    workspace_path: &str,
     content: String,
-    db: tauri::State<'_, Db>,
+    plugin_slug: &str,
 ) -> Result<(), String> {
-    validate_skill_name(&skill_name)?;
+    validate_skill_name(skill_name)?;
     let parsed: serde_json::Value = serde_json::from_str(&content)
         .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
     validate_clarifications_json(&parsed)
         .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
-    let plugin_slug = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        lookup_plugin_slug(&conn, &skill_name)
-    };
-    let path = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join("clarifications.json");
+    let path = workspace_context_dir(workspace_path, plugin_slug, skill_name).join("clarifications.json");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -412,6 +407,20 @@ pub fn save_clarifications_content(
             e
         )
     })
+}
+
+#[tauri::command]
+pub fn save_clarifications_content(
+    skill_name: String,
+    workspace_path: String,
+    content: String,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        lookup_plugin_slug(&conn, &skill_name)
+    };
+    save_clarifications_content_inner(&skill_name, &workspace_path, content, &plugin_slug)
 }
 
 #[tauri::command]

@@ -1930,9 +1930,10 @@ fn test_save_clarifications_content_writes_pretty_json() {
     let workspace_str = workspace_path.to_string_lossy().to_string();
     let payload = valid_clarifications_value().to_string();
 
-    super::evaluation::save_clarifications_content("my-skill".to_string(), workspace_str, payload).unwrap();
+    super::evaluation::save_clarifications_content_inner("my-skill", &workspace_str, payload, crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
     let saved = std::fs::read_to_string(
         workspace_path
+            .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
             .join("my-skill")
             .join("context")
             .join("clarifications.json"),
@@ -1947,10 +1948,11 @@ fn test_save_clarifications_content_rejects_invalid_json() {
     let workspace_path = tmp.path().join("workspace");
     let workspace_str = workspace_path.to_string_lossy().to_string();
 
-    let err = super::evaluation::save_clarifications_content(
-        "my-skill".to_string(),
-        workspace_str,
+    let err = super::evaluation::save_clarifications_content_inner(
+        "my-skill",
+        &workspace_str,
         "{not-valid-json}".to_string(),
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
     )
     .unwrap_err();
     assert!(err.contains("Invalid clarifications JSON"));
@@ -1975,7 +1977,7 @@ fn test_save_clarifications_content_rejects_invalid_schema() {
     });
 
     let err =
-        super::evaluation::save_clarifications_content("my-skill".to_string(), workspace_str, invalid.to_string())
+        super::evaluation::save_clarifications_content_inner("my-skill", &workspace_str, invalid.to_string(), crate::skill_paths::DEFAULT_PLUGIN_SLUG)
             .unwrap_err();
     assert!(err.contains("priority_questions must be an array"));
 }

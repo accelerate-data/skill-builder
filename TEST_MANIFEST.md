@@ -39,6 +39,9 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/commands/github_import.rs` | `commands::github_import` | `@skills` |
 | `src-tauri/src/commands/github_import.rs` (`check_marketplace_updates`) | `commands::github_import` | `@skills` |
 | `src-tauri/src/commands/github_import.rs` (`check_skill_customized`) | `commands::github_import` | `@skills` |
+| `src-tauri/src/commands/github_import/updates.rs` | `commands::github_import` | `@skills` |
+| `src-tauri/src/commands/documents/mod.rs` | `commands::documents` | -- |
+| `src-tauri/src/commands/workflow/packaging.rs` | `commands::workflow` | `@workflow` |
 | `src-tauri/src/commands/usage.rs` | `commands::usage` | `@dashboard` |
 | `src-tauri/src/commands/agent.rs` | -- | `@workflow` |
 | `src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow`, `@setup` |

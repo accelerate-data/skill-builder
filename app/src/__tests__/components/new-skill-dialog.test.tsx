@@ -242,7 +242,7 @@ describe("SkillDialog (create mode)", () => {
 
     await user.type(screen.getByLabelText(/^Skill Name/), "sales-pipeline");
 
-    expect(screen.getByText(/\/my\/skills\/sales-pipeline\//)).toBeInTheDocument();
+    expect(screen.getByText(/\/my\/skills\/skills\/sales-pipeline\//)).toBeInTheDocument();
   });
 
   it("has Cancel button on Step 1 that closes dialog", async () => {
