@@ -31,6 +31,7 @@ import {
 import type { UnifiedSkill } from "@/hooks/use-unified-skills";
 import type { SkillSummary } from "@/lib/types";
 import {
+  deletePlugin,
   getExternallyLockedSkills,
   listSkills,
   removeSkillFromPlugin,
@@ -60,6 +61,8 @@ export function SkillListPanel({
   const [externalLockedSkills, setExternalLockedSkills] = useState<Set<string>>(new Set());
   const [moveTarget, setMoveTarget] = useState<UnifiedSkill | null>(null);
   const [createPluginTarget, setCreatePluginTarget] = useState<UnifiedSkill | null>(null);
+  const [deletePluginTarget, setDeletePluginTarget] = useState<{ slug: string; displayName: string } | null>(null);
+  const [deletingPlugin, setDeletingPlugin] = useState(false);
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const builderSkills = useSkillStore((s) => s.skills);
@@ -213,6 +216,29 @@ export function SkillListPanel({
     await fetchImportedSkills();
   }
 
+  function handleDeletePlugin(pluginSlug: string, pluginDisplayName: string) {
+    setDeletePluginTarget({ slug: pluginSlug, displayName: pluginDisplayName });
+  }
+
+  async function confirmDeletePlugin() {
+    if (!deletePluginTarget) return;
+    setDeletingPlugin(true);
+    const toastId = toast.loading(`Deleting plugin "${deletePluginTarget.displayName}"...`);
+    try {
+      await deletePlugin(deletePluginTarget.slug);
+      toast.success(`Deleted plugin "${deletePluginTarget.displayName}"`, { id: toastId });
+      setDeletePluginTarget(null);
+      await refreshSkillLists();
+    } catch (err) {
+      toast.error(
+        `Failed to delete plugin: ${err instanceof Error ? err.message : String(err)}`,
+        { id: toastId },
+      );
+    } finally {
+      setDeletingPlugin(false);
+    }
+  }
+
   function handleCreatePlugin(skill: UnifiedSkill) {
     setCreatePluginTarget(skill)
   }
@@ -309,6 +335,7 @@ export function SkillListPanel({
               onCreatePlugin={handleCreatePlugin}
               onMoveToPlugin={handleMoveToPlugin}
               onRemoveFromPlugin={handleRemoveFromPlugin}
+              onDeletePlugin={handleDeletePlugin}
               pluginOptions={pluginOptions}
             />
           );
@@ -357,6 +384,44 @@ export function SkillListPanel({
               onClick={() => { if (redoTarget) confirmRedo(redoTarget); }}
             >
               Redo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deletePluginTarget !== null}
+        onOpenChange={(open) => { if (!open && !deletingPlugin) setDeletePluginTarget(null); }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Plugin?</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                if (!deletePluginTarget) return null;
+                const skillCount = unifiedSkills.filter(
+                  (s) => s.pluginSlug === deletePluginTarget.slug,
+                ).length;
+                return skillCount > 0
+                  ? `This will permanently delete the plugin "${deletePluginTarget.displayName}" and all ${skillCount} skill${skillCount === 1 ? "" : "s"} inside it, including their files. This cannot be undone.`
+                  : `This will permanently delete the plugin "${deletePluginTarget.displayName}". This cannot be undone.`;
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setDeletePluginTarget(null)}
+              disabled={deletingPlugin}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeletePlugin}
+              disabled={deletingPlugin}
+            >
+              {deletingPlugin ? "Deleting…" : "Delete Plugin"}
             </Button>
           </DialogFooter>
         </DialogContent>
