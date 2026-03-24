@@ -91,13 +91,7 @@ async fn run_workflow_step_inner(
         prompt,
         model: None,
         api_key: settings.api_key.clone(),
-        cwd: crate::skill_paths::workspace_skill_dir(
-            Path::new(workspace_path),
-            &settings.plugin_slug,
-            skill_name,
-        )
-        .to_string_lossy()
-        .into_owned(),
+        cwd: workspace_path.to_string(),
         allowed_tools: Some(step.allowed_tools),
         max_turns: Some(step.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
@@ -374,13 +368,7 @@ pub async fn run_answer_evaluator(
         prompt,
         model: None,
         api_key,
-        cwd: crate::skill_paths::workspace_skill_dir(
-            Path::new(&workspace_path),
-            &plugin_slug,
-            &skill_name,
-        )
-        .to_string_lossy()
-        .into_owned(),
+        cwd: workspace_path.clone(),
         allowed_tools: Some(tools_for_agent("answer-evaluator")),
         max_turns: Some(20),
         permission_mode: Some("bypassPermissions".to_string()),
