@@ -4,6 +4,7 @@ import {
   addExpectation,
   applyExpectationChange,
   applyNameChange,
+  buildEvalGenPrompt,
   iterationLabel,
   prepareForSave,
   removeExpectation,
@@ -13,14 +14,13 @@ import {
 } from "@/lib/evals";
 import type { TestCase } from "@/lib/types";
 
-// Helper: build a minimal valid test case
+// Helper: build a minimal valid eval
 function makeCase(overrides: Partial<TestCase> = {}): TestCase {
   return {
     id: 1,
     eval_name: "Customer returns",
     slug: "customer-returns",
     prompt: "Handle a return",
-    expected_output: "Confirm refund",
     files: [],
     expectations: ["Refund is issued"],
     ...overrides,
@@ -237,5 +237,47 @@ describe("EMPTY_TEST_CASE", () => {
 
   it("has one empty expectation row", () => {
     expect(EMPTY_TEST_CASE.expectations).toEqual([""]);
+  });
+
+  it("does not have expected_output field", () => {
+    expect("expected_output" in EMPTY_TEST_CASE).toBe(false);
+  });
+});
+
+// --- buildEvalGenPrompt ---
+
+describe("buildEvalGenPrompt", () => {
+  it("includes the skill name in the prompt", () => {
+    const ctx = { skill_content: "# My Skill", existing_evals: [] };
+    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills");
+    expect(result).toContain("my-skill");
+  });
+
+  it("includes skill content in the prompt", () => {
+    const ctx = { skill_content: "# Special Skill Content", existing_evals: [] };
+    const result = buildEvalGenPrompt(ctx, "test-skill", "/skills");
+    expect(result).toContain("Special Skill Content");
+  });
+
+  it("lists existing eval names for deduplication", () => {
+    const ctx = {
+      skill_content: "",
+      existing_evals: [makeCase({ eval_name: "Happy path" }), makeCase({ eval_name: "Edge case" })],
+    };
+    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills");
+    expect(result).toContain("Happy path");
+    expect(result).toContain("Edge case");
+  });
+
+  it("includes the output file path", () => {
+    const ctx = { skill_content: "", existing_evals: [] };
+    const result = buildEvalGenPrompt(ctx, "customer-returns", "/home/user/skills");
+    expect(result).toContain("/home/user/skills/customer-returns/evals/pending-eval.json");
+  });
+
+  it("uses fallback text when skill content is empty", () => {
+    const ctx = { skill_content: "", existing_evals: [] };
+    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills");
+    expect(result).toContain("no SKILL.md found");
   });
 });

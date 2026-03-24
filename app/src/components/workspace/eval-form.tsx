@@ -22,14 +22,14 @@ import {
   validateTestCaseForm,
 } from "@/lib/evals";
 
-interface TestCaseFormProps {
+interface EvalFormProps {
   open: boolean;
   initial?: TestCase;
   onClose: () => void;
   onSave: (tc: TestCase) => Promise<void>;
 }
 
-export function TestCaseForm({ open, initial, onClose, onSave }: TestCaseFormProps) {
+export function EvalForm({ open, initial, onClose, onSave }: EvalFormProps) {
   const [form, setForm] = useState<TestCase>(initial ?? EMPTY_TEST_CASE);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +75,7 @@ export function TestCaseForm({ open, initial, onClose, onSave }: TestCaseFormPro
       await onSave(prepareForSave(form));
       onClose();
     } catch (err) {
-      console.error("event=save_test_case status=failure error=%s", err);
+      console.error("event=save_eval status=failure error=%s", err);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
@@ -86,7 +86,7 @@ export function TestCaseForm({ open, initial, onClose, onSave }: TestCaseFormPro
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit Test Case" : "Add Test Case"}</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit Eval" : "Review Generated Eval"}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
@@ -118,18 +118,6 @@ export function TestCaseForm({ open, initial, onClose, onSave }: TestCaseFormPro
               className="min-h-20 resize-y"
               value={form.prompt}
               onChange={(e) => setForm((prev) => ({ ...prev, prompt: e.target.value }))}
-            />
-          </div>
-
-          {/* Expected output */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="expected_output">Expected Output</Label>
-            <Textarea
-              id="expected_output"
-              placeholder="Describe the expected result..."
-              className="min-h-16 resize-y"
-              value={form.expected_output}
-              onChange={(e) => setForm((prev) => ({ ...prev, expected_output: e.target.value }))}
             />
           </div>
 
@@ -175,10 +163,10 @@ export function TestCaseForm({ open, initial, onClose, onSave }: TestCaseFormPro
 
           <DialogFooter className="pt-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
-              Cancel
+              {isEdit ? "Cancel" : "Discard"}
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Saving…" : isEdit ? "Save changes" : "Add test case"}
+              {saving ? "Saving…" : isEdit ? "Save changes" : "Save eval"}
             </Button>
           </DialogFooter>
         </form>

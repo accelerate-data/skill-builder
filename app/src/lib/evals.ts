@@ -5,7 +5,7 @@
  * All Actions (IPC, state mutation) stay in the component layer.
  */
 
-import type { TestCase } from "@/lib/types";
+import type { SkillEvalContext, TestCase } from "@/lib/types";
 
 // --- Data ---
 
@@ -14,7 +14,6 @@ export const EMPTY_TEST_CASE: TestCase = {
   eval_name: "",
   slug: "",
   prompt: "",
-  expected_output: "",
   files: [],
   expectations: [""],
 };
@@ -85,7 +84,7 @@ export function removeExpectation(form: TestCase, idx: number): TestCase {
  */
 export function validateTestCaseForm(form: TestCase): string | null {
   if (!form.eval_name.trim()) {
-    return "Test case name is required.";
+    return "Eval name is required.";
   }
   const nonEmpty = form.expectations.filter((e) => e.trim());
   if (nonEmpty.length === 0) {
@@ -110,4 +109,51 @@ export function prepareForSave(form: TestCase): TestCase {
  */
 export function iterationLabel(iteration: number, latestIteration: number): string {
   return iteration === latestIteration ? "latest" : `#${iteration}`;
+}
+
+/**
+ * Build the prompt sent to the skill-evals-generator agent.
+ * Pure function — no side effects.
+ */
+export function buildEvalGenPrompt(ctx: SkillEvalContext, skillName: string, skillsPath: string): string {
+  const existingNames = ctx.existing_evals.length > 0
+    ? ctx.existing_evals.map((e) => `- ${e.eval_name}`).join("\n")
+    : "None yet.";
+
+  const skillContent = ctx.skill_content.trim() || "(no SKILL.md found — infer from skill name)";
+
+  return `You are generating one eval (test case) for the "${skillName}" Claude skill.
+
+## Skill Definition
+
+${skillContent}
+
+## Existing Evals (do NOT duplicate these scenarios)
+
+${existingNames}
+
+## Task
+
+Generate exactly 1 new eval covering a realistic, distinct user scenario for this skill.
+
+Write the eval as a JSON file to \`${skillsPath}/${skillName}/evals/pending-eval.json\` with this exact structure:
+
+\`\`\`json
+{
+  "eval_name": "<short descriptive name, 3-6 words>",
+  "slug": "<kebab-case of eval_name>",
+  "prompt": "<realistic user task prompt, 1-3 sentences>",
+  "expectations": [
+    "<atomic verifiable assertion 1>",
+    "<atomic verifiable assertion 2>"
+  ]
+}
+\`\`\`
+
+Rules:
+- The scenario must differ from all existing evals listed above
+- The prompt must be a concrete, realistic request a user would send
+- Include 2–4 expectations; each must be a single, objectively verifiable statement
+- Write ONLY the JSON file — no other output, no explanation
+`;
 }
