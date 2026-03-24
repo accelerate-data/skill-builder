@@ -47,6 +47,8 @@ import { EvalForm } from "./eval-form";
 import { EvalIntentDialog } from "./eval-intent-dialog";
 
 const EVAL_GEN_MODEL = "claude-sonnet-4-6";
+// Stable empty array so the Zustand selector doesn't return a new reference every render
+const EMPTY_DISPLAY_ITEMS: unknown[] = [];
 
 interface WorkspaceEvalsProps {
   skill: SkillSummary | ImportedSkill;
@@ -103,7 +105,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
 
   const runs = useAgentStore((s) => s.runs);
   const evalRunDisplayItems = useAgentStore(
-    (s) => s.runs[evalRunAgentId ?? ""]?.displayItems ?? [],
+    (s) => s.runs[evalRunAgentId ?? ""]?.displayItems ?? EMPTY_DISPLAY_ITEMS,
   );
 
   // --- Actions ---
