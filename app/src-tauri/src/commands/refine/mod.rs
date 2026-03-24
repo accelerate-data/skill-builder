@@ -28,27 +28,20 @@ fn resolve_skills_path(db: &Db, workspace_path: &str) -> Result<String, String> 
 
 pub(super) fn resolve_skill_plugin_slug(db: &Db, skill_name: &str) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    Ok(crate::db::get_skill_master(&conn, skill_name)?
+    Ok(crate::db::get_skill_master_any_plugin(&conn, skill_name)?
         .map(|skill| skill.plugin_slug)
         .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string()))
 }
 
 /// Resolve the directory that contains SKILL.md for the given skill.
-///
-/// For imported/marketplace skills the canonical location is `imported_skills.disk_path`.
-/// For builder skills it is computed from `skills_path + plugin_slug + skill_name`.
+/// Uses the correct plugin slug (cross-plugin lookup) so imported skills
+/// resolve to `skills_path/{plugin_slug}/skills/{skill_name}/`.
 pub(super) fn resolve_skill_output_dir(
     db: &Db,
     skill_name: &str,
     skills_path: &str,
 ) -> Result<std::path::PathBuf, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    if let Some(disk_path) = crate::db::get_imported_skill_disk_path(&conn, skill_name)? {
-        return Ok(std::path::PathBuf::from(disk_path));
-    }
-    let plugin_slug = crate::db::get_skill_master(&conn, skill_name)?
-        .map(|s| s.plugin_slug)
-        .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string());
+    let plugin_slug = resolve_skill_plugin_slug(db, skill_name)?;
     Ok(resolve_skill_dir(
         std::path::Path::new(skills_path),
         &plugin_slug,
