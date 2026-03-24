@@ -28,7 +28,7 @@ import {
   acquireLock,
   releaseLock,
 } from "@/lib/tauri";
-import type { SkillSummary } from "@/lib/types";
+import type { EditableSkill } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
 import { ChatPanel } from "@/components/refine/chat-panel";
@@ -38,7 +38,7 @@ import type { RefineQuestionResponse } from "@/stores/refine-store";
 import "@/hooks/use-agent-stream";
 
 interface WorkspaceRefineProps {
-  skill: SkillSummary;
+  skill: EditableSkill;
 }
 
 /** Fire-and-forget: release skill lock and shut down persistent sidecar. */
@@ -94,7 +94,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   // Capture the skill that was active when the agent started, so the
   // completion effect attributes output to the correct skill even if the
   // user switches skills while an agent is running.
-  const runSkillRef = useRef<SkillSummary | null>(null);
+  const runSkillRef = useRef<EditableSkill | null>(null);
 
   const scopeBlocked = useScopeBlocked(selectedSkill, "refine");
 
@@ -148,7 +148,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
   // --- Select skill on mount ---
   const handleSelectSkill = useCallback(
-    async (s: SkillSummary) => {
+    async (s: EditableSkill) => {
       console.log("[workspace-refine] selectSkill: %s", s.name);
       const store = useRefineStore.getState();
 
