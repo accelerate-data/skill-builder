@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VU-727: AI-Powered Eval Generation</title>
+  <style>
+    :root {
+      --color-seafoam:          oklch(0.720 0.125 155);
+      --color-pacific:          oklch(0.680 0.120 210);
+      --color-ocean:            oklch(0.530 0.130 230);
+      --color-background:       oklch(0.956 0 0);
+      --color-card:             oklch(1 0 0);
+      --color-foreground:       oklch(0.145 0.005 250);
+      --color-muted-foreground: oklch(0.530 0.006 85);
+      --color-border:           oklch(0.910 0.006 85);
+      --color-destructive:      oklch(0.570 0.180 25);
+      --color-amber:            oklch(0.760 0.160 60);
+      --font-sans: "Inter Variable", system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono Variable", monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-background);
+      padding: 40px 20px 80px;
+      color: var(--color-foreground);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .container { max-width: 1200px; margin: 0 auto; }
+
+    h1 { font-size: 28px; font-weight: 600; margin-bottom: 8px; }
+    .subtitle { font-size: 13px; color: var(--color-muted-foreground); margin-bottom: 40px; }
+
+    section {
+      background: var(--color-card);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 28px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    h2 {
+      font-size: 15px; font-weight: 600; margin-bottom: 18px;
+      color: var(--color-foreground);
+      border-bottom: 2px solid var(--color-pacific);
+      padding-bottom: 10px;
+    }
+
+    h3 { font-size: 13px; font-weight: 600; margin: 18px 0 10px; }
+
+    /* ── Workspace shell ── */
+    .ws {
+      background: var(--color-background);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 12px;
+      position: relative;
+    }
+
+    .ws-header {
+      background: var(--color-card);
+      border-bottom: 1px solid var(--color-border);
+      padding: 10px 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .ws-skill-name { font-size: 13px; font-weight: 600; color: oklch(0.215 0.105 265); }
+
+    .ws-tabs {
+      background: var(--color-card);
+      border-bottom: 1px solid var(--color-border);
+      display: flex; padding: 0 14px;
+    }
+
+    .ws-tab {
+      padding: 8px 12px;
+      border-bottom: 2px solid transparent;
+      font-size: 12px; font-weight: 500;
+      color: var(--color-muted-foreground);
+    }
+
+    .ws-tab.active {
+      border-bottom-color: var(--color-pacific);
+      color: var(--color-foreground); font-weight: 600;
+    }
+
+    /* ── Evals toolbar ── */
+    .evals-toolbar {
+      background: var(--color-card);
+      border-bottom: 1px solid var(--color-border);
+      padding: 6px 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .toolbar-title {
+      font-size: 12px; font-weight: 600; color: var(--color-foreground);
+    }
+
+    .toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+
+    /* ── Eval rows ── */
+    .eval-list { min-height: 160px; }
+
+    .eval-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .eval-row:last-child { border-bottom: none; }
+
+    .eval-name { font-size: 12px; font-weight: 500; flex: 1; }
+    .eval-badge {
+      font-size: 10px; font-family: var(--font-mono);
+      color: var(--color-muted-foreground);
+      background: var(--color-background);
+      border: 1px solid var(--color-border);
+      border-radius: 4px; padding: 1px 6px;
+    }
+
+    /* ── Generation banner ── */
+    .gen-banner {
+      margin: 10px 12px;
+      padding: 8px 12px;
+      background: color-mix(in oklch, var(--color-pacific), transparent 92%);
+      border: 1px solid color-mix(in oklch, var(--color-pacific), transparent 72%);
+      border-radius: 6px;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; color: var(--color-foreground);
+    }
+
+    .gen-banner-text { flex: 1; }
+    .gen-banner strong { color: var(--color-pacific); }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 5px 12px;
+      border-radius: 5px;
+      border: 1px solid var(--color-border);
+      background: var(--color-card);
+      font-size: 12px; font-weight: 500;
+      cursor: pointer;
+      color: var(--color-foreground);
+      display: inline-flex; align-items: center; gap: 5px;
+      font-family: var(--font-sans);
+    }
+
+    .btn:hover:not(:disabled) { background: var(--color-background); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-primary {
+      background: var(--color-pacific);
+      border-color: var(--color-pacific);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) { background: oklch(0.620 0.110 210); border-color: oklch(0.620 0.110 210); }
+
+    .btn-queue {
+      background: color-mix(in oklch, var(--color-pacific), transparent 88%);
+      border-color: color-mix(in oklch, var(--color-pacific), transparent 70%);
+      color: var(--color-pacific);
+    }
+
+    .btn-queue:hover:not(:disabled) { background: color-mix(in oklch, var(--color-pacific), transparent 80%); }
+
+    .btn-ghost {
+      background: none; border-color: transparent;
+      color: var(--color-muted-foreground);
+    }
+
+    .btn-ghost:hover:not(:disabled) { background: var(--color-background); color: var(--color-foreground); }
+
+    .btn-icon {
+      padding: 4px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--color-border);
+      background: var(--color-card);
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--color-muted-foreground);
+      display: inline-flex; align-items: center; justify-content: center;
+      line-height: 1;
+      font-family: var(--font-sans);
+    }
+
+    .btn-icon:hover { color: var(--color-pacific); border-color: var(--color-pacific); background: color-mix(in oklch, var(--color-pacific), transparent 92%); }
+
+    .btn-icon.spinning { color: var(--color-pacific); border-color: var(--color-pacific); }
+    .btn-icon.spinning span { display: inline-block; animation: spin 0.8s linear infinite; }
+
+    /* ── Spinner ── */
+    .spinner {
+      width: 11px; height: 11px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top: 2px solid white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    .spinner-muted {
+      width: 11px; height: 11px;
+      border: 2px solid var(--color-border);
+      border-top: 2px solid var(--color-pacific);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Modal overlay ── */
+    .overlay-wrap {
+      position: relative;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.28);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    /* ── Dialog ── */
+    .dialog {
+      background: var(--color-card);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.14);
+      overflow: hidden;
+      font-size: 12px;
+    }
+
+    .dialog-sm { width: 440px; }
+    .dialog-lg { width: 640px; }
+
+    .dialog-header {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .dialog-title {
+      font-size: 14px; font-weight: 600;
+      color: var(--color-foreground);
+    }
+
+    .dialog-desc {
+      font-size: 12px; color: var(--color-muted-foreground);
+      margin-top: 3px;
+    }
+
+    .dialog-body {
+      padding: 16px 20px;
+    }
+
+    .dialog-footer {
+      padding: 12px 20px;
+      border-top: 1px solid var(--color-border);
+      display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+      background: var(--color-background);
+    }
+
+    /* ── Form elements ── */
+    .form-field { margin-bottom: 14px; }
+    .form-field:last-child { margin-bottom: 0; }
+
+    .form-label {
+      font-size: 11px; font-weight: 600;
+      color: var(--color-muted-foreground);
+      text-transform: uppercase; letter-spacing: 0.05em;
+      display: block; margin-bottom: 5px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 5px;
+      font-size: 12px;
+      font-family: var(--font-sans);
+      color: var(--color-foreground);
+      background: var(--color-card);
+      outline: none;
+    }
+
+    .form-input:focus { border-color: var(--color-pacific); }
+
+    .form-input.disabled {
+      background: var(--color-background);
+      color: var(--color-muted-foreground);
+      opacity: 0.65;
+    }
+
+    .form-textarea {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 5px;
+      font-size: 12px;
+      font-family: var(--font-sans);
+      color: var(--color-foreground);
+      background: var(--color-card);
+      outline: none;
+      resize: vertical;
+      min-height: 72px;
+    }
+
+    .form-textarea:focus { border-color: var(--color-pacific); }
+
+    .form-textarea.disabled {
+      background: var(--color-background);
+      color: var(--color-muted-foreground);
+      opacity: 0.65;
+    }
+
+    .form-textarea.prompt-area { min-height: 88px; }
+
+    .slug-preview {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--color-muted-foreground);
+      background: var(--color-background);
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      padding: 2px 7px;
+      margin-top: 4px;
+    }
+
+    /* ── Intent row ── */
+    .intent-row {
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    .intent-row .form-input { flex: 1; }
+
+    /* ── Expectations ── */
+    .exp-list { display: flex; flex-direction: column; gap: 5px; }
+
+    .exp-item {
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    .exp-num {
+      font-size: 10px; font-family: var(--font-mono);
+      color: var(--color-muted-foreground);
+      width: 14px; flex-shrink: 0; text-align: right;
+    }
+
+    .exp-input {
+      flex: 1;
+      padding: 5px 8px;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: var(--font-sans);
+      color: var(--color-foreground);
+      background: var(--color-card);
+      outline: none;
+    }
+
+    .exp-input:focus { border-color: var(--color-pacific); }
+
+    .exp-input.disabled {
+      background: var(--color-background);
+      color: var(--color-muted-foreground);
+      opacity: 0.65;
+    }
+
+    .exp-remove {
+      font-size: 14px; color: var(--color-muted-foreground);
+      background: none; border: none; cursor: pointer;
+      line-height: 1; padding: 0 2px;
+    }
+
+    .exp-remove:hover { color: var(--color-destructive); }
+
+    .add-exp-btn {
+      font-size: 11px; color: var(--color-pacific);
+      background: none; border: none; cursor: pointer;
+      padding: 3px 0; display: inline-flex; align-items: center; gap: 3px;
+      font-family: var(--font-sans);
+    }
+
+    .add-exp-btn:hover { text-decoration: underline; }
+
+    /* ── Queue section ── */
+    .queue-banner {
+      margin: 8px 12px 4px;
+      border: 1px solid color-mix(in oklch, var(--color-pacific), transparent 72%);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .queue-banner-header {
+      background: color-mix(in oklch, var(--color-pacific), transparent 92%);
+      padding: 7px 12px;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: 600; color: var(--color-pacific);
+    }
+
+    .queue-badge {
+      background: var(--color-pacific);
+      color: white;
+      font-size: 10px; font-weight: 700;
+      border-radius: 9999px;
+      padding: 0px 6px;
+      line-height: 16px;
+    }
+
+    .queue-actions { margin-left: auto; display: flex; gap: 6px; }
+
+    .queue-item {
+      padding: 7px 12px;
+      border-top: 1px solid color-mix(in oklch, var(--color-pacific), transparent 82%);
+      display: flex; align-items: flex-start; gap: 8px;
+      background: var(--color-card);
+      font-size: 11px;
+    }
+
+    .queue-cb {
+      width: 13px; height: 13px;
+      border: 1.5px solid var(--color-pacific);
+      border-radius: 3px; flex-shrink: 0; margin-top: 1px;
+      background: var(--color-pacific);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 9px;
+    }
+
+    .queue-eval-name { font-weight: 600; color: var(--color-foreground); }
+    .queue-eval-exp { color: var(--color-muted-foreground); font-size: 10px; margin-top: 1px; }
+
+    .queue-footer {
+      padding: 8px 12px;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-card);
+      display: flex; align-items: center; justify-content: flex-end; gap: 6px;
+    }
+
+    /* ── Regenerating overlay inside dialog ── */
+    .regen-notice {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 11px; color: var(--color-pacific);
+      padding: 6px 10px;
+      background: color-mix(in oklch, var(--color-pacific), transparent 92%);
+      border: 1px solid color-mix(in oklch, var(--color-pacific), transparent 75%);
+      border-radius: 5px;
+      margin-bottom: 12px;
+    }
+
+    /* ── Notes ── */
+    .note {
+      font-size: 11px; color: var(--color-muted-foreground);
+      background: var(--color-background);
+      border: 1px solid var(--color-border);
+      border-radius: 5px;
+      padding: 8px 12px;
+      margin-top: 14px;
+      line-height: 1.6;
+    }
+
+    .note strong { color: var(--color-foreground); }
+
+    .code {
+      background: var(--color-background);
+      padding: 1px 5px; border-radius: 3px;
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--color-pacific);
+      border: 1px solid var(--color-border);
+    }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+    /* ── Spacer ── */
+    .dialog-section-divider {
+      height: 1px; background: var(--color-border);
+      margin: 12px 0;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <h1>VU-727: AI-Powered Eval Generation</h1>
+  <p class="subtitle">Intent dialog → generate → review & edit → queue → add. One intent per eval; user can re-generate from updated intent via inline refresh button.</p>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SCREEN 1 — Intent dialog (modal over workspace)
+       ═══════════════════════════════════════════════════════════════ -->
+  <section>
+    <h2>Screen 1 — Intent Dialog</h2>
+    <p style="font-size:12px;color:var(--color-muted-foreground);margin-bottom:16px;">
+      User clicks "Generate eval" on the Evals toolbar. A dialog asks what scenario to test.
+      The placeholder is derived from the skill's description (skill-aware, not generic).
+    </p>
+
+    <div class="overlay-wrap">
+      <!-- Workspace (background, dimmed) -->
+      <div class="ws" style="opacity:0.55;pointer-events:none;">
+        <div class="ws-header">
+          <span class="ws-skill-name">dbt-data-quality</span>
+        </div>
+        <div class="ws-tabs">
+          <div class="ws-tab">Overview</div>
+          <div class="ws-tab">Refine</div>
+          <div class="ws-tab active">Evals</div>
+          <div class="ws-tab">Description</div>
+        </div>
+        <div class="evals-toolbar">
+          <span class="toolbar-title">Evals</span>
+          <div class="toolbar-right">
+            <button class="btn btn-primary" style="font-size:11px;">
+              ✦ Generate eval
+            </button>
+          </div>
+        </div>
+        <div class="eval-list">
+          <div class="eval-row">
+            <span class="eval-name">Incremental model config</span>
+            <span class="eval-badge">3 expectations</span>
+          </div>
+          <div class="eval-row">
+            <span class="eval-name">Late-arrival handling</span>
+            <span class="eval-badge">4 expectations</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal overlay -->
+      <div class="overlay">
+        <div class="dialog dialog-sm">
+          <div class="dialog-header">
+            <div class="dialog-title">Generate eval</div>
+            <div class="dialog-desc">What do you want to evaluate?</div>
+          </div>
+          <div class="dialog-body">
+            <textarea class="form-textarea" style="min-height:80px;"
+              placeholder="e.g. dbt model outputs the correct SCD type 2 snapshot"></textarea>
+            <div class="note" style="margin-top:10px;">
+              <strong>Tip:</strong> Be specific about the scenario —
+              "SCD type 2 insert creates a new row" is better than "snapshot works".
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-ghost">Cancel</button>
+            <button class="btn btn-primary">✦ Generate</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SCREEN 2 — Generating state (inline banner)
+       ═══════════════════════════════════════════════════════════════ -->
+  <section>
+    <h2>Screen 2 — Generating (In Progress)</h2>
+    <p style="font-size:12px;color:var(--color-muted-foreground);margin-bottom:16px;">
+      Dialog closes. An inline banner in the workspace shows progress.
+      The "Generate eval" button is disabled while the agent runs.
+    </p>
+
+    <div class="ws">
+      <div class="ws-header">
+        <span class="ws-skill-name">dbt-data-quality</span>
+      </div>
+      <div class="ws-tabs">
+        <div class="ws-tab">Overview</div>
+        <div class="ws-tab">Refine</div>
+        <div class="ws-tab active">Evals</div>
+        <div class="ws-tab">Description</div>
+      </div>
+      <div class="evals-toolbar">
+        <span class="toolbar-title">Evals</span>
+        <div class="toolbar-right">
+          <button class="btn btn-primary" disabled style="font-size:11px;">
+            <div class="spinner"></div>
+            Generating…
+          </button>
+        </div>
+      </div>
+
+      <div class="gen-banner">
+        <div class="spinner-muted"></div>
+        <div class="gen-banner-text">
+          <strong>Generating eval</strong> — "dbt model outputs the correct SCD type 2 snapshot"
+        </div>
+      </div>
+
+      <div class="eval-list">
+        <div class="eval-row">
+          <span class="eval-name">Incremental model config</span>
+          <span class="eval-badge">3 expectations</span>
+        </div>
+        <div class="eval-row">
+          <span class="eval-name">Late-arrival handling</span>
+          <span class="eval-badge">4 expectations</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SCREEN 3 — Review dialog (generated eval)
+       ═══════════════════════════════════════════════════════════════ -->
+  <section>
+    <h2>Screen 3 — Review Generated Eval</h2>
+    <p style="font-size:12px;color:var(--color-muted-foreground);margin-bottom:16px;">
+      Generation completes. The review dialog opens pre-filled.
+      The <strong>Intent</strong> field at the top is editable — clicking ↻ refreshes the entire eval from the updated intent.
+      All other fields are directly editable. User can queue the eval and generate another, or add immediately.
+    </p>
+
+    <div class="overlay-wrap">
+      <!-- Workspace (background) -->
+      <div class="ws" style="opacity:0.45;pointer-events:none;">
+        <div class="ws-header"><span class="ws-skill-name">dbt-data-quality</span></div>
+        <div class="ws-tabs">
+          <div class="ws-tab">Overview</div><div class="ws-tab">Refine</div>
+          <div class="ws-tab active">Evals</div><div class="ws-tab">Description</div>
+        </div>
+        <div class="evals-toolbar">
+          <span class="toolbar-title">Evals</span>
+          <div class="toolbar-right">
+            <button class="btn btn-primary" disabled style="font-size:11px;">✦ Generate eval</button>
+          </div>
+        </div>
+        <div class="eval-list">
+          <div class="eval-row"><span class="eval-name">Incremental model config</span><span class="eval-badge">3 expectations</span></div>
+          <div class="eval-row"><span class="eval-name">Late-arrival handling</span><span class="eval-badge">4 expectations</span></div>
+        </div>
+      </div>
+
+      <!-- Review dialog -->
+      <div class="overlay">
+        <div class="dialog dialog-lg">
+          <div class="dialog-header">
+            <div class="dialog-title">Review Generated Eval</div>
+            <div class="dialog-desc">Edit as needed, then queue or add directly.</div>
+          </div>
+          <div class="dialog-body" style="max-height:62vh;overflow-y:auto;">
+
+            <!-- Intent row -->
+            <div class="form-field">
+              <label class="form-label">Intent</label>
+              <div class="intent-row">
+                <input class="form-input"
+                  value="dbt model outputs the correct SCD type 2 snapshot">
+                <button class="btn-icon" title="Re-generate from updated intent">↻</button>
+              </div>
+              <div style="font-size:10px;color:var(--color-muted-foreground);margin-top:4px;">
+                Edit this field and click ↻ to regenerate the full eval from the updated intent.
+              </div>
+            </div>
+
+            <div class="dialog-section-divider"></div>
+
+            <!-- Eval name -->
+            <div class="form-field">
+              <label class="form-label">Eval name</label>
+              <input class="form-input" value="SCD type 2 snapshot insert">
+              <div><span class="slug-preview">scd-type-2-snapshot-insert</span></div>
+            </div>
+
+            <!-- Prompt -->
+            <div class="form-field">
+              <label class="form-label">Prompt</label>
+              <textarea class="form-textarea prompt-area">Generate a dbt snapshot configuration for the orders table that implements SCD type 2 tracking. The source table has columns: order_id, customer_id, status, updated_at. Track changes to the status column, using updated_at as the strategy timestamp.</textarea>
+            </div>
+
+            <!-- Expectations -->
+            <div class="form-field">
+              <label class="form-label">Expectations</label>
+              <div class="exp-list">
+                <div class="exp-item">
+                  <span class="exp-num">1.</span>
+                  <input class="exp-input" value="The snapshot uses strategy: timestamp with updated_field: updated_at">
+                  <button class="exp-remove">×</button>
+                </div>
+                <div class="exp-item">
+                  <span class="exp-num">2.</span>
+                  <input class="exp-input" value="The unique_key is set to order_id">
+                  <button class="exp-remove">×</button>
+                </div>
+                <div class="exp-item">
+                  <span class="exp-num">3.</span>
+                  <input class="exp-input" value="The invalidate_hard_deletes option is present in the config">
+                  <button class="exp-remove">×</button>
+                </div>
+                <div class="exp-item">
+                  <span class="exp-num">4.</span>
+                  <input class="exp-input" value="The target_schema is set in the snapshot config block">
+                  <button class="exp-remove">×</button>
+                </div>
+              </div>
+              <button class="add-exp-btn" style="margin-top:6px;">+ Add expectation</button>
+            </div>
+
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-ghost">Cancel</button>
+            <button class="btn btn-queue">Queue &amp; generate another</button>
+            <button class="btn btn-primary">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SCREEN 4 — Re-generating from updated intent
+       ═══════════════════════════════════════════════════════════════ -->
+  <section>
+    <h2>Screen 4 — Re-generating from Updated Intent</h2>
+    <p style="font-size:12px;color:var(--color-muted-foreground);margin-bottom:16px;">
+      User edited the intent to "SCD type 2 — soft delete marks a row as inactive" and clicked ↻.
+      The fields are dimmed; a re-generating notice appears. The ↻ button shows a spinner.
+    </p>
+
+    <div class="overlay-wrap">
+      <div class="ws" style="opacity:0.4;pointer-events:none;">
+        <div class="ws-header"><span class="ws-skill-name">dbt-data-quality</span></div>
+        <div class="ws-tabs">
+          <div class="ws-tab">Overview</div><div class="ws-tab">Refine</div>
+          <div class="ws-tab active">Evals</div><div class="ws-tab">Description</div>
+        </div>
+        <div class="evals-toolbar"><span class="toolbar-title">Evals</span></div>
+        <div class="eval-list">
+          <div class="eval-row"><span class="eval-name">Incremental model config</span></div>
+        </div>
+      </div>
+      <div class="overlay">
+        <div class="dialog dialog-lg">
+          <div class="dialog-header">
+            <div class="dialog-title">Review Generated Eval</div>
+            <div class="dialog-desc">Edit as needed, then queue or add directly.</div>
+          </div>
+          <div class="dialog-body" style="max-height:62vh;overflow-y:auto;">
+
+            <!-- Re-generating notice -->
+            <div class="regen-notice">
+              <div class="spinner-muted"></div>
+              Re-generating eval from updated intent…
+            </div>
+
+            <!-- Intent row (updated, spinner on button) -->
+            <div class="form-field">
+              <label class="form-label">Intent</label>
+              <div class="intent-row">
+                <input class="form-input"
+                  value="SCD type 2 — soft delete marks a row as inactive">
+                <button class="btn-icon spinning"><span>↻</span></button>
+              </div>
+            </div>
+
+            <div class="dialog-section-divider"></div>
+
+            <!-- Dimmed previous values -->
+            <div class="form-field">
+              <label class="form-label">Eval name</label>
+              <input class="form-input disabled" value="SCD type 2 snapshot insert" disabled>
+            </div>
+
+            <div class="form-field">
+              <label class="form-label">Prompt</label>
+              <textarea class="form-textarea prompt-area disabled" disabled>Generate a dbt snapshot configuration for the orders table that implements SCD type 2 tracking…</textarea>
+            </div>
+
+            <div class="form-field">
+              <label class="form-label">Expectations</label>
+              <div class="exp-list">
+                <div class="exp-item">
+                  <span class="exp-num">1.</span>
+                  <input class="exp-input disabled" disabled value="The snapshot uses strategy: timestamp with updated_field: updated_at">
+                </div>
+                <div class="exp-item">
+                  <span class="exp-num">2.</span>
+                  <input class="exp-input disabled" disabled value="The unique_key is set to order_id">
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-ghost" disabled>Cancel</button>
+            <button class="btn btn-queue" disabled>Queue &amp; generate another</button>
+            <button class="btn btn-primary" disabled>Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SCREEN 5 — Pending queue (2 evals queued)
+       ═══════════════════════════════════════════════════════════════ -->
+  <section>
+    <h2>Screen 5 — Pending Queue (2 Evals Queued)</h2>
+    <p style="font-size:12px;color:var(--color-muted-foreground);margin-bottom:16px;">
+      After clicking "Queue &amp; generate another" twice. A collapsible queue banner appears
+      below the toolbar. User selects which to add, then clicks "Add selected (2)".
+    </p>
+
+    <div class="ws">
+      <div class="ws-header"><span class="ws-skill-name">dbt-data-quality</span></div>
+      <div class="ws-tabs">
+        <div class="ws-tab">Overview</div><div class="ws-tab">Refine</div>
+        <div class="ws-tab active">Evals</div><div class="ws-tab">Description</div>
+      </div>
+
+      <div class="evals-toolbar">
+        <span class="toolbar-title">Evals</span>
+        <div class="toolbar-right">
+          <button class="btn btn-primary" style="font-size:11px;">✦ Generate eval</button>
+        </div>
+      </div>
+
+      <!-- Queue banner -->
+      <div class="queue-banner">
+        <div class="queue-banner-header">
+          <span class="queue-badge">2</span>
+          Pending evals — ready to add
+          <div class="queue-actions">
+            <button class="btn" style="font-size:10px;padding:3px 8px;color:var(--color-destructive);border-color:var(--color-destructive);">Discard all</button>
+            <button class="btn btn-primary" style="font-size:10px;padding:3px 8px;">Add selected (2)</button>
+          </div>
+        </div>
+
+        <div class="queue-item">
+          <div class="queue-cb">✓</div>
+          <div>
+            <div class="queue-eval-name">SCD type 2 snapshot insert</div>
+            <div class="queue-eval-exp">↳ The snapshot uses strategy: timestamp with updated_field: updated_at</div>
+          </div>
+        </div>
+
+        <div class="queue-item">
+          <div class="queue-cb">✓</div>
+          <div>
+            <div class="queue-eval-name">Soft delete marks row inactive</div>
+            <div class="queue-eval-exp">↳ The snapshot config includes invalidate_hard_deletes: true</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Existing evals -->
+      <div class="eval-list">
+        <div class="eval-row">
+          <span class="eval-name">Incremental model config</span>
+          <span class="eval-badge">3 expectations</span>
+        </div>
+        <div class="eval-row">
+          <span class="eval-name">Late-arrival handling</span>
+          <span class="eval-badge">4 expectations</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>Queue behaviour:</strong>
+      Each item in the queue is independently checkable (default: all checked).
+      "Add selected" saves only the checked ones, discards the rest, and clears the queue.
+      "Discard all" clears the queue without saving anything.
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       IMPLEMENTATION NOTES
+       ═══════════════════════════════════════════════════════════════ -->
+  <section>
+    <h2>Implementation Notes</h2>
+
+    <h3>Agent modes</h3>
+    <ul style="font-size:12px;line-height:2;margin-left:16px;">
+      <li><strong>Mode 1 — generate eval</strong>: receives intent + skill context → writes <code class="code">pending-eval.json</code> (name, slug, prompt, expectations)</li>
+      <li><strong>Mode 2 — re-generate from intent</strong>: receives updated intent + skill context → rewrites <code class="code">pending-eval.json</code> entirely (same file)</li>
+    </ul>
+
+    <h3>Frontend state (workspace-evals.tsx)</h3>
+    <ul style="font-size:12px;line-height:2;margin-left:16px;">
+      <li><code class="code">intentOpen</code> — controls Screen 1 intent dialog visibility</li>
+      <li><code class="code">isGenerating / isRegenerating</code> — controls Screen 2 / Screen 4 loading states</li>
+      <li><code class="code">reviewOpen</code> — controls Screen 3/4 review dialog visibility</li>
+      <li><code class="code">draftEval</code> — in-flight eval being reviewed/edited (includes <code class="code">intent</code> field)</li>
+      <li><code class="code">evalQueue: TestCase[]</code> — pending evals (Screen 5); managed in local state, not Zustand</li>
+    </ul>
+
+    <h3>New Rust commands</h3>
+    <ul style="font-size:12px;line-height:2;margin-left:16px;">
+      <li>Existing <code class="code">read_pending_eval</code> / <code class="code">discard_pending_eval</code> remain unchanged — single-eval per agent run</li>
+    </ul>
+
+    <h3>Skill changes (SKILL.md)</h3>
+    <ul style="font-size:12px;line-height:2;margin-left:16px;">
+      <li>Add Mode 1 / Mode 2 distinction driven by prompt structure</li>
+      <li>Add <code class="code">references/pluggable.md</code> for path resolution (like skill-description-optimizer)</li>
+      <li>Reference Test Cases section of <code class="code">skill-creator/SKILL.md</code> for eval quality guidance</li>
+    </ul>
+  </section>
+
+</div>
+</body>
+</html>
