@@ -65,9 +65,13 @@ pub fn reconcile_on_startup(
             }
             let plugin_dir = skills_dir.join(&plugin.slug);
             if !plugin_dir.exists() {
-                // Folder gone — delete all skills in this plugin, then the plugin row
-                log::info!(
-                    "[reconcile] plugin '{}': folder gone, deleting plugin and all skills from DB",
+                // Folder gone — delete all skills in this plugin, then the plugin row.
+                // This fires on intentional deletion AND on a crash mid-import (plugin DB row
+                // was created but the folder was never written). Either way the DB record is
+                // stale. Log at WARN so the event is clearly visible in logs.
+                log::warn!(
+                    "[reconcile] plugin '{}': folder not found on disk — removing plugin and all skills from DB \
+                     (this may indicate a deleted plugin or a crash during import)",
                     plugin.slug
                 );
                 // Hard-delete all skills (including soft-deleted) in this plugin
@@ -88,7 +92,8 @@ pub fn reconcile_on_startup(
                     );
                 } else {
                     notifications.push(format!(
-                        "Plugin '{}' removed — folder not found on disk",
+                        "Plugin '{}' removed — folder not found on disk. \
+                         If this was an in-progress import, re-import from the marketplace to restore it.",
                         plugin.slug
                     ));
                 }

@@ -216,6 +216,7 @@ fn migrate_workspace_to_plugin_layout(workspace_path: &Path, conn: &rusqlite::Co
 fn validate_path_within(parent: &Path, skill_name: &str, label: &str) -> Result<(), String> {
     let child = parent.join(skill_name);
     if child.exists() {
+        // Path exists — use canonicalize for the most reliable traversal check.
         let canonical_parent = fs::canonicalize(parent).map_err(|e| {
             format!(
                 "[resolve_discovery] Failed to canonicalize {}: {}",
@@ -231,6 +232,21 @@ fn validate_path_within(parent: &Path, skill_name: &str, label: &str) -> Result<
         if !canonical_child.starts_with(&canonical_parent) {
             log::error!(
                 "[resolve_discovery] Path traversal attempt on {}: {}",
+                label,
+                skill_name
+            );
+            return Err(format!(
+                "Invalid skill path: path traversal not allowed on {}",
+                label
+            ));
+        }
+    } else {
+        // Path does not exist yet — canonicalize would fail, so check components directly.
+        // Any ParentDir (`..`) component in the constructed path indicates a traversal attempt.
+        use std::path::Component;
+        if child.components().any(|c| c == Component::ParentDir) {
+            log::error!(
+                "[resolve_discovery] Path traversal attempt on {} (non-existent path): {}",
                 label,
                 skill_name
             );
