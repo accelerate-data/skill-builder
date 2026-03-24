@@ -34,6 +34,11 @@ pub fn reconcile_startup(
         skills_path
     );
 
+    // Flatten any plugin-organised workspace dirs left over from before the
+    // workspace-is-always-flat invariant was established.
+    // e.g. workspace/sample-plugin-2/skills/britney-spears/ → workspace/britney-spears/
+    migrate_plugin_workspace_dirs(Path::new(&workspace_path));
+
     // Always run full reconciliation — Phase 1 (plugin recon) is idempotent
     // and must run even in preview mode to discover plugins on disk.
     // Phase 2 (workflow recon) only touches incomplete skills.
@@ -143,6 +148,76 @@ pub fn resolve_orphan(
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
 
     crate::reconciliation::resolve_orphan(&conn, &skill_name, &action, &skills_path)
+}
+
+/// Flatten plugin-organised workspace dirs to the flat layout.
+///
+/// Before the workspace-is-always-flat invariant, `ensure_skill_workspace_dir`
+/// used `resolve_skill_dir` with the plugin slug, producing directories like:
+///   workspace/{plugin_slug}/skills/{skill_name}/
+///
+/// This function moves each such directory to the canonical flat location:
+///   workspace/{skill_name}/
+///
+/// It is idempotent: once migrated, no plugin-organised dirs remain.
+/// Non-fatal: individual move failures are logged as warnings.
+fn migrate_plugin_workspace_dirs(workspace_path: &Path) {
+    let entries = match std::fs::read_dir(workspace_path) {
+        Ok(e) => e,
+        Err(e) => {
+            log::debug!("[migrate_workspace] cannot read workspace dir: {}", e);
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let slug_dir = entry.path();
+        if !slug_dir.is_dir() {
+            continue;
+        }
+        // Skip hidden dirs (e.g. .claude) — they are never plugin slugs.
+        let dir_name = entry.file_name();
+        let dir_name_str = dir_name.to_string_lossy();
+        if dir_name_str.starts_with('.') {
+            continue;
+        }
+        // Plugin-organised workspace dirs contain a `skills/` subdirectory.
+        let skills_subdir = slug_dir.join("skills");
+        if !skills_subdir.is_dir() {
+            continue;
+        }
+        let skill_entries = match std::fs::read_dir(&skills_subdir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for skill_entry in skill_entries.flatten() {
+            let old_path = skill_entry.path();
+            if !old_path.is_dir() {
+                continue;
+            }
+            let skill_name = skill_entry.file_name();
+            let new_path = workspace_path.join(&skill_name);
+            if new_path.exists() {
+                log::debug!(
+                    "[migrate_workspace] flat dir already exists for {:?}, skipping",
+                    skill_name
+                );
+                continue;
+            }
+            match std::fs::rename(&old_path, &new_path) {
+                Ok(()) => log::info!(
+                    "[migrate_workspace] moved '{}' → '{}'",
+                    old_path.display(),
+                    new_path.display()
+                ),
+                Err(e) => log::warn!(
+                    "[migrate_workspace] failed to move '{}': {}",
+                    old_path.display(),
+                    e
+                ),
+            }
+        }
+    }
 }
 
 /// Validate that a path derived from `skill_name` stays inside `parent`.
@@ -327,5 +402,66 @@ mod tests {
             result.is_ok(),
             "Non-existent path should be accepted (not yet created)"
         );
+    }
+
+    #[test]
+    fn test_migrate_plugin_workspace_dirs_flattens_nested_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+
+        // Create a plugin-organised workspace dir
+        let old_path = workspace.join("sample-plugin-2").join("skills").join("britney-spears");
+        fs::create_dir_all(&old_path).unwrap();
+        fs::write(old_path.join("user-context.md"), "context").unwrap();
+
+        migrate_plugin_workspace_dirs(workspace);
+
+        // Should have been moved to the flat location
+        let new_path = workspace.join("britney-spears");
+        assert!(new_path.exists(), "flat dir should exist after migration");
+        assert!(new_path.join("user-context.md").exists(), "contents should be preserved");
+        // Old nested dir should be gone
+        assert!(!old_path.exists(), "old nested dir should be removed");
+    }
+
+    #[test]
+    fn test_migrate_plugin_workspace_dirs_skips_existing_flat() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+
+        // Pre-existing flat dir (already migrated)
+        let flat_path = workspace.join("my-skill");
+        fs::create_dir_all(&flat_path).unwrap();
+        fs::write(flat_path.join("existing.md"), "existing").unwrap();
+
+        // Old plugin-organised dir with different content
+        let old_path = workspace.join("some-plugin").join("skills").join("my-skill");
+        fs::create_dir_all(&old_path).unwrap();
+        fs::write(old_path.join("old.md"), "old").unwrap();
+
+        migrate_plugin_workspace_dirs(workspace);
+
+        // Flat dir should be untouched (existing content preserved)
+        assert!(flat_path.join("existing.md").exists());
+        assert!(!flat_path.join("old.md").exists(), "old content must not overwrite");
+        // Old dir should still be there (not moved, skipped)
+        assert!(old_path.exists(), "old dir kept when flat already exists");
+    }
+
+    #[test]
+    fn test_migrate_plugin_workspace_dirs_skips_hidden_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+
+        // .claude/skills/ must not be treated as a plugin-organised workspace
+        let claude_skills = workspace.join(".claude").join("skills").join("skill-test");
+        fs::create_dir_all(&claude_skills).unwrap();
+        fs::write(claude_skills.join("SKILL.md"), "# skill").unwrap();
+
+        migrate_plugin_workspace_dirs(workspace);
+
+        // .claude/skills/skill-test must NOT be moved
+        assert!(claude_skills.exists(), ".claude/skills must not be migrated");
+        assert!(!workspace.join("skill-test").exists(), "should not appear at top level");
     }
 }
