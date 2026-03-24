@@ -11,15 +11,17 @@ import {
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSettingsStore } from "@/stores/settings-store"
+import { usePluginStore } from "@/stores/plugin-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
 import { ImportSkillDialog } from "@/components/import-skill-dialog"
 import { CreatePluginDialog } from "@/components/create-plugin-dialog"
-import { listPlugins, deletePlugin, parseSkillFile } from "@/lib/tauri"
+import { deletePlugin, parseSkillFile } from "@/lib/tauri"
 import type { LibraryPlugin, SkillFileMeta } from "@/lib/types"
 
 export function ImportedSkillsTab() {
-  const [plugins, setPlugins] = useState<LibraryPlugin[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const plugins = usePluginStore((s) => s.plugins)
+  const isLoading = usePluginStore((s) => s.isLoading)
+  const fetchPlugins = usePluginStore((s) => s.fetchPlugins)
 
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
@@ -32,21 +34,9 @@ export function ImportedSkillsTab() {
     argument_hint: null, user_invocable: null, disable_model_invocation: null,
   })
 
-  const fetchPluginList = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const result = await listPlugins()
-      setPlugins(result)
-    } catch (err) {
-      console.error("event=fetch_plugins_failed error=%s", err)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
   useEffect(() => {
-    fetchPluginList()
-  }, [fetchPluginList])
+    fetchPlugins()
+  }, [fetchPlugins])
 
   const handleImport = useCallback(async () => {
     const filePath = await open({
@@ -73,7 +63,7 @@ export function ImportedSkillsTab() {
     const toastId = toast.loading(`Deleting plugin "${plugin.display_name}"...`)
     try {
       await deletePlugin(plugin.slug)
-      await fetchPluginList()
+      await fetchPlugins()
       toast.success(`Deleted plugin "${plugin.display_name}"`, { id: toastId })
     } catch (err) {
       toast.error(
@@ -81,7 +71,7 @@ export function ImportedSkillsTab() {
         { id: toastId },
       )
     }
-  }, [fetchPluginList])
+  }, [fetchPlugins])
 
   const displayPlugins = plugins.filter((p) => !p.is_default)
 
@@ -175,7 +165,7 @@ export function ImportedSkillsTab() {
       <GitHubImportDialog
         open={showGitHubImport}
         onOpenChange={setShowGitHubImport}
-        onImported={fetchPluginList}
+        onImported={fetchPlugins}
         registries={marketplaceRegistries.filter(r => r.enabled)}
       />
 
@@ -184,13 +174,13 @@ export function ImportedSkillsTab() {
         onOpenChange={setImportOpen}
         filePath={importFile}
         meta={importMeta}
-        onImported={fetchPluginList}
+        onImported={fetchPlugins}
       />
 
       <CreatePluginDialog
         open={createPluginOpen}
         onOpenChange={setCreatePluginOpen}
-        onCreated={fetchPluginList}
+        onCreated={fetchPlugins}
       />
     </div>
   )

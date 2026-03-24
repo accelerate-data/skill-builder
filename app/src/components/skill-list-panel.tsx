@@ -32,7 +32,14 @@ import { MoveToPluginDialog } from "@/components/move-to-plugin-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
-import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
+import {
+  useUnifiedSkills,
+  getStatusDot,
+  getSkillMenuState,
+  isSkillComplete,
+} from "@/hooks/use-unified-skills";
+import type { UnifiedSkill } from "@/hooks/use-unified-skills";
+import type { SkillSummary, Purpose } from "@/lib/types";
 import { PURPOSE_SHORT_LABELS } from "@/lib/types";
 import {
   getExternallyLockedSkills,
@@ -41,28 +48,6 @@ import {
   resetWorkflowStep,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
-
-interface UnifiedSkill {
-  key: string;
-  name: string;
-  description: string | null;
-  purpose: string | null;
-  lastModified: Date | null;
-  createdAt: Date | null;
-  source: "builder" | "imported" | "marketplace";
-  pluginSlug: string;
-  pluginDisplayName: string;
-  isDefaultPlugin: boolean;
-  importedSkillId: string | null;
-  status: string | null;
-  currentStep: string | null;
-}
-
-interface SkillMenuState {
-  isBuilder: boolean;
-  isComplete: boolean;
-  showsLifecycleActions: boolean;
-}
 
 export interface SkillListPanelProps {
   onSelectSkill?: (name: string) => void;
@@ -82,101 +67,6 @@ function formatRelativeDate(date: Date): string {
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-function isSkillComplete(skill: UnifiedSkill): boolean {
-  return skill.status === "completed";
-}
-
-interface DotStyle {
-  className: string;
-  style?: React.CSSProperties;
-}
-
-function getStatusDot(skill: UnifiedSkill, isRunning: boolean): DotStyle {
-  const pulse = isRunning ? " animate-dot-pulse" : "";
-
-  if (skill.source === "marketplace") {
-    return { className: pulse.trim(), style: { backgroundColor: "var(--color-pacific)" } };
-  }
-
-  if (skill.source === "imported") {
-    return { className: pulse.trim(), style: { backgroundColor: "var(--color-violet)" } };
-  }
-
-  // Completed builder skill → seafoam
-  if (isSkillComplete(skill)) {
-    return { className: pulse.trim(), style: { backgroundColor: "var(--color-seafoam)" } };
-  }
-
-  const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
-  const step = stepMatch ? Number(stepMatch[1]) : null;
-
-  // Step 1+ (step 1+ in 0-indexed, i.e. past Research) → amber
-  if (step !== null && step >= 1) {
-    return { className: `bg-amber-500 dark:bg-amber-400${pulse}` };
-  }
-
-  // Never started or on Step 1 (step 0 in 0-indexed) → red
-  return { className: `bg-destructive${pulse}` };
-}
-
-function mergeSkills(
-  builderSkills: SkillSummary[],
-  importedSkills: ImportedSkill[],
-): UnifiedSkill[] {
-  const fromBuilder: UnifiedSkill[] = builderSkills
-    .filter((s) => s.skill_source === "skill-builder")
-    .map((s) => ({
-      key: s.library_key ?? s.name,
-      name: s.name,
-      description: s.description ?? null,
-      purpose: s.purpose,
-      lastModified: s.last_modified ? new Date(s.last_modified) : null,
-      createdAt: s.created_at ? new Date(s.created_at) : null,
-      source: "builder" as const,
-      pluginSlug: s.plugin_slug,
-      pluginDisplayName: s.plugin_display_name,
-      isDefaultPlugin: s.is_default_plugin,
-      importedSkillId: null,
-      status: s.status,
-      currentStep: s.current_step,
-    }));
-
-  const fromImported: UnifiedSkill[] = importedSkills.map((s) => ({
-    key: s.library_key ?? `imported:${s.skill_id}`,
-    name: s.skill_name,
-    description: s.description,
-    purpose: s.purpose,
-    lastModified: new Date(s.imported_at),
-    createdAt: new Date(s.imported_at),
-    source: s.marketplace_source_url ? ("marketplace" as const) : ("imported" as const),
-    pluginSlug: s.plugin_slug,
-    pluginDisplayName: s.plugin_display_name,
-    isDefaultPlugin: s.is_default_plugin,
-    importedSkillId: s.skill_id,
-    status: null,
-    currentStep: null,
-  }));
-
-  // Sort by plugin slug (groups skills by plugin), then by creation date descending within each plugin
-  return [...fromBuilder, ...fromImported].sort((a, b) => {
-    if (a.pluginSlug !== b.pluginSlug) {
-      if (a.isDefaultPlugin !== b.isDefaultPlugin) return a.isDefaultPlugin ? -1 : 1;
-      return a.pluginSlug.localeCompare(b.pluginSlug);
-    }
-    const at = a.createdAt?.getTime() ?? 0;
-    const bt = b.createdAt?.getTime() ?? 0;
-    return bt - at;
-  });
-}
-
-function getSkillMenuState(skill: UnifiedSkill): SkillMenuState {
-  return {
-    isBuilder: skill.source === "builder",
-    isComplete: isSkillComplete(skill) || skill.source !== "builder",
-    showsLifecycleActions: isSkillComplete(skill) || skill.source !== "builder",
-  };
 }
 
 export function SkillListPanel({
@@ -225,10 +115,7 @@ export function SkillListPanel({
   }, [pathname]);
 
   // Sort by creation date (newest first) — stable across edits since created_at never changes.
-  const unifiedSkills = useMemo(
-    () => mergeSkills(builderSkills, importedSkills),
-    [builderSkills, importedSkills],
-  );
+  const unifiedSkills = useUnifiedSkills(builderSkills, importedSkills);
 
   // Default selection — run once on mount after stores are populated
   useEffect(() => {
