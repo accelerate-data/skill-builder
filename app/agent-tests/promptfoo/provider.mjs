@@ -352,8 +352,7 @@ function loadWorkspaceContext() {
 }
 
 function loadRefineInstructions() {
-  const content = fs.readFileSync(path.join(AGENTS_DIR, "rewrite-skill.md"), "utf8");
-  return stripFrontmatter(content);
+  return loadAgentInstructions("rewrite-skill");
 }
 
 function loadAgentInstructions(agentName) {
@@ -369,6 +368,20 @@ function loadAgentInstructions(agentName) {
     const pluginAgent = path.join(PLUGINS_DIR, plugin, "agents", `${agentName}.md`);
     if (fs.existsSync(pluginAgent)) {
       return stripFrontmatter(fs.readFileSync(pluginAgent, "utf8"));
+    }
+  }
+  // Fall back to plugin skills (e.g. validate-skill is now skill-validator SKILL.md)
+  const SKILL_NAME_MAP = {
+    "validate-skill": "skill-validator",
+    "eval-skill": "skill-evaluator",
+  };
+  const skillDirName = SKILL_NAME_MAP[agentName];
+  if (skillDirName) {
+    for (const plugin of pluginDirs) {
+      const skillFile = path.join(PLUGINS_DIR, plugin, "skills", skillDirName, "SKILL.md");
+      if (fs.existsSync(skillFile)) {
+        return stripFrontmatter(fs.readFileSync(skillFile, "utf8"));
+      }
     }
   }
   throw new Error(`Agent instructions not found for "${agentName}" in agents/ or plugins/`);
@@ -911,17 +924,16 @@ Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"generated", "benchmark_status", "benchmark_path", and "call_trace".`;
+Return JSON only with "status":"generated", "commit_summary", "version_bump", and "call_trace".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 300_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
   const skillMdPath = path.join(dir, skillName, "SKILL.md");
+  const evalsPath = path.join(dir, "workspace", skillName, "evals", "evals.json");
   return finalizeScenario(
     "generate-skill",
     {
       skillMdExists: fs.existsSync(skillMdPath),
-      hasReferencesDir: fs.existsSync(path.join(dir, skillName, "references")),
-      benchmarkStatusValid:
-        ["complete", "partial", "skipped"].includes(response?.benchmark_status),
+      evaluationsExists: fs.existsSync(evalsPath),
     },
     ["read-user-context", "read-decisions", "write-skill", "write-references", "write-evaluations"],
     response?.call_trace ?? [],
@@ -942,13 +954,10 @@ Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"generated", "benchmark_status", "benchmark_path", and "call_trace".`;
+Return JSON only with "status":"generated" and "call_trace".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
-  const response = parseAgentJsonOutput(stdout);
   const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   return finalizeScenario("generate-skill-scope-guard", {
-    structuredResponseObject: Boolean(response && typeof response === "object"),
-    benchmarkStatusSkipped: response?.benchmark_status === "skipped",
     scopeStubWritten: /scope_recommendation:\s*true/.test(content),
     scopeStubHeading: /## Scope Recommendation Active/.test(content),
   });
@@ -977,13 +986,10 @@ Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"generated", "benchmark_status", "benchmark_path", and "call_trace".`;
+Return JSON only with "status":"generated" and "call_trace".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
-  const response = parseAgentJsonOutput(stdout);
   const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
   return finalizeScenario("generate-skill-contradictory", {
-    structuredResponseObject: Boolean(response && typeof response === "object"),
-    benchmarkStatusSkipped: response?.benchmark_status === "skipped",
     contradictionStubWritten: /contradictory_inputs:\s*true/.test(content),
     contradictionStubHeading: /## Contradictory Inputs Detected/.test(content),
   });
@@ -1012,7 +1018,7 @@ Skill output directory: ${dir}/${skillName}
 Workspace directory: ${dir}/workspace/${skillName}
 <workspace-instructions>${workspaceContext}</workspace-instructions>
 <agent-instructions>${agentInstructions}</agent-instructions>
-Return JSON only with "status":"generated", "benchmark_status", "benchmark_path", and "call_trace".`;
+Return JSON only with "status":"generated", "commit_summary", "version_bump", and "call_trace".`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 300_000, cwd: dir });
   const response = parseAgentJsonOutput(stdout);
   const content = fs.readFileSync(path.join(dir, skillName, "SKILL.md"), "utf8");
@@ -1118,7 +1124,9 @@ Workspace directory: ${dir}/workspace/${skillName}
 <agent-instructions>${agentInstructions}</agent-instructions>`;
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
   return finalizeScenario("validate-skill-scope-guard", {
-    guardMessage: /Scope recommendation is active|Validation Skipped/i.test(stdout),
+    validationStub: /Scope recommendation is active|Validation Skipped/i.test(stdout),
+    testStub: !fs.existsSync(path.join(dir, skillName, "test-skill.md"))
+      && !fs.existsSync(path.join(dir, "workspace", skillName, "agent-validation-log.md")),
   });
 }
 
@@ -1139,6 +1147,8 @@ Workspace directory: ${dir}/workspace/${skillName}
   const stdout = runAgent(prompt, { budgetUsd, timeoutMs: 180_000, cwd: dir });
   return finalizeScenario("validate-skill-missing-skill-md", {
     guardMessage: /No SKILL\.md found|Validation Skipped/i.test(stdout),
+    noValidationFile: !fs.existsSync(path.join(dir, "workspace", skillName, "agent-validation-log.md"))
+      && !fs.existsSync(path.join(dir, skillName, "test-skill.md")),
   });
 }
 

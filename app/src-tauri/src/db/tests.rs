@@ -444,9 +444,9 @@ fn test_delete_skill_nonexistent_is_ok() {
 }
 
 #[test]
-fn test_save_marketplace_skill_creates_master_row_only() {
+fn test_marketplace_skill_creates_master_row_only() {
     let conn = create_test_db();
-    save_marketplace_skill(&conn, "mkt-skill", "platform").unwrap();
+    upsert_skill_in_plugin(&conn, "mkt-skill", "marketplace", "platform", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
     // Skills master row should exist with source=marketplace
     let skills = list_all_skills(&conn).unwrap();

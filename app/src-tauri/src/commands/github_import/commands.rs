@@ -514,7 +514,7 @@ async fn import_marketplace_entries_to_library(
     metadata_overrides: Option<
         std::collections::HashMap<String, crate::types::SkillMetadataOverride>,
     >,
-    plugin_display_name_override: Option<String>,
+    _plugin_display_name_override: Option<String>,
 ) -> Result<Vec<MarketplaceImportResult>, String> {
     log::info!(
         "[import_marketplace_entries_to_library] importing {} skills from {} (with_overrides={})",
@@ -811,7 +811,7 @@ pub async fn import_marketplace_plugin_to_library(
     .await?;
 
     // --- Step 2: Read plugin.json from disk for metadata ---
-    let (pj_name, pj_description, pj_version) = read_plugin_json(&dest_plugin_dir);
+    let (pj_name, _pj_description, pj_version) = read_plugin_json(&dest_plugin_dir);
     let display_name = if pj_name.is_empty() { plugin_name.clone() } else { pj_name };
 
     // --- Step 3: Create plugin row in DB ---

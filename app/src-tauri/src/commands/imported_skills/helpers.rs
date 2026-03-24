@@ -184,32 +184,3 @@ pub(crate) fn extract_archive(
     Ok(())
 }
 
-pub(crate) fn add_dir_to_zip(
-    writer: &mut zip::ZipWriter<fs::File>,
-    dir: &Path,
-    prefix: &str,
-    options: &zip::write::SimpleFileOptions,
-) -> Result<(), String> {
-    for entry in fs::read_dir(dir).map_err(|e| format!("Failed to read dir: {}", e))? {
-        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-        let path = entry.path();
-        let name = if prefix.is_empty() {
-            entry.file_name().to_string_lossy().to_string()
-        } else {
-            format!("{}/{}", prefix, entry.file_name().to_string_lossy())
-        };
-
-        if path.is_dir() {
-            add_dir_to_zip(writer, &path, &name, options)?;
-        } else {
-            let content = fs::read(&path)
-                .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-            writer
-                .start_file(&name, *options)
-                .map_err(|e| format!("Failed to add to zip: {}", e))?;
-            std::io::Write::write_all(writer, &content)
-                .map_err(|e| format!("Failed to write zip content: {}", e))?;
-        }
-    }
-    Ok(())
-}

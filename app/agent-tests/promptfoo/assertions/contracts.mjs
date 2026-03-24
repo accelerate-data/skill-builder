@@ -146,6 +146,7 @@ export function assessInvocationContracts(expected, observed) {
     if (lower.includes("write:references/") || lower.includes("write:references-")) return "write-references";
     if (lower.includes("wrote references/") || lower.includes("wrote references-")) return "write-references";
     if (lower.includes("write-evaluations") || lower.includes("evaluations.md")) return "write-evaluations";
+    if (lower.includes("write-evals") || lower.includes("write:evals")) return "write-evaluations";
     if (lower.includes("return-evaluations-markdown")) return "write-evaluations";
     if (lower.includes("wrote context/evaluations.md") || lower.includes("wrote context-evaluations-md")) return "write-evaluations";
     if (

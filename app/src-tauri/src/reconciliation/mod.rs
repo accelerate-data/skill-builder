@@ -1,8 +1,7 @@
-mod marketplace;
 mod skill_builder;
 
 use crate::fs_validation::detect_furthest_step;
-use crate::skill_paths::{enumerate_skill_locations, resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{enumerate_skill_locations, DEFAULT_PLUGIN_SLUG};
 use crate::types::{DiscoveredSkill, ReconciliationResult};
 use std::collections::HashSet;
 use std::path::Path;
@@ -281,110 +280,6 @@ pub fn reconcile_on_startup(
         notifications.len(),
         discovered_skills.len()
     );
-
-    Ok(ReconciliationResult {
-        orphans: Vec::new(),
-        notifications,
-        auto_cleaned: 0,
-        discovered_skills,
-    })
-}
-
-/// Read-only startup reconciliation preview.
-pub fn preview_reconcile_on_startup(
-    conn: &rusqlite::Connection,
-    workspace_path: &str,
-    skills_path: &str,
-) -> Result<ReconciliationResult, String> {
-    let mut notifications = Vec::new();
-    let mut discovered_skills = Vec::new();
-    let all_skills = crate::db::list_all_skills(conn)?;
-    let skills_dir = Path::new(skills_path);
-
-    // Preview plugin cleanup
-    let db_plugins = crate::db::list_plugins(conn)?;
-    for plugin in &db_plugins {
-        if plugin.is_default {
-            continue;
-        }
-        if !skills_dir.join(&plugin.slug).exists() {
-            notifications.push(format!(
-                "Plugin '{}' will be removed — folder not found on disk",
-                plugin.slug
-            ));
-        }
-    }
-
-    // Preview skill discovery
-    let master_names: HashSet<String> = all_skills
-        .iter()
-        .map(|s| format!("{}:{}", s.plugin_slug, s.name))
-        .collect();
-    if skills_dir.exists() {
-        for loc in enumerate_skill_locations(skills_dir)? {
-            let key = format!("{}:{}", loc.plugin_slug, loc.skill_name);
-            if master_names.contains(&key) || !loc.dir.join("SKILL.md").exists() {
-                continue;
-            }
-            discovered_skills.push(DiscoveredSkill {
-                name: loc.skill_name,
-                plugin_slug: Some(loc.plugin_slug),
-                plugin_display_name: Some(loc.plugin_display_name),
-                is_default_plugin: Some(loc.is_default_plugin),
-                detected_step: 3,
-                scenario: "discovered".to_string(),
-            });
-        }
-    }
-
-    // Preview workflow recon for incomplete skills
-    for skill in &all_skills {
-        if skill.skill_source != "skill-builder" {
-            continue;
-        }
-        let maybe_run = crate::db::get_workflow_run(conn, &skill.name)?;
-        let is_completed = maybe_run.as_ref().map(|r| r.status == "completed").unwrap_or(false);
-        if is_completed {
-            continue;
-        }
-
-        if crate::db::has_active_session_with_live_pid(conn, &skill.name) {
-            notifications.push(format!(
-                "'{}' skipped — active session running in another instance",
-                skill.name
-            ));
-            continue;
-        }
-
-        if maybe_run.is_none() {
-            notifications.push(format!("'{}' workflow record will be recreated", skill.name));
-            continue;
-        }
-
-        let run = maybe_run.unwrap();
-        let maybe_disk_step = crate::fs_validation::detect_furthest_step_with_options(
-            workspace_path, &skill.name, skills_path, false,
-        );
-
-        if let Some(disk_step) = maybe_disk_step.map(|s| s as i32) {
-            if run.current_step > disk_step {
-                notifications.push(format!(
-                    "'{}' will be reset from step {} to step {} (disk behind DB)",
-                    skill.name, run.current_step + 1, disk_step + 1
-                ));
-            } else if disk_step > run.current_step {
-                notifications.push(format!(
-                    "'{}' will be advanced from step {} to step {} (disk ahead of DB)",
-                    skill.name, run.current_step + 1, disk_step + 1
-                ));
-            }
-        } else if run.current_step > 0 {
-            notifications.push(format!(
-                "'{}' will be reset to step 1 (no output files found)",
-                skill.name
-            ));
-        }
-    }
 
     Ok(ReconciliationResult {
         orphans: Vec::new(),

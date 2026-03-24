@@ -533,7 +533,7 @@ mod tests {
         let mut settings = crate::types::AppSettings::default();
         settings.skills_path = Some(skills_path.to_str().unwrap().to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
-        crate::db::upsert_skill_with_source(&conn, "legacy-skill", "imported", "domain").unwrap();
+        crate::db::upsert_skill_with_source_in_plugin(&conn, "legacy-skill", "imported", "domain", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
         run_settings_startup_migrations(&conn).unwrap();
 
