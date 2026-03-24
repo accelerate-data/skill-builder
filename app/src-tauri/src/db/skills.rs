@@ -474,7 +474,7 @@ pub fn get_skill_master_id(conn: &Connection, skill_name: &str) -> Result<Option
 /// Used by lock acquisition, which must work for imported and marketplace skills.
 pub fn get_skill_master_id_any_plugin(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
     conn.query_row(
-        "SELECT id FROM skills WHERE name = ?1 AND deleted_at IS NULL LIMIT 1",
+        "SELECT id FROM skills WHERE name = ?1 AND COALESCE(deleted_at, '') = '' LIMIT 1",
         rusqlite::params![skill_name],
         |row| row.get(0),
     )
