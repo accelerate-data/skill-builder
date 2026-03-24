@@ -311,11 +311,12 @@ pub fn verify_step_output(
     let skills_path = read_skills_path(&db)
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
 
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let plugin_slug = lookup_plugin_slug(&conn, &skill_name);
+    drop(conn);
     let target_dir = if step_id == 3 {
-        Path::new(&skills_path).join(&skill_name)
+        crate::skill_paths::resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name)
     } else {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let plugin_slug = lookup_plugin_slug(&conn, &skill_name);
         crate::skill_paths::workspace_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name)
     };
     let has_output = if step_id == 3 {

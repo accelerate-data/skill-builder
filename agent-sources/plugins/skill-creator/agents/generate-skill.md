@@ -47,7 +47,7 @@ Before each step, write one short status line (≤ 10 words). Write it before to
 
 ## Phase 0: Read the inputs
 
-Read `{workspace_dir}/user-context.md`. 
+Read `{workspace_dir}/user-context.md`. Use staged, progressive discovery — read only the specific files named in each phase; do not speculatively read other files.
 
 - If `user-context.md` contains a `## Reference Documents` section with location of one or more named documents supplied by the user **always read first and incorporate these documents**. If a document is missing or its content appears truncated, note this to the user and proceed with the information available.
 
