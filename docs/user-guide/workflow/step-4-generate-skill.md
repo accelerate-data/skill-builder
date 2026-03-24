@@ -1,6 +1,6 @@
 # Step 4: Generate Skill
 
-The final step writes the generated skill files under `skill/`, including `skill/SKILL.md` and any `skill/references/...` files.
+The final step writes the generated skill files under `skill/`, including `skill/SKILL.md` and any `skill/references/...` files. The generated skill is saved into the skill's parent [plugin](../plugins.md) — by default, the **Skills** plugin.
 
 ---
 

@@ -17,10 +17,12 @@ The left panel contains:
 
 - a **New skill** button
 - a search field
-- one row per skill
+- skills grouped by plugin
 - a per-skill **More actions** menu
 
-Each row shows:
+Skills are organised under plugin headers. The default **Skills** plugin appears first, followed by other plugins in alphabetical order. Each plugin header shows the plugin display name in uppercase.
+
+Each skill row shows:
 
 - a status dot
 - the skill name
@@ -77,26 +79,39 @@ Hover a row and open **More actions** to access available actions.
 
 ### Completed builder skills
 
-These can show:
+The menu is grouped into sections:
+
+**Workflow**
 
 - **Review** — open the workflow in review mode
 - **Redo workflow** — reset back to step 1 and start over
+
+**Skill**
+
 - **Overview** — open the workspace Overview tab
 - **Refine** — open the workspace Refine tab
 - **Restore version** — restore an earlier saved version
-- **Export** — export the skill as a `.zip`
-- **Delete**
+
+**Plugin** (hidden for marketplace skills)
+
+- **Create plugin** — create a new plugin and move this skill into it (shown when the skill is in the default plugin)
+- **Remove from plugin** — move the skill back to the default plugin (shown when the skill is in a non-default plugin)
+- **Move to plugin** — move the skill to a different existing plugin (shown when other eligible plugins exist)
+
+**Delete** — only shown for skills in the default plugin.
+
+See [Plugins](plugins.md) for full details on plugin actions.
 
 ### In-progress builder skills
 
 These show:
 
 - **Continue Building**
-- **Delete**
+- **Delete** (when in the default plugin)
 
 ### Imported or marketplace skills
 
-These use the same workspace shell, but actions depend on the skill type and whether the app can treat it as a builder-owned skill.
+These use the same workspace shell. Plugin actions are not available for marketplace-source skills.
 
 ---
 
