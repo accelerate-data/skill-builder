@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import { toast } from "@/lib/toast"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -10,8 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { listPlugins, moveSkillToPlugin } from "@/lib/tauri"
-import type { LibraryPlugin } from "@/lib/types"
+import { moveSkillToPlugin } from "@/lib/tauri"
+import { usePluginStore } from "@/stores/plugin-store"
 
 interface MoveToPluginDialogProps {
   open: boolean
@@ -30,26 +30,35 @@ export function MoveToPluginDialog({
   currentPluginSlug,
   onMoved,
 }: MoveToPluginDialogProps) {
-  const [plugins, setPlugins] = useState<LibraryPlugin[]>([])
+  const allPlugins = usePluginStore((s) => s.plugins)
+  const fetchPlugins = usePluginStore((s) => s.fetchPlugins)
   const [selected, setSelected] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  const plugins = useMemo(
+    () => allPlugins.filter(
+      (p) => !p.is_default && p.slug !== currentPluginSlug && p.source_type !== "marketplace",
+    ),
+    [allPlugins, currentPluginSlug],
+  )
+
   useEffect(() => {
     if (!open) return
-    listPlugins().then((all) => {
-      const available = all.filter(
-        (p) => !p.is_default && p.slug !== currentPluginSlug && p.source_type !== "marketplace",
-      )
-      setPlugins(available)
-      setSelected(available[0]?.slug ?? null)
-    })
-  }, [open, currentPluginSlug])
+    fetchPlugins()
+  }, [open, fetchPlugins])
+
+  useEffect(() => {
+    if (open && plugins.length > 0) {
+      setSelected(plugins[0]?.slug ?? null)
+    }
+  }, [open, plugins])
 
   const handleSubmit = useCallback(async () => {
     if (!selected) return
     setSubmitting(true)
     try {
       await moveSkillToPlugin(skillKey, selected)
+      await usePluginStore.getState().fetchPlugins()
       onOpenChange(false)
       onMoved()
     } catch (err) {
@@ -57,7 +66,7 @@ export function MoveToPluginDialog({
     } finally {
       setSubmitting(false)
     }
-  }, [selected, skillName, skillKey, onOpenChange, onMoved])
+  }, [selected, skillKey, onOpenChange, onMoved])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
