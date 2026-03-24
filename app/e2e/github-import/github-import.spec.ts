@@ -118,20 +118,27 @@ test.describe("GitHub Import", { tag: "@skills" }, () => {
   });
 
   test("shows already-installed plugin as disabled", async ({ page }) => {
-    // Pre-populate list_skills so that analytics-pack shows as already installed
+    // Pre-populate list_plugins so that analytics-pack shows as already installed
     await reloadWithOverrides(page, {
       ...BASE_OVERRIDES,
-      list_skills: [
+      list_plugins: [
         {
-          name: "some-skill",
-          current_step: null,
-          status: null,
-          last_modified: null,
-          purpose: "domain",
-          skill_source: "marketplace",
-          plugin_slug: "analytics-pack",
-          plugin_display_name: "analytics-pack",
-          is_default_plugin: false,
+          id: 1,
+          slug: "skills",
+          display_name: "Skills",
+          version: null,
+          source_type: "synthetic",
+          source_url: null,
+          is_default: true,
+        },
+        {
+          id: 2,
+          slug: "analytics-pack",
+          display_name: "analytics-pack",
+          version: null,
+          source_type: "marketplace",
+          source_url: null,
+          is_default: false,
         },
       ],
     });

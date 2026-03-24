@@ -141,6 +141,10 @@ const mockResponses: Record<string, unknown> = {
   // Repos
   list_user_repos: [],
   validate_remote_repo: undefined,
+  // Plugins
+  list_plugins: [
+    { id: 1, slug: "skills", display_name: "Skills", version: null, source_type: "synthetic", source_url: null, is_default: true },
+  ],
   // Imported skills (Skills Library page)
   list_imported_skills: [],
   list_workspace_skills: [],
