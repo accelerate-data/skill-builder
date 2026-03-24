@@ -696,6 +696,22 @@ fn test_refine_prompt_no_inline_user_context() {
     assert!(!prompt.contains("**Function**:"));
 }
 
+#[test]
+fn test_refine_prompt_includes_benchmark_feedback_routing() {
+    let prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None);
+    assert!(
+        prompt.contains("BENCHMARK FEEDBACK"),
+        "prompt must contain BENCHMARK FEEDBACK routing"
+    );
+    assert!(
+        prompt.contains("AskUserQuestion"),
+        "prompt must instruct agent to call AskUserQuestion"
+    );
+    assert!(
+        prompt.contains("skill-creator:rewrite-skill"),
+        "prompt must direct agent to rewrite-skill after selection"
+    );
+}
 
 #[test]
 fn test_close_session_removes_entry() {
