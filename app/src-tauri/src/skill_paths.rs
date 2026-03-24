@@ -357,4 +357,21 @@ mod tests {
         assert_eq!(locations[0].skill_name, "report");
         assert_eq!(locations[0].dir, old);
     }
+
+    #[test]
+    fn enumerate_discovers_default_plugin_directly() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Default plugin: skills are directly at root/skills/my-skill/SKILL.md
+        // (no inner skills/ nesting for the default plugin)
+        let skill_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# default plugin skill").unwrap();
+
+        let locations = enumerate_skill_locations(tmp.path()).unwrap();
+        assert_eq!(locations.len(), 1);
+        assert_eq!(locations[0].plugin_slug, DEFAULT_PLUGIN_SLUG);
+        assert_eq!(locations[0].skill_name, "my-skill");
+        assert!(locations[0].is_default_plugin);
+        assert_eq!(locations[0].dir, skill_dir);
+    }
 }

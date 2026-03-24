@@ -7,8 +7,7 @@ import {
 } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useImportedSkillsStore } from "@/stores/imported-skills-store";
-import type { ImportedSkill, AppSettings } from "@/lib/types";
+import type { AppSettings, LibraryPlugin } from "@/lib/types";
 
 vi.mock("@/lib/toast", () => ({
   toast: {
@@ -35,6 +34,7 @@ vi.mock("remark-gfm", () => ({
 }));
 
 import { ImportedSkillsTab } from "@/components/imported-skills-tab";
+import { toast } from "@/lib/toast";
 
 const defaultSettings: AppSettings = {
   anthropic_api_key: "sk-test",
@@ -58,54 +58,42 @@ const defaultSettings: AppSettings = {
   auto_update: false,
 };
 
-const sampleSkills: ImportedSkill[] = [
+const samplePlugins: LibraryPlugin[] = [
   {
-    skill_id: "id-1",
-    skill_name: "sales-analytics",
-    library_key: "imported:id-1",
-    description: "Analytics skill for sales data",
-    is_active: true,
-    disk_path: "/skills/sales-analytics",
-    imported_at: "2026-01-15T10:00:00Z",
-    is_bundled: false,
-    purpose: null,
-    version: "1.0.0",
-    model: null,
-    argument_hint: null,
-    user_invocable: null,
-    disable_model_invocation: null,
-    marketplace_source_url: null,
-    plugin_slug: "skills",
-    plugin_display_name: "Skills",
-    is_default_plugin: true,
+    id: 1,
+    slug: "skills",
+    display_name: "Skills",
+    version: null,
+    source_type: "synthetic",
+    source_url: null,
+    is_default: true,
   },
   {
-    skill_id: "id-2",
-    skill_name: "hr-metrics",
-    library_key: "imported:id-2",
-    description: null,
-    is_active: true,
-    disk_path: "/skills/hr-metrics",
-    imported_at: "2026-01-10T08:00:00Z",
-    is_bundled: false,
-    purpose: null,
-    version: null,
-    model: null,
-    argument_hint: null,
-    user_invocable: null,
-    disable_model_invocation: null,
-    marketplace_source_url: null,
-    plugin_slug: "skills",
-    plugin_display_name: "Skills",
-    is_default_plugin: true,
+    id: 2,
+    slug: "analytics-pack",
+    display_name: "Analytics Pack",
+    version: "1.0.0",
+    source_type: "marketplace",
+    source_url: "https://github.com/test-org/skills",
+    is_default: false,
+  },
+  {
+    id: 3,
+    slug: "local-tools",
+    display_name: "Local Tools",
+    version: "2.0.0",
+    source_type: "local",
+    source_url: null,
+    is_default: false,
   },
 ];
 
-function setupMocks(skills: ImportedSkill[] = sampleSkills) {
+function setupMocks(plugins: LibraryPlugin[] = samplePlugins) {
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === "get_settings") return Promise.resolve(defaultSettings);
-    if (cmd === "list_imported_skills") return Promise.resolve(skills);
-    if (cmd === "import_skill_from_file") return Promise.resolve("skill-id");
+    if (cmd === "list_plugins") return Promise.resolve(plugins);
+    if (cmd === "delete_plugin") return Promise.resolve(undefined);
+    if (cmd === "parse_skill_file") return Promise.resolve({ name: "test-skill", description: "desc", version: "1.0.0", model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null });
     return Promise.reject(new Error(`Unmocked command: ${cmd}`));
   });
 }
@@ -114,31 +102,68 @@ describe("ImportedSkillsTab", () => {
   beforeEach(() => {
     resetTauriMocks();
     useSettingsStore.getState().reset();
-    useImportedSkillsStore.setState({
-      skills: [],
-      isLoading: false,
-      error: null,
-    });
     mockNavigate.mockReset();
+    vi.clearAllMocks();
   });
 
   it("shows loading skeletons while fetching", async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
-      if (cmd === "list_imported_skills") return new Promise(() => {});
+      if (cmd === "list_plugins") return new Promise(() => {});
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
     render(<ImportedSkillsTab />);
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills", { sourceUrl: null });
-    });
 
     const skeletons = document.querySelectorAll(".animate-pulse");
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it("renders import button", async () => {
+  it("renders plugin rows for non-default plugins", async () => {
+    setupMocks();
+    render(<ImportedSkillsTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Analytics Pack")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Local Tools")).toBeInTheDocument();
+    expect(screen.getByText("1.0.0")).toBeInTheDocument();
+    expect(screen.getByText("2.0.0")).toBeInTheDocument();
+  });
+
+  it("hides default plugin from the list", async () => {
+    setupMocks();
+    render(<ImportedSkillsTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Analytics Pack")).toBeInTheDocument();
+    });
+    // Default plugin "Skills" should not appear as a row
+    const rows = document.querySelectorAll("tbody tr");
+    expect(rows).toHaveLength(2);
+  });
+
+  it("shows empty state when only default plugin exists", async () => {
+    setupMocks([samplePlugins[0]]); // Only the default
+    render(<ImportedSkillsTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No plugins")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Browse the marketplace or upload a plugin package to get started.")
+    ).toBeInTheDocument();
+  });
+
+  it("renders Create Plugin button", async () => {
+    setupMocks();
+    render(<ImportedSkillsTab />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Create Plugin/ })).toBeInTheDocument();
+    });
+  });
+
+  it("renders Upload button", async () => {
     setupMocks();
     render(<ImportedSkillsTab />);
 
@@ -158,7 +183,9 @@ describe("ImportedSkillsTab", () => {
   });
 
   it("Marketplace button is enabled when a registry is configured", async () => {
-    useSettingsStore.getState().setSettings({ marketplaceRegistries: [{ name: "Test", source_url: "https://github.com/owner/skills", enabled: true }] });
+    useSettingsStore.getState().setSettings({
+      marketplaceRegistries: [{ name: "Test", source_url: "https://github.com/owner/skills", enabled: true }],
+    });
     setupMocks();
     render(<ImportedSkillsTab />);
 
@@ -168,98 +195,65 @@ describe("ImportedSkillsTab", () => {
     });
   });
 
-  it("renders skill rows when skills exist", async () => {
+  it("renders delete button for each non-default plugin", async () => {
     setupMocks();
     render(<ImportedSkillsTab />);
 
     await waitFor(() => {
-      expect(screen.getByText("sales-analytics")).toBeInTheDocument();
+      expect(screen.getByLabelText("Delete Analytics Pack")).toBeInTheDocument();
     });
-    expect(screen.getByText("hr-metrics")).toBeInTheDocument();
+    expect(screen.getByLabelText("Delete Local Tools")).toBeInTheDocument();
   });
 
-  it("shows empty state when no skills", async () => {
-    setupMocks([]);
-    render(<ImportedSkillsTab />);
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills", { sourceUrl: null });
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("No imported skills")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText("Import a .skill package or browse the marketplace to add skills.")
-    ).toBeInTheDocument();
-  });
-
-  it("renders delete button for non-bundled skills", async () => {
-    setupMocks();
-    render(<ImportedSkillsTab />);
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Delete sales-analytics/i })).toBeInTheDocument();
-    });
-    expect(screen.getByRole("button", { name: /Delete hr-metrics/i })).toBeInTheDocument();
-  });
-
-  it("does not render delete button for bundled skills", async () => {
-    const bundledSkill: ImportedSkill = {
-      ...sampleSkills[0],
-      skill_id: "id-bundled",
-      skill_name: "bundled-skill",
-      is_bundled: true,
-    };
-    setupMocks([bundledSkill]);
-    render(<ImportedSkillsTab />);
-
-    await waitFor(() => {
-      expect(screen.getByText("bundled-skill")).toBeInTheDocument();
-    });
-    expect(screen.queryByRole("button", { name: /Delete bundled-skill/i })).not.toBeInTheDocument();
-  });
-
-  it("shows Built-in badge for bundled skill", async () => {
-    const bundledSkill: ImportedSkill = {
-      ...sampleSkills[0],
-      skill_id: "id-bundled",
-      skill_name: "bundled-skill",
-      is_bundled: true,
-    };
-    const nonBundledSkill: ImportedSkill = {
-      ...sampleSkills[1],
-      skill_id: "id-regular",
-      skill_name: "regular-skill",
-      is_bundled: false,
-    };
-    setupMocks([bundledSkill, nonBundledSkill]);
-    render(<ImportedSkillsTab />);
-
-    await waitFor(() => {
-      expect(screen.getByText("bundled-skill")).toBeInTheDocument();
-    });
-    expect(screen.getByText("regular-skill")).toBeInTheDocument();
-    expect(screen.getByText("Built-in")).toBeInTheDocument();
-    const builtInBadges = screen.getAllByText("Built-in");
-    expect(builtInBadges).toHaveLength(1);
-  });
-
-  it("does not call import when dialog is cancelled", async () => {
+  it("delete plugin shows success toast and refreshes list", async () => {
     const user = userEvent.setup();
-
-    setupMocks([]);
-    (mockOpen as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-
+    setupMocks();
     render(<ImportedSkillsTab />);
 
     await waitFor(() => {
-      expect(screen.getByText("No imported skills")).toBeInTheDocument();
+      expect(screen.getByLabelText("Delete Analytics Pack")).toBeInTheDocument();
     });
 
-    const importButton = screen.getByRole("button", { name: "Upload" });
-    await user.click(importButton);
+    await user.click(screen.getByLabelText("Delete Analytics Pack"));
 
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("delete_plugin", { pluginSlug: "analytics-pack" });
+    });
+    expect(toast.success).toHaveBeenCalledWith(
+      'Deleted plugin "Analytics Pack"',
+      expect.anything(),
+    );
+  });
+
+  it("shows source URL when available", async () => {
+    setupMocks();
+    render(<ImportedSkillsTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("https://github.com/test-org/skills")).toBeInTheDocument();
+    });
+  });
+
+  it("shows source_type when no source URL", async () => {
+    setupMocks();
+    render(<ImportedSkillsTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("local")).toBeInTheDocument();
+    });
+  });
+
+  it("does not call import when file dialog is cancelled", async () => {
+    const user = userEvent.setup();
+    setupMocks([samplePlugins[0]]);
+    (mockOpen as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    render(<ImportedSkillsTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No plugins")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Upload" }));
     await new Promise((r) => setTimeout(r, 50));
     expect(mockInvoke).not.toHaveBeenCalledWith("import_skill_from_file", expect.anything());
   });

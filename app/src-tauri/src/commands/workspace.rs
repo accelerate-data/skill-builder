@@ -758,4 +758,53 @@ mod tests {
         // Should create marketplace.json even with no skills
         assert!(root.join(".claude-plugin").join("marketplace.json").is_file());
     }
+
+    #[test]
+    fn test_migrate_marketplace_mixed_flat_and_nested() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Legacy flat: root/my-skill/SKILL.md
+        let flat = root.join("my-skill");
+        fs::create_dir_all(&flat).unwrap();
+        fs::write(flat.join("SKILL.md"), "# flat").unwrap();
+
+        // Old nested: root/analytics/report/SKILL.md
+        let nested = root.join("analytics").join("report");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("SKILL.md"), "# nested").unwrap();
+
+        let _ = crate::git::ensure_repo(root);
+        migrate_to_marketplace_layout(root.to_str().unwrap());
+
+        // Flat skill should be under default plugin (directly, no inner skills/ nesting)
+        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+        assert!(root.join(default_slug).join("my-skill").join("SKILL.md").is_file());
+
+        // Nested skill should be under its plugin
+        assert!(root.join("analytics").join("skills").join("report").join("SKILL.md").is_file());
+
+        // Both should be discoverable
+        let locations = crate::skill_paths::enumerate_skill_locations(root).unwrap();
+        assert_eq!(locations.len(), 2);
+    }
+
+    #[test]
+    fn test_migrate_marketplace_cleans_empty_old_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Old nested: root/analytics/report/SKILL.md — analytics/ should become empty after move
+        let old = root.join("analytics").join("report");
+        fs::create_dir_all(&old).unwrap();
+        fs::write(old.join("SKILL.md"), "# report").unwrap();
+
+        let _ = crate::git::ensure_repo(root);
+        migrate_to_marketplace_layout(root.to_str().unwrap());
+
+        // The old "analytics/report" directory should not exist (moved to analytics/skills/report)
+        assert!(!old.exists(), "old nested skill dir should be moved");
+        // analytics/ itself still exists because it's the plugin dir now (contains skills/)
+        assert!(root.join("analytics").join("skills").join("report").is_dir());
+    }
 }

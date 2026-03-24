@@ -340,4 +340,45 @@ mod tests {
             .unwrap()
             .is_none());
     }
+
+    #[test]
+    fn import_skill_from_file_rejects_when_skill_exists_in_default_plugin() {
+        let conn = crate::db::create_test_db_for_tests();
+        let dir = tempdir().unwrap();
+        let skills_path = dir.path().join("skills");
+        std::fs::create_dir_all(&skills_path).unwrap();
+        crate::git::ensure_repo(&skills_path).unwrap();
+
+        // Pre-create a skill in the default plugin
+        crate::db::ensure_default_plugin(&conn).unwrap();
+        crate::db::upsert_skill(&conn, "existing-skill", "skill-builder", "domain").unwrap();
+
+        let zip_path = dir.path().join("skill.zip");
+        write_skill_zip(
+            &zip_path,
+            "---\nname: existing-skill\ndescription: Duplicate\n---\n# Body\n",
+        );
+
+        let err = import_skill_from_file_inner(
+            &conn,
+            zip_path.to_str().unwrap(),
+            "existing-skill",
+            "Duplicate",
+            None,
+            None,
+            None,
+            None,
+            None,
+            skills_path.to_str().unwrap(),
+            "",
+            None,
+        )
+        .unwrap_err();
+
+        assert!(
+            err.contains("already exists"),
+            "expected 'already exists' error, got: {}",
+            err
+        );
+    }
 }
