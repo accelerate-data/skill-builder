@@ -1,30 +1,45 @@
 ---
 name: skill-evals-generator
-description: Generates a single eval (test case) for a Claude skill. Use when the Skill Builder Evals tab requests a new auto-generated eval for a given skill. Reads the skill's SKILL.md definition and existing evals to produce one realistic, non-duplicate user scenario with a prompt and 2–4 verifiable expectations, then writes it as JSON to evals/pending-eval.json.
+description: Generates a single eval (test case) for a Claude skill. Use when the Skill Builder app requests a new eval for a given skill. Takes a scenario intent and produces one realistic eval with a prompt and 2–4 verifiable expectations, then writes it as JSON to the path specified in the prompt.
 ---
 
 # Skill Evals Generator
 
-You generate exactly **one eval** at a time for a Claude skill.
+You are a focused delegate of the **Test Cases** workflow from `skill-creator`. Your job is to
+generate exactly **one eval** for a given scenario intent, following the same quality standards
+that `skill-creator` applies when writing test cases for a new skill.
 
-## What you receive
+## Quality Standard
 
-The app will give you a prompt containing:
+Follow the **Test Cases** section of `skill-creator/SKILL.md` (path: resolve via
+`references/pluggable.md` → `SKILL_CREATOR_ROOT/SKILL.md`). The key principles:
 
-- The skill name
-- The skill's `SKILL.md` content (or a note that it doesn't exist yet)
-- A list of existing eval names (to avoid duplicating)
+- Write realistic user prompts — the kind of thing a real user would actually say, not a
+  description of what to test
+- Write 2–4 atomic, objectively verifiable expectations — each a single statement that can
+  be graded pass/fail without subjective judgment
+- Assign a short human-readable `eval_name` and a deterministic `slug` derived from it
+- Do not write vague assertions like "the response is helpful" — make them specific and checkable
+
+## What You Receive
+
+The app prompt contains:
+
+- A **scenario intent** describing what to evaluate (e.g. "dbt snapshot SCD type 2")
+- The skill's `SKILL.md` definition (or a note that it doesn't exist yet)
+- A list of existing eval names (to avoid duplicating scenarios already covered)
 - The absolute path where you must write the output file
 
-## What you produce
+## Output
 
-Write a single JSON file to the path specified in the prompt (`evals/pending-eval.json` inside the skill directory). The file must match this exact schema:
+Write a single JSON file to the path specified in the prompt. Schema (see `SCHEMAS_ROOT/schemas.md`
+via `references/pluggable.md`):
 
 ```json
 {
-  "eval_name": "<short descriptive name, 3-6 words>",
+  "eval_name": "<short descriptive name, 3–6 words>",
   "slug": "<kebab-case of eval_name>",
-  "prompt": "<realistic user task prompt, 1-3 sentences>",
+  "prompt": "<realistic user task prompt, 1–3 sentences>",
   "expectations": [
     "<atomic verifiable assertion 1>",
     "<atomic verifiable assertion 2>"
@@ -32,16 +47,4 @@ Write a single JSON file to the path specified in the prompt (`evals/pending-eva
 }
 ```
 
-## Rules
-
-1. **One eval only** — write exactly one JSON object, nothing else
-2. **Novel scenario** — the scenario must not duplicate any existing eval listed in the prompt
-3. **Realistic prompt** — write the prompt as a concrete user request, not a description of what to test
-4. **2–4 expectations** — each must be a single, objectively verifiable statement about the output
-   - Good: "The response includes the customer's name from the input"
-   - Bad: "The response is helpful and accurate" (not objectively verifiable)
-5. **Write only the file** — no explanation, no commentary, no other output
-
-## Output
-
-Use the `Write` tool to write the JSON directly to the path provided in the prompt.
+Write **only** the JSON file — no explanation, no commentary, no other output.
