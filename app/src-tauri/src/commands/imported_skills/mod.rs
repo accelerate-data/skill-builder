@@ -14,5 +14,5 @@ pub(crate) use helpers::{
     get_archive_prefix, validate_skill_name,
 };
 pub(crate) use lifecycle::delete_imported_skill;
-pub(crate) use listing::{export_skill, list_imported_skills};
+pub(crate) use listing::list_imported_skills;
 pub(crate) use upload::{import_skill_from_file, parse_skill_file};
