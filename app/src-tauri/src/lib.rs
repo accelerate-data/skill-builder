@@ -383,6 +383,12 @@ pub fn run() {
             commands::workflow::evaluation::read_latest_benchmark,
             commands::imported_skills::upload::parse_skill_file,
             commands::imported_skills::upload::import_skill_from_file,
+            commands::documents::list_documents,
+            commands::documents::add_document_file,
+            commands::documents::add_document_url,
+            commands::documents::add_document_folder,
+            commands::documents::update_document,
+            commands::documents::delete_document,
         ])
         .on_window_event(|window, event| {
             use tauri::{Emitter, Manager};
