@@ -202,6 +202,13 @@ pub fn create_plugin_from_skills(
 ) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
+
+    // Reject if a plugin with this slug already exists
+    let plugin_slug = crate::db::slugify_plugin_name(&plugin_name);
+    if crate::db::get_plugin_id_by_slug(&conn, &plugin_slug)?.is_some() {
+        return Err(format!("A plugin named '{}' already exists", plugin_name));
+    }
+
     let (_plugin_id, plugin_slug) =
         crate::db::create_plugin(&conn, &plugin_name, "local", None, None)?;
 

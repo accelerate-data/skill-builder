@@ -788,6 +788,14 @@ pub async fn import_marketplace_plugin_to_library(
     let skills_root = Path::new(&skills_path);
     let plugin_slug = crate::db::slugify_plugin_name(&plugin_name);
 
+    // Reject if a plugin with this slug already exists
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        if crate::db::get_plugin_id_by_slug(&conn, &plugin_slug)?.is_some() {
+            return Err(format!("A plugin named '{}' already exists", plugin_name));
+        }
+    }
+
     // --- Step 1: Download the entire plugin directory to disk ---
     let dest_plugin_dir = skills_root.join(&plugin_slug);
     download_plugin_directory(

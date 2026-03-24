@@ -120,39 +120,26 @@ fn import_skill_from_file_inner(
     let (skill_md_path, _) = find_skill_md(&mut archive)?;
     let prefix = get_archive_prefix(&skill_md_path);
 
-    // Conflict check
+    // Conflict check: reject upload if a skill with this name already exists
+    // in the default plugin (skills folder)
+    let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
     let existing_source: Option<String> = conn
         .query_row(
             "SELECT s.skill_source
              FROM skills s
              JOIN plugins p ON p.id = s.plugin_id
-             WHERE s.name = ?1 AND p.slug = 'no-plugin'",
-            rusqlite::params![&name],
+             WHERE s.name = ?1 AND p.slug = ?2",
+            rusqlite::params![&name, default_slug],
             |row| row.get::<_, String>(0),
         )
         .optional()
         .map_err(|e| e.to_string())?;
 
-    match existing_source.as_deref() {
-        Some("skill-builder") | Some("marketplace") => {
-            return Err(format!("conflict_no_overwrite:{}", name));
-        }
-        Some("imported") if !force_overwrite => {
-            return Err(format!("conflict_overwrite_required:{}", name));
-        }
-        Some("imported") => {
-            // force_overwrite=true — clean up existing
-            let dest = Path::new(skills_path).join(name);
-            if dest.exists() {
-                std::fs::remove_dir_all(&dest).map_err(|e| {
-                    log::error!("[import_skill_from_file] failed to remove dir: {}", e);
-                    e.to_string()
-                })?;
-            }
-            crate::db::delete_imported_skill_by_name(conn, name)?;
-            crate::db::delete_skill(conn, name)?;
-        }
-        _ => {} // Not found — proceed normally
+    if existing_source.is_some() {
+        return Err(format!(
+            "A skill named '{}' already exists in the default plugin. Rename or delete it first.",
+            name
+        ));
     }
 
     // Extract all files to {skills_path}/{name}/
