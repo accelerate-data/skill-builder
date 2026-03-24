@@ -28,11 +28,6 @@ pub fn nested_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> Pat
     }
 }
 
-/// Plugin directory: `root/{slug}`
-pub fn plugin_dir(root: &Path, plugin_slug: &str) -> PathBuf {
-    root.join(plugin_slug)
-}
-
 /// Legacy flat skill directory: `root/{name}` (pre-plugin era)
 pub fn legacy_skill_dir(root: &Path, skill_name: &str) -> PathBuf {
     root.join(skill_name)
@@ -245,15 +240,6 @@ mod tests {
         assert_eq!(
             nested_skill_dir(root, "analytics", "weekly-report"),
             PathBuf::from("/skills/analytics/skills/weekly-report")
-        );
-    }
-
-    #[test]
-    fn plugin_dir_returns_correct_path() {
-        let root = Path::new("/skills");
-        assert_eq!(
-            plugin_dir(root, "analytics"),
-            PathBuf::from("/skills/analytics")
         );
     }
 

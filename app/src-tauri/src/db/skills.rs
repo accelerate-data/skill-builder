@@ -211,19 +211,6 @@ pub fn upsert_skill_in_plugin(
     Ok(id)
 }
 
-/// Like `upsert_skill`, but ALWAYS updates `skill_source` on conflict.
-/// Use this when the caller explicitly wants to set the source (e.g. `resolve_discovery`).
-/// `upsert_skill` intentionally skips `skill_source` on conflict to prevent
-/// `save_workflow_run` from overwriting a marketplace skill's source.
-pub fn upsert_skill_with_source(
-    conn: &Connection,
-    name: &str,
-    skill_source: &str,
-    purpose: &str,
-) -> Result<i64, String> {
-    upsert_skill_with_source_in_plugin(conn, name, skill_source, purpose, DEFAULT_PLUGIN_SLUG)
-}
-
 pub fn upsert_skill_with_source_in_plugin(
     conn: &Connection,
     name: &str,
@@ -459,21 +446,6 @@ pub fn save_workflow_run(
         rusqlite::params![skill_name, current_step, status, purpose, skill_id],
     )
     .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-/// Insert a marketplace skill into the skills master table only. No workflow_runs row.
-/// Replaces `save_marketplace_skill_run` — marketplace skills no longer get workflow_runs rows.
-pub fn save_marketplace_skill(
-    conn: &Connection,
-    skill_name: &str,
-    purpose: &str,
-) -> Result<(), String> {
-    log::info!("save_marketplace_skill: name={}", skill_name);
-    upsert_skill_in_plugin(conn, skill_name, "marketplace", purpose, DEFAULT_PLUGIN_SLUG).map_err(|e| {
-        log::error!("save_marketplace_skill: failed for '{}': {}", skill_name, e);
-        e
-    })?;
     Ok(())
 }
 

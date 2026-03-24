@@ -8,7 +8,6 @@ use super::output_format::{
     answer_evaluator_output_format, materialize_answer_evaluation_output_value,
     materialize_workflow_step_output_value,
 };
-use super::packaging::create_skill_zip;
 use super::guards::{
     make_agent_id, parse_decisions_guard, parse_scope_recommendation,
     validate_decisions_exist_inner, workflow_step_runtime_label,
@@ -936,83 +935,6 @@ fn test_workflow_step_runtime_label_uses_step_name_slug() {
     assert_eq!(workflow_step_runtime_label(&step), "confirm-decisions");
 }
 
-#[test]
-fn test_package_skill_creates_zip() {
-    let tmp = tempfile::tempdir().unwrap();
-    // source_dir now has SKILL.md and references/ directly (no skill/ subdir)
-    let source_dir = tmp.path().join("my-skill");
-    std::fs::create_dir_all(source_dir.join("references")).unwrap();
-
-    std::fs::write(source_dir.join("SKILL.md"), "# My Skill").unwrap();
-    std::fs::write(
-        source_dir.join("references").join("deep-dive.md"),
-        "# Deep Dive",
-    )
-    .unwrap();
-
-    // Extra files that should NOT be included in the zip
-    std::fs::create_dir_all(source_dir.join("context")).unwrap();
-    std::fs::write(source_dir.join("context").join("decisions.json"), "{}").unwrap();
-    std::fs::write(source_dir.join("workflow.md"), "# Workflow").unwrap();
-
-    let output_path = source_dir.join("my-skill.skill");
-    let result = create_skill_zip(&source_dir, &output_path).unwrap();
-
-    assert!(Path::new(&result.file_path).exists());
-    assert!(result.size_bytes > 0);
-
-    let file = std::fs::File::open(&result.file_path).unwrap();
-    let mut archive = zip::ZipArchive::new(file).unwrap();
-
-    let names: Vec<String> = (0..archive.len())
-        .map(|i| archive.by_index(i).unwrap().name().to_string())
-        .collect();
-
-    assert!(names.contains(&"SKILL.md".to_string()));
-    assert!(names.contains(&"references/deep-dive.md".to_string()));
-    assert!(!names.iter().any(|n| n.starts_with("context/")));
-    assert!(!names.contains(&"workflow.md".to_string()));
-}
-
-#[test]
-fn test_package_skill_nested_references() {
-    let tmp = tempfile::tempdir().unwrap();
-    // source_dir has SKILL.md and references/ directly
-    let source_dir = tmp.path().join("nested-skill");
-    std::fs::create_dir_all(source_dir.join("references").join("sub")).unwrap();
-
-    std::fs::write(source_dir.join("SKILL.md"), "# Nested").unwrap();
-    std::fs::write(source_dir.join("references").join("top.md"), "top level").unwrap();
-    std::fs::write(
-        source_dir.join("references").join("sub").join("nested.md"),
-        "nested ref",
-    )
-    .unwrap();
-
-    let output_path = source_dir.join("nested-skill.skill");
-    let result = create_skill_zip(&source_dir, &output_path).unwrap();
-
-    let file = std::fs::File::open(&result.file_path).unwrap();
-    let mut archive = zip::ZipArchive::new(file).unwrap();
-
-    let names: Vec<String> = (0..archive.len())
-        .map(|i| archive.by_index(i).unwrap().name().to_string())
-        .collect();
-
-    assert!(names.contains(&"SKILL.md".to_string()));
-    assert!(names.contains(&"references/top.md".to_string()));
-    assert!(names.contains(&"references/sub/nested.md".to_string()));
-}
-
-#[test]
-fn test_package_skill_missing_dir() {
-    let result = create_skill_zip(
-        Path::new("/nonexistent/path"),
-        Path::new("/nonexistent/output.skill"),
-    );
-    assert!(result.is_err());
-}
-
 // Tests for copy_directory_to removed — function no longer exists
 // (agents tree is no longer deployed to workspace root)
 
@@ -1321,40 +1243,6 @@ fn test_copy_managed_plugins_replaces_managed_and_preserves_unmanaged() {
         std::fs::read_to_string(claude_plugins_dir.join("user-plugin").join("README.md"))
             .unwrap();
     assert_eq!(preserved, "keep me");
-}
-
-// --- Task 5: create_skill_zip excludes context/ ---
-
-#[test]
-fn test_create_skill_zip_excludes_context_directory() {
-    let tmp = tempfile::tempdir().unwrap();
-    let source_dir = tmp.path().join("my-skill");
-    std::fs::create_dir_all(source_dir.join("references")).unwrap();
-    std::fs::create_dir_all(source_dir.join("context")).unwrap();
-
-    std::fs::write(source_dir.join("SKILL.md"), "# My Skill").unwrap();
-    std::fs::write(source_dir.join("references").join("ref.md"), "# Ref").unwrap();
-    // These context files should be EXCLUDED from the zip
-    std::fs::write(source_dir.join("context").join("clarifications.json"), "{}").unwrap();
-    std::fs::write(source_dir.join("context").join("decisions.json"), "{}").unwrap();
-
-    let output_path = source_dir.join("my-skill.skill");
-    let result = create_skill_zip(&source_dir, &output_path).unwrap();
-
-    let file = std::fs::File::open(&result.file_path).unwrap();
-    let mut archive = zip::ZipArchive::new(file).unwrap();
-
-    let names: Vec<String> = (0..archive.len())
-        .map(|i| archive.by_index(i).unwrap().name().to_string())
-        .collect();
-
-    // Should include SKILL.md and references
-    assert!(names.contains(&"SKILL.md".to_string()));
-    assert!(names.contains(&"references/ref.md".to_string()));
-    // Should NOT include any context files
-    assert!(!names.iter().any(|n| n.starts_with("context/")));
-    assert!(!names.iter().any(|n| n.contains("clarifications")));
-    assert!(!names.iter().any(|n| n.contains("decisions")));
 }
 
 // --- VD-403: validate_decisions_exist_inner tests ---

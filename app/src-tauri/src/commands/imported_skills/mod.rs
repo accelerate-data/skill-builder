@@ -10,7 +10,7 @@ pub mod upload;
 pub(crate) use bundled::{purge_stale_bundled_skills, seed_bundled_skills};
 pub(crate) use frontmatter::{parse_frontmatter, parse_frontmatter_full, Frontmatter};
 pub(crate) use helpers::{
-    add_dir_to_zip, copy_dir_recursive, extract_archive, find_skill_md, generate_skill_id,
+    copy_dir_recursive, extract_archive, find_skill_md, generate_skill_id,
     get_archive_prefix, validate_skill_name,
 };
 pub(crate) use lifecycle::delete_imported_skill;

@@ -22,46 +22,6 @@ fn create_step_output(workspace: &Path, name: &str, step_id: u32) {
     }
 }
 
-#[test]
-fn test_preview_reconcile_reports_without_mutating_db() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().to_str().unwrap();
-    let skills_path = skills_tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-
-    crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
-    create_skill_dir(tmp.path(), "my-skill", "sales");
-    create_step_output(skills_tmp.path(), "my-skill", 0);
-
-    let preview = preview_reconcile_on_startup(&conn, workspace, skills_path).unwrap();
-    assert_eq!(preview.notifications.len(), 1);
-    assert!(preview.notifications[0].contains("reset from step 4 to step 1"));
-
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
-        .unwrap()
-        .unwrap();
-    assert_eq!(run.current_step, 3);
-}
-
-#[test]
-fn test_preview_reconcile_detects_discovered_skill() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().to_str().unwrap();
-    let skills_path = skills_tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-
-    create_step_output(skills_tmp.path(), "complete-skill", 0);
-    create_step_output(skills_tmp.path(), "complete-skill", 2);
-    create_step_output(skills_tmp.path(), "complete-skill", 3);
-
-    let preview = preview_reconcile_on_startup(&conn, workspace, skills_path).unwrap();
-    assert_eq!(preview.discovered_skills.len(), 1);
-    assert_eq!(preview.discovered_skills[0].name, "complete-skill");
-    assert_eq!(preview.discovered_skills[0].scenario, "discovered");
-}
-
 // --- Scenario 10: Master row exists but no workflow_runs row ---
 
 #[test]
@@ -189,7 +149,7 @@ fn test_marketplace_skill_preserved_when_skill_md_exists() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_marketplace_skill(&conn, "my-skill", "platform").unwrap();
+    crate::db::upsert_skill_in_plugin(&conn, "my-skill", "marketplace", "platform", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
     // Create SKILL.md in skills_path (simulates installed marketplace skill)
     let skill_dir = skills_tmp.path().join("my-skill");
@@ -649,7 +609,7 @@ fn test_reconcile_mixed_scenarios() {
     create_step_output(skills_tmp.path(), "normal", 0);
 
     // Marketplace skill with SKILL.md
-    crate::db::save_marketplace_skill(&conn, "mkt-skill", "platform").unwrap();
+    crate::db::upsert_skill_in_plugin(&conn, "mkt-skill", "marketplace", "platform", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
     let mkt_dir = skills_tmp.path().join("mkt-skill");
     std::fs::create_dir_all(&mkt_dir).unwrap();
     std::fs::write(mkt_dir.join("SKILL.md"), "# Marketplace").unwrap();
