@@ -33,8 +33,29 @@ pub fn reconcile_on_startup(
     // Phase 1: Plugin recon
     // ════════════════════════════════════════════════════════════════════════
 
-    // 1a. Ensure default "skills" plugin exists in DB
+    // 1a. Ensure default "skills" plugin exists in DB and on disk
     crate::db::ensure_default_plugin(conn)?;
+    if skills_dir.exists() {
+        let default_skills_dir = skills_dir.join(DEFAULT_PLUGIN_SLUG).join("skills");
+        if let Err(e) = std::fs::create_dir_all(&default_skills_dir) {
+            log::warn!("[reconcile] failed to create default plugin dir: {}", e);
+        }
+        // Ensure plugin.json exists for the default plugin
+        let pj_path = skills_dir.join(DEFAULT_PLUGIN_SLUG).join(".claude-plugin").join("plugin.json");
+        if !pj_path.is_file() {
+            if let Err(e) = crate::marketplace_manifest::write_plugin_json(
+                skills_dir, DEFAULT_PLUGIN_SLUG, crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME, None, None,
+            ) {
+                log::warn!("[reconcile] failed to write default plugin.json: {}", e);
+            }
+        }
+        // Ensure the default plugin is listed in marketplace.json
+        if let Err(e) = crate::marketplace_manifest::ensure_plugin_in_marketplace(
+            skills_dir, DEFAULT_PLUGIN_SLUG, crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME,
+        ) {
+            log::warn!("[reconcile] failed to ensure default plugin in marketplace.json: {}", e);
+        }
+    }
 
     // 1b. DB → disk cleanup: delete plugins (and their skills) whose folders are gone
     {
