@@ -35,7 +35,6 @@ Cool? Cool.
 Use these scripts when the task becomes repetitive or needs deterministic output:
 
 - `scripts/quick_validate.py`: Validate a skill directory and return a JSON result.
-- `scripts/package_skill.py`: Package a skill directory into a `.skill` archive.
 - `scripts/run_eval.py`: Run trigger-eval queries against a skill description.
 - `scripts/improve_description.py`: Propose a better skill description from eval results.
 - `scripts/run_loop.py`: Run the eval/improve loop and optionally write a live HTML report.
@@ -447,13 +446,7 @@ Take `best_description` from the JSON output and update the skill's SKILL.md fro
 
 ### Package and Present (only if `present_files` tool is available)
 
-Check whether you have access to the `present_files` tool. If you don't, skip this step. If you do, package the skill and present the .skill file to the user:
-
-```bash
-uv run scripts/package_skill.py <path/to/skill-folder>
-```
-
-After packaging, direct the user to the resulting `.skill` file path so they can install it.
+Packaging has been removed from the in-app workflow. Skills are exported as plugins through the Skill Builder desktop app.
 
 ---
 
@@ -473,13 +466,10 @@ In Claude.ai, the core workflow is the same (draft → test → review → impro
 
 **Blind comparison**: Requires subagents. Skip it.
 
-**Packaging**: The `package_skill.py` script works anywhere with Python and a filesystem. On Claude.ai, you can run it and the user can download the resulting `.skill` file.
-
 **Updating an existing skill**: The user might be asking you to update an existing skill, not create a new one. In this case:
 
 - **Preserve the original name.** Note the skill's directory name and `name` frontmatter field -- use them unchanged. E.g., if the installed skill is `research-helper`, output `research-helper.skill` (not `research-helper-v2`).
-- **Copy to a writeable location before editing.** The installed skill path may be read-only. Copy to `/tmp/skill-name/`, edit there, and package from the copy.
-- **If packaging manually, stage in `/tmp/` first**, then copy to the output directory -- direct writes may fail due to permissions.
+- **Copy to a writeable location before editing.** The installed skill path may be read-only. Copy to `/tmp/skill-name/`, edit there, and edit from the copy.
 
 ---
 
@@ -491,7 +481,6 @@ If you're in Cowork, the main things to know are:
 - You don't have a browser or display, so when generating the eval viewer, use `--static <output_path>` to write a standalone HTML file instead of starting a server. Then proffer a link that the user can click to open the HTML in their browser.
 - For whatever reason, the Cowork setup seems to disincline Claude from generating the eval viewer after running the tests, so just to reiterate: whether you're in Cowork or in Claude Code, after running tests, you should always generate the eval viewer for the human to look at examples before revising the skill yourself and trying to make corrections, using `generate_review.py` (not writing your own boutique html code). Sorry in advance but I'm gonna go all caps here: GENERATE THE EVAL VIEWER *BEFORE* evaluating inputs yourself. You want to get them in front of the human ASAP!
 - Feedback works differently: since there's no running server, the viewer's "Submit All Reviews" button will download `feedback.json` as a file. You can then read it from there (you may have to request access first).
-- Packaging works — `package_skill.py` just needs Python and a filesystem.
 - Description optimization (`run_loop.py` / `run_eval.py`) should work in Cowork just fine since it uses `claude -p` via subprocess, not a browser, but please save it until you've fully finished making the skill and the user agrees it's in good shape.
 - **Updating an existing skill**: The user might be asking you to update an existing skill, not create a new one. Follow the update guidance in the claude.ai section above.
 

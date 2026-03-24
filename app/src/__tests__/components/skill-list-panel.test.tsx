@@ -27,9 +27,7 @@ vi.mock("@/components/skill-dialog", () => ({
 vi.mock("@/lib/tauri", () => ({
   listSkills: vi.fn().mockResolvedValue([]),
   getExternallyLockedSkills: vi.fn().mockResolvedValue([]),
-  exportSkill: vi.fn(),
-  packageSkill: vi.fn(),
-  saveExportTo: vi.fn(),
+  listPlugins: vi.fn().mockResolvedValue([]),
   resetWorkflowStep: vi.fn(),
   createPluginFromSkills: vi.fn(),
   moveSkillToPlugin: vi.fn(),
@@ -261,7 +259,6 @@ describe("SkillListPanel", () => {
 
   it("creates a plugin from a builder skill in the main sidebar", async () => {
     const user = userEvent.setup();
-    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("Analytics Pack");
     useSkillStore.setState({ skills: [recentBuilder] });
 
     render(<SkillListPanel />);
@@ -269,14 +266,12 @@ describe("SkillListPanel", () => {
     await openSkillMenu("recent-skill", user);
     await user.click(screen.getByRole("menuitem", { name: "Create plugin" }));
 
-    expect(promptSpy).toHaveBeenCalled();
-    expect(createPluginFromSkills).toHaveBeenCalledWith("Analytics Pack", ["recent-skill"]);
-    promptSpy.mockRestore();
+    // The Create Plugin dialog should open
+    expect(screen.getByText("Create Plugin")).toBeInTheDocument();
   });
 
   it("moves a builder skill to another existing plugin from the main sidebar", async () => {
     const user = userEvent.setup();
-    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("analytics-pack");
     useSkillStore.setState({
       skills: [
         recentBuilder,
@@ -297,9 +292,8 @@ describe("SkillListPanel", () => {
     await openSkillMenu("recent-skill", user);
     await user.click(screen.getByRole("menuitem", { name: "Move to plugin" }));
 
-    expect(promptSpy).toHaveBeenCalled();
-    expect(moveSkillToPlugin).toHaveBeenCalledWith("recent-skill", "analytics-pack");
-    promptSpy.mockRestore();
+    // The Move to Plugin dialog should open
+    expect(screen.getByText("Move to Plugin")).toBeInTheDocument();
   });
 
   it("removes a builder skill from its plugin from the main sidebar", async () => {
@@ -646,7 +640,7 @@ describe("SkillListPanel", () => {
     expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveClass("text-destructive");
   });
 
@@ -664,7 +658,7 @@ describe("SkillListPanel", () => {
     expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
   });
@@ -686,7 +680,7 @@ describe("SkillListPanel", () => {
     expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
   });

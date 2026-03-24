@@ -177,11 +177,6 @@ export interface StartupDeps {
   checks: DepStatus[]
 }
 
-export interface PackageResult {
-  file_path: string
-  size_bytes: number
-}
-
 export interface OrphanSkill {
   skill_name: string
   purpose: string
