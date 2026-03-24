@@ -18,8 +18,17 @@ pub(crate) fn read_workspace_path(db: &tauri::State<'_, Db>) -> Option<String> {
     crate::db::read_settings(&conn).ok()?.workspace_path
 }
 
-pub(crate) fn workspace_context_dir(workspace_path: &str, skill_name: &str) -> std::path::PathBuf {
-    Path::new(workspace_path).join(skill_name).join("context")
+pub(crate) fn lookup_plugin_slug(conn: &rusqlite::Connection, skill_name: &str) -> String {
+    crate::db::get_skill_master_any_plugin(conn, skill_name)
+        .ok()
+        .flatten()
+        .map(|m| m.plugin_slug)
+        .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string())
+}
+
+pub(crate) fn workspace_context_dir(workspace_path: &str, plugin_slug: &str, skill_name: &str) -> std::path::PathBuf {
+    crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
+        .join("context")
 }
 
 pub(crate) fn workflow_step_log_name(step_id: i32) -> String {
@@ -305,7 +314,9 @@ pub fn verify_step_output(
     let target_dir = if step_id == 3 {
         Path::new(&skills_path).join(&skill_name)
     } else {
-        Path::new(&workspace_path).join(&skill_name)
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let plugin_slug = lookup_plugin_slug(&conn, &skill_name);
+        crate::skill_paths::workspace_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name)
     };
     let has_output = if step_id == 3 {
         target_dir.join("SKILL.md").exists()
@@ -325,7 +336,11 @@ pub fn get_disabled_steps(
     log::info!("[get_disabled_steps] skill={}", skill_name);
     let workspace_path =
         read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
-    let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        lookup_plugin_slug(&conn, &skill_name)
+    };
+    let context_dir = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name);
     let clarifications_path = context_dir.join("clarifications.json");
     let decisions_path = context_dir.join("decisions.json");
 
@@ -342,9 +357,14 @@ pub fn get_disabled_steps(
 pub fn get_clarifications_content(
     skill_name: String,
     workspace_path: String,
+    db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
     validate_skill_name(&skill_name)?;
-    let path = workspace_context_dir(&workspace_path, &skill_name).join("clarifications.json");
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        lookup_plugin_slug(&conn, &skill_name)
+    };
+    let path = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join("clarifications.json");
     std::fs::read_to_string(&path).map_err(|e| {
         format!(
             "Failed to read clarifications from '{}': {}",
@@ -359,13 +379,18 @@ pub fn save_clarifications_content(
     skill_name: String,
     workspace_path: String,
     content: String,
+    db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     validate_skill_name(&skill_name)?;
     let parsed: serde_json::Value = serde_json::from_str(&content)
         .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
     validate_clarifications_json(&parsed)
         .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
-    let path = workspace_context_dir(&workspace_path, &skill_name).join("clarifications.json");
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        lookup_plugin_slug(&conn, &skill_name)
+    };
+    let path = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join("clarifications.json");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -389,9 +414,17 @@ pub fn save_clarifications_content(
 }
 
 #[tauri::command]
-pub fn get_decisions_content(skill_name: String, workspace_path: String) -> Result<String, String> {
+pub fn get_decisions_content(
+    skill_name: String,
+    workspace_path: String,
+    db: tauri::State<'_, Db>,
+) -> Result<String, String> {
     validate_skill_name(&skill_name)?;
-    let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.json");
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        lookup_plugin_slug(&conn, &skill_name)
+    };
+    let path = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join("decisions.json");
     std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read decisions from '{}': {}", path.display(), e))
 }
@@ -401,12 +434,17 @@ pub fn save_decisions_content(
     skill_name: String,
     workspace_path: String,
     content: String,
+    db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     validate_skill_name(&skill_name)?;
     if content.trim().is_empty() {
         return Err("decisions.json content cannot be empty".to_string());
     }
-    let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.json");
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        lookup_plugin_slug(&conn, &skill_name)
+    };
+    let path = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join("decisions.json");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -425,12 +463,17 @@ pub fn get_context_file_content(
     skill_name: String,
     workspace_path: String,
     file_name: String,
+    db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
     validate_skill_name(&skill_name)?;
     if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") {
         return Err("Invalid context file name".to_string());
     }
-    let path = workspace_context_dir(&workspace_path, &skill_name).join(file_name);
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        lookup_plugin_slug(&conn, &skill_name)
+    };
+    let path = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join(file_name);
     std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read context file '{}': {}", path.display(), e))
 }
