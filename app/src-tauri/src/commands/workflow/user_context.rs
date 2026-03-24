@@ -23,7 +23,9 @@ pub fn write_user_context_file(
     disable_model_invocation: Option<bool>,
     documents: &[crate::db::DocumentContent],
 ) {
-    let Some(ctx) = format_user_context(
+    // Pass empty documents to format_user_context — reference documents are
+    // appended as file paths below so the agent reads them from disk directly.
+    let ctx = format_user_context(
         Some(skill_name),
         tags,
         author,
@@ -37,10 +39,11 @@ pub fn write_user_context_file(
         argument_hint,
         user_invocable,
         disable_model_invocation,
-        documents,
-    ) else {
+        &[],
+    );
+    if ctx.is_none() && documents.is_empty() {
         return;
-    };
+    }
 
     let workspace_dir = crate::skill_paths::workspace_skill_dir(
         Path::new(workspace_path),
@@ -57,10 +60,19 @@ pub fn write_user_context_file(
         return;
     }
     let file_path = workspace_dir.join("user-context.md");
-    let content = format!(
-        "# User Context\n\n{}\n",
-        ctx.strip_prefix("## User Context\n\n").unwrap_or(&ctx)
-    );
+    let base = ctx
+        .as_deref()
+        .map(|c| c.strip_prefix("## User Context\n\n").unwrap_or(c))
+        .unwrap_or("");
+    let mut content = format!("# User Context\n\n{}\n", base);
+
+    // Append reference document paths — the agent reads each file from disk.
+    if !documents.is_empty() {
+        content.push_str("\n## Reference Documents\n\n");
+        for doc in documents {
+            content.push_str(&format!("- **{}**: `{}`\n", doc.name, doc.file_path));
+        }
+    }
 
     match std::fs::write(&file_path, &content) {
         Ok(()) => {
