@@ -250,7 +250,15 @@ pub fn materialize_workflow_step_output(
     );
     let workspace_path = super::evaluation::read_workspace_path(&db)
         .ok_or_else(|| "Workspace path not configured. Please set it in Settings.".to_string())?;
-    let skill_root = Path::new(&workspace_path).join(&skill_name);
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        super::evaluation::lookup_plugin_slug(&conn, &skill_name)
+    };
+    let skill_root = crate::skill_paths::workspace_skill_dir(
+        Path::new(&workspace_path),
+        &plugin_slug,
+        &skill_name,
+    );
     materialize_workflow_step_output_value(&skill_root, step_id, &structured_output).map_err(|e| {
         log::error!(
             "[materialize_workflow_step_output] skill={} step={} step_id={} failed: {}",
@@ -515,6 +523,7 @@ pub fn materialize_answer_evaluation_output(
     skill_name: String,
     workspace_path: String,
     structured_output: serde_json::Value,
+    db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
     log::info!(
         "[materialize_answer_evaluation_output] skill={}",
@@ -525,7 +534,15 @@ pub fn materialize_answer_evaluation_output(
         skill_name,
         structured_output
     );
-    let workspace_dir = Path::new(&workspace_path).join(&skill_name);
+    let plugin_slug = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        super::evaluation::lookup_plugin_slug(&conn, &skill_name)
+    };
+    let workspace_dir = crate::skill_paths::workspace_skill_dir(
+        Path::new(&workspace_path),
+        &plugin_slug,
+        &skill_name,
+    );
     materialize_answer_evaluation_output_value(&workspace_dir, &structured_output).map_err(|e| {
         log::error!(
             "[materialize_answer_evaluation_output] skill={} failed: {}",
