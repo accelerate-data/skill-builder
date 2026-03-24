@@ -379,6 +379,9 @@ export const listPlugins = () =>
 export const deletePlugin = (pluginSlug: string) =>
   invoke<void>("delete_plugin", { pluginSlug })
 
+export const setPluginUpgradeLock = (pluginSlug: string, locked: boolean) =>
+  invoke<void>("set_plugin_upgrade_lock", { pluginSlug, locked })
+
 export const createPluginFromSkills = (pluginName: string, skillKeys: string[]) =>
   invoke<string>("create_plugin_from_skills", { pluginName, skillKeys })
 

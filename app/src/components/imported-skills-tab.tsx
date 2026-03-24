@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "@/lib/toast"
-import { FolderInput, Package, FolderTree, Trash2 } from "lucide-react"
+import { FolderInput, Package, FolderTree, Trash2, Lock, LockOpen } from "lucide-react"
 import { Github } from "@/components/icons/github"
 import {
   Card,
@@ -16,7 +16,7 @@ import { usePluginStore } from "@/stores/plugin-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
 import { ImportSkillDialog } from "@/components/import-skill-dialog"
 import { CreatePluginDialog } from "@/components/create-plugin-dialog"
-import { deletePlugin, parseSkillFile } from "@/lib/tauri"
+import { deletePlugin, parseSkillFile, setPluginUpgradeLock } from "@/lib/tauri"
 import type { LibraryPlugin, SkillFileMeta } from "@/lib/types"
 
 export function ImportedSkillsTab() {
@@ -59,6 +59,23 @@ export function ImportedSkillsTab() {
       )
     }
   }, [])
+
+  const handleToggleLock = useCallback(async (plugin: LibraryPlugin) => {
+    const newLocked = !plugin.upgrade_locked
+    try {
+      await setPluginUpgradeLock(plugin.slug, newLocked)
+      await fetchPlugins()
+      toast.success(
+        newLocked
+          ? `Upgrades locked for "${plugin.display_name}"`
+          : `Upgrades unlocked for "${plugin.display_name}"`,
+      )
+    } catch (err) {
+      toast.error(
+        `Failed to ${newLocked ? "lock" : "unlock"} plugin: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }, [fetchPlugins])
 
   const handleDeletePlugin = useCallback(async (plugin: LibraryPlugin) => {
     const toastId = toast.loading(`Deleting plugin "${plugin.display_name}"...`)
@@ -131,6 +148,7 @@ export function ImportedSkillsTab() {
               <th className="pb-2 font-medium">Name</th>
               <th className="pb-2 font-medium">Version</th>
               <th className="pb-2 font-medium">Source</th>
+              <th className="pb-2 font-medium">Status</th>
               <th className="pb-2 font-medium w-8" />
             </tr>
           </thead>
@@ -144,18 +162,47 @@ export function ImportedSkillsTab() {
                 <td className="py-2.5 pr-4 text-muted-foreground font-mono text-xs">
                   {plugin.version ?? "\u2014"}
                 </td>
-                <td className="py-2.5 pr-4 text-xs text-muted-foreground truncate max-w-[300px]">
+                <td className="py-2.5 pr-4 text-xs text-muted-foreground truncate max-w-[200px]">
                   {plugin.source_url ?? plugin.source_type}
                 </td>
+                <td className="py-2.5 pr-4">
+                  {plugin.upgrade_locked ? (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-xs font-medium transition-colors"
+                      style={{ color: "var(--color-amber, #d97706)" }}
+                      title="Upgrades disabled — skill was edited locally. Click to unlock."
+                      onClick={() => handleToggleLock(plugin)}
+                    >
+                      <Lock className="size-3" />
+                      Upgrades locked
+                    </button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">\u2014</span>
+                  )}
+                </td>
                 <td className="py-2.5">
-                  <button
-                    type="button"
-                    className="text-muted-foreground hover:text-destructive transition-colors"
-                    aria-label={`Delete ${plugin.display_name}`}
-                    onClick={() => handleDeletePlugin(plugin)}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {plugin.upgrade_locked && (
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label={`Unlock upgrades for ${plugin.display_name}`}
+                        title="Unlock upgrades"
+                        onClick={() => handleToggleLock(plugin)}
+                      >
+                        <LockOpen className="size-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                      aria-label={`Delete ${plugin.display_name}`}
+                      onClick={() => handleDeletePlugin(plugin)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

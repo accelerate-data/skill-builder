@@ -67,6 +67,7 @@ const samplePlugins: LibraryPlugin[] = [
     source_type: "synthetic",
     source_url: null,
     is_default: true,
+    upgrade_locked: false,
   },
   {
     id: 2,
@@ -76,6 +77,7 @@ const samplePlugins: LibraryPlugin[] = [
     source_type: "marketplace",
     source_url: "https://github.com/test-org/skills",
     is_default: false,
+    upgrade_locked: false,
   },
   {
     id: 3,
@@ -85,6 +87,7 @@ const samplePlugins: LibraryPlugin[] = [
     source_type: "local",
     source_url: null,
     is_default: false,
+    upgrade_locked: false,
   },
 ];
 
@@ -240,6 +243,28 @@ describe("ImportedSkillsTab", () => {
 
     await waitFor(() => {
       expect(screen.getByText("local")).toBeInTheDocument();
+    });
+  });
+
+  it("shows upgrade-locked badge when plugin.upgrade_locked is true", async () => {
+    const lockedPlugins: LibraryPlugin[] = [
+      samplePlugins[0],
+      {
+        id: 2,
+        slug: "analytics-pack",
+        display_name: "Analytics Pack",
+        version: "1.0.0",
+        source_type: "marketplace",
+        source_url: "https://github.com/test-org/skills",
+        is_default: false,
+        upgrade_locked: true,
+      },
+    ];
+    setupMocks(lockedPlugins);
+    render(<ImportedSkillsTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Upgrades locked")).toBeInTheDocument();
     });
   });
 

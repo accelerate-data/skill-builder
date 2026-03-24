@@ -104,6 +104,8 @@ pub struct LibraryPlugin {
     #[serde(default)]
     pub source_url: Option<String>,
     pub is_default: bool,
+    #[serde(default)]
+    pub upgrade_locked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

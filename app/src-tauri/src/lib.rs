@@ -345,6 +345,7 @@ pub fn run() {
             commands::imported_skills::lifecycle::create_plugin_from_skills,
             commands::imported_skills::lifecycle::move_skill_to_plugin,
             commands::imported_skills::lifecycle::remove_skill_from_plugin,
+            commands::imported_skills::lifecycle::set_plugin_upgrade_lock,
             commands::feedback::create_github_issue,
             commands::github_import::url::parse_github_url,
             commands::github_import::commands::check_marketplace_url,

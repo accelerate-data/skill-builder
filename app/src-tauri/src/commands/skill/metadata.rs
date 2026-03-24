@@ -141,6 +141,11 @@ pub fn update_skill_metadata(
             e
         })?;
     }
+    // Lock the owning plugin against upgrades when a marketplace skill is edited.
+    // No-op for builder or non-marketplace plugins (SQL guard: source_type = 'marketplace').
+    if let Err(e) = crate::db::lock_plugin_for_skill(&conn, &skill_name) {
+        log::warn!("[update_skill_metadata] lock_plugin_for_skill failed (non-fatal): {}", e);
+    }
     Ok(())
 }
 

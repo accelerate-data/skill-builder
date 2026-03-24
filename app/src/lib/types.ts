@@ -356,6 +356,47 @@ export interface LibraryPlugin {
   source_type: string
   source_url: string | null
   is_default: boolean
+  upgrade_locked: boolean
+}
+
+/**
+ * The common shape required to edit skill metadata, shared by SkillSummary (builder)
+ * and ImportedSkill (marketplace/imported). Workflow-only fields (status, current_step)
+ * are null for marketplace/imported skills.
+ */
+export interface EditableSkill {
+  name: string
+  skill_source?: string | null
+  purpose: string | null
+  description?: string | null
+  tags: string[]
+  intake_json: string | null
+  version?: string | null
+  model?: string | null
+  argumentHint?: string | null
+  userInvocable?: boolean | null
+  disableModelInvocation?: boolean | null
+  status: string | null
+  current_step: string | null
+}
+
+/** Convert an ImportedSkill to the EditableSkill shape expected by SkillDialog. */
+export function toEditableSkill(skill: ImportedSkill): EditableSkill {
+  return {
+    name: skill.skill_name,
+    skill_source: skill.marketplace_source_url ? 'marketplace' : 'imported',
+    purpose: skill.purpose ?? null,
+    description: skill.description ?? null,
+    tags: [],
+    intake_json: null,
+    version: skill.version ?? null,
+    model: skill.model ?? null,
+    argumentHint: skill.argument_hint ?? null,
+    userInvocable: skill.user_invocable ?? null,
+    disableModelInvocation: skill.disable_model_invocation ?? null,
+    status: null,
+    current_step: null,
+  }
 }
 
 export interface GitHubRepoInfo {
