@@ -5,9 +5,11 @@ import {
   applyExpectationChange,
   applyNameChange,
   buildEvalGenPrompt,
+  buildRegenPrompt,
   iterationLabel,
   prepareForSave,
   removeExpectation,
+  suggestEvalPlaceholder,
   toSlug,
   truncatePrompt,
   validateTestCaseForm,
@@ -249,13 +251,13 @@ describe("EMPTY_TEST_CASE", () => {
 describe("buildEvalGenPrompt", () => {
   it("includes the skill name in the prompt", () => {
     const ctx = { skill_content: "# My Skill", existing_evals: [] };
-    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills");
+    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills", "test intent");
     expect(result).toContain("my-skill");
   });
 
   it("includes skill content in the prompt", () => {
     const ctx = { skill_content: "# Special Skill Content", existing_evals: [] };
-    const result = buildEvalGenPrompt(ctx, "test-skill", "/skills");
+    const result = buildEvalGenPrompt(ctx, "test-skill", "/skills", "test intent");
     expect(result).toContain("Special Skill Content");
   });
 
@@ -264,20 +266,99 @@ describe("buildEvalGenPrompt", () => {
       skill_content: "",
       existing_evals: [makeCase({ eval_name: "Happy path" }), makeCase({ eval_name: "Edge case" })],
     };
-    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills");
+    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills", "test intent");
     expect(result).toContain("Happy path");
     expect(result).toContain("Edge case");
   });
 
   it("includes the output file path", () => {
     const ctx = { skill_content: "", existing_evals: [] };
-    const result = buildEvalGenPrompt(ctx, "customer-returns", "/home/user/skills");
+    const result = buildEvalGenPrompt(ctx, "customer-returns", "/home/user/skills", "test intent");
     expect(result).toContain("/home/user/skills/customer-returns/evals/pending-eval.json");
   });
 
   it("uses fallback text when skill content is empty", () => {
     const ctx = { skill_content: "", existing_evals: [] };
-    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills");
+    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills", "test intent");
     expect(result).toContain("no SKILL.md found");
+  });
+
+  it("includes the user intent in the scenario section", () => {
+    const ctx = { skill_content: "", existing_evals: [] };
+    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills", "SCD type 2 insert creates a new row");
+    expect(result).toContain("SCD type 2 insert creates a new row");
+  });
+});
+
+// --- buildRegenPrompt ---
+
+describe("buildRegenPrompt", () => {
+  it("includes the updated intent", () => {
+    const result = buildRegenPrompt("handle a return request", "# Skill", "my-skill", "/skills");
+    expect(result).toContain("handle a return request");
+  });
+
+  it("includes the skill name", () => {
+    const result = buildRegenPrompt("some intent", "# Skill", "customer-returns", "/skills");
+    expect(result).toContain("customer-returns");
+  });
+
+  it("includes the output file path", () => {
+    const result = buildRegenPrompt("intent", "# Skill", "my-skill", "/home/user/skills");
+    expect(result).toContain("/home/user/skills/my-skill/evals/pending-eval.json");
+  });
+
+  it("uses fallback text when skill content is empty", () => {
+    const result = buildRegenPrompt("intent", "", "my-skill", "/skills");
+    expect(result).toContain("no SKILL.md found");
+  });
+
+  it("includes skill content when provided", () => {
+    const result = buildRegenPrompt("intent", "# Special Skill Content", "my-skill", "/skills");
+    expect(result).toContain("Special Skill Content");
+  });
+});
+
+// --- suggestEvalPlaceholder ---
+
+describe("suggestEvalPlaceholder", () => {
+  it("returns a skill-aware placeholder from frontmatter description", () => {
+    const content = `---
+name: my-skill
+description: Transforms raw data into SCD type 2 snapshots for historical tracking
+---
+
+# My Skill
+`;
+    const result = suggestEvalPlaceholder(content);
+    expect(result).toMatch(/^e\.g\./);
+    expect(result).toContain("Transforms raw data");
+  });
+
+  it("truncates long descriptions to 80 chars", () => {
+    const longDesc = "a".repeat(100);
+    const content = `---\ndescription: ${longDesc}\n---\n`;
+    const result = suggestEvalPlaceholder(content);
+    // "e.g. " (5) + 80 chars + "…" = 86 chars
+    expect(result.length).toBeLessThanOrEqual(86);
+    expect(result.endsWith("…")).toBe(true);
+  });
+
+  it("splits on period and uses only the first clause", () => {
+    const content = `---\ndescription: First clause. Second clause.\n---\n`;
+    const result = suggestEvalPlaceholder(content);
+    expect(result).toContain("First clause");
+    expect(result).not.toContain("Second clause");
+  });
+
+  it("returns generic fallback when no frontmatter", () => {
+    const result = suggestEvalPlaceholder("# No frontmatter here");
+    expect(result).toBe("e.g. a user runs a typical workflow end-to-end");
+  });
+
+  it("returns generic fallback when frontmatter has no description", () => {
+    const content = `---\nname: my-skill\nversion: 1.0\n---\n# Skill`;
+    const result = suggestEvalPlaceholder(content);
+    expect(result).toBe("e.g. a user runs a typical workflow end-to-end");
   });
 });
