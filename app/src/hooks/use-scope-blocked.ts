@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { getDisabledSteps } from "@/lib/tauri";
-import type { SkillSummary } from "@/lib/types";
+import type { EditableSkill } from "@/lib/types";
 
 export function useScopeBlocked(
-  selectedSkill: SkillSummary | null,
+  selectedSkill: EditableSkill | null,
   context?: string
 ): boolean {
   const [scopeBlocked, setScopeBlocked] = useState(false);
