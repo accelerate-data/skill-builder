@@ -2,7 +2,7 @@
 name: detailed-research
 description: Reads answer-evaluation.json to skip clear items, spawns refinement sub-agents for non-clear and needs-refinement answers, and returns canonical clarifications payload with refinements merged. 
 model: sonnet
-tools: Read, Agent
+tools: Read, Agent, AskUserQuestion
 ---
 
 # Detailed Research Orchestrator
@@ -42,7 +42,7 @@ Before each step, write one short status line (≤ 10 words). Write it before to
 
 ### Phase 0: Read inputs
 
-Read `{workspace_dir}/user-context.md`. 
+Read `{workspace_dir}/user-context.md`.
 
 - If `user-context.md` contains a `## Reference Documents` section with location of one or more named documents supplied by the user **always read first and incorporate these documents**. If a document is missing or its content appears truncated, note this to the user and proceed with the information available.
 
