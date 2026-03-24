@@ -15,6 +15,7 @@ import { MarketplaceSection } from "@/components/settings/marketplace-section"
 import { GitHubSection } from "@/components/settings/github-section"
 import { AdvancedSection } from "@/components/settings/advanced-section"
 import { UsageSection } from "@/components/settings/usage-section"
+import { DocumentsTab } from "@/components/documents-tab"
 import { useSettingsForm } from "@/hooks/use-settings-form"
 
 const sections = [
@@ -24,6 +25,7 @@ const sections = [
   { id: "marketplace", label: "Marketplace" },
   { id: "github", label: "GitHub" },
   { id: "advanced", label: "Advanced" },
+  { id: "documents", label: "Documents" },
   { id: "usage", label: "Usage" },
 ] as const
 
@@ -155,6 +157,12 @@ export default function SettingsPage() {
               setSkillsPath={form.setSkillsPath}
               autoSave={form.autoSave}
             />
+          )}
+
+          {activeSection === "documents" && (
+            <div className="space-y-6 p-6">
+              <DocumentsTab />
+            </div>
           )}
 
           {activeSection === "usage" && <UsageSection />}

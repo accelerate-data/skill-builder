@@ -2,7 +2,7 @@ use std::path::Path;
 
 /// Write `user-context.md` to the workspace so sub-agents can read it from disk.
 /// Captures purpose, description, user context, industry, function/role,
-/// and behaviour settings provided by the user.
+/// behaviour settings, and any applicable reference documents.
 /// Non-fatal: logs a warning on failure rather than blocking the workflow.
 #[allow(clippy::too_many_arguments)]
 pub fn write_user_context_file(
@@ -21,6 +21,7 @@ pub fn write_user_context_file(
     argument_hint: Option<&str>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
+    documents: &[crate::db::DocumentContent],
 ) {
     let Some(ctx) = format_user_context(
         Some(skill_name),
@@ -36,6 +37,7 @@ pub fn write_user_context_file(
         argument_hint,
         user_invocable,
         disable_model_invocation,
+        documents,
     ) else {
         return;
     };
@@ -98,6 +100,7 @@ pub fn format_user_context(
     argument_hint: Option<&str>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
+    documents: &[crate::db::DocumentContent],
 ) -> Option<String> {
     /// Push `**label**: value` to `parts` when `opt` is non-empty.
     fn push_field(parts: &mut Vec<String>, label: &str, opt: Option<&str>) {
@@ -188,9 +191,24 @@ pub fn format_user_context(
     }
     sections.extend(build_subsection("Configuration", config_parts));
 
-    if sections.is_empty() {
-        None
-    } else {
-        Some(format!("## User Context\n\n{}", sections.join("\n\n")))
+    if sections.is_empty() && documents.is_empty() {
+        return None;
     }
+
+    let mut result = if sections.is_empty() {
+        String::new()
+    } else {
+        format!("## User Context\n\n{}", sections.join("\n\n"))
+    };
+
+    // Append reference documents section when applicable
+    if !documents.is_empty() {
+        let mut docs_section = String::from("\n\n## Reference Documents\n");
+        for doc in documents {
+            docs_section.push_str(&format!("\n### {}\n\n{}\n\n---\n", doc.name, doc.content));
+        }
+        result.push_str(&docs_section);
+    }
+
+    Some(result)
 }

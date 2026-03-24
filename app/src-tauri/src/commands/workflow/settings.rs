@@ -27,6 +27,8 @@ pub(crate) struct WorkflowSettings {
     pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
+    /// Applicable reference documents for this skill (scope=all or skill-specific).
+    pub documents: Vec<crate::db::DocumentContent>,
 }
 
 /// Read all workflow settings from the DB in a single lock acquisition.
@@ -99,6 +101,17 @@ pub(crate) fn read_workflow_settings(
         .remove(skill_name)
         .unwrap_or_default();
 
+    let documents = master_row
+        .as_ref()
+        .map(|m| m.id)
+        .map(|sid| {
+            crate::db::db_documents_for_skill(&conn, sid).unwrap_or_else(|e| {
+                log::warn!("read_workflow_settings: failed to load documents for skill {}: {}", skill_name, e);
+                vec![]
+            })
+        })
+        .unwrap_or_default();
+
     Ok(WorkflowSettings {
         plugin_slug,
         skills_path,
@@ -122,5 +135,6 @@ pub(crate) fn read_workflow_settings(
         argument_hint,
         user_invocable,
         disable_model_invocation,
+        documents,
     })
 }

@@ -43,6 +43,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (37, run_fk_cascade_migration),
     (38, run_plugin_ownership_migration),
     (39, run_plugin_upgrade_locked_migration),
+    (40, run_documents_migration),
 ];
 
 pub(super) fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -1861,6 +1862,30 @@ pub(super) fn run_fk_cascade_migration(conn: &Connection) -> Result<(), rusqlite
 /// Migration 39: Add `upgrade_locked` flag to the `plugins` table.
 /// When any skill in a marketplace plugin is edited, the whole plugin is locked
 /// from auto-update and manual upgrade until the user explicitly unlocks it.
+/// Migration 40: Create documents and document_skills tables for global document store.
+pub(super) fn run_documents_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS documents (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL,
+            source_type TEXT NOT NULL CHECK (source_type IN ('file', 'url', 'folder')),
+            source_url  TEXT,
+            file_path   TEXT NOT NULL,
+            scope       TEXT NOT NULL CHECK (scope IN ('all', 'skill')) DEFAULT 'all',
+            created_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
+        );
+
+        CREATE TABLE IF NOT EXISTS document_skills (
+            document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            skill_id    INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+            PRIMARY KEY (document_id, skill_id)
+        );",
+    )?;
+    log::info!("migration 40: created documents and document_skills tables");
+    Ok(())
+}
+
 pub(super) fn run_plugin_upgrade_locked_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     let has_upgrade_locked = conn
         .prepare("PRAGMA table_info(plugins)")
