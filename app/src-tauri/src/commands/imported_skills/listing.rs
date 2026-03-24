@@ -68,8 +68,8 @@ mod tests {
             user_invocable: None,
             disable_model_invocation: None,
             marketplace_source_url: None,
-            plugin_slug: Some("no-plugin".to_string()),
-            plugin_display_name: Some("No Plugin".to_string()),
+            plugin_slug: Some("skills".to_string()),
+            plugin_display_name: Some("Skills".to_string()),
             is_default_plugin: Some(true),
         };
         crate::db::test_insert_imported_skill(&conn, &skill).unwrap();

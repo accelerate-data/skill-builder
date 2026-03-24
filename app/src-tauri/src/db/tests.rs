@@ -239,7 +239,7 @@ fn test_repair_plugin_ownership_schema_recovers_when_migration_38_was_only_marke
 
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
     let skill = get_skill_master(&conn, "test-skill").unwrap().unwrap();
-    assert_eq!(skill.plugin_slug, "no-plugin");
+    assert_eq!(skill.plugin_slug, "skills");
 }
 
 #[test]
@@ -2668,8 +2668,8 @@ fn test_list_active_skills() {
         disable_model_invocation: None,
         purpose: None,
         marketplace_source_url: None,
-        plugin_slug: Some("no-plugin".to_string()),
-        plugin_display_name: Some("No Plugin".to_string()),
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill1).unwrap();
@@ -2691,8 +2691,8 @@ fn test_list_active_skills() {
         disable_model_invocation: None,
         purpose: None,
         marketplace_source_url: None,
-        plugin_slug: Some("no-plugin".to_string()),
-        plugin_display_name: Some("No Plugin".to_string()),
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill2).unwrap();
@@ -2714,8 +2714,8 @@ fn test_list_active_skills() {
         disable_model_invocation: None,
         purpose: None,
         marketplace_source_url: None,
-        plugin_slug: Some("no-plugin".to_string()),
-        plugin_display_name: Some("No Plugin".to_string()),
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill3).unwrap();
@@ -2750,8 +2750,8 @@ fn test_delete_imported_skill_by_name() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
-        plugin_slug: Some("no-plugin".to_string()),
-        plugin_display_name: Some("No Plugin".to_string()),
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill).unwrap();
@@ -3279,8 +3279,8 @@ fn test_get_imported_skill_by_id() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
-        plugin_slug: Some("no-plugin".to_string()),
-        plugin_display_name: Some("No Plugin".to_string()),
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill).unwrap();
@@ -3312,8 +3312,8 @@ fn test_delete_imported_skill_by_skill_id() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
-        plugin_slug: Some("no-plugin".to_string()),
-        plugin_display_name: Some("No Plugin".to_string()),
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill).unwrap();

@@ -3,6 +3,7 @@ use std::path::Path;
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::Db;
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use crate::skill_paths::resolve_skill_dir;
 use crate::types::SkillFileContent;
 
@@ -42,7 +43,7 @@ pub(crate) fn get_skill_content_inner(
     skill_name: &str,
     skills_path: &str,
 ) -> Result<Vec<SkillFileContent>, String> {
-    get_skill_content_inner_for_plugin(skill_name, skills_path, "no-plugin")
+    get_skill_content_inner_for_plugin(skill_name, skills_path, DEFAULT_PLUGIN_SLUG)
 }
 
 pub(crate) fn get_skill_content_inner_for_plugin(

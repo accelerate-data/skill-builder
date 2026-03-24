@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::agents::sidecar::SidecarConfig;
 use crate::commands::workflow::resolve_model_id;
 use crate::db::{self, Db};
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use crate::skill_paths::resolve_skill_dir;
 use crate::types::SecretString;
 
@@ -208,7 +209,7 @@ pub(super) fn build_followup_prompt(
     build_followup_prompt_for_plugin(
         user_message,
         skills_path,
-        "no-plugin",
+        DEFAULT_PLUGIN_SLUG,
         skill_name,
         target_files,
     )
@@ -256,7 +257,7 @@ pub(super) fn build_refine_prompt(
         skill_name,
         workspace_path,
         skills_path,
-        "no-plugin",
+        DEFAULT_PLUGIN_SLUG,
         user_message,
         target_files,
     )
