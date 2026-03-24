@@ -489,3 +489,57 @@ export interface SkillEvalContext {
   skill_content: string
   existing_evals: TestCase[]
 }
+
+// --- Eval run (evaluate-skill agent output) ---
+
+/** Per-eval summary within one benchmark run. */
+export interface EvalRunEvalSummary {
+  eval_id: number
+  eval_name: string
+  slug: string
+  grading_path: string
+  summary: { passed: number; failed: number; total: number; pass_rate: number }
+}
+
+/** One run (run_index 0..run_count-1) from benchmark.json. */
+export interface EvalBenchmarkRun {
+  run_index: number
+  evals: EvalRunEvalSummary[]
+  run_summary: { passed: number; failed: number; total: number; pass_rate: number }
+}
+
+/** Full benchmark.json produced by the evaluate-skill agent. */
+export interface EvalBenchmark {
+  skill_name: string
+  iteration: number
+  run_count: number
+  eval_ids: number[]
+  runs: EvalBenchmarkRun[]
+  aggregate_summary: {
+    avg_pass_rate: number
+    total_passed: number
+    total_failed: number
+    total_assertions: number
+    has_failures: boolean
+  }
+}
+
+/** structuredOutput emitted by evaluate-skill after each eval is graded. */
+export interface EvalGradedEvent {
+  type: "eval_graded"
+  runIndex: number
+  evalIndex: number
+  totalEvals: number
+  totalRuns: number
+  evalId: number
+  evalName: string
+  grading: { passed: number; failed: number; total: number; pass_rate: number }
+}
+
+/** structuredOutput emitted by evaluate-skill when the full pipeline completes. */
+export interface EvalCompleteEvent {
+  type: "complete"
+  iteration: number
+  benchmark: EvalBenchmark
+  analyst_notes: string[]
+}
