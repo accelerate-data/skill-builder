@@ -13,7 +13,7 @@ use super::guards::{
     workflow_step_runtime_label,
 };
 use super::output_format::answer_evaluator_output_format;
-use super::prompt::{build_evaluator_prompt, build_prompt};
+use super::prompt::{build_evaluator_prompt, build_prompt, build_step0_prompt};
 use super::settings::{read_workflow_settings, WorkflowSettings};
 use super::step_config::{
     build_betas, get_step_config, resolve_model_id, thinking_budget_for_step,
@@ -84,15 +84,24 @@ async fn run_workflow_step_inner(
         &settings.documents,
     );
 
-    let prompt = build_prompt(
-        skill_name,
-        workspace_path,
-        &settings.plugin_slug,
-        &settings.skills_path,
-        settings.author_login.as_deref(),
-        settings.created_at.as_deref(),
-        settings.max_dimensions,
-    );
+    let prompt = if step_id == 0 {
+        build_step0_prompt(
+            skill_name,
+            workspace_path,
+            &settings.plugin_slug,
+            settings.max_dimensions,
+        )
+    } else {
+        build_prompt(
+            skill_name,
+            workspace_path,
+            &settings.plugin_slug,
+            &settings.skills_path,
+            settings.author_login.as_deref(),
+            settings.created_at.as_deref(),
+            settings.max_dimensions,
+        )
+    };
     log::debug!(
         "[run_workflow_step] prompt for step={} step_id={}: {}",
         workflow_step_log_name(step_id as i32),
@@ -112,9 +121,17 @@ async fn run_workflow_step_inner(
         required_plugins,
     );
 
+    // Step 0 invokes the research skill directly via prompt (no agent system prompt).
+    // This ensures AskUserQuestion is one level deep and intercepted by the streaming session.
+    let use_agent_system_prompt = step_id != 0;
+
     let mut config = SidecarConfig {
         prompt,
-        model: None,
+        model: if use_agent_system_prompt {
+            None
+        } else {
+            Some(settings.preferred_model.clone())
+        },
         api_key: settings.api_key.clone(),
         cwd: workspace_path.to_string(),
         allowed_tools: Some(step.allowed_tools),
@@ -131,12 +148,22 @@ async fn run_workflow_step_inner(
                 "budgetTokens": budget
             })
         }),
-        fallback_model: settings.fallback_model.clone(),
+        // When model is set explicitly, fallback_model must differ or the SDK errors.
+        // For step 0 (no agent system prompt), suppress fallback_model entirely.
+        fallback_model: if use_agent_system_prompt {
+            settings.fallback_model.clone()
+        } else {
+            None
+        },
         effort: settings.sdk_effort.clone(),
         output_format: workflow_output_format_for_agent(&agent_name),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
-        agent_name: Some(agent_name),
+        agent_name: if use_agent_system_prompt {
+            Some(agent_name)
+        } else {
+            None
+        },
         required_plugins: Some(required_plugins),
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
@@ -536,6 +563,42 @@ pub async fn run_answer_evaluator(
     .await?;
 
     Ok(agent_id)
+}
+
+/// Cancel a running workflow step streaming session by agent_id.
+///
+/// Looks up the session_id from WorkflowStepSessionManager and sends
+/// a stream_cancel message to the sidecar so the AbortController fires.
+/// This is the correct cancel path for streaming workflow steps (VU-729+).
+#[tauri::command]
+pub async fn cancel_workflow_step(
+    agent_id: String,
+    sessions: tauri::State<'_, WorkflowStepSessionManager>,
+    pool: tauri::State<'_, SidecarPool>,
+) -> Result<(), String> {
+    log::info!("[cancel_workflow_step] agent={}", agent_id);
+    let (skill_name, session_id) = {
+        let map = sessions.0.lock().map_err(|e| {
+            log::error!("[cancel_workflow_step] Failed to acquire session lock: {}", e);
+            e.to_string()
+        })?;
+        let session = map.get(&agent_id).ok_or_else(|| {
+            let msg = format!("No workflow step session found for agent_id={}", agent_id);
+            log::warn!("[cancel_workflow_step] {}", msg);
+            msg
+        })?;
+        (session.skill_name.clone(), session.session_id.clone())
+    };
+    pool.send_stream_end(&skill_name, &session_id)
+        .await
+        .map_err(|e| {
+            log::warn!(
+                "[cancel_workflow_step] Failed to send stream_end for agent={}: {}",
+                agent_id,
+                e
+            );
+            e
+        })
 }
 
 /// Log the user's gate decision so it appears in the backend log stream.
