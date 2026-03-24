@@ -17,6 +17,27 @@ pub fn skill_library_key(plugin_slug: &str, skill_name: &str) -> String {
     format!("skill-builder:{plugin_slug}:{skill_name}")
 }
 
+/// Workspace scratch directory for a skill.
+/// Always plugin-namespaced: `{workspace}/{plugin_slug}/{skill_name}/`
+/// This gives each (plugin, skill) pair a unique workspace directory,
+/// preventing collisions when two plugins contain skills with the same name.
+pub fn workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
+    workspace.join(plugin_slug).join(skill_name)
+}
+
+/// Resolve the workspace scratch directory for a skill.
+/// Tries the plugin-organised layout first; falls back to the legacy flat
+/// layout (`{workspace}/{skill_name}`) so that existing flat dirs are still
+/// found before the startup migration has moved them.
+pub fn resolve_workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
+    let organised = workspace_skill_dir(workspace, plugin_slug, skill_name);
+    if organised.exists() {
+        return organised;
+    }
+    // Legacy flat fallback — used during startup migration window
+    workspace.join(skill_name)
+}
+
 /// Skill directory.
 /// - Default plugin: `root/skills/{name}` (skills directly inside the plugin folder)
 /// - Other plugins: `root/{slug}/skills/{name}`

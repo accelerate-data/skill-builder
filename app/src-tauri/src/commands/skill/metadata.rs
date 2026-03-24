@@ -308,10 +308,10 @@ pub(crate) fn rename_skill_inner(
         .unwrap_or_else(|_| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
 
     // Move directories on disk (DB already committed — if disk fails, reconciler can fix)
-    // Workspace is always flat: workspace_path/{skill_name}/
+    // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
     let workspace_root = Path::new(workspace_path);
-    let workspace_old = crate::skill_paths::resolve_skill_dir(workspace_root, &plugin_slug, old_name);
-    let workspace_new = workspace_root.join(new_name);
+    let workspace_old = crate::skill_paths::resolve_workspace_skill_dir(workspace_root, &plugin_slug, old_name);
+    let workspace_new = crate::skill_paths::workspace_skill_dir(workspace_root, &plugin_slug, new_name);
     if workspace_old.exists() {
         // Guard against directory traversal
         let canonical_workspace = fs::canonicalize(workspace_path).map_err(|e| e.to_string())?;

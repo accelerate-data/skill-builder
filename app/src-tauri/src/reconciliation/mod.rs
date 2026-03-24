@@ -159,7 +159,7 @@ pub fn reconcile_on_startup(
             ) {
                 Ok(_id) => {
                     // Create a workflow_runs row at step 3 (completed) since SKILL.md exists
-                    let disk_step = detect_furthest_step(workspace_path, &loc.skill_name, skills_path)
+                    let disk_step = detect_furthest_step(workspace_path, &loc.plugin_slug, &loc.skill_name, skills_path)
                         .map(|s| s as i32)
                         .unwrap_or(3);
                     let status = if disk_step >= 3 { "completed" } else { "pending" };
@@ -269,6 +269,7 @@ pub fn reconcile_on_startup(
         skill_builder::reconcile_skill_builder(
             conn,
             &skill.name,
+            &skill.plugin_slug,
             workspace_path,
             skills_path,
             &mut notifications,
@@ -305,7 +306,17 @@ pub fn resolve_orphan(
             crate::commands::imported_skills::validate_skill_name(skill_name)?;
             crate::db::delete_workflow_run(conn, skill_name)?;
 
-            let output_dir = Path::new(skills_path).join(skill_name);
+            // Look up plugin slug so we delete from the right nested directory.
+            let plugin_slug = crate::db::get_skill_master_any_plugin(conn, skill_name)
+                .ok()
+                .flatten()
+                .map(|m| m.plugin_slug)
+                .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+            let output_dir = crate::skill_paths::resolve_skill_dir(
+                Path::new(skills_path),
+                &plugin_slug,
+                skill_name,
+            );
             if output_dir.exists() {
                 let canonical_base = std::fs::canonicalize(skills_path)
                     .map_err(|e| format!("Failed to canonicalize skills_path: {}", e))?;

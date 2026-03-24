@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
 use super::deploy::{
     copy_agents_to_claude_dir, copy_directory_recursive, copy_managed_plugins_to_claude_dir,
@@ -835,6 +836,7 @@ fn test_build_prompt_all_three_paths() {
     let prompt = build_prompt(
         "my-skill",
         "/home/user/.vibedata/skill-builder",
+        DEFAULT_PLUGIN_SLUG,
         "/home/user/my-skills",
         None,
         None,
@@ -853,6 +855,7 @@ fn test_build_prompt_with_skill_type() {
     let prompt = build_prompt(
         "my-skill",
         "/home/user/.vibedata/skill-builder",
+        DEFAULT_PLUGIN_SLUG,
         "/home/user/my-skills",
         None,
         None,
@@ -867,6 +870,7 @@ fn test_build_prompt_with_author_info() {
     let prompt = build_prompt(
         "my-skill",
         "/home/user/.vibedata/skill-builder",
+        DEFAULT_PLUGIN_SLUG,
         "/home/user/my-skills",
         Some("octocat"),
         Some("2025-06-15T12:00:00Z"),
@@ -882,6 +886,7 @@ fn test_build_prompt_without_author_info() {
     let prompt = build_prompt(
         "my-skill",
         "/home/user/.vibedata/skill-builder",
+        DEFAULT_PLUGIN_SLUG,
         "/home/user/my-skills",
         None,
         None,
@@ -991,7 +996,7 @@ fn test_delete_step_output_files_from_step_onwards() {
     std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
     // Reset from step 2 onwards — steps 0, 1 should be preserved
-    crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
+    crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 2, skills_path);
 
     // Steps 0, 1 output (unified clarifications.json) should still exist
     assert!(workspace_skill_dir
@@ -1019,7 +1024,7 @@ fn test_clean_step_output_step1_is_noop() {
     std::fs::write(skill_dir.join("context/decisions.json"), "{}").unwrap();
 
     // Clean only step 1 — both files should be untouched (step 1 has no unique output)
-    crate::cleanup::clean_step_output(workspace, "my-skill", 1, skills_path);
+    crate::cleanup::clean_step_output(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 1, skills_path);
 
     assert!(skill_dir.join("context/clarifications.json").exists());
     assert!(skill_dir.join("context/decisions.json").exists());
@@ -1031,7 +1036,7 @@ fn test_delete_step_output_files_nonexistent_dir_is_ok() {
     let tmp = tempfile::tempdir().unwrap();
     let skills_path = tmp.path().to_str().unwrap();
     let nonexistent = std::env::temp_dir().join("nonexistent");
-    crate::cleanup::delete_step_output_files(nonexistent.to_str().unwrap(), "no-skill", 0, skills_path);
+    crate::cleanup::delete_step_output_files(nonexistent.to_str().unwrap(), "no-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);
 }
 
 #[test]
@@ -1048,7 +1053,7 @@ fn test_delete_step_output_files_cleans_last_steps() {
     std::fs::write(workspace_skill_dir.join("context/decisions.json"), "{}").unwrap();
 
     // Reset from step 2 onwards should clean up step 2+3
-    crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
+    crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 2, skills_path);
 
     // Step 2 outputs should be deleted
     assert!(!workspace_skill_dir.join("context/decisions.json").exists());
@@ -1062,7 +1067,7 @@ fn test_delete_step_output_files_last_step() {
     let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
     std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
-    crate::cleanup::delete_step_output_files(workspace, "my-skill", 3, skills_path);
+    crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 3, skills_path);
 }
 
 #[test]
@@ -1254,7 +1259,7 @@ fn test_validate_decisions_missing() {
     std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
 
     let result =
-        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
+        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, "/unused");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("decisions.json was not found"));
 }
@@ -1274,7 +1279,7 @@ fn test_validate_decisions_found_in_workspace_context() {
     .unwrap();
 
     let result =
-        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
+        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, "/unused");
     assert!(result.is_ok());
 }
 
@@ -1294,7 +1299,7 @@ fn test_validate_decisions_rejects_empty_file() {
     .unwrap();
 
     let result =
-        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
+        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, "/unused");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("decisions.json was not found"));
 }
@@ -1364,12 +1369,13 @@ fn test_step0_always_wipes_context() {
 fn test_write_user_context_file_all_fields() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join("my-skill");
+    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
     // Directory doesn't need to pre-exist — create_dir_all handles it
 
     let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines"}"#;
     write_user_context_file(
         workspace_path,
+        DEFAULT_PLUGIN_SLUG,
         "my-skill",
         &[],
         None,
@@ -1402,10 +1408,11 @@ fn test_write_user_context_file_all_fields() {
 fn test_write_user_context_file_partial_fields() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join("my-skill");
+    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
 
     write_user_context_file(
         workspace_path,
+        DEFAULT_PLUGIN_SLUG,
         "my-skill",
         &[],
         None,
@@ -1431,10 +1438,11 @@ fn test_write_user_context_file_partial_fields() {
 fn test_write_user_context_file_empty_optional_fields_skipped() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join("my-skill");
+    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
 
     write_user_context_file(
         workspace_path,
+        DEFAULT_PLUGIN_SLUG,
         "my-skill",
         &[],
         None,
@@ -1460,10 +1468,11 @@ fn test_write_user_context_file_empty_optional_fields_skipped() {
 fn test_write_user_context_file_always_writes_skill_name() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join("my-skill");
+    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
 
     write_user_context_file(
         workspace_path,
+        DEFAULT_PLUGIN_SLUG,
         "my-skill",
         &[],
         None,
@@ -1488,12 +1497,13 @@ fn test_write_user_context_file_always_writes_skill_name() {
 fn test_write_user_context_file_creates_missing_dir() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join("new-skill");
+    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("new-skill");
     // Directory does NOT exist yet
     assert!(!workspace_dir.exists());
 
     write_user_context_file(
         workspace_path,
+        DEFAULT_PLUGIN_SLUG,
         "new-skill",
         &[],
         None,
@@ -1601,7 +1611,7 @@ fn test_reset_cleans_workspace_context_files() {
     std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
 
     // 5. Call delete_step_output_files from step 0
-    crate::cleanup::delete_step_output_files(workspace, "my-skill", 0, skills_path);
+    crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);
 
     // 6. Assert ALL files in workspace/my-skill/context/ are gone
     let mut remaining: Vec<String> = Vec::new();
@@ -1831,7 +1841,7 @@ fn test_format_user_context_partial_intake() {
 fn test_build_prompt_includes_user_context_md_instruction() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), skills.to_str().unwrap(), None, None, 5);
+    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, 5);
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
@@ -1840,7 +1850,7 @@ fn test_build_prompt_includes_user_context_md_instruction() {
 fn test_build_prompt_without_user_context() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), skills.to_str().unwrap(), None, None, 5);
+    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, 5);
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
@@ -2315,10 +2325,10 @@ fn test_write_user_context_file_creates_file() {
     let tags = vec!["tag1".to_string()];
 
     write_user_context_file(
-        workspace_path, skill_name, &tags, None, Some("Tech"), None, None, Some("A test skill"), Some("domain"), None, None, None, None, None,
+        workspace_path, DEFAULT_PLUGIN_SLUG, skill_name, &tags, None, Some("Tech"), None, None, Some("A test skill"), Some("domain"), None, None, None, None, None,
     );
 
-    let ctx_path = tmp.path().join(skill_name).join("user-context.md");
+    let ctx_path = tmp.path().join(DEFAULT_PLUGIN_SLUG).join(skill_name).join("user-context.md");
     assert!(ctx_path.exists(), "user-context.md should be created");
     let content = std::fs::read_to_string(&ctx_path).unwrap();
     assert!(content.contains("# User Context"), "should contain user context heading");
