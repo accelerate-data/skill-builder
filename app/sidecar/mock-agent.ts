@@ -26,6 +26,8 @@ export function resolveStepTemplate(
   config?: { skillName?: string; runSource?: string },
 ): string | null {
   if (!agentName) {
+    // Eval generator: invoked without a plugin agentName; identified by skillName.
+    if (config?.skillName === "skill-evals-generator") return "eval-generator";
     // Test evaluator: invoked without a plugin agentName; identified by runSource="test".
     // The with/without plan agents always have agentName="data-product-builder", so this
     // branch is only reached for the evaluator.
@@ -71,6 +73,7 @@ function getOutputDir(stepTemplate: string): string {
     "step3-generate-skill": "step3",
     "rewrite-skill": "refine",
     "gate-answer-evaluator": MOCK_SCENARIO === "contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator",
+    "eval-generator": "eval-generator",
   };
   return stepMap[stepTemplate] || "";
 }
@@ -322,6 +325,11 @@ async function writeMockOutputFiles(
   } else if (stepTemplate === "step3-generate-skill") {
     // Step 3: files go to skill output dir (may differ from skill dir when skills_path is set)
     destRoot = paths.skillOutputDir ?? paths.skillDir ?? config.cwd;
+  } else if (stepTemplate === "eval-generator") {
+    // Eval generator: pending-eval.json goes to {skills_path}/{skill}/evals/
+    // Extract the evals directory from the absolute path embedded in the prompt.
+    const match = config.prompt?.match(/`([^`]+)\/pending-eval\.json`/);
+    destRoot = match ? match[1] : config.cwd;
   } else {
     // Steps 0, 1, 2: context files go under the skill directory.
     // The mock template has outputs/{stepN}/context/... so we strip the
