@@ -149,7 +149,28 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
 
-    // Delete from DB (will fail if plugin still has skills — FK RESTRICT)
+    // Check for active (non-deleted) skills — refuse to delete if any exist
+    let active_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1 AND COALESCE(s.deleted_at, '') = ''",
+            rusqlite::params![&plugin_slug],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if active_count > 0 {
+        return Err(format!(
+            "Cannot delete plugin '{}' — it still has {} active skill(s). Remove them first.",
+            plugin_slug, active_count
+        ));
+    }
+
+    // Hard-delete any soft-deleted skills so FK RESTRICT doesn't block plugin deletion
+    conn.execute(
+        "DELETE FROM skills WHERE plugin_id = (SELECT id FROM plugins WHERE slug = ?1)",
+        rusqlite::params![&plugin_slug],
+    ).map_err(|e| format!("Failed to clean up deleted skills: {}", e))?;
+
+    // Now delete the plugin row
     crate::db::delete_plugin_by_slug(&conn, &plugin_slug)?;
 
     // Remove from disk
