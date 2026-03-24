@@ -116,4 +116,51 @@ test.describe("GitHub Import", { tag: "@skills" }, () => {
 
     await expect(page.getByText("Imported", { exact: true })).toBeVisible({ timeout: 5_000 });
   });
+
+  test("shows already-installed plugin as disabled", async ({ page }) => {
+    // Pre-populate list_skills so that analytics-pack shows as already installed
+    await reloadWithOverrides(page, {
+      ...BASE_OVERRIDES,
+      list_skills: [
+        {
+          name: "some-skill",
+          current_step: null,
+          status: null,
+          last_modified: null,
+          purpose: "domain",
+          skill_source: "marketplace",
+          plugin_slug: "analytics-pack",
+          plugin_display_name: "analytics-pack",
+          is_default_plugin: false,
+        },
+      ],
+    });
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("navigation").getByRole("button", { name: "Plugins" }).click();
+
+    await marketplaceActionButton(page).click();
+    await expect(page.getByRole("heading", { name: "Browse Marketplace" })).toBeVisible({ timeout: 10_000 });
+
+    // analytics-pack should show "Installed" badge and no install button
+    await expect(page.getByText("Installed")).toBeVisible({ timeout: 10_000 });
+    await expect(pluginInstallButton(page, "analytics-pack")).not.toBeVisible();
+  });
+
+  test("shows error toast when import fails", async ({ page }) => {
+    await reloadWithOverrides(page, {
+      ...BASE_OVERRIDES,
+      import_marketplace_plugin_to_library: [{ success: false, error: "Import failed: permission denied", skill_name: "test" }],
+    });
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("navigation").getByRole("button", { name: "Plugins" }).click();
+
+    await marketplaceActionButton(page).click();
+    await expect(pluginInstallButton(page, "analytics-pack")).toBeVisible({ timeout: 10_000 });
+
+    await pluginInstallButton(page, "analytics-pack").click();
+
+    await expect(page.getByText("Import failed: permission denied")).toBeVisible({ timeout: 5_000 });
+  });
 });

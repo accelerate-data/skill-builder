@@ -49,14 +49,15 @@ describe("CreatePluginDialog", () => {
   it("Create button is disabled for invalid name", async () => {
     const user = userEvent.setup();
     renderDialog();
-    await user.type(screen.getByLabelText("Plugin name"), "My Plugin");
+    await user.type(screen.getByLabelText("Plugin name"), "bad_name");
     expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
   });
 
   it("shows validation error for invalid name", async () => {
     const user = userEvent.setup();
     renderDialog();
-    await user.type(screen.getByLabelText("Plugin name"), "INVALID");
+    // Input lowercases, so use characters invalid in kebab-case (underscore)
+    await user.type(screen.getByLabelText("Plugin name"), "bad_name");
     expect(screen.getByText(/lowercase letters, numbers, and hyphens/)).toBeInTheDocument();
   });
 

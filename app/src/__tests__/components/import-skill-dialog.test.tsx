@@ -160,7 +160,7 @@ describe("ImportSkillDialog", () => {
     it("shows inline error below Name field when importSkillFromFile rejects with conflict_no_overwrite", async () => {
       const user = userEvent.setup();
       mockImportSkillFromFile.mockRejectedValue(
-        new Error("conflict_no_overwrite:my-skill")
+        new Error("A skill named 'my-skill' already exists in the default plugin. Rename or delete it first.")
       );
 
       renderDialog();
@@ -177,7 +177,7 @@ describe("ImportSkillDialog", () => {
     it("does not show overwrite confirm when conflict_no_overwrite fires", async () => {
       const user = userEvent.setup();
       mockImportSkillFromFile.mockRejectedValue(
-        new Error("conflict_no_overwrite:my-skill")
+        new Error("A skill named 'my-skill' already exists in the default plugin. Rename or delete it first.")
       );
 
       renderDialog();
