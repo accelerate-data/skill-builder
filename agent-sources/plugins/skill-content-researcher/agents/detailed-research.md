@@ -98,7 +98,7 @@ The `clarifications.json` captures the user's responses to research questions. R
 
 ### Task
 
-For each listed question ID, generate 1-3 **refinement questions** — narrower follow-ups that close ambiguities so the downstream skill-writing process has clear, actionable decisions. Focus on:
+For each listed question ID, generate 0-3 **refinement questions** — narrower follow-ups that close ambiguities so the downstream skill-writing process has clear, actionable decisions. Focus on:
 
 - Edge cases and boundary conditions
 - Input/output formats and example files
