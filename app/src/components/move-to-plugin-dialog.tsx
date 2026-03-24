@@ -38,7 +38,7 @@ export function MoveToPluginDialog({
     if (!open) return
     listPlugins().then((all) => {
       const available = all.filter(
-        (p) => !p.is_default && p.slug !== currentPluginSlug,
+        (p) => !p.is_default && p.slug !== currentPluginSlug && p.source_type !== "marketplace",
       )
       setPlugins(available)
       setSelected(available[0]?.slug ?? null)
