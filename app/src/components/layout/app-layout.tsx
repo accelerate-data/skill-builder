@@ -68,10 +68,11 @@ export function AppLayout() {
       if (e.key === "Escape") {
         const runs = useAgentStore.getState().runs;
         const running = Object.values(runs).find(
-          (r) => r.status === "running" && r.skillName && r.sessionId,
+          (r): r is typeof r & { skillName: string; sessionId: string } =>
+            r.status === "running" && !!r.skillName && !!r.sessionId,
         );
         if (running) {
-          cancelAgentRun(running.skillName!, running.sessionId!).catch((err) => {
+          cancelAgentRun(running.skillName, running.sessionId).catch((err) => {
             console.error("[app-layout] escape: cancel failed", err);
           });
         }
