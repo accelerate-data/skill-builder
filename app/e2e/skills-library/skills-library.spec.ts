@@ -2,38 +2,33 @@ import { test, expect } from "@playwright/test";
 import { reloadWithOverrides, waitForAppReady } from "../helpers/app-helpers";
 import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "../helpers/test-paths";
 
-const SAMPLE_SKILLS = [
+const SAMPLE_PLUGINS = [
   {
-    skill_id: "skill-001",
-    skill_name: "analytics-helper",
-    description: "Generates analytics dashboards",
-    is_active: true,
-    disk_path: `${E2E_SKILLS_PATH}/analytics-helper`,
-    imported_at: new Date().toISOString(),
-    is_bundled: false,
-    purpose: "domain",
-    version: "1.0.0",
-    model: null,
-    argument_hint: null,
-    user_invocable: null,
-    disable_model_invocation: null,
-    marketplace_source_url: null,
+    id: 1,
+    slug: "skills",
+    display_name: "Skills",
+    version: null,
+    source_type: "synthetic",
+    source_url: null,
+    is_default: true,
   },
   {
-    skill_id: "skill-002",
-    skill_name: "sql-expert",
-    description: "SQL query optimization",
-    is_active: false,
-    disk_path: `${E2E_SKILLS_PATH}/sql-expert`,
-    imported_at: new Date().toISOString(),
-    is_bundled: true,
-    purpose: "data-engineering",
+    id: 2,
+    slug: "analytics-pack",
+    display_name: "Analytics Pack",
+    version: "1.0.0",
+    source_type: "marketplace",
+    source_url: "https://github.com/test-org/skills-repo",
+    is_default: false,
+  },
+  {
+    id: 3,
+    slug: "sql-pack",
+    display_name: "SQL Pack",
     version: "2.1.0",
-    model: null,
-    argument_hint: null,
-    user_invocable: null,
-    disable_model_invocation: null,
-    marketplace_source_url: null,
+    source_type: "local",
+    source_url: null,
+    is_default: false,
   },
 ];
 
@@ -44,119 +39,72 @@ const BASE_OVERRIDES = {
     skills_path: E2E_SKILLS_PATH,
   },
   check_workspace_path: true,
-  list_imported_skills: SAMPLE_SKILLS,
-  toggle_skill_active: undefined,
-  delete_imported_skill: undefined,
+  list_plugins: SAMPLE_PLUGINS,
+  list_imported_skills: [],
   list_skills: [],
+  check_marketplace_updates: { library: [], workspace: [], registry_names: [] },
+  check_skill_customized: false,
+  reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0, discovered_skills: [] },
 };
 
 test.describe("Skills Library", { tag: "@skills" }, () => {
   test.beforeEach(async ({ page }) => {
     await reloadWithOverrides(page, BASE_OVERRIDES);
-    // Navigate to settings → Import tab
     await page.goto("/settings");
     await waitForAppReady(page);
-    await page.getByRole("button", { name: "Import" }).first().click();
+    await page.getByRole("button", { name: "Plugins" }).first().click();
   });
 
-  test("lists imported skills with name, version, and source", async ({ page }) => {
-    // Both skills should be visible
-    await expect(page.getByText("analytics-helper")).toBeVisible();
-    await expect(page.getByText("sql-expert")).toBeVisible();
+  test("lists plugins with name, version, and source", async ({ page }) => {
+    // Non-default plugins should be visible
+    await expect(page.getByText("Analytics Pack")).toBeVisible();
+    await expect(page.getByText("SQL Pack")).toBeVisible();
 
-    // Version badges should be visible
+    // Version should be visible
     await expect(page.getByText("1.0.0")).toBeVisible();
     await expect(page.getByText("2.1.0")).toBeVisible();
 
-    // Source labels should be visible (both are "file" since no marketplace_source_url)
-    const sourceLabels = page.getByText("file");
-    await expect(sourceLabels.first()).toBeVisible();
+    // Source info should be visible
+    await expect(page.getByText("https://github.com/test-org/skills-repo")).toBeVisible();
+    await expect(page.getByText("local")).toBeVisible();
   });
 
-  test("groups imported skills by plugin and keeps duplicate skill names distinct", async ({ page }) => {
+  test("default plugin is hidden from the list", async ({ page }) => {
+    // The default "Skills" plugin should NOT appear
+    // (displayPlugins filters out is_default)
+    await expect(page.getByText("Analytics Pack")).toBeVisible();
+    // The table should only show 2 rows (non-default plugins)
+    const rows = page.locator("tbody tr");
+    await expect(rows).toHaveCount(2);
+  });
+
+  test("delete plugin triggers delete and refreshes list", async ({ page }) => {
     await reloadWithOverrides(page, {
       ...BASE_OVERRIDES,
-      list_imported_skills: [
-        {
-          skill_id: "plugin-a-001",
-          skill_name: "analytics-helper",
-          description: "Plugin A variant",
-          is_active: true,
-          disk_path: `${E2E_SKILLS_PATH}/plugin-a/analytics-helper`,
-          imported_at: new Date().toISOString(),
-          is_bundled: false,
-          purpose: "domain",
-          version: "1.0.0",
-          model: null,
-          argument_hint: null,
-          user_invocable: null,
-          disable_model_invocation: null,
-          marketplace_source_url: null,
-          plugin_slug: "plugin-a",
-          plugin_display_name: "Plugin Alpha",
-          is_default_plugin: false,
-        },
-        {
-          skill_id: "plugin-b-001",
-          skill_name: "analytics-helper",
-          description: "Plugin B variant",
-          is_active: true,
-          disk_path: `${E2E_SKILLS_PATH}/plugin-b/analytics-helper`,
-          imported_at: new Date().toISOString(),
-          is_bundled: false,
-          purpose: "domain",
-          version: "2.0.0",
-          model: null,
-          argument_hint: null,
-          user_invocable: null,
-          disable_model_invocation: null,
-          marketplace_source_url: null,
-          plugin_slug: "plugin-b",
-          plugin_display_name: "Plugin Beta",
-          is_default_plugin: false,
-        },
-      ],
+      delete_plugin: undefined,
     });
     await page.goto("/settings");
     await waitForAppReady(page);
-    await page.getByRole("button", { name: "Import" }).first().click();
+    await page.getByRole("button", { name: "Plugins" }).first().click();
 
-    await expect(page.getByText("Plugin Alpha")).toBeVisible();
-    await expect(page.getByText("Plugin Beta")).toBeVisible();
-    await expect(page.getByText("analytics-helper")).toHaveCount(2);
-  });
-
-  test("delete button visible for non-bundled skill and hidden for bundled", async ({ page }) => {
-    // Non-bundled skill (analytics-helper) should have a delete button
-    const deleteAnalytics = page.getByLabel("Delete analytics-helper");
-    await expect(deleteAnalytics).toBeVisible();
-
-    // Bundled skill (sql-expert) should NOT have a delete button
-    const deleteSqlExpert = page.getByLabel("Delete sql-expert");
-    await expect(deleteSqlExpert).not.toBeVisible();
-  });
-
-  test("delete skill triggers delete and refreshes list", async ({ page }) => {
-    const deleteButton = page.getByLabel("Delete analytics-helper");
+    const deleteButton = page.getByLabel("Delete Analytics Pack");
     await deleteButton.click();
 
-    // After clicking delete, a success toast should appear
-    await expect(page.getByText('Deleted "analytics-helper"')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Deleted plugin "Analytics Pack"')).toBeVisible({ timeout: 5_000 });
   });
 
-  test("shows empty state when no imported skills", async ({ page }) => {
-    // Reload with empty skills list
+  test("shows empty state when no plugins", async ({ page }) => {
     await reloadWithOverrides(page, {
       ...BASE_OVERRIDES,
-      list_imported_skills: [],
+      list_plugins: [SAMPLE_PLUGINS[0]], // Only the default plugin
     });
     await page.goto("/settings");
     await waitForAppReady(page);
-    await page.getByRole("button", { name: "Import" }).first().click();
+    await page.getByRole("button", { name: "Plugins" }).first().click();
 
-    await expect(page.getByText("No imported skills")).toBeVisible();
+    await expect(page.getByText("No plugins")).toBeVisible();
     await expect(
-      page.getByText("Import a .skill package or browse the marketplace to add skills.")
+      page.getByText("Browse the marketplace or upload a plugin package to get started.")
     ).toBeVisible();
   });
 });

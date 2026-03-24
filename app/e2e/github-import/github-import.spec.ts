@@ -52,6 +52,7 @@ const BASE_OVERRIDES = {
   check_workspace_path: true,
   list_skills: [],
   list_imported_skills: [],
+  list_plugins: [{ id: 1, slug: "skills", display_name: "Skills", version: null, source_type: "synthetic", source_url: null, is_default: true }],
   parse_github_url: TEST_REPO_INFO,
   list_github_plugins: TEST_AVAILABLE_PLUGINS,
   import_marketplace_plugin_to_library: [{ success: true, error: null }],
@@ -69,7 +70,7 @@ test.describe("GitHub Import", { tag: "@skills" }, () => {
     await reloadWithOverrides(page, BASE_OVERRIDES);
     await page.goto("/settings");
     await waitForAppReady(page);
-    await page.getByRole("navigation").getByRole("button", { name: "Import" }).click();
+    await page.getByRole("navigation").getByRole("button", { name: "Plugins" }).click();
   });
 
   test("opens marketplace dialog and lists available plugins", async ({ page }) => {
@@ -102,7 +103,7 @@ test.describe("GitHub Import", { tag: "@skills" }, () => {
     });
     await page.goto("/settings");
     await waitForAppReady(page);
-    await page.getByRole("navigation").getByRole("button", { name: "Import" }).click();
+    await page.getByRole("navigation").getByRole("button", { name: "Plugins" }).click();
 
     await expect(marketplaceActionButton(page)).toBeDisabled();
   });
