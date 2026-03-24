@@ -288,7 +288,7 @@ mod tests {
             Some("1.0.0")
         );
         assert!(
-            std::fs::read_to_string(skills_path.join(crate::skill_paths::DEFAULT_PLUGIN_SLUG).join("skills").join("imported-skill").join("SKILL.md"))
+            std::fs::read_to_string(crate::skill_paths::nested_skill_dir(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill").join("SKILL.md"))
                 .unwrap()
                 .contains("metadata:\n  version: \"1.0.0\"\n  author: \"hb@acceleratedata.ai\"")
         );

@@ -36,8 +36,8 @@ pub fn reconcile_on_startup(
     // 1a. Ensure default "skills" plugin exists in DB and on disk
     crate::db::ensure_default_plugin(conn)?;
     if skills_dir.exists() {
-        let default_skills_dir = skills_dir.join(DEFAULT_PLUGIN_SLUG).join("skills");
-        if let Err(e) = std::fs::create_dir_all(&default_skills_dir) {
+        let default_plugin_dir = skills_dir.join(DEFAULT_PLUGIN_SLUG);
+        if let Err(e) = std::fs::create_dir_all(&default_plugin_dir) {
             log::warn!("[reconcile] failed to create default plugin dir: {}", e);
         }
         // Ensure plugin.json exists for the default plugin
