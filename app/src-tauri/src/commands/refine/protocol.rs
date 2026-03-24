@@ -80,11 +80,7 @@ pub(super) fn load_refine_runtime_settings(
         .map(|r| r.purpose.clone())
         .unwrap_or_else(|| "domain".to_string());
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-    // Use disk_path for imported/marketplace skills; fall back to computed path for builder skills.
-    let skill_output_dir = db::get_imported_skill_disk_path(&conn, skill_name)?
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| resolve_skill_dir(Path::new(&skills_path), &plugin_slug, skill_name));
-    let skill_md_path = skill_output_dir.join("SKILL.md");
+    let skill_md_path = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, skill_name).join("SKILL.md");
     let frontmatter = std::fs::read_to_string(&skill_md_path)
         .ok()
         .map(|content| crate::commands::imported_skills::parse_frontmatter_full(&content))

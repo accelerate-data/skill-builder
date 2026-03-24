@@ -349,6 +349,52 @@ pub fn get_skill_master(
     get_skill_master_in_plugin(conn, skill_name, DEFAULT_PLUGIN_SLUG)
 }
 
+/// Look up a skill's master row across all plugins (not restricted to the default plugin).
+pub fn get_skill_master_any_plugin(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<Option<SkillMasterRow>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT s.id, s.name, s.skill_source,
+                    p.id, p.slug, p.display_name, p.is_default,
+                    s.purpose, s.created_at, s.updated_at,
+                    s.description, s.version, s.model, s.argument_hint, s.user_invocable, s.disable_model_invocation
+             FROM skills s
+             JOIN plugins p ON p.id = s.plugin_id
+             WHERE s.name = ?1 AND COALESCE(s.deleted_at, '') = ''
+             LIMIT 1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let result = stmt.query_row(rusqlite::params![skill_name], |row| {
+        Ok(SkillMasterRow {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            skill_source: row.get(2)?,
+            plugin_id: row.get(3)?,
+            plugin_slug: row.get(4)?,
+            plugin_display_name: row.get(5)?,
+            plugin_is_default: row.get::<_, i32>(6)? != 0,
+            purpose: row.get(7)?,
+            created_at: row.get(8)?,
+            updated_at: row.get(9)?,
+            description: row.get(10)?,
+            version: row.get(11)?,
+            model: row.get(12)?,
+            argument_hint: row.get(13)?,
+            user_invocable: row.get::<_, Option<i32>>(14)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
+        })
+    });
+
+    match result {
+        Ok(row) => Ok(Some(row)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 pub fn get_skill_master_in_plugin(
     conn: &Connection,
     skill_name: &str,
