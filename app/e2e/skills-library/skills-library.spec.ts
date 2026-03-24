@@ -93,13 +93,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByText('Deleted plugin "Analytics Pack"')).toBeVisible({ timeout: 5_000 });
   });
 
-  test("Create Plugin button opens dialog", async ({ page }) => {
-    await page.getByRole("button", { name: /Create Plugin/ }).click();
-    await expect(page.getByRole("heading", { name: "Create Plugin" })).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByLabelText("Plugin name")).toBeVisible();
-  });
-
-  test("Create Plugin dialog validates name and submits", async ({ page }) => {
+  test("Create Plugin button opens dialog and submits", async ({ page }) => {
     await reloadWithOverrides(page, {
       ...BASE_OVERRIDES,
       create_plugin_from_skills: "my-plugin",
@@ -114,8 +108,8 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     // Create button should be disabled with empty name
     await expect(page.getByRole("button", { name: "Create" })).toBeDisabled();
 
-    // Type a valid name and submit
-    await page.getByLabelText("Plugin name").fill("my-plugin");
+    // Type a valid name using the input's placeholder and submit
+    await page.getByPlaceholder("my-plugin").fill("my-plugin");
     await expect(page.getByRole("button", { name: "Create" })).not.toBeDisabled();
     await page.getByRole("button", { name: "Create" }).click();
 
