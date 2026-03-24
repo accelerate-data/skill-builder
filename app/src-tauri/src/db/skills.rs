@@ -96,6 +96,16 @@ pub fn delete_plugin_by_slug(conn: &Connection, slug: &str) -> Result<(), String
     Ok(())
 }
 
+/// Update a plugin's display_name by slug.
+pub fn update_plugin_display_name(conn: &Connection, slug: &str, display_name: &str) -> Result<(), String> {
+    conn.execute(
+        "UPDATE plugins SET display_name = ?2, updated_at = datetime('now') || 'Z' WHERE slug = ?1",
+        rusqlite::params![slug, display_name],
+    )
+    .map_err(|e| format!("update_plugin_display_name: {}", e))?;
+    Ok(())
+}
+
 pub fn get_plugin_id_by_slug(conn: &Connection, slug: &str) -> Result<Option<i64>, String> {
     conn.query_row(
         "SELECT id FROM plugins WHERE slug = ?1",
