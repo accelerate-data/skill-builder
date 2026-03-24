@@ -270,7 +270,7 @@ describe("GitHubImportDialog", () => {
         { name: "Registry A", source_url: "owner/repo-a", enabled: true },
         { name: "Registry B", source_url: "owner/repo-b", enabled: true },
       ];
-      renderDialog({ registries, workspacePath: "/workspace" });
+      renderDialog({ registries });
 
       await waitFor(() => {
         expect(screen.getByText("Registry A")).toBeInTheDocument();
