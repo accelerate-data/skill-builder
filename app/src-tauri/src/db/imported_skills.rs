@@ -1,8 +1,8 @@
 use crate::types::ImportedSkill;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::fs;
 
-use super::skills::get_skill_master_id;
+use super::skills::{get_skill_master_id, get_skill_master_id_any_plugin};
 
 fn imported_skill_select(prefix: &str) -> String {
     format!(
@@ -381,6 +381,22 @@ pub fn test_insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> R
         plugin_slug,
     )?;
     insert_imported_skill(conn, skill, skill_master_id)
+}
+
+/// Return the `disk_path` for an imported skill regardless of which plugin owns it.
+/// Returns `None` if the skill has no `imported_skills` row (i.e. it is a builder skill).
+pub fn get_imported_skill_disk_path(conn: &Connection, skill_name: &str) -> Result<Option<String>, String> {
+    let s_id = match get_skill_master_id_any_plugin(conn, skill_name)? {
+        Some(id) => id,
+        None => return Ok(None),
+    };
+    conn.query_row(
+        "SELECT disk_path FROM imported_skills WHERE skill_master_id = ?1",
+        rusqlite::params![s_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
 }
 
 pub fn get_dashboard_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
