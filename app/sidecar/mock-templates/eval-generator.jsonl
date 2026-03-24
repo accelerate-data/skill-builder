@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init_start","timestamp":0}
+{"type":"system","subtype":"sdk_ready","timestamp":0}
+{"type":"result","subtype":"success","result":"Generated eval written to pending-eval.json","is_error":false,"duration_ms":500,"duration_api_ms":400,"num_turns":1,"total_cost_usd":0.001,"usage":{"input_tokens":500,"output_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}
