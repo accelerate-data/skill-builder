@@ -443,7 +443,7 @@ pub(crate) fn delete_skill_inner(
 
     // Delete skill output directory if skills_path is configured and directory exists
     if let Some(sp) = skills_path {
-        let output_dir = resolve_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name);
+        let output_dir = resolve_skill_dir(Path::new(sp), plugin_slug, name);
         if output_dir.exists() {
             let canonical_sp = fs::canonicalize(sp).map_err(|e| e.to_string())?;
             let canonical_out = fs::canonicalize(&output_dir).map_err(|e| e.to_string())?;
