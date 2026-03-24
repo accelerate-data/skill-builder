@@ -1,7 +1,6 @@
 ---
 name: skill-creator
 description: Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy.
-compatibility: Requires `uv` to run bundled Python scripts directly from `scripts/`. Trigger-eval and description-optimization scripts also require the `claude` CLI on PATH.
 ---
 
 # Skill Creator
@@ -14,7 +13,7 @@ At a high level, the process of creating a skill goes like this:
 - Write a draft of the skill
 - Create a few test prompts and run claude-with-access-to-the-skill on them
 - Help the user evaluate the results both qualitatively and quantitatively
-  - While the runs happen in the background, explain the already-frozen quantitative evals to the user so they know what the benchmark is checking
+  - While the runs happen in the background, draft some quantitative evals if there aren't any (if there are some, you can either use as is or modify if you feel something needs to change about them). Then explain them to the user (or if they already existed, explain the ones that already exist)
   - Use the `eval-viewer/generate_review.py` script to show the user the results for them to look at, and also let them look at the quantitative metrics
 - Rewrite the skill based on feedback from the user's evaluation of the results (and also if there are any glaring flaws that become apparent from the quantitative benchmarks)
 - Repeat until you're satisfied
@@ -29,21 +28,6 @@ Of course, you should always be flexible and if the user is like "I don't need t
 Then after the skill is done (but again, the order is flexible), you can also run the skill description improver, which we have a whole separate script for, to optimize the triggering of the skill.
 
 Cool? Cool.
-
-## Bundled Scripts
-
-Use these scripts when the task becomes repetitive or needs deterministic output:
-
-- `scripts/quick_validate.py`: Validate a skill directory and return a JSON result.
-- `scripts/package_skill.py`: Package a skill directory into a `.skill` archive.
-- `scripts/run_eval.py`: Run trigger-eval queries against a skill description.
-- `scripts/improve_description.py`: Propose a better skill description from eval results.
-- `scripts/run_loop.py`: Run the eval/improve loop and optionally write a live HTML report.
-- `scripts/aggregate_benchmark.py`: Aggregate per-run grading into `benchmark.json` and `benchmark.md`.
-- `scripts/generate_report.py`: Convert `run_loop.py` JSON output into a standalone HTML report.
-- `scripts/commit_and_tag.py`: Commit a generated skill and create the next version tag.
-
-All bundled scripts are designed to work via `uv run scripts/<name>.py --help`, print structured JSON to stdout, and send diagnostics to stderr.
 
 ## Communicating with the user
 
@@ -88,7 +72,7 @@ Based on the user interview, fill in these components:
 
 #### Anatomy of a Skill
 
-```text
+```
 skill-name/
 ├── SKILL.md (required)
 │   ├── YAML frontmatter (name, description required)
@@ -102,7 +86,6 @@ skill-name/
 #### Progressive Disclosure
 
 Skills use a three-level loading system:
-
 1. **Metadata** (name + description) - Always in context (~100 words)
 2. **SKILL.md body** - In context whenever skill triggers (<500 lines ideal)
 3. **Bundled resources** - As needed (unlimited, scripts can execute without loading)
@@ -110,14 +93,12 @@ Skills use a three-level loading system:
 These word counts are approximate and you can feel free to go longer if needed.
 
 **Key patterns:**
-
 - Keep SKILL.md under 500 lines; if you're approaching this limit, add an additional layer of hierarchy along with clear pointers about where the model using the skill should go next to follow up.
 - Reference files clearly from SKILL.md with guidance on when to read them
 - For large reference files (>300 lines), include a table of contents
 
 **Domain organization**: When a skill supports multiple domains/frameworks, organize by variant:
-
-```text
+```
 cloud-deploy/
 ├── SKILL.md (workflow + selection)
 └── references/
@@ -125,7 +106,6 @@ cloud-deploy/
     ├── gcp.md
     └── azure.md
 ```
-
 Claude reads only the relevant reference file.
 
 #### Principle of Lack of Surprise
@@ -137,7 +117,6 @@ This goes without saying, but skills must not contain malware, exploit code, or 
 Prefer using the imperative form in instructions.
 
 **Defining output formats** - You can do it like this:
-
 ```markdown
 ## Report structure
 ALWAYS use this exact template:
@@ -148,7 +127,6 @@ ALWAYS use this exact template:
 ```
 
 **Examples pattern** - It's useful to include examples. You can format them like this (but if "Input" and "Output" are in the examples you might want to deviate a little):
-
 ```markdown
 ## Commit message format
 **Example 1:**
@@ -164,7 +142,7 @@ Try to explain to the model why things are important in lieu of heavy-handed mus
 
 After writing the skill draft, come up with 2-3 realistic test prompts — the kind of thing a real user would actually say. Share them with the user: [you don't have to use this exact language] "Here are a few test cases I'd like to try. Do these look right, or do you want to add more?" Then run them.
 
-Save test cases to `evals/evals.json`. Write the quantitative assertions at the same time as the prompts so the eval definition is complete before the first benchmark iteration runs. Each eval also needs a human-readable `eval_name` and a deterministic `slug` so later iterations reuse the same labels and directory names. Once written, treat those fields and those assertions as fixed for later iterations unless the user explicitly changes the eval itself.
+Save test cases to `evals/evals.json`. Don't write assertions yet — just the prompts. You'll draft assertions in the next step while the runs are in progress.
 
 ```json
 {
@@ -172,21 +150,15 @@ Save test cases to `evals/evals.json`. Write the quantitative assertions at the 
   "evals": [
     {
       "id": 1,
-      "eval_name": "Customer returns workflow",
-      "slug": "customer-returns-workflow",
       "prompt": "User's task prompt",
       "expected_output": "Description of expected result",
-      "files": [],
-      "expectations": [
-        "A verifiable statement about the output",
-        "Another fixed assertion used for grading"
-      ]
+      "files": []
     }
   ]
 }
 ```
 
-See `references/schemas.md` for the full schema.
+See `references/schemas.md` for the full schema (including the `assertions` field, which you'll add later).
 
 ## Running and evaluating test cases
 
@@ -200,7 +172,7 @@ For each test case, spawn two subagents in the same turn — one with the skill,
 
 **With-skill run:**
 
-```text
+```
 Execute this task:
 - Skill path: <path-to-skill>
 - Task: <eval prompt>
@@ -210,32 +182,27 @@ Execute this task:
 ```
 
 **Baseline run** (same prompt, but the baseline depends on context):
-
 - **Creating a new skill**: no skill at all. Same prompt, no skill path, save to `without_skill/outputs/`.
 - **Improving an existing skill**: the old version. Before editing, snapshot the skill (`cp -r <skill-path> <workspace>/skill-snapshot/`), then point the baseline subagent at the snapshot. Save to `old_skill/outputs/`.
 
-Write an `eval_metadata.json` for each test case using the same frozen `eval_name`, `slug`, and assertions already written to `evals/evals.json`. Directory names **must** start with `eval-<ID>-` followed by that exact slug from `evals.json` (e.g. `eval-0-hybrid-cogs`, `eval-1-returns-treatment`). The `eval-` prefix is required — the aggregator uses `eval-*` to discover directories. Generate the slug once when creating `evals.json`, keep it deterministic, and do not regenerate it differently in later iterations. If this iteration uses new or modified eval prompts, create these files for each new eval directory — don't assume they carry over from previous iterations.
+Write an `eval_metadata.json` for each test case (assertions can be empty for now). Give each eval a descriptive name based on what it's testing — not just "eval-0". Use this name for the directory too. If this iteration uses new or modified eval prompts, create these files for each new eval directory — don't assume they carry over from previous iterations.
 
 ```json
 {
   "eval_id": 0,
   "eval_name": "descriptive-name-here",
-  "slug": "descriptive-name-here",
   "prompt": "The user's task prompt",
-  "assertions": [
-    "A fixed assertion for this eval",
-    "Another fixed assertion for this eval"
-  ]
+  "assertions": []
 }
 ```
 
-### Step 2: While runs are in progress, explain the frozen assertions
+### Step 2: While runs are in progress, draft assertions
 
-Don't just wait for the runs to finish — you can use this time productively. Review the quantitative assertions already saved for each test case and explain them to the user. Do not rewrite `evals/evals.json` or `eval_metadata.json` during the run just because an iteration suggests better wording; iteration-over-iteration comparisons only make sense when the grading criteria, names, and directory slugs stay identical.
+Don't just wait for the runs to finish — you can use this time productively. Draft quantitative assertions for each test case and explain them to the user. If assertions already exist in `evals/evals.json`, review them and explain what they check.
 
 Good assertions are objectively verifiable and have descriptive names — they should read clearly in the benchmark viewer so someone glancing at the results immediately understands what each one checks. Subjective skills (writing style, design quality) are better evaluated qualitatively — don't force assertions onto things that need human judgment.
 
-Also explain to the user what they'll see in the viewer — both the qualitative outputs and the quantitative benchmark.
+Update the `eval_metadata.json` files and `evals/evals.json` with the assertions once drafted. Also explain to the user what they'll see in the viewer — both the qualitative outputs and the quantitative benchmark.
 
 ### Step 3: As runs complete, capture timing data
 
@@ -258,39 +225,34 @@ Once all runs are done:
 1. **Grade each run** — spawn a grader subagent (or grade inline) that reads `agents/grader.md` and evaluates each assertion against the outputs. Save results to `grading.json` in each run directory. The grading.json expectations array must use the fields `text`, `passed`, and `evidence` (not `name`/`met`/`details` or other variants) — the viewer depends on these exact field names. For assertions that can be checked programmatically, write and run a script rather than eyeballing it — scripts are faster, more reliable, and can be reused across iterations.
 
 2. **Aggregate into benchmark** — run the aggregation script from the skill-creator directory:
-
    ```bash
-   uv run scripts/aggregate_benchmark.py <workspace>/iteration-N --skill-name <name>
+   python -m scripts.aggregate_benchmark <workspace>/iteration-N --skill-name <name>
    ```
+   This produces `benchmark.json` and `benchmark.md` with pass_rate, time, and tokens for each configuration, with mean ± stddev and the delta. If generating benchmark.json manually, see `references/schemas.md` for the exact schema the viewer expects.
+Put each with_skill version before its baseline counterpart.
 
-  This produces `benchmark.json` and `benchmark.md` with pass_rate, time, and tokens for each configuration, with mean ± stddev and the delta. If generating benchmark.json manually, see `references/schemas.md` for the exact schema the viewer expects.
-  Put each with_skill version before its baseline counterpart.
+3. **Do an analyst pass** — read the benchmark data and surface patterns the aggregate stats might hide. See `agents/analyzer.md` (the "Analyzing Benchmark Results" section) for what to look for — things like assertions that always pass regardless of skill (non-discriminating), high-variance evals (possibly flaky), and time/token tradeoffs.
 
-1. **Do an analyst pass** — read the benchmark data and surface patterns the aggregate stats might hide. See `agents/analyzer.md` for what to look for — non-discriminating assertions, high-variance evals, time/token tradeoffs. Write the observations as markdown to `<workspace>/iteration-<N>/analyst-notes.md`, then read `benchmark.json`, set the `"notes"` field to the markdown content, and write it back.
-
-2. **Launch the viewer** with both qualitative outputs and quantitative data:
-
+4. **Launch the viewer** with both qualitative outputs and quantitative data:
    ```bash
-   nohup python3 <skill-creator-path>/eval-viewer/generate_review.py \
+   nohup python <skill-creator-path>/eval-viewer/generate_review.py \
      <workspace>/iteration-N \
      --skill-name "my-skill" \
      --benchmark <workspace>/iteration-N/benchmark.json \
      > /dev/null 2>&1 &
    VIEWER_PID=$!
    ```
-
    For iteration 2+, also pass `--previous-workspace <workspace>/iteration-<N-1>`.
 
    **Cowork / headless environments:** If `webbrowser.open()` is not available or the environment has no display, use `--static <output_path>` to write a standalone HTML file instead of starting a server. Feedback will be downloaded as a `feedback.json` file when the user clicks "Submit All Reviews". After download, copy `feedback.json` into the workspace directory for the next iteration to pick up.
 
 Note: please use generate_review.py to create the viewer; there's no need to write custom HTML.
 
-1. **Tell the user** something like: "I've opened the results in your browser. There are two tabs — 'Outputs' lets you click through each test case and leave feedback, 'Benchmark' shows the quantitative comparison. When you're done, come back here and let me know."
+5. **Tell the user** something like: "I've opened the results in your browser. There are two tabs — 'Outputs' lets you click through each test case and leave feedback, 'Benchmark' shows the quantitative comparison. When you're done, come back here and let me know."
 
 ### What the user sees in the viewer
 
 The "Outputs" tab shows one test case at a time:
-
 - **Prompt**: the task that was given
 - **Output**: the files the skill produced, rendered inline where possible
 - **Previous Output** (iteration 2+): collapsed section showing last iteration's output
@@ -354,7 +316,6 @@ After improving the skill:
 5. Read the new feedback, improve again, repeat
 
 Keep going until:
-
 - The user says they're happy
 - The feedback is all empty (everything looks good)
 - You're not making meaningful progress
@@ -417,21 +378,20 @@ Tell the user: "This will take some time — I'll run the optimization loop in t
 
 Save the eval set to the workspace, then run in the background:
 
-   ```bash
-   uv run scripts/run_loop.py \
-     --eval-set <path-to-trigger-eval.json> \
-     --skill-path <path-to-skill> \
-     --project-root <repo-root-containing-.claude> \
-     --model <model-id-powering-this-session> \
-     --max-iterations 5 \
-     --verbose
+```bash
+python -m scripts.run_loop \
+  --eval-set <path-to-trigger-eval.json> \
+  --skill-path <path-to-skill> \
+  --model <model-id-powering-this-session> \
+  --max-iterations 5 \
+  --verbose
 ```
 
 Use the model ID from your system prompt (the one powering the current session) so the triggering test matches what the user actually experiences.
 
 While it runs, periodically tail the output to give the user updates on which iteration it's on and what the scores look like.
 
-This handles the full optimization loop automatically. It splits the eval set into 60% train and 40% held-out test, evaluates the current description (running each query 3 times to get a reliable trigger rate), then calls Claude to propose improvements based on what failed. It re-evaluates each new description on both train and test, iterating up to 5 times. When it's done, it writes an HTML report showing the results per iteration and returns JSON with `best_description` — selected by test score rather than train score to avoid overfitting. Add `--open-report` if you explicitly want the script to launch that report in a browser.
+This handles the full optimization loop automatically. It splits the eval set into 60% train and 40% held-out test, evaluates the current description (running each query 3 times to get a reliable trigger rate), then calls Claude to propose improvements based on what failed. It re-evaluates each new description on both train and test, iterating up to 5 times. When it's done, it opens an HTML report in the browser showing the results per iteration and returns JSON with `best_description` — selected by test score rather than train score to avoid overfitting.
 
 ### How skill triggering works
 
@@ -450,7 +410,7 @@ Take `best_description` from the JSON output and update the skill's SKILL.md fro
 Check whether you have access to the `present_files` tool. If you don't, skip this step. If you do, package the skill and present the .skill file to the user:
 
 ```bash
-uv run scripts/package_skill.py <path/to/skill-folder>
+python -m scripts.package_skill <path/to/skill-folder>
 ```
 
 After packaging, direct the user to the resulting `.skill` file path so they can install it.
@@ -476,7 +436,6 @@ In Claude.ai, the core workflow is the same (draft → test → review → impro
 **Packaging**: The `package_skill.py` script works anywhere with Python and a filesystem. On Claude.ai, you can run it and the user can download the resulting `.skill` file.
 
 **Updating an existing skill**: The user might be asking you to update an existing skill, not create a new one. In this case:
-
 - **Preserve the original name.** Note the skill's directory name and `name` frontmatter field -- use them unchanged. E.g., if the installed skill is `research-helper`, output `research-helper.skill` (not `research-helper-v2`).
 - **Copy to a writeable location before editing.** The installed skill path may be read-only. Copy to `/tmp/skill-name/`, edit there, and package from the copy.
 - **If packaging manually, stage in `/tmp/` first**, then copy to the output directory -- direct writes may fail due to permissions.
@@ -506,7 +465,6 @@ The agents/ directory contains instructions for specialized subagents. Read them
 - `agents/analyzer.md` — How to analyze why one version beat another
 
 The references/ directory has additional documentation:
-
 - `references/schemas.md` — JSON structures for evals.json, grading.json, etc.
 
 ---
