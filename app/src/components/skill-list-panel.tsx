@@ -28,17 +28,17 @@ import { toast } from "@/lib/toast";
 import SkillDialog from "@/components/skill-dialog";
 import DeleteSkillDialog from "@/components/delete-skill-dialog";
 import RestoreVersionDialog from "@/components/workspace/restore-version-dialog";
+import { CreatePluginDialog } from "@/components/create-plugin-dialog";
+import { MoveToPluginDialog } from "@/components/move-to-plugin-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
 import { PURPOSE_SHORT_LABELS } from "@/lib/types";
 import {
-  createPluginFromSkills,
   getExternallyLockedSkills,
   exportSkill,
   listSkills,
-  moveSkillToPlugin,
   packageSkill,
   removeSkillFromPlugin,
   resetWorkflowStep,
@@ -196,6 +196,8 @@ export function SkillListPanel({
   const [redoTarget, setRedoTarget] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [externalLockedSkills, setExternalLockedSkills] = useState<Set<string>>(new Set());
+  const [moveTarget, setMoveTarget] = useState<UnifiedSkill | null>(null);
+  const [createPluginTarget, setCreatePluginTarget] = useState<UnifiedSkill | null>(null);
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const builderSkills = useSkillStore((s) => s.skills);
@@ -385,41 +387,12 @@ export function SkillListPanel({
     await fetchImportedSkills();
   }
 
-  async function handleCreatePlugin(skill: UnifiedSkill) {
-    const pluginName = window.prompt(`Create a new plugin for "${skill.name}"`)
-    if (!pluginName) return
-    const toastId = toast.loading(`Creating plugin "${pluginName}"...`)
-    try {
-      await createPluginFromSkills(pluginName, [skill.key])
-      await refreshSkillLists()
-      toast.success(`Created plugin "${pluginName}"`, { id: toastId })
-    } catch (err) {
-      toast.error(
-        `Create plugin failed: ${err instanceof Error ? err.message : String(err)}`,
-        { id: toastId },
-      )
-    }
+  function handleCreatePlugin(skill: UnifiedSkill) {
+    setCreatePluginTarget(skill)
   }
 
-  async function handleMoveToPlugin(skill: UnifiedSkill) {
-    const available = pluginOptions
-      .filter(([slug]) => slug !== skill.pluginSlug)
-      .map(([slug, label]) => `${label} (${slug})`)
-      .join(", ")
-    const pluginSlug = window.prompt(
-      `Move "${skill.name}" to plugin slug${available ? `\nAvailable: ${available}` : ""}`,
-    )
-    if (!pluginSlug) return
-    const toastId = toast.loading(`Moving "${skill.name}"...`)
-    try {
-      await moveSkillToPlugin(skill.key, pluginSlug)
-      await refreshSkillLists()
-      toast.success(`Moved "${skill.name}"`, { id: toastId })
-    } catch (err) {
-      toast.error(`Move failed: ${err instanceof Error ? err.message : String(err)}`, {
-        id: toastId,
-      })
-    }
+  function handleMoveToPlugin(skill: UnifiedSkill) {
+    setMoveTarget(skill)
   }
 
   async function handleRemoveFromPlugin(skill: UnifiedSkill) {
@@ -711,6 +684,27 @@ export function SkillListPanel({
           }}
         />
       )}
+
+      {moveTarget && (
+        <MoveToPluginDialog
+          open={!!moveTarget}
+          onOpenChange={(open) => { if (!open) setMoveTarget(null); }}
+          skillName={moveTarget.name}
+          skillKey={moveTarget.key}
+          currentPluginSlug={moveTarget.pluginSlug}
+          onMoved={refreshSkillLists}
+        />
+      )}
+
+      <CreatePluginDialog
+        open={!!createPluginTarget}
+        onOpenChange={(open) => { if (!open) setCreatePluginTarget(null); }}
+        onCreated={async () => {
+          setCreatePluginTarget(null);
+          await refreshSkillLists();
+        }}
+        initialSkillKey={createPluginTarget?.key}
+      />
     </div>
   );
 }
