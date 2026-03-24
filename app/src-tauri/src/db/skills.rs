@@ -2,7 +2,7 @@ use crate::types::{SkillMasterRow, WorkflowRunRow, WorkflowStepRow};
 use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashMap;
 
-const DEFAULT_PLUGIN_SLUG: &str = "no-plugin";
+const DEFAULT_PLUGIN_SLUG: &str = "skills";
 
 pub fn slugify_plugin_name(name: &str) -> String {
     let mut slug = String::with_capacity(name.len());
@@ -74,7 +74,7 @@ pub fn ensure_default_plugin(conn: &Connection) -> Result<i64, String> {
     ensure_plugin(
         conn,
         DEFAULT_PLUGIN_SLUG,
-        "No Plugin",
+        "Skills",
         "synthetic",
         None,
         None,

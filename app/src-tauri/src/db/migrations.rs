@@ -1250,6 +1250,12 @@ pub(super) fn repair_plugin_ownership_schema(conn: &Connection) -> Result<(), ru
          WHERE plugin_id IS NULL;",
     )?;
 
+    // Rename legacy 'no-plugin' slug to 'skills'
+    conn.execute_batch(
+        "UPDATE plugins SET slug = 'skills', display_name = 'Skills'
+         WHERE slug = 'no-plugin';",
+    )?;
+
     Ok(())
 }
 

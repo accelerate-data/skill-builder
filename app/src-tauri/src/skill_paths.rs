@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const DEFAULT_PLUGIN_SLUG: &str = "no-plugin";
-pub const DEFAULT_PLUGIN_DISPLAY_NAME: &str = "No Plugin";
+pub const DEFAULT_PLUGIN_SLUG: &str = "skills";
+pub const DEFAULT_PLUGIN_DISPLAY_NAME: &str = "Skills";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillLocation {

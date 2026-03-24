@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::Db;
-use crate::skill_paths::resolve_skill_dir;
+use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::{RefineDiff, RefineFileDiff, RefineFinalizeResult, SkillFileContent};
 
 use super::content::get_skill_content_inner_for_plugin;
@@ -88,7 +88,7 @@ pub(crate) fn finalize_refine_run_inner(
         skill_name,
         skills_path,
         workspace_path,
-        "no-plugin",
+        DEFAULT_PLUGIN_SLUG,
         _structured_output,
         pre_run_sha,
     )
@@ -208,7 +208,7 @@ pub fn clean_benchmark_snapshot(
 ) -> Result<(), String> {
     log::info!("[clean_benchmark_snapshot] skill={}", skill_name);
     validate_skill_name(&skill_name)?;
-    let workspace_skill_root = resolve_skill_dir(Path::new(&workspace_path), "no-plugin", &skill_name);
+    let workspace_skill_root = resolve_skill_dir(Path::new(&workspace_path), DEFAULT_PLUGIN_SLUG, &skill_name);
     cleanup_skill_snapshot(&workspace_skill_root);
     Ok(())
 }

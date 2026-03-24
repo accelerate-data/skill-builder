@@ -556,7 +556,7 @@ async fn import_marketplace_entries_to_library(
     // Individual skill imports always go into no-plugin.
     // Use import_marketplace_plugin_to_library for full plugin imports.
     let plugin_slug = DEFAULT_PLUGIN_SLUG.to_string();
-    let plugin_display_name = "No Plugin".to_string();
+    let plugin_display_name = crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME.to_string();
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::ensure_default_plugin(&conn)?;

@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::skill_paths::{ensure_nested_skill_dir, resolve_skill_dir};
+use crate::skill_paths::{ensure_nested_skill_dir, resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use std::fs;
 use std::path::Path;
 
@@ -60,7 +60,7 @@ pub(crate) fn delete_imported_skill_inner(
     crate::db::delete_skill_in_plugin(
         conn,
         &skill_name,
-        skill.plugin_slug.as_deref().unwrap_or("no-plugin"),
+        skill.plugin_slug.as_deref().unwrap_or(DEFAULT_PLUGIN_SLUG),
     )?;
 
     // Regenerate CLAUDE.md
@@ -90,11 +90,11 @@ fn resolve_skill_target(
             .ok_or_else(|| format!("Imported skill '{}' not found", skill_id))?;
         return Ok((
             imported.skill_name,
-            imported.plugin_slug.unwrap_or_else(|| "no-plugin".to_string()),
+            imported.plugin_slug.unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string()),
             Some(skill_id.to_string()),
         ));
     }
-    Ok((skill_key.to_string(), "no-plugin".to_string(), None))
+    Ok((skill_key.to_string(), DEFAULT_PLUGIN_SLUG.to_string(), None))
 }
 
 fn move_skill_directories(
@@ -275,9 +275,9 @@ pub fn remove_skill_from_plugin(
         settings.skills_path.as_deref(),
         &skill_name,
         &current_plugin_slug,
-        "no-plugin",
+        DEFAULT_PLUGIN_SLUG,
     )?;
-    crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, "no-plugin")
+    crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, DEFAULT_PLUGIN_SLUG)
         .and_then(|_| {
             if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
                 crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
@@ -324,8 +324,8 @@ mod tests {
             user_invocable: None,
             disable_model_invocation: None,
             marketplace_source_url: None,
-            plugin_slug: Some("no-plugin".to_string()),
-            plugin_display_name: Some("No Plugin".to_string()),
+            plugin_slug: Some(DEFAULT_PLUGIN_SLUG.to_string()),
+            plugin_display_name: Some(crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME.to_string()),
             is_default_plugin: Some(true),
         }
     }

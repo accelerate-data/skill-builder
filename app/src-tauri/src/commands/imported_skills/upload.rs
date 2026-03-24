@@ -1,4 +1,5 @@
 use crate::db::Db;
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use rusqlite::OptionalExtension;
 use std::path::Path;
 
@@ -196,7 +197,7 @@ fn import_skill_from_file_inner(
     }
 
     // Step 1: Create/update skill master row (linked to no-plugin)
-    let skill_master_id = crate::db::upsert_skill_with_source_in_plugin(conn, name, "imported", "domain", "no-plugin")?;
+    let skill_master_id = crate::db::upsert_skill_with_source_in_plugin(conn, name, "imported", "domain", DEFAULT_PLUGIN_SLUG)?;
 
     // Update description on skill master
     conn.execute(
@@ -224,8 +225,8 @@ fn import_skill_from_file_inner(
         user_invocable,
         disable_model_invocation,
         marketplace_source_url: None,
-        plugin_slug: Some("no-plugin".to_string()),
-        plugin_display_name: Some("No Plugin".to_string()),
+        plugin_slug: Some(DEFAULT_PLUGIN_SLUG.to_string()),
+        plugin_display_name: Some(crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME.to_string()),
         is_default_plugin: Some(true),
     };
     crate::db::upsert_imported_skill(conn, &skill, skill_master_id)?;

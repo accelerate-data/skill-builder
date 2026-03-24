@@ -2123,8 +2123,8 @@ fn test_generate_skills_section_single_active_skill() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
-        plugin_slug: Some("no-plugin".to_string()),
-        plugin_display_name: Some("No Plugin".to_string()),
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
         is_default_plugin: Some(true),
     };
     crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
@@ -2176,8 +2176,8 @@ fn test_generate_skills_section_inactive_skill_excluded() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
-        plugin_slug: Some("no-plugin".to_string()),
-        plugin_display_name: Some("No Plugin".to_string()),
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
         is_default_plugin: Some(true),
     };
     crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
@@ -2222,8 +2222,8 @@ fn test_generate_skills_section_multiple_skills_same_format() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
-        plugin_slug: Some("no-plugin".to_string()),
-        plugin_display_name: Some("No Plugin".to_string()),
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
         is_default_plugin: Some(true),
     };
     let imported = crate::types::ImportedSkill {
@@ -2242,8 +2242,8 @@ fn test_generate_skills_section_multiple_skills_same_format() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
-        plugin_slug: Some("no-plugin".to_string()),
-        plugin_display_name: Some("No Plugin".to_string()),
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
         is_default_plugin: Some(true),
     };
     crate::db::test_insert_imported_skill(&conn, &bundled).unwrap();
@@ -2309,8 +2309,8 @@ fn test_generate_skills_section_no_trigger_no_path() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
-        plugin_slug: Some("no-plugin".to_string()),
-        plugin_display_name: Some("No Plugin".to_string()),
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
         is_default_plugin: Some(true),
     };
     crate::db::test_insert_imported_skill(&conn, &skill).unwrap();

@@ -371,7 +371,7 @@ pub fn get_imported_skill_by_name_and_source(
 /// Production code must call `upsert_skill_in_plugin` + `insert_imported_skill` separately.
 #[cfg(test)]
 pub fn test_insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
-    let plugin_slug = skill.plugin_slug.as_deref().unwrap_or("no-plugin");
+    let plugin_slug = skill.plugin_slug.as_deref().unwrap_or(crate::skill_paths::DEFAULT_PLUGIN_SLUG);
     let source = if skill.marketplace_source_url.is_some() { "marketplace" } else { "imported" };
     let skill_master_id = super::skills::upsert_skill_with_source_in_plugin(
         conn,
