@@ -18,16 +18,21 @@ export function buildEvaluateSkillPrompt(params: {
   workspacePath: string;
   evalIds: number[];
   runCount: 1 | 3;
+  comparisonMode?: "with_without_skill" | "current_vs_previous";
 }): string {
-  const { skillName, workspacePath, evalIds, runCount } = params;
+  const { skillName, workspacePath, evalIds, runCount, comparisonMode } = params;
   const skillPath = `${workspacePath}/${skillName}`;
-  return [
+  const lines = [
     `skill_name: ${skillName}`,
     `workspace_path: ${workspacePath}`,
     `eval_ids: ${JSON.stringify(evalIds)}`,
     `run_count: ${runCount}`,
     `skill_path: ${skillPath}`,
-  ].join("\n");
+  ];
+  if (comparisonMode) {
+    lines.push(`comparison_mode: ${comparisonMode}`);
+  }
+  return lines.join("\n");
 }
 
 /**
