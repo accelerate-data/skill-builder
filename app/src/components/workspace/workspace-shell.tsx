@@ -14,7 +14,7 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
-import { getSkillContentForRefine } from "@/lib/tauri";
+import { cleanupSkillSidecar, getSkillContentForRefine } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
@@ -56,18 +56,24 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
     setActiveTab(value);
   }, [activeTab]);
 
+  const skillName = "name" in skill ? skill.name : skill.skill_name;
+
   const handleTabStay = useCallback(() => {
     setPendingTab(null);
   }, []);
 
   const handleTabLeave = useCallback(() => {
     if (pendingTab) {
+      // Clean up sidecar processes when leaving a tab with a running agent
+      if (activeTab === "evals" && evalsRunningRef.current) {
+        cleanupSkillSidecar(skillName).catch((err) =>
+          console.error("[workspace-shell] eval sidecar cleanup failed:", err),
+        );
+      }
       setActiveTab(pendingTab);
       setPendingTab(null);
     }
-  }, [pendingTab]);
-
-  const skillName = "name" in skill ? skill.name : skill.skill_name;
+  }, [pendingTab, activeTab, skillName]);
   const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const isBuilderSkill = "name" in skill;
   const workspacePath = useSettingsStore((s) => s.workspacePath);

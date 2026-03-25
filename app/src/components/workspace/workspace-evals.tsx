@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import {
+  cleanupSkillSidecar,
   deleteTestCase,
   discardPendingEval,
   listIterations,
@@ -126,6 +127,20 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
 
   // Notify parent when eval run state changes (for tab-switch gate)
   useEffect(() => { onRunningChange?.(isRunningEvals); }, [isRunningEvals, onRunningChange]);
+
+  // Track evalRunAgentId in a ref for unmount cleanup (avoids stale closure)
+  const evalRunAgentIdRef = useRef<string | null>(null);
+  useEffect(() => { evalRunAgentIdRef.current = evalRunAgentId; }, [evalRunAgentId]);
+
+  // Clean up sidecar process if component unmounts during an eval run
+  useEffect(() => {
+    return () => {
+      if (evalRunAgentIdRef.current) {
+        cleanupSkillSidecar(skillName).catch(() => {});
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skillName]);
 
   // --- Actions ---
 
