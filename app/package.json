@@ -76,7 +76,7 @@
     "jsdom": "^29.0.1",
     "promptfoo": "^0.121.2",
     "tailwindcss": "^4.2.2",
-    "typescript": "~5.8.3",
+    "typescript": "~6.0.2",
     "vite": "^8.0.2",
     "vitest": "^4.1.0"
   },
