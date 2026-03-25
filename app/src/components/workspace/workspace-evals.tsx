@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, Pencil, Play, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Pencil, Play, Sparkles, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -618,14 +618,13 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     }
   }
 
-  function handleRefine() {
-    if (!benchmark) return;
-    const msg = buildRefinePrefill(benchmark, analystNotes);
+  function handleRefine(bm: EvalBenchmark, notes: string[]) {
+    const msg = buildRefinePrefill(bm, notes);
     useRefineStore.getState().setPendingInitialMessage(msg);
     onNavigateToRefine?.();
     console.log(
       "event=eval_refine_navigate skill=%s iteration=%d",
-      skillName, benchmark.iteration,
+      skillName, bm.iteration,
     );
   }
 
@@ -900,6 +899,19 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
           <div className="min-h-0 flex-1 flex flex-col">
             <AgentOutputPanel agentId={evalRunAgentId} />
           </div>
+          {/* Inline Refine CTA when failures detected */}
+          {benchmark?.aggregate_summary.has_failures && (
+            <div className="flex items-center gap-2 border-t px-3 py-2 shrink-0">
+              <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
+              <span className="text-xs font-medium text-destructive">
+                {benchmark.aggregate_summary.total_failed} assertion failure{benchmark.aggregate_summary.total_failed !== 1 ? "s" : ""}
+              </span>
+              <Button size="sm" variant="outline" className="ml-auto h-7 text-xs text-destructive border-destructive/50 hover:bg-destructive/10"
+                onClick={() => handleRefine(benchmark, analystNotes)}>
+                Refine skill
+              </Button>
+            </div>
+          )}
           {/* Bottom drag handle */}
           <div
             className="h-1.5 w-full cursor-ns-resize rounded-b bg-border hover:bg-muted-foreground/30 transition-colors duration-150 shrink-0"
@@ -927,7 +939,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         <EvalRunBenchmarkCard
           benchmark={benchmark}
           analystNotes={analystNotes}
-          onRefine={handleRefine}
+          onRefine={() => handleRefine(benchmark, analystNotes)}
         />
       )}
 
@@ -972,7 +984,9 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
                 <EvalRunBenchmarkCard
                   benchmark={iterationBenchmark}
                   analystNotes={iterationNotes}
-                  onRefine={handleRefine}
+                  onRefine={selectedIteration === latestIteration
+                    ? () => handleRefine(iterationBenchmark, iterationNotes)
+                    : undefined}
                 />
               </div>
             )}

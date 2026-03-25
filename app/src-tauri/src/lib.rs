@@ -380,6 +380,7 @@ pub fn run() {
             commands::evals::delete_test_case,
             commands::evals::list_iterations,
             commands::evals::read_iteration_result,
+            commands::evals::read_grading,
             commands::evals::read_skill_context_for_eval_gen,
             commands::evals::read_pending_eval,
             commands::evals::discard_pending_eval,

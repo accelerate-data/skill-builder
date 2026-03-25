@@ -1,14 +1,16 @@
-import { useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { useCallback, useState } from "react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { readGrading } from "@/lib/tauri";
 import type { EvalAggregateSummary, EvalBenchmark, EvalBenchmarkRun } from "@/lib/types";
 
 interface EvalRunBenchmarkCardProps {
   benchmark: EvalBenchmark;
   analystNotes: string[];
-  onRefine: () => void;
+  /** If provided, shows the Refine CTA when there are failures. */
+  onRefine?: () => void;
 }
 
 function passRateClass(rate: number): string {
@@ -22,12 +24,13 @@ function fmt(rate: number): string {
   return `${Math.round(rate * 100)}%`;
 }
 
-function buildEvalRates(runs: EvalBenchmarkRun[]): Record<number, { eval_name: string; runRates: number[] }> {
-  const byId: Record<number, { eval_name: string; runRates: number[] }> = {};
+function buildEvalRates(runs: EvalBenchmarkRun[]): Record<number, { eval_name: string; runRates: number[]; gradingPaths: string[] }> {
+  const byId: Record<number, { eval_name: string; runRates: number[]; gradingPaths: string[] }> = {};
   for (const run of runs) {
     for (const e of run.evals) {
-      if (!byId[e.eval_id]) byId[e.eval_id] = { eval_name: e.eval_name, runRates: [] };
+      if (!byId[e.eval_id]) byId[e.eval_id] = { eval_name: e.eval_name, runRates: [], gradingPaths: [] };
       byId[e.eval_id].runRates.push(e.summary.pass_rate);
+      if (e.grading_path) byId[e.eval_id].gradingPaths.push(e.grading_path);
     }
   }
   return byId;
@@ -66,6 +69,72 @@ function AggregateStat({ label, summary }: { label?: string; summary: EvalAggreg
   );
 }
 
+/** Expandable per-expectation details for one eval. */
+function EvalExpectationsDetail({ gradingPaths }: { gradingPaths: string[] }) {
+  const [expectations, setExpectations] = useState<Array<{ text: string; passed: boolean; evidence: string }> | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const loadExpectations = useCallback(async () => {
+    if (expectations || loading || gradingPaths.length === 0) return;
+    setLoading(true);
+    try {
+      // Read from the first grading path (run-0)
+      const grading = await readGrading(gradingPaths[0]);
+      const exps = grading.expectations as Array<{ text: string; passed: boolean; evidence: string }> | undefined;
+      setExpectations(exps ?? []);
+    } catch (err) {
+      console.error("[eval-benchmark] Failed to read grading:", err);
+      setExpectations([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [gradingPaths, expectations, loading]);
+
+  if (!expectations && !loading) {
+    void loadExpectations();
+    return <div className="px-4 py-2 text-[11px] text-muted-foreground">Loading expectations…</div>;
+  }
+
+  if (loading) {
+    return <div className="px-4 py-2 text-[11px] text-muted-foreground">Loading expectations…</div>;
+  }
+
+  if (!expectations || expectations.length === 0) return null;
+
+  return (
+    <div className="bg-muted/20">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b text-[11px] text-muted-foreground">
+            <th className="px-4 py-1.5 text-left font-medium">Expectation</th>
+            <th className="px-2 py-1.5 text-center font-medium w-16">Result</th>
+            <th className="px-4 py-1.5 text-left font-medium">Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {expectations.map((exp, i) => (
+            <tr key={i} className="border-b last:border-b-0">
+              <td className="px-4 py-2 align-top max-w-[200px]">
+                <span className="text-xs leading-relaxed">{exp.text}</span>
+              </td>
+              <td className="px-2 py-2 text-center align-top">
+                {exp.passed ? (
+                  <CheckCircle2 className="inline size-3.5" style={{ color: "var(--color-seafoam)" }} />
+                ) : (
+                  <XCircle className="inline size-3.5 text-destructive" />
+                )}
+              </td>
+              <td className="px-4 py-2 align-top max-w-[300px]">
+                <span className="text-[11px] leading-relaxed text-muted-foreground">{exp.evidence}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function EvalRunBenchmarkCard({
   benchmark,
   analystNotes,
@@ -77,6 +146,8 @@ export function EvalRunBenchmarkCard({
 
   // Analyst notes expand automatically when there are failures
   const [notesOpen, setNotesOpen] = useState(hasFailures);
+  // Track which eval rows are expanded to show expectations
+  const [expandedEvalId, setExpandedEvalId] = useState<number | null>(null);
 
   const primaryLabel = comparison_mode === "current_vs_previous" ? "Current" : "With skill";
   const baselineLabel = comparison_mode === "current_vs_previous" ? "Previous" : "Without skill";
@@ -91,6 +162,7 @@ export function EvalRunBenchmarkCard({
       eval_id: id,
       eval_name: primaryById[id].eval_name,
       runRates: primaryById[id].runRates,
+      gradingPaths: primaryById[id].gradingPaths,
       baselineRunRates: baselineById[id]?.runRates,
     }));
 
@@ -98,7 +170,7 @@ export function EvalRunBenchmarkCard({
     <div className="mt-4 rounded-lg border bg-card shadow-sm">
       {/* Header */}
       <div className="flex items-center gap-2 border-b px-4 py-2.5">
-        <span className="text-sm font-semibold tracking-tight">Benchmark Results</span>
+        <span className="text-sm font-semibold tracking-tight">Benchmark Summary</span>
         <Badge
           className="rounded-full px-2 py-0.5 text-xs font-medium"
           style={{ background: "var(--color-background)", color: "var(--color-muted-foreground)", border: "1px solid var(--color-border)" }}
@@ -169,7 +241,7 @@ export function EvalRunBenchmarkCard({
         )}
       </div>
 
-      {/* Per-eval breakdown */}
+      {/* Per-eval breakdown with expandable expectations */}
       {evalRows.length > 0 && (
         <div className="border-b">
           <div className="bg-muted/40 px-4 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -177,7 +249,7 @@ export function EvalRunBenchmarkCard({
               ? `${primaryLabel} vs ${baselineLabel}`
               : run_count > 1 ? "Per-eval · per-run breakdown" : "Per-eval results"}
           </div>
-          {evalRows.map(({ eval_id, eval_name, runRates, baselineRunRates }) => {
+          {evalRows.map(({ eval_id, eval_name, runRates, gradingPaths, baselineRunRates }) => {
             const avgRate = runRates.length > 0
               ? runRates.reduce((s, r) => s + r, 0) / runRates.length
               : 0;
@@ -185,73 +257,82 @@ export function EvalRunBenchmarkCard({
               ? baselineRunRates.reduce((s, r) => s + r, 0) / baselineRunRates.length
               : undefined;
             const delta = baselineAvgRate !== undefined ? avgRate - baselineAvgRate : undefined;
+            const isExpanded = expandedEvalId === eval_id;
             return (
-              <div
-                key={eval_id}
-                className="flex items-center gap-3 border-t px-4 py-2 text-xs"
-              >
-                <span className="flex-1 font-medium">{eval_name}</span>
-                {isComparison ? (
-                  <div className="flex items-center gap-3">
-                    {/* Primary avg */}
-                    <div className="flex flex-col items-end gap-0.5">
+              <div key={eval_id}>
+                <div
+                  className="flex items-center gap-3 border-t px-4 py-2 text-xs cursor-pointer hover:bg-muted/30 transition-colors duration-150"
+                  onClick={() => setExpandedEvalId(isExpanded ? null : eval_id)}
+                >
+                  {isExpanded ? (
+                    <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+                  )}
+                  <span className="flex-1 font-medium">{eval_name}</span>
+                  {isComparison ? (
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span
+                          className={`font-mono text-[11px] font-semibold ${passRateClass(avgRate)}`}
+                          style={avgRate >= 1.0 ? { color: "var(--color-seafoam)" } : {}}
+                        >
+                          {fmt(avgRate)}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">{primaryLabel}</span>
+                      </div>
+                      {delta !== undefined && (
+                        <span className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
+                          delta > 0.01
+                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                            : delta < -0.01
+                              ? "bg-destructive/10 text-destructive"
+                              : "bg-muted text-muted-foreground"
+                        }`}>
+                          {delta > 0.01 ? "+" : delta < -0.01 ? "" : "~"}{delta !== 0 ? Math.round(delta * 100) + "%" : "0%"}
+                        </span>
+                      )}
+                      {baselineAvgRate !== undefined && (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="font-mono text-[11px] font-semibold text-muted-foreground">
+                            {fmt(baselineAvgRate)}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">{baselineLabel}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      {run_count > 1 ? (
+                        <div className="flex gap-1.5">
+                          {runRates.map((rate, i) => (
+                            <span
+                              key={i}
+                              className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold ${
+                                rate >= 1.0
+                                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                  : rate > 0
+                                    ? "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                                    : "bg-destructive/10 text-destructive"
+                              }`}
+                            >
+                              R{i + 1} {fmt(rate)}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                       <span
                         className={`font-mono text-[11px] font-semibold ${passRateClass(avgRate)}`}
                         style={avgRate >= 1.0 ? { color: "var(--color-seafoam)" } : {}}
                       >
                         {fmt(avgRate)}
                       </span>
-                      <span className="text-[10px] text-muted-foreground">{primaryLabel}</span>
-                    </div>
-                    {/* Delta badge */}
-                    {delta !== undefined && (
-                      <span className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
-                        delta > 0.01
-                          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                          : delta < -0.01
-                            ? "bg-destructive/10 text-destructive"
-                            : "bg-muted text-muted-foreground"
-                      }`}>
-                        {delta > 0.01 ? "+" : delta < -0.01 ? "" : "~"}{delta !== 0 ? Math.round(delta * 100) + "%" : "0%"}
-                      </span>
-                    )}
-                    {/* Baseline avg */}
-                    {baselineAvgRate !== undefined && (
-                      <div className="flex flex-col items-end gap-0.5">
-                        <span className="font-mono text-[11px] font-semibold text-muted-foreground">
-                          {fmt(baselineAvgRate)}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">{baselineLabel}</span>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    {run_count > 1 ? (
-                      <div className="flex gap-1.5">
-                        {runRates.map((rate, i) => (
-                          <span
-                            key={i}
-                            className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold ${
-                              rate >= 1.0
-                                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                                : rate > 0
-                                  ? "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                                  : "bg-destructive/10 text-destructive"
-                            }`}
-                          >
-                            R{i + 1} {fmt(rate)}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                    <span
-                      className={`font-mono text-[11px] font-semibold ${passRateClass(avgRate)}`}
-                      style={avgRate >= 1.0 ? { color: "var(--color-seafoam)" } : {}}
-                    >
-                      {fmt(avgRate)}
-                    </span>
-                  </>
+                    </>
+                  )}
+                </div>
+                {/* Expanded per-expectation details */}
+                {isExpanded && gradingPaths.length > 0 && (
+                  <EvalExpectationsDetail gradingPaths={gradingPaths} />
                 )}
               </div>
             );
@@ -292,8 +373,8 @@ export function EvalRunBenchmarkCard({
         </div>
       )}
 
-      {/* Refine CTA — only when there are failures */}
-      {hasFailures && (
+      {/* Refine CTA — only when there are failures AND onRefine is provided */}
+      {hasFailures && onRefine && (
         <div
           className="flex items-center gap-3 px-4 py-3"
           style={{

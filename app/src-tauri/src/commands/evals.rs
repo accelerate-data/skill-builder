@@ -319,6 +319,20 @@ pub fn read_skill_context_for_eval_gen(
     })
 }
 
+/// Read a grading.json file from a completed eval run.
+#[tauri::command]
+pub fn read_grading(grading_path: String) -> Result<serde_json::Value, String> {
+    log::info!("[read_grading] path={}", grading_path);
+    let raw = std::fs::read_to_string(&grading_path).map_err(|e| {
+        log::error!("[read_grading] failed: {}", e);
+        format!("Failed to read grading: {}", e)
+    })?;
+    serde_json::from_str(&raw).map_err(|e| {
+        log::error!("[read_grading] parse failed: {}", e);
+        format!("Failed to parse grading: {}", e)
+    })
+}
+
 /// Read benchmark.json and analyst-notes.json from a completed iteration directory.
 #[tauri::command]
 pub fn read_iteration_result(

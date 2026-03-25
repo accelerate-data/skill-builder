@@ -661,6 +661,9 @@ export const listIterations = (skillName: string, workspacePath: string) =>
 export const readIterationResult = (iterationPath: string) =>
   invoke<[EvalBenchmark, string[]]>("read_iteration_result", { iterationPath });
 
+export const readGrading = (gradingPath: string) =>
+  invoke<Record<string, unknown>>("read_grading", { gradingPath });
+
 export const readSkillContextForEvalGen = (skillName: string, workspacePath: string) =>
   invoke<SkillEvalContext>("read_skill_context_for_eval_gen", { skillName, workspacePath });
 
