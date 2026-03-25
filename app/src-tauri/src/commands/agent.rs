@@ -20,6 +20,18 @@ fn derive_setting_sources(agent_name: Option<&str>) -> Option<Vec<String>> {
     }
 }
 
+/// Derive required plugins from the agent name.
+///
+/// Plugin-scoped agents use the format `plugin-name:agent-name`. The plugin
+/// must be in `required_plugins` so the sidecar discovers and loads it,
+/// allowing the SDK to resolve the agent's .md spec and sibling agents.
+fn derive_required_plugins(agent_name: Option<&str>) -> Vec<String> {
+    agent_name
+        .and_then(|n| n.split_once(':'))
+        .map(|(plugin, _)| vec![plugin.to_string()])
+        .unwrap_or_default()
+}
+
 /// Suppress `fallback_model` when it equals `model` to avoid the SDK error
 /// "Fallback model cannot be the same as the main model".
 ///
@@ -174,8 +186,8 @@ pub async fn start_agent(
         output_format,
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
+        required_plugins: Some(derive_required_plugins(agent_name.as_deref())),
         agent_name,
-        required_plugins: Some(vec![]),
         setting_sources,
         conversation_history: None,
         skill_name: Some(skill_name.clone()),
@@ -200,7 +212,26 @@ pub async fn start_agent(
 
 #[cfg(test)]
 mod tests {
-    use super::{derive_setting_sources, output_format_for_agent, suppress_same_fallback_model};
+    use super::{derive_required_plugins, derive_setting_sources, output_format_for_agent, suppress_same_fallback_model};
+
+    #[test]
+    fn plugin_scoped_agent_derives_plugin_name() {
+        assert_eq!(
+            derive_required_plugins(Some("skill-creator:evaluate-skill")),
+            vec!["skill-creator"]
+        );
+        assert_eq!(
+            derive_required_plugins(Some("skill-creator:generate-skill")),
+            vec!["skill-creator"]
+        );
+    }
+
+    #[test]
+    fn non_plugin_agent_derives_no_plugins() {
+        let empty: Vec<String> = vec![];
+        assert_eq!(derive_required_plugins(None), empty);
+        assert_eq!(derive_required_plugins(Some("generate-skill")), empty);
+    }
 
     #[test]
     fn evaluate_skill_agent_has_empty_setting_sources() {
