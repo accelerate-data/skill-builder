@@ -57,7 +57,7 @@ Run a subset of eval test cases against a skill, grade the outputs, aggregate re
 
 ### Step 2: Determine iteration number
 
-1. Glob `{skill_workspace}/evals/workspace/iteration-*/`
+1. Glob pattern `iteration-*` in directory `{skill_workspace}/evals/workspace/`
 2. `iteration_N` = max trailing integer + 1 (or `1` if none)
 3. `iter_dir` = `{skill_workspace}/evals/workspace/iteration-{iteration_N}`
 
