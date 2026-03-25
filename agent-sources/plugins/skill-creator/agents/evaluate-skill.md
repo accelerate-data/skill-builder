@@ -7,11 +7,9 @@ tools: Read, Write, Glob, Agent
 
 # Evaluate Skill
 
-> This agent runs within the skill-creator plugin. Use the `skill-creator` skill to execute all
-> eval tasks — it defines executor, grader, and analyzer patterns and the run loop with
-> comparison modes (`no_comparison`, `with_without_skill`, `current_vs_previous`). Only the
-> sidecar-specific contract (JSON progress events, iteration directory numbering,
-> `benchmark.json` format) is specified here.
+> This agent handles the full eval loop autonomously: executor → grader → aggregate → analyze.
+> It uses agent specs from the skill-creator plugin for grading (`grader.md`) and analysis
+> (`analyzer.md`). Paths to those files are derived from `workspace_path` in Phase 0, Step 3.
 
 ## Role
 
@@ -44,7 +42,15 @@ Run a subset of eval test cases against a skill, grade the outputs, aggregate re
 2. `iteration_N` = max trailing integer + 1 (or `1` if none)
 3. `iter_dir` = `{workspace_path}/evals/workspace/iteration-{iteration_N}`
 
-### Step 3 (`current_vs_previous` only): Snapshot previous skill version
+### Step 3: Resolve agent paths
+
+Derive the path to the grader, analyzer, and comparator agent specs:
+
+`skill_agents_dir` = `{workspace_path}/../.claude/plugins/skill-creator/skills/skill-creator/agents`
+
+(One level up from `workspace_path` is the workspace root; plugins are installed under `.claude/plugins/`.)
+
+### Step 4 (`current_vs_previous` only): Snapshot previous skill version
 
 Run `git log --oneline --follow -- {skill_path}/SKILL.md` to find the commit before HEAD.
 Check out that version: `git show <prev_commit>:<repo-relative-path>/SKILL.md > {iter_dir}/prev-skill.md`
@@ -77,12 +83,14 @@ Output directory: {eval_dir}/outputs/
 Transcript path: {eval_dir}/transcript.md
 ```
 
-**Grade** — spawn one grader subagent:
+**Grade** — spawn one grader subagent. Tell it to read and follow `{skill_agents_dir}/grader.md`:
 
 ```text
-expectations: {eval.expectations as JSON array}
-transcript_path: {eval_dir}/transcript.md
-outputs_dir: {eval_dir}/outputs/
+Read the grading instructions from: {skill_agents_dir}/grader.md
+Follow those instructions exactly. Your inputs:
+- expectations: {eval.expectations as JSON array}
+- transcript_path: {eval_dir}/transcript.md
+- outputs_dir: {eval_dir}/outputs/
 ```
 
 The grader writes `grading.json` to `{eval_dir}/grading.json` (one level above `outputs/`).
@@ -129,22 +137,26 @@ Transcript path: {eval_dir}/without_skill/transcript.md
 Complete this task using your own judgment — no skill provided.
 ```
 
-**Grade (parallel)** — in the same Agent tool call, spawn two grader subagents:
+**Grade (parallel)** — in the same Agent tool call, spawn two grader subagents. Tell each to read and follow `{skill_agents_dir}/grader.md`:
 
 *with_skill grader:*
 
 ```text
-expectations: {eval.expectations as JSON array}
-transcript_path: {eval_dir}/with_skill/transcript.md
-outputs_dir: {eval_dir}/with_skill/outputs/
+Read the grading instructions from: {skill_agents_dir}/grader.md
+Follow those instructions exactly. Your inputs:
+- expectations: {eval.expectations as JSON array}
+- transcript_path: {eval_dir}/with_skill/transcript.md
+- outputs_dir: {eval_dir}/with_skill/outputs/
 ```
 
 *without_skill grader:*
 
 ```text
-expectations: {eval.expectations as JSON array}
-transcript_path: {eval_dir}/without_skill/transcript.md
-outputs_dir: {eval_dir}/without_skill/outputs/
+Read the grading instructions from: {skill_agents_dir}/grader.md
+Follow those instructions exactly. Your inputs:
+- expectations: {eval.expectations as JSON array}
+- transcript_path: {eval_dir}/without_skill/transcript.md
+- outputs_dir: {eval_dir}/without_skill/outputs/
 ```
 
 Grading paths: `{eval_dir}/with_skill/grading.json` and `{eval_dir}/without_skill/grading.json`.
@@ -215,12 +227,14 @@ Compute all aggregates as pure calculations before writing.
 
 ## Phase 3 — Analyze
 
-Spawn an analyzer subagent:
+Spawn an analyzer subagent. Tell it to read and follow the benchmark analysis section of `{skill_agents_dir}/analyzer.md`:
 
 ```text
-benchmark_data_path: {iter_dir}/benchmark.json
-skill_path: {skill_path}
-output_path: {iter_dir}/analyst-notes.json
+Read the analysis instructions from: {skill_agents_dir}/analyzer.md
+Use the "Analyzing Benchmark Results" section (not the "Post-hoc Analyzer" section at the top). Your inputs:
+- benchmark_data_path: {iter_dir}/benchmark.json
+- skill_path: {skill_path}
+- output_path: {iter_dir}/analyst-notes.json
 ```
 
 Read `{iter_dir}/analyst-notes.json` (a JSON array of strings).
