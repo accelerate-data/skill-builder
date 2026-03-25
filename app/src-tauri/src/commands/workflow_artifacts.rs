@@ -76,14 +76,16 @@ pub struct PerQuestionEntry {
     pub question_id: String,
     pub verdict: String,
     pub reason: Option<String>,
-    pub contradicts: Option<String>,
 }
 
 /// Structured output produced by the answer-evaluator agent (transition gate between
 /// steps 1 and 2).
 ///
 /// Required fields: `verdict`, `answered_count`, `empty_count`, `vague_count`,
-/// `contradictory_count`, `total_count`, `reasoning`, `per_question`.
+/// `contradictory_count`, `total_count`, `reasoning`, `gate_decision`, `per_question`.
+///
+/// `gate_decision` is one of `"skip_research"`, `"run_research"`, `"revise"` — set by
+/// the agent after asking the user what to do next via AskUserQuestion.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnswerEvaluationOutput {
     pub verdict: String,
@@ -93,6 +95,7 @@ pub struct AnswerEvaluationOutput {
     pub contradictory_count: i64,
     pub total_count: i64,
     pub reasoning: String,
+    pub gate_decision: Option<String>,
     pub per_question: Vec<PerQuestionEntry>,
 }
 

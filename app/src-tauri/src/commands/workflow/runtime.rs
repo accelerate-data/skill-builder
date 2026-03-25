@@ -12,7 +12,6 @@ use super::guards::{
     make_agent_id, parse_decisions_guard, parse_scope_recommendation,
     workflow_step_runtime_label,
 };
-use super::output_format::answer_evaluator_output_format;
 use super::prompt::{build_evaluator_prompt, build_prompt, build_step0_prompt};
 use super::settings::{read_workflow_settings, WorkflowSettings};
 use super::step_config::{
@@ -426,13 +425,19 @@ pub async fn answer_workflow_step_question(
 
 // ─── run_answer_evaluator ────────────────────────────────────────────────────
 
-/// Run the answer-evaluator agent (Haiku) to assess clarification answer quality.
+/// Run the answer-evaluator agent (Haiku) as a full streaming session.
+///
+/// The agent resolves contradictions and asks the gate decision question via
+/// AskUserQuestion. AskUserQuestion callbacks are routed back via
+/// `answer_workflow_step_question` using the registered WorkflowStepSession.
+///
 /// Returns the agent ID for the frontend to subscribe to completion events.
 #[tauri::command]
 pub async fn run_answer_evaluator(
     app: tauri::AppHandle,
     pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
+    sessions: tauri::State<'_, WorkflowStepSessionManager>,
     skill_name: String,
     workspace_path: String,
 ) -> Result<String, String> {
@@ -443,7 +448,7 @@ pub async fn run_answer_evaluator(
 
     // Read settings from DB — same pattern as read_workflow_settings but without
     // step-specific validation (this is a gate, not a workflow step).
-    let (api_key, skills_path, plugin_slug, industry, function_role, intake_json, preferred_model) = {
+    let (api_key, skills_path, plugin_slug, industry, function_role, intake_json) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
@@ -473,8 +478,6 @@ pub async fn run_answer_evaluator(
             .flatten()
             .map(|m| m.plugin_slug)
             .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-        // Answer evaluator is a lightweight gate — always use Haiku for cost efficiency.
-        let model = resolve_model_id("haiku");
         (
             key,
             sp,
@@ -482,7 +485,6 @@ pub async fn run_answer_evaluator(
             settings.industry,
             settings.function_role,
             ij,
-            model,
         )
     };
 
@@ -509,17 +511,14 @@ pub async fn run_answer_evaluator(
     let prompt = build_evaluator_prompt(&skill_name, &workspace_path, &plugin_slug, &skills_path);
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
-    log::info!(
-        "run_answer_evaluator: skill={} model={}",
-        skill_name,
-        preferred_model
-    );
+    log::info!("run_answer_evaluator: skill={} agent=answer-evaluator", skill_name);
 
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
-    let config = SidecarConfig {
+    let mut config = SidecarConfig {
         prompt,
-        model: None,
+        // Answer evaluator always uses Haiku for cost efficiency.
+        model: Some(resolve_model_id("haiku")),
         api_key,
         cwd: workspace_path.clone(),
         allowed_tools: Some(tools_for_agent("answer-evaluator")),
@@ -527,40 +526,70 @@ pub async fn run_answer_evaluator(
         permission_mode: Some("bypassPermissions".to_string()),
         betas: None,
         thinking: None,
+        // When model is set explicitly, fallback_model must differ — suppress it.
         fallback_model: None,
         effort: None,
-        output_format: Some(answer_evaluator_output_format()),
+        // Streaming sessions do not use structured output.
+        output_format: None,
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name: Some("answer-evaluator".to_string()),
-        required_plugins: None,
+        required_plugins: Some(vec!["skill-content-researcher".to_string()]),
         conversation_history: None,
         skill_name: None,
         step_id: None,
         workflow_session_id: None,
         usage_session_id: None,
-        run_source: None,
-        transcript_log_dir: None,
+        run_source: Some("gate-eval".to_string()),
+        transcript_log_dir: Some(
+            crate::skill_paths::workspace_skill_dir(
+                Path::new(&workspace_path),
+                &plugin_slug,
+                &skill_name,
+            )
+            .join("logs")
+            .to_string_lossy()
+            .into_owned(),
+        ),
     };
 
-    let log_dir = crate::skill_paths::workspace_skill_dir(
-        Path::new(&workspace_path),
-        &plugin_slug,
-        &skill_name,
-    )
-    .join("logs")
-    .to_string_lossy()
-    .into_owned();
+    // Resolve SDK cli.js path (same as run_workflow_step_inner does)
+    if config.path_to_claude_code_executable.is_none() {
+        if let Ok(cli_path) = sidecar::resolve_sdk_cli_path_public(&app) {
+            config.path_to_claude_code_executable = Some(cli_path);
+        }
+    }
 
-    sidecar::spawn_sidecar(
-        agent_id.clone(),
-        config,
-        pool.inner().clone(),
-        app.clone(),
-        skill_name,
-        Some(log_dir),
-    )
-    .await?;
+    let session_id = uuid::Uuid::new_v4().to_string();
+
+    log::debug!(
+        "[run_answer_evaluator] starting stream session=[REDACTED] agent={} cwd={}",
+        agent_id,
+        config.cwd,
+    );
+
+    pool.send_stream_start(&skill_name, &session_id, &agent_id, config, &app)
+        .await
+        .map_err(|e| {
+            log::error!(
+                "[run_answer_evaluator] Failed to start stream for agent={}: {}",
+                agent_id,
+                e
+            );
+            e
+        })?;
+
+    // Register session so answer_workflow_step_question can route AskUserQuestion answers back.
+    {
+        let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
+        map.insert(
+            agent_id.clone(),
+            WorkflowStepSession {
+                skill_name,
+                session_id,
+            },
+        );
+    }
 
     Ok(agent_id)
 }

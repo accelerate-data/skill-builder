@@ -318,6 +318,9 @@ pub fn materialize_workflow_step_output(
     Ok(())
 }
 
+/// Note: this schema is kept for reference but is NOT used when running answer-evaluator
+/// as a streaming session (streaming sessions don't use structured output). The validator
+/// `validate_answer_evaluation_json` is what enforces correctness at materialization time.
 pub(crate) fn answer_evaluator_output_format() -> serde_json::Value {
     serde_json::json!({
         "type": "json_schema",
@@ -331,6 +334,7 @@ pub(crate) fn answer_evaluator_output_format() -> serde_json::Value {
                 "contradictory_count",
                 "total_count",
                 "reasoning",
+                "gate_decision",
                 "per_question"
             ],
             "properties": {
@@ -344,6 +348,10 @@ pub(crate) fn answer_evaluator_output_format() -> serde_json::Value {
                 "contradictory_count": { "type": "integer", "minimum": 0 },
                 "total_count": { "type": "integer", "minimum": 0 },
                 "reasoning": { "type": "string", "minLength": 1 },
+                "gate_decision": {
+                    "type": "string",
+                    "enum": ["skip_research", "run_research", "revise"]
+                },
                 "per_question": {
                     "type": "array",
                     "items": {
@@ -353,21 +361,11 @@ pub(crate) fn answer_evaluator_output_format() -> serde_json::Value {
                             "question_id": { "type": "string", "minLength": 1 },
                             "verdict": {
                                 "type": "string",
-                                "enum": ["clear", "needs_refinement", "not_answered", "vague", "contradictory"]
+                                "enum": ["clear", "needs_refinement", "not_answered", "vague"]
                             },
-                            "reason": { "type": "string" },
-                            "contradicts": { "type": "string" }
+                            "reason": { "type": "string" }
                         },
-                        "additionalProperties": false,
-                        "allOf": [
-                            {
-                                "if": {
-                                    "properties": { "verdict": { "const": "contradictory" } },
-                                    "required": ["verdict"]
-                                },
-                                "then": { "required": ["contradicts"] }
-                            }
-                        ]
+                        "additionalProperties": false
                     }
                 }
             },
@@ -431,15 +429,7 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
                 idx
             )
         })?;
-        if ![
-            "clear",
-            "needs_refinement",
-            "not_answered",
-            "vague",
-            "contradictory",
-        ]
-        .contains(&pq_verdict)
-        {
+        if !["clear", "needs_refinement", "not_answered", "vague"].contains(&pq_verdict) {
             return Err(format!(
                 "answer_evaluation.per_question[{}].verdict is invalid",
                 idx
@@ -459,27 +449,27 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
                 ));
             }
         }
-        if pq_verdict == "contradictory" {
-            let reason = obj
-                .get("reason")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| format!("answer_evaluation.per_question[{}].reason is required for contradictory verdict", idx))?;
-            if reason.trim().is_empty() {
-                return Err(format!(
-                    "answer_evaluation.per_question[{}].reason must not be empty",
-                    idx
-                ));
-            }
-            let contradicts = obj
-                .get("contradicts")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| format!("answer_evaluation.per_question[{}].contradicts is required for contradictory verdict", idx))?;
-            if contradicts.trim().is_empty() {
-                return Err(format!(
-                    "answer_evaluation.per_question[{}].contradicts must not be empty",
-                    idx
-                ));
-            }
+    }
+
+    // Contradictions must be resolved inline by the agent before returning.
+    let contradictory_count = root
+        .get("contradictory_count")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    if contradictory_count != 0 {
+        return Err(format!(
+            "answer_evaluation.contradictory_count must be 0 (got {}); contradictions must be resolved before returning",
+            contradictory_count
+        ));
+    }
+
+    // gate_decision is optional (may be absent in fallback error outputs) but must be valid when present.
+    if let Some(gd) = root.get("gate_decision").and_then(|v| v.as_str()) {
+        if !["skip_research", "run_research", "revise"].contains(&gd) {
+            return Err(format!(
+                "answer_evaluation.gate_decision must be one of skip_research|run_research|revise (got '{}')",
+                gd
+            ));
         }
     }
 
