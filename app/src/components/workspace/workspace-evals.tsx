@@ -115,6 +115,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
   const [outputPanelHeight, setOutputPanelHeight] = useState(360);
   const dragStartY = useRef<number | null>(null);
   const dragStartHeight = useRef<number>(360);
+  const rafId = useRef<number | null>(null);
 
   const runs = useAgentStore((s) => s.runs);
   const evalRunDisplayItems = useAgentStore(
@@ -204,6 +205,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
     } else if (event.type === "complete") {
       setBenchmark(event.benchmark);
       setAnalystNotes(event.analyst_notes);
+      void load(); // refresh iteration history
       console.log(
         "event=eval_run_complete skill=%s iteration=%d avg_pass_rate=%s",
         skillName, event.iteration, event.benchmark.aggregate_summary.avg_pass_rate,
@@ -855,10 +857,14 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
             }}
             onPointerMove={(e) => {
               if (dragStartY.current === null) return;
-              const delta = e.clientY - dragStartY.current;
-              setOutputPanelHeight(Math.max(160, Math.min(800, dragStartHeight.current + delta)));
+              const next = Math.max(160, Math.min(800, dragStartHeight.current + (e.clientY - dragStartY.current)));
+              if (rafId.current) cancelAnimationFrame(rafId.current);
+              rafId.current = requestAnimationFrame(() => setOutputPanelHeight(next));
             }}
-            onPointerUp={() => { dragStartY.current = null; }}
+            onPointerUp={() => {
+              dragStartY.current = null;
+              if (rafId.current) cancelAnimationFrame(rafId.current);
+            }}
           />
         </div>
       )}
