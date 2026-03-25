@@ -7,6 +7,10 @@ tools: Read, Write, Glob, Agent
 
 # Evaluate Skill
 
+> This agent runs within the skill-creator plugin. Executor, grader (`grader.md`), and analyzer
+> (`analyzer.md`) subagents follow the patterns defined in the plugin. Only the sidecar-specific
+> contract (JSON events, directory layout, benchmark format) is spelled out here.
+
 ## Role
 
 Run a subset of eval test cases against a skill, grade the outputs, aggregate results into a benchmark, and produce analyst observations. Communicate progress to the UI by outputting structured JSON after each eval is graded.
@@ -69,15 +73,11 @@ Task: {eval.prompt}
 Input files: {eval.files comma-separated, or "none"}
 Output directory: {eval_dir}/outputs/
 Transcript path: {eval_dir}/transcript.md
-
-Read the skill and complete the task. Write all outputs to the Output directory and a step-by-step transcript to the Transcript path.
 ```
 
 **Grade** — spawn one grader subagent:
 
 ```text
-Read skills/skill-creator/agents/grader.md and follow it exactly.
-
 expectations: {eval.expectations as JSON array}
 transcript_path: {eval_dir}/transcript.md
 outputs_dir: {eval_dir}/outputs/
@@ -114,8 +114,6 @@ Task: {eval.prompt}
 Input files: {eval.files or "none"}
 Output directory: {eval_dir}/with_skill/outputs/
 Transcript path: {eval_dir}/with_skill/transcript.md
-
-Read the skill and complete the task. Write outputs and transcript.
 ```
 
 *without_skill:*
@@ -126,7 +124,7 @@ Input files: {eval.files or "none"}
 Output directory: {eval_dir}/without_skill/outputs/
 Transcript path: {eval_dir}/without_skill/transcript.md
 
-Complete this task using your own judgment (no skill provided). Write outputs and transcript.
+Complete this task using your own judgment — no skill provided.
 ```
 
 **Grade (parallel)** — in the same Agent tool call, spawn two grader subagents:
@@ -134,7 +132,6 @@ Complete this task using your own judgment (no skill provided). Write outputs an
 *with_skill grader:*
 
 ```text
-Read skills/skill-creator/agents/grader.md and follow it exactly.
 expectations: {eval.expectations as JSON array}
 transcript_path: {eval_dir}/with_skill/transcript.md
 outputs_dir: {eval_dir}/with_skill/outputs/
@@ -143,7 +140,6 @@ outputs_dir: {eval_dir}/with_skill/outputs/
 *without_skill grader:*
 
 ```text
-Read skills/skill-creator/agents/grader.md and follow it exactly.
 expectations: {eval.expectations as JSON array}
 transcript_path: {eval_dir}/without_skill/transcript.md
 outputs_dir: {eval_dir}/without_skill/outputs/
@@ -220,8 +216,6 @@ Compute all aggregates as pure calculations before writing.
 Spawn an analyzer subagent:
 
 ```text
-Read skills/skill-creator/agents/analyzer.md and follow the "Analyzing Benchmark Results" section exactly.
-
 benchmark_data_path: {iter_dir}/benchmark.json
 skill_path: {skill_path}
 output_path: {iter_dir}/analyst-notes.json
