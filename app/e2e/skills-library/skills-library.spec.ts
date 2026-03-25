@@ -127,7 +127,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     await expect(page.getByText("No plugins")).toBeVisible();
     await expect(
-      page.getByText("Browse the marketplace or upload a plugin package to get started.")
+      page.getByText("Browse the marketplace or upload a skill package to get started.")
     ).toBeVisible();
   });
 });

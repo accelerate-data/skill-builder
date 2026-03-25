@@ -226,85 +226,48 @@ async function simulateGateCompletion(
 }
 
 test.describe("Transition Gate", { tag: "@workflow" }, () => {
-  test("gate 1 sufficient: skip dialog allows jumping to decisions", async ({ page }) => {
+  test("gate 1 sufficient: auto-advances to detailed research", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
     await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
 
     await clickCompleteStep(page);
     await simulateGateCompletion(page, "sufficient");
 
-    // Dialog should appear with sufficient verdict
-    await expect(
-      page.getByRole("heading", { name: "Skip Detailed Research?" }),
-    ).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("button", { name: "Skip to Decisions" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Run Research Anyway" })).toBeVisible();
-
-    // Click Skip to Decisions
-    await page.getByRole("button", { name: "Skip to Decisions" }).click();
-    await expect(page.getByRole("dialog")).not.toBeVisible();
-
-    // Should advance to step 3 (Confirm Decisions)
-    await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
-  });
-
-  test("gate 1 sufficient: run research anyway keeps workflow on step 2", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
-    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
-
-    await clickCompleteStep(page);
-    await simulateGateCompletion(page, "sufficient");
-
-    // Dialog should appear with sufficient verdict
-    await expect(
-      page.getByRole("heading", { name: "Skip Detailed Research?" }),
-    ).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("button", { name: "Run Research Anyway" })).toBeVisible();
-
-    // Click Run Research Anyway — should advance to step 2 instead of skipping to step 3
-    await page.getByRole("button", { name: "Run Research Anyway" }).click();
-    await expect(page.getByRole("dialog")).not.toBeVisible();
+    // Gate is fully automatic — no dialog, advances directly to Detailed Research
     await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("gate 1 mixed: quality review dialog and continue anyway advances", async ({ page }) => {
+  test("gate 1 mixed: auto-advances to detailed research", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
     await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
 
     await clickCompleteStep(page);
     await simulateGateCompletion(page, "mixed");
 
-    // Gate 1 mixed with missing/vague answers uses generic quality-review dialog
-    await expect(
-      page.getByRole("heading", { name: "Review Answer Quality" }),
-    ).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("button", { name: "Continue Anyway" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Let Me Answer" })).toBeVisible();
-
-    // Click Continue Anyway
-    await page.getByRole("button", { name: "Continue Anyway" }).click();
-    await expect(page.getByRole("dialog")).not.toBeVisible();
-
-    // Gate 1 continue advances to Detailed Research
+    // mixed verdict with run_research default → no dialog, advances automatically
     await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("gate 2 insufficient: continue anyway advances to decisions", async ({ page }) => {
+  test("gate 1 mixed: no gate dialog shown", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
+
+    await clickCompleteStep(page);
+    await simulateGateCompletion(page, "mixed");
+
+    // Gate is silent — no dialog headings should appear
+    await expect(page.getByRole("heading", { name: "Review Answer Quality" })).not.toBeVisible();
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("gate 2 insufficient: auto-advances to decisions", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE2_OVERRIDES);
     await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
 
     await clickCompleteStep(page);
     await simulateGateCompletion(page, "insufficient");
 
-    await expect(
-      page.getByRole("heading", { name: "Refinements Need Attention" }),
-    ).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("button", { name: "Continue Anyway" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Let Me Answer" })).toBeVisible();
-
-    await page.getByRole("button", { name: "Continue Anyway" }).click();
-    await expect(page.getByRole("dialog")).not.toBeVisible();
-
+    // insufficient verdict with run_research default → no dialog, advances automatically
     await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
   });
 
@@ -326,8 +289,7 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
       success: false,
     });
 
-    // Should fail-open: no dialog, advance to step 3
-    await expect(page.getByRole("heading", { name: "Skip Detailed Research?" })).not.toBeVisible();
+    // Should fail-open: no dialog, advance to Detailed Research
     await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
   });
 
