@@ -8,7 +8,6 @@ import {
   materializeAnswerEvaluationOutput,
   logGateDecision,
   readFile,
-  saveWorkflowState,
   getClarificationsContent,
   saveClarificationsContent,
   writeFile,
@@ -22,7 +21,6 @@ export interface UseWorkflowGateOptions {
   skillName: string;
   workspacePath: string | null;
   currentStep: number;
-  disabledSteps: number[];
   purpose: string | null;
   clarificationsData: ClarificationsFile | null;
   onClarificationsUpdated?: (data: ClarificationsFile, content: string) => void;
@@ -43,9 +41,9 @@ export interface UseWorkflowGateReturn {
  * Manages the gate evaluation lifecycle: running the answer evaluator,
  * processing its output, and automatically advancing based on gate_decision.
  *
- * The answer-evaluator agent now handles all user interaction (contradiction
- * resolution and gate decision) inline via AskUserQuestion. The frontend
- * reads the gate_decision field from the final output and advances automatically.
+ * The answer-evaluator agent evaluates answers silently (no user interaction).
+ * If contradictions are found it returns gate_decision="revise"; otherwise
+ * "run_research". The frontend reads gate_decision and routes automatically.
  *
  * Extracted from useWorkflowStateMachine for independent testability and
  * to reduce the main hook from 640+ lines to ~400.
@@ -54,14 +52,12 @@ export function useWorkflowGate({
   skillName,
   workspacePath,
   currentStep,
-  disabledSteps,
   purpose,
   clarificationsData: _clarificationsData,
   onClarificationsUpdated,
   advanceToNextStep,
 }: UseWorkflowGateOptions): UseWorkflowGateReturn {
   const updateStepStatus = useWorkflowStore((s) => s.updateStepStatus);
-  const setCurrentStep = useWorkflowStore((s) => s.setCurrentStep);
   const setGateLoading = useWorkflowStore((s) => s.setGateLoading);
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   const agentStartRun = useAgentStore((s) => s.startRun);
@@ -136,31 +132,19 @@ export function useWorkflowGate({
         }
       }
 
-      const gateDecision = evaluation.gate_decision ?? null;
+      const gateDecision = evaluation.gate_decision ?? "run_research";
 
       if (workspacePath) {
-        const gateLog = JSON.stringify({ ...evaluation, action: gateDecision ?? "auto_advance", timestamp: new Date().toISOString() });
+        const gateLog = JSON.stringify({ ...evaluation, action: gateDecision, timestamp: new Date().toISOString() });
         writeFile(joinPath(workspacePath, skillName, "gate-result.json"), gateLog).catch((e) => console.warn("[use-workflow-gate] non-fatal: op=writeFile err=%s", e));
       }
 
-      logGateDecision(skillName, evaluation.verdict, gateDecision ?? "auto_advance").catch((e) => console.warn("[use-workflow-gate] non-fatal: op=logGateDecision err=%s", e));
+      logGateDecision(skillName, evaluation.verdict, gateDecision).catch((e) => console.warn("[use-workflow-gate] non-fatal: op=logGateDecision err=%s", e));
 
       setGateLoading(false);
 
-      // Act on the gate_decision returned by the agent.
-      if (gateDecision === "skip_research") {
-        // Skip step 1 (detailed research) and jump straight to step 2 (decisions).
-        updateStepStatus(1, "completed");
-        setCurrentStep(2);
-
-        const s = useWorkflowStore.getState();
-        const stepStatuses = s.steps.map((step) => ({ step_id: step.id, status: step.status }));
-        const runStatus = s.steps.every((step) => step.status === "completed") ? "completed" : "pending";
-        saveWorkflowState(skillName, s.currentStep, runStatus, stepStatuses, purpose ?? undefined).catch(
-          (err) => console.error("skipToDecisions: failed to persist state:", err),
-        );
-      } else if (gateDecision === "revise") {
-        // User wants to revise answers — stay on the current step (no advance).
+      if (gateDecision === "revise") {
+        // Contradictions found or answers insufficient — stay on step 0 so the user can revise.
         updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
         // Refresh clarifications so the feedback notes are visible to the user.
         if (workspacePath) {
@@ -176,7 +160,7 @@ export function useWorkflowGate({
             });
         }
       } else {
-        // "run_research" or unrecognized / absent gate_decision — advance normally.
+        // "run_research" or unrecognized — advance to step 1.
         updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
         advanceToNextStep();
       }
@@ -184,7 +168,7 @@ export function useWorkflowGate({
       console.warn("[workflow] Gate evaluation materialization failed — proceeding normally:", err);
       proceedNormally();
     }
-  }, [workspacePath, skillName, purpose, setGateLoading, setCurrentStep, updateStepStatus, advanceToNextStep, onClarificationsUpdated]);
+  }, [workspacePath, skillName, purpose, setGateLoading, updateStepStatus, advanceToNextStep, onClarificationsUpdated]);
 
   // --- Routing ---
 
@@ -192,18 +176,13 @@ export function useWorkflowGate({
     const { gateLoading: gateLoadingNow } = useWorkflowStore.getState();
     if (gateLoadingNow || gateAgentIdRef.current) return;
 
-    if (currentStep === 0 && workspacePath && !disabledSteps.includes(1)) {
-      runGateEvaluation();
-      return;
-    }
-
-    if (currentStep === 1 && workspacePath && !disabledSteps.includes(2)) {
+    if ((currentStep === 0 || currentStep === 1) && workspacePath) {
       runGateEvaluation();
       return;
     }
 
     advanceToNextStep();
-  }, [currentStep, workspacePath, disabledSteps, runGateEvaluation, advanceToNextStep]);
+  }, [currentStep, workspacePath, runGateEvaluation, advanceToNextStep]);
 
   const handleReviewContinue = useCallback(() => {
     runGateOrAdvance();

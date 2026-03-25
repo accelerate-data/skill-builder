@@ -14,6 +14,7 @@ use super::guards::{
 };
 use super::prompt::{build_evaluator_prompt, build_prompt, build_step0_prompt};
 use super::settings::{read_workflow_settings, WorkflowSettings};
+use super::output_format::answer_evaluator_output_format;
 use super::step_config::{
     build_betas, get_step_config, resolve_model_id, thinking_budget_for_step,
     tools_for_agent, workflow_output_format_for_agent,
@@ -529,11 +530,10 @@ pub async fn run_answer_evaluator(
         // When model is set explicitly, fallback_model must differ — suppress it.
         fallback_model: None,
         effort: None,
-        // Streaming sessions do not use structured output.
-        output_format: None,
+        output_format: Some(answer_evaluator_output_format()),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
-        agent_name: Some("answer-evaluator".to_string()),
+        agent_name: None,
         required_plugins: Some(vec!["skill-content-researcher".to_string()]),
         conversation_history: None,
         skill_name: None,

@@ -174,6 +174,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set((state) => ({
       currentStep: stepId,
       isRunning: false,
+      isInitializing: false,
+      initStartTime: null,
+      initProgressMessage: null,
       steps: state.steps.map((s) =>
         s.id >= stepId ? { ...s, status: "pending" as const } : s
       ),
@@ -187,6 +190,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set((state) => ({
       currentStep: stepId,
       isRunning: false,
+      isInitializing: false,
+      initStartTime: null,
+      initProgressMessage: null,
       steps: state.steps.map((s) =>
         s.id > stepId ? { ...s, status: "pending" as const } : s
       ),

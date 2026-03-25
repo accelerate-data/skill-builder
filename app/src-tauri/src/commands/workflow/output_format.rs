@@ -350,7 +350,7 @@ pub(crate) fn answer_evaluator_output_format() -> serde_json::Value {
                 "reasoning": { "type": "string", "minLength": 1 },
                 "gate_decision": {
                     "type": "string",
-                    "enum": ["skip_research", "run_research", "revise"]
+                    "enum": ["run_research", "revise"]
                 },
                 "per_question": {
                     "type": "array",
@@ -361,7 +361,7 @@ pub(crate) fn answer_evaluator_output_format() -> serde_json::Value {
                             "question_id": { "type": "string", "minLength": 1 },
                             "verdict": {
                                 "type": "string",
-                                "enum": ["clear", "needs_refinement", "not_answered", "vague"]
+                                "enum": ["clear", "needs_refinement", "not_answered", "vague", "contradictory"]
                             },
                             "reason": { "type": "string" }
                         },
@@ -429,17 +429,17 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
                 idx
             )
         })?;
-        if !["clear", "needs_refinement", "not_answered", "vague"].contains(&pq_verdict) {
+        if !["clear", "needs_refinement", "not_answered", "vague", "contradictory"].contains(&pq_verdict) {
             return Err(format!(
                 "answer_evaluation.per_question[{}].verdict is invalid",
                 idx
             ));
         }
-        if pq_verdict == "vague" {
+        if pq_verdict == "vague" || pq_verdict == "contradictory" {
             let reason = obj.get("reason").and_then(|v| v.as_str()).ok_or_else(|| {
                 format!(
-                    "answer_evaluation.per_question[{}].reason is required for vague verdict",
-                    idx
+                    "answer_evaluation.per_question[{}].reason is required for {} verdict",
+                    idx, pq_verdict
                 )
             })?;
             if reason.trim().is_empty() {
@@ -451,23 +451,11 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
         }
     }
 
-    // Contradictions must be resolved inline by the agent before returning.
-    let contradictory_count = root
-        .get("contradictory_count")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    if contradictory_count != 0 {
-        return Err(format!(
-            "answer_evaluation.contradictory_count must be 0 (got {}); contradictions must be resolved before returning",
-            contradictory_count
-        ));
-    }
-
     // gate_decision is optional (may be absent in fallback error outputs) but must be valid when present.
     if let Some(gd) = root.get("gate_decision").and_then(|v| v.as_str()) {
-        if !["skip_research", "run_research", "revise"].contains(&gd) {
+        if !["run_research", "revise"].contains(&gd) {
             return Err(format!(
-                "answer_evaluation.gate_decision must be one of skip_research|run_research|revise (got '{}')",
+                "answer_evaluation.gate_decision must be one of run_research|revise (got '{}')",
                 gd
             ));
         }

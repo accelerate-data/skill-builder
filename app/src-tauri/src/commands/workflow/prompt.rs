@@ -92,7 +92,8 @@ pub(crate) fn build_evaluator_prompt(
          Read user-context.md from the workspace directory. \
          Derive context_dir as workspace_dir/context. \
          All directories already exist — do not create any directories. \
-         Use user-context.md to evaluate answers in the user's specific domain.",
+         Use user-context.md to evaluate answers in the user's specific domain. \
+         Use the skill-content-researcher:answer-evaluator skill to evaluate the user's answers.",
         skill_name, workspace_str, skill_output_str,
     )
 }

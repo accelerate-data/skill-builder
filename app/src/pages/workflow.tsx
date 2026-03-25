@@ -464,7 +464,7 @@ export default function WorkflowPage() {
           <DialogHeader>
             <DialogTitle>Analyzing Responses</DialogTitle>
             <DialogDescription>
-              Reviewing your answers. The agent may ask clarifying questions before continuing.
+              Reviewing your answers before continuing.
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

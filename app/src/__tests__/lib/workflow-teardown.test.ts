@@ -19,6 +19,9 @@ const {
     updateStepStatus: vi.fn(),
     setRunning: vi.fn(),
     setGateLoading: vi.fn(),
+    clearInitializing: vi.fn(),
+    clearPendingQuestion: vi.fn(),
+    clearRuntimeError: vi.fn(),
   };
 
   const mockWorkflowStore = {
@@ -57,6 +60,9 @@ describe("teardownWorkflowSession", () => {
       updateStepStatus: vi.fn(),
       setRunning: vi.fn(),
       setGateLoading: vi.fn(),
+      clearInitializing: vi.fn(),
+      clearPendingQuestion: vi.fn(),
+      clearRuntimeError: vi.fn(),
     });
   });
 
@@ -67,6 +73,9 @@ describe("teardownWorkflowSession", () => {
     expect(state.updateStepStatus).toHaveBeenCalledWith(1, "pending");
     expect(state.setRunning).toHaveBeenCalledWith(false);
     expect(state.setGateLoading).toHaveBeenCalledWith(false);
+    expect(state.clearInitializing).toHaveBeenCalled();
+    expect(state.clearPendingQuestion).toHaveBeenCalled();
+    expect(state.clearRuntimeError).toHaveBeenCalled();
     expect(mockClearRuns).toHaveBeenCalled();
     expect(mockEndWorkflowSession).toHaveBeenCalledWith("session-123");
     expect(mockWorkflowStore.setState).not.toHaveBeenCalled();
@@ -86,6 +95,9 @@ describe("teardownWorkflowSession", () => {
       updateStepStatus: vi.fn(),
       setRunning: vi.fn(),
       setGateLoading: vi.fn(),
+      clearInitializing: vi.fn(),
+      clearPendingQuestion: vi.fn(),
+      clearRuntimeError: vi.fn(),
     });
 
     teardownWorkflowSession({ logPrefix: "workflow-test", clearSessionId: true });
