@@ -153,7 +153,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         listTestCases(skillName, workspacePath),
         listIterations(skillName, workspacePath),
       ]);
-      setEvals(cases);
+      setEvals(cases.sort((a, b) => a.id - b.id));
       setIterations(iters);
     } catch (err) {
       console.error("event=load_evals status=failure skill=%s error=%s", skillName, err);
