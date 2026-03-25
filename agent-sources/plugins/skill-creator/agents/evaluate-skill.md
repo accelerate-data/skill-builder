@@ -20,7 +20,7 @@ Run a subset of eval test cases against a skill, grade the outputs, aggregate re
 ## Inputs
 
 - **skill_name**: Skill slug (matches `skill_name` field in `evals.json`)
-- **workspace_path**: Absolute path to the per-skill workspace directory (contains `evals/evals.json`)
+- **workspace_path**: Absolute path to the workspace root (contains `.claude/plugins/`)
 - **eval_ids**: JSON array of integer eval IDs to run
 - **run_count**: `1` or `3`
 - **skill_path**: Absolute path to the skill directory (contains `SKILL.md`)
@@ -28,27 +28,40 @@ Run a subset of eval test cases against a skill, grade the outputs, aggregate re
 
 ---
 
+## Rules
+
+- **Do NOT read previous iteration directories** or past grading/transcript/benchmark
+  results. Each iteration is independent. Only read `evals.json` and the skill at `skill_path`.
+- **Do NOT explore the workspace** to discover project structure or organization. Use only
+  the paths provided in your inputs.
+- **Do NOT search for or invoke workspace-level skills.** You may only use skills from
+  the skill-creator plugin (your sibling `skills/` directory).
+- **Iteration history is never needed** in any mode. The `current_vs_previous` mode
+  snapshots the previous SKILL.md version via git (Step 4), not by reading past iterations.
+
+---
+
 ## Phase 0 — Setup
 
 ### Step 1: Read evals
 
-1. Read `{workspace_path}/evals/evals.json`
+1. Read `{skill_path}/evals/evals.json`
 2. Filter to entries whose `id` appears in `eval_ids`
 3. If no matches: output `{ "type": "error", "message": "No matching evals found for the provided eval_ids" }` and stop
 
 ### Step 2: Determine iteration number
 
-1. Glob `{workspace_path}/evals/workspace/iteration-*/`
+1. Glob `{skill_path}/evals/workspace/iteration-*/`
 2. `iteration_N` = max trailing integer + 1 (or `1` if none)
-3. `iter_dir` = `{workspace_path}/evals/workspace/iteration-{iteration_N}`
+3. `iter_dir` = `{skill_path}/evals/workspace/iteration-{iteration_N}`
 
 ### Step 3: Resolve agent paths
 
 Derive the path to the grader, analyzer, and comparator agent specs:
 
-`skill_agents_dir` = `{workspace_path}/../.claude/plugins/skill-creator/skills/skill-creator/agents`
+`skill_agents_dir` = `{workspace_path}/.claude/plugins/skill-creator/skills/skill-creator/agents`
 
-(One level up from `workspace_path` is the workspace root; plugins are installed under `.claude/plugins/`.)
+(`workspace_path` is the workspace root; plugins are installed under `.claude/plugins/`.)
 
 ### Step 4 (`current_vs_previous` only): Snapshot previous skill version
 
