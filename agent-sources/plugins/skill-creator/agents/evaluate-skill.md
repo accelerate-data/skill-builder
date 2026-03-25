@@ -43,17 +43,23 @@ Run a subset of eval test cases against a skill, grade the outputs, aggregate re
 
 ## Phase 0 — Setup
 
+### Step 0: Derive the per-skill workspace path
+
+`skill_workspace` = `{workspace_path}/{skill_name}`
+
+(`workspace_path` is the workspace root; `skill_workspace` is where evals and iterations live.)
+
 ### Step 1: Read evals
 
-1. Read `{skill_path}/evals/evals.json`
+1. Read `{skill_workspace}/evals/evals.json`
 2. Filter to entries whose `id` appears in `eval_ids`
 3. If no matches: output `{ "type": "error", "message": "No matching evals found for the provided eval_ids" }` and stop
 
 ### Step 2: Determine iteration number
 
-1. Glob `{skill_path}/evals/workspace/iteration-*/`
+1. Glob `{skill_workspace}/evals/workspace/iteration-*/`
 2. `iteration_N` = max trailing integer + 1 (or `1` if none)
-3. `iter_dir` = `{skill_path}/evals/workspace/iteration-{iteration_N}`
+3. `iter_dir` = `{skill_workspace}/evals/workspace/iteration-{iteration_N}`
 
 ### Step 3: Resolve agent paths
 

@@ -319,6 +319,38 @@ pub fn read_skill_context_for_eval_gen(
     })
 }
 
+/// Read benchmark.json and analyst-notes.json from a completed iteration directory.
+#[tauri::command]
+pub fn read_iteration_result(
+    iteration_path: String,
+) -> Result<(serde_json::Value, Vec<String>), String> {
+    log::info!("[read_iteration_result] path={}", iteration_path);
+
+    let benchmark_path = Path::new(&iteration_path).join("benchmark.json");
+    let notes_path = Path::new(&iteration_path).join("analyst-notes.json");
+
+    let benchmark_raw = std::fs::read_to_string(&benchmark_path).map_err(|e| {
+        log::error!("[read_iteration_result] failed to read benchmark.json: {}", e);
+        format!("Failed to read benchmark.json: {}", e)
+    })?;
+    let benchmark: serde_json::Value = serde_json::from_str(&benchmark_raw).map_err(|e| {
+        log::error!("[read_iteration_result] failed to parse benchmark.json: {}", e);
+        format!("Failed to parse benchmark.json: {}", e)
+    })?;
+
+    let notes: Vec<String> = if notes_path.exists() {
+        let raw = std::fs::read_to_string(&notes_path).map_err(|e| {
+            log::error!("[read_iteration_result] failed to read analyst-notes.json: {}", e);
+            format!("Failed to read analyst-notes.json: {}", e)
+        })?;
+        serde_json::from_str(&raw).unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    Ok((benchmark, notes))
+}
+
 /// Read a pending generated eval from `{workspace}/{skill}/evals/pending-eval.json`.
 /// Returns an error if the file does not exist (caller should only invoke after generation completes).
 #[tauri::command]

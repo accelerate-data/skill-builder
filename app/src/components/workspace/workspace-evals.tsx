@@ -19,6 +19,7 @@ import {
   discardPendingEval,
   listIterations,
   listTestCases,
+  readIterationResult,
   readPendingEval,
   readSkillContextForEvalGen,
   saveTestCase,
@@ -59,7 +60,7 @@ interface WorkspaceEvalsProps {
 
 export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: WorkspaceEvalsProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
-  const skillsPath = useSettingsStore((s) => s.skillsPath) ?? workspacePath;
+  const skillsPath = useSettingsStore((s) => s.skillsPath) ?? workspacePath ?? "";
 
   const [evals, setEvals] = useState<TestCase[]>([]);
   const [iterations, setIterations] = useState<IterationMeta[]>([]);
@@ -104,6 +105,11 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
   // Benchmark result from the most recent eval run (component-local)
   const [benchmark, setBenchmark] = useState<EvalBenchmark | null>(null);
   const [analystNotes, setAnalystNotes] = useState<string[]>([]);
+
+  // Selected iteration history result
+  const [selectedIteration, setSelectedIteration] = useState<number | null>(null);
+  const [iterationBenchmark, setIterationBenchmark] = useState<EvalBenchmark | null>(null);
+  const [iterationNotes, setIterationNotes] = useState<string[]>([]);
 
   // Agent output panel resize state
   const [outputPanelHeight, setOutputPanelHeight] = useState(360);
@@ -515,7 +521,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
     setAnalystNotes([]);
 
     const agentId = crypto.randomUUID();
-    const prompt = buildEvaluateSkillPrompt({ skillName, workspacePath, skillsPath, evalIds, runCount, comparisonMode });
+    const prompt = buildEvaluateSkillPrompt({ skillName, workspacePath: workspacePath!, skillsPath, evalIds, runCount, comparisonMode });
 
     try {
       await startAgent(
@@ -876,7 +882,17 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
               {iterations.map((iter) => (
                 <div
                   key={iter.iteration}
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted/50"
+                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 ${selectedIteration === iter.iteration ? "bg-muted" : "hover:bg-muted/50"}`}
+                  onClick={async () => {
+                    try {
+                      const [bm, notes] = await readIterationResult(iter.path);
+                      setIterationBenchmark(bm as EvalBenchmark);
+                      setIterationNotes(notes);
+                      setSelectedIteration(iter.iteration);
+                    } catch (err) {
+                      console.error("[workspace-evals] Failed to read iteration result:", err);
+                    }
+                  }}
                 >
                   <span className="font-mono text-xs text-muted-foreground">
                     iteration-{iter.iteration}
@@ -890,6 +906,17 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
                 </div>
               ))}
             </div>
+
+            {/* Selected iteration benchmark */}
+            {iterationBenchmark && selectedIteration !== null && (
+              <div className="mt-4">
+                <EvalRunBenchmarkCard
+                  benchmark={iterationBenchmark}
+                  analystNotes={iterationNotes}
+                  onRefine={handleRefine}
+                />
+              </div>
+            )}
           </section>
         </>
       )}

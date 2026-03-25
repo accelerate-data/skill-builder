@@ -55,6 +55,7 @@ describe("buildEvaluateSkillPrompt", () => {
     const prompt = buildEvaluateSkillPrompt({
       skillName: "dbt-quality",
       workspacePath: "/workspace",
+      skillsPath: "/skills",
       evalIds: [1, 3, 5],
       runCount: 3,
     });
@@ -62,13 +63,14 @@ describe("buildEvaluateSkillPrompt", () => {
     expect(prompt).toContain("workspace_path: /workspace");
     expect(prompt).toContain("eval_ids: [1,3,5]");
     expect(prompt).toContain("run_count: 3");
-    expect(prompt).toContain("skill_path: /workspace/dbt-quality");
+    expect(prompt).toContain("skill_path: /skills/dbt-quality");
   });
 
   it("serializes eval_ids as JSON array", () => {
     const prompt = buildEvaluateSkillPrompt({
       skillName: "s",
       workspacePath: "/w",
+      skillsPath: "/s",
       evalIds: [7],
       runCount: 1,
     });
