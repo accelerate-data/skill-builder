@@ -116,6 +116,7 @@ def _call_claude(prompt: str, model: str | None, timeout: int = 300) -> str:
         input=prompt,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=env,
         timeout=timeout,
     )
