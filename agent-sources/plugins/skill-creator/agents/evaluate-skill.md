@@ -9,19 +9,18 @@ tools: Read, Write, Glob, Agent
 
 ## Role
 
-You run a subset of eval test cases against a skill, grade the outputs, aggregate results into a benchmark, and produce analyst observations. You communicate progress back to the UI by outputting structured JSON after each eval is graded.
+Run a subset of eval test cases against a skill, grade the outputs, aggregate results into a benchmark, and produce analyst observations. Communicate progress to the UI by outputting structured JSON after each eval is graded.
 
 ---
 
 ## Inputs
 
-You receive these parameters in your prompt:
-
 - **skill_name**: Skill slug (matches `skill_name` field in `evals.json`)
 - **workspace_path**: Absolute path to the per-skill workspace directory (contains `evals/evals.json`)
-- **eval_ids**: JSON array of integer eval IDs to run (subset selected by the user)
-- **run_count**: `1` or `3` — number of repetitions for statistical confidence
+- **eval_ids**: JSON array of integer eval IDs to run
+- **run_count**: `1` or `3`
 - **skill_path**: Absolute path to the skill directory (contains `SKILL.md`)
+- **comparison_mode** *(optional)*: `"with_without_skill"` | `"current_vs_previous"` — when absent, runs single with-skill mode
 
 ---
 
@@ -30,22 +29,21 @@ You receive these parameters in your prompt:
 ### Step 1: Read evals
 
 1. Read `{workspace_path}/evals/evals.json`
-2. Parse the JSON and collect only the entries whose `id` appears in `eval_ids`
-3. If no matching evals are found, output:
-
-```json
-{ "type": "error", "message": "No matching evals found for the provided eval_ids" }
-```
-
-…and stop.
+2. Filter to entries whose `id` appears in `eval_ids`
+3. If no matches: output `{ "type": "error", "message": "No matching evals found for the provided eval_ids" }` and stop
 
 ### Step 2: Determine iteration number
 
-1. Use Glob to list `{workspace_path}/evals/workspace/iteration-*/` directories
-2. Parse the trailing integer from each directory name
-3. Set `iteration_N` = max found + 1 (or `1` if none exist)
-4. Set `iter_dir` = `{workspace_path}/evals/workspace/iteration-{iteration_N}`
-5. Create the directory by writing a placeholder file `{iter_dir}/.keep` (then delete it — or simply proceed; Write will create parent dirs automatically)
+1. Glob `{workspace_path}/evals/workspace/iteration-*/`
+2. `iteration_N` = max trailing integer + 1 (or `1` if none)
+3. `iter_dir` = `{workspace_path}/evals/workspace/iteration-{iteration_N}`
+
+### Step 3 (`current_vs_previous` only): Snapshot previous skill version
+
+Run `git log --oneline --follow -- {skill_path}/SKILL.md` to find the commit before HEAD.
+Check out that version: `git show <prev_commit>:<repo-relative-path>/SKILL.md > {iter_dir}/prev-skill.md`
+Set `previous_skill_path` = `{iter_dir}/prev-skill.md`.
+If no previous commit exists, fall back to single with-skill mode for this run.
 
 ---
 
@@ -53,135 +51,173 @@ You receive these parameters in your prompt:
 
 For each `run_index` from `0` to `run_count - 1`:
 
-  Set `run_dir` = `{iter_dir}/run-{run_index}`
+`run_dir = {iter_dir}/run-{run_index}`
 
-  For each `eval` in the filtered eval list (in the order they appear in `eval_ids`):
+For each `eval` in the filtered list:
 
-  Set `eval_dir` = `{run_dir}/eval-{eval.id}-{eval.slug}`
+`eval_dir = {run_dir}/eval-{eval.id}-{eval.slug}`
 
-### Step A — Execute the skill
+---
 
-Spawn an executor subagent using the Agent tool. Provide this complete prompt:
+### Mode: single (default — no `comparison_mode`)
+
+**Execute** — spawn one executor subagent:
 
 ```text
-You are a skill executor. Complete the following task by strictly following the skill's instructions.
-
 Skill location: {skill_path}/SKILL.md
-Task prompt: {eval.prompt}
-Input files (if any — copy to your working dir before starting): {eval.files as comma-separated list, or "none"}
+Task: {eval.prompt}
+Input files: {eval.files comma-separated, or "none"}
 Output directory: {eval_dir}/outputs/
 Transcript path: {eval_dir}/transcript.md
 
-Instructions:
-1. Read SKILL.md completely before doing anything else.
-2. Execute the task prompt following the skill's instructions exactly.
-3. Write all output files to the Output directory.
-4. Write a step-by-step markdown transcript of your work to the Transcript path.
-   The transcript must capture: each tool call, what you found, what you decided, and the final result.
+Read the skill and complete the task. Write all outputs to the Output directory and a step-by-step transcript to the Transcript path.
 ```
 
-### Step B — Grade the output
-
-Spawn a grader subagent using the Agent tool. Provide this complete prompt:
+**Grade** — spawn one grader subagent:
 
 ```text
 Read skills/skill-creator/agents/grader.md and follow it exactly.
 
-expectations: {eval.expectations serialized as a JSON array of strings}
+expectations: {eval.expectations as JSON array}
 transcript_path: {eval_dir}/transcript.md
 outputs_dir: {eval_dir}/outputs/
 ```
 
-The grader will write `grading.json` to `{eval_dir}/grading.json` (one level above `outputs/`, per grader.md instructions).
+The grader writes `grading.json` to `{eval_dir}/grading.json` (one level above `outputs/`).
 
-### Step C — Emit progress JSON
-
-1. Read `{eval_dir}/grading.json`
-2. Output the following JSON as your text output — the sidecar captures any JSON object
-   you output as `structuredOutput` on the forwarded `DisplayItem`:
+**Emit progress:**
 
 ```json
 {
   "type": "eval_graded",
   "runIndex": <run_index>,
-  "evalIndex": <zero-based position of this eval within eval_ids>,
-  "totalEvals": <length of eval_ids>,
+  "evalIndex": <zero-based position within eval_ids>,
+  "totalEvals": <eval_ids.length>,
   "totalRuns": <run_count>,
   "evalId": <eval.id>,
   "evalName": "<eval.eval_name>",
-  "grading": {
-    "passed": <summary.passed from grading.json>,
-    "failed": <summary.failed from grading.json>,
-    "total": <summary.total from grading.json>,
-    "pass_rate": <summary.pass_rate from grading.json>
-  }
+  "grading": { "passed": N, "failed": N, "total": N, "pass_rate": 0.0 }
 }
 ```
+
+---
+
+### Mode: `with_without_skill`
+
+**Execute (parallel)** — in the same Agent tool call, spawn two executors:
+
+*with_skill:*
+
+```text
+Skill location: {skill_path}/SKILL.md
+Task: {eval.prompt}
+Input files: {eval.files or "none"}
+Output directory: {eval_dir}/with_skill/outputs/
+Transcript path: {eval_dir}/with_skill/transcript.md
+
+Read the skill and complete the task. Write outputs and transcript.
+```
+
+*without_skill:*
+
+```text
+Task: {eval.prompt}
+Input files: {eval.files or "none"}
+Output directory: {eval_dir}/without_skill/outputs/
+Transcript path: {eval_dir}/without_skill/transcript.md
+
+Complete this task using your own judgment (no skill provided). Write outputs and transcript.
+```
+
+**Grade (parallel)** — in the same Agent tool call, spawn two grader subagents:
+
+*with_skill grader:*
+
+```text
+Read skills/skill-creator/agents/grader.md and follow it exactly.
+expectations: {eval.expectations as JSON array}
+transcript_path: {eval_dir}/with_skill/transcript.md
+outputs_dir: {eval_dir}/with_skill/outputs/
+```
+
+*without_skill grader:*
+
+```text
+Read skills/skill-creator/agents/grader.md and follow it exactly.
+expectations: {eval.expectations as JSON array}
+transcript_path: {eval_dir}/without_skill/transcript.md
+outputs_dir: {eval_dir}/without_skill/outputs/
+```
+
+Grading paths: `{eval_dir}/with_skill/grading.json` and `{eval_dir}/without_skill/grading.json`.
+
+**Emit progress** — two events, one per variant:
+
+```json
+{ "type": "eval_graded", "variant": "with_skill", "runIndex": N, "evalIndex": N, "totalEvals": N, "totalRuns": N, "evalId": N, "evalName": "...", "grading": { "passed": N, "failed": N, "total": N, "pass_rate": 0.0 } }
+{ "type": "eval_graded", "variant": "without_skill", ...same shape... }
+```
+
+---
+
+### Mode: `current_vs_previous`
+
+Same structure as `with_without_skill`, replacing:
+
+- *current executor*: `Skill location: {skill_path}/SKILL.md`, outputs to `{eval_dir}/current/`
+- *previous executor*: `Skill location: {previous_skill_path}`, outputs to `{eval_dir}/previous/`
+- Grading paths: `{eval_dir}/current/grading.json`, `{eval_dir}/previous/grading.json`
+- Variant field: `"current"` / `"previous"`
 
 ---
 
 ## Phase 2 — Aggregate benchmark
 
-After the run loop completes:
+Read all grading.json files and write to `{iter_dir}/benchmark.json`.
 
-### Step 1: Read all grading results
-
-For every combination of `run_index` (0..run_count-1) and `eval` in the filtered list,
-read `{iter_dir}/run-{run_index}/eval-{eval.id}-{eval.slug}/grading.json`.
-
-### Step 2: Build benchmark.json
-
-Compute the following and write to `{iter_dir}/benchmark.json`:
+**Single mode:**
 
 ```json
 {
   "skill_name": "<skill_name>",
-  "iteration": <iteration_N>,
-  "run_count": <run_count>,
-  "eval_ids": <eval_ids array>,
+  "iteration": N,
+  "run_count": N,
+  "eval_ids": [...],
   "runs": [
     {
-      "run_index": 0,
-      "evals": [
-        {
-          "eval_id": <eval.id>,
-          "eval_name": "<eval.eval_name>",
-          "slug": "<eval.slug>",
-          "grading_path": "run-0/eval-<id>-<slug>/grading.json",
-          "summary": {
-            "passed": <n>,
-            "failed": <n>,
-            "total": <n>,
-            "pass_rate": <0.0..1.0>
-          }
-        }
-      ],
-      "run_summary": {
-        "passed": <sum of passed across evals in this run>,
-        "failed": <sum of failed across evals in this run>,
-        "total": <sum of total across evals in this run>,
-        "pass_rate": <passed / total>
-      }
+      "run_index": N,
+      "evals": [ { "eval_id": N, "eval_name": "...", "slug": "...", "grading_path": "...", "summary": { "passed": N, "failed": N, "total": N, "pass_rate": 0.0 } } ],
+      "run_summary": { "passed": N, "failed": N, "total": N, "pass_rate": 0.0 }
     }
   ],
-  "aggregate_summary": {
-    "avg_pass_rate": <mean of run pass_rates>,
-    "total_passed": <sum across all runs and evals>,
-    "total_failed": <sum across all runs and evals>,
-    "total_assertions": <total_passed + total_failed>,
-    "has_failures": <true if total_failed > 0>
-  }
+  "aggregate_summary": { "avg_pass_rate": 0.0, "total_passed": N, "total_failed": N, "total_assertions": N, "has_failures": true }
 }
 ```
 
-> Compute `aggregate_summary` as a pure calculation from the runs data before writing — never
-> mutate state during computation.
+**Comparison modes** — add `comparison_mode`, `baseline_runs`, and `baseline_aggregate_summary`:
+
+```json
+{
+  "skill_name": "<skill_name>",
+  "comparison_mode": "with_without_skill",
+  "iteration": N, "run_count": N, "eval_ids": [...],
+  "runs": [ ...primary (with_skill / current)... ],
+  "baseline_runs": [ ...baseline (without_skill / previous)... ],
+  "aggregate_summary": { ...primary... },
+  "baseline_aggregate_summary": { "avg_pass_rate": 0.0, "total_passed": N, "total_failed": N, "total_assertions": N, "has_failures": true }
+}
+```
+
+`runs` reads from `{eval_dir}/with_skill/grading.json` (or `{eval_dir}/current/`).
+`baseline_runs` reads from `{eval_dir}/without_skill/grading.json` (or `{eval_dir}/previous/`).
+
+Compute all aggregates as pure calculations before writing.
 
 ---
 
 ## Phase 3 — Analyze
 
-Spawn an analyzer subagent using the Agent tool. Provide this complete prompt:
+Spawn an analyzer subagent:
 
 ```text
 Read skills/skill-creator/agents/analyzer.md and follow the "Analyzing Benchmark Results" section exactly.
@@ -191,21 +227,20 @@ skill_path: {skill_path}
 output_path: {iter_dir}/analyst-notes.json
 ```
 
-Read `{iter_dir}/analyst-notes.json` (a JSON array of observation strings).
+Read `{iter_dir}/analyst-notes.json` (a JSON array of strings).
 
 ---
 
 ## Phase 4 — Return final structured output
 
-Output the following JSON as your final text response.
-The sidecar captures this as the terminal `structuredOutput` `DisplayItem`:
+Output this JSON as your final text response (the sidecar captures it as `structuredOutput`):
 
 ```json
 {
   "type": "complete",
-  "iteration": <iteration_N>,
-  "benchmark": <full contents of benchmark.json>,
-  "analyst_notes": <contents of analyst-notes.json>
+  "iteration": N,
+  "benchmark": <full benchmark.json contents>,
+  "analyst_notes": <analyst-notes.json contents>
 }
 ```
 
@@ -213,20 +248,6 @@ The sidecar captures this as the terminal `structuredOutput` `DisplayItem`:
 
 ## Error handling
 
-- If the executor subagent fails to write a transcript or outputs directory, log the failure
-  in a `{eval_dir}/error.json` file and continue to the next eval. Include a `"error": true`
-  field in the `eval_graded` progress event for that eval.
-- If a `grading.json` cannot be read after the grader subagent completes, treat that eval
-  as `{ "passed": 0, "failed": 0, "total": 0, "pass_rate": 0, "grader_error": true }` in
-  the aggregate.
-- If the analyzer subagent fails, return `"analyst_notes": []` in the final output.
-
----
-
-## Output summary
-
-| Event | When | `type` field |
-|---|---|---|
-| Per-eval progress | After each grader subagent completes | `"eval_graded"` |
-| Final result | After analyzer completes | `"complete"` |
-| Fatal input error | If no evals match `eval_ids` | `"error"` |
+- Executor fails to write outputs/transcript: write `{eval_dir}/error.json`, continue; set `"error": true` in the `eval_graded` event
+- `grading.json` unreadable: treat as `{ "passed": 0, "failed": 0, "total": 0, "pass_rate": 0, "grader_error": true }` in the aggregate
+- Analyzer fails: return `"analyst_notes": []`

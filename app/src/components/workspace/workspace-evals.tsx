@@ -24,7 +24,7 @@ import {
   saveTestCase,
   startAgent,
 } from "@/lib/tauri";
-import type { IterationMeta, PendingEval, SkillEvalContext, SkillSummary, ImportedSkill, TestCase } from "@/lib/types";
+import type { EvalBenchmark, IterationMeta, PendingEval, SkillEvalContext, SkillSummary, ImportedSkill, TestCase } from "@/lib/types";
 import {
   buildEvalGenPrompt,
   buildRegenPrompt,
@@ -35,11 +35,9 @@ import {
 import {
   buildEvaluateSkillPrompt,
   buildRefinePrefill,
-  evalProgressPercent,
   parseEvalStructuredOutput,
 } from "@/lib/eval-run";
 import { useAgentStore } from "@/stores/agent-store";
-import { useEvalRunStore } from "@/stores/eval-run-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { Progress } from "@/components/ui/progress";
 import { EvalRunBenchmarkCard } from "./eval-run-benchmark-card";
@@ -94,15 +92,16 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
   // Run selection + execution state (component-local per state-management rules)
   const [selectedRunIds, setSelectedRunIds] = useState<Set<number>>(new Set());
   const [runCount, setRunCount] = useState<1 | 3>(1);
+  const [comparisonMode, setComparisonMode] = useState<"with_without_skill" | "current_vs_previous" | undefined>(undefined);
   const [isRunningEvals, setIsRunningEvals] = useState(false);
   const [evalRunAgentId, setEvalRunAgentId] = useState<string | null>(null);
   const [gradedCount, setGradedCount] = useState(0);
   const [gradingEvalName, setGradingEvalName] = useState<string | null>(null);
   const [totalEvalRunCount, setTotalEvalRunCount] = useState(0);
 
-  // Cross-tab benchmark result (from Zustand store — persists to Refine tab)
-  const benchmark = useEvalRunStore((s) => s.benchmark);
-  const analystNotes = useEvalRunStore((s) => s.analystNotes);
+  // Benchmark result from the most recent eval run (component-local)
+  const [benchmark, setBenchmark] = useState<EvalBenchmark | null>(null);
+  const [analystNotes, setAnalystNotes] = useState<string[]>([]);
 
   const runs = useAgentStore((s) => s.runs);
   const evalRunDisplayItems = useAgentStore(
@@ -182,7 +181,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
     if (!event) return;
 
     if (event.type === "eval_graded") {
-      setGradedCount(event.runIndex * event.totalEvals + event.evalIndex + 1);
+      setGradedCount((prev) => prev + 1);
       setGradingEvalName(event.evalName);
       console.log(
         "event=eval_graded skill=%s run=%d eval=%d/%d name=%s pass_rate=%s",
@@ -190,7 +189,8 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
         event.evalName, event.grading.pass_rate,
       );
     } else if (event.type === "complete") {
-      useEvalRunStore.getState().setEvalRunResult(event.benchmark, event.analyst_notes);
+      setBenchmark(event.benchmark);
+      setAnalystNotes(event.analyst_notes);
       console.log(
         "event=eval_run_complete skill=%s iteration=%d avg_pass_rate=%s",
         skillName, event.iteration, event.benchmark.aggregate_summary.avg_pass_rate,
@@ -502,12 +502,13 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
 
     setIsRunningEvals(true);
     setGradedCount(0);
-    setTotalEvalRunCount(evalIds.length * runCount);
+    setTotalEvalRunCount(evalIds.length * runCount * (comparisonMode ? 2 : 1));
     setGradingEvalName(null);
-    useEvalRunStore.getState().clearEvalRunResult();
+    setBenchmark(null);
+    setAnalystNotes([]);
 
     const agentId = crypto.randomUUID();
-    const prompt = buildEvaluateSkillPrompt({ skillName, workspacePath, evalIds, runCount });
+    const prompt = buildEvaluateSkillPrompt({ skillName, workspacePath, evalIds, runCount, comparisonMode });
 
     try {
       await startAgent(
@@ -622,6 +623,36 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
               {selectedRunIds.size > 0 ? `${selectedRunIds.size} selected` : "Select to run"}
             </span>
             <div className="ml-auto flex items-center gap-2">
+              {/* Comparison mode toggle */}
+              <div className="inline-flex overflow-hidden rounded-md border">
+                <button
+                  type="button"
+                  className={`px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${!comparisonMode ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
+                  style={!comparisonMode ? { background: "var(--color-pacific)" } : {}}
+                  onClick={() => setComparisonMode(undefined)}
+                  disabled={isRunningEvals}
+                >
+                  None
+                </button>
+                <button
+                  type="button"
+                  className={`border-l px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${comparisonMode === "with_without_skill" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
+                  style={comparisonMode === "with_without_skill" ? { background: "var(--color-pacific)" } : {}}
+                  onClick={() => setComparisonMode("with_without_skill")}
+                  disabled={isRunningEvals}
+                >
+                  vs Baseline
+                </button>
+                <button
+                  type="button"
+                  className={`border-l px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${comparisonMode === "current_vs_previous" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
+                  style={comparisonMode === "current_vs_previous" ? { background: "var(--color-pacific)" } : {}}
+                  onClick={() => setComparisonMode("current_vs_previous")}
+                  disabled={isRunningEvals}
+                >
+                  vs Previous
+                </button>
+              </div>
               {/* Run count toggle */}
               <div className="inline-flex overflow-hidden rounded-md border">
                 <button
@@ -703,17 +734,10 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
                 )}
               </p>
               <Progress
-                value={evalProgressPercent(gradedCount, selectedRunIds.size, runCount)}
+                value={totalEvalRunCount > 0 ? Math.round((gradedCount / totalEvalRunCount) * 100) : 0}
                 className="mt-1.5 h-1"
               />
             </div>
-          </div>
-        )}
-
-        {/* Agent output panel — visible during and after the eval run */}
-        {evalRunAgentId && (
-          <div className="mb-4">
-            <AgentOutputPanel agentId={evalRunAgentId} />
           </div>
         )}
 
@@ -801,6 +825,13 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
           </div>
         )}
       </section>
+
+      {/* Agent output panel — visible during and after the eval run */}
+      {evalRunAgentId && (
+        <div className="h-[360px] flex flex-col">
+          <AgentOutputPanel agentId={evalRunAgentId} />
+        </div>
+      )}
 
       {/* Benchmark result card — shown after evaluate-skill completes */}
       {benchmark && (

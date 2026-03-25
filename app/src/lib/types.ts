@@ -508,20 +508,27 @@ export interface EvalBenchmarkRun {
   run_summary: { passed: number; failed: number; total: number; pass_rate: number }
 }
 
+export interface EvalAggregateSummary {
+  avg_pass_rate: number
+  total_passed: number
+  total_failed: number
+  total_assertions: number
+  has_failures: boolean
+}
+
 /** Full benchmark.json produced by the evaluate-skill agent. */
 export interface EvalBenchmark {
   skill_name: string
+  comparison_mode?: "with_skill_only" | "with_without_skill" | "current_vs_previous"
   iteration: number
   run_count: number
   eval_ids: number[]
   runs: EvalBenchmarkRun[]
-  aggregate_summary: {
-    avg_pass_rate: number
-    total_passed: number
-    total_failed: number
-    total_assertions: number
-    has_failures: boolean
-  }
+  /** Only present when comparison_mode is "with_without_skill" or "current_vs_previous". */
+  baseline_runs?: EvalBenchmarkRun[]
+  aggregate_summary: EvalAggregateSummary
+  /** Only present when baseline_runs is present. */
+  baseline_aggregate_summary?: EvalAggregateSummary
 }
 
 /** structuredOutput emitted by evaluate-skill after each eval is graded. */
@@ -534,6 +541,8 @@ export interface EvalGradedEvent {
   evalId: number
   evalName: string
   grading: { passed: number; failed: number; total: number; pass_rate: number }
+  /** Present only in comparison modes. */
+  variant?: "with_skill" | "without_skill" | "current" | "previous"
 }
 
 /** structuredOutput emitted by evaluate-skill when the full pipeline completes. */
