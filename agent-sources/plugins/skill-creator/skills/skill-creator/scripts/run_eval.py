@@ -31,6 +31,24 @@ def log(message: str) -> None:
     print(message, file=sys.stderr)
 
 
+def _resolve_claude_cmd() -> list[str]:
+    """Resolve the claude CLI to a runnable command list.
+
+    On Windows, 'claude' is typically installed as 'claude.cmd' (npm global).
+    Python subprocess without shell=True cannot execute .cmd files directly —
+    they must be invoked via 'cmd /c'. This helper handles that transparently.
+    """
+    path = shutil.which("claude")
+    if path is None:
+        raise RuntimeError(
+            "The `claude` CLI is not available on PATH. Install it or run this "
+            "script in an environment where `claude` is available."
+        )
+    if sys.platform == "win32" and path.lower().endswith(".cmd"):
+        return ["cmd", "/c", path]
+    return [path]
+
+
 def parse_skill_md(skill_path: Path) -> tuple[str, str, str]:
     content = (skill_path / "SKILL.md").read_text(encoding="utf-8")
     lines = content.split("\n")
@@ -128,8 +146,7 @@ def run_single_query(
         )
         command_file.write_text(command_content)
 
-        cmd = [
-            "claude",
+        cmd = _resolve_claude_cmd() + [
             "-p", query,
             "--output-format", "stream-json",
             "--verbose",

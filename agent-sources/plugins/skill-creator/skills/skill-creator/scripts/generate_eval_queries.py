@@ -25,6 +25,24 @@ def emit_json(payload: dict) -> None:
     sys.stdout.write("\n")
 
 
+def _resolve_claude_cmd() -> list[str]:
+    """Resolve the claude CLI to a runnable command list.
+
+    On Windows, 'claude' is typically installed as 'claude.cmd' (npm global).
+    Python subprocess without shell=True cannot execute .cmd files directly —
+    they must be invoked via 'cmd /c'. This helper handles that transparently.
+    """
+    path = shutil.which("claude")
+    if path is None:
+        raise RuntimeError(
+            "The `claude` CLI is not available on PATH. Install it or run this "
+            "script in an environment where `claude` is available."
+        )
+    if sys.platform == "win32" and path.lower().endswith(".cmd"):
+        return ["cmd", "/c", path]
+    return [path]
+
+
 def log(message: str) -> None:
     print(message, file=sys.stderr)
 
@@ -84,7 +102,7 @@ def _call_claude(prompt: str, model: str | None, timeout: int = 300) -> str:
     Prompt goes over stdin (not argv) because it embeds the full SKILL.md
     body and can easily exceed comfortable argv length.
     """
-    cmd = ["claude", "-p", "--output-format", "text"]
+    cmd = _resolve_claude_cmd() + ["-p", "--output-format", "text"]
     if model:
         cmd.extend(["--model", model])
 
