@@ -5,7 +5,11 @@ import {
   removeQuery,
   updateQuery,
   scoreColor,
+  computeDiff,
+  getBestIteration,
   type EvalQuery,
+  type DiffPart,
+  type OptimizationIteration,
 } from '@/lib/description-optimization';
 
 describe('parseProgressEvent', () => {
@@ -291,5 +295,157 @@ describe('scoreColor', () => {
     expect(scoreColor(0.8, 1)).toBe('text-[var(--color-seafoam)]');
     expect(scoreColor(0.6, 1)).toBe('text-amber-600 dark:text-amber-400');
     expect(scoreColor(0.5, 1)).toBe('text-destructive');
+  });
+});
+
+describe('computeDiff', () => {
+  it('identical strings → all parts have type unchanged and combined text equals input', () => {
+    const input = 'A skill for handling tickets';
+    const parts = computeDiff(input, input);
+
+    expect(parts.every((p: DiffPart) => p.type === 'unchanged')).toBe(true);
+    expect(parts.map((p: DiffPart) => p.text).join('')).toBe(input);
+  });
+
+  it('completely different strings → original tokens all deleted, best tokens all inserted', () => {
+    const original = 'alpha';
+    const best = 'beta';
+    const parts = computeDiff(original, best);
+
+    const types = parts.map((p: DiffPart) => p.type);
+    expect(types).not.toContain('unchanged');
+    const deletedText = parts
+      .filter((p: DiffPart) => p.type === 'deleted')
+      .map((p: DiffPart) => p.text)
+      .join('');
+    const insertedText = parts
+      .filter((p: DiffPart) => p.type === 'inserted')
+      .map((p: DiffPart) => p.text)
+      .join('');
+    expect(deletedText).toBe(original);
+    expect(insertedText).toBe(best);
+  });
+
+  it('all deleted when best is empty string', () => {
+    const original = 'some text here';
+    const parts = computeDiff(original, '');
+
+    expect(parts.every((p: DiffPart) => p.type === 'deleted')).toBe(true);
+    expect(parts.map((p: DiffPart) => p.text).join('')).toBe(original);
+  });
+
+  it('all inserted when original is empty string', () => {
+    const best = 'some text here';
+    const parts = computeDiff('', best);
+
+    expect(parts.every((p: DiffPart) => p.type === 'inserted')).toBe(true);
+    expect(parts.map((p: DiffPart) => p.text).join('')).toBe(best);
+  });
+
+  it('mixed diff: result contains unchanged, deleted, and inserted parts with correct reconstruction', () => {
+    const original = 'A skill for handling tickets';
+    const best = 'Use when a customer needs help';
+    const parts = computeDiff(original, best);
+
+    const types = new Set(parts.map((p: DiffPart) => p.type));
+    expect(types.has('unchanged') || types.has('deleted') || types.has('inserted')).toBe(true);
+
+    const deletedAndUnchanged = parts
+      .filter((p: DiffPart) => p.type !== 'inserted')
+      .map((p: DiffPart) => p.text)
+      .join('');
+    expect(deletedAndUnchanged).toBe(original);
+
+    const insertedAndUnchanged = parts
+      .filter((p: DiffPart) => p.type !== 'deleted')
+      .map((p: DiffPart) => p.text)
+      .join('');
+    expect(insertedAndUnchanged).toBe(best);
+  });
+
+  it('single word unchanged in middle: handle and now unchanged, tickets deleted, forms inserted', () => {
+    const original = 'handle tickets now';
+    const best = 'handle forms now';
+    const parts = computeDiff(original, best);
+
+    const unchangedTexts = parts
+      .filter((p: DiffPart) => p.type === 'unchanged')
+      .map((p: DiffPart) => p.text);
+    const deletedTexts = parts
+      .filter((p: DiffPart) => p.type === 'deleted')
+      .map((p: DiffPart) => p.text);
+    const insertedTexts = parts
+      .filter((p: DiffPart) => p.type === 'inserted')
+      .map((p: DiffPart) => p.text);
+
+    expect(unchangedTexts.join('')).toContain('handle');
+    expect(unchangedTexts.join('')).toContain('now');
+    expect(deletedTexts.join('')).toContain('tickets');
+    expect(insertedTexts.join('')).toContain('forms');
+
+    const deletedAndUnchanged = parts
+      .filter((p: DiffPart) => p.type !== 'inserted')
+      .map((p: DiffPart) => p.text)
+      .join('');
+    expect(deletedAndUnchanged).toBe(original);
+
+    const insertedAndUnchanged = parts
+      .filter((p: DiffPart) => p.type !== 'deleted')
+      .map((p: DiffPart) => p.text)
+      .join('');
+    expect(insertedAndUnchanged).toBe(best);
+  });
+});
+
+describe('getBestIteration', () => {
+  function makeIter(
+    iteration: number,
+    trainPassed: number,
+    trainTotal: number,
+    testPassed: number | null = null,
+    testTotal: number | null = null
+  ): OptimizationIteration {
+    return {
+      iteration,
+      description: `desc-${iteration}`,
+      train_passed: trainPassed,
+      train_total: trainTotal,
+      test_passed: testPassed,
+      test_total: testTotal,
+    };
+  }
+
+  it('empty array → returns 0', () => {
+    expect(getBestIteration([])).toBe(0);
+  });
+
+  it('single entry → returns 0', () => {
+    expect(getBestIteration([makeIter(1, 5, 10, 5, 10)])).toBe(0);
+  });
+
+  it('multiple entries with test scores → winner is the highest test score ratio', () => {
+    const history = [
+      makeIter(1, 5, 10, 5, 10),  // test score 0.5
+      makeIter(2, 8, 10, 8, 10),  // test score 0.8 ← winner
+      makeIter(3, 9, 10, 7, 10),  // test score 0.7
+    ];
+    expect(getBestIteration(history)).toBe(1);
+  });
+
+  it('test scores absent → falls back to train score', () => {
+    const history = [
+      makeIter(1, 5, 10),  // train score 0.5
+      makeIter(2, 8, 10),  // train score 0.8 ← winner
+      makeIter(3, 7, 10),  // train score 0.7
+    ];
+    expect(getBestIteration(history)).toBe(1);
+  });
+
+  it('tie-breaking: later iteration wins', () => {
+    const history = [
+      makeIter(1, 8, 10, 8, 10),  // test score 0.8
+      makeIter(2, 8, 10, 8, 10),  // test score 0.8 ← later, wins tie
+    ];
+    expect(getBestIteration(history)).toBe(1);
   });
 });

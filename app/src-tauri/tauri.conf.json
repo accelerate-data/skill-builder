@@ -26,6 +26,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/uv"],
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper",

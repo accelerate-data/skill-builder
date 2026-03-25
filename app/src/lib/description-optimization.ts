@@ -135,3 +135,87 @@ export function scoreColor(passed: number, total: number): string {
 
   return 'text-destructive';
 }
+
+export interface DiffPart {
+  text: string;
+  type: 'unchanged' | 'deleted' | 'inserted';
+}
+
+/**
+ * Word-level diff between original and best descriptions.
+ * Tokenises on word boundaries, computes LCS, emits DiffPart[].
+ */
+export function computeDiff(original: string, best: string): DiffPart[] {
+  const a = original.match(/\S+|\s+/g) ?? [];
+  const b = best.match(/\S+|\s+/g) ?? [];
+
+  const m = a.length;
+  const n = b.length;
+
+  // Build LCS table
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+
+  // Walk back to emit parts
+  const parts: DiffPart[] = [];
+  let i = m;
+  let j = n;
+
+  const prepend = (text: string, type: DiffPart['type']) => {
+    const head = parts[0];
+    if (head && head.type === type) {
+      parts[0] = { text: text + head.text, type };
+    } else {
+      parts.unshift({ text, type });
+    }
+  };
+
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
+      prepend(a[i - 1], 'unchanged');
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      prepend(b[j - 1], 'inserted');
+      j--;
+    } else {
+      prepend(a[i - 1], 'deleted');
+      i--;
+    }
+  }
+
+  return parts;
+}
+
+/**
+ * Returns the 0-based index of the iteration with the highest test score ratio.
+ * Falls back to train score when test_passed/test_total are absent.
+ * Returns 0 for empty history.
+ */
+export function getBestIteration(history: OptimizationIteration[]): number {
+  if (history.length === 0) {
+    return 0;
+  }
+
+  const score = (entry: OptimizationIteration): number =>
+    entry.test_passed !== null && entry.test_total !== null
+      ? entry.test_passed / entry.test_total
+      : entry.train_passed / entry.train_total;
+
+  let bestIndex = 0;
+  let bestScore = score(history[0]);
+
+  for (let i = 1; i < history.length; i++) {
+    const s = score(history[i]);
+    if (s >= bestScore) {
+      bestScore = s;
+      bestIndex = i;
+    }
+  }
+
+  return bestIndex;
+}

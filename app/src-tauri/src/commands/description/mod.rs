@@ -10,6 +10,72 @@ pub struct EvalQuery {
     pub should_trigger: bool,
 }
 
+async fn resolve_uv_binary(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+
+    #[cfg(target_os = "windows")]
+    let bundled_name = "uv-x86_64-pc-windows-msvc.exe";
+    #[cfg(target_os = "macos")]
+    let bundled_name = if cfg!(target_arch = "aarch64") {
+        "uv-aarch64-apple-darwin"
+    } else {
+        "uv-x86_64-apple-darwin"
+    };
+    #[cfg(target_os = "linux")]
+    let bundled_name = "uv-x86_64-unknown-linux-gnu";
+
+    // 1. Bundled binary (packaged app)
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let bundled = resource_dir.join("binaries").join(bundled_name);
+        if bundled.exists() {
+            log::debug!("[resolve_uv_binary] using bundled uv: {:?}", bundled);
+            return Ok(bundled);
+        }
+    }
+
+    // 2. PATH fallback (dev mode)
+    let mut cmd = tokio::process::Command::new("uv");
+    cmd.arg("--version");
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    if cmd.output().await.map(|o| o.status.success()).unwrap_or(false) {
+        log::debug!("[resolve_uv_binary] using uv from PATH");
+        return Ok(std::path::PathBuf::from("uv"));
+    }
+
+    // 3. Windows well-known user-install locations (dev mode fallback)
+    #[cfg(target_os = "windows")]
+    {
+        let mut extra = vec![];
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            extra.push(
+                std::path::PathBuf::from(&home)
+                    .join(".local")
+                    .join("bin")
+                    .join("uv.exe"),
+            );
+            extra.push(
+                std::path::PathBuf::from(&home)
+                    .join("AppData")
+                    .join("Roaming")
+                    .join("uv")
+                    .join("bin")
+                    .join("uv.exe"),
+            );
+        }
+        for path in &extra {
+            let mut cmd = tokio::process::Command::new(path);
+            cmd.arg("--version").creation_flags(0x08000000);
+            if cmd.output().await.map(|o| o.status.success()).unwrap_or(false) {
+                log::debug!("[resolve_uv_binary] using uv at {:?}", path);
+                return Ok(path.clone());
+            }
+        }
+    }
+
+    Err("uv not found. Install from https://docs.astral.sh/uv or reinstall Skill Builder.".to_string())
+}
+
 fn resolve_skill_creator_scripts(app: &tauri::AppHandle) -> std::path::PathBuf {
     super::workflow::resolve_bundled_plugins_dir(app)
         .join("skill-creator")
@@ -26,10 +92,14 @@ pub async fn generate_eval_queries(
     app: tauri::AppHandle,
 ) -> Result<Vec<EvalQuery>, String> {
     log::info!("[generate_eval_queries] skill={}", skill_name);
+    let uv_bin = resolve_uv_binary(&app).await.map_err(|e| {
+        log::error!("[generate_eval_queries] {}", e);
+        e
+    })?;
     let scripts_dir = resolve_skill_creator_scripts(&app);
     let skill_path = Path::new(&workspace_path).join(&skill_name);
 
-    let mut cmd = tokio::process::Command::new("uv");
+    let mut cmd = tokio::process::Command::new(&uv_bin);
     cmd.arg("run")
         .arg("--quiet")
         .arg(scripts_dir.join("generate_eval_queries.py"))
@@ -113,10 +183,14 @@ pub async fn run_optimization_loop(
     tmp.flush().map_err(|e| format!("Failed to flush temp file: {}", e))?;
 
     let tmp_path = tmp.path().to_path_buf();
+    let uv_bin = resolve_uv_binary(&app).await.map_err(|e| {
+        log::error!("[run_optimization_loop] {}", e);
+        e
+    })?;
     let scripts_dir = resolve_skill_creator_scripts(&app);
     let skill_path = Path::new(&workspace_path).join(&skill_name);
 
-    let mut child = tokio::process::Command::new("uv")
+    let mut child = tokio::process::Command::new(&uv_bin)
         .arg("run")
         .arg("--quiet")
         .arg(scripts_dir.join("run_loop.py"))
