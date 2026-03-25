@@ -219,13 +219,24 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
 
       let event = parseEvalStructuredOutput(item.structuredOutput);
       if (!event && typeof item.outputText === "string") {
-        // Try extracting JSON from outputText (agent emits progress as text)
-        const match = (item.outputText as string).match(/\{[^{}]*"type"\s*:\s*"eval_graded"[^}]*\}/g);
-        if (match) {
-          for (const jsonStr of match) {
+        const text = item.outputText as string;
+        // Try extracting eval_graded events (simple flat JSON objects)
+        const gradedMatches = text.match(/\{[^{}]*"type"\s*:\s*"eval_graded"[^}]*\}/g);
+        if (gradedMatches) {
+          for (const jsonStr of gradedMatches) {
             try {
               const parsed = parseEvalStructuredOutput(JSON.parse(jsonStr));
               if (parsed) { event = parsed; break; }
+            } catch { /* not valid JSON */ }
+          }
+        }
+        // Try extracting complete event (nested JSON in ```json code blocks)
+        if (!event) {
+          const codeBlockMatch = text.match(/```json\s*\n([\s\S]*?)\n```/);
+          if (codeBlockMatch) {
+            try {
+              const parsed = parseEvalStructuredOutput(JSON.parse(codeBlockMatch[1]));
+              if (parsed) event = parsed;
             } catch { /* not valid JSON */ }
           }
         }
