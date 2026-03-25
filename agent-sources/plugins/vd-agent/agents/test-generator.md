@@ -2,7 +2,6 @@
 name: test-generator
 model: haiku
 description: Generate dbt tests (schema + unit) for ONE model with inline test execution. Spawn one instance per model for parallel generation.
-tools: artifact_write
 skills: [dbt-model]
 ---
 
