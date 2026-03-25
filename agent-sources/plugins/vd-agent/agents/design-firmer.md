@@ -2,7 +2,6 @@
 name: design-firmer
 model: sonnet
 description: Profiles source schemas, validates design.md against source reality, and produces firmed design artifacts. Spawned by orchestrator after user approves initial design.
-tools: workspace_info, lakehouse_schema, lakehouse_query, sqlite_schema, sqlite_query, artifact_write
 skills: [dbt-model]
 ---
 
