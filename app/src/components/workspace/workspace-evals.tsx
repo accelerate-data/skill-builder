@@ -205,7 +205,10 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
     } else if (event.type === "complete") {
       setBenchmark(event.benchmark);
       setAnalystNotes(event.analyst_notes);
-      void load(); // refresh iteration history
+      // Silently refresh iteration list without triggering loading state
+      if (workspacePath) {
+        void listIterations(skillName, workspacePath).then(setIterations).catch(() => {});
+      }
       console.log(
         "event=eval_run_complete skill=%s iteration=%d avg_pass_rate=%s",
         skillName, event.iteration, event.benchmark.aggregate_summary.avg_pass_rate,
