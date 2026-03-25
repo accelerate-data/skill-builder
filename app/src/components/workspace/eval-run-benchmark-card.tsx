@@ -69,26 +69,49 @@ function AggregateStat({ label, summary }: { label?: string; summary: EvalAggreg
   );
 }
 
+type GradingExpectation = { text: string; passed: boolean; evidence: string };
+
+function PassFailIcon({ passed }: { passed: boolean }) {
+  return passed
+    ? <CheckCircle2 className="inline size-3.5" style={{ color: "var(--color-seafoam)" }} />
+    : <XCircle className="inline size-3.5 text-destructive" />;
+}
+
 /** Expandable per-expectation details for one eval. */
-function EvalExpectationsDetail({ gradingPaths }: { gradingPaths: string[] }) {
-  const [expectations, setExpectations] = useState<Array<{ text: string; passed: boolean; evidence: string }> | null>(null);
+function EvalExpectationsDetail({
+  gradingPaths,
+  baselineGradingPaths,
+  primaryLabel,
+  baselineLabel,
+}: {
+  gradingPaths: string[];
+  baselineGradingPaths?: string[];
+  primaryLabel?: string;
+  baselineLabel?: string;
+}) {
+  const [expectations, setExpectations] = useState<GradingExpectation[] | null>(null);
+  const [baselineExpectations, setBaselineExpectations] = useState<GradingExpectation[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const isComparison = !!baselineGradingPaths && baselineGradingPaths.length > 0;
 
   const loadExpectations = useCallback(async () => {
     if (expectations || loading || gradingPaths.length === 0) return;
     setLoading(true);
     try {
-      // Read from the first grading path (run-0)
       const grading = await readGrading(gradingPaths[0]);
-      const exps = grading.expectations as Array<{ text: string; passed: boolean; evidence: string }> | undefined;
-      setExpectations(exps ?? []);
+      setExpectations((grading.expectations as GradingExpectation[] | undefined) ?? []);
+
+      if (isComparison) {
+        const baselineGrading = await readGrading(baselineGradingPaths[0]);
+        setBaselineExpectations((baselineGrading.expectations as GradingExpectation[] | undefined) ?? []);
+      }
     } catch (err) {
       console.error("[eval-benchmark] Failed to read grading:", err);
       setExpectations([]);
     } finally {
       setLoading(false);
     }
-  }, [gradingPaths, expectations, loading]);
+  }, [gradingPaths, baselineGradingPaths, expectations, loading, isComparison]);
 
   if (!expectations && !loading) {
     void loadExpectations();
@@ -101,34 +124,53 @@ function EvalExpectationsDetail({ gradingPaths }: { gradingPaths: string[] }) {
 
   if (!expectations || expectations.length === 0) return null;
 
+  // Build a map of baseline results by expectation text for side-by-side display
+  const baselineByText = new Map<string, GradingExpectation>();
+  if (baselineExpectations) {
+    for (const exp of baselineExpectations) {
+      baselineByText.set(exp.text, exp);
+    }
+  }
+
   return (
     <div className="bg-muted/20">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b text-[11px] text-muted-foreground">
             <th className="px-4 py-1.5 text-left font-medium">Expectation</th>
-            <th className="px-2 py-1.5 text-center font-medium w-16">Result</th>
+            <th className="px-2 py-1.5 text-center font-medium w-20">
+              {isComparison ? primaryLabel ?? "Primary" : "Result"}
+            </th>
+            {isComparison && (
+              <th className="px-2 py-1.5 text-center font-medium w-20">
+                {baselineLabel ?? "Baseline"}
+              </th>
+            )}
             <th className="px-4 py-1.5 text-left font-medium">Evidence</th>
           </tr>
         </thead>
         <tbody>
-          {expectations.map((exp, i) => (
-            <tr key={i} className="border-b last:border-b-0">
-              <td className="px-4 py-2 align-top max-w-[200px]">
-                <span className="text-xs leading-relaxed">{exp.text}</span>
-              </td>
-              <td className="px-2 py-2 text-center align-top">
-                {exp.passed ? (
-                  <CheckCircle2 className="inline size-3.5" style={{ color: "var(--color-seafoam)" }} />
-                ) : (
-                  <XCircle className="inline size-3.5 text-destructive" />
+          {expectations.map((exp, i) => {
+            const baseline = baselineByText.get(exp.text);
+            return (
+              <tr key={i} className="border-b last:border-b-0">
+                <td className="px-4 py-2 align-top max-w-[200px]">
+                  <span className="text-xs leading-relaxed">{exp.text}</span>
+                </td>
+                <td className="px-2 py-2 text-center align-top">
+                  <PassFailIcon passed={exp.passed} />
+                </td>
+                {isComparison && (
+                  <td className="px-2 py-2 text-center align-top">
+                    {baseline ? <PassFailIcon passed={baseline.passed} /> : <span className="text-muted-foreground">—</span>}
+                  </td>
                 )}
-              </td>
-              <td className="px-4 py-2 align-top max-w-[300px]">
-                <span className="text-[11px] leading-relaxed text-muted-foreground">{exp.evidence}</span>
-              </td>
-            </tr>
-          ))}
+                <td className="px-4 py-2 align-top max-w-[300px]">
+                  <span className="text-[11px] leading-relaxed text-muted-foreground">{exp.evidence}</span>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -164,6 +206,7 @@ export function EvalRunBenchmarkCard({
       runRates: primaryById[id].runRates,
       gradingPaths: primaryById[id].gradingPaths,
       baselineRunRates: baselineById[id]?.runRates,
+      baselineGradingPaths: baselineById[id]?.gradingPaths,
     }));
 
   return (
@@ -249,7 +292,7 @@ export function EvalRunBenchmarkCard({
               ? `${primaryLabel} vs ${baselineLabel}`
               : run_count > 1 ? "Per-eval · per-run breakdown" : "Per-eval results"}
           </div>
-          {evalRows.map(({ eval_id, eval_name, runRates, gradingPaths, baselineRunRates }) => {
+          {evalRows.map(({ eval_id, eval_name, runRates, gradingPaths, baselineRunRates, baselineGradingPaths }) => {
             const avgRate = runRates.length > 0
               ? runRates.reduce((s, r) => s + r, 0) / runRates.length
               : 0;
@@ -332,7 +375,12 @@ export function EvalRunBenchmarkCard({
                 </div>
                 {/* Expanded per-expectation details */}
                 {isExpanded && gradingPaths.length > 0 && (
-                  <EvalExpectationsDetail gradingPaths={gradingPaths} />
+                  <EvalExpectationsDetail
+                    gradingPaths={gradingPaths}
+                    baselineGradingPaths={isComparison ? baselineGradingPaths : undefined}
+                    primaryLabel={isComparison ? primaryLabel : undefined}
+                    baselineLabel={isComparison ? baselineLabel : undefined}
+                  />
                 )}
               </div>
             );
