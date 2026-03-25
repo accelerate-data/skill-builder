@@ -90,8 +90,16 @@ pub async fn generate_eval_queries(
     workspace_path: String,
     model: Option<String>,
     app: tauri::AppHandle,
+    db: tauri::State<'_, crate::db::Db>,
 ) -> Result<Vec<EvalQuery>, String> {
     log::info!("[generate_eval_queries] skill={}", skill_name);
+    let api_key = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = crate::db::read_settings(&conn)?;
+        settings
+            .anthropic_api_key
+            .ok_or_else(|| "Anthropic API key not configured".to_string())?
+    };
     let uv_bin = resolve_uv_binary(&app).await.map_err(|e| {
         log::error!("[generate_eval_queries] {}", e);
         e
@@ -104,7 +112,8 @@ pub async fn generate_eval_queries(
         .arg("--quiet")
         .arg(scripts_dir.join("generate_eval_queries.py"))
         .arg("--skill-path")
-        .arg(&skill_path);
+        .arg(&skill_path)
+        .env("ANTHROPIC_API_KEY", &api_key);
 
     if let Some(ref m) = model {
         cmd.arg("--model").arg(m);
@@ -157,12 +166,20 @@ pub async fn run_optimization_loop(
     model: String,
     eval_queries: Vec<EvalQuery>,
     app: tauri::AppHandle,
+    db: tauri::State<'_, crate::db::Db>,
 ) -> Result<serde_json::Value, String> {
     log::info!(
         "[run_optimization_loop] skill={} queries={}",
         skill_name,
         eval_queries.len()
     );
+    let api_key = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = crate::db::read_settings(&conn)?;
+        settings
+            .anthropic_api_key
+            .ok_or_else(|| "Anthropic API key not configured".to_string())?
+    };
 
     // Write eval_queries to a temp file
     let queries_json = serde_json::to_vec(&eval_queries).map_err(|e| {
@@ -202,6 +219,7 @@ pub async fn run_optimization_loop(
         .arg(&workspace_path)
         .arg("--model")
         .arg(&model)
+        .env("ANTHROPIC_API_KEY", &api_key)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
