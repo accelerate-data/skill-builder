@@ -38,6 +38,7 @@ import {
   parseEvalStructuredOutput,
 } from "@/lib/eval-run";
 import { useAgentStore } from "@/stores/agent-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { Progress } from "@/components/ui/progress";
 import { EvalRunBenchmarkCard } from "./eval-run-benchmark-card";
@@ -58,6 +59,7 @@ interface WorkspaceEvalsProps {
 
 export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: WorkspaceEvalsProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
+  const skillsPath = useSettingsStore((s) => s.skillsPath) ?? workspacePath;
 
   const [evals, setEvals] = useState<TestCase[]>([]);
   const [iterations, setIterations] = useState<IterationMeta[]>([]);
@@ -513,7 +515,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
     setAnalystNotes([]);
 
     const agentId = crypto.randomUUID();
-    const prompt = buildEvaluateSkillPrompt({ skillName, workspacePath, evalIds, runCount, comparisonMode });
+    const prompt = buildEvaluateSkillPrompt({ skillName, workspacePath, skillsPath, evalIds, runCount, comparisonMode });
 
     try {
       await startAgent(

@@ -227,10 +227,13 @@ pub async fn apply_description(
     skill_name: String,
     workspace_path: String,
     description: String,
+    db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
     log::info!("[apply_description] skill={}", skill_name);
 
-    let skill_md_path = Path::new(&workspace_path)
+    // Resolve skills_path from settings (may differ from workspace_path).
+    let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
+    let skill_md_path = Path::new(&skills_path)
         .join(&skill_name)
         .join("SKILL.md");
 

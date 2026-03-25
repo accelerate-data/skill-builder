@@ -58,11 +58,7 @@ fn pending_eval_path(workspace_path: &str, skill_name: &str) -> PathBuf {
         .join("pending-eval.json")
 }
 
-fn skill_md_path(workspace_path: &str, skill_name: &str) -> PathBuf {
-    Path::new(workspace_path)
-        .join(skill_name)
-        .join("SKILL.md")
-}
+
 
 fn evals_workspace_dir(workspace_path: &str, skill_name: &str) -> PathBuf {
     Path::new(workspace_path)
@@ -289,11 +285,16 @@ pub fn list_iterations(
 pub fn read_skill_context_for_eval_gen(
     skill_name: String,
     workspace_path: String,
+    db: tauri::State<'_, crate::db::Db>,
 ) -> Result<SkillEvalContext, String> {
     log::info!("[read_skill_context_for_eval_gen] skill={}", skill_name);
     validate_skill_name(&skill_name)?;
 
-    let skill_md = skill_md_path(&workspace_path, &skill_name);
+    // Resolve skills_path from settings (may differ from workspace_path).
+    let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
+    let skill_md = std::path::Path::new(&skills_path)
+        .join(&skill_name)
+        .join("SKILL.md");
     let skill_content = if skill_md.is_file() {
         std::fs::read_to_string(&skill_md).map_err(|e| {
             log::error!(

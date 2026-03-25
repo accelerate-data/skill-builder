@@ -16,12 +16,13 @@ import type { EvalBenchmark, EvalCompleteEvent, EvalGradedEvent } from "@/lib/ty
 export function buildEvaluateSkillPrompt(params: {
   skillName: string;
   workspacePath: string;
+  skillsPath: string;
   evalIds: number[];
   runCount: 1 | 3;
   comparisonMode?: "with_without_skill" | "current_vs_previous";
 }): string {
-  const { skillName, workspacePath, evalIds, runCount, comparisonMode } = params;
-  const skillPath = `${workspacePath}/${skillName}`;
+  const { skillName, workspacePath, skillsPath, evalIds, runCount, comparisonMode } = params;
+  const skillPath = `${skillsPath}/${skillName}`;
   const lines = [
     `skill_name: ${skillName}`,
     `workspace_path: ${workspacePath}`,

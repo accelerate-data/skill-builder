@@ -17,7 +17,7 @@ use protocol::*;
 
 // ─── Shared helper ───────────────────────────────────────────────────────────
 
-fn resolve_skills_path(db: &Db, workspace_path: &str) -> Result<String, String> {
+pub(crate) fn resolve_skills_path(db: &Db, workspace_path: &str) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = db::read_settings(&conn)?;
     Ok(settings
