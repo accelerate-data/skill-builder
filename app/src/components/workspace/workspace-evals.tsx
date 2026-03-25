@@ -56,9 +56,11 @@ interface WorkspaceEvalsProps {
   workspacePath: string | null;
   /** Called after setting refine pre-fill — navigates the shell to the Refine tab. */
   onNavigateToRefine?: () => void;
+  /** Called when eval run starts/stops so the parent can gate tab switches. */
+  onRunningChange?: (running: boolean) => void;
 }
 
-export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: WorkspaceEvalsProps) {
+export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRunningChange }: WorkspaceEvalsProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
   const skillsPath = useSettingsStore((s) => s.skillsPath) ?? workspacePath ?? "";
 
@@ -121,6 +123,9 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
   const evalRunDisplayItems = useAgentStore(
     (s) => s.runs[evalRunAgentId ?? ""]?.displayItems ?? EMPTY_DISPLAY_ITEMS,
   );
+
+  // Notify parent when eval run state changes (for tab-switch gate)
+  useEffect(() => { onRunningChange?.(isRunningEvals); }, [isRunningEvals, onRunningChange]);
 
   // --- Actions ---
 

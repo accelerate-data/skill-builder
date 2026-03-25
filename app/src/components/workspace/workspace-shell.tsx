@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ interface WorkspaceShellProps {
 export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellProps) {
   const [activeTab, setActiveTab] = useState(initialTab ?? "overview");
   const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const evalsRunningRef = useRef(false);
   const isSkillStoreLoading = useSkillStore((s) => s.isLoading);
 
   // Sync tab when a navigation sets initialTab (e.g. "Refine" from the More menu)
@@ -46,6 +47,11 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
         setPendingTab(value);
         return;
       }
+    }
+    // Guard: block switching away from Evals while eval run is in progress
+    if (activeTab === "evals" && value !== "evals" && evalsRunningRef.current) {
+      setPendingTab(value);
+      return;
     }
     setActiveTab(value);
   }, [activeTab]);
@@ -159,6 +165,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
               skill={skill}
               workspacePath={workspacePath}
               onNavigateToRefine={() => setActiveTab("refine")}
+              onRunningChange={(running) => { evalsRunningRef.current = running; }}
             />
           </TabsContent>
 
@@ -185,7 +192,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
             <DialogHeader>
               <DialogTitle>Agent Running</DialogTitle>
               <DialogDescription>
-                A refine agent is still running. Switching tabs will abandon it.
+                An agent is still running. Switching tabs will abandon the session.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
