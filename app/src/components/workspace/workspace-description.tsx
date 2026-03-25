@@ -135,6 +135,8 @@ function StepIndicator({ currentStep, hasResult }: StepIndicatorProps) {
 
 export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescriptionProps) {
   const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const skillsPath = useSettingsStore((s) => s.skillsPath);
+  const effectiveSkillsPath = skillsPath ?? workspacePath;
 
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -163,7 +165,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     setIsGeneratingQueries(true);
     setGenerateError(null);
     try {
-      const generated = await generateEvalQueries(skill.name, workspacePath, model);
+      const generated = await generateEvalQueries(skill.name, effectiveSkillsPath, model);
       setQueries(generated);
       console.log(
         "event=eval_queries_generated operation=generateEvalQueries skill=%s count=%d status=success",
@@ -208,7 +210,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
 
       const optimizationResult = await runOptimizationLoop(
         skill.name,
-        workspacePath,
+        effectiveSkillsPath,
         model,
         queries,
       );
@@ -250,7 +252,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     if (!result) return;
     setError(null);
     try {
-      await applyDescription(skill.name, workspacePath, result.best_description);
+      await applyDescription(skill.name, effectiveSkillsPath, result.best_description);
       console.log(
         "event=description_applied operation=applyDescription skill=%s status=success",
         skill.name,
