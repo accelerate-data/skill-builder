@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, Pencil, Play, Sparkles, Trash2 } from "lucide-react";
 import {
   AlertDialog,
@@ -13,7 +13,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Separator } from "@/components/ui/separator";
 import {
   deleteTestCase,
@@ -103,6 +102,11 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
   // Benchmark result from the most recent eval run (component-local)
   const [benchmark, setBenchmark] = useState<EvalBenchmark | null>(null);
   const [analystNotes, setAnalystNotes] = useState<string[]>([]);
+
+  // Agent output panel resize state
+  const [outputPanelHeight, setOutputPanelHeight] = useState(360);
+  const dragStartY = useRef<number | null>(null);
+  const dragStartHeight = useRef<number>(360);
 
   const runs = useAgentStore((s) => s.runs);
   const evalRunDisplayItems = useAgentStore(
@@ -584,13 +588,9 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
   const allRunSelected = evals.length > 0 && selectedRunIds.size === evals.length;
   const someRunSelected = selectedRunIds.size > 0 && !allRunSelected;
 
-  const hasBottomContent = !!evalRunAgentId || !!benchmark || iterations.length > 0;
-
   return (
-    <ResizablePanelGroup orientation="vertical" className="h-full">
-      {/* Top panel: Eval list */}
-      <ResizablePanel defaultSize={hasBottomContent ? 50 : 100} minSize={20}>
-      <div className="h-full overflow-auto px-1">
+    <div className="flex flex-col gap-6">
+      {/* Evals section */}
       <section>
         <div className="mb-3 flex items-center justify-between">
           <div>
@@ -830,60 +830,65 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
           </div>
         )}
       </section>
-      </div>
-      </ResizablePanel>
 
-      {/* Bottom panel: Agent output + benchmark + iteration history */}
-      {hasBottomContent && (
-        <>
-          <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={50} minSize={15}>
-          <div className="h-full overflow-auto flex flex-col gap-4 px-1 pt-2">
-            {/* Agent output panel — visible during and after the eval run */}
-            {evalRunAgentId && (
-              <div className="min-h-[200px] flex-1 flex flex-col">
-                <AgentOutputPanel agentId={evalRunAgentId} />
-              </div>
-            )}
-
-            {/* Benchmark result card — shown after evaluate-skill completes */}
-            {benchmark && (
-              <EvalRunBenchmarkCard
-                benchmark={benchmark}
-                analystNotes={analystNotes}
-                onRefine={handleRefine}
-              />
-            )}
-
-            {/* Iteration History section */}
-            {iterations.length > 0 && (
-              <>
-                <Separator />
-                <section>
-                  <h2 className="mb-3 text-base font-semibold tracking-tight">Iteration History</h2>
-                  <div className="flex flex-col gap-1">
-                    {iterations.map((iter) => (
-                      <div
-                        key={iter.iteration}
-                        className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted/50"
-                      >
-                        <span className="font-mono text-xs text-muted-foreground">
-                          iteration-{iter.iteration}
-                        </span>
-                        <Badge
-                          variant="secondary"
-                          className="rounded-full px-2 py-0.5 text-xs font-medium"
-                        >
-                          {iterationLabel(iter.iteration, latestIteration)}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              </>
-            )}
+      {/* Agent output panel — visible during and after the eval run */}
+      {evalRunAgentId && (
+        <div className="flex flex-col" style={{ height: outputPanelHeight }}>
+          <div className="min-h-0 flex-1 flex flex-col">
+            <AgentOutputPanel agentId={evalRunAgentId} />
           </div>
-          </ResizablePanel>
+          {/* Bottom drag handle */}
+          <div
+            className="h-1.5 w-full cursor-ns-resize rounded-b bg-border hover:bg-muted-foreground/30 transition-colors duration-150 shrink-0"
+            onPointerDown={(e) => {
+              dragStartY.current = e.clientY;
+              dragStartHeight.current = outputPanelHeight;
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={(e) => {
+              if (dragStartY.current === null) return;
+              const delta = e.clientY - dragStartY.current;
+              setOutputPanelHeight(Math.max(160, Math.min(800, dragStartHeight.current + delta)));
+            }}
+            onPointerUp={() => { dragStartY.current = null; }}
+          />
+        </div>
+      )}
+
+      {/* Benchmark result card — shown after evaluate-skill completes */}
+      {benchmark && (
+        <EvalRunBenchmarkCard
+          benchmark={benchmark}
+          analystNotes={analystNotes}
+          onRefine={handleRefine}
+        />
+      )}
+
+      {/* Iteration History section */}
+      {iterations.length > 0 && (
+        <>
+          <Separator />
+          <section>
+            <h2 className="mb-3 text-base font-semibold tracking-tight">Iteration History</h2>
+            <div className="flex flex-col gap-1">
+              {iterations.map((iter) => (
+                <div
+                  key={iter.iteration}
+                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted/50"
+                >
+                  <span className="font-mono text-xs text-muted-foreground">
+                    iteration-{iter.iteration}
+                  </span>
+                  <Badge
+                    variant="secondary"
+                    className="rounded-full px-2 py-0.5 text-xs font-medium"
+                  >
+                    {iterationLabel(iter.iteration, latestIteration)}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </section>
         </>
       )}
 
@@ -928,7 +933,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </ResizablePanelGroup>
+    </div>
   );
 }
 
