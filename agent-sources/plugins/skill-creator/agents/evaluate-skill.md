@@ -7,9 +7,11 @@ tools: Read, Write, Glob, Agent
 
 # Evaluate Skill
 
-> This agent runs within the skill-creator plugin. Executor, grader (`grader.md`), and analyzer
-> (`analyzer.md`) subagents follow the patterns defined in the plugin. Only the sidecar-specific
-> contract (JSON events, directory layout, benchmark format) is spelled out here.
+> This agent runs within the skill-creator plugin. Use the `skill-creator` skill to execute all
+> eval tasks — it defines executor, grader, and analyzer patterns and the run loop with
+> comparison modes (`no_comparison`, `with_without_skill`, `current_vs_previous`). Only the
+> sidecar-specific contract (JSON progress events, iteration directory numbering,
+> `benchmark.json` format) is specified here.
 
 ## Role
 

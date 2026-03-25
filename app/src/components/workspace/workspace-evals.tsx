@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, Pencil, Play, Sparkles, Trash2 } from "lucide-react";
 import {
   AlertDialog,
@@ -102,6 +102,11 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
   // Benchmark result from the most recent eval run (component-local)
   const [benchmark, setBenchmark] = useState<EvalBenchmark | null>(null);
   const [analystNotes, setAnalystNotes] = useState<string[]>([]);
+
+  // Agent output panel resize state
+  const [outputPanelHeight, setOutputPanelHeight] = useState(360);
+  const dragStartY = useRef<number | null>(null);
+  const dragStartHeight = useRef<number>(360);
 
   const runs = useAgentStore((s) => s.runs);
   const evalRunDisplayItems = useAgentStore(
@@ -828,8 +833,25 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
 
       {/* Agent output panel — visible during and after the eval run */}
       {evalRunAgentId && (
-        <div className="h-[360px] flex flex-col">
-          <AgentOutputPanel agentId={evalRunAgentId} />
+        <div className="flex flex-col" style={{ height: outputPanelHeight }}>
+          {/* Drag handle */}
+          <div
+            className="h-1.5 w-full cursor-ns-resize rounded-t bg-border hover:bg-muted-foreground/30 transition-colors duration-150 shrink-0"
+            onPointerDown={(e) => {
+              dragStartY.current = e.clientY;
+              dragStartHeight.current = outputPanelHeight;
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={(e) => {
+              if (dragStartY.current === null) return;
+              const delta = dragStartY.current - e.clientY;
+              setOutputPanelHeight(Math.max(160, Math.min(800, dragStartHeight.current + delta)));
+            }}
+            onPointerUp={() => { dragStartY.current = null; }}
+          />
+          <div className="min-h-0 flex-1 flex flex-col">
+            <AgentOutputPanel agentId={evalRunAgentId} />
+          </div>
         </div>
       )}
 

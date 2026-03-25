@@ -6,6 +6,7 @@ export interface SidecarConfig {
   cwd: string;
   requiredPlugins?: string[];
   allowedTools?: string[];
+  settingSources?: ('user' | 'project')[];
   maxTurns?: number;
   permissionMode?: string;
   betas?: string[];
@@ -113,6 +114,7 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   // Optional array fields
   assertOptStringArray(c, "requiredPlugins");
   assertOptStringArray(c, "allowedTools");
+  assertOptStringArray(c, "settingSources");
   assertOptStringArray(c, "betas");
 
   // Optional thinking object

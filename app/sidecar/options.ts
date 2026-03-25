@@ -1,4 +1,4 @@
-import type { CanUseTool, HookInput, Options } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, HookInput, Options, SettingSource } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 import type { MessageProcessor } from "./message-processor.js";
 
@@ -89,7 +89,10 @@ export function buildQueryOptions(
     // 'user' is intentionally excluded — it causes the SDK to scan
     // ~/.claude/skills/ (wasted reads) and the sidecar can't use the
     // user's MCP servers anyway (those are CLI-process-only).
-    settingSources: ['project' as const],
+    // When config.settingSources is [] (e.g. evaluate-skill), workspace
+    // skills are suppressed so plugin-scoped agents cannot load unrelated
+    // workspace skills (e.g. skill-test).
+    settingSources: (config.settingSources ?? ['project']) as SettingSource[],
     cwd: config.cwd,
     allowedTools: config.allowedTools,
     maxTurns: config.maxTurns ?? 50,

@@ -12,6 +12,18 @@ function makeConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
 }
 
 describe("buildQueryOptions", () => {
+  it("uses settingSources from config when provided as empty array", () => {
+    // evaluate-skill passes settingSources: [] to block workspace skill loading
+    const config = makeConfig({ agentName: "skill-creator:evaluate-skill", settingSources: [] });
+    const opts = buildQueryOptions(config, new AbortController(), []);
+    expect(opts.settingSources).toEqual([]);
+  });
+
+  it("defaults settingSources to ['project'] when absent from config", () => {
+    const opts = buildQueryOptions(makeConfig(), new AbortController(), []);
+    expect(opts.settingSources).toEqual(["project"]);
+  });
+
   it("uses agent + settingSources when agentName is provided (no model)", () => {
     const config = makeConfig({ agentName: "my-agent" });
     const ac = new AbortController();

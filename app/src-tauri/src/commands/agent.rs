@@ -2,6 +2,24 @@ use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 
+/// Derive `setting_sources` for a given agent name.
+///
+/// The evaluate-skill agent must only see skills from its parent plugin
+/// (skill-creator). Workspace-level skills (e.g. `skill-test`) are loaded
+/// via `settingSources: ['project']` and must be suppressed for this agent.
+/// Passing `Some(vec![])` prevents workspace skill loading while the plugin
+/// itself is still loaded via the `plugins` SDK option.
+///
+/// All other agents receive `None`, which causes the sidecar to fall back to
+/// its default of `['project']`.
+fn derive_setting_sources(agent_name: Option<&str>) -> Option<Vec<String>> {
+    if agent_name.map_or(false, |n| n.ends_with(":evaluate-skill")) {
+        Some(vec![])
+    } else {
+        None
+    }
+}
+
 /// Suppress `fallback_model` when it equals `model` to avoid the SDK error
 /// "Fallback model cannot be the same as the main model".
 ///
@@ -135,6 +153,8 @@ pub async fn start_agent(
     }
     let fallback_model = suppress_same_fallback_model(model_for_config.as_deref(), fallback_model);
 
+    let setting_sources = derive_setting_sources(agent_name.as_deref());
+
     let config = SidecarConfig {
         prompt,
         model: model_for_config,
@@ -156,6 +176,7 @@ pub async fn start_agent(
         path_to_claude_code_executable: None,
         agent_name,
         required_plugins: Some(vec![]),
+        setting_sources,
         conversation_history: None,
         skill_name: Some(skill_name.clone()),
         step_id: Some(step_id.unwrap_or(-1)),
@@ -179,7 +200,40 @@ pub async fn start_agent(
 
 #[cfg(test)]
 mod tests {
-    use super::{output_format_for_agent, suppress_same_fallback_model};
+    use super::{derive_setting_sources, output_format_for_agent, suppress_same_fallback_model};
+
+    #[test]
+    fn evaluate_skill_agent_has_empty_setting_sources() {
+        // evaluate-skill must never load workspace skills (skill-test contaminates runs)
+        assert_eq!(
+            derive_setting_sources(Some("skill-creator:evaluate-skill")),
+            Some(vec![]),
+            "evaluate-skill must have empty settingSources to block workspace skill loading"
+        );
+    }
+
+    #[test]
+    fn other_agents_get_default_setting_sources() {
+        // All other agents fall back to the sidecar default of ['project']
+        assert_eq!(derive_setting_sources(None), None);
+        assert_eq!(derive_setting_sources(Some("generate-skill")), None);
+        assert_eq!(derive_setting_sources(Some("skill-creator:generate-skill")), None);
+        assert_eq!(derive_setting_sources(Some("skill-creator:analyze-skill")), None);
+        // Must not match a bare "evaluate-skill" without plugin prefix
+        assert_eq!(derive_setting_sources(Some("evaluate-skill")), None);
+    }
+
+    #[test]
+    fn evaluate_skill_setting_sources_cannot_be_made_non_empty() {
+        // Ensure derive_setting_sources always returns Some(vec![]) for evaluate-skill —
+        // the vec must be empty to prevent workspace skill pollution.
+        let sources = derive_setting_sources(Some("skill-creator:evaluate-skill")).unwrap();
+        assert!(
+            sources.is_empty(),
+            "settingSources for evaluate-skill must be an empty vec, not {:?}",
+            sources
+        );
+    }
 
     #[test]
     fn test_output_format_for_feedback() {

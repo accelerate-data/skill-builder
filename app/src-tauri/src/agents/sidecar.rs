@@ -37,6 +37,8 @@ pub struct SidecarConfig {
     pub agent_name: Option<String>,
     #[serde(rename = "requiredPlugins", skip_serializing_if = "Option::is_none")]
     pub required_plugins: Option<Vec<String>>,
+    #[serde(rename = "settingSources", skip_serializing_if = "Option::is_none")]
+    pub setting_sources: Option<Vec<String>>,
     #[serde(
         rename = "conversationHistory",
         skip_serializing_if = "Option::is_none"
@@ -78,6 +80,7 @@ impl std::fmt::Debug for SidecarConfig {
             .field("prompt_suggestions", &self.prompt_suggestions)
             .field("agent_name", &self.agent_name)
             .field("required_plugins", &self.required_plugins)
+            .field("setting_sources", &self.setting_sources)
             .finish()
     }
 }
@@ -190,6 +193,7 @@ mod tests {
             path_to_claude_code_executable: None,
             agent_name: Some("research-entities".to_string()),
             required_plugins: None,
+            setting_sources: None,
             conversation_history: None,
             skill_name: None,
             step_id: None,
@@ -236,6 +240,7 @@ mod tests {
             path_to_claude_code_executable: None,
             agent_name: None,
             required_plugins: None,
+            setting_sources: None,
             conversation_history: None,
             skill_name: None,
             step_id: None,
@@ -272,6 +277,7 @@ mod tests {
             path_to_claude_code_executable: None,
             agent_name: None,
             required_plugins: None,
+            setting_sources: None,
             conversation_history: None,
             skill_name: Some("my-skill".to_string()),
             step_id: None,
@@ -311,6 +317,7 @@ mod tests {
             path_to_claude_code_executable: None,
             agent_name: None,
             required_plugins: None,
+            setting_sources: None,
             conversation_history: None,
             skill_name: None,
             step_id: None,
