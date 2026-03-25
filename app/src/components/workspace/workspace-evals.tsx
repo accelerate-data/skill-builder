@@ -187,16 +187,35 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runs, regenAgentId]);
 
-  // Watch eval run display items for structuredOutput progress events
+  // Watch eval run display items for structuredOutput and text-embedded progress events
+  const processedItemIds = useRef(new Set<string>());
   useEffect(() => {
     if (!evalRunAgentId || evalRunDisplayItems.length === 0) return;
-    const last = evalRunDisplayItems[evalRunDisplayItems.length - 1];
-    const event = parseEvalStructuredOutput(last?.structuredOutput);
-    if (!event) return;
 
-    if (event.type === "eval_graded") {
-      setGradedCount((prev) => prev + 1);
-      setGradingEvalName(event.evalName);
+    // Scan all new display items for eval events (structuredOutput or JSON in outputText)
+    for (const item of evalRunDisplayItems as unknown as Array<Record<string, unknown>>) {
+      const id = item.id as string | undefined;
+      if (!id || processedItemIds.current.has(id)) continue;
+
+      let event = parseEvalStructuredOutput(item.structuredOutput);
+      if (!event && typeof item.outputText === "string") {
+        // Try extracting JSON from outputText (agent emits progress as text)
+        const match = (item.outputText as string).match(/\{[^{}]*"type"\s*:\s*"eval_graded"[^}]*\}/g);
+        if (match) {
+          for (const jsonStr of match) {
+            try {
+              const parsed = parseEvalStructuredOutput(JSON.parse(jsonStr));
+              if (parsed) { event = parsed; break; }
+            } catch { /* not valid JSON */ }
+          }
+        }
+      }
+      if (!event) continue;
+      processedItemIds.current.add(id);
+
+      if (event.type === "eval_graded") {
+        setGradedCount((prev) => prev + 1);
+        setGradingEvalName(event.evalName);
       console.log(
         "event=eval_graded skill=%s run=%d eval=%d/%d name=%s pass_rate=%s",
         skillName, event.runIndex, event.evalIndex + 1, event.totalEvals,
@@ -213,7 +232,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
         "event=eval_run_complete skill=%s iteration=%d avg_pass_rate=%s",
         skillName, event.iteration, event.benchmark.aggregate_summary.avg_pass_rate,
       );
-      void load();
+    }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evalRunDisplayItems, evalRunAgentId]);
