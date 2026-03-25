@@ -182,6 +182,7 @@ pub(super) fn build_refine_config(
             "skill-content-researcher".to_string(),
             "skill-creator".to_string(),
         ]),
+        setting_sources: None,
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
         step_id: Some(-10),

@@ -1215,6 +1215,7 @@ mod tests {
             path_to_claude_code_executable: None,
             agent_name: Some("worker".to_string()),
             required_plugins: None,
+            setting_sources: None,
             conversation_history: None,
             skill_name: Some("demo-skill".to_string()),
             step_id: Some(1),
