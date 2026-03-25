@@ -28,9 +28,9 @@ def emit_json(payload: dict) -> None:
 def _resolve_claude_cmd() -> list[str]:
     """Resolve the claude CLI to a runnable command list.
 
-    On Windows, 'claude' is typically installed as 'claude.cmd' (npm global).
-    Python subprocess without shell=True cannot execute .cmd files directly —
-    they must be invoked via 'cmd /c'. This helper handles that transparently.
+    On Windows, 'claude' is installed as 'claude.cmd' (npm global). Calling
+    node + cli.js directly avoids cmd /c stdin-piping issues where the batch
+    file wrapper interferes with stdin reaching the node process.
     """
     path = shutil.which("claude")
     if path is None:
@@ -39,6 +39,13 @@ def _resolve_claude_cmd() -> list[str]:
             "script in an environment where `claude` is available."
         )
     if sys.platform == "win32" and path.lower().endswith(".cmd"):
+        # claude.cmd is a thin node wrapper. Call node + cli.js directly.
+        npm_bin = Path(path).parent
+        cli_js = npm_bin / "node_modules" / "@anthropic-ai" / "claude-code" / "cli.js"
+        if cli_js.exists():
+            node = shutil.which("node") or "node"
+            return [node, str(cli_js)]
+        # Fallback: cmd /c (may have stdin issues on some systems)
         return ["cmd", "/c", path]
     return [path]
 
@@ -122,7 +129,9 @@ def _call_claude(prompt: str, model: str | None, timeout: int = 300) -> str:
     )
     if result.returncode != 0:
         raise RuntimeError(
-            f"claude -p exited {result.returncode}\nstderr: {result.stderr}"
+            f"claude -p exited {result.returncode}\n"
+            f"stdout: {result.stdout}\n"
+            f"stderr: {result.stderr}"
         )
     return result.stdout
 
