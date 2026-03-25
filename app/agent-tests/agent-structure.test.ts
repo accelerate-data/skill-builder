@@ -4,9 +4,7 @@ import path from "path";
 import { AGENTS_DIR, PLUGINS_DIR, REPO_ROOT } from "./helpers";
 
 /** Top-level agents deployed to .claude/agents/ */
-const EXPECTED_AGENTS = [
-  "answer-evaluator",
-];
+const EXPECTED_AGENTS: string[] = [];
 
 /** Plugin-hosted agents: agent name → plugin path relative to PLUGINS_DIR */
 const PLUGIN_AGENTS: Record<string, string> = {
@@ -14,6 +12,7 @@ const PLUGIN_AGENTS: Record<string, string> = {
   "rewrite-skill": "skill-creator/agents/rewrite-skill.md",
   "detailed-research": "skill-content-researcher/agents/detailed-research.md",
   "confirm-decisions": "skill-content-researcher/agents/confirm-decisions.md",
+  "answer-evaluator": "skill-content-researcher/skills/answer-evaluator/SKILL.md",
 };
 
 /** Resolve the .md file path for any agent (top-level or plugin). */
@@ -26,9 +25,7 @@ function resolveAgentPath(agentName: string): string {
 /** All agent names (top-level + plugin). */
 const ALL_AGENTS = [...EXPECTED_AGENTS, ...Object.keys(PLUGIN_AGENTS)];
 
-const EXPECTED_MODELS: Record<string, string> = {
-  "answer-evaluator": "haiku",
-};
+const EXPECTED_MODELS: Record<string, string> = {};
 const DEFAULT_MODEL = "sonnet";
 
 function frontmatter(filePath: string): Record<string, string> {
@@ -49,9 +46,9 @@ function frontmatter(filePath: string): Record<string, string> {
 
 describe("agent files", () => {
   it(`exactly ${EXPECTED_AGENTS.length} agent files exist`, () => {
-    const count = fs
-      .readdirSync(AGENTS_DIR)
-      .filter((f) => f.endsWith(".md")).length;
+    const count = fs.existsSync(AGENTS_DIR)
+      ? fs.readdirSync(AGENTS_DIR).filter((f) => f.endsWith(".md")).length
+      : 0;
     expect(count).toBe(EXPECTED_AGENTS.length);
   });
 
@@ -225,10 +222,7 @@ describe("Agent output contracts (backend protocol alignment)", () => {
   });
 
   it("answer-evaluator returns verdict enum and per_question array", () => {
-    const content = fs.readFileSync(
-      path.join(AGENTS_DIR, "answer-evaluator.md"),
-      "utf8"
-    );
+    const content = fs.readFileSync(resolveAgentPath("answer-evaluator"), "utf8");
     expect(content).toMatch(/"verdict"/);
     expect(content).toMatch(/sufficient|mixed|insufficient/);
     expect(content).toMatch(/"per_question"/);

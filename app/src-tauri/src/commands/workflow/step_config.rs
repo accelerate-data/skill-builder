@@ -7,7 +7,7 @@ pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
         "skill-content-researcher:research-orchestrator" => &["Read", "Skill", "AskUserQuestion"],
         "skill-content-researcher:detailed-research" => &["Read", "Agent", "AskUserQuestion"],
         "skill-content-researcher:confirm-decisions" => &["Read", "AskUserQuestion"],
-        "answer-evaluator" => &["Read"],
+        "answer-evaluator" => &["Read", "Skill"],
         "skill-creator:generate-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill", "AskUserQuestion"],
         "skill-creator:rewrite-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill", "AskUserQuestion"],
         _ => &["Read", "Glob", "Grep", "Agent", "Skill"],

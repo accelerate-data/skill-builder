@@ -35,16 +35,6 @@ describe("buildGateFeedbackNotes", () => {
     expect(notes[0].body).toContain("too general");
   });
 
-  it("maps contradictory verdict with contradicts field", () => {
-    const eval_ = makeEvaluation([
-      { question_id: "q2", verdict: "contradictory", contradicts: "q1" },
-    ]);
-    const notes = buildGateFeedbackNotes(eval_);
-    expect(notes).toHaveLength(1);
-    expect(notes[0].title).toBe("Contradictory answer: q2");
-    expect(notes[0].body).toContain("conflicts with q1");
-  });
-
   it("maps not_answered verdict", () => {
     const eval_ = makeEvaluation([
       { question_id: "q3", verdict: "not_answered" },

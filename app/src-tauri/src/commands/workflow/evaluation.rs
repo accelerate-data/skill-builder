@@ -580,8 +580,10 @@ pub fn navigate_back_to_step(
         log::warn!("Git auto-commit failed ({}): {}", msg, e);
     }
 
-    // Delete output files only for steps AFTER the target; target step keeps its files.
-    let delete_from = target_step_id + 1;
+    // Delete output files for steps from the target onwards.
+    // Step 0 is a special case: navigating back to it means a full rerun, so its own
+    // artifacts (clarifications.json, answer-evaluation.json) must also be cleared.
+    let delete_from = if target_step_id == 0 { 0 } else { target_step_id + 1 };
     let plugin_slug = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::get_skill_master_any_plugin(&conn, &skill_name)?

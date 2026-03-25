@@ -519,9 +519,8 @@ export type WorkflowStepStructuredOutput =
 /** Per-question verdict entry within an {@link AnswerEvaluationOutput}. Matches `PerQuestionEntry` in `workflow_artifacts.rs`. */
 export interface PerQuestionEntry {
   question_id: string
-  verdict: "clear" | "needs_refinement" | "not_answered" | "vague" | "contradictory"
+  verdict: "clear" | "needs_refinement" | "not_answered" | "vague"
   reason?: string | null
-  contradicts?: string | null
 }
 
 /** Structured output produced by the answer-evaluator agent. Matches `AnswerEvaluationOutput` in `workflow_artifacts.rs`. */
@@ -533,5 +532,7 @@ export interface AnswerEvaluationOutput {
   contradictory_count: number
   total_count: number
   reasoning: string
+  /** Gate decision set by the agent after asking the user via AskUserQuestion. */
+  gate_decision?: "skip_research" | "run_research" | "revise" | null
   per_question: PerQuestionEntry[]
 }

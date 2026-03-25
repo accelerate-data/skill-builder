@@ -951,23 +951,14 @@ fn test_resolve_prompts_dir_dev_mode() {
         .map(|p| p.join("agent-sources"));
     assert!(dev_path.is_some());
     let agent_sources_dir = dev_path.unwrap();
-    let agents_dir = agent_sources_dir.join("agents");
     let plugin_agents_dir = agent_sources_dir
         .join("plugins")
         .join("skill-content-researcher")
         .join("agents");
-    assert!(
-        agents_dir.is_dir(),
-        "Repo root agent-sources/agents/ should exist"
-    );
     // Verify flat agent files exist (no subdirectories)
     assert!(
         plugin_agents_dir.join("confirm-decisions.md").exists(),
         "agent-sources/plugins/skill-content-researcher/agents/confirm-decisions.md should exist"
-    );
-    assert!(
-        agents_dir.join("answer-evaluator.md").exists(),
-        "agent-sources/agents/answer-evaluator.md should exist"
     );
 }
 
