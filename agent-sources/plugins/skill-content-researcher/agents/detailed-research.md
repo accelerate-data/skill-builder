@@ -107,6 +107,7 @@ For each listed question ID, generate 0-3 **refinement questions** — narrower 
 
 The number of refinements depends on the verdict:
 
+- If there are existing refinements then you can decide to skip adding new questions.
 - `not_answered`: 1-3 questions to validate or refine the recommended approach
 - `vague`: 1-3 questions to pin down the vague response
 - `needs_refinement`: 1-3 questions to clarify unstated parameters/assumptions
