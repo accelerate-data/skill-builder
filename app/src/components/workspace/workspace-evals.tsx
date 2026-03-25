@@ -516,7 +516,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine }: Wor
         agentId,
         prompt,
         "claude-sonnet-4-6",
-        `${workspacePath}/${skillName}`,
+        workspacePath,
         ["Read", "Write", "Glob", "Agent"],
         undefined, // maxTurns — let agent decide
         undefined,
