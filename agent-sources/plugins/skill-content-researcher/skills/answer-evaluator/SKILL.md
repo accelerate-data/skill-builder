@@ -51,14 +51,14 @@ If either file is missing or the JSON is malformed, return immediately:
 ```json
 { "verdict": "insufficient", "answered_count": 0, "empty_count": 0, "vague_count": 0, "contradictory_count": 0, "total_count": 0, "reasoning": "<what was missing or unparseable>", "per_question": [], "gate_decision": "revise" }
 ```
+
 Read the `references/schemas.md` to understand the expected schema and invariants of `clarifications.json`.
 
 ### Step 2: Evaluate each question
 
+Iterate over every question in `sections[].questions[]`. For each question, evaluate the `answer_text` field.
 
-Iterate over every question in `sections[].questions[]`. For each question, evaluate the `answer_text` field. 
-
-- If refinement questions exist evulate the top-level questions and refinements together. 
+- If refinement questions exist evulate the top-level questions and refinements together.
 
 **Classification rules (apply in this order):**
 
