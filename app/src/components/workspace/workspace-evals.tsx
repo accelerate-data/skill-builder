@@ -264,44 +264,47 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       if (event.type === "eval_graded") {
         setGradedCount((prev) => prev + 1);
         setGradingEvalName(event.evalName);
-      console.log(
-        "event=eval_graded skill=%s run=%d eval=%d/%d name=%s pass_rate=%s",
-        skillName, event.runIndex, event.evalIndex + 1, event.totalEvals,
-        event.evalName, event.grading.pass_rate,
-      );
-    } else if (event.type === "complete") {
-      // Agent is done — Rust deterministically computes the benchmark from grading files.
-      const params = evalRunParamsRef.current;
-      if (params) {
-        materializeEvalBenchmark(
-          params.iterDir, skillName, params.iteration,
-          params.evalIds, params.runCount, params.comparisonMode,
-        ).then(([bm, notes]) => {
-          setBenchmark(bm as EvalBenchmark);
-          setAnalystNotes(notes);
-          console.log(
-            "event=eval_benchmark_materialized skill=%s iteration=%d avg_pass_rate=%s",
-            skillName, bm.iteration, bm.aggregate_summary?.avg_pass_rate,
-          );
-        }).catch((err) => {
-          console.error("event=materialize_benchmark_failed skill=%s error=%s", skillName, err);
-        });
+        console.log(
+          "event=eval_graded skill=%s run=%d eval=%d/%d name=%s pass_rate=%s",
+          skillName, event.runIndex, event.evalIndex + 1, event.totalEvals,
+          event.evalName, event.grading.pass_rate,
+        );
       }
-      // Silently refresh iteration list without triggering loading state
-      if (workspacePath) {
-        void listIterations(skillName, workspacePath).then(setIterations).catch(() => {});
-      }
-    }
+      // "complete" events are ignored here — benchmark materialization is triggered
+      // by the terminal-state effect below (single Rust round trip, no display-item dependency).
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evalRunDisplayItems, evalRunAgentId]);
 
-  // Watch eval run agent for terminal state
+  // Watch eval run agent for terminal state — single trigger for materialization.
+  // When the agent completes, Rust reads grading files and computes the benchmark
+  // deterministically. No dependency on the agent's structured output.
   useEffect(() => {
     if (!evalRunAgentId || !evalRunStatus) return;
     if (evalRunStatus === "completed" || evalRunStatus === "error" || evalRunStatus === "shutdown") {
       setIsRunningEvals(false);
-      if (evalRunStatus !== "completed") {
+      if (evalRunStatus === "completed") {
+        const params = evalRunParamsRef.current;
+        if (params) {
+          materializeEvalBenchmark(
+            params.iterDir, skillName, params.iteration,
+            params.evalIds, params.runCount, params.comparisonMode,
+          ).then(([bm, notes]) => {
+            setBenchmark(bm as EvalBenchmark);
+            setAnalystNotes(notes);
+            console.log(
+              "event=eval_benchmark_materialized skill=%s iteration=%d avg_pass_rate=%s",
+              skillName, bm.iteration, bm.aggregate_summary?.avg_pass_rate,
+            );
+          }).catch((err) => {
+            console.error("event=materialize_benchmark_failed skill=%s error=%s", skillName, err);
+          });
+        }
+        // Refresh iteration list
+        if (workspacePath) {
+          void listIterations(skillName, workspacePath).then(setIterations).catch(() => {});
+        }
+      } else {
         console.error(
           "event=eval_run status=failure skill=%s agent_id=%s status=%s",
           skillName, evalRunAgentId, evalRunStatus,
