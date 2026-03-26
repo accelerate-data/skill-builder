@@ -1,4 +1,5 @@
-import { Loader2, Github, LogOut } from "lucide-react"
+import { Loader2, LogOut } from "lucide-react"
+import { Github } from "@/components/icons/github"
 import { Button } from "@/components/ui/button"
 import {
   Card,
