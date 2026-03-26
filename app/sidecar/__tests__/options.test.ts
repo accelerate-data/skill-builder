@@ -49,7 +49,7 @@ describe("buildQueryOptions", () => {
     expect(opts).toHaveProperty("settingSources", ["project"]);
   });
 
-  it("passes only agent when both agentName and model are present", () => {
+  it("passes both agent and model when both agentName and model are present", () => {
     const config = makeConfig({
       agentName: "my-agent",
       model: "claude-sonnet-4-20250514",
@@ -58,8 +58,8 @@ describe("buildQueryOptions", () => {
     const opts = buildQueryOptions(config, ac, []);
 
     expect(opts).toHaveProperty("agent", "my-agent");
+    expect(opts).toHaveProperty("model", "claude-sonnet-4-20250514");
     expect(opts).toHaveProperty("settingSources", ["project"]);
-    expect(opts).not.toHaveProperty("model");
   });
 
   it("defaults maxTurns to 50 when not specified", () => {

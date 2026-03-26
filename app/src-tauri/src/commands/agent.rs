@@ -147,12 +147,8 @@ pub async fn start_agent(
     // Apply outputFormat only where agents are expected to return strict JSON.
     let output_format = output_format_for_agent(&skill_name, agent_name.as_deref());
 
-    // Agent frontmatter model is authoritative when agent_name is provided.
-    let model_for_config = if agent_name.is_some() {
-        None
-    } else {
-        Some(model.clone())
-    };
+    // Explicit model always passed — overrides agent frontmatter default.
+    let model_for_config = Some(model.clone());
 
     // The SDK rejects a config where fallbackModel == the explicit main model.
     // Suppress fallback_model when it would equal model_for_config (e.g. user's

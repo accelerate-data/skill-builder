@@ -18,8 +18,10 @@ import {
   cleanupSkillSidecar,
   deleteTestCase,
   discardPendingEval,
+  createNextIterationDir,
   listIterations,
   listTestCases,
+  materializeEvalBenchmark,
   readIterationResult,
   readPendingEval,
   readSkillContextForEvalGen,
@@ -36,7 +38,7 @@ import {
 } from "@/lib/evals";
 import {
   buildEvaluateSkillPrompt,
-  buildRefinePrefill,
+  getFailedEvalGradingPaths,
   parseEvalStructuredOutput,
 } from "@/lib/eval-run";
 import { useAgentStore } from "@/stores/agent-store";
@@ -48,7 +50,7 @@ import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { EvalForm } from "./eval-form";
 import { EvalIntentDialog } from "./eval-intent-dialog";
 
-const EVAL_GEN_MODEL = "claude-sonnet-4-6";
+const DEFAULT_MODEL = "claude-sonnet-4-6";
 // Stable empty array so the Zustand selector doesn't return a new reference every render
 const EMPTY_DISPLAY_ITEMS: unknown[] = [];
 
@@ -64,6 +66,7 @@ interface WorkspaceEvalsProps {
 export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRunningChange }: WorkspaceEvalsProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
   const skillsPath = useSettingsStore((s) => s.skillsPath) ?? workspacePath ?? "";
+  const preferredModel = useSettingsStore((s) => s.preferredModel) ?? DEFAULT_MODEL;
 
   const [evals, setEvals] = useState<TestCase[]>([]);
   const [iterations, setIterations] = useState<IterationMeta[]>([]);
@@ -114,13 +117,31 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   const [iterationBenchmark, setIterationBenchmark] = useState<EvalBenchmark | null>(null);
   const [iterationNotes, setIterationNotes] = useState<string[]>([]);
 
+  // Params for the current eval run — stored so Rust can materialize the benchmark
+  // after the agent completes (the agent no longer computes the benchmark itself).
+  const evalRunParamsRef = useRef<{
+    iterDir: string; iteration: number; evalIds: number[];
+    runCount: number; comparisonMode?: string;
+  } | null>(null);
+
   // Agent output panel resize state
   const [outputPanelHeight, setOutputPanelHeight] = useState(360);
   const dragStartY = useRef<number | null>(null);
   const dragStartHeight = useRef<number>(360);
   const rafId = useRef<number | null>(null);
 
-  const runs = useAgentStore((s) => s.runs);
+  // Narrow selectors — only subscribe to the status of each tracked agent.
+  // Avoids re-rendering the entire component on every display-item update,
+  // which was causing scroll-position jumps during eval runs.
+  const generationRunStatus = useAgentStore(
+    (s) => s.runs[generationAgentId ?? ""]?.status ?? null,
+  );
+  const regenRunStatus = useAgentStore(
+    (s) => s.runs[regenAgentId ?? ""]?.status ?? null,
+  );
+  const evalRunStatus = useAgentStore(
+    (s) => s.runs[evalRunAgentId ?? ""]?.status ?? null,
+  );
   const evalRunDisplayItems = useAgentStore(
     (s) => s.runs[evalRunAgentId ?? ""]?.displayItems ?? EMPTY_DISPLAY_ITEMS,
   );
@@ -167,13 +188,11 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
 
   // Watch primary generation agent for completion / error
   useEffect(() => {
-    if (!generationAgentId) return;
-    const run = runs[generationAgentId];
-    if (!run) return;
+    if (!generationAgentId || !generationRunStatus) return;
 
-    if (run.status === "completed") {
+    if (generationRunStatus === "completed") {
       void handleGenerationComplete();
-    } else if (run.status === "error" || run.status === "shutdown") {
+    } else if (generationRunStatus === "error" || generationRunStatus === "shutdown") {
       console.error(
         "event=generate_eval status=failure skill=%s agent_id=%s",
         skillName,
@@ -184,17 +203,15 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       setError("Eval generation failed. Please try again.");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runs, generationAgentId]);
+  }, [generationRunStatus, generationAgentId]);
 
   // Watch re-generation agent for completion / error
   useEffect(() => {
-    if (!regenAgentId) return;
-    const run = runs[regenAgentId];
-    if (!run) return;
+    if (!regenAgentId || !regenRunStatus) return;
 
-    if (run.status === "completed") {
+    if (regenRunStatus === "completed") {
       void handleRegenComplete();
-    } else if (run.status === "error" || run.status === "shutdown") {
+    } else if (regenRunStatus === "error" || regenRunStatus === "shutdown") {
       console.error(
         "event=regen_eval status=failure skill=%s agent_id=%s",
         skillName,
@@ -205,7 +222,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       setError("Re-generation failed. Please try again.");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runs, regenAgentId]);
+  }, [regenRunStatus, regenAgentId]);
 
   // Watch eval run display items for structuredOutput and text-embedded progress events
   const processedItemIds = useRef(new Set<string>());
@@ -253,16 +270,27 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         event.evalName, event.grading.pass_rate,
       );
     } else if (event.type === "complete") {
-      setBenchmark(event.benchmark);
-      setAnalystNotes(event.analyst_notes);
+      // Agent is done — Rust deterministically computes the benchmark from grading files.
+      const params = evalRunParamsRef.current;
+      if (params) {
+        materializeEvalBenchmark(
+          params.iterDir, skillName, params.iteration,
+          params.evalIds, params.runCount, params.comparisonMode,
+        ).then(([bm, notes]) => {
+          setBenchmark(bm as EvalBenchmark);
+          setAnalystNotes(notes);
+          console.log(
+            "event=eval_benchmark_materialized skill=%s iteration=%d avg_pass_rate=%s",
+            skillName, bm.iteration, bm.aggregate_summary?.avg_pass_rate,
+          );
+        }).catch((err) => {
+          console.error("event=materialize_benchmark_failed skill=%s error=%s", skillName, err);
+        });
+      }
       // Silently refresh iteration list without triggering loading state
       if (workspacePath) {
         void listIterations(skillName, workspacePath).then(setIterations).catch(() => {});
       }
-      console.log(
-        "event=eval_run_complete skill=%s iteration=%d avg_pass_rate=%s",
-        skillName, event.iteration, event.benchmark.aggregate_summary.avg_pass_rate,
-      );
     }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -270,21 +298,19 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
 
   // Watch eval run agent for terminal state
   useEffect(() => {
-    if (!evalRunAgentId) return;
-    const run = runs[evalRunAgentId];
-    if (!run) return;
-    if (run.status === "completed" || run.status === "error" || run.status === "shutdown") {
+    if (!evalRunAgentId || !evalRunStatus) return;
+    if (evalRunStatus === "completed" || evalRunStatus === "error" || evalRunStatus === "shutdown") {
       setIsRunningEvals(false);
-      if (run.status !== "completed") {
+      if (evalRunStatus !== "completed") {
         console.error(
           "event=eval_run status=failure skill=%s agent_id=%s status=%s",
-          skillName, evalRunAgentId, run.status,
+          skillName, evalRunAgentId, evalRunStatus,
         );
         setEvalRunAgentId(null);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runs, evalRunAgentId]);
+  }, [evalRunStatus, evalRunAgentId]);
 
   async function handleOpenIntentDialog() {
     if (!workspacePath || isGenerating || isRegenerating) return;
@@ -316,7 +342,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       await startAgent(
         agentId,
         prompt,
-        EVAL_GEN_MODEL,
+        preferredModel,
         cwd,
         ["Write"],
         10,
@@ -334,7 +360,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
 
       useAgentStore.getState().registerRun(
         agentId,
-        EVAL_GEN_MODEL,
+        preferredModel,
         skillName,
         "test",
         `synthetic:evals:${skillName}`,
@@ -395,7 +421,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       await startAgent(
         agentId,
         prompt,
-        EVAL_GEN_MODEL,
+        preferredModel,
         cwd,
         ["Write"],
         10,
@@ -413,7 +439,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
 
       useAgentStore.getState().registerRun(
         agentId,
-        EVAL_GEN_MODEL,
+        preferredModel,
         skillName,
         "test",
         `synthetic:evals:${skillName}`,
@@ -576,13 +602,18 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     setAnalystNotes([]);
 
     const agentId = crypto.randomUUID();
-    const prompt = buildEvaluateSkillPrompt({ skillName, workspacePath: workspacePath!, skillsPath, evalIds, runCount, comparisonMode });
+    // Create the iteration directory in Rust before the agent starts.
+    // This is the source of truth — the agent writes into a pre-existing directory
+    // and cannot accidentally reuse an existing iteration.
+    const [iterNum, iterDir] = await createNextIterationDir(skillName, workspacePath!);
+    evalRunParamsRef.current = { iterDir, iteration: iterNum, evalIds, runCount, comparisonMode };
+    const prompt = buildEvaluateSkillPrompt({ skillName, workspacePath: workspacePath!, skillsPath, evalIds, runCount, comparisonMode, iteration: iterNum, iterDir });
 
     try {
       await startAgent(
         agentId,
         prompt,
-        "claude-sonnet-4-6",
+        preferredModel,
         workspacePath,
         ["Read", "Write", "Glob", "Agent"],
         undefined, // maxTurns — let agent decide
@@ -600,7 +631,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
 
       useAgentStore.getState().registerRun(
         agentId,
-        "claude-sonnet-4-6",
+        preferredModel,
         skillName,
         "test",
         `synthetic:evals:${skillName}`,
@@ -618,13 +649,17 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     }
   }
 
-  function handleRefine(bm: EvalBenchmark, notes: string[]) {
-    const msg = buildRefinePrefill(bm, notes);
+  function handleRefine(bm: EvalBenchmark) {
+    const failedPaths = getFailedEvalGradingPaths(bm);
+    if (failedPaths.length === 0) return;
+    const msg = failedPaths
+      .map(({ eval_name, grading_path }) => `${eval_name}: ${grading_path}`)
+      .join("\n");
     useRefineStore.getState().setPendingInitialMessage(msg);
     onNavigateToRefine?.();
     console.log(
-      "event=eval_refine_navigate skill=%s iteration=%d",
-      skillName, bm.iteration,
+      "event=eval_refine_navigate skill=%s iteration=%d failed_evals=%d",
+      skillName, bm.iteration, failedPaths.length,
     );
   }
 
@@ -710,15 +745,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
                 >
                   vs Baseline
                 </button>
-                <button
-                  type="button"
-                  className={`border-l px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${comparisonMode === "current_vs_previous" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
-                  style={comparisonMode === "current_vs_previous" ? { background: "var(--color-pacific)" } : {}}
-                  onClick={() => setComparisonMode("current_vs_previous")}
-                  disabled={isRunningEvals}
-                >
-                  vs Previous
-                </button>
+                {/* vs Previous button hidden for now — logic preserved in mock-agent + benchmark card */}
               </div>
               {/* Run count toggle */}
               <div className="inline-flex overflow-hidden rounded-md border">
@@ -907,7 +934,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
                 {benchmark.aggregate_summary.total_failed} assertion failure{benchmark.aggregate_summary.total_failed !== 1 ? "s" : ""}
               </span>
               <Button size="sm" variant="outline" className="ml-auto h-7 text-xs text-destructive border-destructive/50 hover:bg-destructive/10"
-                onClick={() => handleRefine(benchmark, analystNotes)}>
+                onClick={() => void handleRefine(benchmark)}>
                 Refine skill
               </Button>
             </div>
@@ -939,7 +966,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         <EvalRunBenchmarkCard
           benchmark={benchmark}
           analystNotes={analystNotes}
-          onRefine={() => handleRefine(benchmark, analystNotes)}
+          onRefine={() => void handleRefine(benchmark)}
         />
       )}
 
@@ -985,7 +1012,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
                   benchmark={iterationBenchmark}
                   analystNotes={iterationNotes}
                   onRefine={selectedIteration === latestIteration
-                    ? () => handleRefine(iterationBenchmark, iterationNotes)
+                    ? () => void handleRefine(iterationBenchmark)
                     : undefined}
                 />
               </div>

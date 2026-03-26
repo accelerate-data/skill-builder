@@ -75,6 +75,7 @@ function getOutputDir(stepTemplate: string): string {
     "rewrite-skill": "refine",
     "gate-answer-evaluator": MOCK_SCENARIO === "contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator",
     "eval-generator": "eval-generator",
+    "evaluate-skill": "benchmark",
   };
   return stepMap[stepTemplate] || "";
 }
@@ -132,6 +133,28 @@ async function pathExists(p: string): Promise<boolean> {
 }
 
 /**
+ * Determine the next iteration number for mock eval runs.
+ * Scans existing `iteration-*` dirs under `{skillWorkspace}/evals/workspace/`
+ * and returns max + 1, or 1 if none exist.
+ */
+async function getNextMockIterationNumber(skillWorkspace: string): Promise<number> {
+  const wsDir = path.join(skillWorkspace, "evals", "workspace");
+  try {
+    const entries = await fs.readdir(wsDir, { withFileTypes: true });
+    let max = 0;
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const match = entry.name.match(/^iteration-(\d+)$/);
+        if (match) max = Math.max(max, parseInt(match[1], 10));
+      }
+    }
+    return max + 1;
+  } catch {
+    return 1;
+  }
+}
+
+/**
  * Run a mock agent that replays pre-recorded JSONL messages and writes
  * mock output files to disk. Used when `MOCK_AGENTS=true` is set.
  */
@@ -172,8 +195,8 @@ export async function runMockAgent(
     return;
   }
 
-  // 1. Write mock output files to disk
-  await writeMockOutputFiles(stepTemplate, config);
+  // 1. Write mock output files to disk (returns iteration number for evaluate-skill)
+  const mockIterationNumber = await writeMockOutputFiles(stepTemplate, config);
 
   // 2. Stream JSONL template messages
   const templatePath = path.join(
@@ -214,7 +237,7 @@ export async function runMockAgent(
 
   const content = await fs.readFile(templatePath, "utf-8");
   const lines = content.split(/\r?\n/).filter((line) => line.trim());
-  const structuredResultOverride = await buildStructuredMockResult(stepTemplate);
+  const structuredResultOverride = await buildStructuredMockResult(stepTemplate, config, mockIterationNumber);
 
   // Process mock template messages through MessageProcessor identically to live SDK
   const processor = new MessageProcessor({
@@ -298,11 +321,13 @@ export async function runMockAgent(
 /**
  * Copy mock output files from the bundled templates into the workspace
  * so that `verify_step_output` finds them and the workflow can advance.
+ *
+ * Returns the iteration number used for evaluate-skill (or undefined for other steps).
  */
 async function writeMockOutputFiles(
   stepTemplate: string,
   config: SidecarConfig,
-): Promise<void> {
+): Promise<number | undefined> {
   const outputDir = getOutputDir(stepTemplate);
   // No output directory mapped for this template (e.g. test-evaluator, test-plan-*) — nothing to copy.
   if (!outputDir) return;
@@ -331,6 +356,25 @@ async function writeMockOutputFiles(
     // Extract the evals directory from the absolute path embedded in the prompt.
     const match = config.prompt?.match(/`([^`]+)\/pending-eval\.json`/);
     destRoot = match ? match[1] : config.cwd;
+  } else if (stepTemplate === "evaluate-skill") {
+    // Evaluate-skill: grading.json files go under {skill_workspace}/evals/workspace/
+    // The mock template outputs have evals/workspace/... prefix so dest is the skill workspace root.
+    // skill_workspace = {workspace_path}/{skill_name} — extract both from the key-value prompt.
+    const wpMatch = config.prompt?.match(/workspace_path:\s*(.+)/);
+    const snMatch = config.prompt?.match(/skill_name:\s*(.+)/);
+    const wp = wpMatch?.[1]?.trim();
+    const sn = snMatch?.[1]?.trim();
+    const skillWorkspace = wp && sn ? path.join(wp, sn) : config.cwd;
+    destRoot = skillWorkspace;
+
+    // Eval history is immutable — never overwrite a previous iteration.
+    // Determine the next available iteration number and rewrite template
+    // paths (directory names + JSON content) from iteration-1 → iteration-N.
+    const iterNum = await getNextMockIterationNumber(skillWorkspace);
+    const rewriteFrom = iterNum !== 1 ? "iteration-1" : null;
+    const rewriteTo = iterNum !== 1 ? `iteration-${iterNum}` : null;
+    await copyDirRecursive(srcDir, destRoot, rewriteFrom, rewriteTo);
+    return iterNum;
   } else {
     // Steps 0, 1, 2: context files go under the skill directory.
     // The mock template has outputs/{stepN}/context/... so we strip the
@@ -343,23 +387,46 @@ async function writeMockOutputFiles(
   }
 
   await copyDirRecursive(srcDir, destRoot);
+  return undefined;
 }
 
-/** Recursively copy a directory tree, creating parents as needed. */
-async function copyDirRecursive(src: string, dest: string): Promise<void> {
+/**
+ * Recursively copy a directory tree, creating parents as needed.
+ * When `rewriteFrom`/`rewriteTo` are provided, directory names matching
+ * `rewriteFrom` are renamed to `rewriteTo`, and JSON file content has
+ * all occurrences of `rewriteFrom` replaced with `rewriteTo`.
+ * This is used to increment mock iteration directories so eval history
+ * is never overwritten.
+ */
+async function copyDirRecursive(
+  src: string,
+  dest: string,
+  rewriteFrom?: string | null,
+  rewriteTo?: string | null,
+): Promise<void> {
   if (!(await pathExists(src))) return;
 
   const entries = await fs.readdir(src, { withFileTypes: true });
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
+    const destName = (rewriteFrom && rewriteTo && entry.name === rewriteFrom)
+      ? rewriteTo
+      : entry.name;
+    const destPath = path.join(dest, destName);
 
     if (entry.isDirectory()) {
       await fs.mkdir(destPath, { recursive: true });
-      await copyDirRecursive(srcPath, destPath);
+      await copyDirRecursive(srcPath, destPath, rewriteFrom, rewriteTo);
     } else {
       await fs.mkdir(path.dirname(destPath), { recursive: true });
-      await fs.copyFile(srcPath, destPath);
+      if (rewriteFrom && rewriteTo && entry.name.endsWith(".json")) {
+        // Rewrite iteration references inside JSON files (grading paths, iteration field)
+        let content = await fs.readFile(srcPath, "utf-8");
+        content = content.replaceAll(rewriteFrom, rewriteTo);
+        await fs.writeFile(destPath, content, "utf-8");
+      } else {
+        await fs.copyFile(srcPath, destPath);
+      }
     }
   }
 }
@@ -393,6 +460,8 @@ async function readTextIfExists(filePath: string): Promise<string | null> {
 /** @internal Exported for testing only. */
 export async function buildStructuredMockResult(
   stepTemplate: string,
+  config?: SidecarConfig,
+  mockIterationNumber?: number,
 ): Promise<unknown | null> {
   const outputsRoot = path.join(__dirname, "mock-templates", "outputs");
   if (stepTemplate === "step0-research") {
@@ -490,6 +559,34 @@ export async function buildStructuredMockResult(
     return readJsonIfExists(
       path.join(outputsRoot, dir, "answer-evaluation.json"),
     );
+  }
+
+  if (stepTemplate === "evaluate-skill") {
+    // The benchmark is computed by Rust from grading files — the agent only
+    // signals completion. Mock grading files are already copied by writeMockOutputFiles.
+    const iterNum = mockIterationNumber ?? 1;
+
+    // Write mock analyst-notes.json to the iteration directory so Rust can read it.
+    const iterMatch = config?.prompt?.match(/iter_dir:\s*(.+)/);
+    const iterDir = iterMatch?.[1]?.trim();
+    if (iterDir) {
+      const analystNotes = [
+        "Eval 3 (snapshot SCD2): with-skill scores 75% vs 50% without \u2014 the skill adds correct target_schema but misses NULL handling in check columns.",
+        "Eval 4 (incremental model): with-skill scores 50% vs 25% without \u2014 incremental strategy is correct but is_incremental() guard and directory convention are missing.",
+        "The skill provides +25% improvement on aggregate pass rate (62.5% vs 37.5%) but still has significant gaps.",
+      ];
+      await fs.mkdir(iterDir, { recursive: true });
+      await fs.writeFile(
+        path.join(iterDir, "analyst-notes.json"),
+        JSON.stringify(analystNotes, null, 2),
+        "utf-8",
+      );
+    }
+
+    return {
+      type: "complete",
+      iteration: iterNum,
+    };
   }
 
   return null;

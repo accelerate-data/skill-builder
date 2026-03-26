@@ -1,7 +1,6 @@
 ---
 name: evaluate-skill
 description: Runs selected eval test cases 1 or 3 times against a skill, grades each run, and returns a benchmark summary with analyst notes. Emits structured progress JSON after each eval completes so the UI can update live.
-model: sonnet
 tools: Read, Write, Glob, Agent
 ---
 
@@ -24,6 +23,8 @@ Run a subset of eval test cases against a skill, grade the outputs, aggregate re
 - **eval_ids**: JSON array of integer eval IDs to run
 - **run_count**: `1` or `3`
 - **skill_path**: Absolute path to the skill directory (contains `SKILL.md`)
+- **iteration**: Integer — the iteration number (pre-assigned by the app)
+- **iter_dir**: Absolute path to the iteration directory (pre-created by the app — already exists on disk)
 - **comparison_mode** *(optional)*: `"with_without_skill"` | `"current_vs_previous"` — when absent, runs single with-skill mode
 
 ---
@@ -38,6 +39,10 @@ Run a subset of eval test cases against a skill, grade the outputs, aggregate re
   the skill-creator plugin (your sibling `skills/` directory).
 - **Iteration history is never needed** in any mode. The `current_vs_previous` mode
   snapshots the previous SKILL.md version via git (Step 4), not by reading past iterations.
+- **Executors are plan-only.** Executors must NOT write any files or artifacts. They
+  reason through the task in-memory and return their plan as text. The parent agent
+  captures the returned text and passes it to the grader. Only graders write files
+  (`grading.json`).
 
 ---
 
@@ -55,11 +60,11 @@ Run a subset of eval test cases against a skill, grade the outputs, aggregate re
 2. Filter to entries whose `id` appears in `eval_ids`
 3. If no matches: output `{ "type": "error", "message": "No matching evals found for the provided eval_ids" }` and stop
 
-### Step 2: Determine iteration number
+### Step 2: Use the pre-created iteration directory
 
-1. Glob pattern `iteration-*` in directory `{skill_workspace}/evals/workspace/`
-2. `iteration_N` = max trailing integer + 1 (or `1` if none)
-3. `iter_dir` = `{skill_workspace}/evals/workspace/iteration-{iteration_N}`
+Use `iter_dir` and `iteration` directly from the input. The directory already exists on disk —
+the app created it before starting this agent. Do NOT glob for existing iterations or compute
+your own iteration number. Eval history is immutable.
 
 ### Step 3: Resolve agent paths
 
@@ -72,8 +77,20 @@ Derive the path to the grader, analyzer, and comparator agent specs:
 ### Step 4 (`current_vs_previous` only): Snapshot previous skill version
 
 Run `git log --oneline --follow -- {skill_path}/SKILL.md` to find the commit before HEAD.
-Check out that version: `git show <prev_commit>:<repo-relative-path>/SKILL.md > {iter_dir}/prev-skill.md`
-Set `previous_skill_path` = `{iter_dir}/prev-skill.md`.
+
+Restore the previous skill into `{iter_dir}/prev-skill/` — a directory that mirrors the
+standard skill layout so Claude resolves `SKILL.md` and `references/` by convention:
+
+1. `mkdir -p {iter_dir}/prev-skill`
+2. `git show <prev_commit>:<repo-relative-path>/SKILL.md > {iter_dir}/prev-skill/SKILL.md`
+3. Restore `references/`:
+   - `git ls-tree --name-only <prev_commit> <repo-relative-path>/references/`
+   - If the directory existed, `mkdir -p {iter_dir}/prev-skill/references/` and for each file:
+     `git show <prev_commit>:<repo-relative-path>/references/<file> > {iter_dir}/prev-skill/references/<file>`
+   - If it did not exist at `<prev_commit>`, skip this step.
+
+Set `previous_skill_path` = `{iter_dir}/prev-skill`.
+
 If no previous commit exists, fall back to single with-skill mode for this run.
 
 ---
@@ -88,6 +105,13 @@ For each `eval` in the filtered list:
 
 `eval_dir = {run_dir}/eval-{eval.id}-{eval.slug}`
 
+### Executor contract (all modes)
+
+Executors are **plan-only**: they must NOT use the Write tool, create files, or produce
+any artifacts on disk. They reason through the task and return their plan/analysis as
+text. The parent agent captures this returned text into a variable (e.g. `executor_result`)
+and passes it verbatim to the grader as `plan_text`.
+
 ---
 
 ### Mode: single (default — no `comparison_mode`)
@@ -95,24 +119,38 @@ For each `eval` in the filtered list:
 **Execute** — spawn one executor subagent:
 
 ```text
+You are a plan-only executor. Do NOT write any files or artifacts.
+Read the skill, then reason through the task and return your complete plan as text.
+
 Skill location: {skill_path}/SKILL.md
 Task: {eval.prompt}
 Input files: {eval.files comma-separated, or "none"}
-Output directory: {eval_dir}/outputs/
-Transcript path: {eval_dir}/transcript.md
+
+Return your full plan including: what steps you would take, what tools you would use,
+what the outputs would contain, and any decisions or trade-offs. Be specific and detailed
+so a grader can evaluate whether the plan meets the expectations.
 ```
+
+Capture the executor's returned text as `executor_result`.
 
 **Grade** — spawn one grader subagent. Tell it to read and follow `{skill_agents_dir}/grader.md`:
 
 ```text
 Read the grading instructions from: {skill_agents_dir}/grader.md
-Follow those instructions exactly. Your inputs:
+Follow those instructions exactly, with one adaptation: there are no output files to
+examine. Instead, grade based on the executor's plan text below.
+
+Your inputs:
 - expectations: {eval.expectations as JSON array}
-- transcript_path: {eval_dir}/transcript.md
-- outputs_dir: {eval_dir}/outputs/
+- plan_text: {executor_result}
+- grading_output_path: {eval_dir}/grading.json
+
+Grade whether the plan demonstrates understanding and would satisfy each expectation
+if executed. Apply the same PASS/FAIL rigor as for real outputs — a vague or
+hand-wavy plan that doesn't show concrete steps should FAIL.
 ```
 
-The grader writes `grading.json` to `{eval_dir}/grading.json` (one level above `outputs/`).
+The grader writes `grading.json` to `{eval_dir}/grading.json`.
 
 **Emit progress:**
 
@@ -138,23 +176,34 @@ The grader writes `grading.json` to `{eval_dir}/grading.json` (one level above `
 *with_skill:*
 
 ```text
+You are a plan-only executor. Do NOT write any files or artifacts.
+Read the skill, then reason through the task and return your complete plan as text.
+
 Skill location: {skill_path}/SKILL.md
 Task: {eval.prompt}
 Input files: {eval.files or "none"}
-Output directory: {eval_dir}/with_skill/outputs/
-Transcript path: {eval_dir}/with_skill/transcript.md
+
+Return your full plan including: what steps you would take, what tools you would use,
+what the outputs would contain, and any decisions or trade-offs. Be specific and detailed
+so a grader can evaluate whether the plan meets the expectations.
 ```
 
 *without_skill:*
 
 ```text
+You are a plan-only executor. Do NOT write any files or artifacts.
+Reason through the task using your own judgment and return your complete plan as text.
+No skill is provided — rely on your general knowledge.
+
 Task: {eval.prompt}
 Input files: {eval.files or "none"}
-Output directory: {eval_dir}/without_skill/outputs/
-Transcript path: {eval_dir}/without_skill/transcript.md
 
-Complete this task using your own judgment — no skill provided.
+Return your full plan including: what steps you would take, what tools you would use,
+what the outputs would contain, and any decisions or trade-offs. Be specific and detailed
+so a grader can evaluate whether the plan meets the expectations.
 ```
+
+Capture each executor's returned text as `with_skill_result` and `without_skill_result`.
 
 **Grade (parallel)** — in the same Agent tool call, spawn two grader subagents. Tell each to read and follow `{skill_agents_dir}/grader.md`:
 
@@ -162,20 +211,34 @@ Complete this task using your own judgment — no skill provided.
 
 ```text
 Read the grading instructions from: {skill_agents_dir}/grader.md
-Follow those instructions exactly. Your inputs:
+Follow those instructions exactly, with one adaptation: there are no output files to
+examine. Instead, grade based on the executor's plan text below.
+
+Your inputs:
 - expectations: {eval.expectations as JSON array}
-- transcript_path: {eval_dir}/with_skill/transcript.md
-- outputs_dir: {eval_dir}/with_skill/outputs/
+- plan_text: {with_skill_result}
+- grading_output_path: {eval_dir}/with_skill/grading.json
+
+Grade whether the plan demonstrates understanding and would satisfy each expectation
+if executed. Apply the same PASS/FAIL rigor as for real outputs — a vague or
+hand-wavy plan that doesn't show concrete steps should FAIL.
 ```
 
 *without_skill grader:*
 
 ```text
 Read the grading instructions from: {skill_agents_dir}/grader.md
-Follow those instructions exactly. Your inputs:
+Follow those instructions exactly, with one adaptation: there are no output files to
+examine. Instead, grade based on the executor's plan text below.
+
+Your inputs:
 - expectations: {eval.expectations as JSON array}
-- transcript_path: {eval_dir}/without_skill/transcript.md
-- outputs_dir: {eval_dir}/without_skill/outputs/
+- plan_text: {without_skill_result}
+- grading_output_path: {eval_dir}/without_skill/grading.json
+
+Grade whether the plan demonstrates understanding and would satisfy each expectation
+if executed. Apply the same PASS/FAIL rigor as for real outputs — a vague or
+hand-wavy plan that doesn't show concrete steps should FAIL.
 ```
 
 Grading paths: `{eval_dir}/with_skill/grading.json` and `{eval_dir}/without_skill/grading.json`.
@@ -193,90 +256,56 @@ Grading paths: `{eval_dir}/with_skill/grading.json` and `{eval_dir}/without_skil
 
 Same structure as `with_without_skill`, replacing:
 
-- *current executor*: `Skill location: {skill_path}/SKILL.md`, outputs to `{eval_dir}/current/`
-- *previous executor*: `Skill location: {previous_skill_path}`, outputs to `{eval_dir}/previous/`
-- Grading paths: `{eval_dir}/current/grading.json`, `{eval_dir}/previous/grading.json`
+- *current executor*: `Skill location: {skill_path}/SKILL.md`, capture result as `current_result`
+- *previous executor*: `Skill location: {previous_skill_path}/SKILL.md`, capture result as `previous_result`
+- *current grader*: `plan_text: {current_result}`, writes to `{eval_dir}/current/grading.json`
+- *previous grader*: `plan_text: {previous_result}`, writes to `{eval_dir}/previous/grading.json`
 - Variant field: `"current"` / `"previous"`
 
 ---
 
-## Phase 2 — Aggregate benchmark
+## Phase 2 — Analyze
 
-Read all grading.json files and write to `{iter_dir}/benchmark.json`.
+> **Benchmark aggregation is handled by the app** (Rust) after this agent completes.
+> Do NOT compute or write `benchmark.json`. The app reads all grading.json files
+> from `iter_dir` and deterministically computes the benchmark.
 
-**Single mode:**
-
-```json
-{
-  "skill_name": "<skill_name>",
-  "iteration": N,
-  "run_count": N,
-  "eval_ids": [...],
-  "runs": [
-    {
-      "run_index": N,
-      "evals": [ { "eval_id": N, "eval_name": "...", "slug": "...", "grading_path": "...", "summary": { "passed": N, "failed": N, "total": N, "pass_rate": 0.0 } } ],
-      "run_summary": { "passed": N, "failed": N, "total": N, "pass_rate": 0.0 }
-    }
-  ],
-  "aggregate_summary": { "avg_pass_rate": 0.0, "total_passed": N, "total_failed": N, "total_assertions": N, "has_failures": true }
-}
-```
-
-**Comparison modes** — add `comparison_mode`, `baseline_runs`, and `baseline_aggregate_summary`:
-
-```json
-{
-  "skill_name": "<skill_name>",
-  "comparison_mode": "with_without_skill",
-  "iteration": N, "run_count": N, "eval_ids": [...],
-  "runs": [ ...primary (with_skill / current)... ],
-  "baseline_runs": [ ...baseline (without_skill / previous)... ],
-  "aggregate_summary": { ...primary... },
-  "baseline_aggregate_summary": { "avg_pass_rate": 0.0, "total_passed": N, "total_failed": N, "total_assertions": N, "has_failures": true }
-}
-```
-
-`runs` reads from `{eval_dir}/with_skill/grading.json` (or `{eval_dir}/current/`).
-`baseline_runs` reads from `{eval_dir}/without_skill/grading.json` (or `{eval_dir}/previous/`).
-
-Compute all aggregates as pure calculations before writing.
-
----
-
-## Phase 3 — Analyze
-
-Spawn an analyzer subagent. Tell it to read and follow the benchmark analysis section of `{skill_agents_dir}/analyzer.md`:
+Spawn an analyzer subagent. Tell it to read the grading.json files and follow
+the benchmark analysis section of `{skill_agents_dir}/analyzer.md`:
 
 ```text
 Read the analysis instructions from: {skill_agents_dir}/analyzer.md
 Use the "Analyzing Benchmark Results" section (not the "Post-hoc Analyzer" section at the top). Your inputs:
-- benchmark_data_path: {iter_dir}/benchmark.json
+- grading_dir: {iter_dir}
 - skill_path: {skill_path}
 - output_path: {iter_dir}/analyst-notes.json
+
+Read all grading.json files under {iter_dir}/run-*/eval-*/ to understand the results,
+then write your analysis to the output_path.
 ```
 
 Read `{iter_dir}/analyst-notes.json` (a JSON array of strings).
 
 ---
 
-## Phase 4 — Return final structured output
+## Phase 3 — Return final structured output
 
 Output this JSON as your final text response (the sidecar captures it as `structuredOutput`):
 
 ```json
 {
   "type": "complete",
-  "iteration": N,
-  "benchmark": <full benchmark.json contents>,
-  "analyst_notes": <analyst-notes.json contents>
+  "iteration": N
 }
 ```
+
+Do NOT include benchmark data or analyst notes in the structured output — the app
+computes the benchmark from grading files and reads analyst-notes.json separately.
 
 ---
 
 ## Error handling
 
-- Executor fails to write outputs/transcript: write `{eval_dir}/error.json`, continue; set `"error": true` in the `eval_graded` event
+- Executor returns empty or fails: continue to grading with empty plan text; the grader will FAIL all expectations
 - `grading.json` unreadable: treat as `{ "passed": 0, "failed": 0, "total": 0, "pass_rate": 0, "grader_error": true }` in the aggregate
 - Analyzer fails: return `"analyst_notes": []`

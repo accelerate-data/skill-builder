@@ -41,13 +41,13 @@ Save workspace artifacts to `<skill_path>/../<skill-name>-workspace/`.
 
 ## Step 1: Resolve pluggable
 
-Read `references/pluggable.md`. Resolve `SCRIPTS_ROOT` and `ASSETS_ROOT` to absolute paths
-using the path resolution instructions in that file.
+Read `references/pluggable.md`. Resolve `SCRIPTS_ROOT`, `ASSETS_ROOT`, and `LOCAL_SCRIPTS_ROOT`
+to absolute paths using the path resolution instructions in that file.
 
 ## Step 2: Generate trigger eval queries
 
 ```bash
-uv run "$SCRIPTS_ROOT/generate_eval_queries.py" \
+uv run "$LOCAL_SCRIPTS_ROOT/generate_eval_queries.py" \
   --skill-path <skill_path> \
   --model <model> \
   --count 20
@@ -86,12 +86,12 @@ uv run "$SCRIPTS_ROOT/run_loop.py" \
   --verbose
 ```
 
-The output is JSONL. Periodically tail it to report progress to the user: iteration N,
-current train score, current test score.
+The output is a single JSON object. Report completion to the user with the iteration count
+and final train/test scores.
 
 ## Step 5: Apply result
 
-Parse `best_description` from the final `{"type": "result", ...}` line.
+Parse `best_description` from the `{"ok": true, ...}` output.
 
 Show the user:
 

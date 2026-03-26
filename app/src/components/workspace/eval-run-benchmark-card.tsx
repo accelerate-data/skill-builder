@@ -26,7 +26,9 @@ function fmt(rate: number): string {
 
 function buildEvalRates(runs: EvalBenchmarkRun[]): Record<number, { eval_name: string; runRates: number[]; gradingPaths: string[] }> {
   const byId: Record<number, { eval_name: string; runRates: number[]; gradingPaths: string[] }> = {};
+  if (!Array.isArray(runs)) return byId;
   for (const run of runs) {
+    if (!Array.isArray(run.evals)) continue;
     for (const e of run.evals) {
       if (!byId[e.eval_id]) byId[e.eval_id] = { eval_name: e.eval_name, runRates: [], gradingPaths: [] };
       byId[e.eval_id].runRates.push(e.summary.pass_rate);
@@ -77,7 +79,44 @@ function PassFailIcon({ passed }: { passed: boolean }) {
     : <XCircle className="inline size-3.5 text-destructive" />;
 }
 
-/** Expandable per-expectation details for one eval. */
+/** Single grading table for one variant — Expectation | Result | Evidence. */
+function GradingTable({ label, expectations }: { label?: string; expectations: GradingExpectation[] }) {
+  return (
+    <div>
+      {label && (
+        <div className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground border-b">
+          {label}
+        </div>
+      )}
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b text-[11px] text-muted-foreground">
+            <th className="px-4 py-1.5 text-left font-medium">Expectation</th>
+            <th className="px-2 py-1.5 text-center font-medium w-20">Result</th>
+            <th className="px-4 py-1.5 text-left font-medium">Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {expectations.map((exp, i) => (
+            <tr key={i} className="border-b last:border-b-0">
+              <td className="px-4 py-2 align-top max-w-[200px]">
+                <span className="text-xs leading-relaxed">{exp.text}</span>
+              </td>
+              <td className="px-2 py-2 text-center align-top">
+                <PassFailIcon passed={exp.passed} />
+              </td>
+              <td className="px-4 py-2 align-top max-w-[300px]">
+                <span className="text-[11px] leading-relaxed text-muted-foreground">{exp.evidence}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Expandable per-expectation details for one eval — renders separate tables per variant. */
 function EvalExpectationsDetail({
   gradingPaths,
   baselineGradingPaths,
@@ -124,55 +163,18 @@ function EvalExpectationsDetail({
 
   if (!expectations || expectations.length === 0) return null;
 
-  // Build a map of baseline results by expectation text for side-by-side display
-  const baselineByText = new Map<string, GradingExpectation>();
-  if (baselineExpectations) {
-    for (const exp of baselineExpectations) {
-      baselineByText.set(exp.text, exp);
-    }
-  }
-
   return (
     <div className="bg-muted/20">
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="border-b text-[11px] text-muted-foreground">
-            <th className="px-4 py-1.5 text-left font-medium">Expectation</th>
-            <th className="px-2 py-1.5 text-center font-medium w-20">
-              {isComparison ? primaryLabel ?? "Primary" : "Result"}
-            </th>
-            {isComparison && (
-              <th className="px-2 py-1.5 text-center font-medium w-20">
-                {baselineLabel ?? "Baseline"}
-              </th>
-            )}
-            <th className="px-4 py-1.5 text-left font-medium">Evidence</th>
-          </tr>
-        </thead>
-        <tbody>
-          {expectations.map((exp, i) => {
-            const baseline = baselineByText.get(exp.text);
-            return (
-              <tr key={i} className="border-b last:border-b-0">
-                <td className="px-4 py-2 align-top max-w-[200px]">
-                  <span className="text-xs leading-relaxed">{exp.text}</span>
-                </td>
-                <td className="px-2 py-2 text-center align-top">
-                  <PassFailIcon passed={exp.passed} />
-                </td>
-                {isComparison && (
-                  <td className="px-2 py-2 text-center align-top">
-                    {baseline ? <PassFailIcon passed={baseline.passed} /> : <span className="text-muted-foreground">—</span>}
-                  </td>
-                )}
-                <td className="px-4 py-2 align-top max-w-[300px]">
-                  <span className="text-[11px] leading-relaxed text-muted-foreground">{exp.evidence}</span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <GradingTable
+        label={isComparison ? primaryLabel ?? "Primary" : undefined}
+        expectations={expectations}
+      />
+      {isComparison && baselineExpectations && baselineExpectations.length > 0 && (
+        <GradingTable
+          label={baselineLabel ?? "Baseline"}
+          expectations={baselineExpectations}
+        />
+      )}
     </div>
   );
 }

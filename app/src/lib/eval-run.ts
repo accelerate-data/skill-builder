@@ -20,8 +20,10 @@ export function buildEvaluateSkillPrompt(params: {
   evalIds: number[];
   runCount: 1 | 3;
   comparisonMode?: "with_without_skill" | "current_vs_previous";
+  iteration: number;
+  iterDir: string;
 }): string {
-  const { skillName, workspacePath, skillsPath, evalIds, runCount, comparisonMode } = params;
+  const { skillName, workspacePath, skillsPath, evalIds, runCount, comparisonMode, iteration, iterDir } = params;
   const skillPath = `${skillsPath}/${skillName}`;
   const lines = [
     `skill_name: ${skillName}`,
@@ -29,6 +31,8 @@ export function buildEvaluateSkillPrompt(params: {
     `eval_ids: ${JSON.stringify(evalIds)}`,
     `run_count: ${runCount}`,
     `skill_path: ${skillPath}`,
+    `iteration: ${iteration}`,
+    `iter_dir: ${iterDir}`,
   ];
   if (comparisonMode) {
     lines.push(`comparison_mode: ${comparisonMode}`);
@@ -37,56 +41,33 @@ export function buildEvaluateSkillPrompt(params: {
 }
 
 /**
- * Build the pre-fill message for the Refine tab from benchmark failures and analyst notes.
- * Summarises failing evals (name, avg pass rate) and appends analyst observations.
+ * Collect grading paths for evals that have avg pass_rate < 1.0 across primary runs.
+ * Only looks at primary `runs`, not `baseline_runs`.
  */
-export function buildRefinePrefill(
+export function getFailedEvalGradingPaths(
   benchmark: EvalBenchmark,
-  analystNotes: string[],
-): string {
-  const { aggregate_summary, runs, iteration } = benchmark;
-
-  // Collect per-eval average pass rates across runs
-  const evalTotals: Record<number, { name: string; passRateSum: number; runCount: number }> = {};
-  for (const run of runs) {
+): Array<{ eval_id: number; eval_name: string; grading_path: string }> {
+  const evalTotals: Record<number, { name: string; passRateSum: number; runCount: number; gradingPath: string }> = {};
+  if (!Array.isArray(benchmark.runs)) return [];
+  for (const run of benchmark.runs) {
+    if (!Array.isArray(run.evals)) continue;
     for (const e of run.evals) {
       if (!evalTotals[e.eval_id]) {
-        evalTotals[e.eval_id] = { name: e.eval_name, passRateSum: 0, runCount: 0 };
+        evalTotals[e.eval_id] = { name: e.eval_name, passRateSum: 0, runCount: 0, gradingPath: e.grading_path };
       }
       evalTotals[e.eval_id].passRateSum += e.summary.pass_rate;
       evalTotals[e.eval_id].runCount += 1;
     }
   }
 
-  const failingLines: string[] = [];
-  for (const [, v] of Object.entries(evalTotals)) {
+  const result: Array<{ eval_id: number; eval_name: string; grading_path: string }> = [];
+  for (const [idStr, v] of Object.entries(evalTotals)) {
     const avgRate = v.runCount > 0 ? v.passRateSum / v.runCount : 0;
     if (avgRate < 1.0) {
-      const pct = Math.round(avgRate * 100);
-      failingLines.push(`- **${v.name}** — avg pass rate ${pct}%`);
+      result.push({ eval_id: Number(idStr), eval_name: v.name, grading_path: v.gradingPath });
     }
   }
-
-  const parts: string[] = [];
-
-  parts.push(
-    `The following eval assertions failed in iteration-${iteration} (${benchmark.run_count} run${benchmark.run_count > 1 ? "s" : ""}):`,
-    "",
-    ...failingLines,
-    "",
-    `Total: ${aggregate_summary.total_failed} failed / ${aggregate_summary.total_assertions} assertions`,
-  );
-
-  if (analystNotes.length > 0) {
-    parts.push("", "Analyst notes:");
-    for (const note of analystNotes) {
-      parts.push(`- ${note}`);
-    }
-  }
-
-  parts.push("", "Please update the skill to address these gaps.");
-
-  return parts.join("\n");
+  return result;
 }
 
 /**

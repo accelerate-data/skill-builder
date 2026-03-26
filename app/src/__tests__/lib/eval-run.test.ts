@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildEvaluateSkillPrompt,
-  buildRefinePrefill,
   evalProgressPercent,
+  getFailedEvalGradingPaths,
   parseEvalStructuredOutput,
 } from "@/lib/eval-run";
 import type { EvalBenchmark } from "@/lib/types";
@@ -58,12 +58,16 @@ describe("buildEvaluateSkillPrompt", () => {
       skillsPath: "/skills",
       evalIds: [1, 3, 5],
       runCount: 3,
+      iteration: 4,
+      iterDir: "/workspace/dbt-quality/evals/workspace/iteration-4",
     });
     expect(prompt).toContain("skill_name: dbt-quality");
     expect(prompt).toContain("workspace_path: /workspace");
     expect(prompt).toContain("eval_ids: [1,3,5]");
     expect(prompt).toContain("run_count: 3");
     expect(prompt).toContain("skill_path: /skills/dbt-quality");
+    expect(prompt).toContain("iteration: 4");
+    expect(prompt).toContain("iter_dir: /workspace/dbt-quality/evals/workspace/iteration-4");
   });
 
   it("serializes eval_ids as JSON array", () => {
@@ -73,68 +77,46 @@ describe("buildEvaluateSkillPrompt", () => {
       skillsPath: "/s",
       evalIds: [7],
       runCount: 1,
+      iteration: 1,
+      iterDir: "/w/s/evals/workspace/iteration-1",
     });
     expect(prompt).toContain("eval_ids: [7]");
   });
 });
 
-// --- buildRefinePrefill ---
+// --- getFailedEvalGradingPaths ---
 
-describe("buildRefinePrefill", () => {
-  it("includes failing eval names with pass rates", () => {
-    const msg = buildRefinePrefill(makeEvalBenchmark(), []);
-    expect(msg).toContain("Scenario B");
-    expect(msg).toContain("50%");
+describe("getFailedEvalGradingPaths", () => {
+  it("returns only evals with avg pass_rate < 1.0", () => {
+    const result = getFailedEvalGradingPaths(makeEvalBenchmark());
+    expect(result).toHaveLength(1);
+    expect(result[0].eval_id).toBe(2);
+    expect(result[0].eval_name).toBe("Scenario B");
+    expect(result[0].grading_path).toBe("run-0/eval-2-scenario-b/grading.json");
   });
 
-  it("does not include fully-passing evals", () => {
-    const msg = buildRefinePrefill(makeEvalBenchmark(), []);
-    expect(msg).not.toContain("Scenario A");
+  it("returns empty array when all evals pass", () => {
+    const bench = makeEvalBenchmark({
+      runs: [{
+        run_index: 0,
+        evals: [{ eval_id: 1, eval_name: "A", slug: "a", grading_path: "g1.json", summary: { passed: 4, failed: 0, total: 4, pass_rate: 1.0 } }],
+        run_summary: { passed: 4, failed: 0, total: 4, pass_rate: 1.0 },
+      }],
+    });
+    expect(getFailedEvalGradingPaths(bench)).toHaveLength(0);
   });
 
-  it("includes analyst notes when provided", () => {
-    const notes = ["Fix example in SKILL.md", "Tighten output format"];
-    const msg = buildRefinePrefill(makeEvalBenchmark(), notes);
-    expect(msg).toContain("Fix example in SKILL.md");
-    expect(msg).toContain("Tighten output format");
-  });
-
-  it("includes iteration number", () => {
-    const msg = buildRefinePrefill(makeEvalBenchmark(), []);
-    expect(msg).toContain("iteration-2");
-  });
-
-  it("omits analyst notes section when notes is empty", () => {
-    const msg = buildRefinePrefill(makeEvalBenchmark(), []);
-    expect(msg).not.toContain("Analyst notes:");
-  });
-
-  it("handles 3-run benchmark by averaging per-eval pass rates across runs", () => {
+  it("averages pass rates across multiple runs", () => {
     const bench = makeEvalBenchmark({
       run_count: 3,
       runs: [
-        {
-          run_index: 0,
-          evals: [{ eval_id: 1, eval_name: "Eval X", slug: "eval-x", grading_path: "r0/e1/g.json", summary: { passed: 1, failed: 3, total: 4, pass_rate: 0.25 } }],
-          run_summary: { passed: 1, failed: 3, total: 4, pass_rate: 0.25 },
-        },
-        {
-          run_index: 1,
-          evals: [{ eval_id: 1, eval_name: "Eval X", slug: "eval-x", grading_path: "r1/e1/g.json", summary: { passed: 2, failed: 2, total: 4, pass_rate: 0.5 } }],
-          run_summary: { passed: 2, failed: 2, total: 4, pass_rate: 0.5 },
-        },
-        {
-          run_index: 2,
-          evals: [{ eval_id: 1, eval_name: "Eval X", slug: "eval-x", grading_path: "r2/e1/g.json", summary: { passed: 1, failed: 3, total: 4, pass_rate: 0.25 } }],
-          run_summary: { passed: 1, failed: 3, total: 4, pass_rate: 0.25 },
-        },
+        { run_index: 0, evals: [{ eval_id: 1, eval_name: "X", slug: "x", grading_path: "r0.json", summary: { passed: 4, failed: 0, total: 4, pass_rate: 1.0 } }], run_summary: { passed: 4, failed: 0, total: 4, pass_rate: 1.0 } },
+        { run_index: 1, evals: [{ eval_id: 1, eval_name: "X", slug: "x", grading_path: "r1.json", summary: { passed: 2, failed: 2, total: 4, pass_rate: 0.5 } }], run_summary: { passed: 2, failed: 2, total: 4, pass_rate: 0.5 } },
+        { run_index: 2, evals: [{ eval_id: 1, eval_name: "X", slug: "x", grading_path: "r2.json", summary: { passed: 4, failed: 0, total: 4, pass_rate: 1.0 } }], run_summary: { passed: 4, failed: 0, total: 4, pass_rate: 1.0 } },
       ],
-      aggregate_summary: { avg_pass_rate: 0.33, total_passed: 4, total_failed: 8, total_assertions: 12, has_failures: true },
     });
-    const msg = buildRefinePrefill(bench, []);
-    expect(msg).toContain("Eval X");
-    // avg is (0.25+0.5+0.25)/3 ≈ 33%
-    expect(msg).toContain("33%");
+    // avg ≈ 0.83 < 1.0
+    expect(getFailedEvalGradingPaths(bench)).toHaveLength(1);
   });
 });
 

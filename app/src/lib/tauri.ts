@@ -658,6 +658,26 @@ export const deleteTestCase = (skillName: string, workspacePath: string, id: num
 export const listIterations = (skillName: string, workspacePath: string) =>
   invoke<IterationMeta[]>("list_iterations", { skillName, workspacePath });
 
+export const createNextIterationDir = (skillName: string, workspacePath: string) =>
+  invoke<[number, string]>("create_next_iteration_dir", { skillName, workspacePath });
+
+export const materializeEvalBenchmark = (
+  iterDir: string,
+  skillName: string,
+  iteration: number,
+  evalIds: number[],
+  runCount: number,
+  comparisonMode?: string,
+) =>
+  invoke<[EvalBenchmark, string[]]>("materialize_eval_benchmark", {
+    iterDir,
+    skillName,
+    iteration,
+    evalIds,
+    runCount,
+    comparisonMode: comparisonMode ?? null,
+  });
+
 export const readIterationResult = (iterationPath: string) =>
   invoke<[EvalBenchmark, string[]]>("read_iteration_result", { iterationPath });
 

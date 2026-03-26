@@ -379,6 +379,8 @@ pub fn run() {
             commands::evals::save_test_case,
             commands::evals::delete_test_case,
             commands::evals::list_iterations,
+            commands::evals::create_next_iteration_dir,
+            commands::evals::materialize_eval_benchmark,
             commands::evals::read_iteration_result,
             commands::evals::read_grading,
             commands::evals::read_skill_context_for_eval_gen,

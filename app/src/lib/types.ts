@@ -545,10 +545,10 @@ export interface EvalGradedEvent {
   variant?: "with_skill" | "without_skill" | "current" | "previous"
 }
 
-/** structuredOutput emitted by evaluate-skill when the full pipeline completes. */
+/** structuredOutput emitted by evaluate-skill when the full pipeline completes.
+ *  The benchmark is computed by Rust from grading files — not carried in this event.
+ */
 export interface EvalCompleteEvent {
   type: "complete"
   iteration: number
-  benchmark: EvalBenchmark
-  analyst_notes: string[]
 }
