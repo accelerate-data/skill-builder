@@ -609,7 +609,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     // and cannot accidentally reuse an existing iteration.
     const [iterNum, iterDir] = await createNextIterationDir(skillName, workspacePath!, pluginSlug);
     evalRunParamsRef.current = { iterDir, iteration: iterNum, evalIds, runCount, comparisonMode };
-    const prompt = buildEvaluateSkillPrompt({ skillName, pluginSlug, workspacePath: workspacePath!, skillsPath, evalIds, runCount, comparisonMode, iteration: iterNum, iterDir });
+    const prompt = buildEvaluateSkillPrompt({ skillName, workspacePath: workspacePath!, skillsPath, evalIds, runCount, comparisonMode, iteration: iterNum, iterDir });
 
     try {
       await startAgent(
