@@ -854,21 +854,14 @@ fn compute_aggregate_summary(runs: &[BenchmarkRun]) -> AggregateSummary {
     }
 }
 
-/// Read the skill definition and existing evals to provide context to the eval generator agent.
-/// Returns empty skill_content if SKILL.md does not exist yet.
-#[tauri::command]
-pub fn read_skill_context_for_eval_gen(
-    skill_name: String,
-    workspace_path: String,
-    db: tauri::State<'_, crate::db::Db>,
+/// Inner pure helper — takes already-resolved `skills_path` to allow unit testing without a DB.
+pub(crate) fn read_skill_context_inner(
+    skill_name: &str,
+    workspace_path: &str,
+    skills_path: &str,
 ) -> Result<SkillEvalContext, String> {
-    log::info!("[read_skill_context_for_eval_gen] skill={}", skill_name);
-    validate_skill_name(&skill_name)?;
-
-    // Resolve skills_path from settings (may differ from workspace_path).
-    let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
-    let skill_md = std::path::Path::new(&skills_path)
-        .join(&skill_name)
+    let skill_md = std::path::Path::new(skills_path)
+        .join(skill_name)
         .join("SKILL.md");
     let skill_content = if skill_md.is_file() {
         std::fs::read_to_string(&skill_md).map_err(|e| {
@@ -887,11 +880,27 @@ pub fn read_skill_context_for_eval_gen(
         String::new()
     };
 
-    let data = read_evals_file(&workspace_path, &skill_name)?;
+    let data = read_evals_file(workspace_path, skill_name)?;
     Ok(SkillEvalContext {
         skill_content,
         existing_evals: data.evals,
     })
+}
+
+/// Read the skill definition and existing evals to provide context to the eval generator agent.
+/// Returns empty skill_content if SKILL.md does not exist yet.
+#[tauri::command]
+pub fn read_skill_context_for_eval_gen(
+    skill_name: String,
+    workspace_path: String,
+    db: tauri::State<'_, crate::db::Db>,
+) -> Result<SkillEvalContext, String> {
+    log::info!("[read_skill_context_for_eval_gen] skill={}", skill_name);
+    validate_skill_name(&skill_name)?;
+
+    // Resolve skills_path from settings (may differ from workspace_path).
+    let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
+    read_skill_context_inner(&skill_name, &workspace_path, &skills_path)
 }
 
 /// Read a grading.json file from a completed eval run.
@@ -1158,9 +1167,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let evals_ws = tmp.path().join("my-skill").join("evals").join("workspace");
+        // Each iteration dir must contain a run-* subdir to pass the has_runs filter.
         for n in [1u32, 3, 2] {
-            let dir = evals_ws.join(format!("iteration-{}", n));
-            fs::create_dir_all(&dir).unwrap();
+            let run_dir = evals_ws.join(format!("iteration-{}", n)).join("run-0");
+            fs::create_dir_all(&run_dir).unwrap();
         }
 
         let result = list_iterations("my-skill".to_string(), workspace.to_string()).unwrap();
@@ -1171,10 +1181,89 @@ mod tests {
     }
 
     #[test]
+    fn create_next_iteration_dir_starts_at_1() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+
+        let (n, path_str) = create_next_iteration_dir("my-skill".to_string(), workspace.to_string()).unwrap();
+        assert_eq!(n, 1);
+        assert!(path_str.contains("iteration-1"));
+        assert!(std::path::Path::new(&path_str).is_dir());
+    }
+
+    #[test]
+    fn create_next_iteration_dir_increments() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        // Pre-create iteration-1 with a run-0 subdir so it counts
+        let evals_ws = tmp.path().join("my-skill").join("evals").join("workspace");
+        fs::create_dir_all(evals_ws.join("iteration-1").join("run-0")).unwrap();
+
+        let (n, path_str) = create_next_iteration_dir("my-skill".to_string(), workspace.to_string()).unwrap();
+        assert_eq!(n, 2);
+        assert!(path_str.contains("iteration-2"));
+        assert!(std::path::Path::new(&path_str).is_dir());
+    }
+
+    #[test]
+    fn materialize_benchmark_computes_from_grading_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skill = "my-skill";
+
+        // Create evals.json so eval names resolve correctly
+        let evals_dir = tmp.path().join(skill).join("evals");
+        fs::create_dir_all(&evals_dir).unwrap();
+        fs::write(
+            evals_dir.join("evals.json"),
+            r#"{"evals":[{"id":1,"eval_name":"Scenario A","slug":"scenario-a","prompt":"p","expectations":[]},{"id":2,"eval_name":"Scenario B","slug":"scenario-b","prompt":"p","expectations":[]}]}"#,
+        ).unwrap();
+
+        // Create iteration-1/run-0/eval-1-scenario-a/grading.json (all pass)
+        let iter_dir = tmp.path().join(skill).join("evals").join("workspace").join("iteration-1");
+        let eval1_dir = iter_dir.join("run-0").join("eval-1-scenario-a");
+        fs::create_dir_all(&eval1_dir).unwrap();
+        fs::write(
+            eval1_dir.join("grading.json"),
+            r#"{"summary":{"passed":2,"failed":0,"total":2,"pass_rate":1.0}}"#,
+        ).unwrap();
+
+        // Create iteration-1/run-0/eval-2-scenario-b/grading.json (1 fail)
+        let eval2_dir = iter_dir.join("run-0").join("eval-2-scenario-b");
+        fs::create_dir_all(&eval2_dir).unwrap();
+        fs::write(
+            eval2_dir.join("grading.json"),
+            r#"{"summary":{"passed":1,"failed":1,"total":2,"pass_rate":0.5}}"#,
+        ).unwrap();
+
+        let iter_dir_str = iter_dir.to_string_lossy().into_owned();
+        let result = materialize_eval_benchmark(
+            iter_dir_str,
+            skill.to_string(),
+            workspace.to_string(),
+            1,
+            vec![1, 2],
+            1,
+            None,
+        ).unwrap();
+
+        let agg = &result["aggregate_summary"];
+        assert_eq!(agg["total_passed"].as_u64().unwrap(), 3);
+        assert_eq!(agg["total_failed"].as_u64().unwrap(), 1);
+        assert_eq!(agg["total_assertions"].as_u64().unwrap(), 4);
+        assert!(agg["has_failures"].as_bool().unwrap());
+
+        // benchmark.json must be written to the iteration dir
+        let bench_path = iter_dir.join("benchmark.json");
+        assert!(bench_path.exists(), "benchmark.json should be written to disk");
+    }
+
+    #[test]
     fn read_skill_context_returns_empty_content_when_no_skill_md() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
-        let ctx = read_skill_context_for_eval_gen("my-skill".to_string(), workspace.to_string()).unwrap();
+        // skills_path == workspace_path in tests (no DB needed)
+        let ctx = read_skill_context_inner("my-skill", workspace, workspace).unwrap();
         assert!(ctx.skill_content.is_empty());
         assert!(ctx.existing_evals.is_empty());
     }
@@ -1193,7 +1282,8 @@ mod tests {
         let tc = make_test_case(0, "Scenario One");
         save_test_case("my-skill".to_string(), workspace.to_string(), tc).unwrap();
 
-        let ctx = read_skill_context_for_eval_gen("my-skill".to_string(), workspace.to_string()).unwrap();
+        // skills_path == workspace_path in tests (no DB needed)
+        let ctx = read_skill_context_inner("my-skill", workspace, workspace).unwrap();
         assert!(ctx.skill_content.contains("My Skill"));
         assert_eq!(ctx.existing_evals.len(), 1);
         assert_eq!(ctx.existing_evals[0].eval_name, "Scenario One");

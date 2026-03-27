@@ -3,7 +3,7 @@
   "eval_name": "incremental intermediate layer model",
   "configuration": "without_skill",
   "run_number": 1,
-  "result": { "pass_rate": 0.25, "passed": 1, "failed": 3, "total": 4 },
+  "summary": { "pass_rate": 0.25, "passed": 1, "failed": 3, "total": 4 },
   "expectations": [
     { "text": "Model uses materialized='incremental' with merge strategy", "passed": false, "evidence": "Model uses materialized='table'; no incremental logic present." },
     { "text": "Unique key is defined for merge deduplication", "passed": false, "evidence": "No unique_key configured; would produce duplicates on re-run." },

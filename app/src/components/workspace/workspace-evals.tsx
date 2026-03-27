@@ -814,6 +814,8 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         {/* Eval run progress banner */}
         {isRunningEvals && (
           <div
+            data-testid="evals-run-thinking"
+            data-agent-id={evalRunAgentId ?? ""}
             className="mb-4 flex items-center gap-3 rounded-lg border px-4 py-3 text-sm"
             style={{ borderColor: "color-mix(in oklch, var(--color-pacific), transparent 70%)", background: "color-mix(in oklch, var(--color-pacific), transparent 94%)" }}
           >

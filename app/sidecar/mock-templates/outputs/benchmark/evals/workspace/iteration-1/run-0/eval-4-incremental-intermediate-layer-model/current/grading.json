@@ -3,7 +3,7 @@
   "eval_name": "incremental intermediate layer model",
   "configuration": "with_skill",
   "run_number": 1,
-  "result": { "pass_rate": 0.5, "passed": 2, "failed": 2, "total": 4 },
+  "summary": { "pass_rate": 0.5, "passed": 2, "failed": 2, "total": 4 },
   "expectations": [
     { "text": "Model uses materialized='incremental' with merge strategy", "passed": true, "evidence": "Config block specifies materialized='incremental' with incremental_strategy='merge'." },
     { "text": "Unique key is defined for merge deduplication", "passed": true, "evidence": "unique_key=['order_id','line_item_id'] is set in the config." },

@@ -49,6 +49,12 @@ export interface RunAgentOptions {
   skillName?: string;
   stepId?: number;
   runSource?: string;
+  /** For evaluate-skill: absolute path to the workspace root (parsed as workspace_path: in prompt). */
+  workspacePath?: string;
+  /** For evaluate-skill: eval IDs to include in the prompt (parsed as eval_ids: in prompt). */
+  evalIds?: number[];
+  /** For evaluate-skill: absolute path to the iteration directory (parsed as iter_dir: in prompt). */
+  iterDir?: string;
 }
 
 /**
@@ -137,17 +143,24 @@ async function sendAgentRequest(
   agentId: string,
   opts: RunAgentOptions,
 ): Promise<void> {
-  const { skillName = "test-skill", stepId = 0, runSource = "workflow" } = opts;
+  const { skillName = "test-skill", stepId = 0, runSource = "workflow", workspacePath, evalIds, iterDir } = opts;
 
   // mock-agent's parsePromptPaths extracts workspace/output dirs from these exact strings.
   const skillDir = path.join(workspaceDir, skillName);
   fs.mkdirSync(skillDir, { recursive: true });
 
-  const prompt = [
+  const lines = [
     `The workspace directory is: ${skillDir}. `,
     `The skill output directory (SKILL.md and references/) is: ${skillDir}. `,
     `Task: ${agentName} for skill "${skillName}".`,
-  ].join("\n");
+  ];
+
+  // evaluate-skill: append key-value pairs the mock-agent parses for grading file paths.
+  if (workspacePath !== undefined) lines.push(`workspace_path: ${workspacePath}`);
+  if (evalIds !== undefined) lines.push(`eval_ids: ${JSON.stringify(evalIds)}`);
+  if (iterDir !== undefined) lines.push(`iter_dir: ${iterDir}`);
+
+  const prompt = lines.join("\n");
 
   const request = {
     type: "agent_request",
