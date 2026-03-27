@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { openUrl } from "@tauri-apps/plugin-opener"
-import { Check, Copy, Github, Loader2, ExternalLink } from "lucide-react"
+import { Check, Copy, Loader2, ExternalLink } from "lucide-react"
+import { Github } from "@/components/icons/github"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,

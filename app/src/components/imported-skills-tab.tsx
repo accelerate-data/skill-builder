@@ -1,7 +1,8 @@
 import { useEffect, useCallback, useState } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "@/lib/toast"
-import { FolderInput, Package, Github, Trash2 } from "lucide-react"
+import { FolderInput, Package, Trash2 } from "lucide-react"
+import { Github } from "@/components/icons/github"
 import {
   Card,
   CardDescription,

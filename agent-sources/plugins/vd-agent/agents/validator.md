@@ -2,7 +2,6 @@
 name: validator
 model: haiku
 description: Validates dbt model output against expected data (CSV uploads) and checks for schema drift. Runs in parallel with test generation.
-tools: lakehouse_query, sqlite_query, validate_output, workspace_info
 skills: [dbt-model]
 ---
 

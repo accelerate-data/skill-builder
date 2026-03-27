@@ -160,3 +160,15 @@ jobs:
               --base main \
               --head "${SYNC_BRANCH}"
           fi
+
+      - name: Auto-approve and auto-merge
+        if: steps.changes.outputs.has_changes == 'true' && (github.event_name != 'workflow_dispatch' || inputs.dry_run != 'true')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PR_URL="$(gh pr list --head "${SYNC_BRANCH}" --state open --json url --jq '.[0].url')"
+          if [ -n "$PR_URL" ]; then
+            gh pr review --approve "$PR_URL"
+            gh pr merge --auto --squash --delete-branch "$PR_URL"
+          fi
