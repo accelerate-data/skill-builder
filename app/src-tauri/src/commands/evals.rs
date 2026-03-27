@@ -323,6 +323,16 @@ pub fn list_iterations(
             if !entry.path().is_dir() {
                 return None;
             }
+            // Skip empty iterations (created but agent never wrote data)
+            let has_runs = std::fs::read_dir(entry.path())
+                .ok()
+                .map(|rd| rd.flatten().any(|e| {
+                    e.file_name().to_string_lossy().starts_with("run-") && e.path().is_dir()
+                }))
+                .unwrap_or(false);
+            if !has_runs {
+                return None;
+            }
             Some(IterationMeta {
                 iteration: n,
                 path: entry.path().to_string_lossy().into_owned(),
@@ -404,11 +414,12 @@ pub fn create_next_iteration_dir(
 pub fn materialize_eval_benchmark(
     iter_dir: String,
     skill_name: String,
+    workspace_path: String,
     iteration: u32,
     eval_ids: Vec<u32>,
     run_count: u32,
     comparison_mode: Option<String>,
-) -> Result<(serde_json::Value, Vec<String>), String> {
+) -> Result<serde_json::Value, String> {
     log::info!(
         "[materialize_eval_benchmark] iter_dir={} skill={} iteration={} evals={:?} runs={} mode={:?}",
         iter_dir, skill_name, iteration, eval_ids, run_count, comparison_mode
@@ -416,6 +427,15 @@ pub fn materialize_eval_benchmark(
 
     let iter_path = Path::new(&iter_dir);
     let is_comparison = comparison_mode.is_some();
+
+    // Read eval names from evals.json so the benchmark uses real names, not directory-derived ones
+    let eval_name_map: std::collections::HashMap<u32, String> = {
+        if let Ok(data) = read_evals_file(&workspace_path, &skill_name) {
+            data.evals.into_iter().map(|e| (e.id, e.eval_name)).collect()
+        } else {
+            std::collections::HashMap::new()
+        }
+    };
 
     // Determine which variant subdirectories to read for primary vs baseline
     let (primary_variant, baseline_variant) = match comparison_mode.as_deref() {
@@ -443,10 +463,12 @@ pub fn materialize_eval_benchmark(
                 None => eval_dir.join("grading.json"),
             };
             let primary_summary = read_grading_summary(&primary_grading_path)?;
+            let eval_name = eval_name_map.get(&eval_id)
+                .cloned()
+                .unwrap_or_else(|| format!("eval-{}", eval_id));
             primary_evals.push(BenchmarkEval {
                 eval_id,
-                eval_name: read_eval_name_from_grading(&primary_grading_path)
-                    .unwrap_or_else(|| format!("eval-{}", eval_id)),
+                eval_name: eval_name.clone(),
                 slug: slug.clone(),
                 grading_path: primary_grading_path.to_string_lossy().into_owned(),
                 summary: primary_summary,
@@ -458,8 +480,7 @@ pub fn materialize_eval_benchmark(
                 let baseline_summary = read_grading_summary(&baseline_grading_path)?;
                 baseline_evals.push(BenchmarkEval {
                     eval_id,
-                    eval_name: read_eval_name_from_grading(&baseline_grading_path)
-                        .unwrap_or_else(|| format!("eval-{}", eval_id)),
+                    eval_name: eval_name.clone(),
                     slug,
                     grading_path: baseline_grading_path.to_string_lossy().into_owned(),
                     summary: baseline_summary,
@@ -521,21 +542,205 @@ pub fn materialize_eval_benchmark(
         benchmark_path.display()
     );
 
-    // Read analyst-notes.json if the agent wrote it
-    let notes_path = iter_path.join("analyst-notes.json");
-    let notes: Vec<String> = if notes_path.exists() {
-        let raw = std::fs::read_to_string(&notes_path).unwrap_or_default();
-        serde_json::from_str(&raw).unwrap_or_default()
-    } else {
-        vec![]
-    };
-
-    Ok((benchmark_json, notes))
+    Ok(benchmark_json)
 }
 
 // --- Benchmark computation helpers ---
 
 /// Find the eval directory matching `eval-{id}-*` under the given run dir.
+/// Compute a benchmark by scanning the iteration directory structure on disk.
+/// Discovers run-N dirs, eval-{id}-{slug} dirs, and grading.json files.
+fn compute_benchmark_from_disk(
+    iter_path: &Path,
+    skill_name: Option<&str>,
+    workspace_path: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    // Build eval name lookup if we have workspace_path and skill_name
+    let eval_name_map: std::collections::HashMap<u32, String> = match (workspace_path, skill_name) {
+        (Some(wp), Some(sn)) => {
+            if let Ok(data) = read_evals_file(wp, sn) {
+                data.evals.into_iter().map(|e| (e.id, e.eval_name)).collect()
+            } else {
+                std::collections::HashMap::new()
+            }
+        }
+        _ => std::collections::HashMap::new(),
+    };
+
+    // Discover run directories
+    let mut run_dirs: Vec<(u32, PathBuf)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(iter_path) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if let Some(idx_str) = name_str.strip_prefix("run-") {
+                if let Ok(idx) = idx_str.parse::<u32>() {
+                    if entry.path().is_dir() {
+                        run_dirs.push((idx, entry.path()));
+                    }
+                }
+            }
+        }
+    }
+    run_dirs.sort_by_key(|(idx, _)| *idx);
+
+    if run_dirs.is_empty() {
+        return Err(format!("No run directories found in {}", iter_path.display()));
+    }
+
+    // Discover eval directories from run-0
+    let mut eval_ids: Vec<u32> = Vec::new();
+    if let Some((_, first_run)) = run_dirs.first() {
+        if let Ok(entries) = std::fs::read_dir(first_run) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.starts_with("eval-") && entry.path().is_dir() {
+                    // Parse eval-{id}-{slug}
+                    let parts: Vec<&str> = name_str.splitn(3, '-').collect();
+                    if parts.len() >= 2 {
+                        if let Ok(id) = parts[1].parse::<u32>() {
+                            eval_ids.push(id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    eval_ids.sort();
+
+    // Detect comparison mode from directory structure
+    let comparison_mode = if let Some((_, first_run)) = run_dirs.first() {
+        if let Some(&first_eval_id) = eval_ids.first() {
+            let eval_dir = find_eval_dir(first_run, first_eval_id).ok();
+            if let Some(ref ed) = eval_dir {
+                if ed.join("with_skill").is_dir() && ed.join("without_skill").is_dir() {
+                    Some("with_without_skill".to_string())
+                } else if ed.join("current").is_dir() && ed.join("previous").is_dir() {
+                    Some("current_vs_previous".to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let is_comparison = comparison_mode.is_some();
+    let (primary_variant, baseline_variant) = match comparison_mode.as_deref() {
+        Some("with_without_skill") => (Some("with_skill"), Some("without_skill")),
+        Some("current_vs_previous") => (Some("current"), Some("previous")),
+        _ => (None, None),
+    };
+
+    // Extract iteration number from directory name
+    let iteration = iter_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.strip_prefix("iteration-"))
+        .and_then(|n| n.parse::<u32>().ok())
+        .unwrap_or(0);
+
+    let mut runs = Vec::new();
+    let mut baseline_runs: Vec<BenchmarkRun> = Vec::new();
+
+    for &(run_index, ref run_dir) in &run_dirs {
+        let mut primary_evals = Vec::new();
+        let mut baseline_evals = Vec::new();
+
+        for &eval_id in &eval_ids {
+            let eval_dir = match find_eval_dir(run_dir, eval_id) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+            let slug = extract_slug_from_dir(&eval_dir, eval_id);
+            let eval_name = eval_name_map.get(&eval_id)
+                .cloned()
+                .unwrap_or_else(|| format!("eval-{}", eval_id));
+
+            let primary_grading_path = match primary_variant {
+                Some(v) => eval_dir.join(v).join("grading.json"),
+                None => eval_dir.join("grading.json"),
+            };
+            if let Ok(summary) = read_grading_summary(&primary_grading_path) {
+                primary_evals.push(BenchmarkEval {
+                    eval_id,
+                    eval_name: eval_name.clone(),
+                    slug: slug.clone(),
+                    grading_path: primary_grading_path.to_string_lossy().into_owned(),
+                    summary,
+                });
+            }
+
+            if let Some(bv) = baseline_variant {
+                let baseline_grading_path = eval_dir.join(bv).join("grading.json");
+                if let Ok(summary) = read_grading_summary(&baseline_grading_path) {
+                    baseline_evals.push(BenchmarkEval {
+                        eval_id,
+                        eval_name: eval_name.clone(),
+                        slug,
+                        grading_path: baseline_grading_path.to_string_lossy().into_owned(),
+                        summary,
+                    });
+                }
+            }
+        }
+
+        let run_summary = compute_run_summary(&primary_evals);
+        runs.push(BenchmarkRun { run_index, evals: primary_evals, run_summary });
+
+        if is_comparison {
+            let baseline_summary = compute_run_summary(&baseline_evals);
+            baseline_runs.push(BenchmarkRun { run_index, evals: baseline_evals, run_summary: baseline_summary });
+        }
+    }
+
+    let aggregate_summary = compute_aggregate_summary(&runs);
+    let baseline_aggregate_summary = if is_comparison {
+        Some(compute_aggregate_summary(&baseline_runs))
+    } else {
+        None
+    };
+
+    let benchmark = EvalBenchmark {
+        skill_name: skill_name.unwrap_or("unknown").to_string(),
+        iteration,
+        run_count: run_dirs.len() as u32,
+        eval_ids,
+        comparison_mode,
+        runs,
+        baseline_runs: if is_comparison { Some(baseline_runs) } else { None },
+        aggregate_summary,
+        baseline_aggregate_summary,
+    };
+
+    let benchmark_json = serde_json::to_value(&benchmark)
+        .map_err(|e| format!("Failed to serialize computed benchmark: {}", e))?;
+
+    // Write benchmark.json to disk so future reads are instant
+    let benchmark_path = iter_path.join("benchmark.json");
+    if let Ok(pretty) = serde_json::to_string_pretty(&benchmark_json) {
+        if let Err(e) = std::fs::write(&benchmark_path, &pretty) {
+            log::warn!(
+                "[compute_benchmark_from_disk] failed to write benchmark.json: {}",
+                e
+            );
+        } else {
+            log::info!(
+                "[compute_benchmark_from_disk] wrote benchmark.json to {}",
+                benchmark_path.display()
+            );
+        }
+    }
+
+    Ok(benchmark_json)
+}
+
 fn find_eval_dir(run_dir: &Path, eval_id: u32) -> Result<PathBuf, String> {
     let prefix = format!("eval-{}-", eval_id);
     if run_dir.is_dir() {
@@ -703,37 +908,42 @@ pub fn read_grading(grading_path: String) -> Result<serde_json::Value, String> {
     })
 }
 
-/// Read benchmark.json and analyst-notes.json from a completed iteration directory.
+/// Read benchmark from a completed iteration directory.
+/// If `benchmark.json` exists, reads it directly (legacy / pre-computed).
+/// Otherwise, computes the benchmark on-the-fly from grading.json files on disk.
 #[tauri::command]
 pub fn read_iteration_result(
     iteration_path: String,
+    skill_name: Option<String>,
+    workspace_path: Option<String>,
 ) -> Result<(serde_json::Value, Vec<String>), String> {
     log::info!("[read_iteration_result] path={}", iteration_path);
 
-    let benchmark_path = Path::new(&iteration_path).join("benchmark.json");
-    let notes_path = Path::new(&iteration_path).join("analyst-notes.json");
+    let iter_path = Path::new(&iteration_path);
+    let benchmark_path = iter_path.join("benchmark.json");
 
-    let benchmark_raw = std::fs::read_to_string(&benchmark_path).map_err(|e| {
-        log::error!("[read_iteration_result] failed to read benchmark.json: {}", e);
-        format!("Failed to read benchmark.json: {}", e)
-    })?;
-    let mut benchmark: serde_json::Value = serde_json::from_str(&benchmark_raw).map_err(|e| {
-        log::error!("[read_iteration_result] failed to parse benchmark.json: {}", e);
-        format!("Failed to parse benchmark.json: {}", e)
-    })?;
-
-    // Resolve relative grading_path values to absolute paths by prepending the
-    // iteration directory. The evaluate-skill agent writes paths relative to its
-    // iteration dir (e.g. "run-0/eval-3-.../with_skill/grading.json"), but the
-    // frontend's readGrading() needs absolute paths. Eval history is immutable —
-    // we resolve at read time rather than rewriting the stored benchmark.
-    resolve_grading_paths(&mut benchmark, Path::new(&iteration_path));
-
-    let notes: Vec<String> = if notes_path.exists() {
-        let raw = std::fs::read_to_string(&notes_path).map_err(|e| {
-            log::error!("[read_iteration_result] failed to read analyst-notes.json: {}", e);
-            format!("Failed to read analyst-notes.json: {}", e)
+    let benchmark = if benchmark_path.exists() {
+        // Legacy path: read pre-existing benchmark.json
+        let benchmark_raw = std::fs::read_to_string(&benchmark_path).map_err(|e| {
+            log::error!("[read_iteration_result] failed to read benchmark.json: {}", e);
+            format!("Failed to read benchmark.json: {}", e)
         })?;
+        let mut bm: serde_json::Value = serde_json::from_str(&benchmark_raw).map_err(|e| {
+            log::error!("[read_iteration_result] failed to parse benchmark.json: {}", e);
+            format!("Failed to parse benchmark.json: {}", e)
+        })?;
+        resolve_grading_paths(&mut bm, iter_path);
+        bm
+    } else {
+        // Compute on-the-fly from grading files
+        log::info!("[read_iteration_result] no benchmark.json, computing from grading files");
+        compute_benchmark_from_disk(iter_path, skill_name.as_deref(), workspace_path.as_deref())?
+    };
+
+    // Analyst notes are optional
+    let notes_path = iter_path.join("analyst-notes.json");
+    let notes: Vec<String> = if notes_path.exists() {
+        let raw = std::fs::read_to_string(&notes_path).unwrap_or_default();
         serde_json::from_str(&raw).unwrap_or_default()
     } else {
         vec![]

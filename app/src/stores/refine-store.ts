@@ -170,7 +170,17 @@ export const useRefineStore = create<RefineState>((set, get) => ({
       command,
       timestamp: Date.now(),
     };
-    set((state) => ({ messages: [...state.messages, message] }));
+    set((state) => {
+      // Clear diff from the last agent turn — it's stale once a new turn begins
+      const updated = [...state.messages];
+      for (let i = updated.length - 1; i >= 0; i--) {
+        if (updated[i].role === "agent" && updated[i].diff) {
+          updated[i] = { ...updated[i], diff: undefined };
+          break;
+        }
+      }
+      return { messages: [...updated, message] };
+    });
     return message;
   },
 
