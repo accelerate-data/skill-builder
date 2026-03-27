@@ -18,21 +18,21 @@ pub fn skill_library_key(plugin_slug: &str, skill_name: &str) -> String {
 }
 
 /// Workspace scratch directory for a skill.
-/// Always plugin-namespaced: `{workspace}/{plugin_slug}/{skill_name}/`
-/// This gives each (plugin, skill) pair a unique workspace directory,
-/// preventing collisions when two plugins contain skills with the same name.
+/// Uses the same layout as `nested_skill_dir`:
+/// - Default plugin: `{workspace}/skills/{skill_name}/`
+/// - Other plugins: `{workspace}/{plugin_slug}/skills/{skill_name}/`
 pub fn workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    workspace.join(plugin_slug).join(skill_name)
+    nested_skill_dir(workspace, plugin_slug, skill_name)
 }
 
 /// Resolve the workspace scratch directory for a skill.
-/// Tries the plugin-organised layout first; falls back to the legacy flat
+/// Tries the canonical plugin layout first; falls back to the legacy flat
 /// layout (`{workspace}/{skill_name}`) so that existing flat dirs are still
 /// found before the startup migration has moved them.
 pub fn resolve_workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    let organised = workspace_skill_dir(workspace, plugin_slug, skill_name);
-    if organised.exists() {
-        return organised;
+    let canonical = workspace_skill_dir(workspace, plugin_slug, skill_name);
+    if canonical.exists() {
+        return canonical;
     }
     // Legacy flat fallback — used during startup migration window
     workspace.join(skill_name)

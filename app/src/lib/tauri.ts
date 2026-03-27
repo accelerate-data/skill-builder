@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, LibraryPlugin, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, IterationMeta, PendingEval, SkillEvalContext, EvalBenchmark, Document } from "@/lib/types";
+import type { AppSettings, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, LibraryPlugin, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, IterationMeta, PendingEval, SkillEvalContext, EvalBenchmark, Document } from "@/lib/types";
 import type { EvalQuery, OptimizationResult } from "@/lib/description-optimization";
 
 // Re-export invoke for flexible Tauri command invocation
@@ -434,11 +434,11 @@ export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
 
 // --- Refine ---
 
-export const getSkillContentForRefine = (skillName: string, workspacePath: string) =>
-  invoke<SkillFileContent[]>("get_skill_content_for_refine", { skillName, workspacePath })
+export const getSkillContentForRefine = (skillName: string, workspacePath: string, pluginSlug: string) =>
+  invoke<SkillFileContent[]>("get_skill_content_for_refine", { skillName, workspacePath, pluginSlug })
 
-export const startRefineSession = (skillName: string, workspacePath: string) =>
-  invoke<RefineSessionInfo>("start_refine_session", { skillName, workspacePath })
+export const startRefineSession = (skillName: string, workspacePath: string, pluginSlug: string) =>
+  invoke<RefineSessionInfo>("start_refine_session", { skillName, pluginSlug, workspacePath })
 
 export const closeRefineSession = (sessionId: string) =>
   invoke<void>("close_refine_session", { sessionId })
@@ -482,25 +482,30 @@ export const sendRefineMessage = (
   sessionId: string,
   userMessage: string,
   workspacePath: string,
+  pluginSlug: string,
   targetFiles?: string[],
-) => invoke<string>("send_refine_message", { sessionId, userMessage, workspacePath, targetFiles: targetFiles ?? null, command: null })
+) => invoke<string>("send_refine_message", { sessionId, userMessage, pluginSlug, workspacePath, targetFiles: targetFiles ?? null, command: null })
 
 export const finalizeRefineRun = (
   skillName: string,
   workspacePath: string,
+  pluginSlug: string,
   structuredOutput?: unknown,
 ) => invoke<RefineFinalizeResult>("finalize_refine_run", {
   skillName,
   workspacePath,
+  pluginSlug,
   structuredOutput: structuredOutput ?? null,
 })
 
 export const cleanBenchmarkSnapshot = (
   skillName: string,
   workspacePath: string,
+  pluginSlug: string,
 ) => invoke<void>("clean_benchmark_snapshot", {
   skillName,
   workspacePath,
+  pluginSlug,
 })
 
 // --- Git History ---
@@ -684,25 +689,26 @@ export const readLatestBenchmark = (skillName: string, workspacePath: string) =>
 
 // --- Test case management (Evals tab) ---
 
-export const listTestCases = (skillName: string, workspacePath: string) =>
-  invoke<TestCase[]>("list_test_cases", { skillName, workspacePath });
+export const listTestCases = (skillName: string, workspacePath: string, pluginSlug: string) =>
+  invoke<TestCase[]>("list_test_cases", { skillName, workspacePath, pluginSlug });
 
-export const saveTestCase = (skillName: string, workspacePath: string, testCase: TestCase) =>
-  invoke<TestCase>("save_test_case", { skillName, workspacePath, testCase });
+export const saveTestCase = (skillName: string, workspacePath: string, pluginSlug: string, testCase: TestCase) =>
+  invoke<TestCase>("save_test_case", { skillName, workspacePath, pluginSlug, testCase });
 
-export const deleteTestCase = (skillName: string, workspacePath: string, id: number) =>
-  invoke<void>("delete_test_case", { skillName, workspacePath, id });
+export const deleteTestCase = (skillName: string, workspacePath: string, pluginSlug: string, id: number) =>
+  invoke<void>("delete_test_case", { skillName, workspacePath, pluginSlug, id });
 
-export const listIterations = (skillName: string, workspacePath: string) =>
-  invoke<IterationMeta[]>("list_iterations", { skillName, workspacePath });
+export const listIterations = (skillName: string, workspacePath: string, pluginSlug: string) =>
+  invoke<IterationMeta[]>("list_iterations", { skillName, workspacePath, pluginSlug });
 
-export const createNextIterationDir = (skillName: string, workspacePath: string) =>
-  invoke<[number, string]>("create_next_iteration_dir", { skillName, workspacePath });
+export const createNextIterationDir = (skillName: string, workspacePath: string, pluginSlug: string) =>
+  invoke<[number, string]>("create_next_iteration_dir", { skillName, workspacePath, pluginSlug });
 
 export const materializeEvalBenchmark = (
   iterDir: string,
   skillName: string,
   workspacePath: string,
+  pluginSlug: string,
   iteration: number,
   evalIds: number[],
   runCount: number,
@@ -712,30 +718,32 @@ export const materializeEvalBenchmark = (
     iterDir,
     skillName,
     workspacePath,
+    pluginSlug,
     iteration,
     evalIds,
     runCount,
     comparisonMode: comparisonMode ?? null,
   });
 
-export const readIterationResult = (iterationPath: string, skillName?: string, workspacePath?: string) =>
+export const readIterationResult = (iterationPath: string, skillName?: string, workspacePath?: string, pluginSlug?: string) =>
   invoke<[EvalBenchmark, string[]]>("read_iteration_result", {
     iterationPath,
     skillName: skillName ?? null,
     workspacePath: workspacePath ?? null,
+    pluginSlug: pluginSlug ?? null,
   });
 
 export const readGrading = (gradingPath: string) =>
   invoke<Record<string, unknown>>("read_grading", { gradingPath });
 
-export const readSkillContextForEvalGen = (skillName: string, workspacePath: string) =>
-  invoke<SkillEvalContext>("read_skill_context_for_eval_gen", { skillName, workspacePath });
+export const readSkillContextForEvalGen = (skillName: string, workspacePath: string, pluginSlug: string) =>
+  invoke<SkillEvalContext>("read_skill_context_for_eval_gen", { skillName, workspacePath, pluginSlug });
 
-export const readPendingEval = (skillName: string, workspacePath: string) =>
-  invoke<PendingEval>("read_pending_eval", { skillName, workspacePath });
+export const readPendingEval = (skillName: string, workspacePath: string, pluginSlug: string) =>
+  invoke<PendingEval>("read_pending_eval", { skillName, workspacePath, pluginSlug });
 
-export const discardPendingEval = (skillName: string, workspacePath: string) =>
-  invoke<void>("discard_pending_eval", { skillName, workspacePath });
+export const discardPendingEval = (skillName: string, workspacePath: string, pluginSlug: string) =>
+  invoke<void>("discard_pending_eval", { skillName, workspacePath, pluginSlug });
 
 // --- Documents ---
 

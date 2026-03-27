@@ -6,7 +6,7 @@ use crate::db::Db;
 use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::SkillFileContent;
 
-use super::{resolve_skill_output_dir, resolve_skills_path};
+use super::resolve_skills_path;
 
 // ─── get_skill_content_for_refine ────────────────────────────────────────────
 
@@ -15,10 +15,11 @@ use super::{resolve_skill_output_dir, resolve_skills_path};
 #[tauri::command]
 pub fn get_skill_content_for_refine(
     skill_name: String,
+    plugin_slug: String,
     workspace_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillFileContent>, String> {
-    log::info!("[get_skill_content_for_refine] skill={}", skill_name);
+    log::info!("[get_skill_content_for_refine] skill={} plugin={}", skill_name, plugin_slug);
     validate_skill_name(&skill_name)?;
     let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
         log::error!(
@@ -27,10 +28,7 @@ pub fn get_skill_content_for_refine(
         );
         e
     })?;
-    let skill_root = resolve_skill_output_dir(&db, &skill_name, &skills_path).map_err(|e| {
-        log::error!("[get_skill_content_for_refine] Failed to resolve skill output dir: {}", e);
-        e
-    })?;
+    let skill_root = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
     get_skill_content_from_dir(&skill_root).map_err(|e| {
         log::error!("[get_skill_content_for_refine] {}", e);
         e

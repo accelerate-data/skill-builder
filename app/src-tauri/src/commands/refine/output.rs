@@ -7,7 +7,7 @@ use crate::types::{RefineDiff, RefineFileDiff, RefineFinalizeResult, SkillFileCo
 
 use super::content::get_skill_content_inner_for_plugin;
 use super::diff::get_refine_diff_for_commit_range_inner;
-use super::{resolve_skill_plugin_slug, resolve_skills_path};
+use super::resolve_skills_path;
 
 fn is_mock_agents_enabled() -> bool {
     matches!(std::env::var("MOCK_AGENTS").as_deref(), Ok("true"))
@@ -204,13 +204,11 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
 #[tauri::command]
 pub fn clean_benchmark_snapshot(
     skill_name: String,
+    plugin_slug: String,
     workspace_path: String,
-    db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[clean_benchmark_snapshot] skill={}", skill_name);
+    log::info!("[clean_benchmark_snapshot] skill={} plugin={}", skill_name, plugin_slug);
     validate_skill_name(&skill_name)?;
-    let plugin_slug = super::resolve_skill_plugin_slug(&db, &skill_name)
-        .unwrap_or_else(|_| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
     let workspace_skill_root = resolve_workspace_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name);
     cleanup_skill_snapshot(&workspace_skill_root);
     Ok(())
@@ -219,19 +217,16 @@ pub fn clean_benchmark_snapshot(
 #[tauri::command]
 pub fn finalize_refine_run(
     skill_name: String,
+    plugin_slug: String,
     workspace_path: String,
     structured_output: Option<serde_json::Value>,
     db: tauri::State<'_, Db>,
     sessions: tauri::State<'_, super::RefineSessionManager>,
 ) -> Result<RefineFinalizeResult, String> {
-    log::info!("[finalize_refine_run] skill={}", skill_name);
+    log::info!("[finalize_refine_run] skill={} plugin={}", skill_name, plugin_slug);
     validate_skill_name(&skill_name)?;
     let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
         log::error!("[finalize_refine_run] Failed to resolve skills path: {}", e);
-        e
-    })?;
-    let plugin_slug = resolve_skill_plugin_slug(&db, &skill_name).map_err(|e| {
-        log::error!("[finalize_refine_run] Failed to resolve plugin slug: {}", e);
         e
     })?;
 

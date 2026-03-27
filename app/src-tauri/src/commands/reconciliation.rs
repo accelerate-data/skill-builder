@@ -196,7 +196,7 @@ fn migrate_workspace_to_plugin_layout(workspace_path: &Path, conn: &rusqlite::Co
                 continue;
             }
         }
-        match std::fs::rename(&flat_dir, &plugin_dir) {
+        match super::imported_skills::lifecycle::move_dir_fallback(&flat_dir, &plugin_dir) {
             Ok(()) => log::info!(
                 "[migrate_workspace] moved '{}' → '{}'",
                 flat_dir.display(),

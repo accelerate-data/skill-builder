@@ -92,6 +92,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
         const contents = await getSkillContentForRefine(
           (skill as SkillSummary).name,
           workspacePath,
+          (skill as SkillSummary).plugin_slug,
         );
         const files: SkillFile[] = contents
           .map((c) => ({ filename: c.path, content: c.content }))

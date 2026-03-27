@@ -65,6 +65,7 @@ interface WorkspaceEvalsProps {
 
 export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRunningChange }: WorkspaceEvalsProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
+  const pluginSlug = skill.plugin_slug;
   const skillsPath = useSettingsStore((s) => s.skillsPath) ?? workspacePath ?? "";
   const preferredModel = useSettingsStore((s) => s.preferredModel) ?? DEFAULT_MODEL;
 
@@ -170,8 +171,8 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     setError(null);
     try {
       const [cases, iters] = await Promise.all([
-        listTestCases(skillName, workspacePath),
-        listIterations(skillName, workspacePath),
+        listTestCases(skillName, workspacePath, pluginSlug),
+        listIterations(skillName, workspacePath, pluginSlug),
       ]);
       setEvals(cases.sort((a, b) => a.id - b.id));
       setIterations(iters);
@@ -181,7 +182,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     } finally {
       setLoading(false);
     }
-  }, [skillName, workspacePath]);
+  }, [skillName, workspacePath, pluginSlug]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -286,7 +287,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         const params = evalRunParamsRef.current;
         if (params) {
           materializeEvalBenchmark(
-            params.iterDir, skillName, workspacePath!,
+            params.iterDir, skillName, workspacePath!, pluginSlug,
             params.iteration, params.evalIds, params.runCount, params.comparisonMode,
           ).then((bm) => {
             setBenchmark(bm as EvalBenchmark);
@@ -300,7 +301,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         }
         // Refresh iteration list
         if (workspacePath) {
-          void listIterations(skillName, workspacePath).then(setIterations).catch(() => {});
+          void listIterations(skillName, workspacePath, pluginSlug).then(setIterations).catch(() => {});
         }
       } else {
         console.error(
@@ -316,7 +317,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   async function handleOpenIntentDialog() {
     if (!workspacePath || isGenerating || isRegenerating) return;
     try {
-      const ctx = await readSkillContextForEvalGen(skillName, workspacePath);
+      const ctx = await readSkillContextForEvalGen(skillName, workspacePath, pluginSlug);
       setSkillCtx(ctx);
       setEvalPlaceholder(suggestEvalPlaceholder(ctx.skill_content));
     } catch {
@@ -384,7 +385,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   async function handleGenerationComplete() {
     if (!workspacePath) return;
     try {
-      const pending: PendingEval = await readPendingEval(skillName, workspacePath);
+      const pending: PendingEval = await readPendingEval(skillName, workspacePath, pluginSlug);
       const asTestCase: TestCase = { id: 0, files: [], ...pending };
       setGeneratedEval(asTestCase);
       setFormOpen(true);
@@ -414,7 +415,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     try {
       // Discard existing pending-eval.json so the agent can create it fresh
       // (Write tool requires the file not to exist, or to have been read first in the same session)
-      await discardPendingEval(skillName, workspacePath);
+      await discardPendingEval(skillName, workspacePath, pluginSlug);
       const prompt = buildRegenPrompt(newIntent, skillCtx.skill_content, skillName, workspacePath);
       const agentId = crypto.randomUUID();
       const cwd = `${workspacePath}/${skillName}`;
@@ -463,7 +464,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   async function handleRegenComplete() {
     if (!workspacePath) return;
     try {
-      const pending: PendingEval = await readPendingEval(skillName, workspacePath);
+      const pending: PendingEval = await readPendingEval(skillName, workspacePath, pluginSlug);
       const asTestCase: TestCase = { id: 0, files: [], ...pending };
       setGeneratedEval(asTestCase);
       console.log(
@@ -490,7 +491,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     const queued = { ...generatedEval };
     setEvalQueue((prev) => [...prev, queued]);
     setQueueSelected((prev) => new Set([...prev, queued.slug]));
-    void discardPendingEval(skillName, workspacePath).catch(() => {});
+    void discardPendingEval(skillName, workspacePath, pluginSlug).catch(() => {});
     setGeneratedEval(undefined);
     setFormOpen(false);
     // Re-open intent dialog for next eval
@@ -507,7 +508,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     if (!workspacePath) return;
     const toAdd = evalQueue.filter((q) => queueSelected.has(q.slug));
     for (const tc of toAdd) {
-      await saveTestCase(skillName, workspacePath, { ...tc, id: 0 });
+      await saveTestCase(skillName, workspacePath, pluginSlug, { ...tc, id: 0 });
       console.log("event=save_eval status=success skill=%s eval_name=%s", skillName, tc.eval_name);
     }
     setEvalQueue([]);
@@ -538,7 +539,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   function handleFormClose() {
     setFormOpen(false);
     if (generatedEval && workspacePath) {
-      void discardPendingEval(skillName, workspacePath).catch(() => {});
+      void discardPendingEval(skillName, workspacePath, pluginSlug).catch(() => {});
     }
     setGeneratedEval(undefined);
     setEditTarget(undefined);
@@ -546,9 +547,9 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
 
   async function handleSave(tc: TestCase) {
     if (!workspacePath) return;
-    await saveTestCase(skillName, workspacePath, tc);
+    await saveTestCase(skillName, workspacePath, pluginSlug, tc);
     if (generatedEval && tc.id === 0) {
-      await discardPendingEval(skillName, workspacePath).catch(() => {});
+      await discardPendingEval(skillName, workspacePath, pluginSlug).catch(() => {});
     }
     console.log("event=save_eval status=success skill=%s id=%s", skillName, tc.id);
     await load();
@@ -558,7 +559,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     if (!deleteTarget || !workspacePath) return;
     setDeleting(true);
     try {
-      await deleteTestCase(skillName, workspacePath, deleteTarget.id);
+      await deleteTestCase(skillName, workspacePath, pluginSlug, deleteTarget.id);
       console.log("event=delete_eval status=success skill=%s id=%s", skillName, deleteTarget.id);
       setDeleteTarget(null);
       await load();
@@ -606,7 +607,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     // Create the iteration directory in Rust before the agent starts.
     // This is the source of truth — the agent writes into a pre-existing directory
     // and cannot accidentally reuse an existing iteration.
-    const [iterNum, iterDir] = await createNextIterationDir(skillName, workspacePath!);
+    const [iterNum, iterDir] = await createNextIterationDir(skillName, workspacePath!, pluginSlug);
     evalRunParamsRef.current = { iterDir, iteration: iterNum, evalIds, runCount, comparisonMode };
     const prompt = buildEvaluateSkillPrompt({ skillName, workspacePath: workspacePath!, skillsPath, evalIds, runCount, comparisonMode, iteration: iterNum, iterDir });
 
@@ -992,7 +993,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
                   className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 ${selectedIteration === iter.iteration ? "bg-muted" : "hover:bg-muted/50"}`}
                   onClick={async () => {
                     try {
-                      const [bm] = await readIterationResult(iter.path, skillName, workspacePath ?? undefined);
+                      const [bm] = await readIterationResult(iter.path, skillName, workspacePath ?? undefined, pluginSlug);
                       setIterationBenchmark(bm as EvalBenchmark);
                       setSelectedIteration(iter.iteration);
                     } catch (err) {

@@ -1,12 +1,32 @@
 The skill name is: {{skill_name}}. The command is: {{command}}. The skill directory is: {{skill_dir}}. The context directory is: {{context_dir}}. The workspace directory is: {{workspace_dir}}. All directories already exist — never create directories with mkdir or any other method. Read user-context.md from the workspace directory for purpose, description, and all user context.{{target_files_clause}}
 
-RULES:
-- NEVER ask the user a question as plain text. Any time you need user input, confirmation, or a choice, you MUST use the `AskUserQuestion` tool.
-
 ROUTING:
 
 - For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.
-- EVAL FAILURE FEEDBACK: If the user's message contains lines matching the pattern "eval_name: /path/to/grading.json", treat it as eval failure feedback from the Evals tab. Do NOT run a new benchmark. Instead: (1) Read each grading file using the Read tool. Extract failed assertions (expectations where passed=false), including their text and evidence. (2) Triage each failure: determine whether the assertion is a legitimate skill gap (the skill should be improved) or an impossible/unreasonable assertion (e.g. it checks for behavior the eval environment cannot produce, like directory structure in a flat output folder). (3) You MUST call the `AskUserQuestion` tool — do NOT ask this question as plain text. Structure the call with a single question: header="Skill Gaps", multiSelect=true, and an options array. For each failing eval that has at least one genuine skill gap, add one option: label=eval name, description=one-sentence summary of the failing assertion(s). If multiple evals qualify, also add a final option: label="Address all skill gaps", description="Fix all failing evals in one refine pass". If ALL failures are assertion design issues (zero genuine skill gaps), respond in plain text explaining this and directing the user to the Evals tab — do NOT call AskUserQuestion in that case. (4) Wait for the user's selection — do NOT proceed without it. (5) Once selected, launch skill-creator:rewrite-skill with only the genuine skill-gap failures as the refinement request.
+
+- EVAL FAILURE FEEDBACK: If the user's message contains lines matching the pattern "eval_name: /path/to/grading.json", treat it as eval failure feedback from the Evals tab. Do NOT run a new benchmark. Follow these steps IN ORDER:
+
+  STEP 1 — Read grading files.
+  Read each grading file using the Read tool. Extract failed assertions (expectations where passed=false), including their text and evidence.
+
+  STEP 2 — Triage each failure.
+  Determine whether the assertion is a legitimate skill gap (the skill should be improved) or an impossible/unreasonable assertion (e.g. it checks for behavior the eval environment cannot produce, like directory structure in a flat output folder).
+
+  STEP 3 — Present triage to the user via AskUserQuestion.
+  You MUST call the `AskUserQuestion` tool. Do NOT ask this as plain text. Do NOT skip this step.
+  Structure the call with a single question: header="Skill Gaps", multiSelect=true, and an options array.
+  For each failing eval that has at least one genuine skill gap, add one option: label=eval name, description=one-sentence summary of the failing assertion(s).
+  If multiple evals qualify, also add a final option: label="Address all skill gaps", description="Fix all failing evals in one refine pass".
+  Exception: if ALL failures are assertion design issues (zero genuine skill gaps), respond in plain text explaining this and directing the user to the Evals tab — do NOT call AskUserQuestion in that case.
+
+  STEP 4 — HARD STOP. Wait for the user's selection.
+  Do NOT proceed past this point until you have received the user's response to AskUserQuestion.
+  If you have not called AskUserQuestion yet, go back to Step 3.
+
+  STEP 5 — Launch rewrite-skill with selected gaps only.
+  Only proceed after the user has selected which skill gaps to fix via AskUserQuestion.
+  Launch skill-creator:rewrite-skill with only the genuine skill-gap failures the user selected as the refinement request.
+
 - CONSTRAINT: You may only refine, evaluate, benchmark, or validate the existing skill. Do NOT create new skills.
 
 Current request: {{user_message}}

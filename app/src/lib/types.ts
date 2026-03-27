@@ -378,6 +378,7 @@ export interface LibraryPlugin {
  */
 export interface EditableSkill {
   name: string
+  plugin_slug: string
   skill_source?: string | null
   purpose: string | null
   description?: string | null
@@ -396,6 +397,7 @@ export interface EditableSkill {
 export function toEditableSkill(skill: ImportedSkill): EditableSkill {
   return {
     name: skill.skill_name,
+    plugin_slug: skill.plugin_slug,
     skill_source: skill.marketplace_source_url ? 'marketplace' : 'imported',
     purpose: skill.purpose ?? null,
     description: skill.description ?? null,

@@ -57,10 +57,8 @@ pub(super) fn load_refine_runtime_settings(
     db: &Db,
     workspace_path: &str,
     skill_name: &str,
+    plugin_slug: &str,
 ) -> Result<RefineRuntimeSettings, String> {
-    // Resolve plugin slug before acquiring conn to avoid re-entrant lock deadlock.
-    let plugin_slug = super::resolve_skill_plugin_slug(db, skill_name)?;
-
     let conn = db.0.lock().map_err(|e| {
         log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -126,7 +124,7 @@ pub(super) fn load_refine_runtime_settings(
         refine_prompt_suggestions: settings.refine_prompt_suggestions,
         model,
         skills_path,
-        plugin_slug,
+        plugin_slug: plugin_slug.to_string(),
     })
 }
 
@@ -372,27 +370,34 @@ pub(super) fn build_refine_prompt_for_plugin(
          Derive eval_dir as \"{workspace_str}/evals\". \
          Derive eval_results_dir as \"{workspace_str}/evals/iterations\". \
          All directories already exist — never create directories with mkdir or any other method.\n\n\
-         ROUTING:\n\
-         - For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.\n\
+         ROUTING:\n\n\
+         - For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.\n\n\
          - EVAL FAILURE FEEDBACK: If the user's message contains lines matching the pattern \
          \\\"eval_name: /path/to/grading.json\\\", treat it as eval failure feedback from the Evals tab. \
-         Do NOT run a new benchmark. Instead: \
-         (1) Read each grading file using the Read tool. Extract failed assertions \
-         (expectations where passed=false), including their text and evidence. \
-         (2) Triage each failure: determine whether the assertion is a legitimate skill gap \
+         Do NOT run a new benchmark. Follow these steps IN ORDER:\n\n\
+         STEP 1 — Read grading files.\n\
+         Read each grading file using the Read tool. Extract failed assertions \
+         (expectations where passed=false), including their text and evidence.\n\n\
+         STEP 2 — Triage each failure.\n\
+         Determine whether the assertion is a legitimate skill gap \
          (the skill should be improved) or an impossible/unreasonable assertion (e.g. it checks for \
-         behavior the eval environment cannot produce, like directory structure in a flat output folder). \
-         (3) You MUST call the `AskUserQuestion` tool — do NOT ask this question as plain text. \
+         behavior the eval environment cannot produce, like directory structure in a flat output folder).\n\n\
+         STEP 3 — Present triage to the user via AskUserQuestion.\n\
+         You MUST call the `AskUserQuestion` tool. Do NOT ask this as plain text. Do NOT skip this step.\n\
          Structure the call with a single question: header=\\\"Skill Gaps\\\", multiSelect=true, and an \
          options array. For each failing eval that has at least one genuine skill gap, add one option: \
-         label=eval name, description=one-sentence summary of the failing assertion(s). If multiple \
-         evals qualify, also add a final option: label=\\\"Address all skill gaps\\\", \
-         description=\\\"Fix all failing evals in one refine pass\\\". If ALL failures are assertion \
-         design issues (zero genuine skill gaps), respond in plain text explaining this and directing \
-         the user to the Evals tab — do NOT call AskUserQuestion in that case. \
-         (4) Wait for the user's selection — do NOT proceed without it. \
-         (5) Once selected, launch skill-creator:rewrite-skill with only the genuine skill-gap failures \
-         as the refinement request.\n\
+         label=eval name, description=one-sentence summary of the failing assertion(s). \
+         If multiple evals qualify, also add a final option: label=\\\"Address all skill gaps\\\", \
+         description=\\\"Fix all failing evals in one refine pass\\\".\n\
+         Exception: if ALL failures are assertion design issues (zero genuine skill gaps), respond in \
+         plain text explaining this and directing the user to the Evals tab — do NOT call AskUserQuestion in that case.\n\n\
+         STEP 4 — HARD STOP. Wait for the user's selection.\n\
+         Do NOT proceed past this point until you have received the user's response to AskUserQuestion.\n\
+         If you have not called AskUserQuestion yet, go back to Step 3.\n\n\
+         STEP 5 — Launch rewrite-skill with selected gaps only.\n\
+         Only proceed after the user has selected which skill gaps to fix via AskUserQuestion.\n\
+         Launch skill-creator:rewrite-skill with only the genuine skill-gap failures the user selected \
+         as the refinement request.\n\n\
          - CONSTRAINT: You may only refine, evaluate, benchmark, or validate the existing skill '{skill_name}'. Do NOT create new skills. \
          If the user asks to create a new skill, decline and direct them to the dashboard.",
     );

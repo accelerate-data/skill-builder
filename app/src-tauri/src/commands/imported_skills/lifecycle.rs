@@ -5,6 +5,61 @@ use std::path::Path;
 
 use super::helpers::validate_skill_name;
 
+/// Move a directory from `source` to `target`. Tries `fs::rename` first; on
+/// failure (common on Windows when a process holds a directory handle), falls
+/// back to a recursive copy + delete.
+pub(crate) fn move_dir_fallback(source: &Path, target: &Path) -> Result<(), String> {
+    match fs::rename(source, target) {
+        Ok(()) => Ok(()),
+        Err(rename_err) => {
+            log::warn!(
+                "[move_dir] rename failed ('{}' -> '{}': {}), falling back to copy+delete",
+                source.display(),
+                target.display(),
+                rename_err
+            );
+            copy_dir_recursive(source, target).map_err(|e| {
+                format!(
+                    "Failed to move '{}' -> '{}': rename failed ({}), copy also failed ({})",
+                    source.display(),
+                    target.display(),
+                    rename_err,
+                    e
+                )
+            })?;
+            // Best-effort delete of source; non-fatal if it fails since the
+            // copy already succeeded and the data is at the target.
+            if let Err(e) = fs::remove_dir_all(source) {
+                log::warn!(
+                    "[move_dir] copy succeeded but failed to remove source '{}': {}",
+                    source.display(),
+                    e
+                );
+            }
+            Ok(())
+        }
+    }
+}
+
+fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
+    for entry in walkdir::WalkDir::new(source) {
+        let entry = entry.map_err(|e| format!("walkdir error: {}", e))?;
+        let rel = entry
+            .path()
+            .strip_prefix(source)
+            .map_err(|e| format!("strip_prefix error: {}", e))?;
+        let dest = target.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&dest)
+                .map_err(|e| format!("mkdir '{}': {}", dest.display(), e))?;
+        } else {
+            fs::copy(entry.path(), &dest)
+                .map_err(|e| format!("copy '{}' -> '{}': {}", entry.path().display(), dest.display(), e))?;
+        }
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // delete_imported_skill
 // ---------------------------------------------------------------------------
@@ -118,8 +173,8 @@ fn move_skill_directories(
             if let Some(parent) = target.parent() {
                 fs::create_dir_all(parent).map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
             }
-            fs::rename(&source, &target)
-                .map_err(|e| format!("Failed to move workspace dir '{}' -> '{}': {}", source.display(), target.display(), e))?;
+            move_dir_fallback(&source, &target)
+                .map_err(|e| format!("Failed to move workspace dir: {}", e))?;
             workspace_target = Some(target.to_string_lossy().to_string());
         }
     }
@@ -131,8 +186,8 @@ fn move_skill_directories(
             if let Some(parent) = target.parent() {
                 fs::create_dir_all(parent).map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
             }
-            fs::rename(&source, &target)
-                .map_err(|e| format!("Failed to move skills dir '{}' -> '{}': {}", source.display(), target.display(), e))?;
+            move_dir_fallback(&source, &target)
+                .map_err(|e| format!("Failed to move skills dir: {}", e))?;
             skills_target = Some(target.to_string_lossy().to_string());
         }
     }
@@ -282,34 +337,79 @@ pub fn create_plugin_from_skills(
     let (_plugin_id, plugin_slug) =
         crate::db::create_plugin(&conn, &plugin_name, "local", None, None)?;
 
-    // Write plugin directory and manifests to disk
-    if let Some(ref sp) = settings.skills_path {
-        let skills_root = std::path::Path::new(sp);
-        // Create the plugin dir with skills/ subfolder and plugin.json
-        let plugin_skills_dir = skills_root.join(&plugin_slug).join("skills");
-        std::fs::create_dir_all(&plugin_skills_dir).map_err(|e| format!("Failed to create plugin directory: {}", e))?;
-        crate::marketplace_manifest::write_plugin_json(skills_root, &plugin_slug, &plugin_name, None, None)?;
-        crate::marketplace_manifest::write_marketplace_json(skills_root)?;
-        let msg = format!("{}: create plugin", plugin_slug);
-        if let Err(e) = crate::git::commit_all(skills_root, &msg) {
-            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+    // Track successfully moved skills for rollback on failure
+    let mut moved_skills: Vec<(String, String)> = Vec::new(); // (skill_name, original_plugin_slug)
+
+    let result = (|| -> Result<(), String> {
+        // Write plugin directory and manifests to disk
+        if let Some(ref sp) = settings.skills_path {
+            let skills_root = std::path::Path::new(sp);
+            let plugin_skills_dir = skills_root.join(&plugin_slug).join("skills");
+            std::fs::create_dir_all(&plugin_skills_dir).map_err(|e| format!("Failed to create plugin directory: {}", e))?;
+            crate::marketplace_manifest::write_plugin_json(skills_root, &plugin_slug, &plugin_name, None, None)?;
+            crate::marketplace_manifest::write_marketplace_json(skills_root)?;
+            let msg = format!("{}: create plugin", plugin_slug);
+            if let Err(e) = crate::git::commit_all(skills_root, &msg) {
+                log::warn!("Git auto-commit failed ({}): {}", msg, e);
+            }
         }
+
+        for skill_key in &skill_keys {
+            let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, skill_key)?;
+            let (_, skills_target) = move_skill_directories(
+                settings.workspace_path.as_deref(),
+                settings.skills_path.as_deref(),
+                &skill_name,
+                &current_plugin_slug,
+                &plugin_slug,
+            )?;
+            crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)?;
+            moved_skills.push((skill_name.clone(), current_plugin_slug.clone()));
+            if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
+                crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
+            }
+        }
+
+        Ok(())
+    })();
+
+    if let Err(e) = result {
+        log::error!("[create_plugin_from_skills] rolling back plugin '{}': {}", plugin_slug, e);
+
+        // Reverse skill moves (DB + disk) in reverse order
+        for (skill_name, original_slug) in moved_skills.iter().rev() {
+            if let Err(err) = crate::db::move_skill_to_plugin(&conn, skill_name, &plugin_slug, original_slug) {
+                log::warn!("[create_plugin_from_skills] rollback DB move failed for '{}': {}", skill_name, err);
+            }
+            if let Err(err) = move_skill_directories(
+                settings.workspace_path.as_deref(),
+                settings.skills_path.as_deref(),
+                skill_name,
+                &plugin_slug,
+                original_slug,
+            ) {
+                log::warn!("[create_plugin_from_skills] rollback dir move failed for '{}': {}", skill_name, err);
+            }
+        }
+
+        // Remove plugin directory from disk
+        if let Some(ref sp) = settings.skills_path {
+            let plugin_dir = std::path::Path::new(sp).join(&plugin_slug);
+            if plugin_dir.exists() {
+                if let Err(err) = std::fs::remove_dir_all(&plugin_dir) {
+                    log::warn!("[create_plugin_from_skills] failed to remove plugin dir: {}", err);
+                }
+            }
+        }
+
+        // Delete the plugin DB row (must be after skill moves are reversed due to FK RESTRICT)
+        if let Err(err) = crate::db::delete_plugin_by_slug(&conn, &plugin_slug) {
+            log::warn!("[create_plugin_from_skills] failed to delete plugin row: {}", err);
+        }
+
+        return Err(e);
     }
 
-    for skill_key in skill_keys {
-        let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;
-        let (_, skills_target) = move_skill_directories(
-            settings.workspace_path.as_deref(),
-            settings.skills_path.as_deref(),
-            &skill_name,
-            &current_plugin_slug,
-            &plugin_slug,
-        )?;
-        crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)?;
-        if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
-            crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
-        }
-    }
     Ok(plugin_slug)
 }
 
