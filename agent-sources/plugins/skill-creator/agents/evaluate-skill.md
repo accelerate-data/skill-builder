@@ -51,7 +51,8 @@ Run a subset of eval test cases against a skill, grade the outputs, aggregate re
 
 ### Step 0: Derive the per-skill workspace path
 
-`skill_workspace` = `{workspace_path}/{plugin_slug}/skills/{skill_name}`
+- If `plugin_slug` is `"skills"` (default plugin): `skill_workspace` = `{workspace_path}/skills/{skill_name}`
+- Otherwise: `skill_workspace` = `{workspace_path}/{plugin_slug}/skills/{skill_name}`
 
 (`workspace_path` is the workspace root; `skill_workspace` is where evals and iterations live.)
 

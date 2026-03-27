@@ -381,4 +381,30 @@ mod tests {
         assert!(locations[0].is_default_plugin);
         assert_eq!(locations[0].dir, skill_dir);
     }
+
+    // --- workspace_skill_dir contract tests ---
+    // These match the derivation in evaluate-skill.md Step 0.
+    // If either side changes, these tests must be updated in sync.
+
+    #[test]
+    fn workspace_skill_dir_default_plugin_no_double_skills() {
+        let root = Path::new("/workspace");
+        let result = workspace_skill_dir(root, DEFAULT_PLUGIN_SLUG, "my-skill");
+        assert_eq!(
+            result,
+            PathBuf::from("/workspace/skills/my-skill"),
+            "default plugin workspace path must be {{workspace}}/skills/{{skill_name}} (no double skills/)"
+        );
+    }
+
+    #[test]
+    fn workspace_skill_dir_non_default_plugin_includes_skills_intermediate() {
+        let root = Path::new("/workspace");
+        let result = workspace_skill_dir(root, "analytics", "weekly-report");
+        assert_eq!(
+            result,
+            PathBuf::from("/workspace/analytics/skills/weekly-report"),
+            "non-default plugin workspace path must be {{workspace}}/{{slug}}/skills/{{skill_name}}"
+        );
+    }
 }

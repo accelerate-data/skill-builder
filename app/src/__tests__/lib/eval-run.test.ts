@@ -54,33 +54,64 @@ describe("buildEvaluateSkillPrompt", () => {
   it("includes all required fields", () => {
     const prompt = buildEvaluateSkillPrompt({
       skillName: "dbt-quality",
+      pluginSlug: "my-plugin",
       workspacePath: "/workspace",
       skillsPath: "/skills",
       evalIds: [1, 3, 5],
       runCount: 3,
       iteration: 4,
-      iterDir: "/workspace/dbt-quality/evals/iterations/iteration-4",
+      iterDir: "/workspace/my-plugin/skills/dbt-quality/evals/iterations/iteration-4",
     });
     expect(prompt).toContain("skill_name: dbt-quality");
+    expect(prompt).toContain("plugin_slug: my-plugin");
     expect(prompt).toContain("workspace_path: /workspace");
     expect(prompt).toContain("eval_ids: [1,3,5]");
     expect(prompt).toContain("run_count: 3");
     expect(prompt).toContain("skill_path: /skills/dbt-quality");
     expect(prompt).toContain("iteration: 4");
-    expect(prompt).toContain("iter_dir: /workspace/dbt-quality/evals/iterations/iteration-4");
+    expect(prompt).toContain("iter_dir: /workspace/my-plugin/skills/dbt-quality/evals/iterations/iteration-4");
   });
 
   it("serializes eval_ids as JSON array", () => {
     const prompt = buildEvaluateSkillPrompt({
       skillName: "s",
+      pluginSlug: "skills",
       workspacePath: "/w",
       skillsPath: "/s",
       evalIds: [7],
       runCount: 1,
       iteration: 1,
-      iterDir: "/w/s/evals/iterations/iteration-1",
+      iterDir: "/w/skills/s/evals/iterations/iteration-1",
     });
     expect(prompt).toContain("eval_ids: [7]");
+  });
+
+  it("outputs plugin_slug for non-default plugin", () => {
+    const prompt = buildEvaluateSkillPrompt({
+      skillName: "my-skill",
+      pluginSlug: "analytics",
+      workspacePath: "/workspace",
+      skillsPath: "/skills",
+      evalIds: [1],
+      runCount: 1,
+      iteration: 1,
+      iterDir: "/workspace/analytics/skills/my-skill/evals/iterations/iteration-1",
+    });
+    expect(prompt).toContain("plugin_slug: analytics");
+  });
+
+  it("outputs plugin_slug for default plugin", () => {
+    const prompt = buildEvaluateSkillPrompt({
+      skillName: "my-skill",
+      pluginSlug: "skills",
+      workspacePath: "/workspace",
+      skillsPath: "/skills",
+      evalIds: [1],
+      runCount: 1,
+      iteration: 1,
+      iterDir: "/workspace/skills/my-skill/evals/iterations/iteration-1",
+    });
+    expect(prompt).toContain("plugin_slug: skills");
   });
 });
 
