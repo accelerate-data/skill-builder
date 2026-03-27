@@ -762,7 +762,7 @@ fn find_eval_dir(run_dir: &Path, eval_id: u32) -> Result<PathBuf, String> {
 }
 
 /// Extract the slug from a directory name like `eval-3-dbt-snapshot-scd2-generation`.
-fn extract_slug_from_dir(eval_dir: &Path, eval_id: u32) -> String {
+pub(crate) fn extract_slug_from_dir(eval_dir: &Path, eval_id: u32) -> String {
     eval_dir
         .file_name()
         .and_then(|n| n.to_str())
@@ -800,7 +800,7 @@ fn read_eval_name_from_grading(path: &Path) -> Option<String> {
 }
 
 /// Sum passed/failed/total across evals in a run.
-fn compute_run_summary(evals: &[BenchmarkEval]) -> GradingSummary {
+pub(crate) fn compute_run_summary(evals: &[BenchmarkEval]) -> GradingSummary {
     let mut passed = 0u32;
     let mut failed = 0u32;
     let mut total = 0u32;
@@ -823,7 +823,7 @@ fn compute_run_summary(evals: &[BenchmarkEval]) -> GradingSummary {
 }
 
 /// Compute aggregate summary across all runs.
-fn compute_aggregate_summary(runs: &[BenchmarkRun]) -> AggregateSummary {
+pub(crate) fn compute_aggregate_summary(runs: &[BenchmarkRun]) -> AggregateSummary {
     if runs.is_empty() {
         return AggregateSummary {
             avg_pass_rate: 0.0,
@@ -1324,5 +1324,141 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         // Should not error
         discard_pending_eval("my-skill".to_string(), workspace.to_string()).unwrap();
+    }
+
+    // --- compute_run_summary ---
+
+    fn make_eval(passed: u32, failed: u32, total: u32, pass_rate: f64) -> BenchmarkEval {
+        BenchmarkEval {
+            eval_id: 1,
+            eval_name: "test".to_string(),
+            slug: "test".to_string(),
+            grading_path: "g.json".to_string(),
+            summary: GradingSummary { passed, failed, total, pass_rate },
+        }
+    }
+
+    fn make_run(evals: Vec<BenchmarkEval>) -> BenchmarkRun {
+        let summary = compute_run_summary(&evals);
+        BenchmarkRun { run_index: 0, evals, run_summary: summary }
+    }
+
+    #[test]
+    fn compute_run_summary_empty_slice_returns_zero_pass_rate() {
+        let s = compute_run_summary(&[]);
+        assert_eq!(s.passed, 0);
+        assert_eq!(s.failed, 0);
+        assert_eq!(s.total, 0);
+        assert_eq!(s.pass_rate, 0.0);
+    }
+
+    #[test]
+    fn compute_run_summary_all_pass() {
+        let evals = vec![
+            make_eval(4, 0, 4, 1.0),
+            make_eval(2, 0, 2, 1.0),
+        ];
+        let s = compute_run_summary(&evals);
+        assert_eq!(s.passed, 6);
+        assert_eq!(s.failed, 0);
+        assert_eq!(s.total, 6);
+        assert!((s.pass_rate - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn compute_run_summary_all_fail() {
+        let evals = vec![make_eval(0, 3, 3, 0.0)];
+        let s = compute_run_summary(&evals);
+        assert_eq!(s.passed, 0);
+        assert_eq!(s.failed, 3);
+        assert_eq!(s.total, 3);
+        assert_eq!(s.pass_rate, 0.0);
+    }
+
+    #[test]
+    fn compute_run_summary_mixed() {
+        // 3 passed out of 8 total → 0.375
+        let evals = vec![
+            make_eval(2, 2, 4, 0.5),
+            make_eval(1, 3, 4, 0.25),
+        ];
+        let s = compute_run_summary(&evals);
+        assert_eq!(s.passed, 3);
+        assert_eq!(s.failed, 5);
+        assert_eq!(s.total, 8);
+        assert!((s.pass_rate - 3.0 / 8.0).abs() < 1e-9);
+    }
+
+    // --- compute_aggregate_summary ---
+
+    #[test]
+    fn compute_aggregate_summary_empty_returns_zeros() {
+        let agg = compute_aggregate_summary(&[]);
+        assert_eq!(agg.avg_pass_rate, 0.0);
+        assert_eq!(agg.total_passed, 0);
+        assert_eq!(agg.total_failed, 0);
+        assert_eq!(agg.total_assertions, 0);
+        assert!(!agg.has_failures);
+    }
+
+    #[test]
+    fn compute_aggregate_summary_single_run_all_pass() {
+        let runs = vec![make_run(vec![make_eval(4, 0, 4, 1.0)])];
+        let agg = compute_aggregate_summary(&runs);
+        assert!((agg.avg_pass_rate - 1.0).abs() < 1e-9);
+        assert_eq!(agg.total_passed, 4);
+        assert_eq!(agg.total_failed, 0);
+        assert!(!agg.has_failures);
+    }
+
+    #[test]
+    fn compute_aggregate_summary_averages_pass_rate_across_runs() {
+        // Run 0: pass_rate = 1.0, Run 1: pass_rate = 0.5 → avg = 0.75
+        let run0 = make_run(vec![make_eval(4, 0, 4, 1.0)]);
+        let run1 = make_run(vec![make_eval(2, 2, 4, 0.5)]);
+        let agg = compute_aggregate_summary(&[run0, run1]);
+        assert!((agg.avg_pass_rate - 0.75).abs() < 1e-9);
+        assert_eq!(agg.total_passed, 6);
+        assert_eq!(agg.total_failed, 2);
+        assert_eq!(agg.total_assertions, 8);
+        assert!(agg.has_failures);
+    }
+
+    #[test]
+    fn compute_aggregate_summary_has_failures_false_when_no_failures() {
+        let runs = vec![
+            make_run(vec![make_eval(3, 0, 3, 1.0)]),
+            make_run(vec![make_eval(3, 0, 3, 1.0)]),
+        ];
+        let agg = compute_aggregate_summary(&runs);
+        assert!(!agg.has_failures);
+        assert_eq!(agg.total_failed, 0);
+    }
+
+    // --- extract_slug_from_dir ---
+
+    #[test]
+    fn extract_slug_strips_eval_id_prefix() {
+        let path = std::path::Path::new("eval-3-dbt-snapshot-scd2-generation");
+        assert_eq!(extract_slug_from_dir(path, 3), "dbt-snapshot-scd2-generation");
+    }
+
+    #[test]
+    fn extract_slug_single_word() {
+        let path = std::path::Path::new("eval-1-onboarding");
+        assert_eq!(extract_slug_from_dir(path, 1), "onboarding");
+    }
+
+    #[test]
+    fn extract_slug_returns_unknown_when_prefix_missing() {
+        let path = std::path::Path::new("wrongformat");
+        assert_eq!(extract_slug_from_dir(path, 5), "unknown");
+    }
+
+    #[test]
+    fn extract_slug_wrong_id_returns_unknown() {
+        // Dir has eval-3- prefix but we ask for id=7 → prefix doesn't match → "unknown"
+        let path = std::path::Path::new("eval-3-some-scenario");
+        assert_eq!(extract_slug_from_dir(path, 7), "unknown");
     }
 }
