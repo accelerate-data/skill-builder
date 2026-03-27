@@ -56,7 +56,7 @@ describe("buildEvaluateSkillPrompt", () => {
       skillName: "dbt-quality",
       pluginSlug: "my-plugin",
       workspacePath: "/workspace",
-      skillsPath: "/skills",
+      skillsPath: "/skill-builder",
       evalIds: [1, 3, 5],
       runCount: 3,
       iteration: 4,
@@ -67,7 +67,7 @@ describe("buildEvaluateSkillPrompt", () => {
     expect(prompt).toContain("workspace_path: /workspace");
     expect(prompt).toContain("eval_ids: [1,3,5]");
     expect(prompt).toContain("run_count: 3");
-    expect(prompt).toContain("skill_path: /skills/my-plugin/skills/dbt-quality");
+    expect(prompt).toContain("skill_path: /skill-builder/my-plugin/skills/dbt-quality");
     expect(prompt).toContain("iteration: 4");
     expect(prompt).toContain("iter_dir: /workspace/my-plugin/skills/dbt-quality/evals/iterations/iteration-4");
   });
@@ -91,7 +91,7 @@ describe("buildEvaluateSkillPrompt", () => {
       skillName: "my-skill",
       pluginSlug: "analytics",
       workspacePath: "/workspace",
-      skillsPath: "/skills",
+      skillsPath: "/skill-builder",
       evalIds: [1],
       runCount: 1,
       iteration: 1,
@@ -105,7 +105,7 @@ describe("buildEvaluateSkillPrompt", () => {
       skillName: "my-skill",
       pluginSlug: "skills",
       workspacePath: "/workspace",
-      skillsPath: "/skills",
+      skillsPath: "/skill-builder",
       evalIds: [1],
       runCount: 1,
       iteration: 1,
