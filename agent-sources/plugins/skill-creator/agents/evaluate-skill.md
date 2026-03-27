@@ -50,9 +50,9 @@ Run a subset of eval test cases against a skill, grade the outputs, aggregate re
 
 ### Step 0: Derive the per-skill workspace path
 
-`skill_workspace` = `{workspace_path}/{skill_name}`
+Derive `skill_workspace` from `iter_dir` by stripping the trailing `/evals/iterations/iteration-{N}` path components. For example if `iter_dir` is `/workspace/my-plugin/skills/my-skill/evals/iterations/iteration-5`, then `skill_workspace` is `/workspace/my-plugin/skills/my-skill`.
 
-(`workspace_path` is the workspace root; `skill_workspace` is where evals and iterations live.)
+(`skill_workspace` is where `evals/`, `logs/`, and `context/` live.)
 
 ### Step 1: Read evals
 
