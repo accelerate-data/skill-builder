@@ -227,6 +227,79 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
   verify_step_output: true,
   read_latest_benchmark: null,
   "plugin:log|log": undefined,
+  // Evals tab
+  list_test_cases: [
+    {
+      id: 1,
+      eval_name: "Customer onboarding flow",
+      slug: "customer-onboarding-flow",
+      prompt: "Run a typical customer onboarding.",
+      files: [],
+      expectations: ["Should greet user"],
+    },
+    {
+      id: 2,
+      eval_name: "Error handling scenario",
+      slug: "error-handling-scenario",
+      prompt: "Trigger an error path.",
+      files: [],
+      expectations: ["Should return error"],
+    },
+  ],
+  list_iterations: [],
+  create_next_iteration_dir: [1, `${E2E_ROOT}/workspace/test-skill/evals/workspace/iteration-1`],
+  materialize_eval_benchmark: {
+    skill_name: "test-skill",
+    iteration: 1,
+    run_count: 1,
+    eval_ids: [1, 2],
+    runs: [
+      {
+        run_index: 0,
+        evals: [
+          {
+            eval_id: 1,
+            eval_name: "Customer onboarding flow",
+            slug: "customer-onboarding-flow",
+            grading_path: "run-0/eval-1-customer-onboarding-flow/grading.json",
+            summary: { passed: 1, failed: 0, total: 1, pass_rate: 1.0 },
+          },
+          {
+            eval_id: 2,
+            eval_name: "Error handling scenario",
+            slug: "error-handling-scenario",
+            grading_path: "run-0/eval-2-error-handling-scenario/grading.json",
+            summary: { passed: 0, failed: 1, total: 1, pass_rate: 0.0 },
+          },
+        ],
+        run_summary: { passed: 1, failed: 1, total: 2, pass_rate: 0.5 },
+      },
+    ],
+    aggregate_summary: {
+      avg_pass_rate: 0.5,
+      total_passed: 1,
+      total_failed: 1,
+      total_assertions: 2,
+      has_failures: true,
+    },
+  },
+  read_iteration_result: null,
+  save_test_case: {
+    id: 3,
+    eval_name: "New eval",
+    slug: "new-eval",
+    prompt: ".",
+    files: [],
+    expectations: [],
+  },
+  delete_test_case: undefined,
+  read_skill_context_for_eval_gen: {
+    skill_content: "# Test Skill\n\nDoes something.",
+    existing_evals: [],
+  },
+  read_pending_eval: null,
+  discard_pending_eval: undefined,
+  read_grading: null,
 };
 
 function normalizeListSkills(value: unknown): unknown {
