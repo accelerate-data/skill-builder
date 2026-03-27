@@ -108,7 +108,7 @@ fn import_skill_from_file_inner(
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
     skills_path: &str,
-    workspace_path: &str,
+    _workspace_path: &str,
     preferred_author: Option<&str>,
 ) -> Result<String, String> {
     validate_skill_name(name)?;

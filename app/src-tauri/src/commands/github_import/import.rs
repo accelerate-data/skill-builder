@@ -399,6 +399,7 @@ pub(crate) fn compute_skill_content_hash(disk_path: &str) -> Option<String> {
 /// Downloads all files under `plugin_path` in the repo tree to
 /// `{dest_plugin_dir}/` preserving the relative directory structure.
 /// This includes `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/`, etc.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn download_plugin_directory(
     client: &reqwest::Client,
     raw_base_url: &str,
@@ -426,13 +427,10 @@ pub(crate) async fn download_plugin_directory(
             if entry_type != "blob" {
                 return None;
             }
-            if prefix.is_empty() {
-                Some(entry_path)
-            } else if entry_path.starts_with(&prefix) {
-                Some(entry_path)
-            } else {
-                None
+            if !prefix.is_empty() && !entry_path.starts_with(&prefix) {
+                return None;
             }
+            Some(entry_path)
         })
         .collect();
 

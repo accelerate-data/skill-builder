@@ -47,6 +47,7 @@ impl WorkflowStepSessionManager {
 ///
 /// Each step gets its own streaming session so AskUserQuestion callbacks can be
 /// routed back to the correct sidecar via send_stream_question_answer.
+#[allow(clippy::too_many_arguments)]
 async fn run_workflow_step_inner(
     app: &tauri::AppHandle,
     pool: &SidecarPool,

@@ -574,7 +574,7 @@ async fn import_marketplace_entries_to_library(
             &branch,
             skill_path,
             &tree,
-            &skills_root,
+            skills_root,
             &plugin_slug,
             true,
             override_ref,

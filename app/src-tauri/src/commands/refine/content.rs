@@ -1,5 +1,5 @@
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::Db;
@@ -54,7 +54,7 @@ pub(crate) fn get_skill_content_inner_for_plugin(
     get_skill_content_from_dir(&skill_root)
 }
 
-pub(crate) fn get_skill_content_from_dir(skill_root: &PathBuf) -> Result<Vec<SkillFileContent>, String> {
+pub(crate) fn get_skill_content_from_dir(skill_root: &Path) -> Result<Vec<SkillFileContent>, String> {
     if !skill_root.exists() {
         return Err(format!("Skill directory not found at {}", skill_root.display()));
     }

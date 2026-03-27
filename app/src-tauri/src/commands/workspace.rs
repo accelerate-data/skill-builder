@@ -64,10 +64,10 @@ fn migrate_workspace_layout(workspace_path: &str) {
 /// Handles both the legacy flat layout and the current plugin layout:
 ///
 /// - Legacy flat:  `{skills_path}/{skill}/context/`
-///                 → `{workspace}/{DEFAULT_PLUGIN_SLUG}/{skill}/context/`
+///   → `{workspace}/{DEFAULT_PLUGIN_SLUG}/{skill}/context/`
 ///
 /// - Plugin layout: `{skills_path}/{plugin}/skills/{skill}/context/`
-///                  → `{workspace}/{plugin}/{skill}/context/`
+///   → `{workspace}/{plugin}/{skill}/context/`
 ///
 /// Idempotent: skips any target context dir that already has content.
 fn migrate_context_from_skills_path(workspace_path: &str, skills_path: &str) {
@@ -434,7 +434,7 @@ pub fn init_workspace(
 
     // Rebuild CLAUDE.md: base template + imported skills from DB + user customization
     {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let _conn = db.0.lock().map_err(|e| e.to_string())?;
         let (_, claude_md_src) = super::workflow::resolve_prompt_source_dirs_public(app);
         if claude_md_src.is_file() {
             if let Err(e) =
@@ -520,7 +520,7 @@ pub fn clear_workspace(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Resul
 
     // Rebuild CLAUDE.md: base template + imported skills from DB + user customization
     {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let _conn = db.0.lock().map_err(|e| e.to_string())?;
         let (_, claude_md_src) = super::workflow::resolve_prompt_source_dirs_public(&app);
         if claude_md_src.is_file() {
             if let Err(e) =

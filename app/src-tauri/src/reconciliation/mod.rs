@@ -9,14 +9,16 @@ use std::path::Path;
 /// Core reconciliation logic. Runs on startup before the dashboard loads.
 ///
 /// Phase 1: Plugin recon (covers all completed skills)
-///   - DB is the starting point, disk always wins on contention
-///   a. Ensure "skills" default plugin exists in DB
-///   b. DB → disk: for each plugin in DB, verify folder exists; if gone, delete plugin + skills from DB
-///   c. Disk → DB: for each plugin folder on disk, ensure DB row exists; for each skill with SKILL.md, ensure DB row
-///   d. Sync display names from marketplace.json (source of truth); do NOT regenerate marketplace.json
+///
+/// - DB is the starting point, disk always wins on contention
+/// - a. Ensure "skills" default plugin exists in DB
+/// - b. DB → disk: for each plugin in DB, verify folder exists; if gone, delete plugin + skills from DB
+/// - c. Disk → DB: for each plugin folder on disk, ensure DB row exists; for each skill with SKILL.md, ensure DB row
+/// - d. Sync display names from marketplace.json (source of truth); do NOT regenerate marketplace.json
 ///
 /// Phase 2: Workflow recon (incomplete skills only)
-///   - For each skill-builder skill where status != completed, check step artifacts and reset/advance
+///
+/// - For each skill-builder skill where status != completed, check step artifacts and reset/advance
 pub fn reconcile_on_startup(
     conn: &rusqlite::Connection,
     workspace_path: &str,
