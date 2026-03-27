@@ -84,6 +84,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/github-import/github-import.spec.ts` | `@skills` |
 | `e2e/usage/usage-smoke.spec.ts` | `@dashboard` |
 | `e2e/integration/workflow-integration.spec.ts` | `@integration` |
+| `e2e/evals/evals.spec.ts` | `@evals` (Level 1, browser mock), `@evals-integration` (Level 2, real sidecar) |
 | `e2e/desktop-smoke/desktop-smoke.spec.ts` | `@desktop-smoke` |
 
 ## Cross-Boundary: Agent ↔ App Format Compliance

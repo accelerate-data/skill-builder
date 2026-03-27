@@ -134,7 +134,7 @@ async function pathExists(p: string): Promise<boolean> {
 
 /**
  * Determine the next iteration number for mock eval runs.
- * Scans existing `iteration-*` dirs under `{skillWorkspace}/evals/workspace/`
+ * Scans existing `iteration-*` dirs under `{skillWorkspace}/evals/iterations/`
  * and returns max + 1, or 1 if none exist.
  */
 async function getNextMockIterationNumber(skillWorkspace: string): Promise<number> {
@@ -357,8 +357,8 @@ async function writeMockOutputFiles(
     const match = config.prompt?.match(/`([^`]+)\/pending-eval\.json`/);
     destRoot = match ? match[1] : config.cwd;
   } else if (stepTemplate === "evaluate-skill") {
-    // Evaluate-skill: grading.json files go under {skill_workspace}/evals/workspace/
-    // The mock template outputs have evals/workspace/... prefix so dest is the skill workspace root.
+    // Evaluate-skill: grading.json files go under {skill_workspace}/evals/iterations/
+    // The mock template outputs have evals/iterations/... prefix so dest is the skill workspace root.
     // skill_workspace = {workspace_path}/{skill_name} — extract both from the key-value prompt.
     const wpMatch = config.prompt?.match(/workspace_path:\s*(.+)/);
     const snMatch = config.prompt?.match(/skill_name:\s*(.+)/);

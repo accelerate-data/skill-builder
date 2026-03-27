@@ -97,11 +97,13 @@ If no previous commit exists, fall back to single with-skill mode for this run.
 
 ## Phase 1 — Run loop
 
+Process evals in **ascending `eval_id` order** (sort the filtered list by `eval.id`).
+
 For each `run_index` from `0` to `run_count - 1`:
 
 `run_dir = {iter_dir}/run-{run_index}`
 
-For each `eval` in the filtered list:
+For each `eval` in the sorted list:
 
 `eval_dir = {run_dir}/eval-{eval.id}-{eval.slug}`
 
@@ -264,31 +266,12 @@ Same structure as `with_without_skill`, replacing:
 
 ---
 
-## Phase 2 — Analyze
+## Phase 2 — Return final structured output
 
 > **Benchmark aggregation is handled by the app** (Rust) after this agent completes.
-> Do NOT compute or write `benchmark.json`. The app reads all grading.json files
-> from `iter_dir` and deterministically computes the benchmark.
-
-Spawn an analyzer subagent. Tell it to read the grading.json files and follow
-the benchmark analysis section of `{skill_agents_dir}/analyzer.md`:
-
-```text
-Read the analysis instructions from: {skill_agents_dir}/analyzer.md
-Use the "Analyzing Benchmark Results" section (not the "Post-hoc Analyzer" section at the top). Your inputs:
-- grading_dir: {iter_dir}
-- skill_path: {skill_path}
-- output_path: {iter_dir}/analyst-notes.json
-
-Read all grading.json files under {iter_dir}/run-*/eval-*/ to understand the results,
-then write your analysis to the output_path.
-```
-
-Read `{iter_dir}/analyst-notes.json` (a JSON array of strings).
-
----
-
-## Phase 3 — Return final structured output
+> Do NOT compute or write `benchmark.json`. Do NOT generate analyst notes or
+> `analyst-notes.json`. The app reads all grading.json files from `iter_dir` and
+> deterministically computes the benchmark.
 
 Output this JSON as your final text response (the sidecar captures it as `structuredOutput`):
 

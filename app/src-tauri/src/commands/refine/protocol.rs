@@ -282,7 +282,7 @@ pub(super) fn build_refine_prompt_with_output_dir(
          The skill output directory (SKILL.md and references/) is: \"{skill_output_str}\". \
          Derive context_dir as \"{workspace_str}/context\". \
          Derive eval_dir as \"{workspace_str}/evals\". \
-         Derive eval_results_dir as \"{workspace_str}/evals/workspace\". \
+         Derive eval_results_dir as \"{workspace_str}/evals/iterations\". \
          All directories already exist — never create directories with mkdir or any other method.\n\n\
          ROUTING:\n\
          - For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.\n\
@@ -370,7 +370,7 @@ pub(super) fn build_refine_prompt_for_plugin(
          The skill output directory (SKILL.md and references/) is: \"{skill_output_str}\". \
          Derive context_dir as \"{workspace_str}/context\". \
          Derive eval_dir as \"{workspace_str}/evals\". \
-         Derive eval_results_dir as \"{workspace_str}/evals/workspace\". \
+         Derive eval_results_dir as \"{workspace_str}/evals/iterations\". \
          All directories already exist — never create directories with mkdir or any other method.\n\n\
          ROUTING:\n\
          - For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.\n\

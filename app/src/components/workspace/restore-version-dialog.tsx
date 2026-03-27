@@ -84,7 +84,7 @@ export default function RestoreVersionDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-lg">
+      <AlertDialogContent className="max-w-2xl">
         <AlertDialogHeader>
           <AlertDialogTitle>Restore Version</AlertDialogTitle>
           <AlertDialogDescription>
@@ -119,7 +119,7 @@ export default function RestoreVersionDialog({
                     >
                       v{commit.version}
                     </span>
-                    <span className="truncate text-sm">{formatCommitMessage(commit.message)}</span>
+                    <span className="text-sm line-clamp-2">{formatCommitMessage(commit.message)}</span>
                     <span className="shrink-0 text-xs text-muted-foreground">
                       {formatRelativeDate(commit.timestamp)}
                     </span>

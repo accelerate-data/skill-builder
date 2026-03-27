@@ -285,7 +285,7 @@ pub fn delete_test_case(
     Ok(())
 }
 
-/// List iteration directories under `{workspace}/{skill}/evals/workspace/`.
+/// List iteration directories under `{workspace}/{skill}/evals/iterations/`.
 /// Returns metadata sorted by iteration number descending.
 #[tauri::command]
 pub fn list_iterations(
@@ -321,6 +321,16 @@ pub fn list_iterations(
             let n_str = name_str.strip_prefix("iteration-")?;
             let n: u32 = n_str.parse().ok()?;
             if !entry.path().is_dir() {
+                return None;
+            }
+            // Skip empty iterations (created but agent never wrote data)
+            let has_runs = std::fs::read_dir(entry.path())
+                .ok()
+                .map(|rd| rd.flatten().any(|e| {
+                    e.file_name().to_string_lossy().starts_with("run-") && e.path().is_dir()
+                }))
+                .unwrap_or(false);
+            if !has_runs {
                 return None;
             }
             Some(IterationMeta {
@@ -404,11 +414,12 @@ pub fn create_next_iteration_dir(
 pub fn materialize_eval_benchmark(
     iter_dir: String,
     skill_name: String,
+    workspace_path: String,
     iteration: u32,
     eval_ids: Vec<u32>,
     run_count: u32,
     comparison_mode: Option<String>,
-) -> Result<(serde_json::Value, Vec<String>), String> {
+) -> Result<serde_json::Value, String> {
     log::info!(
         "[materialize_eval_benchmark] iter_dir={} skill={} iteration={} evals={:?} runs={} mode={:?}",
         iter_dir, skill_name, iteration, eval_ids, run_count, comparison_mode
@@ -416,6 +427,15 @@ pub fn materialize_eval_benchmark(
 
     let iter_path = Path::new(&iter_dir);
     let is_comparison = comparison_mode.is_some();
+
+    // Read eval names from evals.json so the benchmark uses real names, not directory-derived ones
+    let eval_name_map: std::collections::HashMap<u32, String> = {
+        if let Ok(data) = read_evals_file(&workspace_path, &skill_name) {
+            data.evals.into_iter().map(|e| (e.id, e.eval_name)).collect()
+        } else {
+            std::collections::HashMap::new()
+        }
+    };
 
     // Determine which variant subdirectories to read for primary vs baseline
     let (primary_variant, baseline_variant) = match comparison_mode.as_deref() {
@@ -443,10 +463,12 @@ pub fn materialize_eval_benchmark(
                 None => eval_dir.join("grading.json"),
             };
             let primary_summary = read_grading_summary(&primary_grading_path)?;
+            let eval_name = eval_name_map.get(&eval_id)
+                .cloned()
+                .unwrap_or_else(|| format!("eval-{}", eval_id));
             primary_evals.push(BenchmarkEval {
                 eval_id,
-                eval_name: read_eval_name_from_grading(&primary_grading_path)
-                    .unwrap_or_else(|| format!("eval-{}", eval_id)),
+                eval_name: eval_name.clone(),
                 slug: slug.clone(),
                 grading_path: primary_grading_path.to_string_lossy().into_owned(),
                 summary: primary_summary,
@@ -458,8 +480,7 @@ pub fn materialize_eval_benchmark(
                 let baseline_summary = read_grading_summary(&baseline_grading_path)?;
                 baseline_evals.push(BenchmarkEval {
                     eval_id,
-                    eval_name: read_eval_name_from_grading(&baseline_grading_path)
-                        .unwrap_or_else(|| format!("eval-{}", eval_id)),
+                    eval_name: eval_name.clone(),
                     slug,
                     grading_path: baseline_grading_path.to_string_lossy().into_owned(),
                     summary: baseline_summary,
@@ -521,21 +542,205 @@ pub fn materialize_eval_benchmark(
         benchmark_path.display()
     );
 
-    // Read analyst-notes.json if the agent wrote it
-    let notes_path = iter_path.join("analyst-notes.json");
-    let notes: Vec<String> = if notes_path.exists() {
-        let raw = std::fs::read_to_string(&notes_path).unwrap_or_default();
-        serde_json::from_str(&raw).unwrap_or_default()
-    } else {
-        vec![]
-    };
-
-    Ok((benchmark_json, notes))
+    Ok(benchmark_json)
 }
 
 // --- Benchmark computation helpers ---
 
 /// Find the eval directory matching `eval-{id}-*` under the given run dir.
+/// Compute a benchmark by scanning the iteration directory structure on disk.
+/// Discovers run-N dirs, eval-{id}-{slug} dirs, and grading.json files.
+fn compute_benchmark_from_disk(
+    iter_path: &Path,
+    skill_name: Option<&str>,
+    workspace_path: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    // Build eval name lookup if we have workspace_path and skill_name
+    let eval_name_map: std::collections::HashMap<u32, String> = match (workspace_path, skill_name) {
+        (Some(wp), Some(sn)) => {
+            if let Ok(data) = read_evals_file(wp, sn) {
+                data.evals.into_iter().map(|e| (e.id, e.eval_name)).collect()
+            } else {
+                std::collections::HashMap::new()
+            }
+        }
+        _ => std::collections::HashMap::new(),
+    };
+
+    // Discover run directories
+    let mut run_dirs: Vec<(u32, PathBuf)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(iter_path) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if let Some(idx_str) = name_str.strip_prefix("run-") {
+                if let Ok(idx) = idx_str.parse::<u32>() {
+                    if entry.path().is_dir() {
+                        run_dirs.push((idx, entry.path()));
+                    }
+                }
+            }
+        }
+    }
+    run_dirs.sort_by_key(|(idx, _)| *idx);
+
+    if run_dirs.is_empty() {
+        return Err(format!("No run directories found in {}", iter_path.display()));
+    }
+
+    // Discover eval directories from run-0
+    let mut eval_ids: Vec<u32> = Vec::new();
+    if let Some((_, first_run)) = run_dirs.first() {
+        if let Ok(entries) = std::fs::read_dir(first_run) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.starts_with("eval-") && entry.path().is_dir() {
+                    // Parse eval-{id}-{slug}
+                    let parts: Vec<&str> = name_str.splitn(3, '-').collect();
+                    if parts.len() >= 2 {
+                        if let Ok(id) = parts[1].parse::<u32>() {
+                            eval_ids.push(id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    eval_ids.sort();
+
+    // Detect comparison mode from directory structure
+    let comparison_mode = if let Some((_, first_run)) = run_dirs.first() {
+        if let Some(&first_eval_id) = eval_ids.first() {
+            let eval_dir = find_eval_dir(first_run, first_eval_id).ok();
+            if let Some(ref ed) = eval_dir {
+                if ed.join("with_skill").is_dir() && ed.join("without_skill").is_dir() {
+                    Some("with_without_skill".to_string())
+                } else if ed.join("current").is_dir() && ed.join("previous").is_dir() {
+                    Some("current_vs_previous".to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let is_comparison = comparison_mode.is_some();
+    let (primary_variant, baseline_variant) = match comparison_mode.as_deref() {
+        Some("with_without_skill") => (Some("with_skill"), Some("without_skill")),
+        Some("current_vs_previous") => (Some("current"), Some("previous")),
+        _ => (None, None),
+    };
+
+    // Extract iteration number from directory name
+    let iteration = iter_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.strip_prefix("iteration-"))
+        .and_then(|n| n.parse::<u32>().ok())
+        .unwrap_or(0);
+
+    let mut runs = Vec::new();
+    let mut baseline_runs: Vec<BenchmarkRun> = Vec::new();
+
+    for &(run_index, ref run_dir) in &run_dirs {
+        let mut primary_evals = Vec::new();
+        let mut baseline_evals = Vec::new();
+
+        for &eval_id in &eval_ids {
+            let eval_dir = match find_eval_dir(run_dir, eval_id) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+            let slug = extract_slug_from_dir(&eval_dir, eval_id);
+            let eval_name = eval_name_map.get(&eval_id)
+                .cloned()
+                .unwrap_or_else(|| format!("eval-{}", eval_id));
+
+            let primary_grading_path = match primary_variant {
+                Some(v) => eval_dir.join(v).join("grading.json"),
+                None => eval_dir.join("grading.json"),
+            };
+            if let Ok(summary) = read_grading_summary(&primary_grading_path) {
+                primary_evals.push(BenchmarkEval {
+                    eval_id,
+                    eval_name: eval_name.clone(),
+                    slug: slug.clone(),
+                    grading_path: primary_grading_path.to_string_lossy().into_owned(),
+                    summary,
+                });
+            }
+
+            if let Some(bv) = baseline_variant {
+                let baseline_grading_path = eval_dir.join(bv).join("grading.json");
+                if let Ok(summary) = read_grading_summary(&baseline_grading_path) {
+                    baseline_evals.push(BenchmarkEval {
+                        eval_id,
+                        eval_name: eval_name.clone(),
+                        slug,
+                        grading_path: baseline_grading_path.to_string_lossy().into_owned(),
+                        summary,
+                    });
+                }
+            }
+        }
+
+        let run_summary = compute_run_summary(&primary_evals);
+        runs.push(BenchmarkRun { run_index, evals: primary_evals, run_summary });
+
+        if is_comparison {
+            let baseline_summary = compute_run_summary(&baseline_evals);
+            baseline_runs.push(BenchmarkRun { run_index, evals: baseline_evals, run_summary: baseline_summary });
+        }
+    }
+
+    let aggregate_summary = compute_aggregate_summary(&runs);
+    let baseline_aggregate_summary = if is_comparison {
+        Some(compute_aggregate_summary(&baseline_runs))
+    } else {
+        None
+    };
+
+    let benchmark = EvalBenchmark {
+        skill_name: skill_name.unwrap_or("unknown").to_string(),
+        iteration,
+        run_count: run_dirs.len() as u32,
+        eval_ids,
+        comparison_mode,
+        runs,
+        baseline_runs: if is_comparison { Some(baseline_runs) } else { None },
+        aggregate_summary,
+        baseline_aggregate_summary,
+    };
+
+    let benchmark_json = serde_json::to_value(&benchmark)
+        .map_err(|e| format!("Failed to serialize computed benchmark: {}", e))?;
+
+    // Write benchmark.json to disk so future reads are instant
+    let benchmark_path = iter_path.join("benchmark.json");
+    if let Ok(pretty) = serde_json::to_string_pretty(&benchmark_json) {
+        if let Err(e) = std::fs::write(&benchmark_path, &pretty) {
+            log::warn!(
+                "[compute_benchmark_from_disk] failed to write benchmark.json: {}",
+                e
+            );
+        } else {
+            log::info!(
+                "[compute_benchmark_from_disk] wrote benchmark.json to {}",
+                benchmark_path.display()
+            );
+        }
+    }
+
+    Ok(benchmark_json)
+}
+
 fn find_eval_dir(run_dir: &Path, eval_id: u32) -> Result<PathBuf, String> {
     let prefix = format!("eval-{}-", eval_id);
     if run_dir.is_dir() {
@@ -557,7 +762,7 @@ fn find_eval_dir(run_dir: &Path, eval_id: u32) -> Result<PathBuf, String> {
 }
 
 /// Extract the slug from a directory name like `eval-3-dbt-snapshot-scd2-generation`.
-fn extract_slug_from_dir(eval_dir: &Path, eval_id: u32) -> String {
+pub(crate) fn extract_slug_from_dir(eval_dir: &Path, eval_id: u32) -> String {
     eval_dir
         .file_name()
         .and_then(|n| n.to_str())
@@ -595,7 +800,7 @@ fn read_eval_name_from_grading(path: &Path) -> Option<String> {
 }
 
 /// Sum passed/failed/total across evals in a run.
-fn compute_run_summary(evals: &[BenchmarkEval]) -> GradingSummary {
+pub(crate) fn compute_run_summary(evals: &[BenchmarkEval]) -> GradingSummary {
     let mut passed = 0u32;
     let mut failed = 0u32;
     let mut total = 0u32;
@@ -618,7 +823,7 @@ fn compute_run_summary(evals: &[BenchmarkEval]) -> GradingSummary {
 }
 
 /// Compute aggregate summary across all runs.
-fn compute_aggregate_summary(runs: &[BenchmarkRun]) -> AggregateSummary {
+pub(crate) fn compute_aggregate_summary(runs: &[BenchmarkRun]) -> AggregateSummary {
     if runs.is_empty() {
         return AggregateSummary {
             avg_pass_rate: 0.0,
@@ -649,21 +854,14 @@ fn compute_aggregate_summary(runs: &[BenchmarkRun]) -> AggregateSummary {
     }
 }
 
-/// Read the skill definition and existing evals to provide context to the eval generator agent.
-/// Returns empty skill_content if SKILL.md does not exist yet.
-#[tauri::command]
-pub fn read_skill_context_for_eval_gen(
-    skill_name: String,
-    workspace_path: String,
-    db: tauri::State<'_, crate::db::Db>,
+/// Inner pure helper — takes already-resolved `skills_path` to allow unit testing without a DB.
+pub(crate) fn read_skill_context_inner(
+    skill_name: &str,
+    workspace_path: &str,
+    skills_path: &str,
 ) -> Result<SkillEvalContext, String> {
-    log::info!("[read_skill_context_for_eval_gen] skill={}", skill_name);
-    validate_skill_name(&skill_name)?;
-
-    // Resolve skills_path from settings (may differ from workspace_path).
-    let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
-    let skill_md = std::path::Path::new(&skills_path)
-        .join(&skill_name)
+    let skill_md = std::path::Path::new(skills_path)
+        .join(skill_name)
         .join("SKILL.md");
     let skill_content = if skill_md.is_file() {
         std::fs::read_to_string(&skill_md).map_err(|e| {
@@ -682,11 +880,27 @@ pub fn read_skill_context_for_eval_gen(
         String::new()
     };
 
-    let data = read_evals_file(&workspace_path, &skill_name)?;
+    let data = read_evals_file(workspace_path, skill_name)?;
     Ok(SkillEvalContext {
         skill_content,
         existing_evals: data.evals,
     })
+}
+
+/// Read the skill definition and existing evals to provide context to the eval generator agent.
+/// Returns empty skill_content if SKILL.md does not exist yet.
+#[tauri::command]
+pub fn read_skill_context_for_eval_gen(
+    skill_name: String,
+    workspace_path: String,
+    db: tauri::State<'_, crate::db::Db>,
+) -> Result<SkillEvalContext, String> {
+    log::info!("[read_skill_context_for_eval_gen] skill={}", skill_name);
+    validate_skill_name(&skill_name)?;
+
+    // Resolve skills_path from settings (may differ from workspace_path).
+    let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
+    read_skill_context_inner(&skill_name, &workspace_path, &skills_path)
 }
 
 /// Read a grading.json file from a completed eval run.
@@ -703,37 +917,42 @@ pub fn read_grading(grading_path: String) -> Result<serde_json::Value, String> {
     })
 }
 
-/// Read benchmark.json and analyst-notes.json from a completed iteration directory.
+/// Read benchmark from a completed iteration directory.
+/// If `benchmark.json` exists, reads it directly (legacy / pre-computed).
+/// Otherwise, computes the benchmark on-the-fly from grading.json files on disk.
 #[tauri::command]
 pub fn read_iteration_result(
     iteration_path: String,
+    skill_name: Option<String>,
+    workspace_path: Option<String>,
 ) -> Result<(serde_json::Value, Vec<String>), String> {
     log::info!("[read_iteration_result] path={}", iteration_path);
 
-    let benchmark_path = Path::new(&iteration_path).join("benchmark.json");
-    let notes_path = Path::new(&iteration_path).join("analyst-notes.json");
+    let iter_path = Path::new(&iteration_path);
+    let benchmark_path = iter_path.join("benchmark.json");
 
-    let benchmark_raw = std::fs::read_to_string(&benchmark_path).map_err(|e| {
-        log::error!("[read_iteration_result] failed to read benchmark.json: {}", e);
-        format!("Failed to read benchmark.json: {}", e)
-    })?;
-    let mut benchmark: serde_json::Value = serde_json::from_str(&benchmark_raw).map_err(|e| {
-        log::error!("[read_iteration_result] failed to parse benchmark.json: {}", e);
-        format!("Failed to parse benchmark.json: {}", e)
-    })?;
-
-    // Resolve relative grading_path values to absolute paths by prepending the
-    // iteration directory. The evaluate-skill agent writes paths relative to its
-    // iteration dir (e.g. "run-0/eval-3-.../with_skill/grading.json"), but the
-    // frontend's readGrading() needs absolute paths. Eval history is immutable —
-    // we resolve at read time rather than rewriting the stored benchmark.
-    resolve_grading_paths(&mut benchmark, Path::new(&iteration_path));
-
-    let notes: Vec<String> = if notes_path.exists() {
-        let raw = std::fs::read_to_string(&notes_path).map_err(|e| {
-            log::error!("[read_iteration_result] failed to read analyst-notes.json: {}", e);
-            format!("Failed to read analyst-notes.json: {}", e)
+    let benchmark = if benchmark_path.exists() {
+        // Legacy path: read pre-existing benchmark.json
+        let benchmark_raw = std::fs::read_to_string(&benchmark_path).map_err(|e| {
+            log::error!("[read_iteration_result] failed to read benchmark.json: {}", e);
+            format!("Failed to read benchmark.json: {}", e)
         })?;
+        let mut bm: serde_json::Value = serde_json::from_str(&benchmark_raw).map_err(|e| {
+            log::error!("[read_iteration_result] failed to parse benchmark.json: {}", e);
+            format!("Failed to parse benchmark.json: {}", e)
+        })?;
+        resolve_grading_paths(&mut bm, iter_path);
+        bm
+    } else {
+        // Compute on-the-fly from grading files
+        log::info!("[read_iteration_result] no benchmark.json, computing from grading files");
+        compute_benchmark_from_disk(iter_path, skill_name.as_deref(), workspace_path.as_deref())?
+    };
+
+    // Analyst notes are optional
+    let notes_path = iter_path.join("analyst-notes.json");
+    let notes: Vec<String> = if notes_path.exists() {
+        let raw = std::fs::read_to_string(&notes_path).unwrap_or_default();
         serde_json::from_str(&raw).unwrap_or_default()
     } else {
         vec![]
@@ -948,9 +1167,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let evals_ws = tmp.path().join("my-skill").join("evals").join("workspace");
+        // Each iteration dir must contain a run-* subdir to pass the has_runs filter.
         for n in [1u32, 3, 2] {
-            let dir = evals_ws.join(format!("iteration-{}", n));
-            fs::create_dir_all(&dir).unwrap();
+            let run_dir = evals_ws.join(format!("iteration-{}", n)).join("run-0");
+            fs::create_dir_all(&run_dir).unwrap();
         }
 
         let result = list_iterations("my-skill".to_string(), workspace.to_string()).unwrap();
@@ -961,10 +1181,89 @@ mod tests {
     }
 
     #[test]
+    fn create_next_iteration_dir_starts_at_1() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+
+        let (n, path_str) = create_next_iteration_dir("my-skill".to_string(), workspace.to_string()).unwrap();
+        assert_eq!(n, 1);
+        assert!(path_str.contains("iteration-1"));
+        assert!(std::path::Path::new(&path_str).is_dir());
+    }
+
+    #[test]
+    fn create_next_iteration_dir_increments() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        // Pre-create iteration-1 with a run-0 subdir so it counts
+        let evals_ws = tmp.path().join("my-skill").join("evals").join("workspace");
+        fs::create_dir_all(evals_ws.join("iteration-1").join("run-0")).unwrap();
+
+        let (n, path_str) = create_next_iteration_dir("my-skill".to_string(), workspace.to_string()).unwrap();
+        assert_eq!(n, 2);
+        assert!(path_str.contains("iteration-2"));
+        assert!(std::path::Path::new(&path_str).is_dir());
+    }
+
+    #[test]
+    fn materialize_benchmark_computes_from_grading_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skill = "my-skill";
+
+        // Create evals.json so eval names resolve correctly
+        let evals_dir = tmp.path().join(skill).join("evals");
+        fs::create_dir_all(&evals_dir).unwrap();
+        fs::write(
+            evals_dir.join("evals.json"),
+            r#"{"evals":[{"id":1,"eval_name":"Scenario A","slug":"scenario-a","prompt":"p","expectations":[]},{"id":2,"eval_name":"Scenario B","slug":"scenario-b","prompt":"p","expectations":[]}]}"#,
+        ).unwrap();
+
+        // Create iteration-1/run-0/eval-1-scenario-a/grading.json (all pass)
+        let iter_dir = tmp.path().join(skill).join("evals").join("workspace").join("iteration-1");
+        let eval1_dir = iter_dir.join("run-0").join("eval-1-scenario-a");
+        fs::create_dir_all(&eval1_dir).unwrap();
+        fs::write(
+            eval1_dir.join("grading.json"),
+            r#"{"summary":{"passed":2,"failed":0,"total":2,"pass_rate":1.0}}"#,
+        ).unwrap();
+
+        // Create iteration-1/run-0/eval-2-scenario-b/grading.json (1 fail)
+        let eval2_dir = iter_dir.join("run-0").join("eval-2-scenario-b");
+        fs::create_dir_all(&eval2_dir).unwrap();
+        fs::write(
+            eval2_dir.join("grading.json"),
+            r#"{"summary":{"passed":1,"failed":1,"total":2,"pass_rate":0.5}}"#,
+        ).unwrap();
+
+        let iter_dir_str = iter_dir.to_string_lossy().into_owned();
+        let result = materialize_eval_benchmark(
+            iter_dir_str,
+            skill.to_string(),
+            workspace.to_string(),
+            1,
+            vec![1, 2],
+            1,
+            None,
+        ).unwrap();
+
+        let agg = &result["aggregate_summary"];
+        assert_eq!(agg["total_passed"].as_u64().unwrap(), 3);
+        assert_eq!(agg["total_failed"].as_u64().unwrap(), 1);
+        assert_eq!(agg["total_assertions"].as_u64().unwrap(), 4);
+        assert!(agg["has_failures"].as_bool().unwrap());
+
+        // benchmark.json must be written to the iteration dir
+        let bench_path = iter_dir.join("benchmark.json");
+        assert!(bench_path.exists(), "benchmark.json should be written to disk");
+    }
+
+    #[test]
     fn read_skill_context_returns_empty_content_when_no_skill_md() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
-        let ctx = read_skill_context_for_eval_gen("my-skill".to_string(), workspace.to_string()).unwrap();
+        // skills_path == workspace_path in tests (no DB needed)
+        let ctx = read_skill_context_inner("my-skill", workspace, workspace).unwrap();
         assert!(ctx.skill_content.is_empty());
         assert!(ctx.existing_evals.is_empty());
     }
@@ -983,7 +1282,8 @@ mod tests {
         let tc = make_test_case(0, "Scenario One");
         save_test_case("my-skill".to_string(), workspace.to_string(), tc).unwrap();
 
-        let ctx = read_skill_context_for_eval_gen("my-skill".to_string(), workspace.to_string()).unwrap();
+        // skills_path == workspace_path in tests (no DB needed)
+        let ctx = read_skill_context_inner("my-skill", workspace, workspace).unwrap();
         assert!(ctx.skill_content.contains("My Skill"));
         assert_eq!(ctx.existing_evals.len(), 1);
         assert_eq!(ctx.existing_evals[0].eval_name, "Scenario One");
@@ -1024,5 +1324,141 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         // Should not error
         discard_pending_eval("my-skill".to_string(), workspace.to_string()).unwrap();
+    }
+
+    // --- compute_run_summary ---
+
+    fn make_eval(passed: u32, failed: u32, total: u32, pass_rate: f64) -> BenchmarkEval {
+        BenchmarkEval {
+            eval_id: 1,
+            eval_name: "test".to_string(),
+            slug: "test".to_string(),
+            grading_path: "g.json".to_string(),
+            summary: GradingSummary { passed, failed, total, pass_rate },
+        }
+    }
+
+    fn make_run(evals: Vec<BenchmarkEval>) -> BenchmarkRun {
+        let summary = compute_run_summary(&evals);
+        BenchmarkRun { run_index: 0, evals, run_summary: summary }
+    }
+
+    #[test]
+    fn compute_run_summary_empty_slice_returns_zero_pass_rate() {
+        let s = compute_run_summary(&[]);
+        assert_eq!(s.passed, 0);
+        assert_eq!(s.failed, 0);
+        assert_eq!(s.total, 0);
+        assert_eq!(s.pass_rate, 0.0);
+    }
+
+    #[test]
+    fn compute_run_summary_all_pass() {
+        let evals = vec![
+            make_eval(4, 0, 4, 1.0),
+            make_eval(2, 0, 2, 1.0),
+        ];
+        let s = compute_run_summary(&evals);
+        assert_eq!(s.passed, 6);
+        assert_eq!(s.failed, 0);
+        assert_eq!(s.total, 6);
+        assert!((s.pass_rate - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn compute_run_summary_all_fail() {
+        let evals = vec![make_eval(0, 3, 3, 0.0)];
+        let s = compute_run_summary(&evals);
+        assert_eq!(s.passed, 0);
+        assert_eq!(s.failed, 3);
+        assert_eq!(s.total, 3);
+        assert_eq!(s.pass_rate, 0.0);
+    }
+
+    #[test]
+    fn compute_run_summary_mixed() {
+        // 3 passed out of 8 total → 0.375
+        let evals = vec![
+            make_eval(2, 2, 4, 0.5),
+            make_eval(1, 3, 4, 0.25),
+        ];
+        let s = compute_run_summary(&evals);
+        assert_eq!(s.passed, 3);
+        assert_eq!(s.failed, 5);
+        assert_eq!(s.total, 8);
+        assert!((s.pass_rate - 3.0 / 8.0).abs() < 1e-9);
+    }
+
+    // --- compute_aggregate_summary ---
+
+    #[test]
+    fn compute_aggregate_summary_empty_returns_zeros() {
+        let agg = compute_aggregate_summary(&[]);
+        assert_eq!(agg.avg_pass_rate, 0.0);
+        assert_eq!(agg.total_passed, 0);
+        assert_eq!(agg.total_failed, 0);
+        assert_eq!(agg.total_assertions, 0);
+        assert!(!agg.has_failures);
+    }
+
+    #[test]
+    fn compute_aggregate_summary_single_run_all_pass() {
+        let runs = vec![make_run(vec![make_eval(4, 0, 4, 1.0)])];
+        let agg = compute_aggregate_summary(&runs);
+        assert!((agg.avg_pass_rate - 1.0).abs() < 1e-9);
+        assert_eq!(agg.total_passed, 4);
+        assert_eq!(agg.total_failed, 0);
+        assert!(!agg.has_failures);
+    }
+
+    #[test]
+    fn compute_aggregate_summary_averages_pass_rate_across_runs() {
+        // Run 0: pass_rate = 1.0, Run 1: pass_rate = 0.5 → avg = 0.75
+        let run0 = make_run(vec![make_eval(4, 0, 4, 1.0)]);
+        let run1 = make_run(vec![make_eval(2, 2, 4, 0.5)]);
+        let agg = compute_aggregate_summary(&[run0, run1]);
+        assert!((agg.avg_pass_rate - 0.75).abs() < 1e-9);
+        assert_eq!(agg.total_passed, 6);
+        assert_eq!(agg.total_failed, 2);
+        assert_eq!(agg.total_assertions, 8);
+        assert!(agg.has_failures);
+    }
+
+    #[test]
+    fn compute_aggregate_summary_has_failures_false_when_no_failures() {
+        let runs = vec![
+            make_run(vec![make_eval(3, 0, 3, 1.0)]),
+            make_run(vec![make_eval(3, 0, 3, 1.0)]),
+        ];
+        let agg = compute_aggregate_summary(&runs);
+        assert!(!agg.has_failures);
+        assert_eq!(agg.total_failed, 0);
+    }
+
+    // --- extract_slug_from_dir ---
+
+    #[test]
+    fn extract_slug_strips_eval_id_prefix() {
+        let path = std::path::Path::new("eval-3-dbt-snapshot-scd2-generation");
+        assert_eq!(extract_slug_from_dir(path, 3), "dbt-snapshot-scd2-generation");
+    }
+
+    #[test]
+    fn extract_slug_single_word() {
+        let path = std::path::Path::new("eval-1-onboarding");
+        assert_eq!(extract_slug_from_dir(path, 1), "onboarding");
+    }
+
+    #[test]
+    fn extract_slug_returns_unknown_when_prefix_missing() {
+        let path = std::path::Path::new("wrongformat");
+        assert_eq!(extract_slug_from_dir(path, 5), "unknown");
+    }
+
+    #[test]
+    fn extract_slug_wrong_id_returns_unknown() {
+        // Dir has eval-3- prefix but we ask for id=7 → prefix doesn't match → "unknown"
+        let path = std::path::Path::new("eval-3-some-scenario");
+        assert_eq!(extract_slug_from_dir(path, 7), "unknown");
     }
 }

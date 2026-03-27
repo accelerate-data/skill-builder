@@ -8,7 +8,6 @@ import type { EvalAggregateSummary, EvalBenchmark, EvalBenchmarkRun } from "@/li
 
 interface EvalRunBenchmarkCardProps {
   benchmark: EvalBenchmark;
-  analystNotes: string[];
   /** If provided, shows the Refine CTA when there are failures. */
   onRefine?: () => void;
 }
@@ -181,15 +180,12 @@ function EvalExpectationsDetail({
 
 export function EvalRunBenchmarkCard({
   benchmark,
-  analystNotes,
   onRefine,
 }: EvalRunBenchmarkCardProps) {
   const { aggregate_summary, baseline_aggregate_summary, runs, baseline_runs, iteration, run_count, eval_ids, comparison_mode } = benchmark;
   const hasFailures = aggregate_summary.has_failures;
   const isComparison = !!baseline_runs;
 
-  // Analyst notes expand automatically when there are failures
-  const [notesOpen, setNotesOpen] = useState(hasFailures);
   // Track which eval rows are expanded to show expectations
   const [expandedEvalId, setExpandedEvalId] = useState<number | null>(null);
 
@@ -314,7 +310,7 @@ export function EvalRunBenchmarkCard({
                   ) : (
                     <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
                   )}
-                  <span className="flex-1 font-medium">{eval_name}</span>
+                  <span className="flex-1 font-medium">{eval_id}: {eval_name}</span>
                   {isComparison ? (
                     <div className="flex items-center gap-3">
                       <div className="flex flex-col items-end gap-0.5">
@@ -387,39 +383,6 @@ export function EvalRunBenchmarkCard({
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* Analyst notes */}
-      {analystNotes.length > 0 && (
-        <div className="border-b">
-          <button
-            className="flex w-full items-center gap-2 px-4 py-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors duration-150"
-            onClick={() => setNotesOpen((v) => !v)}
-          >
-            {notesOpen ? (
-              <ChevronDown className="size-3 shrink-0" />
-            ) : (
-              <ChevronRight className="size-3 shrink-0" />
-            )}
-            Analyst Notes
-            <span className="text-[11px] text-muted-foreground">
-              ({analystNotes.length} observation{analystNotes.length !== 1 ? "s" : ""})
-            </span>
-          </button>
-          {notesOpen && (
-            <div>
-              {analystNotes.map((note, i) => (
-                <div key={i} className="flex items-start gap-2.5 border-t px-4 py-2 text-xs leading-relaxed">
-                  <span
-                    className="mt-1.5 size-1.5 shrink-0 rounded-full"
-                    style={{ background: "var(--color-pacific)" }}
-                  />
-                  <span>{note}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 

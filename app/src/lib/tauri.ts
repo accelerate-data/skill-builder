@@ -702,22 +702,28 @@ export const createNextIterationDir = (skillName: string, workspacePath: string)
 export const materializeEvalBenchmark = (
   iterDir: string,
   skillName: string,
+  workspacePath: string,
   iteration: number,
   evalIds: number[],
   runCount: number,
   comparisonMode?: string,
 ) =>
-  invoke<[EvalBenchmark, string[]]>("materialize_eval_benchmark", {
+  invoke<EvalBenchmark>("materialize_eval_benchmark", {
     iterDir,
     skillName,
+    workspacePath,
     iteration,
     evalIds,
     runCount,
     comparisonMode: comparisonMode ?? null,
   });
 
-export const readIterationResult = (iterationPath: string) =>
-  invoke<[EvalBenchmark, string[]]>("read_iteration_result", { iterationPath });
+export const readIterationResult = (iterationPath: string, skillName?: string, workspacePath?: string) =>
+  invoke<[EvalBenchmark, string[]]>("read_iteration_result", {
+    iterationPath,
+    skillName: skillName ?? null,
+    workspacePath: workspacePath ?? null,
+  });
 
 export const readGrading = (gradingPath: string) =>
   invoke<Record<string, unknown>>("read_grading", { gradingPath });

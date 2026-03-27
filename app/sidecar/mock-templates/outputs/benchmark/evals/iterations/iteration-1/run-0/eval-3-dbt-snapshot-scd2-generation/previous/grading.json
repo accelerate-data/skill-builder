@@ -3,7 +3,7 @@
   "eval_name": "dbt snapshot scd2 generation",
   "configuration": "without_skill",
   "run_number": 1,
-  "result": { "pass_rate": 0.5, "passed": 2, "failed": 2, "total": 4 },
+  "summary": { "pass_rate": 0.5, "passed": 2, "failed": 2, "total": 4 },
   "expectations": [
     { "text": "Generates a valid dbt snapshot model with strategy='check'", "passed": true, "evidence": "A snapshot block is present but uses strategy='timestamp' instead of 'check'." },
     { "text": "Includes target_schema configuration", "passed": false, "evidence": "No target_schema set; snapshot would land in the default schema." },

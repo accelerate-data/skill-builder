@@ -171,7 +171,7 @@
     "app/src-tauri/src/": "Rust backend runtime (Tauri commands, DB, agents, types, reconciliation, support modules)",
     "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, SDK invocation, mock mode)",
     "app/sidecar/__tests__/": "Sidecar unit tests (one test file per sidecar module)",
-    "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, settings, usage, skill-tester, skills-library, integration, desktop-smoke, fixtures, helpers, setup",
+    "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, evals, settings, usage, skill-tester, skills-library, integration, desktop-smoke, fixtures, helpers, setup",
     "agent-sources/agents/": "Agent prompt .md files — flat directory, structurally validated by test:agents:structural",
     "agent-sources/workspace/": "Workspace agent instructions: CLAUDE.md (full), CLAUDE-MINIMAL.md (lightweight), prompts/ (shared fragments). Deployed to workspace .claude/ at app startup.",
     "agent-sources/plugins/": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent",
