@@ -839,10 +839,10 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
           </div>
         )}
 
-        {/* Agent output panel — visible during and after the eval run */}
-        {evalRunAgentId && (
+        {/* Agent output panel — visible during and after eval generation */}
+        {generationAgentId && (
           <div className="mb-4">
-            <AgentOutputPanel agentId={evalRunAgentId} />
+            <AgentOutputPanel agentId={generationAgentId} />
           </div>
         )}
 
