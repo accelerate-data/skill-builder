@@ -1,4 +1,5 @@
 use crate::db::Db;
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use rusqlite::OptionalExtension;
 use std::path::Path;
 
@@ -45,14 +46,10 @@ pub fn import_skill_from_file(
     argument_hint: Option<String>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
-    force_overwrite: bool,
+    app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
-    log::info!(
-        "[import_skill_from_file] name={} force_overwrite={}",
-        name,
-        force_overwrite
-    );
+    log::info!("[import_skill_from_file] name={}", name);
 
     validate_skill_name(&name)?;
 
@@ -72,7 +69,7 @@ pub fn import_skill_from_file(
         .github_user_email
         .clone()
         .or(settings.github_user_login.clone());
-    import_skill_from_file_inner(
+    let skill_id = import_skill_from_file_inner(
         &conn,
         &file_path,
         &name,
@@ -86,11 +83,17 @@ pub fn import_skill_from_file(
         argument_hint,
         user_invocable,
         disable_model_invocation,
-        force_overwrite,
         &skills_path,
         &workspace_path,
         preferred_author.as_deref(),
-    )
+    )?;
+    let (_, claude_md_src) = crate::commands::workflow::resolve_prompt_source_dirs_public(&app);
+    if claude_md_src.is_file() && !workspace_path.is_empty() {
+        if let Err(e) = crate::commands::workflow::rebuild_claude_md(&claude_md_src, &workspace_path) {
+            log::warn!("[import_skill_from_file] rebuild_claude_md failed: {}", e);
+        }
+    }
+    Ok(skill_id)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -104,9 +107,8 @@ fn import_skill_from_file_inner(
     argument_hint: Option<String>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
-    force_overwrite: bool,
     skills_path: &str,
-    workspace_path: &str,
+    _workspace_path: &str,
     preferred_author: Option<&str>,
 ) -> Result<String, String> {
     validate_skill_name(name)?;
@@ -119,40 +121,33 @@ fn import_skill_from_file_inner(
     let (skill_md_path, _) = find_skill_md(&mut archive)?;
     let prefix = get_archive_prefix(&skill_md_path);
 
-    // Conflict check
+    // Conflict check: reject upload if a skill with this name already exists
+    // in the default plugin (skills folder)
+    let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
     let existing_source: Option<String> = conn
         .query_row(
-            "SELECT skill_source FROM skills WHERE name = ?1",
-            rusqlite::params![&name],
+            "SELECT s.skill_source
+             FROM skills s
+             JOIN plugins p ON p.id = s.plugin_id
+             WHERE s.name = ?1 AND p.slug = ?2",
+            rusqlite::params![&name, default_slug],
             |row| row.get::<_, String>(0),
         )
         .optional()
         .map_err(|e| e.to_string())?;
 
-    match existing_source.as_deref() {
-        Some("skill-builder") | Some("marketplace") => {
-            return Err(format!("conflict_no_overwrite:{}", name));
-        }
-        Some("imported") if !force_overwrite => {
-            return Err(format!("conflict_overwrite_required:{}", name));
-        }
-        Some("imported") => {
-            // force_overwrite=true — clean up existing
-            let dest = Path::new(skills_path).join(name);
-            if dest.exists() {
-                std::fs::remove_dir_all(&dest).map_err(|e| {
-                    log::error!("[import_skill_from_file] failed to remove dir: {}", e);
-                    e.to_string()
-                })?;
-            }
-            crate::db::delete_imported_skill_by_name(conn, name)?;
-            crate::db::delete_skill(conn, name)?;
-        }
-        _ => {} // Not found — proceed normally
+    if existing_source.is_some() {
+        return Err(format!(
+            "A skill named '{}' already exists in the default plugin. Rename or delete it first.",
+            name
+        ));
     }
 
-    // Extract all files to {skills_path}/{name}/
-    let dest_dir = Path::new(skills_path).join(name);
+    // Extract to plugin-nested path: {skills_path}/{default_slug}/skills/{name}/
+    let dest_dir = crate::skill_paths::nested_skill_dir(Path::new(skills_path), default_slug, name);
+    if let Some(parent) = dest_dir.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
     // Re-open archive (consumed during prefix scan)
     let zip_file2 =
@@ -192,22 +187,23 @@ fn import_skill_from_file_inner(
         return Err(e);
     }
 
-    // Write to skills master table
-    crate::db::upsert_skill_with_source(conn, name, "imported", "domain")?;
+    // Step 1: Create/update skill master row (linked to default plugin)
+    let skill_master_id = crate::db::upsert_skill_with_source_in_plugin(conn, name, "imported", "domain", DEFAULT_PLUGIN_SLUG)?;
 
-    // Update description (not mirrored by upsert_imported_skill)
+    // Update description on skill master
     conn.execute(
-        "UPDATE skills SET description = ?2 WHERE name = ?1",
-        rusqlite::params![name, description],
+        "UPDATE skills SET description = ?2 WHERE id = ?1",
+        rusqlite::params![skill_master_id, description],
     )
     .map_err(|e| e.to_string())?;
 
-    // Build ImportedSkill and upsert to imported_skills + mirror frontmatter to skills master
+    // Step 2: Create/update imported_skills row (linked to skill master)
     let skill_id = generate_skill_id(name);
     let imported_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let skill = crate::types::ImportedSkill {
         skill_id,
         skill_name: name.to_string(),
+        library_key: None,
         is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,
@@ -220,18 +216,11 @@ fn import_skill_from_file_inner(
         user_invocable,
         disable_model_invocation,
         marketplace_source_url: None,
+        plugin_slug: Some(DEFAULT_PLUGIN_SLUG.to_string()),
+        plugin_display_name: Some(crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME.to_string()),
+        is_default_plugin: Some(true),
     };
-    crate::db::upsert_imported_skill(conn, &skill)?;
-
-    // Regenerate CLAUDE.md
-    if !workspace_path.is_empty() {
-        if let Err(e) = crate::commands::workflow::update_skills_section(workspace_path, conn) {
-            log::warn!(
-                "[import_skill_from_file] update_skills_section failed: {}",
-                e
-            );
-        }
-    }
+    crate::db::upsert_imported_skill(conn, &skill, skill_master_id)?;
 
     log::info!(
         "[import_skill_from_file] imported '{}' to '{}'",
@@ -279,7 +268,6 @@ mod tests {
             None,
             None,
             None,
-            false,
             skills_path.to_str().unwrap(),
             "",
             Some("hb@acceleratedata.ai"),
@@ -298,7 +286,7 @@ mod tests {
             Some("1.0.0")
         );
         assert!(
-            std::fs::read_to_string(skills_path.join("imported-skill").join("SKILL.md"))
+            std::fs::read_to_string(crate::skill_paths::nested_skill_dir(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill").join("SKILL.md"))
                 .unwrap()
                 .contains("metadata:\n  version: \"1.0.0\"\n  author: \"hb@acceleratedata.ai\"")
         );
@@ -339,7 +327,6 @@ mod tests {
             None,
             None,
             None,
-            false,
             skills_path.to_str().unwrap(),
             "",
             Some("hb@acceleratedata.ai"),
@@ -350,5 +337,46 @@ mod tests {
         assert!(crate::db::get_imported_skill(&conn, "imported-skill")
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn import_skill_from_file_rejects_when_skill_exists_in_default_plugin() {
+        let conn = crate::db::create_test_db_for_tests();
+        let dir = tempdir().unwrap();
+        let skills_path = dir.path().join("skills");
+        std::fs::create_dir_all(&skills_path).unwrap();
+        crate::git::ensure_repo(&skills_path).unwrap();
+
+        // Pre-create a skill in the default plugin
+        crate::db::ensure_default_plugin(&conn).unwrap();
+        crate::db::upsert_skill(&conn, "existing-skill", "skill-builder", "domain").unwrap();
+
+        let zip_path = dir.path().join("skill.zip");
+        write_skill_zip(
+            &zip_path,
+            "---\nname: existing-skill\ndescription: Duplicate\n---\n# Body\n",
+        );
+
+        let err = import_skill_from_file_inner(
+            &conn,
+            zip_path.to_str().unwrap(),
+            "existing-skill",
+            "Duplicate",
+            None,
+            None,
+            None,
+            None,
+            None,
+            skills_path.to_str().unwrap(),
+            "",
+            None,
+        )
+        .unwrap_err();
+
+        assert!(
+            err.contains("already exists"),
+            "expected 'already exists' error, got: {}",
+            err
+        );
     }
 }

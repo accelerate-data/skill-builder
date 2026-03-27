@@ -10,6 +10,26 @@ use tokio::task::JoinHandle;
 use super::startup_error::{TerminalOutcome, stream_message_terminal_status};
 use crate::agents::events;
 
+/// Redact Anthropic API key values (sk-ant-... tokens) from a string before logging.
+fn redact_api_key(s: &str) -> String {
+    const PREFIX: &str = "sk-ant-";
+    if !s.contains(PREFIX) {
+        return s.to_string();
+    }
+    let mut result = String::with_capacity(s.len());
+    let mut remaining = s;
+    while let Some(start) = remaining.find(PREFIX) {
+        result.push_str(&remaining[..start]);
+        result.push_str("sk-ant-[REDACTED]");
+        let after = &remaining[start + PREFIX.len()..];
+        // skip until a non-token character (whitespace, quote, comma, closing brace)
+        let end = after.find(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_').unwrap_or(after.len());
+        remaining = &after[end..];
+    }
+    result.push_str(remaining);
+    result
+}
+
 /// A persistent Node.js sidecar process that stays alive across multiple agent invocations.
 pub(super) struct PersistentSidecar {
     pub(super) child: Child,
@@ -236,7 +256,7 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
         if let Some(log_file) = logs.get(request_id) {
             let mut guard = log_file.lock().await;
             if let Some(ref mut f) = *guard {
-                let _ = writeln!(f, "{}", line);
+                let _ = writeln!(f, "{}", redact_api_key(line));
             }
         }
     }
@@ -429,11 +449,13 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                 let error_detail = msg.get("message")
                     .and_then(|m| m.as_str())
                     .unwrap_or("(no message)");
+                // Redact API keys before logging (error messages may contain raw config)
+                let redacted = redact_api_key(error_detail);
                 log::info!(
                     "[persistent-sidecar:{}] Agent error for '{}': {}",
                     ctx.skill_name,
                     request_id,
-                    error_detail,
+                    redacted,
                 );
                 // Emit the error detail as an agent-message so the
                 // frontend can display it (instead of "Unknown error").

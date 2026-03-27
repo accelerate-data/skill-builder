@@ -28,7 +28,7 @@ export interface SidecarConfig {
   /** Synthetic usage session ID (for non-workflow runs). */
   usageSessionId?: string;
   /** Run source for persistence attribution. */
-  runSource?: "workflow" | "refine" | "test";
+  runSource?: "workflow" | "refine" | "test" | "gate-eval";
 }
 
 // --- Validation helpers ---------------------------------------------------
@@ -102,7 +102,7 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   // Optional enum fields
   assertOptStringIn(c, "permissionMode", ["default", "acceptEdits", "bypassPermissions", "plan"]);
   assertOptStringIn(c, "effort", ["low", "medium", "high", "max"]);
-  assertOptStringIn(c, "runSource", ["workflow", "refine", "test"]);
+  assertOptStringIn(c, "runSource", ["workflow", "refine", "test", "gate-eval"]);
 
   // Optional numeric fields
   assertOptPositiveInt(c, "maxTurns");

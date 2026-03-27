@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-use super::skills::get_skill_master_id;
+use super::skills::get_skill_master_id_any_plugin;
 
 // --- Skill Locks ---
 
@@ -17,7 +17,7 @@ pub fn acquire_skill_lock(
 
 
     let result = (|| -> Result<(), String> {
-        let s_id = get_skill_master_id(conn, skill_name)?
+        let s_id = get_skill_master_id_any_plugin(conn, skill_name)?
             .ok_or_else(|| "Skill not found in skills master".to_string())?;
         if let Some(existing) = get_skill_lock(conn, skill_name)? {
             if existing.instance_id == instance_id {
@@ -68,7 +68,7 @@ pub fn release_skill_lock(
     skill_name: &str,
     instance_id: &str,
 ) -> Result<(), String> {
-    let s_id = match get_skill_master_id(conn, skill_name)? {
+    let s_id = match get_skill_master_id_any_plugin(conn, skill_name)? {
         Some(id) => id,
         None => return Ok(()), // Lock doesn't exist — nothing to release
     };
@@ -94,7 +94,7 @@ pub fn get_skill_lock(
     conn: &Connection,
     skill_name: &str,
 ) -> Result<Option<crate::types::SkillLock>, String> {
-    let s_id = match get_skill_master_id(conn, skill_name)? {
+    let s_id = match get_skill_master_id_any_plugin(conn, skill_name)? {
         Some(id) => id,
         None => return Ok(None),
     };
@@ -147,7 +147,7 @@ pub fn reclaim_dead_locks(conn: &Connection) -> Result<u32, String> {
         if !check_pid_alive(lock.pid) {
             // Use skill_id FK; fall back to skill_name only as a last-resort
             // defensive cleanup (reclaim is best-effort and must not abort on lookup failure).
-            if let Ok(Some(s_id)) = get_skill_master_id(conn, &lock.skill_name) {
+            if let Ok(Some(s_id)) = get_skill_master_id_any_plugin(conn, &lock.skill_name) {
                 conn.execute(
                     "DELETE FROM skill_locks WHERE skill_id = ?1",
                     rusqlite::params![s_id],
@@ -198,11 +198,7 @@ mod tests {
 
     /// Insert a skill master row so `acquire_skill_lock` can look it up.
     fn insert_skill(conn: &rusqlite::Connection, name: &str) {
-        conn.execute(
-            "INSERT INTO skills (name, skill_source, purpose) VALUES (?1, 'skill-builder', 'test')",
-            rusqlite::params![name],
-        )
-        .unwrap();
+        super::super::skills::upsert_skill(conn, name, "skill-builder", "test").unwrap();
     }
 
     #[test]

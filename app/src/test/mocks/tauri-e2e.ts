@@ -25,7 +25,9 @@ const defaultSettings = {
 const mockResponses: Record<string, unknown> = {
   get_settings: defaultSettings,
   save_settings: undefined,
+  update_user_settings: undefined,
   test_api_key: true,
+  set_log_level: undefined,
   get_default_skills_path: E2E_DEFAULT_SKILLS_PATH,
   check_node: {
     available: true,
@@ -70,15 +72,16 @@ const mockResponses: Record<string, unknown> = {
     ],
   },
   save_clarification_answers: undefined,
+  save_clarifications_content: undefined,
   read_file: "",
   check_workspace_path: true,
+  check_marketplace_updates: { library: [], workspace: [], registry_name: null, registry_names: [] },
   has_running_agents: false,
   start_agent: "agent-001",
   run_workflow_step: "agent-001",
   run_parallel_agents: { agent_id_a: "agent-001", agent_id_b: "agent-002" },
 
-  package_skill: { file_path: `${E2E_ROOT}/package/my-skill.skill`, size_bytes: 12345 },
-  // Workflow state
+// Workflow state
   get_workflow_state: { run: null, steps: [] },
   save_workflow_state: undefined,
   capture_step_artifacts: [],
@@ -94,6 +97,7 @@ const mockResponses: Record<string, unknown> = {
   // Skill locks
   acquire_lock: undefined,
   release_lock: undefined,
+  create_workflow_session: undefined,
   get_locked_skills: [],
   // Refine page
   start_refine_session: {
@@ -137,6 +141,10 @@ const mockResponses: Record<string, unknown> = {
   // Repos
   list_user_repos: [],
   validate_remote_repo: undefined,
+  // Plugins
+  list_plugins: [
+    { id: 1, slug: "skills", display_name: "Skills", version: null, source_type: "synthetic", source_url: null, is_default: true },
+  ],
   // Imported skills (Skills Library page)
   list_imported_skills: [],
   list_workspace_skills: [],
@@ -155,14 +163,19 @@ const mockResponses: Record<string, unknown> = {
     is_bundled: false,
   },
   delete_imported_skill: undefined,
-  export_skill: `${E2E_ROOT}/export/test-skill.zip`,
-  get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
+get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
+  list_skill_files: [],
   // GitHub import
   parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
+  list_github_plugins: [
+    { path: "plugins/analytics", name: "analytics", description: "Analytics plugin", version: "1.0.0", skill_count: 0, skill_names: [] },
+    { path: "plugins/reporting", name: "reporting", description: "Reporting plugin", version: "1.0.0", skill_count: 0, skill_names: [] },
+  ],
   list_github_skills: [
     { path: "skills/analytics", name: "analytics", domain: "Data", description: "Analytics skill" },
     { path: "skills/reporting", name: "reporting", domain: "Data", description: "Reporting skill" },
   ],
+  import_marketplace_plugin_to_library: [{ success: true, error: null }],
   import_github_skills: [
     {
       skill_id: "imported-001",
@@ -208,11 +221,50 @@ const mockResponses: Record<string, unknown> = {
   materialize_workflow_step_output: undefined,
   get_disabled_steps: [],
   end_workflow_session: undefined,
+  navigate_back_to_step: undefined,
   preview_step_reset: [],
   get_step_agent_runs: [],
   verify_step_output: true,
   read_latest_benchmark: null,
+  "plugin:log|log": undefined,
 };
+
+function normalizeListSkills(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.map((skill) => {
+    if (!skill || typeof skill !== "object" || Array.isArray(skill)) return skill;
+    const record = skill as Record<string, unknown>;
+    const name = typeof record.name === "string" ? record.name : "";
+    const libraryKey =
+      typeof record.library_key === "string" || record.library_key === null
+        ? record.library_key
+        : (name || null);
+    const skillSource =
+      typeof record.skill_source === "string" || record.skill_source === null
+        ? record.skill_source
+        : "skill-builder";
+    const pluginSlug =
+      typeof record.plugin_slug === "string"
+        ? record.plugin_slug
+        : "skills";
+    const pluginDisplayName =
+      typeof record.plugin_display_name === "string"
+        ? record.plugin_display_name
+        : "Skills";
+    const isDefaultPlugin =
+      typeof record.is_default_plugin === "boolean"
+        ? record.is_default_plugin
+        : true;
+    return {
+      ...record,
+      library_key: libraryKey,
+      skill_source: skillSource,
+      plugin_slug: pluginSlug,
+      plugin_display_name: pluginDisplayName,
+      is_default_plugin: isDefaultPlugin,
+    };
+  });
+}
 
 /** Normalize path separators to forward slashes for OS-agnostic comparison. */
 function normalizeSep(p: string): string {
@@ -312,6 +364,9 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
     | undefined;
   if (overrides && cmd in overrides) {
     let val = overrides[cmd];
+    if (cmd === "list_skills") {
+      val = normalizeListSkills(val);
+    }
     if (cmd === "read_file") {
       val = resolveReadFileMock(val, args);
     }
@@ -343,6 +398,9 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
 
   if (cmd in mockResponses) {
     let val = mockResponses[cmd];
+    if (cmd === "list_skills") {
+      val = normalizeListSkills(val);
+    }
     if (cmd === "read_file") {
       val = resolveReadFileMock(val, args);
     }

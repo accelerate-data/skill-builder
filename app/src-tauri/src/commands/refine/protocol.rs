@@ -3,6 +3,8 @@ use std::path::Path;
 use crate::agents::sidecar::SidecarConfig;
 use crate::commands::workflow::resolve_model_id;
 use crate::db::{self, Db};
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+use crate::skill_paths::resolve_skill_dir;
 use crate::types::SecretString;
 
 /// Max agentic turns for the entire streaming session. Each user message may
@@ -20,6 +22,7 @@ pub(super) struct RefineRuntimeSettings {
     pub refine_prompt_suggestions: bool,
     pub model: String,
     pub skills_path: String,
+    pub plugin_slug: String,
 }
 
 
@@ -27,18 +30,23 @@ pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
 }
 
-pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, skill_name: &str) {
-    let skill_workspace_dir = Path::new(workspace_path).join(skill_name);
+pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, plugin_slug: &str, skill_name: &str) {
+    // Workspace is plugin-organised: workspace_path/{plugin_slug}/skill_name/
+    let skill_workspace_dir = crate::skill_paths::workspace_skill_dir(
+        Path::new(workspace_path),
+        plugin_slug,
+        skill_name,
+    );
     if !skill_workspace_dir.exists() {
         if let Err(e) = std::fs::create_dir_all(&skill_workspace_dir) {
             log::warn!(
-                "[send_refine_message] failed to create skill workspace dir '{}': {}",
+                "[ensure_skill_workspace_dir] failed to create skill workspace dir '{}': {}",
                 skill_workspace_dir.display(),
                 e
             );
         } else {
             log::debug!(
-                "[send_refine_message] created skill workspace dir '{}'",
+                "[ensure_skill_workspace_dir] created skill workspace dir '{}'",
                 skill_workspace_dir.display()
             );
         }
@@ -50,6 +58,9 @@ pub(super) fn load_refine_runtime_settings(
     workspace_path: &str,
     skill_name: &str,
 ) -> Result<RefineRuntimeSettings, String> {
+    // Resolve plugin slug before acquiring conn to avoid re-entrant lock deadlock.
+    let plugin_slug = super::resolve_skill_plugin_slug(db, skill_name)?;
+
     let conn = db.0.lock().map_err(|e| {
         log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -77,7 +88,7 @@ pub(super) fn load_refine_runtime_settings(
         .map(|r| r.purpose.clone())
         .unwrap_or_else(|| "domain".to_string());
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-    let skill_md_path = Path::new(&skills_path).join(skill_name).join("SKILL.md");
+    let skill_md_path = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, skill_name).join("SKILL.md");
     let frontmatter = std::fs::read_to_string(&skill_md_path)
         .ok()
         .map(|content| crate::commands::imported_skills::parse_frontmatter_full(&content))
@@ -89,6 +100,7 @@ pub(super) fn load_refine_runtime_settings(
 
     crate::commands::workflow::write_user_context_file(
         workspace_path,
+        &plugin_slug,
         skill_name,
         &[],
         author_for_context.as_deref(),
@@ -102,6 +114,7 @@ pub(super) fn load_refine_runtime_settings(
         None,
         None,
         None,
+        &[], // refine does not inject documents
     );
 
     Ok(RefineRuntimeSettings {
@@ -113,6 +126,7 @@ pub(super) fn load_refine_runtime_settings(
         refine_prompt_suggestions: settings.refine_prompt_suggestions,
         model,
         skills_path,
+        plugin_slug,
     })
 }
 
@@ -189,6 +203,7 @@ pub(super) fn build_refine_config(
         workflow_session_id: None,
         usage_session_id: Some(usage_session_id.to_string()),
         run_source: Some("refine".to_string()),
+        transcript_log_dir: None,
     };
 
     (config, agent_id)
@@ -197,9 +212,26 @@ pub(super) fn build_refine_config(
 /// Build a follow-up prompt for subsequent messages in the streaming session.
 /// Just the user's message + optional file targeting. No command prefix —
 /// Claude already has the full context from the initial prompt.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn build_followup_prompt(
     user_message: &str,
     skills_path: &str,
+    skill_name: &str,
+    target_files: Option<&[String]>,
+) -> String {
+    build_followup_prompt_for_plugin(
+        user_message,
+        skills_path,
+        DEFAULT_PLUGIN_SLUG,
+        skill_name,
+        target_files,
+    )
+}
+
+pub(super) fn build_followup_prompt_for_plugin(
+    user_message: &str,
+    skills_path: &str,
+    plugin_slug: &str,
     skill_name: &str,
     target_files: Option<&[String]>,
 ) -> String {
@@ -207,8 +239,83 @@ pub(super) fn build_followup_prompt(
 
     if let Some(files) = target_files {
         if !files.is_empty() {
-            let skill_dir = Path::new(skills_path).join(skill_name);
+            let skill_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
             let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
+            let abs_files: Vec<String> = files
+                .iter()
+                .map(|f| format!("{}/{}", skill_dir_str, f))
+                .collect();
+            prompt.push_str(&format!(
+                "IMPORTANT: Only edit these files: {}. Do not modify any other files.\n\n",
+                abs_files.join(", ")
+            ));
+        }
+    }
+
+    prompt.push_str(user_message);
+    prompt
+}
+
+/// Build the initial refine prompt using a pre-resolved skill output directory.
+/// Use this instead of `build_refine_prompt_for_plugin` when the output dir is
+/// already known (e.g. `disk_path` for imported/marketplace skills).
+pub(super) fn build_refine_prompt_with_output_dir(
+    skill_name: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+    skill_output_dir: &std::path::Path,
+    user_message: &str,
+    target_files: Option<&[String]>,
+) -> String {
+    // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
+    let workspace_dir = crate::skill_paths::workspace_skill_dir(
+        Path::new(workspace_path),
+        plugin_slug,
+        skill_name,
+    );
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
+
+    let mut prompt = format!(
+        "The skill name is: {skill_name}. \
+         The workspace directory is: \"{workspace_str}\". \
+         The skill output directory (SKILL.md and references/) is: \"{skill_output_str}\". \
+         Derive context_dir as \"{workspace_str}/context\". \
+         Derive eval_dir as \"{workspace_str}/evals\". \
+         Derive eval_results_dir as \"{workspace_str}/evals/workspace\". \
+         All directories already exist — never create directories with mkdir or any other method.\n\n\
+         ROUTING:\n\
+         - For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.\n\
+         - CONSTRAINT: You may only refine, evaluate, benchmark, or validate the existing skill '{skill_name}'. Do NOT create new skills. \
+         If the user asks to create a new skill, decline and direct them to the dashboard.",
+    );
+
+    if let Some(files) = target_files {
+        if !files.is_empty() {
+            prompt.push_str(&format!(
+                "\n\nIMPORTANT: Only edit these files (relative to skill output directory): {}. Do not modify any other files.",
+                files.join(", ")
+            ));
+        }
+    }
+
+    prompt.push_str(&format!("\n\nCurrent request: {}", user_message));
+    prompt
+}
+
+/// Build a follow-up prompt using a pre-resolved skill output directory.
+pub(super) fn build_followup_prompt_with_output_dir(
+    user_message: &str,
+    skill_output_dir: &std::path::Path,
+    skill_name: &str,
+    target_files: Option<&[String]>,
+) -> String {
+    let _ = skill_name; // used only for future context; kept for API symmetry
+    let mut prompt = String::new();
+
+    if let Some(files) = target_files {
+        if !files.is_empty() {
+            let skill_dir_str = skill_output_dir.to_string_lossy().replace('\\', "/");
             let abs_files: Vec<String> = files
                 .iter()
                 .map(|f| format!("{}/{}", skill_dir_str, f))
@@ -226,6 +333,7 @@ pub(super) fn build_followup_prompt(
 
 /// Build the refine prompt. Sends workspace context + the user's message.
 /// Claude decides which agent to invoke based on the message content.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn build_refine_prompt(
     skill_name: &str,
     workspace_path: &str,
@@ -233,9 +341,27 @@ pub(super) fn build_refine_prompt(
     user_message: &str,
     target_files: Option<&[String]>,
 ) -> String {
-    let workspace_dir = Path::new(workspace_path).join(skill_name);
+    build_refine_prompt_for_plugin(
+        skill_name,
+        workspace_path,
+        skills_path,
+        DEFAULT_PLUGIN_SLUG,
+        user_message,
+        target_files,
+    )
+}
+
+pub(super) fn build_refine_prompt_for_plugin(
+    skill_name: &str,
+    workspace_path: &str,
+    skills_path: &str,
+    plugin_slug: &str,
+    user_message: &str,
+    target_files: Option<&[String]>,
+) -> String {
+    let workspace_dir = crate::skill_paths::resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let skill_output_dir = Path::new(skills_path).join(skill_name);
+    let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
 
     let mut prompt = format!(

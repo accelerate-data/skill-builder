@@ -76,14 +76,16 @@ pub struct PerQuestionEntry {
     pub question_id: String,
     pub verdict: String,
     pub reason: Option<String>,
-    pub contradicts: Option<String>,
 }
 
 /// Structured output produced by the answer-evaluator agent (transition gate between
 /// steps 1 and 2).
 ///
 /// Required fields: `verdict`, `answered_count`, `empty_count`, `vague_count`,
-/// `contradictory_count`, `total_count`, `reasoning`, `per_question`.
+/// `contradictory_count`, `total_count`, `reasoning`, `gate_decision`, `per_question`.
+///
+/// `gate_decision` is one of `"run_research"`, `"revise"` — set automatically by the agent
+/// based on verdict and contradictory_count (no user interaction required).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnswerEvaluationOutput {
     pub verdict: String,
@@ -93,6 +95,7 @@ pub struct AnswerEvaluationOutput {
     pub contradictory_count: i64,
     pub total_count: i64,
     pub reasoning: String,
+    pub gate_decision: Option<String>,
     pub per_question: Vec<PerQuestionEntry>,
 }
 
@@ -317,7 +320,7 @@ mod tests {
             "reasoning": "All questions answered clearly.",
             "per_question": [
                 {"question_id": "Q1", "verdict": "clear"},
-                {"question_id": "Q2", "verdict": "clear", "reason": null, "contradicts": null}
+                {"question_id": "Q2", "verdict": "clear", "reason": null}
             ]
         });
 
@@ -367,12 +370,12 @@ mod tests {
             "contradictory_count": 1,
             "total_count": 1,
             "reasoning": "Contradiction found.",
+            "gate_decision": "revise",
             "per_question": [
                 {
                     "question_id": "Q1",
                     "verdict": "contradictory",
-                    "reason": "Conflicts with earlier answer.",
-                    "contradicts": "Q3"
+                    "reason": "Conflicts with Q3."
                 }
             ]
         });
@@ -381,7 +384,7 @@ mod tests {
             serde_json::from_value(json).expect("deserialize AnswerEvaluationOutput with contradictory");
         let entry = &parsed.per_question[0];
         assert_eq!(entry.verdict, "contradictory");
-        assert_eq!(entry.contradicts.as_deref(), Some("Q3"));
+        assert_eq!(entry.reason.as_deref(), Some("Conflicts with Q3."));
     }
 
     #[test]

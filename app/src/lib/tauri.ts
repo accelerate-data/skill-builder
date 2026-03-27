@@ -1,12 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, IterationMeta, PendingEval, SkillEvalContext, EvalBenchmark } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, LibraryPlugin, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, IterationMeta, PendingEval, SkillEvalContext, EvalBenchmark, Document } from "@/lib/types";
 import type { EvalQuery, OptimizationResult } from "@/lib/description-optimization";
 
 // Re-export invoke for flexible Tauri command invocation
 export { invoke };
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry } from "@/lib/types";
+export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry, Document } from "@/lib/types";
 
 // --- Settings ---
 
@@ -153,11 +153,6 @@ export const materializeWorkflowStepOutput = (
   structuredOutput,
 });
 
-export const packageSkill = (
-  skillName: string,
-  workspacePath: string,
-) => invoke<PackageResult>("package_skill", { skillName, workspacePath });
-
 export const resetWorkflowStep = (
   workspacePath: string,
   skillName: string,
@@ -289,8 +284,8 @@ export const recordReconciliationCancel = (
 export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
   invoke("resolve_orphan", { skillName, action });
 
-export const resolveDiscovery = (skillName: string, action: string) =>
-  invoke<void>("resolve_discovery", { skillName, action });
+export const resolveDiscovery = (skillName: string, action: string, pluginSlug?: string | null) =>
+  invoke<void>("resolve_discovery", { skillName, action, pluginSlug: pluginSlug ?? null });
 
 // --- Feedback ---
 
@@ -362,9 +357,6 @@ export const resetUsage = () =>
 
 // --- Imported Skills ---
 
-export const exportSkill = (skillName: string) =>
-  invoke<string>("export_skill", { skillName });
-
 export async function getDashboardSkillNames(): Promise<string[]> {
   return invoke<string[]>("get_dashboard_skill_names")
 }
@@ -382,6 +374,35 @@ export const listImportedSkills = (sourceUrl?: string | null) =>
 export const deleteImportedSkill = (skillId: string) =>
   invoke<void>("delete_imported_skill", { skillId })
 
+export const listPlugins = () =>
+  invoke<LibraryPlugin[]>("list_plugins")
+
+export const deletePlugin = (pluginSlug: string) =>
+  invoke<void>("delete_plugin", { pluginSlug })
+
+export const setPluginUpgradeLock = (pluginSlug: string, locked: boolean) =>
+  invoke<void>("set_plugin_upgrade_lock", { pluginSlug, locked })
+
+export const createPluginFromSkills = (pluginName: string, skillKeys: string[]) =>
+  invoke<string>("create_plugin_from_skills", { pluginName, skillKeys })
+
+/**
+ * Move a skill to a different plugin.
+ * @param skillKey - Compound key: "skill-builder:{pluginSlug}:{skillName}" for builder skills,
+ *                   "imported:{skillId}" for imported skills
+ * @param pluginSlug - Target plugin slug
+ */
+export const moveSkillToPlugin = (skillKey: string, pluginSlug: string) =>
+  invoke<void>("move_skill_to_plugin", { skillKey, pluginSlug })
+
+/**
+ * Remove a skill from its current plugin, returning it to the default plugin.
+ * @param skillKey - Compound key: "skill-builder:{pluginSlug}:{skillName}" for builder skills,
+ *                   "imported:{skillId}" for imported skills
+ */
+export const removeSkillFromPlugin = (skillKey: string) =>
+  invoke<void>("remove_skill_from_plugin", { skillKey })
+
 // --- GitHub Import ---
 
 export const parseGitHubUrl = (url: string) =>
@@ -394,10 +415,16 @@ export const checkMarketplaceUrl = (url: string) =>
 export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string) =>
   invoke<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
 
+export const listGitHubPlugins = (owner: string, repo: string, branch: string, subpath?: string) =>
+  invoke<AvailablePlugin[]>("list_github_plugins", { owner, repo, branch, subpath: subpath ?? null });
+
 // --- Marketplace Import ---
 
 export const importMarketplaceToLibrary = (skillPaths: string[], sourceUrl: string, metadataOverrides?: Record<string, SkillMetadataOverride>) =>
   invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { sourceUrl, skillPaths, metadataOverrides: metadataOverrides ?? null })
+
+export const importMarketplacePluginToLibrary = (pluginPath: string, pluginName: string, sourceUrl: string) =>
+  invoke<MarketplaceImportResult[]>("import_marketplace_plugin_to_library", { sourceUrl, pluginPath, pluginName })
 
 export const checkMarketplaceUpdates = (): Promise<MarketplaceUpdateResult> =>
   invoke<MarketplaceUpdateResult>("check_marketplace_updates")
@@ -419,6 +446,12 @@ export const closeRefineSession = (sessionId: string) =>
 export const cancelRefineTurn = (sessionId: string) =>
   invoke<void>("cancel_refine_turn", { sessionId })
 
+export const cancelAgentRun = (skillName: string, agentId: string) =>
+  invoke<void>("cancel_agent_run", { skillName, agentId })
+
+export const cancelWorkflowStep = (agentId: string) =>
+  invoke<void>("cancel_workflow_step", { agentId })
+
 export const answerRefineQuestion = (
   sessionId: string,
   agentId: string,
@@ -427,6 +460,18 @@ export const answerRefineQuestion = (
   answers: Record<string, unknown>,
 ) => invoke<void>("answer_refine_question", {
   sessionId,
+  agentId,
+  toolUseId,
+  questions,
+  answers,
+})
+
+export const answerWorkflowStepQuestion = (
+  agentId: string,
+  toolUseId: string,
+  questions: unknown,
+  answers: Record<string, unknown>,
+) => invoke<void>("answer_workflow_step_question", {
   agentId,
   toolUseId,
   questions,
@@ -551,7 +596,6 @@ export const importSkillFromFile = (params: {
   argumentHint?: string | null
   userInvocable?: boolean | null
   disableModelInvocation?: boolean | null
-  forceOverwrite: boolean
 }): Promise<string> =>
   invoke<string>("import_skill_from_file", {
     filePath: params.filePath,
@@ -562,15 +606,9 @@ export const importSkillFromFile = (params: {
     argumentHint: params.argumentHint ?? null,
     userInvocable: params.userInvocable ?? null,
     disableModelInvocation: params.disableModelInvocation ?? null,
-    forceOverwrite: params.forceOverwrite,
   })
 
 // --- Additional typed wrappers ---
-
-/** Copy a packaged export file to a user-chosen path selected via the OS save dialog.
- *  The destination is not constrained to the app's allowed roots. */
-export const saveExportTo = (src: string, dest: string) =>
-  invoke<void>("save_export_to", { src, dest });
 
 export const listModels = (apiKey: string) =>
   invoke<ModelInfo[]>("list_models", { apiKey });
@@ -692,3 +730,49 @@ export const readPendingEval = (skillName: string, workspacePath: string) =>
 
 export const discardPendingEval = (skillName: string, workspacePath: string) =>
   invoke<void>("discard_pending_eval", { skillName, workspacePath });
+
+// --- Documents ---
+
+export interface SkillIdName {
+  id: number
+  name: string
+  plugin_slug: string
+  plugin_display_name: string
+  is_default_plugin: boolean
+}
+
+export const listDocuments = () =>
+  invoke<Document[]>("list_documents");
+
+export const listSkillsForDocuments = () =>
+  invoke<SkillIdName[]>("list_skills_for_documents");
+
+export const addDocumentFile = (
+  name: string,
+  content: string,
+  scope: "all" | "skill",
+  skillIds: number[],
+) => invoke<Document>("add_document_file", { name, content, scope, skillIds });
+
+export const addDocumentUrl = (
+  name: string,
+  url: string,
+  scope: "all" | "skill",
+  skillIds: number[],
+) => invoke<Document>("add_document_url", { name, url, scope, skillIds });
+
+export const addDocumentFolder = (
+  name: string,
+  folderPath: string,
+  scope: "all" | "skill",
+  skillIds: number[],
+) => invoke<Document[]>("add_document_folder", { name, folderPath, scope, skillIds });
+
+export const updateDocument = (
+  id: number,
+  scope: "all" | "skill",
+  skillIds: number[],
+) => invoke<Document>("update_document", { id, scope, skillIds });
+
+export const deleteDocument = (id: number) =>
+  invoke<void>("delete_document", { id });

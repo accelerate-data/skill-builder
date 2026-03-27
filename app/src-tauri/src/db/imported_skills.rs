@@ -1,8 +1,45 @@
 use crate::types::ImportedSkill;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::fs;
 
-use super::skills::get_skill_master_id;
+use super::skills::{get_skill_master_id, get_skill_master_id_any_plugin};
+
+fn imported_skill_select(prefix: &str) -> String {
+    format!(
+        "SELECT {p}.skill_id, {p}.skill_name, {p}.is_active, {p}.disk_path, {p}.imported_at, {p}.is_bundled,
+                {p}.purpose, {p}.version, {p}.model, {p}.argument_hint, {p}.user_invocable,
+                {p}.disable_model_invocation, {p}.marketplace_source_url,
+                pl.slug, pl.display_name, pl.is_default
+         FROM imported_skills {p}
+         JOIN skills s ON s.id = {p}.skill_master_id
+         JOIN plugins pl ON pl.id = s.plugin_id",
+        p = prefix
+    )
+}
+
+fn row_to_imported_skill(row: &rusqlite::Row<'_>) -> rusqlite::Result<ImportedSkill> {
+    let skill_id: String = row.get(0)?;
+    Ok(ImportedSkill {
+        library_key: Some(format!("imported:{skill_id}")),
+        skill_id,
+        skill_name: row.get(1)?,
+        is_active: row.get::<_, i32>(2)? != 0,
+        disk_path: row.get(3)?,
+        imported_at: row.get(4)?,
+        is_bundled: row.get::<_, i32>(5)? != 0,
+        description: None,
+        purpose: row.get(6)?,
+        version: row.get(7)?,
+        model: row.get(8)?,
+        argument_hint: row.get(9)?,
+        user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
+        disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+        marketplace_source_url: row.get(12)?,
+        plugin_slug: row.get(13)?,
+        plugin_display_name: row.get(14)?,
+        is_default_plugin: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
+    })
+}
 
 // --- Imported Skills ---
 
@@ -29,8 +66,11 @@ pub fn hydrate_skills_metadata(skills: &mut [ImportedSkill]) {
 }
 
 #[allow(dead_code)]
-pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
-    let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
+/// Insert an imported skill row, linking it to an existing skill master row.
+///
+/// The caller must have already created the skill master row and passes
+/// the resulting `skill_master_id`.
+pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill, skill_master_id: i64) -> Result<(), String> {
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
              purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
@@ -62,18 +102,19 @@ pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result
     Ok(())
 }
 
-/// Upsert a marketplace-imported skill. Uses `INSERT OR REPLACE` so that re-importing
-/// (e.g. after the skills_path setting changed or files were manually deleted) always
-/// updates the existing record rather than failing with a UNIQUE constraint.
-/// Also mirrors frontmatter fields to the `skills` master table (canonical store).
-pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
-    let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
+/// Upsert an imported skill row, linking it to an existing skill master row.
+///
+/// The caller must have already created the skill master row (via `upsert_skill_in_plugin`)
+/// and passes the resulting `skill_master_id`. This function only writes to the
+/// `imported_skills` table and mirrors frontmatter fields back to the skill master.
+pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill, skill_master_id: i64) -> Result<(), String> {
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
              purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
-         ON CONFLICT(skill_name) DO UPDATE SET
+         ON CONFLICT(skill_master_id) DO UPDATE SET
              skill_id = excluded.skill_id,
+             skill_name = excluded.skill_name,
              disk_path = excluded.disk_path,
              imported_at = excluded.imported_at,
              purpose = excluded.purpose,
@@ -113,9 +154,9 @@ pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result
             user_invocable = ?5,
             disable_model_invocation = ?6,
             updated_at = datetime('now')
-         WHERE name = ?1",
+         WHERE id = ?1",
         rusqlite::params![
-            skill.skill_name,
+            skill_master_id,
             skill.version,
             skill.model,
             skill.argument_hint,
@@ -159,31 +200,10 @@ pub fn get_imported_skill(
     };
 
     let mut stmt = conn
-        .prepare(
-            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
-             FROM imported_skills WHERE skill_master_id = ?1",
-        )
+        .prepare(&(imported_skill_select("i") + " WHERE i.skill_master_id = ?1"))
         .map_err(|e| e.to_string())?;
 
-    let result = stmt.query_row(rusqlite::params![s_id], |row| {
-        Ok(ImportedSkill {
-            skill_id: row.get(0)?,
-            skill_name: row.get(1)?,
-            is_active: row.get::<_, i32>(2)? != 0,
-            disk_path: row.get(3)?,
-            imported_at: row.get(4)?,
-            is_bundled: row.get::<_, i32>(5)? != 0,
-            description: None,
-            purpose: row.get(6)?,
-            version: row.get(7)?,
-            model: row.get(8)?,
-            argument_hint: row.get(9)?,
-            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-            marketplace_source_url: row.get(12)?,
-        })
-    });
+    let result = stmt.query_row(rusqlite::params![s_id], row_to_imported_skill);
 
     match result {
 
@@ -196,34 +216,11 @@ pub fn get_imported_skill(
 #[allow(dead_code)]
 pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
-        .prepare(
-            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
-             FROM imported_skills
-             WHERE is_active = 1
-             ORDER BY skill_name",
-        )
+        .prepare(&(imported_skill_select("i") + " WHERE i.is_active = 1 ORDER BY pl.display_name, i.skill_name"))
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map([], |row| {
-            Ok(ImportedSkill {
-                skill_id: row.get(0)?,
-                skill_name: row.get(1)?,
-                is_active: row.get::<_, i32>(2)? != 0,
-                disk_path: row.get(3)?,
-                imported_at: row.get(4)?,
-                is_bundled: row.get::<_, i32>(5)? != 0,
-                description: None,
-                purpose: row.get(6)?,
-                version: row.get(7)?,
-                model: row.get(8)?,
-                argument_hint: row.get(9)?,
-                user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-                disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-                marketplace_source_url: row.get(12)?,
-            })
-        })
+        .query_map([], row_to_imported_skill)
         .map_err(|e| e.to_string())?;
 
 
@@ -241,44 +238,18 @@ pub fn list_imported_skills_filtered(
 ) -> Result<Vec<ImportedSkill>, String> {
     let query = match source_url {
         Some(_) => {
-            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
-             FROM imported_skills
-             WHERE marketplace_source_url = ?1
-             ORDER BY imported_at DESC"
+            imported_skill_select("i") + " WHERE i.marketplace_source_url = ?1 ORDER BY i.imported_at DESC"
         }
         None => {
-            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
-             FROM imported_skills
-             ORDER BY imported_at DESC"
+            imported_skill_select("i") + " ORDER BY i.imported_at DESC"
         }
     };
 
-    let mut stmt = conn.prepare(query).map_err(|e| format!("list_imported_skills_filtered: {}", e))?;
-
-    let row_mapper = |row: &rusqlite::Row| {
-        Ok(ImportedSkill {
-            skill_id: row.get(0)?,
-            skill_name: row.get(1)?,
-            is_active: row.get::<_, i32>(2)? != 0,
-            disk_path: row.get(3)?,
-            imported_at: row.get(4)?,
-            is_bundled: row.get::<_, i32>(5)? != 0,
-            description: None,
-            purpose: row.get(6)?,
-            version: row.get(7)?,
-            model: row.get(8)?,
-            argument_hint: row.get(9)?,
-            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-            marketplace_source_url: row.get(12)?,
-        })
-    };
+    let mut stmt = conn.prepare(&query).map_err(|e| format!("list_imported_skills_filtered: {}", e))?;
 
     let results = match source_url {
-        Some(url) => stmt.query_map(rusqlite::params![url], row_mapper),
-        None => stmt.query_map([], row_mapper),
+        Some(url) => stmt.query_map(rusqlite::params![url], row_to_imported_skill),
+        None => stmt.query_map([], row_to_imported_skill),
     }
     .map_err(|e| format!("list_imported_skills_filtered query: {}", e))?;
 
@@ -296,31 +267,10 @@ pub fn get_imported_skill_by_id(
     skill_id: &str,
 ) -> Result<Option<ImportedSkill>, String> {
     let mut stmt = conn
-        .prepare(
-            "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-                    purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
-             FROM imported_skills WHERE skill_id = ?1",
-        )
+        .prepare(&(imported_skill_select("i") + " WHERE i.skill_id = ?1"))
         .map_err(|e| format!("get_imported_skill_by_id: {}", e))?;
 
-    let result = stmt.query_row(rusqlite::params![skill_id], |row| {
-        Ok(ImportedSkill {
-            skill_id: row.get(0)?,
-            skill_name: row.get(1)?,
-            is_active: row.get::<_, i32>(2)? != 0,
-            disk_path: row.get(3)?,
-            imported_at: row.get(4)?,
-            is_bundled: row.get::<_, i32>(5)? != 0,
-            description: None,
-            purpose: row.get(6)?,
-            version: row.get(7)?,
-            model: row.get(8)?,
-            argument_hint: row.get(9)?,
-            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-            marketplace_source_url: row.get(12)?,
-        })
-    });
+    let result = stmt.query_row(rusqlite::params![skill_id], row_to_imported_skill);
 
     match result {
 
@@ -340,8 +290,21 @@ pub fn delete_imported_skill_by_skill_id(conn: &Connection, skill_id: &str) -> R
     Ok(())
 }
 
+pub fn update_imported_skill_disk_path(
+    conn: &Connection,
+    skill_id: &str,
+    disk_path: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE imported_skills SET disk_path = ?2 WHERE skill_id = ?1",
+        rusqlite::params![skill_id, disk_path],
+    )
+    .map_err(|e| format!("update_imported_skill_disk_path: {}", e))?;
+    Ok(())
+}
 
-/// Update the content_hash for an imported skill row identified by skill_name.
+
+/// Update the content_hash for imported skill rows identified by skill_name.
 pub fn set_imported_skill_content_hash(
     conn: &Connection,
     skill_name: &str,
@@ -387,30 +350,12 @@ pub fn get_imported_skill_by_name_and_source(
     skill_name: &str,
     source_url: &str,
 ) -> Result<Option<ImportedSkill>, String> {
-    let mut stmt = conn.prepare(
-        "SELECT skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-                purpose, version, model, argument_hint, user_invocable, disable_model_invocation, marketplace_source_url
-         FROM imported_skills WHERE skill_name = ?1 AND marketplace_source_url = ?2"
-    ).map_err(|e| format!("get_imported_skill_by_name_and_source: {}", e))?;
+    let mut stmt = conn
+        .prepare(&(imported_skill_select("i")
+            + " WHERE i.skill_name = ?1 AND i.marketplace_source_url = ?2"))
+        .map_err(|e| format!("get_imported_skill_by_name_and_source: {}", e))?;
 
-    let result = stmt.query_row(rusqlite::params![skill_name, source_url], |row| {
-        Ok(ImportedSkill {
-            skill_id: row.get(0)?,
-            skill_name: row.get(1)?,
-            is_active: row.get::<_, i32>(2)? != 0,
-            disk_path: row.get(3)?,
-            imported_at: row.get(4)?,
-            is_bundled: row.get::<_, i32>(5)? != 0,
-            description: None,
-            purpose: row.get(6)?,
-            version: row.get(7)?,
-            model: row.get(8)?,
-            argument_hint: row.get(9)?,
-            user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-            marketplace_source_url: row.get(12)?,
-        })
-    });
+    let result = stmt.query_row(rusqlite::params![skill_name, source_url], row_to_imported_skill);
 
     match result {
 
@@ -422,6 +367,39 @@ pub fn get_imported_skill_by_name_and_source(
 
 /// Return names of all skills in the skills master table.
 /// Used by the skill-library (dashboard) path to check which skills are already installed.
+/// Test-only convenience: creates the skill master row then inserts the imported_skills row.
+/// Production code must call `upsert_skill_in_plugin` + `insert_imported_skill` separately.
+#[cfg(test)]
+pub fn test_insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
+    let plugin_slug = skill.plugin_slug.as_deref().unwrap_or(crate::skill_paths::DEFAULT_PLUGIN_SLUG);
+    let source = if skill.marketplace_source_url.is_some() { "marketplace" } else { "imported" };
+    let skill_master_id = super::skills::upsert_skill_with_source_in_plugin(
+        conn,
+        &skill.skill_name,
+        source,
+        skill.purpose.as_deref().unwrap_or("domain"),
+        plugin_slug,
+    )?;
+    insert_imported_skill(conn, skill, skill_master_id)
+}
+
+/// Return the `disk_path` for an imported skill regardless of which plugin owns it.
+/// Returns `None` if the skill has no `imported_skills` row (i.e. it is a builder skill).
+#[allow(dead_code)]
+pub fn get_imported_skill_disk_path(conn: &Connection, skill_name: &str) -> Result<Option<String>, String> {
+    let s_id = match get_skill_master_id_any_plugin(conn, skill_name)? {
+        Some(id) => id,
+        None => return Ok(None),
+    };
+    conn.query_row(
+        "SELECT disk_path FROM imported_skills WHERE skill_master_id = ?1",
+        rusqlite::params![s_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
 pub fn get_dashboard_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
     let mut stmt = conn
         .prepare("SELECT name FROM skills WHERE COALESCE(deleted_at, '') = ''")

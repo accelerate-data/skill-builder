@@ -161,12 +161,15 @@ mod tests {
 pub(crate) fn validate_decisions_exist_inner(
     skill_name: &str,
     workspace_path: &str,
+    plugin_slug: &str,
     _skills_path: &str,
 ) -> Result<(), String> {
-    let path = Path::new(workspace_path)
-        .join(skill_name)
-        .join("context")
-        .join("decisions.json");
+    let workspace_dir = crate::skill_paths::resolve_workspace_skill_dir(
+        Path::new(workspace_path),
+        plugin_slug,
+        skill_name,
+    );
+    let path = workspace_dir.join("context").join("decisions.json");
     if path.exists() {
         let content = std::fs::read_to_string(&path).unwrap_or_default();
         if !content.trim().is_empty() {

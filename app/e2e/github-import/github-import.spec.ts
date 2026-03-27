@@ -15,32 +15,31 @@ const TEST_REPO_INFO = {
   subpath: null,
 };
 
-const TEST_AVAILABLE_SKILLS = [
+const TEST_AVAILABLE_PLUGINS = [
   {
-    path: "skills/analytics-helper",
-    name: "analytics-helper",
-    plugin_name: null,
+    path: "plugins/analytics-pack",
+    name: "analytics-pack",
     description: "Generates analytics dashboards",
-    purpose: "domain",
     version: "1.0.0",
-    model: null,
-    argument_hint: null,
-    user_invocable: false,
-    disable_model_invocation: false,
+    skill_count: 0,
+    skill_names: [],
   },
   {
-    path: "skills/sql-expert",
-    name: "sql-expert",
-    plugin_name: null,
+    path: "plugins/sql-pack",
+    name: "sql-pack",
     description: "SQL query optimization",
-    purpose: "data-engineering",
     version: "2.0.0",
-    model: null,
-    argument_hint: null,
-    user_invocable: false,
-    disable_model_invocation: false,
+    skill_count: 0,
+    skill_names: [],
   },
 ];
+
+function pluginInstallButton(
+  page: import("@playwright/test").Page,
+  pluginName: string,
+) {
+  return page.getByLabel(`Install ${pluginName}`);
+}
 
 const BASE_OVERRIDES = {
   get_settings: {
@@ -53,17 +52,15 @@ const BASE_OVERRIDES = {
   check_workspace_path: true,
   list_skills: [],
   list_imported_skills: [],
+  list_plugins: [{ id: 1, slug: "skills", display_name: "Skills", version: null, source_type: "synthetic", source_url: null, is_default: true }],
   parse_github_url: TEST_REPO_INFO,
-  list_github_skills: TEST_AVAILABLE_SKILLS,
-  get_dashboard_skill_names: [],
-  import_marketplace_to_library: [{ success: true, error: null }],
+  list_github_plugins: TEST_AVAILABLE_PLUGINS,
+  import_marketplace_plugin_to_library: [{ success: true, error: null }],
   check_marketplace_updates: { library: [], workspace: [], registry_names: [] },
   check_skill_customized: false,
   reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0, discovered_skills: [] },
 };
 
-/** The Marketplace action button inside the Import tab content (not the settings nav button).
- *  The action button contains an icon child; the nav button does not. */
 function marketplaceActionButton(page: import("@playwright/test").Page) {
   return page.getByRole("button", { name: "Marketplace" }).filter({ has: page.locator("svg") });
 }
@@ -73,51 +70,30 @@ test.describe("GitHub Import", { tag: "@skills" }, () => {
     await reloadWithOverrides(page, BASE_OVERRIDES);
     await page.goto("/settings");
     await waitForAppReady(page);
-    await page.getByRole("navigation").getByRole("button", { name: "Import" }).click();
+    await page.getByRole("navigation").getByRole("button", { name: "Plugins" }).click();
   });
 
-  test("opens marketplace dialog and lists available skills", async ({ page }) => {
+  test("opens marketplace dialog and lists available plugins", async ({ page }) => {
     await marketplaceActionButton(page).click();
-
-    // Dialog should appear with the title
     await expect(page.getByRole("heading", { name: "Browse Marketplace" })).toBeVisible({ timeout: 10_000 });
 
-    // Skills should be listed (wait for async browseRegistry to finish)
-    await expect(page.getByText("analytics-helper")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("sql-expert")).toBeVisible();
-
-    // Version badges should be visible
+    await expect(pluginInstallButton(page, "analytics-pack")).toBeVisible({ timeout: 10_000 });
+    await expect(pluginInstallButton(page, "sql-pack")).toBeVisible();
     await expect(page.getByText("1.0.0")).toBeVisible();
     await expect(page.getByText("2.0.0")).toBeVisible();
   });
 
-  test("import skill via edit form and verify success toast", async ({ page }) => {
+  test("import plugin and verify success toast", async ({ page }) => {
     await marketplaceActionButton(page).click();
     await expect(page.getByRole("heading", { name: "Browse Marketplace" })).toBeVisible({ timeout: 10_000 });
+    await expect(pluginInstallButton(page, "analytics-pack")).toBeVisible({ timeout: 10_000 });
 
-    // Wait for skills to load
-    await expect(page.getByText("analytics-helper")).toBeVisible({ timeout: 10_000 });
+    await pluginInstallButton(page, "analytics-pack").click();
 
-    // Click the Install button for analytics-helper
-    await page.getByLabel("Install analytics-helper").click();
-
-    // Edit & Import dialog should appear
-    await expect(page.getByRole("heading", { name: "Edit & Import Skill" })).toBeVisible({ timeout: 5_000 });
-
-    // Form fields should be pre-filled
-    await expect(page.locator("#edit-name")).toHaveValue("analytics-helper");
-    await expect(page.locator("#edit-description")).toHaveValue("Generates analytics dashboards");
-    await expect(page.locator("#edit-version")).toHaveValue("1.0.0");
-
-    // Click Confirm Import
-    await page.getByRole("button", { name: "Confirm Import" }).click();
-
-    // Success toast should appear
-    await expect(page.getByText('Imported "analytics-helper"')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Imported plugin "analytics-pack"')).toBeVisible({ timeout: 5_000 });
   });
 
   test("shows error state when no registries are enabled", async ({ page }) => {
-    // Reload with no enabled registries
     await reloadWithOverrides(page, {
       ...BASE_OVERRIDES,
       get_settings: {
@@ -127,22 +103,71 @@ test.describe("GitHub Import", { tag: "@skills" }, () => {
     });
     await page.goto("/settings");
     await waitForAppReady(page);
-    await page.getByRole("navigation").getByRole("button", { name: "Import" }).click();
+    await page.getByRole("navigation").getByRole("button", { name: "Plugins" }).click();
 
-    // Marketplace action button (in main content) should be disabled
     await expect(marketplaceActionButton(page)).toBeDisabled();
   });
 
   test("shows imported badge after successful import", async ({ page }) => {
     await marketplaceActionButton(page).click();
-    await expect(page.getByText("analytics-helper")).toBeVisible({ timeout: 10_000 });
+    await expect(pluginInstallButton(page, "analytics-pack")).toBeVisible({ timeout: 10_000 });
 
-    // Import via edit form
-    await page.getByLabel("Install analytics-helper").click();
-    await expect(page.getByRole("heading", { name: "Edit & Import Skill" })).toBeVisible({ timeout: 5_000 });
-    await page.getByRole("button", { name: "Confirm Import" }).click();
+    await pluginInstallButton(page, "analytics-pack").click();
 
-    // After import, the skill should show "Imported" badge in the marketplace list
     await expect(page.getByText("Imported", { exact: true })).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("shows already-installed plugin as disabled", async ({ page }) => {
+    // Pre-populate list_plugins so that analytics-pack shows as already installed
+    await reloadWithOverrides(page, {
+      ...BASE_OVERRIDES,
+      list_plugins: [
+        {
+          id: 1,
+          slug: "skills",
+          display_name: "Skills",
+          version: null,
+          source_type: "synthetic",
+          source_url: null,
+          is_default: true,
+        },
+        {
+          id: 2,
+          slug: "analytics-pack",
+          display_name: "analytics-pack",
+          version: null,
+          source_type: "marketplace",
+          source_url: null,
+          is_default: false,
+        },
+      ],
+    });
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("navigation").getByRole("button", { name: "Plugins" }).click();
+
+    await marketplaceActionButton(page).click();
+    await expect(page.getByRole("heading", { name: "Browse Marketplace" })).toBeVisible({ timeout: 10_000 });
+
+    // analytics-pack should show "Installed" badge and no install button
+    await expect(page.getByText("Installed")).toBeVisible({ timeout: 10_000 });
+    await expect(pluginInstallButton(page, "analytics-pack")).not.toBeVisible();
+  });
+
+  test("shows error toast when import fails", async ({ page }) => {
+    await reloadWithOverrides(page, {
+      ...BASE_OVERRIDES,
+      import_marketplace_plugin_to_library: [{ success: false, error: "Import failed: permission denied", skill_name: "test" }],
+    });
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("navigation").getByRole("button", { name: "Plugins" }).click();
+
+    await marketplaceActionButton(page).click();
+    await expect(pluginInstallButton(page, "analytics-pack")).toBeVisible({ timeout: 10_000 });
+
+    await pluginInstallButton(page, "analytics-pack").click();
+
+    await expect(page.getByText("Import failed: permission denied")).toBeVisible({ timeout: 5_000 });
   });
 });

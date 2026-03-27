@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { RefineDiff, SkillSummary } from "@/lib/types";
+import type { RefineDiff, EditableSkill } from "@/lib/types";
 import { useAgentStore } from "@/stores/agent-store";
 
 export interface SkillFile {
@@ -52,8 +52,8 @@ interface RefineRedirectRequest {
 
 interface RefineState {
   // Skill picker
-  selectedSkill: SkillSummary | null;
-  refinableSkills: SkillSummary[];
+  selectedSkill: EditableSkill | null;
+  refinableSkills: EditableSkill[];
   isLoadingSkills: boolean;
 
   // Skill file content (for preview panel)
@@ -84,9 +84,9 @@ interface RefineState {
   setPendingInitialMessage: (msg: string | null) => void;
 
   // Actions
-  setRefinableSkills: (skills: SkillSummary[]) => void;
+  setRefinableSkills: (skills: EditableSkill[]) => void;
   setLoadingSkills: (v: boolean) => void;
-  selectSkill: (skill: SkillSummary | null) => void;
+  selectSkill: (skill: EditableSkill | null) => void;
   setSkillFiles: (files: SkillFile[]) => void;
   setLoadingFiles: (v: boolean) => void;
   setActiveFileTab: (filename: string) => void;

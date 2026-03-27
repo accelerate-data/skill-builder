@@ -30,6 +30,9 @@ const { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapt
     steps: [{ status: "pending" }],
     setRunning: vi.fn(),
     setGateLoading: vi.fn(),
+    clearInitializing: vi.fn(),
+    clearPendingQuestion: vi.fn(),
+    clearRuntimeError: vi.fn(),
     updateStepStatus: vi.fn(),
   };
 
@@ -79,6 +82,9 @@ let mockWorkflowState = {
   steps: [{ status: "pending" }],
   setRunning: vi.fn(),
   setGateLoading: vi.fn(),
+  clearInitializing: vi.fn(),
+  clearPendingQuestion: vi.fn(),
+  clearRuntimeError: vi.fn(),
   updateStepStatus: vi.fn(),
 };
 
@@ -99,6 +105,9 @@ describe("useWorkflowSession", () => {
       steps: [{ status: "pending" }],
       setRunning: vi.fn(),
       setGateLoading: vi.fn(),
+      clearInitializing: vi.fn(),
+      clearPendingQuestion: vi.fn(),
+      clearRuntimeError: vi.fn(),
       updateStepStatus: vi.fn(),
     };
     mockWorkflowStoreMock.getState.mockImplementation(() => mockWorkflowState);

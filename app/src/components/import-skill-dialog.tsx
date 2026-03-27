@@ -39,7 +39,6 @@ export function ImportSkillDialog({
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [nameConflictError, setNameConflictError] = useState<string | null>(null)
-  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -52,7 +51,6 @@ export function ImportSkillDialog({
       setDisableModelInvocation(meta.disable_model_invocation ?? false)
       setSubmitting(false)
       setNameConflictError(null)
-      setShowOverwriteConfirm(false)
     }
   }, [open, filePath, meta])
 
@@ -63,10 +61,9 @@ export function ImportSkillDialog({
     !submitting
 
   const doImport = useCallback(
-    async (forceOverwrite: boolean) => {
+    async () => {
       setSubmitting(true)
       setNameConflictError(null)
-      if (!forceOverwrite) setShowOverwriteConfirm(false)
 
       try {
         await importSkillFromFile({
@@ -78,7 +75,6 @@ export function ImportSkillDialog({
           argumentHint: argumentHint || null,
           userInvocable,
           disableModelInvocation,
-          forceOverwrite,
         })
         onOpenChange(false)
         toast.success(`Imported "${name.trim()}"`)
@@ -86,12 +82,8 @@ export function ImportSkillDialog({
       } catch (err) {
         console.error("[import-skill-dialog] import failed:", err)
         const msg = err instanceof Error ? err.message : String(err)
-        if (msg.startsWith("conflict_no_overwrite:")) {
-          setNameConflictError(
-            `A skill named '${name.trim()}' already exists. Rename it before importing.`
-          )
-        } else if (msg.startsWith("conflict_overwrite_required:")) {
-          setShowOverwriteConfirm(true)
+        if (msg.includes("already exists")) {
+          setNameConflictError(msg)
         } else {
           toast.error(`Import failed: ${msg}`, { duration: Infinity })
         }
@@ -108,7 +100,7 @@ export function ImportSkillDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!canSubmit) return
-    doImport(false)
+    doImport()
   }
 
   return (
@@ -121,31 +113,7 @@ export function ImportSkillDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {showOverwriteConfirm ? (
-          <div className="flex flex-col gap-4">
-            <p className="text-sm">
-              A skill named <strong>&quot;{name.trim()}&quot;</strong> is already imported. Overwrite it?
-            </p>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setShowOverwriteConfirm(false)}
-                disabled={submitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => doImport(true)}
-                disabled={submitting}
-              >
-                {submitting && <Loader2 className="size-4 animate-spin" />}
-                {submitting ? "Overwriting..." : "Overwrite"}
-              </Button>
-            </DialogFooter>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="import-name">
                 Name <span className="text-destructive">*</span>
@@ -246,7 +214,6 @@ export function ImportSkillDialog({
               </Button>
             </DialogFooter>
           </form>
-        )}
       </DialogContent>
     </Dialog>
   )

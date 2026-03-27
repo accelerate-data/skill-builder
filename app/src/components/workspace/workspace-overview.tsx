@@ -6,8 +6,8 @@ import SkillDialog from "@/components/skill-dialog";
 import { BenchmarkOverviewCard } from "@/components/workspace/benchmark-overview-card";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getSkillHistory, readLatestBenchmark } from "@/lib/tauri";
-import type { BenchmarkData, SkillSummary, ImportedSkill, Purpose, SkillCommit } from "@/lib/types";
-import { PURPOSE_LABELS } from "@/lib/types";
+import type { BenchmarkData, SkillSummary, ImportedSkill, Purpose, SkillCommit, EditableSkill } from "@/lib/types";
+import { PURPOSE_LABELS, toEditableSkill } from "@/lib/types";
 
 interface WorkspaceOverviewProps {
   skill: SkillSummary | ImportedSkill;
@@ -54,7 +54,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   const workspacePath = useSettingsStore((s) => s.workspacePath);
 
   const isBuilderSkill = "name" in skill;
-  const skillName = isBuilderSkill ? skill.name : null;
+  const skillName = isBuilderSkill ? skill.name : skill.skill_name;
 
   useEffect(() => {
     if (!workspacePath || !skillName) return;
@@ -96,7 +96,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   const tags = isBuilderSkill ? skill.tags : [];
   const { created, modified } = getSkillDates(skill);
 
-  const canEdit = isBuilderSkill && !!workspacePath;
+  const canEdit = !!workspacePath && !!skillName;
   const visibleCommits = showAllCommits ? commits : commits.slice(0, 5);
 
   // Source display: Skill Builder for builder skills, marketplace URL, or "Uploaded"
@@ -252,7 +252,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
       {canEdit && editDialogOpen && (
         <SkillDialog
           mode="edit"
-          skill={skill as SkillSummary}
+          skill={isBuilderSkill ? (skill as EditableSkill) : toEditableSkill(skill as ImportedSkill)}
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           onSaved={() => setEditDialogOpen(false)}

@@ -57,6 +57,7 @@ vi.mock("@/lib/tauri", () => ({
   logGateDecision: vi.fn(() => Promise.resolve()),
   navigateBackToStepDb: vi.fn(() => Promise.resolve()),
   getContextFileContent: vi.fn(() => Promise.resolve(null)),
+  listSkills: vi.fn().mockResolvedValue([]),
 }));
 
 // Mock ClarificationsEditor — renders a simple div with testid and
@@ -1164,7 +1165,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     const parsed = JSON.parse(serialized);
     expect(Array.isArray(parsed.answer_evaluator_notes)).toBe(true);
     expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Vague answer: Q1")).toBe(true);
-    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Contradictory answer: Q2")).toBe(true);
+    // contradictory verdicts are resolved by the agent inline and not written to notes
   });
 
   it("gate falls back when structured gate payload is missing", async () => {
@@ -1219,7 +1220,11 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(vi.mocked(materializeAnswerEvaluationOutput)).not.toHaveBeenCalled();
     });
-    expect(await screen.findByRole("button", { name: "Let Me Answer" })).toBeTruthy();
+    // gate with no structured output reads eval file directly; mixed verdict + run_research default → auto-advance
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
+    });
   });
 
   it("writes evaluator feedback notes after Detailed Research continue (step 1 gate)", async () => {
@@ -1351,17 +1356,10 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Needs refinement: Q2")).toBe(true);
   });
 
-  it("reloads clarifications from disk when clicking Let Me Answer", async () => {
-    const baseData = makeClarificationsJson();
-    const reloadedData = makeClarificationsJson({
-      answer_evaluator_notes: [
-        {
-          type: "answer_feedback",
-          title: "Vague answer: Q1",
-          body: "Needs concrete metrics.",
-        },
-      ],
-    });
+  it("gate auto-updates clarifications with feedback notes after revise decision", async () => {
+    // With gate_decision="revise", the gate stays on step 0 and refreshes clarifications
+    // twice (once to write notes, once to reload for UI) — no user button click required.
+    const jsonData = makeClarificationsJson();
     const evaluation = {
       verdict: "mixed",
       answered_count: 1,
@@ -1369,18 +1367,16 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       vague_count: 1,
       contradictory_count: 0,
       total_count: 1,
+      gate_decision: "revise",
       reasoning: "One answer is vague.",
       per_question: [
         { question_id: "Q1", verdict: "vague", reason: "Needs concrete metrics." },
       ],
     };
 
-    let clarificationsReadCount = 0;
     vi.mocked(readFile).mockImplementation((path: string) => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
-        clarificationsReadCount += 1;
-        const payload = clarificationsReadCount > 1 ? reloadedData : baseData;
-        return Promise.resolve(JSON.stringify(payload));
+        return Promise.resolve(JSON.stringify(jsonData));
       }
       if (path === "/test/workspace/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
@@ -1402,8 +1398,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
-    expect(typeof props?.onClarificationsContinue).toBe("function");
-
     await act(async () => {
       props?.onClarificationsContinue?.();
     });
@@ -1413,22 +1407,21 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       useAgentStore.getState().completeRun("gate-agent-3", true);
     });
 
-    const letMeAnswerButton = await screen.findByRole("button", { name: "Let Me Answer" });
-    await act(async () => {
-      letMeAnswerButton.click();
-    });
-
+    // revise decision: stays on step 0, saves notes via saveClarificationsContent → writeFile
     await waitFor(() => {
-      expect(clarificationsReadCount).toBeGreaterThanOrEqual(2);
-    });
-
-    await waitFor(() => {
-      const lastProps = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
-      const notes = (
-        lastProps?.clarificationsData as { answer_evaluator_notes?: Array<{ title: string }> } | undefined
-      )?.answer_evaluator_notes ?? [];
+      const writeCalls = vi.mocked(writeFile).mock.calls.filter(
+        ([path]) => path === "/test/skills/test-skill/context/clarifications.json",
+      );
+      expect(writeCalls.length).toBeGreaterThan(0);
+      const serialized = writeCalls[writeCalls.length - 1][1];
+      const parsed = JSON.parse(serialized);
+      const notes = parsed.answer_evaluator_notes as Array<{ title: string }>;
       expect(notes.some((n) => n.title === "Vague answer: Q1")).toBe(true);
     });
+
+    // revise: step stays completed at 0, does NOT advance
+    expect(useWorkflowStore.getState().currentStep).toBe(0);
+    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
   });
 
   it("skipToDecisions from step 0 skips to step 2 (Confirm Decisions)", async () => {
@@ -1450,8 +1443,9 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(wf.steps[2].name).toBe("Confirm Decisions");
   });
 
-  it("skipToDecisions immediately persists state to DB so a crash doesn't revert the skipped step", async () => {
-    // Set up step 0 completed with clarifications
+  it("gate auto-advances to step 1 and triggers DB persist", async () => {
+    // Gate with run_research decision auto-advances from step 0 to step 1.
+    // The persistence hook debounces saveWorkflowState after the state transition.
     const jsonData = makeClarificationsJson();
     const sufficientEvaluation = {
       verdict: "sufficient",
@@ -1474,7 +1468,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       return Promise.reject("not found");
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-sufficient");
-    vi.mocked(saveWorkflowState).mockClear();
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -1488,44 +1481,26 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
     });
 
-    // Trigger the gate evaluator via the Continue callback
     const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
     await act(async () => {
       props?.onClarificationsContinue?.();
     });
 
-    // Gate agent completes — triggers finishGateEvaluation → reads answer-evaluation.json
     act(() => {
       useAgentStore.getState().startRun("gate-agent-sufficient", "haiku");
       useAgentStore.getState().completeRun("gate-agent-sufficient", true);
     });
 
-    // Wait for the "Skip to Decisions" button to appear (verdict = "sufficient")
-    const skipButton = await screen.findByRole("button", { name: "Skip to Decisions" });
-
-    // Clear calls accumulated during setup so we can assert on the immediate persist only
-    vi.mocked(saveWorkflowState).mockClear();
-
-    await act(async () => {
-      skipButton.click();
+    // Gate with run_research default → auto-advances to step 1
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
 
-    // saveWorkflowState must have been called synchronously (not waiting for the 300ms debounce)
-    // so that a crash immediately after clicking "Skip to Decisions" doesn't revert step 1.
-    expect(vi.mocked(saveWorkflowState)).toHaveBeenCalledWith(
-      "test-skill",
-      2,         // currentStep = 2 (Confirm Decisions)
-      "pending", // not all steps completed yet
-      expect.arrayContaining([
-        expect.objectContaining({ step_id: 1, status: "completed" }),
-        expect.objectContaining({ step_id: 2, status: "pending" }),
-      ]),
-      expect.anything(),
-    );
-
-    // Zustand state must also reflect the skip
-    expect(useWorkflowStore.getState().currentStep).toBe(2);
-    expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+    // Persistence hook debounces saveWorkflowState after state change
+    await waitFor(() => {
+      expect(vi.mocked(saveWorkflowState)).toHaveBeenCalled();
+    });
   });
 });
 
@@ -2822,7 +2797,8 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
   }
 
-  it("handleGateSkip from clarifications context skips to step 2 and marks step 1 completed", async () => {
+  it("gate with sufficient verdict auto-advances from step 0 to step 1", async () => {
+    // Gate is fully automatic: run_research default → advance without any dialog or button.
     const evaluation = {
       verdict: "sufficient",
       answered_count: 2,
@@ -2836,45 +2812,14 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
 
     await triggerGateDialog(evaluation);
 
-    // Wait for the "Skip to Decisions" button (sufficient verdict)
-    const skipButton = await screen.findByRole("button", { name: "Skip to Decisions" });
-
-    await act(async () => {
-      skipButton.click();
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
     });
-
-    // handleGateSkip → skipToDecisions → step 1 completed, currentStep = 2
-    expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
-    expect(useWorkflowStore.getState().currentStep).toBe(2);
   });
 
-  it("handleGateResearch from clarifications context advances to next step normally", async () => {
-    const evaluation = {
-      verdict: "sufficient",
-      answered_count: 2,
-      empty_count: 0,
-      vague_count: 0,
-      contradictory_count: 0,
-      total_count: 2,
-      reasoning: "All clear.",
-      per_question: [],
-    };
-
-    await triggerGateDialog(evaluation);
-
-    // Wait for the "Run Research Anyway" button (sufficient, gate 1)
-    const researchButton = await screen.findByRole("button", { name: "Run Research Anyway" });
-
-    await act(async () => {
-      researchButton.click();
-    });
-
-    // handleGateResearch → closeGateDialog + mark current step completed + advance
-    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
-    expect(useWorkflowStore.getState().currentStep).toBe(1);
-  });
-
-  it("handleGateContinueAnyway advances and shows toast", async () => {
+  it("gate with mixed verdict auto-advances from step 0 to step 1", async () => {
+    // mixed verdict with no gate_decision → defaults to run_research → auto-advance
     const evaluation = {
       verdict: "mixed",
       answered_count: 1,
@@ -2891,20 +2836,40 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
 
     await triggerGateDialog(evaluation);
 
-    // Wait for the "Continue Anyway" button (mixed, no contradictions)
-    const continueButton = await screen.findByRole("button", { name: "Continue Anyway" });
-
-    await act(async () => {
-      continueButton.click();
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
     });
-
-    // handleGateContinueAnyway → advance to next step
-    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
-    expect(useWorkflowStore.getState().currentStep).toBe(1);
   });
 
-  it("handleGateSkip from refinements context advances to next step (not step 2)", async () => {
-    // Set up step 1 (refinements context)
+  it("gate with revise decision stays on current step", async () => {
+    // gate_decision="revise" → stays on step 0, does not advance
+    const evaluation = {
+      verdict: "insufficient",
+      answered_count: 0,
+      empty_count: 2,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      gate_decision: "revise",
+      reasoning: "Answers are missing.",
+      per_question: [
+        { question_id: "Q1", verdict: "not_answered" },
+        { question_id: "Q2", verdict: "not_answered" },
+      ],
+    };
+
+    await triggerGateDialog(evaluation);
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    });
+    // revise: must NOT advance
+    expect(useWorkflowStore.getState().currentStep).toBe(0);
+  });
+
+  it("gate on step 1 auto-advances to step 2", async () => {
+    // Gate 2 (step 1 completed) with run_research → advances to step 2
     const jsonData = makeClarificationsJson();
     const evaluation = {
       verdict: "sufficient",
@@ -2951,19 +2916,10 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       useAgentStore.getState().completeRun("gate-ref-test", true);
     });
 
-    // Refinements + sufficient → "Continue to Decisions" button
-    const continueButton = await screen.findByRole("button", { name: "Continue to Decisions" });
-
-    // The "Skip to Decisions" in refinements context actually calls handleGateSkip.
-    // But for sufficient refinements, the only buttons are "Back to Review" and "Continue to Decisions".
-    // "Continue to Decisions" calls onResearch which maps to handleGateResearch.
-    await act(async () => {
-      continueButton.click();
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(2);
     });
-
-    // handleGateResearch from refinements → marks step 1 completed + advances to step 2
-    expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
-    expect(useWorkflowStore.getState().currentStep).toBe(2);
   });
 
   it("runGateOrAdvance falls through to advanceToNextStep when step is not 0 or 1", async () => {
@@ -2991,19 +2947,39 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     expect(vi.mocked(runAnswerEvaluator)).not.toHaveBeenCalled();
   });
 
-  it("runGateOrAdvance skips gate when next step (1) is disabled and advances normally", async () => {
-    // When step 0 completed but step 1 is disabled, runGateOrAdvance should not trigger
-    // the gate evaluator and should not advance (because the next step is disabled).
+  it("runGateOrAdvance runs gate even when next step (1) is disabled, but does not advance", async () => {
+    // Gate always runs for steps 0 and 1. advanceToNextStep guards against disabled steps,
+    // so the workflow stays on step 0 after gate completion.
     vi.mocked(getDisabledSteps).mockResolvedValue([1]);
+
+    const jsonData = makeClarificationsJson();
+    const evaluation = {
+      verdict: "sufficient",
+      answered_count: 2,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      reasoning: "All clear.",
+      per_question: [],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-disabled-test");
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    // reviewMode=true to keep currentStep stable
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(0);
     useWorkflowStore.getState().setDisabledSteps([1]);
-
-    vi.mocked(readFile).mockRejectedValue("not found");
 
     let capturedOnClarificationsContinue: (() => void) | undefined;
     vi.mocked(WorkflowStepComplete).mockImplementation(({ onClarificationsContinue }) => {
@@ -3021,10 +2997,21 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       capturedOnClarificationsContinue?.();
     });
 
-    // Gate should not have been triggered (step 1 disabled)
-    expect(vi.mocked(runAnswerEvaluator)).not.toHaveBeenCalled();
+    // Gate IS triggered (step 0 always triggers gate)
+    await waitFor(() => {
+      expect(vi.mocked(runAnswerEvaluator)).toHaveBeenCalled();
+    });
 
-    // Should stay on step 0 (can't advance to disabled step 1)
+    // Complete the gate agent
+    act(() => {
+      useAgentStore.getState().startRun("gate-disabled-test", "haiku");
+      useAgentStore.getState().completeRun("gate-disabled-test", true);
+    });
+
+    // Gate completes with run_research but advanceToNextStep skips disabled step 1 → stays on 0
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    });
     expect(useWorkflowStore.getState().currentStep).toBe(0);
   });
 
@@ -3162,18 +3149,18 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     expect(useWorkflowStore.getState().gateLoading).toBe(false);
   });
 
-  it("buildGateFeedbackNotes maps all four verdict types with reasons", async () => {
+  it("buildGateFeedbackNotes maps three actionable verdict types with reasons", async () => {
+    // contradictory is resolved inline by the agent and is not written to notes
     const evaluation = {
       verdict: "mixed",
       answered_count: 0,
       empty_count: 1,
       vague_count: 1,
-      contradictory_count: 1,
-      total_count: 4,
+      contradictory_count: 0,
+      total_count: 3,
       reasoning: "Multiple issues.",
       per_question: [
         { question_id: "Q1", verdict: "vague", reason: "Too general." },
-        { question_id: "Q2", verdict: "contradictory", contradicts: "Q1", reason: "Conflicts with Q1." },
         { question_id: "Q3", verdict: "not_answered", reason: "Skipped entirely." },
         { question_id: "Q4", verdict: "needs_refinement", reason: "Needs more constraints." },
       ],
@@ -3225,9 +3212,8 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     const parsed = JSON.parse(serialized);
     const notes = parsed.answer_evaluator_notes as Array<{ type: string; title: string; body: string }>;
 
-    // All four verdict types should be present with custom reasons
+    // Three actionable verdict types with custom reasons
     expect(notes.some((n) => n.title === "Vague answer: Q1" && n.body === "Too general.")).toBe(true);
-    expect(notes.some((n) => n.title === "Contradictory answer: Q2" && n.body === "Conflicts with Q1.")).toBe(true);
     expect(notes.some((n) => n.title === "Not answered: Q3" && n.body === "Skipped entirely.")).toBe(true);
     expect(notes.some((n) => n.title === "Needs refinement: Q4" && n.body === "Needs more constraints.")).toBe(true);
 
@@ -3241,12 +3227,11 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       answered_count: 0,
       empty_count: 1,
       vague_count: 1,
-      contradictory_count: 1,
-      total_count: 4,
+      contradictory_count: 0,
+      total_count: 3,
       reasoning: "Multiple issues.",
       per_question: [
         { question_id: "Q1", verdict: "vague" },
-        { question_id: "Q2", verdict: "contradictory", contradicts: "Q3" },
         { question_id: "Q3", verdict: "not_answered" },
         { question_id: "Q4", verdict: "needs_refinement" },
       ],
@@ -3297,9 +3282,8 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     const parsed = JSON.parse(serialized);
     const notes = parsed.answer_evaluator_notes as Array<{ title: string; body: string }>;
 
-    // Fallback messages
+    // Fallback messages (contradictory is resolved by agent and not written to notes)
     expect(notes.some((n) => n.title === "Vague answer: Q1" && n.body === "Answer is too general and needs specific details.")).toBe(true);
-    expect(notes.some((n) => n.title === "Contradictory answer: Q2" && n.body === "This answer conflicts with Q3.")).toBe(true);
     expect(notes.some((n) => n.title === "Not answered: Q3" && n.body.includes("still unanswered"))).toBe(true);
     expect(notes.some((n) => n.title === "Needs refinement: Q4" && n.body.includes("more concrete detail"))).toBe(true);
   });

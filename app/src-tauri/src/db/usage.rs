@@ -1,7 +1,8 @@
 use crate::types::{AgentRunRecord, UsageByModel, UsageByStep, UsageSummary, WorkflowSessionRecord};
 use rusqlite::Connection;
 
-use super::skills::{get_skill_master_id, get_workflow_run_id};
+use super::skills::get_skill_master_id;
+use super::workflow::get_workflow_run_id;
 
 pub(crate) fn step_name(step_id: i32) -> String {
     match step_id {

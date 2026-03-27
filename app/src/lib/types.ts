@@ -59,6 +59,18 @@ export interface AppSettings {
   auto_update: boolean
 }
 
+export interface Document {
+  id: number
+  name: string
+  source_type: "file" | "url" | "folder"
+  source_url: string | null
+  file_path: string
+  scope: "all" | "skill"
+  skill_ids: number[]
+  created_at: string
+  updated_at: string
+}
+
 export interface SkillUpdateInfo {
   name: string
   path: string
@@ -94,6 +106,7 @@ export type GitHubAuthResult =
 
 export interface SkillSummary {
   name: string
+  library_key?: string | null
   current_step: string | null
   status: string | null
   last_modified: string | null
@@ -108,9 +121,15 @@ export interface SkillSummary {
   description?: string | null
   version?: string | null
   model?: string | null
+  /** camelCase to match Rust serde rename: `#[serde(rename = "argumentHint")]`. ImportedSkill uses snake_case because its Rust struct has no rename. */
   argumentHint?: string | null
+  /** camelCase to match Rust serde rename. */
   userInvocable?: boolean | null
+  /** camelCase to match Rust serde rename. */
   disableModelInvocation?: boolean | null
+  plugin_slug: string
+  plugin_display_name: string
+  is_default_plugin: boolean
 }
 
 export interface SkillCommit {
@@ -173,11 +192,6 @@ export interface StartupDeps {
   checks: DepStatus[]
 }
 
-export interface PackageResult {
-  file_path: string
-  size_bytes: number
-}
-
 export interface OrphanSkill {
   skill_name: string
   purpose: string
@@ -185,6 +199,9 @@ export interface OrphanSkill {
 
 export interface DiscoveredSkill {
   name: string
+  plugin_slug?: string | null
+  plugin_display_name?: string | null
+  is_default_plugin?: boolean | null
   detected_step: number
   scenario: string
 }
@@ -324,6 +341,7 @@ export interface UsageByDay {
 export interface ImportedSkill {
   skill_id: string
   skill_name: string
+  library_key: string | null
   description: string | null
   is_active: boolean
   disk_path: string
@@ -337,6 +355,60 @@ export interface ImportedSkill {
   disable_model_invocation: boolean | null
   /** Source registry URL this skill was imported from. null for bundled/manually uploaded skills. */
   marketplace_source_url: string | null
+  plugin_slug: string
+  plugin_display_name: string
+  is_default_plugin: boolean
+}
+
+export interface LibraryPlugin {
+  id: number
+  slug: string
+  display_name: string
+  version: string | null
+  source_type: string
+  source_url: string | null
+  is_default: boolean
+  upgrade_locked: boolean
+}
+
+/**
+ * The common shape required to edit skill metadata, shared by SkillSummary (builder)
+ * and ImportedSkill (marketplace/imported). Workflow-only fields (status, current_step)
+ * are null for marketplace/imported skills.
+ */
+export interface EditableSkill {
+  name: string
+  skill_source?: string | null
+  purpose: string | null
+  description?: string | null
+  tags: string[]
+  intake_json: string | null
+  version?: string | null
+  model?: string | null
+  argumentHint?: string | null
+  userInvocable?: boolean | null
+  disableModelInvocation?: boolean | null
+  status: string | null
+  current_step: string | null
+}
+
+/** Convert an ImportedSkill to the EditableSkill shape expected by SkillDialog. */
+export function toEditableSkill(skill: ImportedSkill): EditableSkill {
+  return {
+    name: skill.skill_name,
+    skill_source: skill.marketplace_source_url ? 'marketplace' : 'imported',
+    purpose: skill.purpose ?? null,
+    description: skill.description ?? null,
+    tags: [],
+    intake_json: null,
+    version: skill.version ?? null,
+    model: skill.model ?? null,
+    argumentHint: skill.argument_hint ?? null,
+    userInvocable: skill.user_invocable ?? null,
+    disableModelInvocation: skill.disable_model_invocation ?? null,
+    status: null,
+    current_step: null,
+  }
 }
 
 export interface GitHubRepoInfo {
@@ -358,6 +430,15 @@ export interface AvailableSkill {
   argument_hint: string | null
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
+}
+
+export interface AvailablePlugin {
+  path: string
+  name: string
+  description: string | null
+  version: string | null
+  skill_count: number
+  skill_names: string[]
 }
 
 export interface SkillMetadataOverride {
@@ -438,9 +519,8 @@ export type WorkflowStepStructuredOutput =
 /** Per-question verdict entry within an {@link AnswerEvaluationOutput}. Matches `PerQuestionEntry` in `workflow_artifacts.rs`. */
 export interface PerQuestionEntry {
   question_id: string
-  verdict: "clear" | "needs_refinement" | "not_answered" | "vague" | "contradictory"
+  verdict: "clear" | "needs_refinement" | "not_answered" | "vague"
   reason?: string | null
-  contradicts?: string | null
 }
 
 /** Structured output produced by the answer-evaluator agent. Matches `AnswerEvaluationOutput` in `workflow_artifacts.rs`. */
@@ -452,6 +532,8 @@ export interface AnswerEvaluationOutput {
   contradictory_count: number
   total_count: number
   reasoning: string
+  /** Gate decision set by the agent after asking the user via AskUserQuestion. */
+  gate_decision?: "skip_research" | "run_research" | "revise" | null
   per_question: PerQuestionEntry[]
 }
 

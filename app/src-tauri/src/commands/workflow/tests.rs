@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
 use super::deploy::{
     copy_agents_to_claude_dir, copy_directory_recursive, copy_managed_plugins_to_claude_dir,
@@ -8,7 +9,6 @@ use super::output_format::{
     answer_evaluator_output_format, materialize_answer_evaluation_output_value,
     materialize_workflow_step_output_value,
 };
-use super::packaging::create_skill_zip;
 use super::guards::{
     make_agent_id, parse_decisions_guard, parse_scope_recommendation,
     validate_decisions_exist_inner, workflow_step_runtime_label,
@@ -19,7 +19,6 @@ use super::step_config::{
     build_betas, get_step_config, thinking_budget_for_step, workflow_output_format_for_agent,
 };
 use super::evaluation::get_step_output_files;
-use super::claude_md::{generate_skills_section};
 
 fn valid_clarifications_value() -> serde_json::Value {
     serde_json::json!({
@@ -836,6 +835,7 @@ fn test_build_prompt_all_three_paths() {
     let prompt = build_prompt(
         "my-skill",
         "/home/user/.vibedata/skill-builder",
+        DEFAULT_PLUGIN_SLUG,
         "/home/user/my-skills",
         None,
         None,
@@ -854,6 +854,7 @@ fn test_build_prompt_with_skill_type() {
     let prompt = build_prompt(
         "my-skill",
         "/home/user/.vibedata/skill-builder",
+        DEFAULT_PLUGIN_SLUG,
         "/home/user/my-skills",
         None,
         None,
@@ -868,6 +869,7 @@ fn test_build_prompt_with_author_info() {
     let prompt = build_prompt(
         "my-skill",
         "/home/user/.vibedata/skill-builder",
+        DEFAULT_PLUGIN_SLUG,
         "/home/user/my-skills",
         Some("octocat"),
         Some("2025-06-15T12:00:00Z"),
@@ -883,6 +885,7 @@ fn test_build_prompt_without_author_info() {
     let prompt = build_prompt(
         "my-skill",
         "/home/user/.vibedata/skill-builder",
+        DEFAULT_PLUGIN_SLUG,
         "/home/user/my-skills",
         None,
         None,
@@ -936,83 +939,6 @@ fn test_workflow_step_runtime_label_uses_step_name_slug() {
     assert_eq!(workflow_step_runtime_label(&step), "confirm-decisions");
 }
 
-#[test]
-fn test_package_skill_creates_zip() {
-    let tmp = tempfile::tempdir().unwrap();
-    // source_dir now has SKILL.md and references/ directly (no skill/ subdir)
-    let source_dir = tmp.path().join("my-skill");
-    std::fs::create_dir_all(source_dir.join("references")).unwrap();
-
-    std::fs::write(source_dir.join("SKILL.md"), "# My Skill").unwrap();
-    std::fs::write(
-        source_dir.join("references").join("deep-dive.md"),
-        "# Deep Dive",
-    )
-    .unwrap();
-
-    // Extra files that should NOT be included in the zip
-    std::fs::create_dir_all(source_dir.join("context")).unwrap();
-    std::fs::write(source_dir.join("context").join("decisions.json"), "{}").unwrap();
-    std::fs::write(source_dir.join("workflow.md"), "# Workflow").unwrap();
-
-    let output_path = source_dir.join("my-skill.skill");
-    let result = create_skill_zip(&source_dir, &output_path).unwrap();
-
-    assert!(Path::new(&result.file_path).exists());
-    assert!(result.size_bytes > 0);
-
-    let file = std::fs::File::open(&result.file_path).unwrap();
-    let mut archive = zip::ZipArchive::new(file).unwrap();
-
-    let names: Vec<String> = (0..archive.len())
-        .map(|i| archive.by_index(i).unwrap().name().to_string())
-        .collect();
-
-    assert!(names.contains(&"SKILL.md".to_string()));
-    assert!(names.contains(&"references/deep-dive.md".to_string()));
-    assert!(!names.iter().any(|n| n.starts_with("context/")));
-    assert!(!names.contains(&"workflow.md".to_string()));
-}
-
-#[test]
-fn test_package_skill_nested_references() {
-    let tmp = tempfile::tempdir().unwrap();
-    // source_dir has SKILL.md and references/ directly
-    let source_dir = tmp.path().join("nested-skill");
-    std::fs::create_dir_all(source_dir.join("references").join("sub")).unwrap();
-
-    std::fs::write(source_dir.join("SKILL.md"), "# Nested").unwrap();
-    std::fs::write(source_dir.join("references").join("top.md"), "top level").unwrap();
-    std::fs::write(
-        source_dir.join("references").join("sub").join("nested.md"),
-        "nested ref",
-    )
-    .unwrap();
-
-    let output_path = source_dir.join("nested-skill.skill");
-    let result = create_skill_zip(&source_dir, &output_path).unwrap();
-
-    let file = std::fs::File::open(&result.file_path).unwrap();
-    let mut archive = zip::ZipArchive::new(file).unwrap();
-
-    let names: Vec<String> = (0..archive.len())
-        .map(|i| archive.by_index(i).unwrap().name().to_string())
-        .collect();
-
-    assert!(names.contains(&"SKILL.md".to_string()));
-    assert!(names.contains(&"references/top.md".to_string()));
-    assert!(names.contains(&"references/sub/nested.md".to_string()));
-}
-
-#[test]
-fn test_package_skill_missing_dir() {
-    let result = create_skill_zip(
-        Path::new("/nonexistent/path"),
-        Path::new("/nonexistent/output.skill"),
-    );
-    assert!(result.is_err());
-}
-
 // Tests for copy_directory_to removed — function no longer exists
 // (agents tree is no longer deployed to workspace root)
 
@@ -1025,23 +951,14 @@ fn test_resolve_prompts_dir_dev_mode() {
         .map(|p| p.join("agent-sources"));
     assert!(dev_path.is_some());
     let agent_sources_dir = dev_path.unwrap();
-    let agents_dir = agent_sources_dir.join("agents");
     let plugin_agents_dir = agent_sources_dir
         .join("plugins")
         .join("skill-content-researcher")
         .join("agents");
-    assert!(
-        agents_dir.is_dir(),
-        "Repo root agent-sources/agents/ should exist"
-    );
     // Verify flat agent files exist (no subdirectories)
     assert!(
         plugin_agents_dir.join("confirm-decisions.md").exists(),
         "agent-sources/plugins/skill-content-researcher/agents/confirm-decisions.md should exist"
-    );
-    assert!(
-        agents_dir.join("answer-evaluator.md").exists(),
-        "agent-sources/agents/answer-evaluator.md should exist"
     );
 }
 
@@ -1069,7 +986,7 @@ fn test_delete_step_output_files_from_step_onwards() {
     std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
     // Reset from step 2 onwards — steps 0, 1 should be preserved
-    crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
+    crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 2, skills_path);
 
     // Steps 0, 1 output (unified clarifications.json) should still exist
     assert!(workspace_skill_dir
@@ -1097,7 +1014,7 @@ fn test_clean_step_output_step1_is_noop() {
     std::fs::write(skill_dir.join("context/decisions.json"), "{}").unwrap();
 
     // Clean only step 1 — both files should be untouched (step 1 has no unique output)
-    crate::cleanup::clean_step_output(workspace, "my-skill", 1, skills_path);
+    crate::cleanup::clean_step_output(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 1, skills_path);
 
     assert!(skill_dir.join("context/clarifications.json").exists());
     assert!(skill_dir.join("context/decisions.json").exists());
@@ -1109,7 +1026,7 @@ fn test_delete_step_output_files_nonexistent_dir_is_ok() {
     let tmp = tempfile::tempdir().unwrap();
     let skills_path = tmp.path().to_str().unwrap();
     let nonexistent = std::env::temp_dir().join("nonexistent");
-    crate::cleanup::delete_step_output_files(nonexistent.to_str().unwrap(), "no-skill", 0, skills_path);
+    crate::cleanup::delete_step_output_files(nonexistent.to_str().unwrap(), "no-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);
 }
 
 #[test]
@@ -1126,7 +1043,7 @@ fn test_delete_step_output_files_cleans_last_steps() {
     std::fs::write(workspace_skill_dir.join("context/decisions.json"), "{}").unwrap();
 
     // Reset from step 2 onwards should clean up step 2+3
-    crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
+    crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 2, skills_path);
 
     // Step 2 outputs should be deleted
     assert!(!workspace_skill_dir.join("context/decisions.json").exists());
@@ -1140,7 +1057,7 @@ fn test_delete_step_output_files_last_step() {
     let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
     std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
-    crate::cleanup::delete_step_output_files(workspace, "my-skill", 3, skills_path);
+    crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 3, skills_path);
 }
 
 #[test]
@@ -1323,40 +1240,6 @@ fn test_copy_managed_plugins_replaces_managed_and_preserves_unmanaged() {
     assert_eq!(preserved, "keep me");
 }
 
-// --- Task 5: create_skill_zip excludes context/ ---
-
-#[test]
-fn test_create_skill_zip_excludes_context_directory() {
-    let tmp = tempfile::tempdir().unwrap();
-    let source_dir = tmp.path().join("my-skill");
-    std::fs::create_dir_all(source_dir.join("references")).unwrap();
-    std::fs::create_dir_all(source_dir.join("context")).unwrap();
-
-    std::fs::write(source_dir.join("SKILL.md"), "# My Skill").unwrap();
-    std::fs::write(source_dir.join("references").join("ref.md"), "# Ref").unwrap();
-    // These context files should be EXCLUDED from the zip
-    std::fs::write(source_dir.join("context").join("clarifications.json"), "{}").unwrap();
-    std::fs::write(source_dir.join("context").join("decisions.json"), "{}").unwrap();
-
-    let output_path = source_dir.join("my-skill.skill");
-    let result = create_skill_zip(&source_dir, &output_path).unwrap();
-
-    let file = std::fs::File::open(&result.file_path).unwrap();
-    let mut archive = zip::ZipArchive::new(file).unwrap();
-
-    let names: Vec<String> = (0..archive.len())
-        .map(|i| archive.by_index(i).unwrap().name().to_string())
-        .collect();
-
-    // Should include SKILL.md and references
-    assert!(names.contains(&"SKILL.md".to_string()));
-    assert!(names.contains(&"references/ref.md".to_string()));
-    // Should NOT include any context files
-    assert!(!names.iter().any(|n| n.starts_with("context/")));
-    assert!(!names.iter().any(|n| n.contains("clarifications")));
-    assert!(!names.iter().any(|n| n.contains("decisions")));
-}
-
 // --- VD-403: validate_decisions_exist_inner tests ---
 
 #[test]
@@ -1366,7 +1249,7 @@ fn test_validate_decisions_missing() {
     std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
 
     let result =
-        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
+        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, "/unused");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("decisions.json was not found"));
 }
@@ -1386,7 +1269,7 @@ fn test_validate_decisions_found_in_workspace_context() {
     .unwrap();
 
     let result =
-        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
+        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, "/unused");
     assert!(result.is_ok());
 }
 
@@ -1406,7 +1289,7 @@ fn test_validate_decisions_rejects_empty_file() {
     .unwrap();
 
     let result =
-        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
+        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, "/unused");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("decisions.json was not found"));
 }
@@ -1476,12 +1359,13 @@ fn test_step0_always_wipes_context() {
 fn test_write_user_context_file_all_fields() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join("my-skill");
+    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
     // Directory doesn't need to pre-exist — create_dir_all handles it
 
     let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines"}"#;
     write_user_context_file(
         workspace_path,
+        DEFAULT_PLUGIN_SLUG,
         "my-skill",
         &[],
         None,
@@ -1495,6 +1379,7 @@ fn test_write_user_context_file_all_fields() {
         None,
         None,
         None,
+        &[]
     );
 
     let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
@@ -1514,10 +1399,11 @@ fn test_write_user_context_file_all_fields() {
 fn test_write_user_context_file_partial_fields() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join("my-skill");
+    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
 
     write_user_context_file(
         workspace_path,
+        DEFAULT_PLUGIN_SLUG,
         "my-skill",
         &[],
         None,
@@ -1531,6 +1417,7 @@ fn test_write_user_context_file_partial_fields() {
         None,
         None,
         None,
+        &[]
     );
 
     let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
@@ -1543,10 +1430,11 @@ fn test_write_user_context_file_partial_fields() {
 fn test_write_user_context_file_empty_optional_fields_skipped() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join("my-skill");
+    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
 
     write_user_context_file(
         workspace_path,
+        DEFAULT_PLUGIN_SLUG,
         "my-skill",
         &[],
         None,
@@ -1560,6 +1448,7 @@ fn test_write_user_context_file_empty_optional_fields_skipped() {
         None,
         None,
         None,
+        &[]
     );
 
     // Skill name is always written; empty optional fields are omitted
@@ -1572,10 +1461,11 @@ fn test_write_user_context_file_empty_optional_fields_skipped() {
 fn test_write_user_context_file_always_writes_skill_name() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join("my-skill");
+    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
 
     write_user_context_file(
         workspace_path,
+        DEFAULT_PLUGIN_SLUG,
         "my-skill",
         &[],
         None,
@@ -1589,6 +1479,7 @@ fn test_write_user_context_file_always_writes_skill_name() {
         None,
         None,
         None,
+        &[]
     );
 
     // Skill name alone is enough to produce a file
@@ -1600,12 +1491,13 @@ fn test_write_user_context_file_always_writes_skill_name() {
 fn test_write_user_context_file_creates_missing_dir() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join("new-skill");
+    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("new-skill");
     // Directory does NOT exist yet
     assert!(!workspace_dir.exists());
 
     write_user_context_file(
         workspace_path,
+        DEFAULT_PLUGIN_SLUG,
         "new-skill",
         &[],
         None,
@@ -1619,6 +1511,7 @@ fn test_write_user_context_file_creates_missing_dir() {
         None,
         None,
         None,
+        &[]
     );
 
     // Directory should have been created and file written
@@ -1713,7 +1606,7 @@ fn test_reset_cleans_workspace_context_files() {
     std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
 
     // 5. Call delete_step_output_files from step 0
-    crate::cleanup::delete_step_output_files(workspace, "my-skill", 0, skills_path);
+    crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);
 
     // 6. Assert ALL files in workspace/my-skill/context/ are gone
     let mut remaining: Vec<String> = Vec::new();
@@ -1806,6 +1699,7 @@ fn test_format_user_context_all_fields() {
         None,
         None,
         None,
+        &[]
     );
     let ctx = result.unwrap();
     assert!(ctx.starts_with("## User Context\n"));
@@ -1841,6 +1735,7 @@ fn test_format_user_context_partial_fields() {
         None,
         None,
         None,
+        &[]
     );
     let ctx = result.unwrap();
     assert!(ctx.contains("**Industry**: Fintech"));
@@ -1863,6 +1758,7 @@ fn test_format_user_context_empty_strings_skipped() {
         None,
         None,
         None,
+        &[]
     );
     assert!(result.is_none());
 }
@@ -1883,6 +1779,7 @@ fn test_format_user_context_all_none() {
         None,
         None,
         None,
+        &[]
     );
     assert!(result.is_none());
 }
@@ -1903,6 +1800,7 @@ fn test_format_user_context_invalid_json_ignored() {
         None,
         None,
         None,
+        &[]
     );
     let ctx = result.unwrap();
     assert!(ctx.contains("**Industry**: Tech"));
@@ -1926,6 +1824,7 @@ fn test_format_user_context_partial_intake() {
         None,
         None,
         None,
+        &[]
     );
     let ctx = result.unwrap();
     assert!(ctx.contains("### Target Audience"));
@@ -1943,7 +1842,7 @@ fn test_format_user_context_partial_intake() {
 fn test_build_prompt_includes_user_context_md_instruction() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), skills.to_str().unwrap(), None, None, 5);
+    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, 5);
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
@@ -1952,7 +1851,7 @@ fn test_build_prompt_includes_user_context_md_instruction() {
 fn test_build_prompt_without_user_context() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), skills.to_str().unwrap(), None, None, 5);
+    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, 5);
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
@@ -2022,9 +1921,10 @@ fn test_save_clarifications_content_writes_pretty_json() {
     let workspace_str = workspace_path.to_string_lossy().to_string();
     let payload = valid_clarifications_value().to_string();
 
-    super::evaluation::save_clarifications_content("my-skill".to_string(), workspace_str, payload).unwrap();
+    super::evaluation::save_clarifications_content_inner("my-skill", &workspace_str, payload, crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
     let saved = std::fs::read_to_string(
         workspace_path
+            .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
             .join("my-skill")
             .join("context")
             .join("clarifications.json"),
@@ -2039,10 +1939,11 @@ fn test_save_clarifications_content_rejects_invalid_json() {
     let workspace_path = tmp.path().join("workspace");
     let workspace_str = workspace_path.to_string_lossy().to_string();
 
-    let err = super::evaluation::save_clarifications_content(
-        "my-skill".to_string(),
-        workspace_str,
+    let err = super::evaluation::save_clarifications_content_inner(
+        "my-skill",
+        &workspace_str,
         "{not-valid-json}".to_string(),
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
     )
     .unwrap_err();
     assert!(err.contains("Invalid clarifications JSON"));
@@ -2067,260 +1968,11 @@ fn test_save_clarifications_content_rejects_invalid_schema() {
     });
 
     let err =
-        super::evaluation::save_clarifications_content("my-skill".to_string(), workspace_str, invalid.to_string())
+        super::evaluation::save_clarifications_content_inner("my-skill", &workspace_str, invalid.to_string(), crate::skill_paths::DEFAULT_PLUGIN_SLUG)
             .unwrap_err();
     assert!(err.contains("priority_questions must be an array"));
 }
 
-// --- generate_skills_section tests ---
-
-/// Helper: create a skill directory with a SKILL.md containing frontmatter.
-fn create_skill_on_disk(
-    base: &std::path::Path,
-    name: &str,
-    trigger: Option<&str>,
-    description: Option<&str>,
-) -> String {
-    let skill_dir = base.join(name);
-    std::fs::create_dir_all(&skill_dir).unwrap();
-    let mut fm = String::from("---\n");
-    fm.push_str(&format!("name: {}\n", name));
-    if let Some(desc) = description {
-        fm.push_str(&format!("description: {}\n", desc));
-    }
-    if let Some(trig) = trigger {
-        fm.push_str(&format!("trigger: {}\n", trig));
-    }
-    fm.push_str("---\n# Skill\n");
-    std::fs::write(skill_dir.join("SKILL.md"), &fm).unwrap();
-    skill_dir.to_string_lossy().to_string()
-}
-
-#[test]
-fn test_generate_skills_section_single_active_skill() {
-    let conn = super::super::test_utils::create_test_db();
-    let skill_tmp = tempfile::tempdir().unwrap();
-    let disk_path = create_skill_on_disk(
-        skill_tmp.path(),
-        "test-practices",
-        Some("Read the skill at .claude/skills/test-practices/SKILL.md."),
-        Some("Skill structure rules."),
-    );
-
-    let skill = crate::types::ImportedSkill {
-        skill_id: "bundled-test-practices".to_string(),
-        skill_name: "test-practices".to_string(),
-        is_active: true,
-        disk_path,
-        imported_at: "2000-01-01T00:00:00Z".to_string(),
-        is_bundled: true,
-        description: Some("Skill structure rules.".to_string()),
-        purpose: None,
-        version: None,
-        model: None,
-        argument_hint: None,
-        user_invocable: None,
-        disable_model_invocation: None,
-        marketplace_source_url: None,
-    };
-    crate::db::insert_imported_skill(&conn, &skill).unwrap();
-
-    let section = generate_skills_section(&conn).unwrap();
-
-    assert!(
-        section.contains("## Custom Skills"),
-        "should use unified heading"
-    );
-    assert!(
-        section.contains("### /test-practices"),
-        "should list skill by name"
-    );
-    assert!(
-        section.contains("Skill structure rules."),
-        "should include description"
-    );
-    assert!(
-        !section.contains("Read and follow the skill at"),
-        "should not include path line"
-    );
-    assert!(
-        !section.contains("## Skill Generation Guidance"),
-        "old bundled heading must not appear"
-    );
-    assert!(
-        !section.contains("## Imported Skills"),
-        "old imported heading must not appear"
-    );
-}
-
-#[test]
-fn test_generate_skills_section_inactive_skill_excluded() {
-    let conn = super::super::test_utils::create_test_db();
-    let skill = crate::types::ImportedSkill {
-        skill_id: "bundled-test-practices".to_string(),
-        skill_name: "test-practices".to_string(),
-        is_active: false,
-        disk_path: format!("{}/skills/test-practices", std::env::temp_dir().display()),
-        imported_at: "2000-01-01T00:00:00Z".to_string(),
-        is_bundled: true,
-        description: None,
-        purpose: None,
-        version: None,
-        model: None,
-        argument_hint: None,
-        user_invocable: None,
-        disable_model_invocation: None,
-        marketplace_source_url: None,
-    };
-    crate::db::insert_imported_skill(&conn, &skill).unwrap();
-
-    let section = generate_skills_section(&conn).unwrap();
-    assert!(
-        section.is_empty(),
-        "inactive skill should produce empty section"
-    );
-}
-
-#[test]
-fn test_generate_skills_section_multiple_skills_same_format() {
-    let conn = super::super::test_utils::create_test_db();
-    let skill_tmp = tempfile::tempdir().unwrap();
-    let disk_path1 = create_skill_on_disk(
-        skill_tmp.path(),
-        "test-practices",
-        Some("Use for skill generation."),
-        Some("Skill structure rules."),
-    );
-    let disk_path2 = create_skill_on_disk(
-        skill_tmp.path(),
-        "data-analytics",
-        Some("Use for analytics queries."),
-        Some("Analytics patterns."),
-    );
-
-    let bundled = crate::types::ImportedSkill {
-        skill_id: "bundled-test-practices".to_string(),
-        skill_name: "test-practices".to_string(),
-        is_active: true,
-        disk_path: disk_path1,
-        imported_at: "2000-01-01T00:00:00Z".to_string(),
-        is_bundled: true,
-        description: Some("Skill structure rules.".to_string()),
-        purpose: None,
-        version: None,
-        model: None,
-        argument_hint: None,
-        user_invocable: None,
-        disable_model_invocation: None,
-        marketplace_source_url: None,
-    };
-    let imported = crate::types::ImportedSkill {
-        skill_id: "imp-data-analytics-123".to_string(),
-        skill_name: "data-analytics".to_string(),
-        is_active: true,
-        disk_path: disk_path2,
-        imported_at: "2025-01-15T10:00:00Z".to_string(),
-        is_bundled: false,
-        description: Some("Analytics patterns.".to_string()),
-        purpose: None,
-        version: None,
-        model: None,
-        argument_hint: None,
-        user_invocable: None,
-        disable_model_invocation: None,
-        marketplace_source_url: None,
-    };
-    crate::db::insert_imported_skill(&conn, &bundled).unwrap();
-    crate::db::insert_imported_skill(&conn, &imported).unwrap();
-
-    let section = generate_skills_section(&conn).unwrap();
-
-    assert!(section.contains("## Custom Skills"), "unified heading");
-    assert!(
-        section.contains("### /test-practices"),
-        "bundled skill listed"
-    );
-    assert!(
-        section.contains("### /data-analytics"),
-        "imported skill listed"
-    );
-    assert!(
-        section.contains("Skill structure rules."),
-        "bundled description"
-    );
-    assert!(
-        section.contains("Analytics patterns."),
-        "imported description"
-    );
-    // Alphabetical order: data-analytics < test-practices
-    let da_pos = section.find("### /data-analytics").unwrap();
-    let tp_pos = section.find("### /test-practices").unwrap();
-    assert!(da_pos < tp_pos, "skills sorted alphabetically");
-}
-
-#[test]
-fn test_generate_skills_section_no_skills() {
-    let conn = super::super::test_utils::create_test_db();
-    let section = generate_skills_section(&conn).unwrap();
-    assert!(section.is_empty(), "no skills should produce empty section");
-}
-
-#[test]
-fn test_generate_skills_section_no_trigger_no_path() {
-    // Regression test: section must never contain "Read and follow" path line or trigger text
-    let conn = super::super::test_utils::create_test_db();
-    let skill_tmp = tempfile::tempdir().unwrap();
-    let disk_path = create_skill_on_disk(
-        skill_tmp.path(),
-        "my-skill",
-        Some("When user asks about X, use this skill."),
-        Some("Skill description here."),
-    );
-
-    let skill = crate::types::ImportedSkill {
-        skill_id: "imp-my-skill-1".to_string(),
-        skill_name: "my-skill".to_string(),
-        is_active: true,
-        disk_path,
-        imported_at: "2025-01-01T00:00:00Z".to_string(),
-        is_bundled: false,
-        description: Some("Skill description here.".to_string()),
-        purpose: None,
-        version: None,
-        model: None,
-        argument_hint: None,
-        user_invocable: None,
-        disable_model_invocation: None,
-        marketplace_source_url: None,
-    };
-    crate::db::insert_imported_skill(&conn, &skill).unwrap();
-
-    let section = generate_skills_section(&conn).unwrap();
-
-    // Must NOT contain trigger text or path directive
-    assert!(
-        !section.contains("Read and follow"),
-        "section must not contain 'Read and follow'"
-    );
-    assert!(
-        !section.contains("When user asks about X"),
-        "section must not contain trigger text"
-    );
-    assert!(
-        !section.contains("SKILL.md"),
-        "section must not contain skill path"
-    );
-
-    // MUST contain description
-    assert!(
-        section.contains("Skill description here."),
-        "section must include description"
-    );
-    assert!(
-        section.contains("### /my-skill"),
-        "section must include skill heading"
-    );
-}
 
 // =============================================================================
 // CG-R1: format_user_context (workflow/runtime.rs)
@@ -2329,7 +1981,8 @@ fn test_generate_skills_section_no_trigger_no_path() {
 #[test]
 fn test_format_user_context_returns_none_when_all_empty() {
     let result =
-        format_user_context(None, &[], None, None, None, None, None, None, None, None, None, None, None);
+        format_user_context(None, &[], None, None, None, None, None, None, None, None, None, None, None,
+        &[]);
     assert!(result.is_none(), "should return None when no fields are provided");
 }
 
@@ -2338,6 +1991,7 @@ fn test_format_user_context_includes_name_and_tags() {
     let tags = vec!["finance".to_string(), "analytics".to_string()];
     let result = format_user_context(
         Some("my-skill"), &tags, None, None, None, None, None, None, None, None, None, None, None,
+        &[]
     );
     let text = result.unwrap();
     assert!(text.contains("## User Context"), "should have heading");
@@ -2349,6 +2003,7 @@ fn test_format_user_context_includes_name_and_tags() {
 fn test_format_user_context_includes_purpose_label_mapping() {
     let result = format_user_context(
         None, &[], None, None, None, None, None, Some("domain"), None, None, None, None, None,
+        &[]
     );
     let text = result.unwrap();
     assert!(text.contains("Business process knowledge"), "domain purpose should map to label");
@@ -2358,6 +2013,7 @@ fn test_format_user_context_includes_purpose_label_mapping() {
 fn test_format_user_context_includes_profile_section() {
     let result = format_user_context(
         None, &[], None, Some("Healthcare"), Some("Data Engineer"), None, None, None, None, None, None, None, None,
+        &[]
     );
     let text = result.unwrap();
     assert!(text.contains("### About You"), "should have profile heading");
@@ -2369,6 +2025,7 @@ fn test_format_user_context_includes_profile_section() {
 fn test_format_user_context_includes_configuration() {
     let result = format_user_context(
         None, &[], None, None, None, None, None, None, Some("1.0"), Some("claude-sonnet-4-6"), Some("/ask"), Some(true), Some(false),
+        &[]
     );
     let text = result.unwrap();
     assert!(text.contains("### Configuration"), "should have config heading");
@@ -2383,6 +2040,7 @@ fn test_format_user_context_includes_configuration() {
 fn test_format_user_context_skips_inherit_model() {
     let result = format_user_context(
         None, &[], None, None, None, None, None, None, None, Some("inherit"), None, None, None,
+        &[]
     );
     // "inherit" model should be filtered out — if nothing else is set, result is None
     assert!(result.is_none(), "inherit model alone should produce None");
@@ -2393,6 +2051,7 @@ fn test_format_user_context_includes_intake_json_context() {
     let intake = r#"{"context": "We use Snowflake and dbt for data pipelines."}"#;
     let result = format_user_context(
         None, &[], None, None, None, Some(intake), None, None, None, None, None, None, None,
+        &[]
     );
     let text = result.unwrap();
     assert!(text.contains("### What Claude Needs to Know"), "should include intake context heading");
@@ -2407,33 +2066,13 @@ fn test_write_user_context_file_creates_file() {
     let tags = vec!["tag1".to_string()];
 
     write_user_context_file(
-        workspace_path, skill_name, &tags, None, Some("Tech"), None, None, Some("A test skill"), Some("domain"), None, None, None, None, None,
+        workspace_path, DEFAULT_PLUGIN_SLUG, skill_name, &tags, None, Some("Tech"), None, None, Some("A test skill"), Some("domain"), None, None, None, None, None,
+        &[]
     );
 
-    let ctx_path = tmp.path().join(skill_name).join("user-context.md");
+    let ctx_path = tmp.path().join(DEFAULT_PLUGIN_SLUG).join(skill_name).join("user-context.md");
     assert!(ctx_path.exists(), "user-context.md should be created");
     let content = std::fs::read_to_string(&ctx_path).unwrap();
     assert!(content.contains("# User Context"), "should contain user context heading");
     assert!(content.contains("A test skill"), "should contain description");
-}
-
-// =============================================================================
-// CG-R2: extract_customization_section (workflow/claude_md.rs)
-// =============================================================================
-
-use super::claude_md::extract_customization_section;
-
-#[test]
-fn test_extract_customization_section_returns_content_after_marker() {
-    let content = "# Base\nSome base content.\n\n## Customization\n\nMy custom instructions.\n";
-    let result = extract_customization_section(content);
-    assert!(result.starts_with("## Customization"), "should start with the heading");
-    assert!(result.contains("My custom instructions."), "should include user content");
-}
-
-#[test]
-fn test_extract_customization_section_returns_empty_when_missing() {
-    let content = "# Base\nSome content without customization section.\n";
-    let result = extract_customization_section(content);
-    assert!(result.is_empty(), "should return empty when marker not found");
 }

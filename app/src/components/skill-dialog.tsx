@@ -23,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useSettingsStore } from "@/stores/settings-store"
 import { renameSkill, updateSkillMetadata, generateSuggestions, createSkill, type FieldSuggestions } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
-import type { SkillSummary } from "@/lib/types"
+import type { EditableSkill } from "@/lib/types"
 import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
 
 // --- Built skill detection ---
@@ -32,7 +32,7 @@ import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
  * A skill is "built" when the generate step (step 5) has been completed.
  * Locked fields: name, purpose, tags.
  */
-function isSkillBuilt(skill: SkillSummary | null): boolean {
+function isSkillBuilt(skill: EditableSkill | null): boolean {
   if (!skill) return false
   if (skill.status === "completed") return true
   if (!skill.current_step) return false
@@ -80,7 +80,7 @@ interface SkillDialogCreateProps {
 
 interface SkillDialogEditProps {
   mode: "edit"
-  skill: SkillSummary | null
+  skill: EditableSkill | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved: () => void
@@ -511,7 +511,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 {/* Skills output location (create mode only) */}
                 {!isEdit && skillsPath && skillName && (
                   <p className="text-xs text-muted-foreground">
-                    Output: <code className="text-xs">{skillsPath}/{skillName}/</code>
+                    Output: <code className="text-xs">{skillsPath}/skills/{skillName}/</code>
                   </p>
                 )}
               </>

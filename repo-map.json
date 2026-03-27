@@ -96,7 +96,7 @@
     },
     "frontend_stores": {
       "path": "app/src/stores/",
-      "description": "Zustand state stores: agent (+ agent-display-buffer), auth, eval-run (cross-tab benchmark result + analyst notes from evaluate-skill runs), imported-skills, refine, settings, skill, test, usage, workflow"
+      "description": "Zustand state stores: agent (+ agent-display-buffer), auth, document, eval-run (cross-tab benchmark result + analyst notes from evaluate-skill runs), imported-skills, plugin, refine, settings, skill, test, usage, workflow"
     },
     "frontend_hooks": {
       "path": "app/src/hooks/",
@@ -108,11 +108,11 @@
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
-      "description": "Tauri command handlers. Flat files: agent, api_validation, evals (list_test_cases, save_test_case, delete_test_case, list_iterations), feedback, files, git, github_auth, lifecycle, node, reconciliation, settings, sidecar_lifecycle, test_utils, usage, workflow_artifacts, workflow_lifecycle, workflow_session, workspace. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, packaging, runtime, evaluation, tests), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands), skill/ (crud, metadata, suggestions, tests), refine/ (content, diff, output, protocol, tests)"
+      "description": "Tauri command handlers. Flat files: agent, api_validation, evals (list_test_cases, save_test_case, delete_test_case, list_iterations), feedback, files, git, github_auth, lifecycle, node, reconciliation, settings, sidecar_lifecycle, test_utils, usage, workflow_artifacts, workflow_lifecycle, workflow_session, workspace. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, packaging, runtime, evaluation, tests), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands), skill/ (crud, metadata, suggestions, tests), refine/ (content, diff, output, protocol, tests), documents/ (list_documents, list_skills_for_documents, add_document_file, add_document_url, add_document_folder, update_document, delete_document)"
     },
     "rust_db": {
       "path": "app/src-tauri/src/db/",
-      "description": "SQLite schema, migrations (code-only), and query helpers. Sub-modules: mod.rs (Db struct, init_db, pub use re-exports), migrations.rs (NUMBERED_MIGRATIONS + migration functions), skills.rs (skill CRUD/workflow runs/steps/tags), usage.rs (persist_agent_run/usage queries), settings.rs (read/write settings), imported_skills.rs (imported skill CRUD/hash tracking), locks.rs (skill locks/check_pid_alive), workflow.rs (workflow sessions), tests.rs (all DB tests)."
+      "description": "SQLite schema, migrations (code-only), and query helpers. Sub-modules: mod.rs (Db struct, init_db, pub use re-exports), migrations.rs (NUMBERED_MIGRATIONS + migration functions), skills.rs (skill CRUD/workflow runs/steps/tags + plugin CRUD: create_plugin, ensure_plugin, list_plugins, delete_plugin_by_slug, move_skill_to_plugin, plugins table management), usage.rs (persist_agent_run/usage queries), settings.rs (read/write settings), imported_skills.rs (imported skill CRUD/hash tracking), locks.rs (skill locks/check_pid_alive), workflow.rs (workflow sessions), documents.rs (document store CRUD: db_insert_document, db_list_documents, db_get_document, db_update_document_scope, db_delete_document, db_documents_for_skill), tests.rs (all DB tests)."
     },
     "rust_agents": {
       "path": "app/src-tauri/src/agents/",
@@ -156,7 +156,7 @@
     },
     "rust_support": {
       "path": "app/src-tauri/src/",
-      "description": "Top-level Rust support modules (not commands or DB): cleanup.rs (future-step artifact cleanup), fs_utils.rs (canonical copy_dir_recursive with symlink guard — single implementation used by all recursive directory copies), fs_validation.rs (detect_furthest_step, has_skill_output, path validation helpers), git.rs (git commit/init helpers for skill output repos), logging.rs (structured logging setup, log-level management)."
+      "description": "Top-level Rust support modules (not commands or DB): cleanup.rs (future-step artifact cleanup), fs_utils.rs (canonical copy_dir_recursive with symlink guard — single implementation used by all recursive directory copies), fs_validation.rs (detect_furthest_step, has_skill_output, path validation helpers), git.rs (git commit/init helpers for skill output repos), logging.rs (structured logging setup, log-level management), marketplace_manifest.rs (write/regenerate local marketplace.json and per-plugin plugin.json for Claude Code plugin marketplace layout), skill_paths.rs (path helpers for marketplace plugin directory structure)."
     },
     "frontend_test_utils": {
       "path": "app/src/test/",
