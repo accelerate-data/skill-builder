@@ -15,6 +15,7 @@ import type { EvalBenchmark, EvalCompleteEvent, EvalGradedEvent } from "@/lib/ty
  */
 export function buildEvaluateSkillPrompt(params: {
   skillName: string;
+  pluginSlug: string;
   workspacePath: string;
   skillsPath: string;
   evalIds: number[];
@@ -23,10 +24,11 @@ export function buildEvaluateSkillPrompt(params: {
   iteration: number;
   iterDir: string;
 }): string {
-  const { skillName, workspacePath, skillsPath, evalIds, runCount, comparisonMode, iteration, iterDir } = params;
+  const { skillName, pluginSlug, workspacePath, skillsPath, evalIds, runCount, comparisonMode, iteration, iterDir } = params;
   const skillPath = `${skillsPath}/${skillName}`;
   const lines = [
     `skill_name: ${skillName}`,
+    `plugin_slug: ${pluginSlug}`,
     `workspace_path: ${workspacePath}`,
     `eval_ids: ${JSON.stringify(evalIds)}`,
     `run_count: ${runCount}`,

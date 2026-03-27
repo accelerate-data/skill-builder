@@ -20,6 +20,7 @@ Run a subset of eval test cases against a skill, grade the outputs, aggregate re
 
 - **skill_name**: Skill slug (matches `skill_name` field in `evals.json`)
 - **workspace_path**: Absolute path to the workspace root (contains `.claude/plugins/`)
+- **plugin_slug**: Plugin slug for the skill (e.g. `skills` for the default plugin, or the plugin's slug)
 - **eval_ids**: JSON array of integer eval IDs to run
 - **run_count**: `1` or `3`
 - **skill_path**: Absolute path to the skill directory (contains `SKILL.md`)
@@ -50,7 +51,7 @@ Run a subset of eval test cases against a skill, grade the outputs, aggregate re
 
 ### Step 0: Derive the per-skill workspace path
 
-`skill_workspace` = `{workspace_path}/{skill_name}`
+`skill_workspace` = `{workspace_path}/{plugin_slug}/skills/{skill_name}`
 
 (`workspace_path` is the workspace root; `skill_workspace` is where evals and iterations live.)
 
