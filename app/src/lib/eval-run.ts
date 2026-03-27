@@ -25,7 +25,10 @@ export function buildEvaluateSkillPrompt(params: {
   iterDir: string;
 }): string {
   const { skillName, pluginSlug, workspacePath, skillsPath, evalIds, runCount, comparisonMode, iteration, iterDir } = params;
-  const skillPath = `${skillsPath}/${skillName}`;
+  // Plugin-aware skill path: default plugin = {skills}/skills/{name}, other = {skills}/{slug}/skills/{name}
+  const skillPath = pluginSlug === "skills"
+    ? `${skillsPath}/skills/${skillName}`
+    : `${skillsPath}/${pluginSlug}/skills/${skillName}`;
   const lines = [
     `skill_name: ${skillName}`,
     `plugin_slug: ${pluginSlug}`,

@@ -67,7 +67,7 @@ describe("buildEvaluateSkillPrompt", () => {
     expect(prompt).toContain("workspace_path: /workspace");
     expect(prompt).toContain("eval_ids: [1,3,5]");
     expect(prompt).toContain("run_count: 3");
-    expect(prompt).toContain("skill_path: /skills/dbt-quality");
+    expect(prompt).toContain("skill_path: /skills/my-plugin/skills/dbt-quality");
     expect(prompt).toContain("iteration: 4");
     expect(prompt).toContain("iter_dir: /workspace/my-plugin/skills/dbt-quality/evals/iterations/iteration-4");
   });
