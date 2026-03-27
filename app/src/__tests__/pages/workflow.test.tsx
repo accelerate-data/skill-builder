@@ -972,7 +972,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     const payload = {
       status: "generated",
       // benchmark_status collapsed into status for benchmark-skill output
-      benchmark_path: "evals/workspace/iteration-1",
+      benchmark_path: "evals/iterations/iteration-1",
     };
 
     act(() => {
@@ -2693,7 +2693,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
         structuredOutput: {
           status: "generated",
           // benchmark_status collapsed into status for benchmark-skill output
-      benchmark_path: "evals/workspace/iteration-1",
+      benchmark_path: "evals/iterations/iteration-1",
         },
         resultStatus: "success",
       });
@@ -3545,7 +3545,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
         structuredOutput: {
           status: "generated",
           // benchmark_status collapsed into status for benchmark-skill output
-          benchmark_path: "evals/workspace/iteration-1",
+          benchmark_path: "evals/iterations/iteration-1",
         },
         resultStatus: "success",
       });

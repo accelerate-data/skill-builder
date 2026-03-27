@@ -759,13 +759,13 @@ fn test_materialize_step3_generate_skipped_writes_skipped_benchmark() {
 fn test_materialize_step3_benchmark_complete() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
-    let bench_dir = skill_root.join("evals/workspace/iteration-1");
+    let bench_dir = skill_root.join("evals/iterations/iteration-1");
     std::fs::create_dir_all(&bench_dir).unwrap();
     std::fs::write(bench_dir.join("benchmark.json"), "{}").unwrap();
 
     let payload = serde_json::json!({
         "status": "complete",
-        "benchmark_path": "evals/workspace/iteration-1"
+        "benchmark_path": "evals/iterations/iteration-1"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
 
@@ -774,20 +774,20 @@ fn test_materialize_step3_benchmark_complete() {
     let meta: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
     assert_eq!(meta["benchmark_status"], "complete");
-    assert_eq!(meta["benchmark_path"], "evals/workspace/iteration-1");
+    assert_eq!(meta["benchmark_path"], "evals/iterations/iteration-1");
 }
 
 #[test]
 fn test_materialize_step3_partial_with_benchmark_json_upgrades_to_complete() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
-    let bench_dir = skill_root.join("evals/workspace/iteration-1");
+    let bench_dir = skill_root.join("evals/iterations/iteration-1");
     std::fs::create_dir_all(&bench_dir).unwrap();
     std::fs::write(bench_dir.join("benchmark.json"), "{}").unwrap();
 
     let payload = serde_json::json!({
         "status": "partial",
-        "benchmark_path": "evals/workspace/iteration-1"
+        "benchmark_path": "evals/iterations/iteration-1"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
 
@@ -797,7 +797,7 @@ fn test_materialize_step3_partial_with_benchmark_json_upgrades_to_complete() {
     .unwrap();
     // benchmark.json exists on disk — should be upgraded to "complete"
     assert_eq!(meta["benchmark_status"], "complete");
-    assert_eq!(meta["benchmark_path"], "evals/workspace/iteration-1");
+    assert_eq!(meta["benchmark_path"], "evals/iterations/iteration-1");
 }
 
 #[test]
@@ -807,7 +807,7 @@ fn test_materialize_step3_partial_without_benchmark_json_stays_partial() {
     // No benchmark.json on disk — partial stays partial
     let payload = serde_json::json!({
         "status": "partial",
-        "benchmark_path": "evals/workspace/iteration-1"
+        "benchmark_path": "evals/iterations/iteration-1"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
 

@@ -247,7 +247,7 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
     },
   ],
   list_iterations: [],
-  create_next_iteration_dir: [1, `${E2E_ROOT}/workspace/test-skill/evals/workspace/iteration-1`],
+  create_next_iteration_dir: [1, `${E2E_ROOT}/workspace/test-skill/evals/iterations/iteration-1`],
   materialize_eval_benchmark: {
     skill_name: "test-skill",
     iteration: 1,

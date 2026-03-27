@@ -285,7 +285,7 @@ pub fn delete_test_case(
     Ok(())
 }
 
-/// List iteration directories under `{workspace}/{skill}/evals/workspace/`.
+/// List iteration directories under `{workspace}/{skill}/evals/iterations/`.
 /// Returns metadata sorted by iteration number descending.
 #[tauri::command]
 pub fn list_iterations(

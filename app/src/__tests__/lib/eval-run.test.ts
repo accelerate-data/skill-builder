@@ -59,7 +59,7 @@ describe("buildEvaluateSkillPrompt", () => {
       evalIds: [1, 3, 5],
       runCount: 3,
       iteration: 4,
-      iterDir: "/workspace/dbt-quality/evals/workspace/iteration-4",
+      iterDir: "/workspace/dbt-quality/evals/iterations/iteration-4",
     });
     expect(prompt).toContain("skill_name: dbt-quality");
     expect(prompt).toContain("workspace_path: /workspace");
@@ -67,7 +67,7 @@ describe("buildEvaluateSkillPrompt", () => {
     expect(prompt).toContain("run_count: 3");
     expect(prompt).toContain("skill_path: /skills/dbt-quality");
     expect(prompt).toContain("iteration: 4");
-    expect(prompt).toContain("iter_dir: /workspace/dbt-quality/evals/workspace/iteration-4");
+    expect(prompt).toContain("iter_dir: /workspace/dbt-quality/evals/iterations/iteration-4");
   });
 
   it("serializes eval_ids as JSON array", () => {
@@ -78,7 +78,7 @@ describe("buildEvaluateSkillPrompt", () => {
       evalIds: [7],
       runCount: 1,
       iteration: 1,
-      iterDir: "/w/s/evals/workspace/iteration-1",
+      iterDir: "/w/s/evals/iterations/iteration-1",
     });
     expect(prompt).toContain("eval_ids: [7]");
   });

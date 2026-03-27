@@ -677,7 +677,7 @@ pub fn preview_step_reset(
 }
 
 /// Remove incomplete iteration directories (those missing `benchmark.json`)
-/// under `{workspace_path}/{skill_name}/evals/workspace/`.
+/// under `{workspace_path}/{skill_name}/evals/iterations/`.
 ///
 /// Returns the number of directories removed. Errors during removal are logged
 /// as warnings and do not propagate — callers should never be blocked by cleanup.
@@ -776,7 +776,7 @@ pub struct LatestBenchmarkResult {
 
 /// Read benchmark.json from the latest iteration directory for a skill.
 ///
-/// Scans `{workspace}/{skill}/evals/workspace/` for `iteration-{N}` dirs,
+/// Scans `{workspace}/{skill}/evals/iterations/` for `iteration-{N}` dirs,
 /// picks the highest N, and reads its `benchmark.json`. Returns `None` when
 /// no benchmark data exists (no evals dir, no iterations, or no JSON file).
 #[tauri::command]
