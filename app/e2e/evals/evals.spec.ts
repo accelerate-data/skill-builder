@@ -140,8 +140,8 @@ test.describe("Evals tab — browser mock", { tag: "@evals" }, () => {
     // Wait for benchmark card
     await expect(page.getByText("avg pass rate")).toBeVisible({ timeout: 8_000 });
 
-    // Click "Refine skill"
-    await page.getByRole("button", { name: "Refine skill" }).click();
+    // Click "Refine skill" (use first() — benchmark card may render two variants)
+    await page.getByRole("button", { name: "Refine skill" }).first().click();
 
     // Should switch to Refine tab
     const refineTab = page.getByRole("tab", { name: "Refine" });
@@ -198,7 +198,8 @@ test.describe("Evals tab — sidecar integration", { tag: "@evals-integration" }
     await expect(page.getByTestId("evals-run-thinking")).not.toBeVisible({ timeout: 8_000 });
 
     // Post-run: verify the mock sidecar wrote at least one grading file into the iteration dir.
-    // mock-template uses eval IDs 3 and 4 — check that run-0 was created.
+    // mock-template uses eval IDs 3 and 4. Each eval dir has variant subdirs (e.g. with_skill/)
+    // containing the grading.json, so we need to look two levels deep.
     const run0Dir = path.join(bridge.workspaceDir, skillName, "evals", "workspace", "iteration-1", "run-0");
     const { existsSync, readdirSync } = await import("node:fs");
     expect(existsSync(run0Dir), `run-0 dir should exist at ${run0Dir}`).toBe(true);
@@ -206,10 +207,20 @@ test.describe("Evals tab — sidecar integration", { tag: "@evals-integration" }
     const evalDirs = readdirSync(run0Dir);
     expect(evalDirs.length).toBeGreaterThan(0);
 
-    // At least one eval dir should contain a grading.json
-    const hasGrading = evalDirs.some((d) => {
-      const gradingPath = path.join(run0Dir, d, "grading.json");
-      return existsSync(gradingPath);
+    // Each eval dir may contain variant subdirs (with_skill, without_skill, current, previous)
+    // each of which holds grading.json — check two levels deep.
+    const hasGrading = evalDirs.some((evalDir) => {
+      const evalPath = path.join(run0Dir, evalDir);
+      // Direct grading.json (simple mode)
+      if (existsSync(path.join(evalPath, "grading.json"))) return true;
+      // Variant subdir grading.json (comparison mode: with_skill/, without_skill/, etc.)
+      try {
+        return readdirSync(evalPath).some((variant) =>
+          existsSync(path.join(evalPath, variant, "grading.json")),
+        );
+      } catch {
+        return false;
+      }
     });
     expect(hasGrading, "At least one grading.json should be written by the sidecar").toBe(true);
   });

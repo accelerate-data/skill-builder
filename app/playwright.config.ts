@@ -20,13 +20,13 @@ export default defineConfig({
     {
       // PR CI subset: fast functional checks for all main features
       name: "smoke",
-      grep: /@workflow|@dashboard|@refine|@settings|@setup|@skills/,
+      grep: /@workflow|@dashboard|@refine|@evals|@settings|@setup|@skills/,
       use: { ...devices["Desktop Chrome"] },
     },
     {
       // Nightly / post-merge: real sidecar integration + full desktop smoke
       name: "nightly",
-      grep: /@integration|@desktop-smoke/,
+      grep: /@integration|@evals-integration|@desktop-smoke/,
       use: { ...devices["Desktop Chrome"] },
     },
   ],
