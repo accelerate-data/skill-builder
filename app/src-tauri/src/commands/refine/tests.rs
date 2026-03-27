@@ -697,11 +697,11 @@ fn test_refine_prompt_no_inline_user_context() {
 }
 
 #[test]
-fn test_refine_prompt_includes_benchmark_feedback_routing() {
+fn test_refine_prompt_includes_eval_failure_feedback_routing() {
     let prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None);
     assert!(
-        prompt.contains("BENCHMARK FEEDBACK"),
-        "prompt must contain BENCHMARK FEEDBACK routing"
+        prompt.contains("EVAL FAILURE FEEDBACK"),
+        "prompt must contain EVAL FAILURE FEEDBACK routing"
     );
     assert!(
         prompt.contains("AskUserQuestion"),

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, IterationMeta, PendingEval, SkillEvalContext } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, IterationMeta, PendingEval, SkillEvalContext, EvalBenchmark } from "@/lib/types";
 import type { EvalQuery, OptimizationResult } from "@/lib/description-optimization";
 
 // Re-export invoke for flexible Tauri command invocation
@@ -657,6 +657,32 @@ export const deleteTestCase = (skillName: string, workspacePath: string, id: num
 
 export const listIterations = (skillName: string, workspacePath: string) =>
   invoke<IterationMeta[]>("list_iterations", { skillName, workspacePath });
+
+export const createNextIterationDir = (skillName: string, workspacePath: string) =>
+  invoke<[number, string]>("create_next_iteration_dir", { skillName, workspacePath });
+
+export const materializeEvalBenchmark = (
+  iterDir: string,
+  skillName: string,
+  iteration: number,
+  evalIds: number[],
+  runCount: number,
+  comparisonMode?: string,
+) =>
+  invoke<[EvalBenchmark, string[]]>("materialize_eval_benchmark", {
+    iterDir,
+    skillName,
+    iteration,
+    evalIds,
+    runCount,
+    comparisonMode: comparisonMode ?? null,
+  });
+
+export const readIterationResult = (iterationPath: string) =>
+  invoke<[EvalBenchmark, string[]]>("read_iteration_result", { iterationPath });
+
+export const readGrading = (gradingPath: string) =>
+  invoke<Record<string, unknown>>("read_grading", { gradingPath });
 
 export const readSkillContextForEvalGen = (skillName: string, workspacePath: string) =>
   invoke<SkillEvalContext>("read_skill_context_for_eval_gen", { skillName, workspacePath });

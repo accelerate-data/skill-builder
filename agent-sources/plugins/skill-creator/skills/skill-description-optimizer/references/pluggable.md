@@ -13,6 +13,7 @@ Resolve absolute paths to the plugin at runtime:
 2. Walk up three levels to reach the `plugins/` directory
 3. Scripts root = `<plugins-dir>/skill-creator/skills/skill-creator/scripts/`
 4. Assets root = `<plugins-dir>/skill-creator/skills/skill-creator/assets/`
+5. Local scripts root = `<plugins-dir>/skill-creator/skills/skill-description-optimizer/scripts/`
 
 In bash (relative to this file's directory):
 
@@ -20,27 +21,14 @@ In bash (relative to this file's directory):
 PLUGINS_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 SCRIPTS_ROOT="$PLUGINS_DIR/skill-creator/skills/skill-creator/scripts"
 ASSETS_ROOT="$PLUGINS_DIR/skill-creator/skills/skill-creator/assets"
+LOCAL_SCRIPTS_ROOT="$PLUGINS_DIR/skill-creator/skills/skill-description-optimizer/scripts"
 ```
 
 ## Script Interfaces
 
-### generate_eval_queries.py
-
-Generates trigger eval queries for a skill.
-
-```bash
-uv run "$SCRIPTS_ROOT/generate_eval_queries.py" \
-  --skill-path <skill-dir> \
-  [--model <model-id>] \
-  [--count <N>]        # default 20
-```
-
-stdout: `{"ok": true, "queries": [{"query": "...", "should_trigger": bool}, ...]}`
-stderr: diagnostics
-
 ### run_loop.py
 
-Runs the full eval/improve loop and streams progress.
+Runs the full eval/improve loop.
 
 ```bash
 uv run "$SCRIPTS_ROOT/run_loop.py" \
@@ -52,10 +40,10 @@ uv run "$SCRIPTS_ROOT/run_loop.py" \
   [--verbose]
 ```
 
-stdout: JSONL stream
+stdout: single pretty-printed JSON object
 
-- Progress lines: `{"type": "progress", "iteration": N, "description": "...", "train_passed": N, "train_total": N, "test_passed": N|null, "test_total": N|null}`
-- Final line: `{"type": "result", "ok": true, "best_description": "...", "original_description": "...", "best_score": "N/N", "iterations_run": N, "history": [...]}`
+- Success: `{"ok": true, "best_description": "...", "original_description": "...", "best_score": "N/N", "iterations_run": N, "history": [...]}`
+- Error: `{"ok": false, "error": "...", "hint": "..."}`
 
 stderr: diagnostics
 
@@ -87,7 +75,6 @@ Check for the most recent file if multiples exist (e.g. `eval_set (1).json`).
 To replace skill-creator with a different description optimization backend:
 
 1. Update **Scripts root** and **Assets root** paths in this file to point to the new plugin
-2. Verify the new plugin provides `generate_eval_queries.py` matching the stdout schema above
-3. Verify the new plugin provides `run_loop.py` matching the JSONL protocol above
-4. Verify the new plugin provides an `eval_review.html` with the same three placeholders
-5. No changes to `SKILL.md` are required
+2. Verify the new plugin provides `run_loop.py` matching the JSON output schema above
+3. Verify the new plugin provides an `eval_review.html` with the same three placeholders
+4. No changes to `SKILL.md` are required

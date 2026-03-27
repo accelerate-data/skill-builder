@@ -1,98 +1,65 @@
 {
-  "metadata": {
-    "skill_name": "mock-skill",
-    "timestamp": "2026-01-15T10:00:00Z",
-    "evals_run": [1, 2, 3],
-    "runs_per_configuration": 1
-  },
+  "skill_name": "mock-skill",
+  "comparison_mode": "with_without_skill",
+  "iteration": 1,
+  "run_count": 1,
+  "eval_ids": [3, 4],
   "runs": [
     {
-      "eval_id": 1,
-      "configuration": "with_skill",
-      "run_number": 1,
-      "result": { "pass_rate": 1.0, "passed": 3, "failed": 0, "total": 3, "time_seconds": 0.0, "tokens": 0, "tool_calls": 0, "errors": 0 },
-      "expectations": [
-        { "text": "Response includes the correct formula", "passed": true, "evidence": "The formula is presented explicitly in the response." },
-        { "text": "Response explains edge cases", "passed": true, "evidence": "Edge cases are covered in a dedicated section." },
-        { "text": "Response references configuration table", "passed": true, "evidence": "The seed table is referenced with column definitions." }
+      "run_index": 0,
+      "evals": [
+        {
+          "eval_id": 3,
+          "eval_name": "dbt snapshot scd2 generation",
+          "slug": "dbt-snapshot-scd2-generation",
+          "grading_path": "evals/workspace/iteration-1/run-0/eval-3-dbt-snapshot-scd2-generation/with_skill/grading.json",
+          "summary": { "passed": 3, "failed": 1, "total": 4, "pass_rate": 0.75 }
+        },
+        {
+          "eval_id": 4,
+          "eval_name": "incremental intermediate layer model",
+          "slug": "incremental-intermediate-layer-model",
+          "grading_path": "evals/workspace/iteration-1/run-0/eval-4-incremental-intermediate-layer-model/with_skill/grading.json",
+          "summary": { "passed": 2, "failed": 2, "total": 4, "pass_rate": 0.5 }
+        }
       ],
-      "notes": []
-    },
-    {
-      "eval_id": 2,
-      "configuration": "with_skill",
-      "run_number": 1,
-      "result": { "pass_rate": 1.0, "passed": 2, "failed": 0, "total": 2, "time_seconds": 0.0, "tokens": 0, "tool_calls": 0, "errors": 0 },
-      "expectations": [
-        { "text": "Response classifies discount types correctly", "passed": true, "evidence": "Classification table matches expected taxonomy." },
-        { "text": "Response addresses missing data risk", "passed": true, "evidence": "A dedicated risk section covers the fallback logic." }
-      ],
-      "notes": []
-    },
-    {
-      "eval_id": 3,
-      "configuration": "with_skill",
-      "run_number": 1,
-      "result": { "pass_rate": 0.67, "passed": 2, "failed": 1, "total": 3, "time_seconds": 0.0, "tokens": 0, "tool_calls": 0, "errors": 0 },
-      "expectations": [
-        { "text": "Response specifies the correct grain", "passed": true, "evidence": "Grain is defined as sale_line_id." },
-        { "text": "Response includes both margin measures", "passed": true, "evidence": "Both gross_margin and contribution_margin appear as separate columns." },
-        { "text": "Response explains overhead allocation", "passed": false, "evidence": "No overhead allocation logic is present in the response." }
-      ],
-      "notes": []
-    },
-    {
-      "eval_id": 1,
-      "configuration": "without_skill",
-      "run_number": 1,
-      "result": { "pass_rate": 0.0, "passed": 0, "failed": 3, "total": 3, "time_seconds": 0.0, "tokens": 0, "tool_calls": 0, "errors": 0 },
-      "expectations": [
-        { "text": "Response includes the correct formula", "passed": false, "evidence": "No formula found in response." },
-        { "text": "Response explains edge cases", "passed": false, "evidence": "Edge cases not addressed." },
-        { "text": "Response references configuration table", "passed": false, "evidence": "No configuration table referenced." }
-      ],
-      "notes": []
-    },
-    {
-      "eval_id": 2,
-      "configuration": "without_skill",
-      "run_number": 1,
-      "result": { "pass_rate": 0.5, "passed": 1, "failed": 1, "total": 2, "time_seconds": 0.0, "tokens": 0, "tool_calls": 0, "errors": 0 },
-      "expectations": [
-        { "text": "Response classifies discount types correctly", "passed": true, "evidence": "Basic classification present." },
-        { "text": "Response addresses missing data risk", "passed": false, "evidence": "No missing data handling described." }
-      ],
-      "notes": []
-    },
-    {
-      "eval_id": 3,
-      "configuration": "without_skill",
-      "run_number": 1,
-      "result": { "pass_rate": 0.33, "passed": 1, "failed": 2, "total": 3, "time_seconds": 0.0, "tokens": 0, "tool_calls": 0, "errors": 0 },
-      "expectations": [
-        { "text": "Response specifies the correct grain", "passed": false, "evidence": "Grain is not defined." },
-        { "text": "Response includes both margin measures", "passed": true, "evidence": "Both measures mentioned but not separated." },
-        { "text": "Response explains overhead allocation", "passed": false, "evidence": "No overhead allocation present." }
-      ],
-      "notes": []
+      "run_summary": { "passed": 5, "failed": 3, "total": 8, "pass_rate": 0.625 }
     }
   ],
-  "run_summary": {
-    "with_skill": {
-      "pass_rate": { "mean": 0.89, "stddev": 0.19, "min": 0.67, "max": 1.0 },
-      "time_seconds": { "mean": 0.0, "stddev": 0.0, "min": 0.0, "max": 0.0 },
-      "tokens": { "mean": 0.0, "stddev": 0.0, "min": 0, "max": 0 }
-    },
-    "without_skill": {
-      "pass_rate": { "mean": 0.28, "stddev": 0.26, "min": 0.0, "max": 0.5 },
-      "time_seconds": { "mean": 0.0, "stddev": 0.0, "min": 0.0, "max": 0.0 },
-      "tokens": { "mean": 0.0, "stddev": 0.0, "min": 0, "max": 0 }
-    },
-    "delta": {
-      "pass_rate": "+0.61",
-      "time_seconds": "+0.0",
-      "tokens": "+0"
+  "baseline_runs": [
+    {
+      "run_index": 0,
+      "evals": [
+        {
+          "eval_id": 3,
+          "eval_name": "dbt snapshot scd2 generation",
+          "slug": "dbt-snapshot-scd2-generation",
+          "grading_path": "evals/workspace/iteration-1/run-0/eval-3-dbt-snapshot-scd2-generation/without_skill/grading.json",
+          "summary": { "passed": 2, "failed": 2, "total": 4, "pass_rate": 0.5 }
+        },
+        {
+          "eval_id": 4,
+          "eval_name": "incremental intermediate layer model",
+          "slug": "incremental-intermediate-layer-model",
+          "grading_path": "evals/workspace/iteration-1/run-0/eval-4-incremental-intermediate-layer-model/without_skill/grading.json",
+          "summary": { "passed": 1, "failed": 3, "total": 4, "pass_rate": 0.25 }
+        }
+      ],
+      "run_summary": { "passed": 3, "failed": 5, "total": 8, "pass_rate": 0.375 }
     }
+  ],
+  "aggregate_summary": {
+    "avg_pass_rate": 0.625,
+    "total_passed": 5,
+    "total_failed": 3,
+    "total_assertions": 8,
+    "has_failures": true
   },
-  "notes": []
+  "baseline_aggregate_summary": {
+    "avg_pass_rate": 0.375,
+    "total_passed": 3,
+    "total_failed": 5,
+    "total_assertions": 8,
+    "has_failures": true
+  }
 }

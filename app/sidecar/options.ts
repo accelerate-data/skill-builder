@@ -1,4 +1,4 @@
-import type { CanUseTool, HookInput, Options } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, HookInput, Options, SettingSource } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 import type { MessageProcessor } from "./message-processor.js";
 
@@ -48,9 +48,9 @@ function buildSafeEnv(apiKey: string): Record<string, string> {
  * Build the options object to pass to the SDK query() function.
  *
  * Agent / model resolution (settingSources: ['project'] always passed for project settings):
- *  - agentName only  → agent (front-matter model used)
+ *  - agentName only  → agent (front-matter model used as default)
  *  - model only      → model
- *  - both            → agent only (front-matter model authoritative)
+ *  - both            → agent + explicit model (explicit model overrides front-matter)
  *
  * @param pluginPaths  Absolute paths to installed plugin directories discovered by the caller.
  *                     Each entry becomes { type: 'local', path } in the SDK plugins array.
@@ -66,7 +66,7 @@ export function buildQueryOptions(
   // --- agent / model resolution ---
   const hasAgent = typeof config.agentName === "string" && config.agentName.length > 0;
   const agentField = hasAgent ? { agent: config.agentName } : {};
-  const modelField = !hasAgent && config.model ? { model: config.model } : {};
+  const modelField = config.model ? { model: config.model } : {};
 
   // Pass the API key through the SDK's env option instead of mutating
   // process.env, which avoids races on concurrent requests.
@@ -89,7 +89,10 @@ export function buildQueryOptions(
     // 'user' is intentionally excluded — it causes the SDK to scan
     // ~/.claude/skills/ (wasted reads) and the sidecar can't use the
     // user's MCP servers anyway (those are CLI-process-only).
-    settingSources: ['project' as const],
+    // When config.settingSources is [] (e.g. evaluate-skill), workspace
+    // skills are suppressed so plugin-scoped agents cannot load unrelated
+    // workspace skills (e.g. skill-test).
+    settingSources: (config.settingSources ?? ['project']) as SettingSource[],
     cwd: config.cwd,
     allowedTools: config.allowedTools,
     maxTurns: config.maxTurns ?? 50,

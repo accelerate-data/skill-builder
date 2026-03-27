@@ -182,6 +182,7 @@ pub(super) fn build_refine_config(
             "skill-content-researcher".to_string(),
             "skill-creator".to_string(),
         ]),
+        setting_sources: None,
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
         step_id: Some(-10),
@@ -247,16 +248,25 @@ pub(super) fn build_refine_prompt(
          All directories already exist — never create directories with mkdir or any other method.\n\n\
          ROUTING:\n\
          - For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.\n\
-         - BENCHMARK FEEDBACK: If the user's message contains benchmark results, eval notes, or analyst \
-         observations about the skill's performance, treat it as benchmark feedback (not a direct modification \
-         request). Do NOT run a new benchmark. Instead: \
-         (1) Analyze the notes and identify the top actionable improvements (typically 3-5). \
-         (2) For each, write a short bold title and one sentence tying it to a specific failing eval, \
-         assertion, or pattern. \
-         (3) Call AskUserQuestion with the recommendations as numbered options — include \
-         \\\"Address all recommendations\\\" as the final option. \
-         (4) When the user selects an option, launch skill-creator:rewrite-skill to implement that \
-         specific improvement, exactly as you would for a direct refine request.\n\
+         - EVAL FAILURE FEEDBACK: If the user's message contains lines matching the pattern \
+         \\\"eval_name: /path/to/grading.json\\\", treat it as eval failure feedback from the Evals tab. \
+         Do NOT run a new benchmark. Instead: \
+         (1) Read each grading file using the Read tool. Extract failed assertions \
+         (expectations where passed=false), including their text and evidence. \
+         (2) Triage each failure: determine whether the assertion is a legitimate skill gap \
+         (the skill should be improved) or an impossible/unreasonable assertion (e.g. it checks for \
+         behavior the eval environment cannot produce, like directory structure in a flat output folder). \
+         (3) You MUST call the `AskUserQuestion` tool — do NOT ask this question as plain text. \
+         Structure the call with a single question: header=\\\"Skill Gaps\\\", multiSelect=true, and an \
+         options array. For each failing eval that has at least one genuine skill gap, add one option: \
+         label=eval name, description=one-sentence summary of the failing assertion(s). If multiple \
+         evals qualify, also add a final option: label=\\\"Address all skill gaps\\\", \
+         description=\\\"Fix all failing evals in one refine pass\\\". If ALL failures are assertion \
+         design issues (zero genuine skill gaps), respond in plain text explaining this and directing \
+         the user to the Evals tab — do NOT call AskUserQuestion in that case. \
+         (4) Wait for the user's selection — do NOT proceed without it. \
+         (5) Once selected, launch skill-creator:rewrite-skill with only the genuine skill-gap failures \
+         as the refinement request.\n\
          - CONSTRAINT: You may only refine, evaluate, benchmark, or validate the existing skill '{skill_name}'. Do NOT create new skills. \
          If the user asks to create a new skill, decline and direct them to the dashboard.",
     );

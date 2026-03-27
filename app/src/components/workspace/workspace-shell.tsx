@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
-import { getSkillContentForRefine } from "@/lib/tauri";
+import { cleanupSkillSidecar, getSkillContentForRefine } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
@@ -31,6 +31,7 @@ interface WorkspaceShellProps {
 export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellProps) {
   const [activeTab, setActiveTab] = useState(initialTab ?? "overview");
   const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const evalsRunningRef = useRef(false);
   const isSkillStoreLoading = useSkillStore((s) => s.isLoading);
 
   // Sync tab when a navigation sets initialTab (e.g. "Refine" from the More menu)
@@ -47,8 +48,15 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
         return;
       }
     }
+    // Guard: block switching away from Evals while eval run is in progress
+    if (activeTab === "evals" && value !== "evals" && evalsRunningRef.current) {
+      setPendingTab(value);
+      return;
+    }
     setActiveTab(value);
   }, [activeTab]);
+
+  const skillName = "name" in skill ? skill.name : skill.skill_name;
 
   const handleTabStay = useCallback(() => {
     setPendingTab(null);
@@ -56,12 +64,16 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
 
   const handleTabLeave = useCallback(() => {
     if (pendingTab) {
+      // Clean up sidecar processes when leaving a tab with a running agent
+      if (activeTab === "evals" && evalsRunningRef.current) {
+        cleanupSkillSidecar(skillName).catch((err) =>
+          console.error("[workspace-shell] eval sidecar cleanup failed:", err),
+        );
+      }
       setActiveTab(pendingTab);
       setPendingTab(null);
     }
-  }, [pendingTab]);
-
-  const skillName = "name" in skill ? skill.name : skill.skill_name;
+  }, [pendingTab, activeTab, skillName]);
   const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const isBuilderSkill = "name" in skill;
   const workspacePath = useSettingsStore((s) => s.workspacePath);
@@ -155,7 +167,12 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
           </TabsContent>
 
           <TabsContent value="evals" className="flex-1 overflow-y-auto p-6">
-            <WorkspaceEvals skill={skill} workspacePath={workspacePath} />
+            <WorkspaceEvals
+              skill={skill}
+              workspacePath={workspacePath}
+              onNavigateToRefine={() => setActiveTab("refine")}
+              onRunningChange={(running) => { evalsRunningRef.current = running; }}
+            />
           </TabsContent>
 
           <TabsContent value="description" className="flex-1 overflow-y-auto p-6">
@@ -181,7 +198,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
             <DialogHeader>
               <DialogTitle>Agent Running</DialogTitle>
               <DialogDescription>
-                A refine agent is still running. Switching tabs will abandon it.
+                An agent is still running. Switching tabs will abandon the session.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

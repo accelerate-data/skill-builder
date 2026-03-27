@@ -201,7 +201,7 @@ export function PreviewPanel() {
                 className="appearance-none bg-transparent pr-5 text-sm font-medium outline-none cursor-pointer"
               >
                 {fileTabs.map((tab) => (
-                  <option key={tab} value={tab}>{tab}</option>
+                  <option key={tab} value={tab} className="bg-card text-foreground">{tab}</option>
                 ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-0 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />

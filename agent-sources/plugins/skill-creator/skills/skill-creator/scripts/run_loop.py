@@ -30,11 +30,6 @@ def emit_json(payload: dict) -> None:
     sys.stdout.write("\n")
 
 
-def emit_progress(payload: dict) -> None:
-    """Emit a single compact JSON line for streaming progress consumers."""
-    print(json.dumps(payload), file=sys.stdout, flush=True)
-
-
 def log(message: str) -> None:
     print(message, file=sys.stderr)
 
@@ -682,16 +677,6 @@ def run_loop(
             }
         )
 
-        emit_progress({
-            "type": "progress",
-            "iteration": iteration,
-            "description": current_description,
-            "train_passed": train_summary["passed"],
-            "train_total": train_summary["total"],
-            "test_passed": test_summary["passed"] if test_summary else None,
-            "test_total": test_summary["total"] if test_summary else None,
-        })
-
         if live_report_path:
             partial_output = {
                 "original_description": original_description,
@@ -837,10 +822,9 @@ def main() -> None:
 
     if not (skill_path / "SKILL.md").exists():
         log(f"Error: No SKILL.md found at {skill_path}")
-        emit_progress(
+        emit_json(
             {
                 "ok": False,
-                "type": "error",
                 "skill_path": str(skill_path),
                 "error": f"No SKILL.md found at {skill_path}",
                 "hint": "Pass --skill-path pointing at the skill directory.",
@@ -853,10 +837,9 @@ def main() -> None:
         eval_set = json.loads(Path(args.eval_set).read_text(encoding="utf-8"))
     except (RuntimeError, OSError, json.JSONDecodeError) as exc:
         log(f"Error: {exc}")
-        emit_progress(
+        emit_json(
             {
                 "ok": False,
-                "type": "error",
                 "skill_path": str(skill_path),
                 "eval_set_path": args.eval_set,
                 "error": str(exc),
@@ -910,10 +893,9 @@ def main() -> None:
         )
     except RuntimeError as exc:
         log(f"Error: {exc}")
-        emit_progress(
+        emit_json(
             {
                 "ok": False,
-                "type": "error",
                 "skill_path": str(skill_path),
                 "project_root": str(project_root),
                 "error": str(exc),
@@ -934,10 +916,9 @@ def main() -> None:
     if results_dir:
         log(f"Results saved to: {results_dir}")
 
-    emit_progress(
+    emit_json(
         {
             "ok": True,
-            "type": "result",
             "project_root": str(project_root),
             "report_path": str(live_report_path) if live_report_path else None,
             "results_dir": str(results_dir) if results_dir else None,

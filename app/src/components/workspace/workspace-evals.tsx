@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Pencil, Play, Sparkles, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,16 +15,20 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import {
+  cleanupSkillSidecar,
   deleteTestCase,
   discardPendingEval,
+  createNextIterationDir,
   listIterations,
   listTestCases,
+  materializeEvalBenchmark,
+  readIterationResult,
   readPendingEval,
   readSkillContextForEvalGen,
   saveTestCase,
   startAgent,
 } from "@/lib/tauri";
-import type { IterationMeta, PendingEval, SkillEvalContext, SkillSummary, ImportedSkill, TestCase } from "@/lib/types";
+import type { EvalBenchmark, IterationMeta, PendingEval, SkillEvalContext, SkillSummary, ImportedSkill, TestCase } from "@/lib/types";
 import {
   buildEvalGenPrompt,
   buildRegenPrompt,
@@ -32,19 +36,37 @@ import {
   suggestEvalPlaceholder,
   truncatePrompt,
 } from "@/lib/evals";
+import {
+  buildEvaluateSkillPrompt,
+  getFailedEvalGradingPaths,
+  parseEvalStructuredOutput,
+} from "@/lib/eval-run";
 import { useAgentStore } from "@/stores/agent-store";
+import { useSettingsStore } from "@/stores/settings-store";
+import { useRefineStore } from "@/stores/refine-store";
+import { Progress } from "@/components/ui/progress";
+import { EvalRunBenchmarkCard } from "./eval-run-benchmark-card";
+import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { EvalForm } from "./eval-form";
 import { EvalIntentDialog } from "./eval-intent-dialog";
 
-const EVAL_GEN_MODEL = "claude-sonnet-4-6";
+const DEFAULT_MODEL = "claude-sonnet-4-6";
+// Stable empty array so the Zustand selector doesn't return a new reference every render
+const EMPTY_DISPLAY_ITEMS: unknown[] = [];
 
 interface WorkspaceEvalsProps {
   skill: SkillSummary | ImportedSkill;
   workspacePath: string | null;
+  /** Called after setting refine pre-fill — navigates the shell to the Refine tab. */
+  onNavigateToRefine?: () => void;
+  /** Called when eval run starts/stops so the parent can gate tab switches. */
+  onRunningChange?: (running: boolean) => void;
 }
 
-export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
+export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRunningChange }: WorkspaceEvalsProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
+  const skillsPath = useSettingsStore((s) => s.skillsPath) ?? workspacePath ?? "";
+  const preferredModel = useSettingsStore((s) => s.preferredModel) ?? DEFAULT_MODEL;
 
   const [evals, setEvals] = useState<TestCase[]>([]);
   const [iterations, setIterations] = useState<IterationMeta[]>([]);
@@ -76,7 +98,70 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
   const [evalQueue, setEvalQueue] = useState<TestCase[]>([]);
   const [queueSelected, setQueueSelected] = useState<Set<string>>(new Set());
 
-  const runs = useAgentStore((s) => s.runs);
+  // Run selection + execution state (component-local per state-management rules)
+  const [selectedRunIds, setSelectedRunIds] = useState<Set<number>>(new Set());
+  const [runCount, setRunCount] = useState<1 | 3>(1);
+  const [comparisonMode, setComparisonMode] = useState<"with_without_skill" | "current_vs_previous" | undefined>(undefined);
+  const [isRunningEvals, setIsRunningEvals] = useState(false);
+  const [evalRunAgentId, setEvalRunAgentId] = useState<string | null>(null);
+  const [gradedCount, setGradedCount] = useState(0);
+  const [gradingEvalName, setGradingEvalName] = useState<string | null>(null);
+  const [totalEvalRunCount, setTotalEvalRunCount] = useState(0);
+
+  // Benchmark result from the most recent eval run (component-local)
+  const [benchmark, setBenchmark] = useState<EvalBenchmark | null>(null);
+  const [analystNotes, setAnalystNotes] = useState<string[]>([]);
+
+  // Selected iteration history result
+  const [selectedIteration, setSelectedIteration] = useState<number | null>(null);
+  const [iterationBenchmark, setIterationBenchmark] = useState<EvalBenchmark | null>(null);
+  const [iterationNotes, setIterationNotes] = useState<string[]>([]);
+
+  // Params for the current eval run — stored so Rust can materialize the benchmark
+  // after the agent completes (the agent no longer computes the benchmark itself).
+  const evalRunParamsRef = useRef<{
+    iterDir: string; iteration: number; evalIds: number[];
+    runCount: number; comparisonMode?: string;
+  } | null>(null);
+
+  // Agent output panel resize state
+  const [outputPanelHeight, setOutputPanelHeight] = useState(360);
+  const dragStartY = useRef<number | null>(null);
+  const dragStartHeight = useRef<number>(360);
+  const rafId = useRef<number | null>(null);
+
+  // Narrow selectors — only subscribe to the status of each tracked agent.
+  // Avoids re-rendering the entire component on every display-item update,
+  // which was causing scroll-position jumps during eval runs.
+  const generationRunStatus = useAgentStore(
+    (s) => s.runs[generationAgentId ?? ""]?.status ?? null,
+  );
+  const regenRunStatus = useAgentStore(
+    (s) => s.runs[regenAgentId ?? ""]?.status ?? null,
+  );
+  const evalRunStatus = useAgentStore(
+    (s) => s.runs[evalRunAgentId ?? ""]?.status ?? null,
+  );
+  const evalRunDisplayItems = useAgentStore(
+    (s) => s.runs[evalRunAgentId ?? ""]?.displayItems ?? EMPTY_DISPLAY_ITEMS,
+  );
+
+  // Notify parent when eval run state changes (for tab-switch gate)
+  useEffect(() => { onRunningChange?.(isRunningEvals); }, [isRunningEvals, onRunningChange]);
+
+  // Track evalRunAgentId in a ref for unmount cleanup (avoids stale closure)
+  const evalRunAgentIdRef = useRef<string | null>(null);
+  useEffect(() => { evalRunAgentIdRef.current = evalRunAgentId; }, [evalRunAgentId]);
+
+  // Clean up sidecar process if component unmounts during an eval run
+  useEffect(() => {
+    return () => {
+      if (evalRunAgentIdRef.current) {
+        cleanupSkillSidecar(skillName).catch(() => {});
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skillName]);
 
   // --- Actions ---
 
@@ -89,7 +174,7 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
         listTestCases(skillName, workspacePath),
         listIterations(skillName, workspacePath),
       ]);
-      setEvals(cases);
+      setEvals(cases.sort((a, b) => a.id - b.id));
       setIterations(iters);
     } catch (err) {
       console.error("event=load_evals status=failure skill=%s error=%s", skillName, err);
@@ -103,13 +188,11 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
 
   // Watch primary generation agent for completion / error
   useEffect(() => {
-    if (!generationAgentId) return;
-    const run = runs[generationAgentId];
-    if (!run) return;
+    if (!generationAgentId || !generationRunStatus) return;
 
-    if (run.status === "completed") {
+    if (generationRunStatus === "completed") {
       void handleGenerationComplete();
-    } else if (run.status === "error" || run.status === "shutdown") {
+    } else if (generationRunStatus === "error" || generationRunStatus === "shutdown") {
       console.error(
         "event=generate_eval status=failure skill=%s agent_id=%s",
         skillName,
@@ -120,17 +203,15 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
       setError("Eval generation failed. Please try again.");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runs, generationAgentId]);
+  }, [generationRunStatus, generationAgentId]);
 
   // Watch re-generation agent for completion / error
   useEffect(() => {
-    if (!regenAgentId) return;
-    const run = runs[regenAgentId];
-    if (!run) return;
+    if (!regenAgentId || !regenRunStatus) return;
 
-    if (run.status === "completed") {
+    if (regenRunStatus === "completed") {
       void handleRegenComplete();
-    } else if (run.status === "error" || run.status === "shutdown") {
+    } else if (regenRunStatus === "error" || regenRunStatus === "shutdown") {
       console.error(
         "event=regen_eval status=failure skill=%s agent_id=%s",
         skillName,
@@ -141,7 +222,98 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
       setError("Re-generation failed. Please try again.");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runs, regenAgentId]);
+  }, [regenRunStatus, regenAgentId]);
+
+  // Watch eval run display items for structuredOutput and text-embedded progress events
+  const processedItemIds = useRef(new Set<string>());
+  useEffect(() => {
+    if (!evalRunAgentId || evalRunDisplayItems.length === 0) return;
+
+    // Scan all new display items for eval events (structuredOutput or JSON in outputText)
+    for (const item of evalRunDisplayItems as unknown as Array<Record<string, unknown>>) {
+      const id = item.id as string | undefined;
+      if (!id || processedItemIds.current.has(id)) continue;
+
+      let event = parseEvalStructuredOutput(item.structuredOutput);
+      if (!event && typeof item.outputText === "string") {
+        const text = item.outputText as string;
+        // Try extracting eval_graded events (simple flat JSON objects)
+        const gradedMatches = text.match(/\{[^{}]*"type"\s*:\s*"eval_graded"[^}]*\}/g);
+        if (gradedMatches) {
+          for (const jsonStr of gradedMatches) {
+            try {
+              const parsed = parseEvalStructuredOutput(JSON.parse(jsonStr));
+              if (parsed) { event = parsed; break; }
+            } catch { /* not valid JSON */ }
+          }
+        }
+        // Try extracting complete event (nested JSON in ```json code blocks)
+        if (!event) {
+          const codeBlockMatch = text.match(/```json\s*\n([\s\S]*?)\n```/);
+          if (codeBlockMatch) {
+            try {
+              const parsed = parseEvalStructuredOutput(JSON.parse(codeBlockMatch[1]));
+              if (parsed) event = parsed;
+            } catch { /* not valid JSON */ }
+          }
+        }
+      }
+      if (!event) continue;
+      processedItemIds.current.add(id);
+
+      if (event.type === "eval_graded") {
+        setGradedCount((prev) => prev + 1);
+        setGradingEvalName(event.evalName);
+        console.log(
+          "event=eval_graded skill=%s run=%d eval=%d/%d name=%s pass_rate=%s",
+          skillName, event.runIndex, event.evalIndex + 1, event.totalEvals,
+          event.evalName, event.grading.pass_rate,
+        );
+      }
+      // "complete" events are ignored here — benchmark materialization is triggered
+      // by the terminal-state effect below (single Rust round trip, no display-item dependency).
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evalRunDisplayItems, evalRunAgentId]);
+
+  // Watch eval run agent for terminal state — single trigger for materialization.
+  // When the agent completes, Rust reads grading files and computes the benchmark
+  // deterministically. No dependency on the agent's structured output.
+  useEffect(() => {
+    if (!evalRunAgentId || !evalRunStatus) return;
+    if (evalRunStatus === "completed" || evalRunStatus === "error" || evalRunStatus === "shutdown") {
+      setIsRunningEvals(false);
+      if (evalRunStatus === "completed") {
+        const params = evalRunParamsRef.current;
+        if (params) {
+          materializeEvalBenchmark(
+            params.iterDir, skillName, params.iteration,
+            params.evalIds, params.runCount, params.comparisonMode,
+          ).then(([bm, notes]) => {
+            setBenchmark(bm as EvalBenchmark);
+            setAnalystNotes(notes);
+            console.log(
+              "event=eval_benchmark_materialized skill=%s iteration=%d avg_pass_rate=%s",
+              skillName, bm.iteration, bm.aggregate_summary?.avg_pass_rate,
+            );
+          }).catch((err) => {
+            console.error("event=materialize_benchmark_failed skill=%s error=%s", skillName, err);
+          });
+        }
+        // Refresh iteration list
+        if (workspacePath) {
+          void listIterations(skillName, workspacePath).then(setIterations).catch(() => {});
+        }
+      } else {
+        console.error(
+          "event=eval_run status=failure skill=%s agent_id=%s status=%s",
+          skillName, evalRunAgentId, evalRunStatus,
+        );
+        setEvalRunAgentId(null);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evalRunStatus, evalRunAgentId]);
 
   async function handleOpenIntentDialog() {
     if (!workspacePath || isGenerating || isRegenerating) return;
@@ -173,7 +345,7 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
       await startAgent(
         agentId,
         prompt,
-        EVAL_GEN_MODEL,
+        preferredModel,
         cwd,
         ["Write"],
         10,
@@ -191,7 +363,7 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
 
       useAgentStore.getState().registerRun(
         agentId,
-        EVAL_GEN_MODEL,
+        preferredModel,
         skillName,
         "test",
         `synthetic:evals:${skillName}`,
@@ -252,7 +424,7 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
       await startAgent(
         agentId,
         prompt,
-        EVAL_GEN_MODEL,
+        preferredModel,
         cwd,
         ["Write"],
         10,
@@ -270,7 +442,7 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
 
       useAgentStore.getState().registerRun(
         agentId,
-        EVAL_GEN_MODEL,
+        preferredModel,
         skillName,
         "test",
         `synthetic:evals:${skillName}`,
@@ -404,6 +576,96 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
     }
   }
 
+  function handleToggleRunId(id: number) {
+    setSelectedRunIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleToggleAllRun() {
+    if (selectedRunIds.size === evals.length && evals.length > 0) {
+      setSelectedRunIds(new Set());
+    } else {
+      setSelectedRunIds(new Set(evals.map((e) => e.id)));
+    }
+  }
+
+  async function handleRunSelected() {
+    if (!workspacePath || selectedRunIds.size === 0 || isRunningEvals) return;
+    const evalIds = [...selectedRunIds].sort((a, b) => a - b);
+
+    setIsRunningEvals(true);
+    setGradedCount(0);
+    setTotalEvalRunCount(evalIds.length * runCount * (comparisonMode ? 2 : 1));
+    setGradingEvalName(null);
+    setBenchmark(null);
+    setAnalystNotes([]);
+
+    const agentId = crypto.randomUUID();
+    // Create the iteration directory in Rust before the agent starts.
+    // This is the source of truth — the agent writes into a pre-existing directory
+    // and cannot accidentally reuse an existing iteration.
+    const [iterNum, iterDir] = await createNextIterationDir(skillName, workspacePath!);
+    evalRunParamsRef.current = { iterDir, iteration: iterNum, evalIds, runCount, comparisonMode };
+    const prompt = buildEvaluateSkillPrompt({ skillName, workspacePath: workspacePath!, skillsPath, evalIds, runCount, comparisonMode, iteration: iterNum, iterDir });
+
+    try {
+      await startAgent(
+        agentId,
+        prompt,
+        preferredModel,
+        workspacePath,
+        ["Read", "Write", "Glob", "Agent"],
+        undefined, // maxTurns — let agent decide
+        undefined,
+        undefined,
+        skillName,
+        "evaluate-skill",
+        "skill-creator:evaluate-skill",
+        undefined,
+        undefined,
+        undefined,
+        `synthetic:evals:${skillName}`,
+        "test",
+      );
+
+      useAgentStore.getState().registerRun(
+        agentId,
+        preferredModel,
+        skillName,
+        "test",
+        `synthetic:evals:${skillName}`,
+      );
+
+      setEvalRunAgentId(agentId);
+      console.log(
+        "event=eval_run status=started skill=%s agent_id=%s eval_ids=%s run_count=%d",
+        skillName, agentId, JSON.stringify(evalIds), runCount,
+      );
+    } catch (err) {
+      console.error("event=eval_run status=start_failure skill=%s error=%s", skillName, err);
+      setIsRunningEvals(false);
+      setTotalEvalRunCount(0);
+    }
+  }
+
+  function handleRefine(bm: EvalBenchmark) {
+    const failedPaths = getFailedEvalGradingPaths(bm);
+    if (failedPaths.length === 0) return;
+    const msg = failedPaths
+      .map(({ eval_name, grading_path }) => `${eval_name}: ${grading_path}`)
+      .join("\n");
+    useRefineStore.getState().setPendingInitialMessage(msg);
+    onNavigateToRefine?.();
+    console.log(
+      "event=eval_refine_navigate skill=%s iteration=%d failed_evals=%d",
+      skillName, bm.iteration, failedPaths.length,
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -423,19 +685,21 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
 
   const latestIteration = iterations[0]?.iteration ?? 0;
   const selectedCount = queueSelected.size;
+  const allRunSelected = evals.length > 0 && selectedRunIds.size === evals.length;
+  const someRunSelected = selectedRunIds.size > 0 && !allRunSelected;
 
   return (
     <div className="flex flex-col gap-6">
       {/* Evals section */}
       <section>
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold tracking-tight">Evals</h2>
             <p className="text-xs text-muted-foreground">
               Managed in <span className="font-mono">{skillName}/evals/evals.json</span>
             </p>
           </div>
-          <Button size="sm" onClick={handleOpenIntentDialog} disabled={isGenerating || isRegenerating}>
+          <Button size="sm" onClick={handleOpenIntentDialog} disabled={isGenerating || isRegenerating || isRunningEvals}>
             {isGenerating ? (
               <>
                 <Loader2 className="mr-1.5 size-3.5 animate-spin" />
@@ -449,6 +713,84 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
             )}
           </Button>
         </div>
+
+        {/* Run controls bar — only when evals exist */}
+        {evals.length > 0 && (
+          <div className="mb-3 flex items-center gap-2">
+            <Checkbox
+              checked={allRunSelected}
+              data-state={someRunSelected ? "indeterminate" : undefined}
+              onCheckedChange={handleToggleAllRun}
+              aria-label="Select all evals to run"
+              disabled={isRunningEvals}
+            />
+            <span className="text-xs text-muted-foreground">
+              {selectedRunIds.size > 0 ? `${selectedRunIds.size} selected` : "Select to run"}
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              {/* Comparison mode toggle */}
+              <div className="inline-flex overflow-hidden rounded-md border">
+                <button
+                  type="button"
+                  className={`px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${!comparisonMode ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
+                  style={!comparisonMode ? { background: "var(--color-pacific)" } : {}}
+                  onClick={() => setComparisonMode(undefined)}
+                  disabled={isRunningEvals}
+                >
+                  None
+                </button>
+                <button
+                  type="button"
+                  className={`border-l px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${comparisonMode === "with_without_skill" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
+                  style={comparisonMode === "with_without_skill" ? { background: "var(--color-pacific)" } : {}}
+                  onClick={() => setComparisonMode("with_without_skill")}
+                  disabled={isRunningEvals}
+                >
+                  vs Baseline
+                </button>
+                {/* vs Previous button hidden for now — logic preserved in mock-agent + benchmark card */}
+              </div>
+              {/* Run count toggle */}
+              <div className="inline-flex overflow-hidden rounded-md border">
+                <button
+                  type="button"
+                  className={`px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${runCount === 1 ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
+                  style={runCount === 1 ? { background: "var(--color-pacific)" } : {}}
+                  onClick={() => setRunCount(1)}
+                  disabled={isRunningEvals}
+                >
+                  1×
+                </button>
+                <button
+                  type="button"
+                  className={`border-l px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${runCount === 3 ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
+                  style={runCount === 3 ? { background: "var(--color-pacific)" } : {}}
+                  onClick={() => setRunCount(3)}
+                  disabled={isRunningEvals}
+                >
+                  3×
+                </button>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => void handleRunSelected()}
+                disabled={selectedRunIds.size === 0 || isRunningEvals || isGenerating}
+              >
+                {isRunningEvals ? (
+                  <>
+                    <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                    Running…
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-1.5 size-3.5" />
+                    Run selected ({selectedRunIds.size})
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Generation banner */}
         {isGenerating && (
@@ -467,6 +809,31 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
               <p className="text-xs text-muted-foreground">
                 Reading skill definition and crafting a test scenario.
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Eval run progress banner */}
+        {isRunningEvals && (
+          <div
+            className="mb-4 flex items-center gap-3 rounded-lg border px-4 py-3 text-sm"
+            style={{ borderColor: "color-mix(in oklch, var(--color-pacific), transparent 70%)", background: "color-mix(in oklch, var(--color-pacific), transparent 94%)" }}
+          >
+            <Loader2
+              className="size-4 shrink-0 animate-spin"
+              style={{ color: "var(--color-pacific)" }}
+            />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium" style={{ color: "var(--color-pacific)" }}>
+                Grading eval {gradedCount} of {totalEvalRunCount}
+                {gradingEvalName && (
+                  <span className="font-normal text-foreground"> — {gradingEvalName}</span>
+                )}
+              </p>
+              <Progress
+                value={totalEvalRunCount > 0 ? Math.round((gradedCount / totalEvalRunCount) * 100) : 0}
+                className="mt-1.5 h-1"
+              />
             </div>
           </div>
         )}
@@ -531,7 +898,8 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
         ) : (
           <div className="flex flex-col gap-2">
             {/* Header row */}
-            <div className="grid grid-cols-[1fr_2fr_auto_auto] items-center gap-4 px-3 pb-1">
+            <div className="grid grid-cols-[auto_1fr_2fr_auto_auto] items-center gap-4 px-3 pb-1">
+              <span className="sr-only">Select</span>
               <span className="text-xs font-medium text-muted-foreground">Name</span>
               <span className="text-xs font-medium text-muted-foreground">Prompt</span>
               <span className="text-xs font-medium text-muted-foreground">Assertions</span>
@@ -543,14 +911,67 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
                 key={tc.id}
                 tc={tc}
                 expanded={expandedId === tc.id}
+                selected={selectedRunIds.has(tc.id)}
                 onToggle={() => setExpandedId(expandedId === tc.id ? null : tc.id)}
+                onToggleRun={() => handleToggleRunId(tc.id)}
                 onEdit={() => openEdit(tc)}
                 onDelete={() => setDeleteTarget(tc)}
+                disabled={isRunningEvals}
               />
             ))}
           </div>
         )}
       </section>
+
+      {/* Agent output panel — visible during and after the eval run */}
+      {evalRunAgentId && (
+        <div className="flex flex-col" style={{ height: outputPanelHeight }}>
+          <div className="min-h-0 flex-1 flex flex-col">
+            <AgentOutputPanel agentId={evalRunAgentId} />
+          </div>
+          {/* Inline Refine CTA when failures detected */}
+          {benchmark?.aggregate_summary.has_failures && (
+            <div className="flex items-center gap-2 border-t px-3 py-2 shrink-0">
+              <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
+              <span className="text-xs font-medium text-destructive">
+                {benchmark.aggregate_summary.total_failed} assertion failure{benchmark.aggregate_summary.total_failed !== 1 ? "s" : ""}
+              </span>
+              <Button size="sm" variant="outline" className="ml-auto h-7 text-xs text-destructive border-destructive/50 hover:bg-destructive/10"
+                onClick={() => void handleRefine(benchmark)}>
+                Refine skill
+              </Button>
+            </div>
+          )}
+          {/* Bottom drag handle */}
+          <div
+            className="h-1.5 w-full cursor-ns-resize rounded-b bg-border hover:bg-muted-foreground/30 transition-colors duration-150 shrink-0"
+            onPointerDown={(e) => {
+              dragStartY.current = e.clientY;
+              dragStartHeight.current = outputPanelHeight;
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={(e) => {
+              if (dragStartY.current === null) return;
+              const next = Math.max(160, Math.min(800, dragStartHeight.current + (e.clientY - dragStartY.current)));
+              if (rafId.current) cancelAnimationFrame(rafId.current);
+              rafId.current = requestAnimationFrame(() => setOutputPanelHeight(next));
+            }}
+            onPointerUp={() => {
+              dragStartY.current = null;
+              if (rafId.current) cancelAnimationFrame(rafId.current);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Benchmark result card — shown after evaluate-skill completes */}
+      {benchmark && (
+        <EvalRunBenchmarkCard
+          benchmark={benchmark}
+          analystNotes={analystNotes}
+          onRefine={() => void handleRefine(benchmark)}
+        />
+      )}
 
       {/* Iteration History section */}
       {iterations.length > 0 && (
@@ -562,7 +983,17 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
               {iterations.map((iter) => (
                 <div
                   key={iter.iteration}
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted/50"
+                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 ${selectedIteration === iter.iteration ? "bg-muted" : "hover:bg-muted/50"}`}
+                  onClick={async () => {
+                    try {
+                      const [bm, notes] = await readIterationResult(iter.path);
+                      setIterationBenchmark(bm as EvalBenchmark);
+                      setIterationNotes(notes);
+                      setSelectedIteration(iter.iteration);
+                    } catch (err) {
+                      console.error("[workspace-evals] Failed to read iteration result:", err);
+                    }
+                  }}
                 >
                   <span className="font-mono text-xs text-muted-foreground">
                     iteration-{iter.iteration}
@@ -576,6 +1007,19 @@ export function WorkspaceEvals({ skill, workspacePath }: WorkspaceEvalsProps) {
                 </div>
               ))}
             </div>
+
+            {/* Selected iteration benchmark */}
+            {iterationBenchmark && selectedIteration !== null && (
+              <div className="mt-4">
+                <EvalRunBenchmarkCard
+                  benchmark={iterationBenchmark}
+                  analystNotes={iterationNotes}
+                  onRefine={selectedIteration === latestIteration
+                    ? () => void handleRefine(iterationBenchmark)
+                    : undefined}
+                />
+              </div>
+            )}
           </section>
         </>
       )}
@@ -646,16 +1090,26 @@ function EmptyState({ onGenerate, isGenerating }: { onGenerate: () => void; isGe
 interface EvalRowProps {
   tc: TestCase;
   expanded: boolean;
+  selected: boolean;
   onToggle: () => void;
+  onToggleRun: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  disabled?: boolean;
 }
 
-function EvalRow({ tc, expanded, onToggle, onEdit, onDelete }: EvalRowProps) {
+function EvalRow({ tc, expanded, selected, onToggle, onToggleRun, onEdit, onDelete, disabled }: EvalRowProps) {
   return (
     <div className="rounded-lg border bg-card transition-shadow duration-150 hover:shadow-sm">
       {/* Summary row */}
-      <div className="grid grid-cols-[1fr_2fr_auto_auto] items-center gap-4 px-3 py-2.5">
+      <div className="grid grid-cols-[auto_1fr_2fr_auto_auto] items-center gap-4 px-3 py-2.5">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={onToggleRun}
+          aria-label={`Select ${tc.eval_name} to run`}
+          disabled={disabled}
+          className="shrink-0"
+        />
         <button
           type="button"
           className="flex items-center gap-1.5 text-left"
@@ -687,6 +1141,7 @@ function EvalRow({ tc, expanded, onToggle, onEdit, onDelete }: EvalRowProps) {
             onClick={onEdit}
             title="Edit eval"
             aria-label="Edit eval"
+            disabled={disabled}
           >
             <Pencil className="size-3.5" />
           </Button>
@@ -698,6 +1153,7 @@ function EvalRow({ tc, expanded, onToggle, onEdit, onDelete }: EvalRowProps) {
             onClick={onDelete}
             title="Delete eval"
             aria-label="Delete eval"
+            disabled={disabled}
           >
             <Trash2 className="size-3.5" />
           </Button>

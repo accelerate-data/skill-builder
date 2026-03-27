@@ -489,3 +489,66 @@ export interface SkillEvalContext {
   skill_content: string
   existing_evals: TestCase[]
 }
+
+// --- Eval run (evaluate-skill agent output) ---
+
+/** Per-eval summary within one benchmark run. */
+export interface EvalRunEvalSummary {
+  eval_id: number
+  eval_name: string
+  slug: string
+  grading_path: string
+  summary: { passed: number; failed: number; total: number; pass_rate: number }
+}
+
+/** One run (run_index 0..run_count-1) from benchmark.json. */
+export interface EvalBenchmarkRun {
+  run_index: number
+  evals: EvalRunEvalSummary[]
+  run_summary: { passed: number; failed: number; total: number; pass_rate: number }
+}
+
+export interface EvalAggregateSummary {
+  avg_pass_rate: number
+  total_passed: number
+  total_failed: number
+  total_assertions: number
+  has_failures: boolean
+}
+
+/** Full benchmark.json produced by the evaluate-skill agent. */
+export interface EvalBenchmark {
+  skill_name: string
+  comparison_mode?: "with_skill_only" | "with_without_skill" | "current_vs_previous"
+  iteration: number
+  run_count: number
+  eval_ids: number[]
+  runs: EvalBenchmarkRun[]
+  /** Only present when comparison_mode is "with_without_skill" or "current_vs_previous". */
+  baseline_runs?: EvalBenchmarkRun[]
+  aggregate_summary: EvalAggregateSummary
+  /** Only present when baseline_runs is present. */
+  baseline_aggregate_summary?: EvalAggregateSummary
+}
+
+/** structuredOutput emitted by evaluate-skill after each eval is graded. */
+export interface EvalGradedEvent {
+  type: "eval_graded"
+  runIndex: number
+  evalIndex: number
+  totalEvals: number
+  totalRuns: number
+  evalId: number
+  evalName: string
+  grading: { passed: number; failed: number; total: number; pass_rate: number }
+  /** Present only in comparison modes. */
+  variant?: "with_skill" | "without_skill" | "current" | "previous"
+}
+
+/** structuredOutput emitted by evaluate-skill when the full pipeline completes.
+ *  The benchmark is computed by Rust from grading files — not carried in this event.
+ */
+export interface EvalCompleteEvent {
+  type: "complete"
+  iteration: number
+}
