@@ -591,7 +591,13 @@ mod tests {
             &skills_root.path().to_string_lossy(),
         );
 
-        let target_context = workspace_root.path().join("skill-a").join("context");
+        // Legacy flat skills (skills_path/skill-a/context) are migrated to the plugin-namespaced
+        // workspace layout: workspace/DEFAULT_PLUGIN_SLUG/skill-a/context
+        let target_context = workspace_root
+            .path()
+            .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+            .join("skill-a")
+            .join("context");
         assert_eq!(
             fs::read_to_string(target_context.join("clarifications.json")).unwrap(),
             r#"{"ok":true}"#
@@ -615,7 +621,12 @@ mod tests {
         fs::create_dir_all(&legacy_context).unwrap();
         fs::write(legacy_context.join("clarifications.json"), "legacy").unwrap();
 
-        let target_context = workspace_root.path().join("skill-a").join("context");
+        // Pre-populate the plugin-namespaced target to simulate a skill already migrated
+        let target_context = workspace_root
+            .path()
+            .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+            .join("skill-a")
+            .join("context");
         fs::create_dir_all(&target_context).unwrap();
         fs::write(target_context.join("existing.md"), "keep-me").unwrap();
 
@@ -648,7 +659,12 @@ mod tests {
         fs::create_dir_all(&legacy_context).unwrap();
         fs::write(legacy_context.join("decisions.md"), "legacy-decisions").unwrap();
 
-        let target_context = workspace_root.path().join("skill-a").join("context");
+        // Pre-populate the plugin-namespaced target with a conflicting file
+        let target_context = workspace_root
+            .path()
+            .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+            .join("skill-a")
+            .join("context");
         fs::create_dir_all(&target_context).unwrap();
         fs::write(target_context.join("decisions.md"), "newer-decisions").unwrap();
 
@@ -688,6 +704,7 @@ mod tests {
 
         let target_file = workspace_root
             .path()
+            .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
             .join("skill-a")
             .join("context")
             .join("clarifications.json");

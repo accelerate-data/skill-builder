@@ -356,11 +356,20 @@ pub fn reconcile_on_startup(
             }
         }
 
-        // Pass B: soft-delete active skills (builder or imported) with no directory in skills_path
+        // Pass B: soft-delete active skills (builder or imported) with no directory in skills_path.
+        // Skip in-progress skill-builder skills — they don't have a skills_path dir until
+        // the workflow completes and deploys SKILL.md.
         let all_active = crate::db::list_all_skills(conn)?;
         for skill in &all_active {
             if skill_dir_exists(&skill.plugin_slug, &skill.name) {
                 continue;
+            }
+            if skill.skill_source == "skill-builder" {
+                let run = crate::db::get_workflow_run(conn, &skill.name)?;
+                let is_completed = run.as_ref().map(|r| r.status == "completed").unwrap_or(false);
+                if !is_completed {
+                    continue;
+                }
             }
             log::info!(
                 "[reconcile] soft-deleting '{}' in plugin '{}': no directory in skills_path",
