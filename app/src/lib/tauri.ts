@@ -745,6 +745,29 @@ export const readPendingEval = (skillName: string, workspacePath: string, plugin
 export const discardPendingEval = (skillName: string, workspacePath: string, pluginSlug: string) =>
   invoke<void>("discard_pending_eval", { skillName, workspacePath, pluginSlug });
 
+export const buildEvalPrompt = (
+  skillName: string,
+  pluginSlug: string,
+  workspacePath: string,
+  skillPath: string,
+  evalIds: number[],
+  runCount: number,
+  iteration: number,
+  iterDir: string,
+  comparisonMode?: string,
+) =>
+  invoke<string>("build_eval_prompt", {
+    skillName,
+    pluginSlug,
+    workspacePath,
+    skillPath,
+    evalIds,
+    runCount,
+    iteration,
+    iterDir,
+    comparisonMode: comparisonMode ?? null,
+  });
+
 // --- Documents ---
 
 export interface SkillIdName {

@@ -615,24 +615,12 @@ export interface EvalBenchmark {
   baseline_aggregate_summary?: EvalAggregateSummary
 }
 
-/** structuredOutput emitted by evaluate-skill after each eval is graded. */
-export interface EvalGradedEvent {
-  type: "eval_graded"
-  runIndex: number
-  evalIndex: number
-  totalEvals: number
-  totalRuns: number
-  evalId: number
-  evalName: string
-  grading: { passed: number; failed: number; total: number; pass_rate: number }
-  /** Present only in comparison modes. */
-  variant?: "with_skill" | "without_skill" | "current" | "previous"
-}
-
 /** structuredOutput emitted by evaluate-skill when the full pipeline completes.
  *  The benchmark is computed by Rust from grading files — not carried in this event.
+ *  SDK enforces this shape via output_format_for_agent.
  */
 export interface EvalCompleteEvent {
-  type: "complete"
+  status: "complete"
   iteration: number
+  results: string[]
 }

@@ -868,10 +868,14 @@ pub(crate) fn read_skill_context_inner(
     skill_name: &str,
     skill_root: &Path,
     skills_path: &str,
+    plugin_slug: &str,
 ) -> Result<SkillEvalContext, String> {
-    let skill_md = std::path::Path::new(skills_path)
-        .join(skill_name)
-        .join("SKILL.md");
+    let skill_md = crate::skill_paths::resolve_skill_dir(
+        std::path::Path::new(skills_path),
+        plugin_slug,
+        skill_name,
+    )
+    .join("SKILL.md");
     let skill_content = if skill_md.is_file() {
         std::fs::read_to_string(&skill_md).map_err(|e| {
             log::error!(
@@ -911,7 +915,7 @@ pub fn read_skill_context_for_eval_gen(
     // Resolve skills_path from settings (may differ from workspace_path).
     let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
     let skill_root = skill_root_from_plugin(&workspace_path, &plugin_slug, &skill_name);
-    read_skill_context_inner(&skill_name, &skill_root, &skills_path)
+    read_skill_context_inner(&skill_name, &skill_root, &skills_path, &plugin_slug)
 }
 
 /// Read a grading.json file from a completed eval run.
@@ -1092,6 +1096,57 @@ pub fn discard_pending_eval(
         log::debug!("[discard_pending_eval] removed pending-eval.json for skill={}", skill_name);
     }
     Ok(())
+}
+
+// --- Eval prompt builder ---
+
+/// The eval-initial.txt template, embedded at compile time.
+const EVAL_PROMPT_TEMPLATE: &str = include_str!("../../../../agent-sources/workspace/prompts/eval-initial.txt");
+
+/// Build the evaluate-skill prompt from the embedded template.
+/// Replaces `{{placeholder}}` tokens with actual values.
+#[tauri::command]
+pub fn build_eval_prompt(
+    skill_name: String,
+    plugin_slug: String,
+    workspace_path: String,
+    skill_path: String,
+    eval_ids: Vec<u32>,
+    run_count: u32,
+    iteration: u32,
+    iter_dir: String,
+    comparison_mode: Option<String>,
+) -> Result<String, String> {
+    log::info!(
+        "[build_eval_prompt] skill={} plugin={} iteration={}",
+        skill_name, plugin_slug, iteration
+    );
+
+    let eval_ids_json = serde_json::to_string(&eval_ids)
+        .map_err(|e| format!("Failed to serialize eval_ids: {}", e))?;
+
+    let comparison_clause = match comparison_mode.as_deref() {
+        Some(mode) => format!("\n- comparison_mode: {}", mode),
+        None => String::new(),
+    };
+
+    // Normalise Windows backslashes to forward slashes for agent paths
+    let workspace_fwd = workspace_path.replace('\\', "/");
+    let skill_path_fwd = skill_path.replace('\\', "/");
+    let iter_dir_fwd = iter_dir.replace('\\', "/");
+
+    let prompt = EVAL_PROMPT_TEMPLATE
+        .replace("{{skill_name}}", &skill_name)
+        .replace("{{plugin_slug}}", &plugin_slug)
+        .replace("{{workspace_path}}", &workspace_fwd)
+        .replace("{{skill_path}}", &skill_path_fwd)
+        .replace("{{eval_ids}}", &eval_ids_json)
+        .replace("{{run_count}}", &run_count.to_string())
+        .replace("{{iteration}}", &iteration.to_string())
+        .replace("{{iter_dir}}", &iter_dir_fwd)
+        .replace("{{comparison_mode_clause}}", &comparison_clause);
+
+    Ok(prompt)
 }
 
 // --- Tests ---
@@ -1299,7 +1354,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let root = test_skill_root(&tmp, "my-skill");
-        let ctx = read_skill_context_inner("my-skill", &root, workspace).unwrap();
+        let ctx = read_skill_context_inner("my-skill", &root, workspace, crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
         assert!(ctx.skill_content.is_empty());
         assert!(ctx.existing_evals.is_empty());
     }
@@ -1321,7 +1376,7 @@ mod tests {
         data.evals.push(tc);
         write_evals_file(&root, &data).unwrap();
 
-        let ctx = read_skill_context_inner("my-skill", &root, workspace).unwrap();
+        let ctx = read_skill_context_inner("my-skill", &root, workspace, crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
         assert!(ctx.skill_content.contains("My Skill"));
         assert_eq!(ctx.existing_evals.len(), 1);
         assert_eq!(ctx.existing_evals[0].eval_name, "Scenario One");

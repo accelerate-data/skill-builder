@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import {
+  buildEvalPrompt,
   cleanupSkillSidecar,
   deleteTestCase,
   discardPendingEval,
@@ -32,27 +33,26 @@ import type { EvalBenchmark, IterationMeta, PendingEval, SkillEvalContext, Skill
 import {
   buildEvalGenPrompt,
   buildRegenPrompt,
+  buildRefineMessage,
   iterationLabel,
+  mergeQueuedEvals,
+  pendingToTestCase,
   suggestEvalPlaceholder,
   truncatePrompt,
+  workspaceSkillDir,
 } from "@/lib/evals";
 import {
-  buildEvaluateSkillPrompt,
   getFailedEvalGradingPaths,
-  parseEvalStructuredOutput,
 } from "@/lib/eval-run";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
-import { Progress } from "@/components/ui/progress";
 import { EvalRunBenchmarkCard } from "./eval-run-benchmark-card";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { EvalForm } from "./eval-form";
 import { EvalIntentDialog } from "./eval-intent-dialog";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
-// Stable empty array so the Zustand selector doesn't return a new reference every render
-const EMPTY_DISPLAY_ITEMS: unknown[] = [];
 
 interface WorkspaceEvalsProps {
   skill: SkillSummary | ImportedSkill;
@@ -105,9 +105,6 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   const [comparisonMode, setComparisonMode] = useState<"with_without_skill" | "current_vs_previous" | undefined>(undefined);
   const [isRunningEvals, setIsRunningEvals] = useState(false);
   const [evalRunAgentId, setEvalRunAgentId] = useState<string | null>(null);
-  const [gradedCount, setGradedCount] = useState(0);
-  const [gradingEvalName, setGradingEvalName] = useState<string | null>(null);
-  const [totalEvalRunCount, setTotalEvalRunCount] = useState(0);
 
   // Benchmark result from the most recent eval run (component-local)
   const [benchmark, setBenchmark] = useState<EvalBenchmark | null>(null);
@@ -142,10 +139,6 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   const evalRunStatus = useAgentStore(
     (s) => s.runs[evalRunAgentId ?? ""]?.status ?? null,
   );
-  const evalRunDisplayItems = useAgentStore(
-    (s) => s.runs[evalRunAgentId ?? ""]?.displayItems ?? EMPTY_DISPLAY_ITEMS,
-  );
-
   // Notify parent when eval run state changes (for tab-switch gate)
   useEffect(() => { onRunningChange?.(isRunningEvals); }, [isRunningEvals, onRunningChange]);
 
@@ -224,58 +217,6 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [regenRunStatus, regenAgentId]);
 
-  // Watch eval run display items for structuredOutput and text-embedded progress events
-  const processedItemIds = useRef(new Set<string>());
-  useEffect(() => {
-    if (!evalRunAgentId || evalRunDisplayItems.length === 0) return;
-
-    // Scan all new display items for eval events (structuredOutput or JSON in outputText)
-    for (const item of evalRunDisplayItems as unknown as Array<Record<string, unknown>>) {
-      const id = item.id as string | undefined;
-      if (!id || processedItemIds.current.has(id)) continue;
-
-      let event = parseEvalStructuredOutput(item.structuredOutput);
-      if (!event && typeof item.outputText === "string") {
-        const text = item.outputText as string;
-        // Try extracting eval_graded events (simple flat JSON objects)
-        const gradedMatches = text.match(/\{[^{}]*"type"\s*:\s*"eval_graded"[^}]*\}/g);
-        if (gradedMatches) {
-          for (const jsonStr of gradedMatches) {
-            try {
-              const parsed = parseEvalStructuredOutput(JSON.parse(jsonStr));
-              if (parsed) { event = parsed; break; }
-            } catch { /* not valid JSON */ }
-          }
-        }
-        // Try extracting complete event (nested JSON in ```json code blocks)
-        if (!event) {
-          const codeBlockMatch = text.match(/```json\s*\n([\s\S]*?)\n```/);
-          if (codeBlockMatch) {
-            try {
-              const parsed = parseEvalStructuredOutput(JSON.parse(codeBlockMatch[1]));
-              if (parsed) event = parsed;
-            } catch { /* not valid JSON */ }
-          }
-        }
-      }
-      if (!event) continue;
-      processedItemIds.current.add(id);
-
-      if (event.type === "eval_graded") {
-        setGradedCount((prev) => prev + 1);
-        setGradingEvalName(event.evalName);
-        console.log(
-          "event=eval_graded skill=%s run=%d eval=%d/%d name=%s pass_rate=%s",
-          skillName, event.runIndex, event.evalIndex + 1, event.totalEvals,
-          event.evalName, event.grading.pass_rate,
-        );
-      }
-      // "complete" events are ignored here — benchmark materialization is triggered
-      // by the terminal-state effect below (single Rust round trip, no display-item dependency).
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [evalRunDisplayItems, evalRunAgentId]);
-
   // Watch eval run agent for terminal state — single trigger for materialization.
   // When the agent completes, Rust reads grading files and computes the benchmark
   // deterministically. No dependency on the agent's structured output.
@@ -332,14 +273,10 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     setDraftIntent(userIntent);
     setError(null);
     try {
-      // Include queued evals in existing context to avoid duplication
-      const ctxWithQueue: SkillEvalContext = {
-        ...skillCtx,
-        existing_evals: [...skillCtx.existing_evals, ...evalQueue],
-      };
-      const prompt = buildEvalGenPrompt(ctxWithQueue, skillName, workspacePath, userIntent);
+      const ctxWithQueue = mergeQueuedEvals(skillCtx, evalQueue);
+      const prompt = buildEvalGenPrompt(ctxWithQueue, skillName, workspacePath, pluginSlug, userIntent);
       const agentId = crypto.randomUUID();
-      const cwd = `${workspacePath}/${skillName}`;
+      const cwd = workspaceSkillDir(workspacePath, pluginSlug, skillName);
 
       await startAgent(
         agentId,
@@ -386,8 +323,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     if (!workspacePath) return;
     try {
       const pending: PendingEval = await readPendingEval(skillName, workspacePath, pluginSlug);
-      const asTestCase: TestCase = { id: 0, files: [], ...pending };
-      setGeneratedEval(asTestCase);
+      setGeneratedEval(pendingToTestCase(pending));
       setFormOpen(true);
       console.log(
         "event=generate_eval status=completed skill=%s eval_name=%s",
@@ -416,9 +352,9 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       // Discard existing pending-eval.json so the agent can create it fresh
       // (Write tool requires the file not to exist, or to have been read first in the same session)
       await discardPendingEval(skillName, workspacePath, pluginSlug);
-      const prompt = buildRegenPrompt(newIntent, skillCtx.skill_content, skillName, workspacePath);
+      const prompt = buildRegenPrompt(newIntent, skillCtx.skill_content, skillName, workspacePath, pluginSlug);
       const agentId = crypto.randomUUID();
-      const cwd = `${workspacePath}/${skillName}`;
+      const cwd = workspaceSkillDir(workspacePath, pluginSlug, skillName);
 
       await startAgent(
         agentId,
@@ -465,8 +401,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     if (!workspacePath) return;
     try {
       const pending: PendingEval = await readPendingEval(skillName, workspacePath, pluginSlug);
-      const asTestCase: TestCase = { id: 0, files: [], ...pending };
-      setGeneratedEval(asTestCase);
+      setGeneratedEval(pendingToTestCase(pending));
       console.log(
         "event=regen_eval status=completed skill=%s eval_name=%s",
         skillName,
@@ -597,9 +532,6 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     const evalIds = [...selectedRunIds].sort((a, b) => a - b);
 
     setIsRunningEvals(true);
-    setGradedCount(0);
-    setTotalEvalRunCount(evalIds.length * runCount * (comparisonMode ? 2 : 1));
-    setGradingEvalName(null);
     setBenchmark(null);
     // analystNotes removed
 
@@ -609,7 +541,11 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     // and cannot accidentally reuse an existing iteration.
     const [iterNum, iterDir] = await createNextIterationDir(skillName, workspacePath!, pluginSlug);
     evalRunParamsRef.current = { iterDir, iteration: iterNum, evalIds, runCount, comparisonMode };
-    const prompt = buildEvaluateSkillPrompt({ skillName, pluginSlug, workspacePath: workspacePath!, skillsPath, evalIds, runCount, comparisonMode, iteration: iterNum, iterDir });
+    const skillPath = workspaceSkillDir(skillsPath, pluginSlug, skillName);
+    const prompt = await buildEvalPrompt(
+      skillName, pluginSlug, workspacePath!, skillPath,
+      evalIds, runCount, iterNum, iterDir, comparisonMode,
+    );
 
     try {
       await startAgent(
@@ -623,7 +559,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         undefined,
         skillName,
         "evaluate-skill",
-        "skill-creator:evaluate-skill",
+        undefined, // standalone agent, not plugin-scoped
         undefined,
         undefined,
         undefined,
@@ -647,17 +583,13 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     } catch (err) {
       console.error("event=eval_run status=start_failure skill=%s error=%s", skillName, err);
       setIsRunningEvals(false);
-      setTotalEvalRunCount(0);
     }
   }
 
   function handleRefine(bm: EvalBenchmark) {
     const failedPaths = getFailedEvalGradingPaths(bm);
     if (failedPaths.length === 0) return;
-    const msg = failedPaths
-      .map(({ eval_name, grading_path }) => `${eval_name}: ${grading_path}`)
-      .join("\n");
-    useRefineStore.getState().setPendingInitialMessage(msg);
+    useRefineStore.getState().setPendingInitialMessage(buildRefineMessage(failedPaths));
     onNavigateToRefine?.();
     console.log(
       "event=eval_refine_navigate skill=%s iteration=%d failed_evals=%d",
@@ -826,15 +758,8 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
             />
             <div className="flex-1 min-w-0">
               <p className="font-medium" style={{ color: "var(--color-pacific)" }}>
-                Grading eval {gradedCount} of {totalEvalRunCount}
-                {gradingEvalName && (
-                  <span className="font-normal text-foreground"> — {gradingEvalName}</span>
-                )}
+                Running evals — grading results appear below as they complete
               </p>
-              <Progress
-                value={totalEvalRunCount > 0 ? Math.round((gradedCount / totalEvalRunCount) * 100) : 0}
-                className="mt-1.5 h-1"
-              />
             </div>
           </div>
         )}

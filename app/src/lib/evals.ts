@@ -5,7 +5,7 @@
  * All Actions (IPC, state mutation) stay in the component layer.
  */
 
-import type { SkillEvalContext, TestCase } from "@/lib/types";
+import type { PendingEval, SkillEvalContext, TestCase } from "@/lib/types";
 
 // --- Data ---
 
@@ -18,7 +18,61 @@ export const EMPTY_TEST_CASE: TestCase = {
   expectations: [""],
 };
 
+// --- Path helpers ---
+
+/**
+ * Compute the plugin-aware workspace skill directory, matching Rust's `workspace_skill_dir`.
+ * - Default plugin ("skills"): `{workspace}/skills/{skillName}`
+ * - Other plugins: `{workspace}/{pluginSlug}/skills/{skillName}`
+ */
+export function workspaceSkillDir(workspacePath: string, pluginSlug: string, skillName: string): string {
+  return pluginSlug === "skills"
+    ? `${workspacePath}/skills/${skillName}`
+    : `${workspacePath}/${pluginSlug}/skills/${skillName}`;
+}
+
 // --- Calculations ---
+
+/**
+ * Merge queued (not-yet-saved) evals into a skill context so the generator
+ * knows about them and avoids duplicating scenarios.
+ */
+export function mergeQueuedEvals(ctx: SkillEvalContext, queue: TestCase[]): SkillEvalContext {
+  return {
+    ...ctx,
+    existing_evals: [...ctx.existing_evals, ...queue],
+  };
+}
+
+/**
+ * Convert a PendingEval (agent output) into a TestCase with default id/files.
+ */
+export function pendingToTestCase(pending: PendingEval): TestCase {
+  return { id: 0, files: [], ...pending };
+}
+
+/**
+ * Compute total grading count for an eval run.
+ * With comparison mode each eval is graded twice (primary + baseline).
+ */
+export function totalRunCount(
+  evalCount: number,
+  runsPerEval: number,
+  comparisonMode: string | undefined,
+): number {
+  return evalCount * runsPerEval * (comparisonMode ? 2 : 1);
+}
+
+/**
+ * Build the refine pre-fill message from failed eval grading paths.
+ */
+export function buildRefineMessage(
+  failedPaths: Array<{ eval_name: string; grading_path: string }>,
+): string {
+  return failedPaths
+    .map(({ eval_name, grading_path }) => `${eval_name}: ${grading_path}`)
+    .join("\n");
+}
 
 /**
  * Generate a URL-safe slug from a display name.
@@ -139,7 +193,8 @@ export function suggestEvalPlaceholder(skillContent: string): string {
 export function buildEvalGenPrompt(
   ctx: SkillEvalContext,
   skillName: string,
-  skillsPath: string,
+  workspacePath: string,
+  pluginSlug: string,
   userIntent: string,
 ): string {
   const existingNames = ctx.existing_evals.length > 0
@@ -147,6 +202,7 @@ export function buildEvalGenPrompt(
     : "None yet.";
 
   const skillContent = ctx.skill_content.trim() || "(no SKILL.md found — infer from skill name)";
+  const skillDir = workspaceSkillDir(workspacePath, pluginSlug, skillName);
 
   return `You are generating one eval (test case) for the "${skillName}" Claude skill.
 
@@ -166,7 +222,7 @@ ${userIntent}
 
 Generate exactly 1 eval that covers the scenario above.
 
-Write the eval as a JSON file to \`${skillsPath}/${skillName}/evals/pending-eval.json\` with this exact structure:
+Write the eval as a JSON file to \`${skillDir}/evals/pending-eval.json\` with this exact structure:
 
 \`\`\`json
 {
@@ -204,9 +260,11 @@ export function buildRegenPrompt(
   intent: string,
   skillContent: string,
   skillName: string,
-  skillsPath: string,
+  workspacePath: string,
+  pluginSlug: string,
 ): string {
   const content = skillContent.trim() || "(no SKILL.md found — infer from skill name)";
+  const skillDir = workspaceSkillDir(workspacePath, pluginSlug, skillName);
 
   return `You are re-generating an eval (test case) for the "${skillName}" Claude skill based on an updated scenario intent.
 
@@ -222,7 +280,7 @@ ${intent}
 
 Generate exactly 1 eval that covers the updated scenario above.
 
-Write the eval as a JSON file to \`${skillsPath}/${skillName}/evals/pending-eval.json\` with this exact structure:
+Write the eval as a JSON file to \`${skillDir}/evals/pending-eval.json\` with this exact structure:
 
 \`\`\`json
 {

@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildEvaluateSkillPrompt,
-  evalProgressPercent,
   getFailedEvalGradingPaths,
-  parseEvalStructuredOutput,
 } from "@/lib/eval-run";
 import type { EvalBenchmark } from "@/lib/types";
 
@@ -48,73 +45,6 @@ function makeEvalBenchmark(overrides?: Partial<EvalBenchmark>): EvalBenchmark {
   };
 }
 
-// --- buildEvaluateSkillPrompt ---
-
-describe("buildEvaluateSkillPrompt", () => {
-  it("includes all required fields", () => {
-    const prompt = buildEvaluateSkillPrompt({
-      skillName: "dbt-quality",
-      pluginSlug: "my-plugin",
-      workspacePath: "/workspace",
-      skillsPath: "/skill-builder",
-      evalIds: [1, 3, 5],
-      runCount: 3,
-      iteration: 4,
-      iterDir: "/workspace/my-plugin/skills/dbt-quality/evals/iterations/iteration-4",
-    });
-    expect(prompt).toContain("skill_name: dbt-quality");
-    expect(prompt).toContain("plugin_slug: my-plugin");
-    expect(prompt).toContain("workspace_path: /workspace");
-    expect(prompt).toContain("eval_ids: [1,3,5]");
-    expect(prompt).toContain("run_count: 3");
-    expect(prompt).toContain("skill_path: /skill-builder/my-plugin/skills/dbt-quality");
-    expect(prompt).toContain("iteration: 4");
-    expect(prompt).toContain("iter_dir: /workspace/my-plugin/skills/dbt-quality/evals/iterations/iteration-4");
-  });
-
-  it("serializes eval_ids as JSON array", () => {
-    const prompt = buildEvaluateSkillPrompt({
-      skillName: "s",
-      pluginSlug: "skills",
-      workspacePath: "/w",
-      skillsPath: "/s",
-      evalIds: [7],
-      runCount: 1,
-      iteration: 1,
-      iterDir: "/w/skills/s/evals/iterations/iteration-1",
-    });
-    expect(prompt).toContain("eval_ids: [7]");
-  });
-
-  it("outputs plugin_slug for non-default plugin", () => {
-    const prompt = buildEvaluateSkillPrompt({
-      skillName: "my-skill",
-      pluginSlug: "analytics",
-      workspacePath: "/workspace",
-      skillsPath: "/skill-builder",
-      evalIds: [1],
-      runCount: 1,
-      iteration: 1,
-      iterDir: "/workspace/analytics/skills/my-skill/evals/iterations/iteration-1",
-    });
-    expect(prompt).toContain("plugin_slug: analytics");
-  });
-
-  it("outputs plugin_slug for default plugin", () => {
-    const prompt = buildEvaluateSkillPrompt({
-      skillName: "my-skill",
-      pluginSlug: "skills",
-      workspacePath: "/workspace",
-      skillsPath: "/skill-builder",
-      evalIds: [1],
-      runCount: 1,
-      iteration: 1,
-      iterDir: "/workspace/skills/my-skill/evals/iterations/iteration-1",
-    });
-    expect(prompt).toContain("plugin_slug: skills");
-  });
-});
-
 // --- getFailedEvalGradingPaths ---
 
 describe("getFailedEvalGradingPaths", () => {
@@ -151,62 +81,3 @@ describe("getFailedEvalGradingPaths", () => {
   });
 });
 
-// --- parseEvalStructuredOutput ---
-
-describe("parseEvalStructuredOutput", () => {
-  it("returns EvalGradedEvent for eval_graded type", () => {
-    const input = {
-      type: "eval_graded",
-      runIndex: 0,
-      evalIndex: 1,
-      totalEvals: 3,
-      totalRuns: 1,
-      evalId: 2,
-      evalName: "Scenario B",
-      grading: { passed: 2, failed: 2, total: 4, pass_rate: 0.5 },
-    };
-    const result = parseEvalStructuredOutput(input);
-    expect(result).not.toBeNull();
-    expect(result?.type).toBe("eval_graded");
-  });
-
-  it("returns EvalCompleteEvent for complete type", () => {
-    const input = {
-      type: "complete",
-      iteration: 3,
-      benchmark: makeEvalBenchmark(),
-      analyst_notes: ["note one"],
-    };
-    const result = parseEvalStructuredOutput(input);
-    expect(result?.type).toBe("complete");
-  });
-
-  it("returns null for unrecognised type", () => {
-    expect(parseEvalStructuredOutput({ type: "unknown" })).toBeNull();
-    expect(parseEvalStructuredOutput(null)).toBeNull();
-    expect(parseEvalStructuredOutput("string")).toBeNull();
-    expect(parseEvalStructuredOutput(42)).toBeNull();
-  });
-});
-
-// --- evalProgressPercent ---
-
-describe("evalProgressPercent", () => {
-  it("returns 0 when nothing graded", () => {
-    expect(evalProgressPercent(0, 3, 1)).toBe(0);
-  });
-
-  it("returns 100 when all graded", () => {
-    expect(evalProgressPercent(3, 3, 1)).toBe(100);
-    expect(evalProgressPercent(9, 3, 3)).toBe(100);
-  });
-
-  it("returns proportional value mid-run", () => {
-    // 2 of 6 graded (2 evals × 3 runs)
-    expect(evalProgressPercent(2, 2, 3)).toBe(33);
-  });
-
-  it("returns 0 when total is 0", () => {
-    expect(evalProgressPercent(0, 0, 0)).toBe(0);
-  });
-});

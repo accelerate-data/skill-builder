@@ -13,10 +13,9 @@ use crate::db::Db;
 /// All other agents receive `None`, which causes the sidecar to fall back to
 /// its default of `['project']`.
 fn derive_setting_sources(agent_name: Option<&str>) -> Option<Vec<String>> {
-    if agent_name.map_or(false, |n| n.ends_with(":evaluate-skill")) {
-        Some(vec![])
-    } else {
-        None
+    match agent_name {
+        Some(n) if n == "evaluate-skill" || n.ends_with(":evaluate-skill") => Some(vec![]),
+        _ => None,
     }
 }
 
@@ -26,10 +25,18 @@ fn derive_setting_sources(agent_name: Option<&str>) -> Option<Vec<String>> {
 /// must be in `required_plugins` so the sidecar discovers and loads it,
 /// allowing the SDK to resolve the agent's .md spec and sibling agents.
 fn derive_required_plugins(agent_name: Option<&str>) -> Vec<String> {
-    agent_name
+    // Plugin-scoped agents (e.g. "skill-creator:generate-skill") derive their plugin name.
+    if let Some(plugins) = agent_name
         .and_then(|n| n.split_once(':'))
         .map(|(plugin, _)| vec![plugin.to_string()])
-        .unwrap_or_default()
+    {
+        return plugins;
+    }
+    // Standalone agents that need explicit plugin access:
+    match agent_name {
+        Some("evaluate-skill") => vec!["skill-creator".to_string()],
+        _ => vec![],
+    }
 }
 
 /// Suppress `fallback_model` when it equals `model` to avoid the SDK error
@@ -72,6 +79,25 @@ pub(crate) fn output_format_for_agent(
                     }
                 },
                 "additionalProperties": true
+            }
+        }));
+    }
+
+    if matches!(_agent_name, Some("evaluate-skill")) {
+        return Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "iteration", "results"],
+                "properties": {
+                    "status": { "type": "string", "enum": ["complete"] },
+                    "iteration": { "type": "integer" },
+                    "results": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
+                },
+                "additionalProperties": false
             }
         }));
     }
@@ -233,33 +259,43 @@ mod tests {
     #[test]
     fn evaluate_skill_agent_has_empty_setting_sources() {
         // evaluate-skill must never load workspace skills (skill-test contaminates runs)
+        // Both standalone and plugin-scoped forms must match.
+        assert_eq!(
+            derive_setting_sources(Some("evaluate-skill")),
+            Some(vec![]),
+            "standalone evaluate-skill must have empty settingSources"
+        );
         assert_eq!(
             derive_setting_sources(Some("skill-creator:evaluate-skill")),
             Some(vec![]),
-            "evaluate-skill must have empty settingSources to block workspace skill loading"
+            "plugin-scoped evaluate-skill must have empty settingSources"
         );
     }
 
     #[test]
     fn other_agents_get_default_setting_sources() {
-        // All other agents fall back to the sidecar default of ['project']
         assert_eq!(derive_setting_sources(None), None);
         assert_eq!(derive_setting_sources(Some("generate-skill")), None);
         assert_eq!(derive_setting_sources(Some("skill-creator:generate-skill")), None);
         assert_eq!(derive_setting_sources(Some("skill-creator:analyze-skill")), None);
-        // Must not match a bare "evaluate-skill" without plugin prefix
-        assert_eq!(derive_setting_sources(Some("evaluate-skill")), None);
     }
 
     #[test]
     fn evaluate_skill_setting_sources_cannot_be_made_non_empty() {
-        // Ensure derive_setting_sources always returns Some(vec![]) for evaluate-skill —
-        // the vec must be empty to prevent workspace skill pollution.
-        let sources = derive_setting_sources(Some("skill-creator:evaluate-skill")).unwrap();
+        let sources = derive_setting_sources(Some("evaluate-skill")).unwrap();
         assert!(
             sources.is_empty(),
             "settingSources for evaluate-skill must be an empty vec, not {:?}",
             sources
+        );
+    }
+
+    #[test]
+    fn standalone_evaluate_skill_derives_skill_creator_plugin() {
+        assert_eq!(
+            derive_required_plugins(Some("evaluate-skill")),
+            vec!["skill-creator"],
+            "standalone evaluate-skill must load skill-creator plugin"
         );
     }
 

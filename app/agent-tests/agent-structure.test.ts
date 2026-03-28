@@ -228,6 +228,27 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/"per_question"/);
     expect(content).toMatch(/"answered_count"/);
   });
+
+  it("evaluate-skill prompt template matches SDK-enforced schema", () => {
+    const content = fs.readFileSync(
+      path.join(REPO_ROOT, "agent-sources/workspace/prompts/eval-initial.txt"),
+      "utf8",
+    );
+    expect(content).toMatch(/"status":\s*"complete"/);
+    expect(content).toMatch(/"iteration"/);
+    expect(content).toMatch(/"results"/);
+  });
+
+  it("evaluate-skill prompt documents grading.json write paths", () => {
+    const content = fs.readFileSync(
+      path.join(REPO_ROOT, "agent-sources/workspace/prompts/eval-initial.txt"),
+      "utf8",
+    );
+    expect(content).toMatch(/grading\.json/);
+    expect(content).toMatch(/eval_dir/);
+    expect(content).toMatch(/with_skill\/grading\.json/);
+    expect(content).toMatch(/without_skill\/grading\.json/);
+  });
 });
 
 describe("detailed-research output contract", () => {
