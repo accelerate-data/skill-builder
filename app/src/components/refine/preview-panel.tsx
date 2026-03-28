@@ -3,11 +3,12 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
-import { ChevronDown, FileText, GitCompare, X } from "lucide-react";
+import { FileText, GitCompare, X } from "lucide-react";
 import { markdownComponents } from "@/components/markdown-link";
 import { SkillFrontmatterHeader } from "@/components/skill-frontmatter-header";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isSkillFile, parseFrontmatter } from "@/lib/frontmatter";
 import { normalizeDiffPath } from "@/lib/path-utils";
@@ -93,8 +94,8 @@ export function PreviewPanel() {
     if (!isOpen) return;
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      // Skip if clicking the toggle button or a modified-file pill (they handle open/close).
-      if (target.closest("[data-file-viewer-toggle]") || target.closest("[data-testid^='refine-modified-file-pill']")) return;
+      // Skip if clicking the toggle button, a modified-file pill, or a Select popover (portaled outside panel).
+      if (target.closest("[data-file-viewer-toggle]") || target.closest("[data-testid^='refine-modified-file-pill']") || target.closest("[data-slot='select-content']") || target.closest("[role='listbox']")) return;
       if (panelRef.current && !panelRef.current.contains(target)) {
         close();
       }
@@ -190,22 +191,27 @@ export function PreviewPanel() {
         <div className="flex min-w-0 items-center gap-1.5">
           <FileText className="size-3.5 shrink-0 text-muted-foreground" />
           {fileTabs.length > 1 ? (
-            <div className="relative">
-              <select
+            <Select
+              value={activeFileTab}
+              onValueChange={(value) => {
+                setActiveFileTab(value);
+                setSelectedModifiedFile(value);
+              }}
+            >
+              <SelectTrigger
                 data-testid="refine-file-view-title"
-                value={activeFileTab}
-                onChange={(e) => {
-                  setActiveFileTab(e.target.value);
-                  setSelectedModifiedFile(e.target.value);
-                }}
-                className="appearance-none bg-transparent pr-5 text-sm font-medium outline-none cursor-pointer"
+                className="h-7 max-w-[280px] gap-1.5 border-none bg-transparent px-1.5 text-sm font-medium shadow-none hover:bg-accent"
               >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
                 {fileTabs.map((tab) => (
-                  <option key={tab} value={tab} className="bg-card text-foreground">{tab}</option>
+                  <SelectItem key={tab} value={tab} className="text-xs">
+                    {tab}
+                  </SelectItem>
                 ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-0 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            </div>
+              </SelectContent>
+            </Select>
           ) : (
             <span data-testid="refine-file-view-title" className="text-sm font-medium">
               {selectedModifiedFile ?? activeFileTab}
