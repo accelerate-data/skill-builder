@@ -1,5 +1,6 @@
 export interface SidecarConfig {
   prompt: string;
+  systemPrompt?: string;
   model?: string;
   agentName?: string;
   apiKey: string;

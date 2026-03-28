@@ -112,6 +112,7 @@ export function buildQueryOptions(
     ...(config.thinking ? { thinking: config.thinking as Options["thinking"] } : {}),
     ...(config.effort ? { effort: config.effort as Options["effort"] } : {}),
     ...(config.fallbackModel ? { fallbackModel: config.fallbackModel } : {}),
+    ...(config.systemPrompt ? { systemPrompt: config.systemPrompt } : {}),
     ...(config.outputFormat ? { outputFormat: config.outputFormat as Options["outputFormat"] } : {}),
     ...(typeof config.promptSuggestions === "boolean"
       ? { promptSuggestions: config.promptSuggestions }

@@ -30,8 +30,8 @@ Step 1: Read evals.
 
 Step 2: Use iter_dir and iteration directly from the input. The directory already exists — do NOT compute your own.
 
-Step 3: Resolve agent paths.
-skill_agents_dir = {workspace_path}/.claude/plugins/skill-creator/skills/skill-creator/agents
+Step 3: Grader agent.
+Use subagent_type "skill-creator:grader" when spawning grader subagents. Do NOT read grader.md manually.
 
 Step 4 (current_vs_previous only): Snapshot previous skill version.
 Run git log --oneline --follow -- {skill_path}/SKILL.md to find the commit before HEAD.
@@ -61,10 +61,8 @@ Execute — spawn one executor subagent via Agent tool:
 
 Capture the executor's returned text as executor_result.
 
-Grade — spawn one grader subagent via Agent tool:
-  "Read the grading instructions from: {skill_agents_dir}/grader.md
-  Follow those instructions exactly. Grade based on the executor's plan text below.
-  Your inputs:
+Grade — spawn one grader subagent via Agent tool with subagent_type "skill-creator:grader":
+  "Your inputs:
   - expectations: {eval.expectations as JSON array}
   - plan_text: {executor_result}
   - grading_output_path: {eval_dir}/grading.json
@@ -80,7 +78,7 @@ Execute (parallel) — spawn two executor subagents in the same Agent tool call:
 
 Capture as with_skill_result and without_skill_result.
 
-Grade (parallel) — spawn two grader subagents in the same Agent tool call:
+Grade (parallel) — spawn two grader subagents in the same Agent tool call, each with subagent_type "skill-creator:grader":
 - with_skill grader: grading_output_path = {eval_dir}/with_skill/grading.json, plan_text = {with_skill_result}
 - without_skill grader: grading_output_path = {eval_dir}/without_skill/grading.json, plan_text = {without_skill_result}
 

@@ -113,6 +113,7 @@ pub async fn start_agent(
     db: tauri::State<'_, Db>,
     agent_id: String,
     prompt: String,
+    system_prompt: Option<String>,
     model: String,
     cwd: String,
     allowed_tools: Option<Vec<String>>,
@@ -191,6 +192,7 @@ pub async fn start_agent(
 
     let config = SidecarConfig {
         prompt,
+        system_prompt,
         model: model_for_config,
         api_key,
         cwd,

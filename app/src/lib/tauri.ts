@@ -123,8 +123,9 @@ export const startAgent = (
   workflowSessionId?: string,
   usageSessionId?: string,
   runSource?: string,
+  systemPrompt?: string,
 ) => invoke<string>("start_agent", {
-  agentId, prompt, model, cwd, allowedTools, maxTurns,
+  agentId, prompt, systemPrompt: systemPrompt ?? null, model, cwd, allowedTools, maxTurns,
   permissionMode: permissionMode ?? null, sessionId,
   skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown",
   agentName: agentName ?? null, transcriptLogDir: transcriptLogDir ?? null,
@@ -756,7 +757,7 @@ export const buildEvalPrompt = (
   iterDir: string,
   comparisonMode?: string,
 ) =>
-  invoke<string>("build_eval_prompt", {
+  invoke<[string, string]>("build_eval_prompt", {
     skillName,
     pluginSlug,
     workspacePath,

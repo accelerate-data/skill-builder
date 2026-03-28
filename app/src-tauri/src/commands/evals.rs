@@ -1116,7 +1116,7 @@ pub fn build_eval_prompt(
     iteration: u32,
     iter_dir: String,
     comparison_mode: Option<String>,
-) -> Result<String, String> {
+) -> Result<(String, String), String> {
     log::info!(
         "[build_eval_prompt] skill={} plugin={} iteration={}",
         skill_name, plugin_slug, iteration
@@ -1135,7 +1135,7 @@ pub fn build_eval_prompt(
     let skill_path_fwd = skill_path.replace('\\', "/");
     let iter_dir_fwd = iter_dir.replace('\\', "/");
 
-    let prompt = EVAL_PROMPT_TEMPLATE
+    let system_prompt = EVAL_PROMPT_TEMPLATE
         .replace("{{skill_name}}", &skill_name)
         .replace("{{plugin_slug}}", &plugin_slug)
         .replace("{{workspace_path}}", &workspace_fwd)
@@ -1146,7 +1146,9 @@ pub fn build_eval_prompt(
         .replace("{{iter_dir}}", &iter_dir_fwd)
         .replace("{{comparison_mode_clause}}", &comparison_clause);
 
-    Ok(prompt)
+    let user_prompt = format!("Run the evaluation for skill \"{}\" — iteration {}.", skill_name, iteration);
+
+    Ok((system_prompt, user_prompt))
 }
 
 // --- Tests ---

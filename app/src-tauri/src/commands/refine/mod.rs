@@ -273,7 +273,7 @@ pub async fn send_refine_message(
         // All commands go through the same streaming config. No agent is
         // specified — Claude decides which agent to invoke based on the
         // user's message and the agents discovered from plugins.
-        let prompt = build_refine_prompt_with_output_dir(
+        let (system_prompt, user_prompt) = build_refine_prompt_with_output_dir(
             &skill_name,
             &workspace_path,
             &runtime.plugin_slug,
@@ -282,7 +282,7 @@ pub async fn send_refine_message(
             target_files.as_deref(),
         );
         let (mut config, agent_id) = build_refine_config(
-            prompt.clone(),
+            user_prompt.clone(),
             &skill_name,
             &usage_session_id,
             &workspace_path,
@@ -294,6 +294,7 @@ pub async fn send_refine_message(
             runtime.fallback_model,
             runtime.refine_prompt_suggestions,
         );
+        config.system_prompt = Some(system_prompt);
 
         log::info!(
             "[send_refine_message] skill={} model={}",
@@ -302,7 +303,7 @@ pub async fn send_refine_message(
         );
         log::debug!(
             "[send_refine_message] first message prompt ({} chars) for skill '{}' command={:?}",
-            prompt.len(),
+            user_prompt.len(),
             skill_name,
             command
         );

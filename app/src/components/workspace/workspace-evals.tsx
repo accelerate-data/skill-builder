@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Pencil, Play, Sparkles, Trash2 } from "lucide-react";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { setEvalsRunning } from "@/lib/eval-running-state";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -139,8 +149,12 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   const evalRunStatus = useAgentStore(
     (s) => s.runs[evalRunAgentId ?? ""]?.status ?? null,
   );
-  // Notify parent when eval run state changes (for tab-switch gate)
-  useEffect(() => { onRunningChange?.(isRunningEvals); }, [isRunningEvals, onRunningChange]);
+  // Notify parent when eval run state changes (for tab-switch gate + module state for skill-switch guard)
+  useEffect(() => {
+    onRunningChange?.(isRunningEvals);
+    setEvalsRunning(isRunningEvals);
+    return () => setEvalsRunning(false);
+  }, [isRunningEvals, onRunningChange]);
 
   // Track evalRunAgentId in a ref for unmount cleanup (avoids stale closure)
   const evalRunAgentIdRef = useRef<string | null>(null);
@@ -155,6 +169,19 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skillName]);
+
+  // Route-level leave guard: block navigation (settings, skill switch) while evals are running
+  const isRunningRef = useRef(false);
+  useEffect(() => { isRunningRef.current = isRunningEvals; }, [isRunningEvals]);
+  const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
+    shouldBlock: () => isRunningRef.current,
+    onLeave: (proceed) => {
+      cleanupSkillSidecar(skillName).catch(() => {});
+      setIsRunningEvals(false);
+      setEvalRunAgentId(null);
+      proceed();
+    },
+  });
 
   // --- Actions ---
 
@@ -542,7 +569,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     const [iterNum, iterDir] = await createNextIterationDir(skillName, workspacePath!, pluginSlug);
     evalRunParamsRef.current = { iterDir, iteration: iterNum, evalIds, runCount, comparisonMode };
     const skillPath = workspaceSkillDir(skillsPath, pluginSlug, skillName);
-    const prompt = await buildEvalPrompt(
+    const [evalSystemPrompt, evalUserPrompt] = await buildEvalPrompt(
       skillName, pluginSlug, workspacePath!, skillPath,
       evalIds, runCount, iterNum, iterDir, comparisonMode,
     );
@@ -550,7 +577,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     try {
       await startAgent(
         agentId,
-        prompt,
+        evalUserPrompt,
         preferredModel,
         workspacePath,
         ["Read", "Write", "Glob", "Agent"],
@@ -565,6 +592,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         undefined,
         `synthetic:evals:${skillName}`,
         "test",
+        evalSystemPrompt,
       );
 
       useAgentStore.getState().registerRun(
@@ -586,15 +614,32 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     }
   }
 
+  const [pendingRefine, setPendingRefine] = useState<EvalBenchmark | null>(null);
+
   function handleRefine(bm: EvalBenchmark) {
     const failedPaths = getFailedEvalGradingPaths(bm);
     if (failedPaths.length === 0) return;
+    if (isRunningEvals) {
+      setPendingRefine(bm);
+      return;
+    }
     useRefineStore.getState().setPendingInitialMessage(buildRefineMessage(failedPaths));
     onNavigateToRefine?.();
     console.log(
       "event=eval_refine_navigate skill=%s iteration=%d failed_evals=%d",
       skillName, bm.iteration, failedPaths.length,
     );
+  }
+
+  function handleRefineLeave() {
+    if (!pendingRefine) return;
+    cleanupSkillSidecar(skillName).catch(() => {});
+    setIsRunningEvals(false);
+    setEvalRunAgentId(null);
+    const failedPaths = getFailedEvalGradingPaths(pendingRefine);
+    useRefineStore.getState().setPendingInitialMessage(buildRefineMessage(failedPaths));
+    setPendingRefine(null);
+    onNavigateToRefine?.();
   }
 
   if (loading) {
@@ -995,6 +1040,48 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {blockerStatus === "blocked" && (
+        <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Eval Run In Progress</DialogTitle>
+              <DialogDescription>
+                An eval run is still in progress. Leaving will cancel it.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleNavStay}>
+                Stay
+              </Button>
+              <Button variant="destructive" onClick={handleNavLeave}>
+                Leave
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {pendingRefine && (
+        <Dialog open onOpenChange={(open) => { if (!open) setPendingRefine(null); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Eval Run In Progress</DialogTitle>
+              <DialogDescription>
+                An eval run is still in progress. Navigating to Refine will cancel it.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPendingRefine(null)}>
+                Stay
+              </Button>
+              <Button variant="destructive" onClick={handleRefineLeave}>
+                Cancel eval and refine
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

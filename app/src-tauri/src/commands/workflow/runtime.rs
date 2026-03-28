@@ -128,6 +128,7 @@ async fn run_workflow_step_inner(
 
     let mut config = SidecarConfig {
         prompt,
+        system_prompt: None,
         model: if use_agent_system_prompt {
             None
         } else {
@@ -520,6 +521,7 @@ pub async fn run_answer_evaluator(
 
     let mut config = SidecarConfig {
         prompt,
+        system_prompt: None,
         // Answer evaluator always uses Haiku for cost efficiency.
         model: Some(resolve_model_id("haiku")),
         api_key,

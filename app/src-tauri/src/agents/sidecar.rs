@@ -5,6 +5,8 @@ use crate::types::SecretString;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SidecarConfig {
     pub prompt: String,
+    #[serde(rename = "systemPrompt", skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(rename = "apiKey")]

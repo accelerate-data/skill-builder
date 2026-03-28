@@ -40,7 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export interface SkillListPanelProps {
-  onSelectSkill?: (name: string) => void;
+  onSelectSkill?: (name: string, tab?: string) => void;
   onCreateSkill?: () => void;
   onCollapse?: () => void;
   className?: string;
@@ -172,14 +172,12 @@ export function SkillListPanel({
     console.log("event=skill_overview skill=%s", skillKey);
     localStorage.setItem("last-selected-skill", skillKey);
     setSelectedSkill(skillKey);
-    useSkillStore.getState().setActiveSkill(skillKey);
-    navigate({ to: "/", search: { tab: "overview" } });
+    onSelectSkill?.(skillKey, "overview");
   }
 
   function handleRefine(skillKey: string) {
     console.log("event=skill_refine skill=%s", skillKey);
-    useSkillStore.getState().setActiveSkill(skillKey);
-    navigate({ to: "/", search: { tab: "refine" } });
+    onSelectSkill?.(skillKey, "refine");
   }
 
   function handleReview(skillName: string) {

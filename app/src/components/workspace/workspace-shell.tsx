@@ -119,7 +119,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
       {/* 48px header */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
         <span className="truncate text-sm font-semibold">{skillName}</span>
-        {isBuilderSkill && (
+        {(isBuilderSkill || "disk_path" in skill) && (
           <Button
             type="button"
             variant={selectedModifiedFile ? "secondary" : "ghost"}

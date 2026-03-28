@@ -70,7 +70,7 @@ export function buildRefineMessage(
   failedPaths: Array<{ eval_name: string; grading_path: string }>,
 ): string {
   return failedPaths
-    .map(({ eval_name, grading_path }) => `${eval_name}: ${grading_path}`)
+    .map(({ eval_name, grading_path }) => `eval \`${eval_name}\`: ${grading_path}`)
     .join("\n");
 }
 
