@@ -586,7 +586,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         undefined,
         skillName,
         "evaluate-skill",
-        undefined, // standalone agent, not plugin-scoped
+        "evaluate-skill", // standalone agent — derive_required_plugins loads skill-creator plugin
         undefined,
         undefined,
         undefined,
