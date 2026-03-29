@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { readGrading } from "@/lib/tauri";
-import type { EvalAggregateSummary, EvalBenchmark, EvalBenchmarkRun } from "@/lib/types";
+import type { EvalAggregateSummary, EvalBenchmark, EvalRunEvalSummary } from "@/lib/types";
 
 interface EvalRunBenchmarkCardProps {
   benchmark: EvalBenchmark;
@@ -21,20 +21,6 @@ function passRateClass(rate: number): string {
 /** Format pass rate as a percentage string. */
 function fmt(rate: number): string {
   return `${Math.round(rate * 100)}%`;
-}
-
-function buildEvalRates(runs: EvalBenchmarkRun[]): Record<number, { eval_name: string; runRates: number[]; gradingPaths: string[] }> {
-  const byId: Record<number, { eval_name: string; runRates: number[]; gradingPaths: string[] }> = {};
-  if (!Array.isArray(runs)) return byId;
-  for (const run of runs) {
-    if (!Array.isArray(run.evals)) continue;
-    for (const e of run.evals) {
-      if (!byId[e.eval_id]) byId[e.eval_id] = { eval_name: e.eval_name, runRates: [], gradingPaths: [] };
-      byId[e.eval_id].runRates.push(e.summary.pass_rate);
-      if (e.grading_path) byId[e.eval_id].gradingPaths.push(e.grading_path);
-    }
-  }
-  return byId;
 }
 
 function AggregateStat({ label, summary }: { label?: string; summary: EvalAggregateSummary }) {
@@ -115,82 +101,76 @@ function GradingTable({ label, expectations }: { label?: string; expectations: G
   );
 }
 
-/** Expandable per-expectation details for one eval — renders separate tables per run/variant. */
-function EvalExpectationsDetail({
-  gradingPaths,
-  baselineGradingPaths,
+/** Expanded detail for a single run — one GradingTable per eval, with optional baseline. */
+function RunDetail({
+  evals,
+  baselineEvals,
   primaryLabel,
   baselineLabel,
 }: {
-  gradingPaths: string[];
-  baselineGradingPaths?: string[];
+  evals: EvalRunEvalSummary[];
+  baselineEvals?: EvalRunEvalSummary[];
   primaryLabel?: string;
   baselineLabel?: string;
 }) {
-  // null = not loaded, undefined = loading
-  const [allExpectations, setAllExpectations] = useState<GradingExpectation[][] | null>(null);
-  const [baselineExpectations, setBaselineExpectations] = useState<GradingExpectation[] | null>(null);
+  const [data, setData] = useState<Array<{
+    eval_name: string;
+    expectations: GradingExpectation[];
+    baselineExpectations?: GradingExpectation[];
+  }> | null>(null);
   const [loading, setLoading] = useState(false);
-  const isComparison = !!baselineGradingPaths && baselineGradingPaths.length > 0;
-  const isMultiRun = !isComparison && gradingPaths.length > 1;
+  const isComparison = !!baselineEvals && baselineEvals.length > 0;
 
-  const loadExpectations = useCallback(async () => {
-    if (allExpectations || loading || gradingPaths.length === 0) return;
+  const load = useCallback(async () => {
+    if (data || loading || evals.length === 0) return;
     setLoading(true);
     try {
-      // Load all runs in parallel
-      const results = await Promise.all(
-        gradingPaths.map((p) => readGrading(p)),
-      );
-      setAllExpectations(results.map((g) => (g.expectations as GradingExpectation[] | undefined) ?? []));
-
-      if (isComparison) {
-        const baselineGrading = await readGrading(baselineGradingPaths![0]);
-        setBaselineExpectations((baselineGrading.expectations as GradingExpectation[] | undefined) ?? []);
-      }
+      const results = await Promise.all(evals.map((e) => readGrading(e.grading_path)));
+      const baselineResults = baselineEvals
+        ? await Promise.all(baselineEvals.map((e) => readGrading(e.grading_path)))
+        : undefined;
+      setData(results.map((g, i) => ({
+        eval_name: evals[i].eval_name,
+        expectations: (g.expectations as GradingExpectation[] | undefined) ?? [],
+        baselineExpectations: baselineResults
+          ? ((baselineResults[i]?.expectations as GradingExpectation[] | undefined) ?? [])
+          : undefined,
+      })));
     } catch (err) {
       console.error("[eval-benchmark] Failed to read grading:", err);
-      setAllExpectations([]);
+      setData([]);
     } finally {
       setLoading(false);
     }
-  }, [gradingPaths, baselineGradingPaths, allExpectations, loading, isComparison]);
+  }, [evals, baselineEvals, data, loading]);
 
-  if (!allExpectations && !loading) {
-    void loadExpectations();
-    return <div className="px-4 py-2 text-[11px] text-muted-foreground">Loading expectations…</div>;
+  if (!data && !loading) {
+    void load();
+    return <div className="px-4 py-2 text-[11px] text-muted-foreground">Loading…</div>;
   }
-
   if (loading) {
-    return <div className="px-4 py-2 text-[11px] text-muted-foreground">Loading expectations…</div>;
+    return <div className="px-4 py-2 text-[11px] text-muted-foreground">Loading…</div>;
   }
-
-  if (!allExpectations || allExpectations.length === 0 || allExpectations[0].length === 0) return null;
+  if (!data || data.length === 0) return null;
 
   return (
     <div className="bg-muted/20">
-      {isMultiRun ? (
-        // Multi-run non-comparison: one table per run
-        allExpectations.map((exps, i) => (
-          exps.length > 0 && (
-            <GradingTable key={i} label={`Run ${i}`} expectations={exps} />
-          )
-        ))
-      ) : (
-        // Single run or comparison mode
-        <>
-          <GradingTable
-            label={isComparison ? primaryLabel ?? "Primary" : undefined}
-            expectations={allExpectations[0]}
-          />
-          {isComparison && baselineExpectations && baselineExpectations.length > 0 && (
+      {data.map(({ eval_name, expectations, baselineExpectations }, i) => (
+        <div key={i} className={i > 0 ? "border-t" : ""}>
+          {expectations.length > 0 && (
             <GradingTable
-              label={baselineLabel ?? "Baseline"}
+              label={isComparison ? `${eval_name} — ${primaryLabel ?? "Primary"}` : eval_name}
+              expectations={expectations}
+            />
+          )}
+          {baselineExpectations && baselineExpectations.length > 0 && (
+            <GradingTable
+              label={`${eval_name} — ${baselineLabel ?? "Baseline"}`}
               expectations={baselineExpectations}
             />
           )}
-        </>
-      )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -201,28 +181,12 @@ export function EvalRunBenchmarkCard({
 }: EvalRunBenchmarkCardProps) {
   const { aggregate_summary, baseline_aggregate_summary, runs, baseline_runs, iteration, run_count, eval_ids, comparison_mode } = benchmark;
   const hasFailures = aggregate_summary.has_failures;
-  const isComparison = !!baseline_runs;
+  const isComparison = !!baseline_runs && baseline_runs.length > 0;
 
-  // Track which eval rows are expanded to show expectations
-  const [expandedEvalId, setExpandedEvalId] = useState<number | null>(null);
+  const [expandedRunIndex, setExpandedRunIndex] = useState<number | null>(null);
 
   const primaryLabel = comparison_mode === "current_vs_previous" ? "Current" : "With skill";
   const baselineLabel = comparison_mode === "current_vs_previous" ? "Previous" : "Without skill";
-
-  // Build per-eval display data
-  const primaryById = buildEvalRates(runs);
-  const baselineById = isComparison ? buildEvalRates(baseline_runs!) : {};
-
-  const evalRows = eval_ids
-    .filter((id) => primaryById[id])
-    .map((id) => ({
-      eval_id: id,
-      eval_name: primaryById[id].eval_name,
-      runRates: primaryById[id].runRates,
-      gradingPaths: primaryById[id].gradingPaths,
-      baselineRunRates: baselineById[id]?.runRates,
-      baselineGradingPaths: baselineById[id]?.gradingPaths,
-    }));
 
   return (
     <div className="mt-4 rounded-lg border bg-card shadow-sm">
@@ -299,100 +263,43 @@ export function EvalRunBenchmarkCard({
         )}
       </div>
 
-      {/* Per-eval breakdown with expandable expectations */}
-      {evalRows.length > 0 && (
+      {/* Per-run breakdown — one expandable row per run */}
+      {runs.length > 0 && (
         <div className="border-b">
           <div className="bg-muted/40 px-4 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            {isComparison
-              ? `${primaryLabel} vs ${baselineLabel}`
-              : run_count > 1 ? "Per-eval · per-run breakdown" : "Per-eval results"}
+            Per-run breakdown
           </div>
-          {evalRows.map(({ eval_id, eval_name, runRates, gradingPaths, baselineRunRates, baselineGradingPaths }) => {
-            const avgRate = runRates.length > 0
-              ? runRates.reduce((s, r) => s + r, 0) / runRates.length
-              : 0;
-            const baselineAvgRate = baselineRunRates && baselineRunRates.length > 0
-              ? baselineRunRates.reduce((s, r) => s + r, 0) / baselineRunRates.length
-              : undefined;
-            const delta = baselineAvgRate !== undefined ? avgRate - baselineAvgRate : undefined;
-            const isExpanded = expandedEvalId === eval_id;
+          {runs.map((run) => {
+            const isExpanded = expandedRunIndex === run.run_index;
+            const baselineRun = baseline_runs?.find((br) => br.run_index === run.run_index);
             return (
-              <div key={eval_id}>
+              <div key={run.run_index}>
                 <div
                   className="flex items-center gap-3 border-t px-4 py-2 text-xs cursor-pointer hover:bg-muted/30 transition-colors duration-150"
-                  onClick={() => setExpandedEvalId(isExpanded ? null : eval_id)}
+                  onClick={() => setExpandedRunIndex(isExpanded ? null : run.run_index)}
                 >
                   {isExpanded ? (
                     <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
                   ) : (
                     <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
                   )}
-                  <span className="flex-1 font-medium">{eval_id}: {eval_name}</span>
-                  {isComparison ? (
-                    <div className="flex items-center gap-3">
-                      <div className="flex flex-col items-end gap-0.5">
-                        <span
-                          className={`font-mono text-[11px] font-semibold ${passRateClass(avgRate)}`}
-                          style={avgRate >= 1.0 ? { color: "var(--color-seafoam)" } : {}}
-                        >
-                          {fmt(avgRate)}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">{primaryLabel}</span>
-                      </div>
-                      {delta !== undefined && (
-                        <span className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
-                          delta > 0.01
-                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                            : delta < -0.01
-                              ? "bg-destructive/10 text-destructive"
-                              : "bg-muted text-muted-foreground"
-                        }`}>
-                          {delta > 0.01 ? "+" : delta < -0.01 ? "" : "~"}{delta !== 0 ? Math.round(delta * 100) + "%" : "0%"}
-                        </span>
-                      )}
-                      {baselineAvgRate !== undefined && (
-                        <div className="flex flex-col items-end gap-0.5">
-                          <span className="font-mono text-[11px] font-semibold text-muted-foreground">
-                            {fmt(baselineAvgRate)}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">{baselineLabel}</span>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      {run_count > 1 ? (
-                        <div className="flex gap-1.5">
-                          {runRates.map((rate, i) => (
-                            <span
-                              key={i}
-                              className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold ${
-                                rate >= 1.0
-                                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                                  : rate > 0
-                                    ? "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                                    : "bg-destructive/10 text-destructive"
-                              }`}
-                            >
-                              R{i + 1} {fmt(rate)}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                      <span
-                        className={`font-mono text-[11px] font-semibold ${passRateClass(avgRate)}`}
-                        style={avgRate >= 1.0 ? { color: "var(--color-seafoam)" } : {}}
-                      >
-                        {fmt(avgRate)}
-                      </span>
-                    </>
-                  )}
+                  <span className="font-medium">Run {run.run_index}</span>
+                  <span className="ml-auto flex items-center gap-3">
+                    <span
+                      className={`font-mono text-[11px] font-semibold ${passRateClass(run.run_summary.pass_rate)}`}
+                      style={run.run_summary.pass_rate >= 1.0 ? { color: "var(--color-seafoam)" } : {}}
+                    >
+                      {fmt(run.run_summary.pass_rate)}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {run.run_summary.passed}✓{run.run_summary.failed > 0 ? ` ${run.run_summary.failed}✗` : ""}
+                    </span>
+                  </span>
                 </div>
-                {/* Expanded per-expectation details */}
-                {isExpanded && gradingPaths.length > 0 && (
-                  <EvalExpectationsDetail
-                    gradingPaths={gradingPaths}
-                    baselineGradingPaths={isComparison ? baselineGradingPaths : undefined}
+                {isExpanded && run.evals.length > 0 && (
+                  <RunDetail
+                    evals={run.evals}
+                    baselineEvals={baselineRun?.evals}
                     primaryLabel={isComparison ? primaryLabel : undefined}
                     baselineLabel={isComparison ? baselineLabel : undefined}
                   />
