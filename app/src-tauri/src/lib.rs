@@ -398,6 +398,7 @@ pub fn run() {
             commands::evals::read_pending_eval,
             commands::evals::discard_pending_eval,
             commands::evals::build_eval_prompt,
+            commands::evals::build_eval_gen_prompt,
             commands::description::generate_eval_queries,
             commands::description::run_optimization_loop,
             commands::description::apply_description,

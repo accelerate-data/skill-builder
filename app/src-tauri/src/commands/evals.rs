@@ -1103,6 +1103,9 @@ pub fn discard_pending_eval(
 /// The eval-initial.txt template, embedded at compile time.
 const EVAL_PROMPT_TEMPLATE: &str = include_str!("../../../../agent-sources/workspace/prompts/eval-initial.txt");
 
+/// The eval-generator-system-prompt.txt template, embedded at compile time.
+const EVAL_GEN_PROMPT_TEMPLATE: &str = include_str!("../../../../agent-sources/workspace/prompts/eval-generator-system-prompt.txt");
+
 /// Build the evaluate-skill prompt from the embedded template.
 /// Replaces `{{placeholder}}` tokens with actual values.
 #[tauri::command]
@@ -1149,6 +1152,29 @@ pub fn build_eval_prompt(
     let user_prompt = format!("Run the evaluation for skill \"{}\" — iteration {}.", skill_name, iteration);
 
     Ok((system_prompt, user_prompt))
+}
+
+/// Build the eval-generator prompt from the embedded template.
+/// Returns (system_prompt, user_prompt).
+#[tauri::command]
+pub fn build_eval_gen_prompt(
+    skill_name: String,
+    skill_path: String,
+    output_path: String,
+    user_intent: String,
+) -> Result<(String, String), String> {
+    log::info!("[build_eval_gen_prompt] skill={}", skill_name);
+
+    let skill_path_fwd = skill_path.replace('\\', "/");
+    let output_path_fwd = output_path.replace('\\', "/");
+
+    let system_prompt = EVAL_GEN_PROMPT_TEMPLATE
+        .replace("{{skill_name}}", &skill_name)
+        .replace("{{skill_path}}", &skill_path_fwd)
+        .replace("{{workspace_path}}", "")
+        .replace("{{output_path}}", &output_path_fwd);
+
+    Ok((system_prompt, user_intent))
 }
 
 // --- Tests ---

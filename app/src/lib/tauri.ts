@@ -769,6 +769,19 @@ export const buildEvalPrompt = (
     comparisonMode: comparisonMode ?? null,
   });
 
+export const buildEvalGenPrompt = (
+  skillName: string,
+  skillPath: string,
+  outputPath: string,
+  userIntent: string,
+) =>
+  invoke<[string, string]>("build_eval_gen_prompt", {
+    skillName,
+    skillPath,
+    outputPath,
+    userIntent,
+  });
+
 // --- Documents ---
 
 export interface SkillIdName {
