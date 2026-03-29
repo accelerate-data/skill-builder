@@ -359,15 +359,16 @@ describe("totalRunCount", () => {
 // --- buildRefineMessage ---
 
 describe("buildRefineMessage", () => {
-  it("formats failed paths as eval lines", () => {
+  it("formats failed paths as eval lines with blank line between evals", () => {
     const failed = [
-      { eval_name: "Scenario A", grading_path: "/path/a/grading.json" },
-      { eval_name: "Scenario B", grading_path: "/path/b/grading.json" },
+      { eval_name: "Scenario A", grading_paths: ["/path/a/run-0/grading.json", "/path/a/run-1/grading.json"] },
+      { eval_name: "Scenario B", grading_paths: ["/path/b/run-0/grading.json"] },
     ];
     const result = buildRefineMessage(failed);
-    expect(result).toContain("eval `Scenario A`: /path/a/grading.json");
-    expect(result).toContain("eval `Scenario B`: /path/b/grading.json");
-    expect(result.split("\n")).toHaveLength(2);
+    expect(result).toContain("eval `Scenario A`: /path/a/run-0/grading.json");
+    expect(result).toContain("eval `Scenario A`: /path/a/run-1/grading.json");
+    expect(result).toContain("eval `Scenario B`: /path/b/run-0/grading.json");
+    expect(result).toContain("\n\n");
   });
 
   it("returns empty string for empty array", () => {

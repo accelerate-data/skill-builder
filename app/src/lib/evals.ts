@@ -65,13 +65,16 @@ export function totalRunCount(
 
 /**
  * Build the refine pre-fill message from failed eval grading paths.
+ * One line per path, blank line between evals.
  */
 export function buildRefineMessage(
-  failedPaths: Array<{ eval_name: string; grading_path: string }>,
+  failedPaths: Array<{ eval_name: string; grading_paths: string[] }>,
 ): string {
   return failedPaths
-    .map(({ eval_name, grading_path }) => `eval \`${eval_name}\`: ${grading_path}`)
-    .join("\n");
+    .map(({ eval_name, grading_paths }) =>
+      grading_paths.map((p) => `eval \`${eval_name}\`: ${p}`).join("\n"),
+    )
+    .join("\n\n");
 }
 
 /**
@@ -186,124 +189,3 @@ export function suggestEvalPlaceholder(skillContent: string): string {
   return "e.g. a user runs a typical workflow end-to-end";
 }
 
-/**
- * Build the prompt sent to the skill-evals-generator agent (Mode 1: generate from intent).
- * Pure function — no side effects.
- */
-export function buildEvalGenPrompt(
-  ctx: SkillEvalContext,
-  skillName: string,
-  workspacePath: string,
-  pluginSlug: string,
-  userIntent: string,
-): string {
-  const existingNames = ctx.existing_evals.length > 0
-    ? ctx.existing_evals.map((e) => `- ${e.eval_name}`).join("\n")
-    : "None yet.";
-
-  const skillContent = ctx.skill_content.trim() || "(no SKILL.md found — infer from skill name)";
-  const skillDir = workspaceSkillDir(workspacePath, pluginSlug, skillName);
-
-  return `You are generating one eval (test case) for the "${skillName}" Claude skill.
-
-## Skill Definition
-
-${skillContent}
-
-## Existing Evals (do NOT duplicate these scenarios)
-
-${existingNames}
-
-## Scenario to Evaluate
-
-${userIntent}
-
-## Task
-
-Generate exactly 1 eval that covers the scenario above.
-
-Write the eval as a JSON file to \`${skillDir}/evals/pending-eval.json\` with this exact structure:
-
-\`\`\`json
-{
-  "eval_name": "<short descriptive name, 3-6 words>",
-  "slug": "<kebab-case of eval_name>",
-  "prompt": "<realistic user task prompt, 1-3 sentences>",
-  "expectations": [
-    "<atomic verifiable assertion 1>",
-    "<atomic verifiable assertion 2>"
-  ]
-}
-\`\`\`
-
-Rules:
-- The scenario must differ from all existing evals listed above
-- The prompt is the message sent TO the skill — write it as a natural user question or task
-  request, as if a real user typed it. Include realistic context (table names, column names,
-  layer names, tool names) and end with an open question
-- NEVER use evaluation language in the prompt: "review", "confirm", "validate",
-  "check if X follows Y", "verify", "ensure it follows" — those belong in expectations
-- BAD:  "Review my snapshot and confirm it follows SCD2 naming conventions for the gold layer"
-- GOOD: "I'm adding a dbt snapshot for dim_customer to track SCD2 history in our gold/mart
-  layer on dbt-fabric. What's the correct configuration and naming convention to use?"
-- Include 2–4 expectations; each must be a single, objectively verifiable statement
-- Write ONLY the JSON file — no other output, no explanation
-`;
-}
-
-/**
- * Build the prompt sent to the skill-evals-generator agent (Mode 2: re-generate from updated intent).
- * Used when the user edits the intent and clicks the refresh button.
- * Pure function — no side effects.
- */
-export function buildRegenPrompt(
-  intent: string,
-  skillContent: string,
-  skillName: string,
-  workspacePath: string,
-  pluginSlug: string,
-): string {
-  const content = skillContent.trim() || "(no SKILL.md found — infer from skill name)";
-  const skillDir = workspaceSkillDir(workspacePath, pluginSlug, skillName);
-
-  return `You are re-generating an eval (test case) for the "${skillName}" Claude skill based on an updated scenario intent.
-
-## Skill Definition
-
-${content}
-
-## Updated Scenario Intent
-
-${intent}
-
-## Task
-
-Generate exactly 1 eval that covers the updated scenario above.
-
-Write the eval as a JSON file to \`${skillDir}/evals/pending-eval.json\` with this exact structure:
-
-\`\`\`json
-{
-  "eval_name": "<short descriptive name, 3-6 words>",
-  "slug": "<kebab-case of eval_name>",
-  "prompt": "<realistic user task prompt, 1-3 sentences>",
-  "expectations": [
-    "<atomic verifiable assertion 1>",
-    "<atomic verifiable assertion 2>"
-  ]
-}
-\`\`\`
-
-Rules:
-- The prompt is the message sent TO the skill — write it as a natural user question or task
-  request, as if a real user typed it. Include realistic context (table names, column names,
-  layer names, tool names) and end with an open question
-- NEVER use evaluation language in the prompt: "review", "confirm", "validate",
-  "check if X follows Y", "verify", "ensure it follows" — those belong in expectations
-- BAD:  "Review my snapshot and confirm it follows SCD2 naming conventions for the gold layer"
-- GOOD: "I'm adding a dbt snapshot for dim_customer to track SCD2 history in our gold/mart
-  layer on dbt-fabric. What's the correct configuration and naming convention to use?"
-- Include 2–4 expectations; each must be a single, objectively verifiable statement
-- Write ONLY the JSON file — no other output, no explanation
-`;
-}

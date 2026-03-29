@@ -48,12 +48,12 @@ function makeEvalBenchmark(overrides?: Partial<EvalBenchmark>): EvalBenchmark {
 // --- getFailedEvalGradingPaths ---
 
 describe("getFailedEvalGradingPaths", () => {
-  it("returns only evals with avg pass_rate < 1.0", () => {
+  it("returns only evals with failed > 0 in any run", () => {
     const result = getFailedEvalGradingPaths(makeEvalBenchmark());
     expect(result).toHaveLength(1);
     expect(result[0].eval_id).toBe(2);
     expect(result[0].eval_name).toBe("Scenario B");
-    expect(result[0].grading_path).toBe("run-0/eval-2-scenario-b/grading.json");
+    expect(result[0].grading_paths).toContain("run-0/eval-2-scenario-b/grading.json");
   });
 
   it("returns empty array when all evals pass", () => {
@@ -76,8 +76,10 @@ describe("getFailedEvalGradingPaths", () => {
         { run_index: 2, evals: [{ eval_id: 1, eval_name: "X", slug: "x", grading_path: "r2.json", summary: { passed: 4, failed: 0, total: 4, pass_rate: 1.0 } }], run_summary: { passed: 4, failed: 0, total: 4, pass_rate: 1.0 } },
       ],
     });
-    // avg ≈ 0.83 < 1.0
-    expect(getFailedEvalGradingPaths(bench)).toHaveLength(1);
+    // run-1 failed (failed > 0) → only r1.json collected
+    const result = getFailedEvalGradingPaths(bench);
+    expect(result).toHaveLength(1);
+    expect(result[0].grading_paths).toEqual(["r1.json"]);
   });
 });
 

@@ -115,7 +115,7 @@ function GradingTable({ label, expectations }: { label?: string; expectations: G
   );
 }
 
-/** Expandable per-expectation details for one eval — renders separate tables per variant. */
+/** Expandable per-expectation details for one eval — renders separate tables per run/variant. */
 function EvalExpectationsDetail({
   gradingPaths,
   baselineGradingPaths,
@@ -127,31 +127,36 @@ function EvalExpectationsDetail({
   primaryLabel?: string;
   baselineLabel?: string;
 }) {
-  const [expectations, setExpectations] = useState<GradingExpectation[] | null>(null);
+  // null = not loaded, undefined = loading
+  const [allExpectations, setAllExpectations] = useState<GradingExpectation[][] | null>(null);
   const [baselineExpectations, setBaselineExpectations] = useState<GradingExpectation[] | null>(null);
   const [loading, setLoading] = useState(false);
   const isComparison = !!baselineGradingPaths && baselineGradingPaths.length > 0;
+  const isMultiRun = !isComparison && gradingPaths.length > 1;
 
   const loadExpectations = useCallback(async () => {
-    if (expectations || loading || gradingPaths.length === 0) return;
+    if (allExpectations || loading || gradingPaths.length === 0) return;
     setLoading(true);
     try {
-      const grading = await readGrading(gradingPaths[0]);
-      setExpectations((grading.expectations as GradingExpectation[] | undefined) ?? []);
+      // Load all runs in parallel
+      const results = await Promise.all(
+        gradingPaths.map((p) => readGrading(p)),
+      );
+      setAllExpectations(results.map((g) => (g.expectations as GradingExpectation[] | undefined) ?? []));
 
       if (isComparison) {
-        const baselineGrading = await readGrading(baselineGradingPaths[0]);
+        const baselineGrading = await readGrading(baselineGradingPaths![0]);
         setBaselineExpectations((baselineGrading.expectations as GradingExpectation[] | undefined) ?? []);
       }
     } catch (err) {
       console.error("[eval-benchmark] Failed to read grading:", err);
-      setExpectations([]);
+      setAllExpectations([]);
     } finally {
       setLoading(false);
     }
-  }, [gradingPaths, baselineGradingPaths, expectations, loading, isComparison]);
+  }, [gradingPaths, baselineGradingPaths, allExpectations, loading, isComparison]);
 
-  if (!expectations && !loading) {
+  if (!allExpectations && !loading) {
     void loadExpectations();
     return <div className="px-4 py-2 text-[11px] text-muted-foreground">Loading expectations…</div>;
   }
@@ -160,19 +165,31 @@ function EvalExpectationsDetail({
     return <div className="px-4 py-2 text-[11px] text-muted-foreground">Loading expectations…</div>;
   }
 
-  if (!expectations || expectations.length === 0) return null;
+  if (!allExpectations || allExpectations.length === 0 || allExpectations[0].length === 0) return null;
 
   return (
     <div className="bg-muted/20">
-      <GradingTable
-        label={isComparison ? primaryLabel ?? "Primary" : undefined}
-        expectations={expectations}
-      />
-      {isComparison && baselineExpectations && baselineExpectations.length > 0 && (
-        <GradingTable
-          label={baselineLabel ?? "Baseline"}
-          expectations={baselineExpectations}
-        />
+      {isMultiRun ? (
+        // Multi-run non-comparison: one table per run
+        allExpectations.map((exps, i) => (
+          exps.length > 0 && (
+            <GradingTable key={i} label={`Run ${i + 1}`} expectations={exps} />
+          )
+        ))
+      ) : (
+        // Single run or comparison mode
+        <>
+          <GradingTable
+            label={isComparison ? primaryLabel ?? "Primary" : undefined}
+            expectations={allExpectations[0]}
+          />
+          {isComparison && baselineExpectations && baselineExpectations.length > 0 && (
+            <GradingTable
+              label={baselineLabel ?? "Baseline"}
+              expectations={baselineExpectations}
+            />
+          )}
+        </>
       )}
     </div>
   );
