@@ -166,6 +166,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
 
           <TabsContent value="evals" className="flex-1 overflow-y-auto p-6">
             <WorkspaceEvals
+              key={"name" in skill ? skill.name : skill.skill_name}
               skill={skill}
               workspacePath={workspacePath}
               onNavigateToRefine={() => setActiveTab("refine")}

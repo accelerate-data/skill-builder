@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Pencil, Play, Sparkles, Trash2 } from "lucide-react";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { setEvalsRunning } from "@/lib/eval-running-state";
@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import {
+  buildEvalGenPrompt,
   buildEvalPrompt,
   cleanupSkillSidecar,
   deleteTestCase,
@@ -39,13 +40,10 @@ import {
   saveTestCase,
   startAgent,
 } from "@/lib/tauri";
-import type { EvalBenchmark, IterationMeta, PendingEval, SkillEvalContext, SkillSummary, ImportedSkill, TestCase } from "@/lib/types";
+import type { EvalBenchmark, IterationMeta, PendingEval, SkillSummary, ImportedSkill, TestCase } from "@/lib/types";
 import {
-  buildEvalGenPrompt,
-  buildRegenPrompt,
   buildRefineMessage,
   iterationLabel,
-  mergeQueuedEvals,
   pendingToTestCase,
   suggestEvalPlaceholder,
   truncatePrompt,
@@ -99,15 +97,10 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   // Intent dialog state
   const [intentOpen, setIntentOpen] = useState(false);
   const [evalPlaceholder, setEvalPlaceholder] = useState("e.g. a user runs a typical workflow end-to-end");
-  const [skillCtx, setSkillCtx] = useState<SkillEvalContext | null>(null);
 
   // Re-generation state
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [regenAgentId, setRegenAgentId] = useState<string | null>(null);
-
-  // Queue state
-  const [evalQueue, setEvalQueue] = useState<TestCase[]>([]);
-  const [queueSelected, setQueueSelected] = useState<Set<string>>(new Set());
 
   // Run selection + execution state (component-local per state-management rules)
   const [selectedRunIds, setSelectedRunIds] = useState<Set<number>>(new Set());
@@ -220,6 +213,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       );
       setIsGenerating(false);
       setGenerationAgentId(null);
+      setIntentOpen(false);
       setError("Eval generation failed. Please try again.");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -286,7 +280,6 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     if (!workspacePath || isGenerating || isRegenerating) return;
     try {
       const ctx = await readSkillContextForEvalGen(skillName, workspacePath, pluginSlug);
-      setSkillCtx(ctx);
       setEvalPlaceholder(suggestEvalPlaceholder(ctx.skill_content));
     } catch {
       // Open with default placeholder if context read fails
@@ -295,26 +288,29 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   }
 
   async function handleGenerateEval(userIntent: string) {
-    if (!workspacePath || !skillCtx) return;
+    if (!workspacePath) return;
     setIsGenerating(true);
     setDraftIntent(userIntent);
     setError(null);
     try {
-      const ctxWithQueue = mergeQueuedEvals(skillCtx, evalQueue);
-      const prompt = buildEvalGenPrompt(ctxWithQueue, skillName, workspacePath, pluginSlug, userIntent);
+      const skillPath = workspaceSkillDir(skillsPath, pluginSlug, skillName);
+      const outputPath = `${workspaceSkillDir(workspacePath, pluginSlug, skillName)}/evals/pending-eval.json`;
+      const [genSystemPrompt, genUserPrompt] = await buildEvalGenPrompt(
+        skillName, skillPath, outputPath, userIntent,
+      );
       const agentId = crypto.randomUUID();
       const cwd = workspaceSkillDir(workspacePath, pluginSlug, skillName);
 
       await startAgent(
         agentId,
-        prompt,
+        genUserPrompt,
         preferredModel,
         cwd,
-        ["Write"],
+        ["Read", "Glob", "Write"],
         10,
         undefined,
         undefined,
-        "skill-evals-generator",
+        "eval-generator",
         "generate-eval",
         undefined,
         undefined,
@@ -322,6 +318,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         undefined,
         `synthetic:evals:${skillName}`,
         "test",
+        genSystemPrompt,
       );
 
       useAgentStore.getState().registerRun(
@@ -351,6 +348,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     try {
       const pending: PendingEval = await readPendingEval(skillName, workspacePath, pluginSlug);
       setGeneratedEval(pendingToTestCase(pending));
+      setIntentOpen(false);
       setFormOpen(true);
       console.log(
         "event=generate_eval status=completed skill=%s eval_name=%s",
@@ -363,6 +361,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         skillName,
         err,
       );
+      setIntentOpen(false);
       setError("Generation succeeded but could not read the result. Please try again.");
     } finally {
       setIsGenerating(false);
@@ -371,7 +370,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   }
 
   async function handleRegenerate(newIntent: string) {
-    if (!workspacePath || !skillCtx || isRegenerating) return;
+    if (!workspacePath || isRegenerating) return;
     setIsRegenerating(true);
     setDraftIntent(newIntent);
     setError(null);
@@ -379,20 +378,24 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       // Discard existing pending-eval.json so the agent can create it fresh
       // (Write tool requires the file not to exist, or to have been read first in the same session)
       await discardPendingEval(skillName, workspacePath, pluginSlug);
-      const prompt = buildRegenPrompt(newIntent, skillCtx.skill_content, skillName, workspacePath, pluginSlug);
+      const skillPath = workspaceSkillDir(skillsPath, pluginSlug, skillName);
+      const outputPath = `${workspaceSkillDir(workspacePath, pluginSlug, skillName)}/evals/pending-eval.json`;
+      const [regenSystemPrompt, regenUserPrompt] = await buildEvalGenPrompt(
+        skillName, skillPath, outputPath, newIntent,
+      );
       const agentId = crypto.randomUUID();
       const cwd = workspaceSkillDir(workspacePath, pluginSlug, skillName);
 
       await startAgent(
         agentId,
-        prompt,
+        regenUserPrompt,
         preferredModel,
         cwd,
-        ["Write"],
+        ["Read", "Glob", "Write"],
         10,
         undefined,
         undefined,
-        "skill-evals-generator",
+        "eval-generator",
         "regen-eval",
         undefined,
         undefined,
@@ -400,6 +403,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         undefined,
         `synthetic:evals:${skillName}`,
         "test",
+        regenSystemPrompt,
       );
 
       useAgentStore.getState().registerRun(
@@ -445,51 +449,6 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       setIsRegenerating(false);
       setRegenAgentId(null);
     }
-  }
-
-  function handleQueue() {
-    if (!generatedEval || !workspacePath) return;
-    // Add to queue with unique temp slug key
-    const queued = { ...generatedEval };
-    setEvalQueue((prev) => [...prev, queued]);
-    setQueueSelected((prev) => new Set([...prev, queued.slug]));
-    void discardPendingEval(skillName, workspacePath, pluginSlug).catch(() => {});
-    setGeneratedEval(undefined);
-    setFormOpen(false);
-    // Re-open intent dialog for next eval
-    void handleOpenIntentDialog();
-    console.log(
-      "event=queue_eval status=queued skill=%s eval_name=%s queue_size=%d",
-      skillName,
-      queued.eval_name,
-      evalQueue.length + 1,
-    );
-  }
-
-  async function handleAddSelected() {
-    if (!workspacePath) return;
-    const toAdd = evalQueue.filter((q) => queueSelected.has(q.slug));
-    for (const tc of toAdd) {
-      await saveTestCase(skillName, workspacePath, pluginSlug, { ...tc, id: 0 });
-      console.log("event=save_eval status=success skill=%s eval_name=%s", skillName, tc.eval_name);
-    }
-    setEvalQueue([]);
-    setQueueSelected(new Set());
-    await load();
-  }
-
-  function handleDiscardQueue() {
-    setEvalQueue([]);
-    setQueueSelected(new Set());
-  }
-
-  function toggleQueueItem(slug: string) {
-    setQueueSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(slug)) next.delete(slug);
-      else next.add(slug);
-      return next;
-    });
   }
 
   function openEdit(tc: TestCase) {
@@ -660,7 +619,6 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
   }
 
   const latestIteration = iterations[0]?.iteration ?? 0;
-  const selectedCount = queueSelected.size;
   const allRunSelected = evals.length > 0 && selectedRunIds.size === evals.length;
   const someRunSelected = selectedRunIds.size > 0 && !allRunSelected;
 
@@ -816,61 +774,6 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
           </div>
         )}
 
-        {/* Queue banner */}
-        {evalQueue.length > 0 && (
-          <div className="mb-4 rounded-lg border" style={{ borderColor: "color-mix(in oklch, var(--color-pacific), transparent 72%)" }}>
-            <div
-              className="flex items-center gap-2 px-3 py-2"
-              style={{ background: "color-mix(in oklch, var(--color-pacific), transparent 92%)" }}
-            >
-              <Badge
-                className="rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                style={{ background: "var(--color-pacific)" }}
-              >
-                {evalQueue.length}
-              </Badge>
-              <span className="text-sm font-medium" style={{ color: "var(--color-pacific)" }}>
-                Pending evals — ready to add
-              </span>
-              <div className="ml-auto flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs text-destructive border-destructive hover:bg-destructive/10"
-                  onClick={handleDiscardQueue}
-                >
-                  Discard all
-                </Button>
-                <Button
-                  size="sm"
-                  className="h-7 text-xs"
-                  disabled={selectedCount === 0}
-                  onClick={() => void handleAddSelected()}
-                >
-                  Add selected ({selectedCount})
-                </Button>
-              </div>
-            </div>
-            <div className="divide-y">
-              {evalQueue.map((q) => (
-                <div key={q.slug} className="flex items-start gap-3 bg-card px-3 py-2">
-                  <Checkbox
-                    checked={queueSelected.has(q.slug)}
-                    onCheckedChange={() => toggleQueueItem(q.slug)}
-                    className="mt-0.5 shrink-0"
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">{q.eval_name}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      ↳ {q.expectations[0] ?? "—"}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {evals.length === 0 && !isGenerating ? (
           <EmptyState onGenerate={handleOpenIntentDialog} isGenerating={isGenerating} />
         ) : (
@@ -958,43 +861,43 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
             <h2 className="mb-3 text-base font-semibold tracking-tight">Iteration History</h2>
             <div className="flex flex-col gap-1">
               {iterations.map((iter) => (
-                <div
-                  key={iter.iteration}
-                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 ${selectedIteration === iter.iteration ? "bg-muted" : "hover:bg-muted/50"}`}
-                  onClick={async () => {
-                    try {
-                      const [bm] = await readIterationResult(iter.path, skillName, workspacePath ?? undefined, pluginSlug);
-                      setIterationBenchmark(bm as EvalBenchmark);
-                      setSelectedIteration(iter.iteration);
-                    } catch (err) {
-                      console.error("[workspace-evals] Failed to read iteration result:", err);
-                    }
-                  }}
-                >
-                  <span className="font-mono text-xs text-muted-foreground">
-                    iteration-{iter.iteration}
-                  </span>
-                  <Badge
-                    variant="secondary"
-                    className="rounded-full px-2 py-0.5 text-xs font-medium"
+                <React.Fragment key={iter.iteration}>
+                  <div
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 ${selectedIteration === iter.iteration ? "bg-muted" : "hover:bg-muted/50"}`}
+                    onClick={async () => {
+                      try {
+                        const [bm] = await readIterationResult(iter.path, skillName, workspacePath ?? undefined, pluginSlug);
+                        setIterationBenchmark(bm as EvalBenchmark);
+                        setSelectedIteration(iter.iteration);
+                      } catch (err) {
+                        console.error("[workspace-evals] Failed to read iteration result:", err);
+                      }
+                    }}
                   >
-                    {iterationLabel(iter.iteration, latestIteration)}
-                  </Badge>
-                </div>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      iteration-{iter.iteration}
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className="rounded-full px-2 py-0.5 text-xs font-medium"
+                    >
+                      {iterationLabel(iter.iteration, latestIteration)}
+                    </Badge>
+                  </div>
+                  {/* Selected iteration benchmark — inline below the clicked row */}
+                  {iterationBenchmark && selectedIteration === iter.iteration && (
+                    <div className="mt-1 mb-1">
+                      <EvalRunBenchmarkCard
+                        benchmark={iterationBenchmark}
+                        onRefine={selectedIteration === latestIteration
+                          ? () => void handleRefine(iterationBenchmark)
+                          : undefined}
+                      />
+                    </div>
+                  )}
+                </React.Fragment>
               ))}
             </div>
-
-            {/* Selected iteration benchmark */}
-            {iterationBenchmark && selectedIteration !== null && (
-              <div className="mt-4">
-                <EvalRunBenchmarkCard
-                  benchmark={iterationBenchmark}
-                  onRefine={selectedIteration === latestIteration
-                    ? () => void handleRefine(iterationBenchmark)
-                    : undefined}
-                />
-              </div>
-            )}
           </section>
         </>
       )}
@@ -1003,11 +906,18 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       <EvalIntentDialog
         open={intentOpen}
         placeholder={evalPlaceholder}
+        isGenerating={isGenerating}
         onGenerate={(userIntent) => {
-          setIntentOpen(false);
           void handleGenerateEval(userIntent);
         }}
-        onCancel={() => setIntentOpen(false)}
+        onCancel={() => {
+          if (isGenerating && generationAgentId) {
+            cleanupSkillSidecar(skillName).catch(() => {});
+            setIsGenerating(false);
+            setGenerationAgentId(null);
+          }
+          setIntentOpen(false);
+        }}
       />
 
       {/* Add/edit/review form */}
@@ -1019,7 +929,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         onClose={handleFormClose}
         onSave={handleSave}
         onRegenerate={(newIntent) => void handleRegenerate(newIntent)}
-        onQueue={generatedEval ? handleQueue : undefined}
+
       />
 
       {/* Delete confirmation */}

@@ -5,7 +5,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import SkillDialog from "@/components/skill-dialog";
 import { BenchmarkOverviewCard } from "@/components/workspace/benchmark-overview-card";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getSkillHistory, readLatestBenchmark } from "@/lib/tauri";
+import { getSkillHistory, listSkills, readLatestBenchmark } from "@/lib/tauri";
+import { useSkillStore } from "@/stores/skill-store";
 import type { BenchmarkData, SkillSummary, ImportedSkill, Purpose, SkillCommit, EditableSkill } from "@/lib/types";
 import { PURPOSE_LABELS, toEditableSkill } from "@/lib/types";
 
@@ -255,7 +256,12 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
           skill={isBuilderSkill ? (skill as EditableSkill) : toEditableSkill(skill as ImportedSkill)}
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
-          onSaved={() => setEditDialogOpen(false)}
+          onSaved={() => {
+            setEditDialogOpen(false);
+            if (workspacePath) {
+              listSkills(workspacePath).then(useSkillStore.getState().setSkills).catch(() => {});
+            }
+          }}
         />
       )}
     </div>

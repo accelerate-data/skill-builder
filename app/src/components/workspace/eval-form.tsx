@@ -35,8 +35,6 @@ interface EvalFormProps {
   onSave: (tc: TestCase) => Promise<void>;
   /** Called when user edits intent and clicks ↻. Receives the current intent value. */
   onRegenerate?: (intent: string) => void;
-  /** Called when user clicks "Queue & generate another". */
-  onQueue?: () => void;
 }
 
 export function EvalForm({
@@ -47,7 +45,6 @@ export function EvalForm({
   onClose,
   onSave,
   onRegenerate,
-  onQueue,
 }: EvalFormProps) {
   const [form, setForm] = useState<TestCase>(initial ?? EMPTY_TEST_CASE);
   const [localIntent, setLocalIntent] = useState(initialIntent ?? "");
@@ -203,13 +200,14 @@ export function EvalForm({
             <div className="flex flex-col gap-2">
               <Label>Expectations</Label>
               {form.expectations.map((exp, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <Input
+                <div key={idx} className="flex items-start gap-2">
+                  <Textarea
                     placeholder={`Assertion ${idx + 1}`}
                     value={exp}
                     disabled={fieldsDisabled}
                     onChange={(e) => handleExpectationChange(idx, e.target.value)}
-                    className="flex-1"
+                    className="min-h-10 flex-1 resize-y"
+                    rows={2}
                   />
                   {form.expectations.length > 1 && (
                     <Button
@@ -252,16 +250,6 @@ export function EvalForm({
             >
               Cancel
             </Button>
-            {isGenerated && onQueue && (
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={fieldsDisabled}
-                onClick={onQueue}
-              >
-                Queue &amp; generate another
-              </Button>
-            )}
             <Button type="submit" disabled={fieldsDisabled}>
               {saving ? "Saving…" : isEdit ? "Save changes" : "Add"}
             </Button>
