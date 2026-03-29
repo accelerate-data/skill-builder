@@ -4,15 +4,18 @@ import {
   addExpectation,
   applyExpectationChange,
   applyNameChange,
-  buildEvalGenPrompt,
-  buildRegenPrompt,
+  buildRefineMessage,
   iterationLabel,
+  mergeQueuedEvals,
+  pendingToTestCase,
   prepareForSave,
   removeExpectation,
   suggestEvalPlaceholder,
   toSlug,
+  totalRunCount,
   truncatePrompt,
   validateTestCaseForm,
+  workspaceSkillDir,
 } from "@/lib/evals";
 import type { TestCase } from "@/lib/types";
 
@@ -246,79 +249,6 @@ describe("EMPTY_TEST_CASE", () => {
   });
 });
 
-// --- buildEvalGenPrompt ---
-
-describe("buildEvalGenPrompt", () => {
-  it("includes the skill name in the prompt", () => {
-    const ctx = { skill_content: "# My Skill", existing_evals: [] };
-    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills", "test intent");
-    expect(result).toContain("my-skill");
-  });
-
-  it("includes skill content in the prompt", () => {
-    const ctx = { skill_content: "# Special Skill Content", existing_evals: [] };
-    const result = buildEvalGenPrompt(ctx, "test-skill", "/skills", "test intent");
-    expect(result).toContain("Special Skill Content");
-  });
-
-  it("lists existing eval names for deduplication", () => {
-    const ctx = {
-      skill_content: "",
-      existing_evals: [makeCase({ eval_name: "Happy path" }), makeCase({ eval_name: "Edge case" })],
-    };
-    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills", "test intent");
-    expect(result).toContain("Happy path");
-    expect(result).toContain("Edge case");
-  });
-
-  it("includes the output file path", () => {
-    const ctx = { skill_content: "", existing_evals: [] };
-    const result = buildEvalGenPrompt(ctx, "customer-returns", "/home/user/skills", "test intent");
-    expect(result).toContain("/home/user/skills/customer-returns/evals/pending-eval.json");
-  });
-
-  it("uses fallback text when skill content is empty", () => {
-    const ctx = { skill_content: "", existing_evals: [] };
-    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills", "test intent");
-    expect(result).toContain("no SKILL.md found");
-  });
-
-  it("includes the user intent in the scenario section", () => {
-    const ctx = { skill_content: "", existing_evals: [] };
-    const result = buildEvalGenPrompt(ctx, "my-skill", "/skills", "SCD type 2 insert creates a new row");
-    expect(result).toContain("SCD type 2 insert creates a new row");
-  });
-});
-
-// --- buildRegenPrompt ---
-
-describe("buildRegenPrompt", () => {
-  it("includes the updated intent", () => {
-    const result = buildRegenPrompt("handle a return request", "# Skill", "my-skill", "/skills");
-    expect(result).toContain("handle a return request");
-  });
-
-  it("includes the skill name", () => {
-    const result = buildRegenPrompt("some intent", "# Skill", "customer-returns", "/skills");
-    expect(result).toContain("customer-returns");
-  });
-
-  it("includes the output file path", () => {
-    const result = buildRegenPrompt("intent", "# Skill", "my-skill", "/home/user/skills");
-    expect(result).toContain("/home/user/skills/my-skill/evals/pending-eval.json");
-  });
-
-  it("uses fallback text when skill content is empty", () => {
-    const result = buildRegenPrompt("intent", "", "my-skill", "/skills");
-    expect(result).toContain("no SKILL.md found");
-  });
-
-  it("includes skill content when provided", () => {
-    const result = buildRegenPrompt("intent", "# Special Skill Content", "my-skill", "/skills");
-    expect(result).toContain("Special Skill Content");
-  });
-});
-
 // --- suggestEvalPlaceholder ---
 
 describe("suggestEvalPlaceholder", () => {
@@ -360,5 +290,87 @@ description: Transforms raw data into SCD type 2 snapshots for historical tracki
     const content = `---\nname: my-skill\nversion: 1.0\n---\n# Skill`;
     const result = suggestEvalPlaceholder(content);
     expect(result).toBe("e.g. a user runs a typical workflow end-to-end");
+  });
+});
+
+// --- workspaceSkillDir ---
+
+describe("workspaceSkillDir", () => {
+  it("uses flat layout for default plugin slug", () => {
+    expect(workspaceSkillDir("/workspace", "skills", "my-skill")).toBe(
+      "/workspace/skills/my-skill",
+    );
+  });
+
+  it("uses plugin-prefixed layout for non-default plugin", () => {
+    expect(workspaceSkillDir("/workspace", "my-plugin", "my-skill")).toBe(
+      "/workspace/my-plugin/skills/my-skill",
+    );
+  });
+});
+
+// --- mergeQueuedEvals ---
+
+describe("mergeQueuedEvals", () => {
+  it("appends queued evals to existing context", () => {
+    const ctx = { skill_content: "# Skill", existing_evals: [makeCase({ id: 1 })] };
+    const queue = [makeCase({ id: 0, eval_name: "Queued" })];
+    const result = mergeQueuedEvals(ctx, queue);
+    expect(result.existing_evals).toHaveLength(2);
+    expect(result.existing_evals[1].eval_name).toBe("Queued");
+  });
+
+  it("does not mutate original context", () => {
+    const ctx = { skill_content: "", existing_evals: [makeCase()] };
+    mergeQueuedEvals(ctx, [makeCase({ id: 2 })]);
+    expect(ctx.existing_evals).toHaveLength(1);
+  });
+});
+
+// --- pendingToTestCase ---
+
+describe("pendingToTestCase", () => {
+  it("converts a PendingEval to TestCase with default id and files", () => {
+    const pending = { eval_name: "Test", slug: "test", prompt: "Do X", expectations: ["Y"] };
+    const result = pendingToTestCase(pending);
+    expect(result.id).toBe(0);
+    expect(result.files).toEqual([]);
+    expect(result.eval_name).toBe("Test");
+    expect(result.prompt).toBe("Do X");
+  });
+});
+
+// --- totalRunCount ---
+
+describe("totalRunCount", () => {
+  it("returns evalCount * runsPerEval without comparison mode", () => {
+    expect(totalRunCount(3, 2, undefined)).toBe(6);
+  });
+
+  it("doubles the count when comparison mode is set", () => {
+    expect(totalRunCount(3, 2, "with-without")).toBe(12);
+  });
+
+  it("returns 0 when evalCount is 0", () => {
+    expect(totalRunCount(0, 5, undefined)).toBe(0);
+  });
+});
+
+// --- buildRefineMessage ---
+
+describe("buildRefineMessage", () => {
+  it("formats failed paths as eval lines", () => {
+    const failed = [
+      { eval_name: "Scenario A", grading_path: "/path/a/grading.json" },
+      { eval_name: "Scenario B", grading_path: "/path/b/grading.json" },
+    ];
+    const result = buildRefineMessage(failed);
+    expect(result).toContain("eval `Scenario A`: /path/a/grading.json");
+    expect(result).toContain("eval `Scenario B`: /path/b/grading.json");
+    expect(result.split("\n")).toHaveLength(2);
+  });
+
+  it("returns empty string for empty array", () => {
+    expect(buildRefineMessage([])).toBe("");
   });
 });

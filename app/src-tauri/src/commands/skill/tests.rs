@@ -94,19 +94,28 @@ fn test_list_skills_db_primary_no_filesystem_access_needed() {
 }
 
 #[test]
-fn test_list_skills_db_primary_sorted_by_last_modified_desc() {
+fn test_list_skills_db_primary_sorted_by_created_at_desc() {
     let conn = create_test_db();
-    // Create skills with different updated_at by updating in sequence
+    // Insert skills with explicit created_at timestamps to guarantee ordering
     crate::db::save_workflow_run(&conn, "oldest", 0, "pending", "domain").unwrap();
+    conn.execute(
+        "UPDATE skills SET created_at = '2024-01-01T00:00:00Z' WHERE name = 'oldest'",
+        [],
+    )
+    .unwrap();
+
     crate::db::save_workflow_run(&conn, "newest", 3, "in_progress", "domain").unwrap();
+    conn.execute(
+        "UPDATE skills SET created_at = '2024-06-01T00:00:00Z' WHERE name = 'newest'",
+        [],
+    )
+    .unwrap();
 
     let skills = list_skills_inner("/unused", None, &conn).unwrap();
     assert_eq!(skills.len(), 2);
-    // The most recently updated should come first
-    // Since they're created nearly simultaneously, just verify both exist
-    let names: Vec<&str> = skills.iter().map(|s| s.name.as_str()).collect();
-    assert!(names.contains(&"oldest"));
-    assert!(names.contains(&"newest"));
+    // Sort is by created_at DESC — newest first
+    assert_eq!(skills[0].name, "newest");
+    assert_eq!(skills[1].name, "oldest");
 }
 
 // ===== create + list integration =====
