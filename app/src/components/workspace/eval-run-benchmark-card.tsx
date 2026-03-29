@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -101,7 +101,12 @@ function GradingTable({ label, expectations }: { label?: string; expectations: G
   );
 }
 
-/** Expanded detail for a single run — one GradingTable per eval, with optional baseline. */
+type EvalGradingCache = Record<number, {
+  expectations: GradingExpectation[];
+  baselineExpectations?: GradingExpectation[];
+}>;
+
+/** Expanded detail for a single run — per-eval rows, each expandable to show GradingTable(s). */
 function RunDetail({
   evals,
   baselineEvals,
@@ -113,64 +118,88 @@ function RunDetail({
   primaryLabel?: string;
   baselineLabel?: string;
 }) {
-  const [data, setData] = useState<Array<{
-    eval_name: string;
-    expectations: GradingExpectation[];
-    baselineExpectations?: GradingExpectation[];
-  }> | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [expandedEvalId, setExpandedEvalId] = useState<number | null>(null);
+  const [cache, setCache] = useState<EvalGradingCache>({});
+  const [loadingId, setLoadingId] = useState<number | null>(null);
   const isComparison = !!baselineEvals && baselineEvals.length > 0;
 
-  const load = useCallback(async () => {
-    if (data || loading || evals.length === 0) return;
-    setLoading(true);
+  async function expandEval(e: EvalRunEvalSummary, idx: number) {
+    const id = e.eval_id;
+    if (expandedEvalId === id) {
+      setExpandedEvalId(null);
+      return;
+    }
+    setExpandedEvalId(id);
+    if (cache[id]) return; // already loaded
+    setLoadingId(id);
     try {
-      const results = await Promise.all(evals.map((e) => readGrading(e.grading_path)));
-      const baselineResults = baselineEvals
-        ? await Promise.all(baselineEvals.map((e) => readGrading(e.grading_path)))
-        : undefined;
-      setData(results.map((g, i) => ({
-        eval_name: evals[i].eval_name,
-        expectations: (g.expectations as GradingExpectation[] | undefined) ?? [],
-        baselineExpectations: baselineResults
-          ? ((baselineResults[i]?.expectations as GradingExpectation[] | undefined) ?? [])
-          : undefined,
-      })));
+      const grading = await readGrading(e.grading_path);
+      const expectations = (grading.expectations as GradingExpectation[] | undefined) ?? [];
+      let baselineExpectations: GradingExpectation[] | undefined;
+      if (baselineEvals?.[idx]) {
+        const bg = await readGrading(baselineEvals[idx].grading_path);
+        baselineExpectations = (bg.expectations as GradingExpectation[] | undefined) ?? [];
+      }
+      setCache((prev) => ({ ...prev, [id]: { expectations, baselineExpectations } }));
     } catch (err) {
       console.error("[eval-benchmark] Failed to read grading:", err);
-      setData([]);
+      setCache((prev) => ({ ...prev, [id]: { expectations: [] } }));
     } finally {
-      setLoading(false);
+      setLoadingId(null);
     }
-  }, [evals, baselineEvals, data, loading]);
-
-  if (!data && !loading) {
-    void load();
-    return <div className="px-4 py-2 text-[11px] text-muted-foreground">Loading…</div>;
   }
-  if (loading) {
-    return <div className="px-4 py-2 text-[11px] text-muted-foreground">Loading…</div>;
-  }
-  if (!data || data.length === 0) return null;
 
   return (
     <div className="bg-muted/20">
-      {data.map(({ eval_name, expectations, baselineExpectations }, i) => (
-        <div key={i} className={i > 0 ? "border-t" : ""}>
-          {expectations.length > 0 && (
-            <GradingTable
-              label={isComparison ? `${eval_name} — ${primaryLabel ?? "Primary"}` : eval_name}
-              expectations={expectations}
-            />
-          )}
-          {baselineExpectations && baselineExpectations.length > 0 && (
-            <GradingTable
-              label={`${eval_name} — ${baselineLabel ?? "Baseline"}`}
-              expectations={baselineExpectations}
-            />
-          )}
-        </div>
-      ))}
+      {evals.map((e, idx) => {
+        const isExpanded = expandedEvalId === e.eval_id;
+        const isLoading = loadingId === e.eval_id;
+        const cached = cache[e.eval_id];
+        return (
+          <div key={e.eval_id} className="border-t">
+            <div
+              className="flex items-center gap-3 px-6 py-1.5 text-xs cursor-pointer hover:bg-muted/30 transition-colors duration-150"
+              onClick={() => void expandEval(e, idx)}
+            >
+              {isExpanded ? (
+                <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+              )}
+              <span className="flex-1 font-medium">{e.eval_id}: {e.eval_name}</span>
+              <span
+                className={`font-mono text-[11px] font-semibold ${passRateClass(e.summary.pass_rate)}`}
+                style={e.summary.pass_rate >= 1.0 ? { color: "var(--color-seafoam)" } : {}}
+              >
+                {fmt(e.summary.pass_rate)}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {e.summary.passed}✓{e.summary.failed > 0 ? ` ${e.summary.failed}✗` : ""}
+              </span>
+            </div>
+            {isExpanded && (
+              isLoading ? (
+                <div className="px-8 py-2 text-[11px] text-muted-foreground">Loading…</div>
+              ) : cached ? (
+                <div>
+                  {cached.expectations.length > 0 && (
+                    <GradingTable
+                      label={isComparison ? primaryLabel : undefined}
+                      expectations={cached.expectations}
+                    />
+                  )}
+                  {cached.baselineExpectations && cached.baselineExpectations.length > 0 && (
+                    <GradingTable
+                      label={baselineLabel}
+                      expectations={cached.baselineExpectations}
+                    />
+                  )}
+                </div>
+              ) : null
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

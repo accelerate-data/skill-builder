@@ -375,10 +375,11 @@ export function ChatInputBar({
   // Keep editor ref in sync for the handleKeyDown closure
   useEffect(() => { editorRef.current = editor; }, [editor]);
 
-  // Prefilled value
+  // Prefilled value — convert plain-text newlines to HTML since TipTap setContent expects HTML
   useEffect(() => {
     if (prefilledValue && editor) {
-      editor.commands.setContent(prefilledValue);
+      const html = "<p>" + prefilledValue.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>") + "</p>";
+      editor.commands.setContent(html);
       useRefineStore.getState().setPendingInitialMessage(null);
     }
   }, [prefilledValue, editor]);
