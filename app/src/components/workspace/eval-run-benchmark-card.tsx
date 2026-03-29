@@ -173,7 +173,7 @@ function EvalExpectationsDetail({
         // Multi-run non-comparison: one table per run
         allExpectations.map((exps, i) => (
           exps.length > 0 && (
-            <GradingTable key={i} label={`Run ${i + 1}`} expectations={exps} />
+            <GradingTable key={i} label={`Run ${i}`} expectations={exps} />
           )
         ))
       ) : (
