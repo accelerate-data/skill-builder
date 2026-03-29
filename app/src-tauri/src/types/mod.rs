@@ -138,6 +138,7 @@ mod tests {
     fn test_sidecar_config_serde() {
         let config = crate::agents::sidecar::SidecarConfig {
             prompt: "test prompt".to_string(),
+            system_prompt: None,
             model: Some("sonnet".to_string()),
             api_key: SecretString::new("sk-test".to_string()),
             cwd: "/tmp".to_string(),

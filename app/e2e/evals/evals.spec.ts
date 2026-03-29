@@ -166,7 +166,7 @@ test.describe("Evals tab — sidecar integration", { tag: "@evals-integration" }
 
   test("real sidecar evaluate-skill writes grading files to disk", async ({ page }) => {
     const skillName = "test-skill";
-    const iterDir = path.join(bridge.workspaceDir, skillName, "evals", "workspace", "iteration-1");
+    const iterDir = path.join(bridge.workspaceDir, skillName, "evals", "iterations", "iteration-1");
 
     // Override workspace_path to the real temp dir so mock-agent writes there.
     // Also override create_next_iteration_dir to return the real path.
@@ -188,7 +188,7 @@ test.describe("Evals tab — sidecar integration", { tag: "@evals-integration" }
     const agentId = await getEvalRunAgentId(page);
 
     // Run the real sidecar — it will write grading files into iterDir
-    await bridge.runAgent(page, "skill-creator:evaluate-skill", agentId, {
+    await bridge.runAgent(page, "skill-creator:grader", agentId, {
       skillName,
       workspacePath: bridge.workspaceDir,
       iterDir,
@@ -200,7 +200,7 @@ test.describe("Evals tab — sidecar integration", { tag: "@evals-integration" }
     // Post-run: verify the mock sidecar wrote at least one grading file into the iteration dir.
     // mock-template uses eval IDs 3 and 4. Each eval dir has variant subdirs (e.g. with_skill/)
     // containing the grading.json, so we need to look two levels deep.
-    const run0Dir = path.join(bridge.workspaceDir, skillName, "evals", "workspace", "iteration-1", "run-0");
+    const run0Dir = path.join(bridge.workspaceDir, skillName, "evals", "iterations", "iteration-1", "run-0");
     const { existsSync, readdirSync } = await import("node:fs");
     expect(existsSync(run0Dir), `run-0 dir should exist at ${run0Dir}`).toBe(true);
 

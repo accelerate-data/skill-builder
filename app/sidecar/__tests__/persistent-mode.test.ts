@@ -986,7 +986,8 @@ describe("runPersistent", () => {
         session_id: "sess_mock",
         config: { prompt: "initial stream prompt", apiKey: "sk-test", cwd: os.tmpdir() },
       }) + "\n");
-      await new Promise((r) => setTimeout(r, 40));
+      // Mock streaming mode has a 1500ms delay per turn for guard tests
+      await new Promise((r) => setTimeout(r, 2000));
 
       input.push(JSON.stringify({
         type: "stream_message",
@@ -994,7 +995,7 @@ describe("runPersistent", () => {
         session_id: "sess_mock",
         user_message: "follow-up message",
       }) + "\n");
-      await new Promise((r) => setTimeout(r, 40));
+      await new Promise((r) => setTimeout(r, 2000));
 
       input.push(JSON.stringify({ type: "stream_end", session_id: "sess_mock" }) + "\n");
       input.push(JSON.stringify({ type: "shutdown" }) + "\n");

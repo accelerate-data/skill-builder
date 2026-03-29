@@ -186,6 +186,7 @@ mod tests {
     fn test_sidecar_config_serialization() {
         let config = SidecarConfig {
             prompt: "Analyze this codebase".to_string(),
+            system_prompt: None,
             model: Some("sonnet".to_string()),
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             cwd: "/home/user/project".to_string(),
@@ -231,6 +232,7 @@ mod tests {
     fn test_sidecar_config_serialization_with_thinking() {
         let config = SidecarConfig {
             prompt: "Reason about this".to_string(),
+            system_prompt: None,
             model: Some("opus".to_string()),
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             cwd: "/home/user/project".to_string(),
@@ -272,6 +274,7 @@ mod tests {
         // mock discriminator (config.skillName) receives the value correctly.
         let config = SidecarConfig {
             prompt: "test".to_string(),
+            system_prompt: None,
             model: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             cwd: "/tmp".to_string(),
@@ -313,6 +316,7 @@ mod tests {
         // When skill_name is None, it must be omitted (skip_serializing_if = "Option::is_none").
         let config = SidecarConfig {
             prompt: "test".to_string(),
+            system_prompt: None,
             model: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             cwd: "/tmp".to_string(),

@@ -204,20 +204,20 @@ describe("StreamSession — mock streaming mode", () => {
     const session = new StreamSession("sess-mock", "req-m1", baseConfig(), onMessage);
     await vi.waitFor(() => {
       expect(messages.length).toBeGreaterThan(0);
-    });
+    }, { timeout: 3000 });
 
     // Push a follow-up turn
     const initialCount = messages.length;
     session.pushMessage("req-m2", "follow-up message");
     await vi.waitFor(() => {
       expect(messages.length).toBeGreaterThan(initialCount);
-    });
+    }, { timeout: 3000 });
 
     // Close the session (simulates stream_end from Rust)
     session.close();
     await vi.waitFor(() => {
       expect(messages.filter(isRunResult)).toHaveLength(1);
-    });
+    }, { timeout: 3000 });
   });
 });
 

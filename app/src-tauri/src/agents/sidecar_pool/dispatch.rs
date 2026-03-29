@@ -1222,6 +1222,7 @@ mod tests {
     fn sample_config() -> SidecarConfig {
         SidecarConfig {
             prompt: "Top secret prompt".to_string(),
+            system_prompt: None,
             model: Some("claude-sonnet-4".to_string()),
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             cwd: "/tmp/skill-builder".to_string(),

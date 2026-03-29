@@ -40,7 +40,7 @@ export function resolveStepTemplate(
   if (agentName === "skill-content-researcher:confirm-decisions") return "step2-confirm-decisions";
   if (agentName === "skill-creator:generate-skill") return "step3-generate-skill";
   if (agentName === "skill-creator:rewrite-skill") return "rewrite-skill";
-  if (agentName === "skill-creator:evaluate-skill") return "evaluate-skill";
+  if (agentName === "skill-creator:grader") return "evaluate-skill";
   if (agentName === "answer-evaluator") return MOCK_SCENARIO === "contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator";
 
   // Research orchestrator (plugin-qualified) and all sub-agents spawned by the research skill
