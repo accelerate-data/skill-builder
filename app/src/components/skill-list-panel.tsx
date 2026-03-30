@@ -67,7 +67,7 @@ export function SkillListPanel({
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [redoTarget, setRedoTarget] = useState<string | null>(null);
-  const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<{ skillName: string; pluginSlug: string } | null>(null);
   const [externalLockedSkills, setExternalLockedSkills] = useState<Set<string>>(new Set());
   const [moveTarget, setMoveTarget] = useState<UnifiedSkill | null>(null);
   const [createPluginTarget, setCreatePluginTarget] = useState<UnifiedSkill | null>(null);
@@ -183,6 +183,13 @@ export function SkillListPanel({
     localStorage.setItem("last-selected-skill", skillKey);
     setSelectedSkill(skillKey);
     onSelectSkill?.(skillKey, "overview");
+  }
+
+  function handleEval(skillKey: string) {
+    console.log("event=skill_eval skill=%s", skillKey);
+    localStorage.setItem("last-selected-skill", skillKey);
+    setSelectedSkill(skillKey);
+    onSelectSkill?.(skillKey, "evals");
   }
 
   function handleRefine(skillKey: string) {
@@ -364,9 +371,10 @@ export function SkillListPanel({
               onReview={handleReview}
               onRedo={handleRedo}
               onOverview={handleOverview}
+              onEval={handleEval}
               onRefine={handleRefine}
               onContinueBuilding={handleContinueBuilding}
-              onRestore={(name) => setRestoreTarget(name)}
+              onRestore={(name, pluginSlug) => setRestoreTarget({ skillName: name, pluginSlug })}
               onDelete={handleDelete}
               onCreatePlugin={handleCreatePlugin}
               onMoveToPlugin={handleMoveToPlugin}
@@ -476,7 +484,8 @@ export function SkillListPanel({
 
       {restoreTarget && workspacePath && (
         <RestoreVersionDialog
-          skillName={restoreTarget}
+          skillName={restoreTarget.skillName}
+          pluginSlug={restoreTarget.pluginSlug}
           workspacePath={workspacePath}
           open={!!restoreTarget}
           onOpenChange={(open) => { if (!open) setRestoreTarget(null); }}

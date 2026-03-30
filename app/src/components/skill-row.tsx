@@ -20,9 +20,10 @@ export interface SkillRowProps {
   onReview: (name: string) => void;
   onRedo: (name: string) => void;
   onOverview: (key: string) => void;
+  onEval: (key: string) => void;
   onRefine: (key: string) => void;
   onContinueBuilding: (name: string) => void;
-  onRestore: (name: string) => void;
+  onRestore: (name: string, pluginSlug: string) => void;
   onDelete: (skill: UnifiedSkill) => void;
   onCreatePlugin: (skill: UnifiedSkill) => void;
   onMoveToPlugin: (skill: UnifiedSkill) => void;
@@ -54,6 +55,7 @@ export function SkillRow({
   onReview,
   onRedo,
   onOverview,
+  onEval,
   onRefine,
   onContinueBuilding,
   onRestore,
@@ -147,6 +149,7 @@ export function SkillRow({
             onReview={onReview}
             onRedo={onRedo}
             onOverview={onOverview}
+            onEval={onEval}
             onRefine={onRefine}
             onContinueBuilding={onContinueBuilding}
             onRestore={onRestore}

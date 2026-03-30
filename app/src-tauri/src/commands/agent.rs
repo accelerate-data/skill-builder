@@ -25,6 +25,10 @@ fn derive_setting_sources(agent_name: Option<&str>) -> Option<Vec<String>> {
 /// must be in `required_plugins` so the sidecar discovers and loads it,
 /// allowing the SDK to resolve the agent's .md spec and sibling agents.
 fn derive_required_plugins(agent_name: Option<&str>) -> Vec<String> {
+    // evaluate-skill needs both plugins: skill-creator (grader) + vd-agent (executor)
+    if matches!(agent_name, Some(n) if n == "evaluate-skill" || n.ends_with(":evaluate-skill")) {
+        return vec!["skill-creator".to_string(), "vd-agent".to_string()];
+    }
     // Plugin-scoped agents (e.g. "skill-creator:generate-skill") derive their plugin name.
     if let Some(plugins) = agent_name
         .and_then(|n| n.split_once(':'))
@@ -33,10 +37,7 @@ fn derive_required_plugins(agent_name: Option<&str>) -> Vec<String> {
         return plugins;
     }
     // Standalone agents that need explicit plugin access:
-    match agent_name {
-        Some("evaluate-skill") => vec!["skill-creator".to_string()],
-        _ => vec![],
-    }
+    vec![]
 }
 
 /// Suppress `fallback_model` when it equals `model` to avoid the SDK error
@@ -243,7 +244,7 @@ mod tests {
     fn plugin_scoped_agent_derives_plugin_name() {
         assert_eq!(
             derive_required_plugins(Some("skill-creator:evaluate-skill")),
-            vec!["skill-creator"]
+            vec!["skill-creator", "vd-agent"]
         );
         assert_eq!(
             derive_required_plugins(Some("skill-creator:generate-skill")),
@@ -293,11 +294,16 @@ mod tests {
     }
 
     #[test]
-    fn standalone_evaluate_skill_derives_skill_creator_plugin() {
+    fn evaluate_skill_derives_both_plugins() {
         assert_eq!(
             derive_required_plugins(Some("evaluate-skill")),
-            vec!["skill-creator"],
-            "standalone evaluate-skill must load skill-creator plugin"
+            vec!["skill-creator", "vd-agent"],
+            "standalone evaluate-skill must load skill-creator and vd-agent plugins"
+        );
+        assert_eq!(
+            derive_required_plugins(Some("skill-creator:evaluate-skill")),
+            vec!["skill-creator", "vd-agent"],
+            "plugin-scoped evaluate-skill must load skill-creator and vd-agent plugins"
         );
     }
 

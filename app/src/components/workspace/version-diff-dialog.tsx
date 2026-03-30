@@ -20,6 +20,7 @@ interface VersionDiffDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   skillName: string;
+  pluginSlug: string;
   workspacePath: string;
   shaA: string;
   shaB: string;
@@ -152,6 +153,7 @@ export function VersionDiffDialog({
   open,
   onOpenChange,
   skillName,
+  pluginSlug,
   workspacePath,
   shaA,
   shaB,
@@ -170,8 +172,8 @@ export function VersionDiffDialog({
     setError(null);
     setSelectedPath(null);
     Promise.all([
-      getSkillFilesAtSha(workspacePath, skillName, shaA),
-      getSkillFilesAtSha(workspacePath, skillName, shaB),
+      getSkillFilesAtSha(workspacePath, skillName, pluginSlug, shaA),
+      getSkillFilesAtSha(workspacePath, skillName, pluginSlug, shaB),
     ])
       .then(([a, b]) => {
         setFilesA(a);

@@ -517,25 +517,29 @@ export const cleanBenchmarkSnapshot = (
 export const getSkillHistory = (
   workspacePath: string,
   skillName: string,
+  pluginSlug: string,
   limit?: number,
 ) => invoke<SkillCommit[]>("get_skill_history", {
   workspacePath,
   skillName,
+  pluginSlug,
   limit: limit ?? null,
 })
 
 export const restoreSkillVersion = (
   workspacePath: string,
   skillName: string,
+  pluginSlug: string,
   sha: string,
 ) => invoke<string>("restore_skill_version", {
   workspacePath,
   skillName,
+  pluginSlug,
   sha,
 })
 
-export const getSkillFilesAtSha = (workspacePath: string, skillName: string, sha: string) =>
-  invoke<SkillFileContent[]>("get_skill_files_at_sha", { workspacePath, skillName, sha })
+export const getSkillFilesAtSha = (workspacePath: string, skillName: string, pluginSlug: string, sha: string) =>
+  invoke<SkillFileContent[]>("get_skill_files_at_sha", { workspacePath, skillName, pluginSlug, sha })
 
 // --- Answer Evaluation (Transition Gate) ---
 

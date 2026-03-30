@@ -2,7 +2,7 @@
 name: detailed-research
 description: Reads answer-evaluation.json to skip clear items, spawns refinement sub-agents for non-clear and needs-refinement answers, and returns canonical clarifications payload with refinements merged. 
 model: sonnet
-tools: Read, Agent, AskUserQuestion
+tools: Read, Agent
 ---
 
 # Detailed Research Orchestrator
@@ -36,16 +36,9 @@ Do not write any files in this agent.
 
 <instructions>
 
-## Narration
-
-Before each step, write one short status line (≤ 10 words). Write it before tool calls.
-
 ### Phase 0: Read inputs
 
 Read `{workspace_dir}/user-context.md`.
-
-- If `user-context.md` contains a `## Reference Documents` section with location of one or more named documents supplied by the user **always read first and incorporate these documents**. If a document is missing or its content appears truncated, note this to the user and proceed with the information available.
-
 Read `{context_dir}/clarifications.json`. **This file is often larger than the Read tool's token limit.** Always read it in two calls: first `Read` with `limit: 200`, then `Read` with `offset: 200`. Concatenate both results into a single string before parsing the JSON.
 Read `{workspace_dir}/answer-evaluation.json`. Parse the JSON. If missing, see Error Handling.
 
@@ -98,7 +91,7 @@ The `clarifications.json` captures the user's responses to research questions. R
 
 ### Task
 
-For each listed question ID, generate 0-3 **refinement questions** — narrower follow-ups that close ambiguities so the downstream skill-writing process has clear, actionable decisions. Focus on:
+For each listed question ID, generate 1-3 **refinement questions** — narrower follow-ups that close ambiguities so the downstream skill-writing process has clear, actionable decisions. Focus on:
 
 - Edge cases and boundary conditions
 - Input/output formats and example files
@@ -107,7 +100,6 @@ For each listed question ID, generate 0-3 **refinement questions** — narrower 
 
 The number of refinements depends on the verdict:
 
-- If there are existing refinements then you can decide to skip adding new questions.
 - `not_answered`: 1-3 questions to validate or refine the recommended approach
 - `vague`: 1-3 questions to pin down the vague response
 - `needs_refinement`: 1-3 questions to clarify unstated parameters/assumptions

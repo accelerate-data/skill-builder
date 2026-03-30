@@ -14,7 +14,7 @@ RULES:
 - You MUST use the Agent tool to spawn executor and grader subagents. Do NOT execute or grade inline — each executor and each grader is a separate Agent tool call. Inline execution produces incorrect results.
 - Do NOT read previous iteration directories or past grading/benchmark results. Each iteration is independent.
 - Do NOT explore the workspace to discover project structure. Use only the paths provided.
-- Do NOT search for or invoke workspace-level skills. You may only use skills from the skill-creator plugin.
+- Do NOT search for or invoke workspace-level skills. You may only use skills from the skill-creator or vd-agent plugins.
 - Executors are plan-only: they must NOT use the Write tool or create files. They reason through the task and return their plan as text. The parent agent captures this text and passes it to the grader.
 
 PHASE 0 — SETUP:
@@ -51,7 +51,7 @@ For each eval in the sorted list:
 
 MODE: single (no comparison_mode)
 
-Execute — spawn one executor subagent via Agent tool:
+Execute — spawn one executor subagent via Agent tool with subagent_type "vd-agent:data-product-builder":
   "You are a plan-only executor. Do NOT write any files.
   Read the skill, then reason through the task and return your complete plan as text.
   Skill location: {skill_path}/SKILL.md
@@ -72,9 +72,9 @@ The grader writes grading.json to {eval_dir}/grading.json.
 
 MODE: with_without_skill
 
-Execute (parallel) — spawn two executor subagents in the same Agent tool call:
+Execute (parallel) — spawn two executor subagents in the same Agent tool call, both with subagent_type "vd-agent:data-product-builder":
 - with_skill: Same as single mode executor (reads the skill).
-- without_skill: "You are a plan-only executor. No skill is provided — rely on your general knowledge. Task: {eval.prompt}. Return your full plan."
+- without_skill: "You are a plan-only executor. Do NOT write any files. No skill is provided — rely on your general knowledge. Task: {eval.prompt}. Return your full plan."
 
 Capture as with_skill_result and without_skill_result.
 
@@ -84,7 +84,7 @@ Grade (parallel) — spawn two grader subagents in the same Agent tool call, eac
 
 MODE: current_vs_previous
 
-Same as with_without_skill, replacing:
+Same as with_without_skill (both executors use subagent_type "vd-agent:data-product-builder"), replacing:
 - current executor: reads {skill_path}/SKILL.md, capture as current_result
 - previous executor: reads {previous_skill_path}/SKILL.md, capture as previous_result
 - current grader: writes to {eval_dir}/current/grading.json

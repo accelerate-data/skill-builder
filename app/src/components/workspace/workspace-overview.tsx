@@ -60,6 +60,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
 
   const isBuilderSkill = "name" in skill;
   const skillName = isBuilderSkill ? skill.name : skill.skill_name;
+  const pluginSlug = skill.plugin_slug;
 
   useEffect(() => {
     if (!isBuilderSkill || !workspacePath || !skillName) {
@@ -90,13 +91,13 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   const { created, modified } = getSkillDates(skill);
 
   useEffect(() => {
-    if (!workspacePath || !skillName) return;
-    getSkillHistory(workspacePath, skillName, 50)
+    if (!workspacePath || !skillName || !pluginSlug) return;
+    getSkillHistory(workspacePath, skillName, pluginSlug, 50)
       .then((result) => setCommits(result ?? []))
       .catch((err) => {
-        console.warn("event=skill_history_fetch_failed skill=%s error=%s", skillName, err);
+        console.warn("event=skill_history_fetch_failed skill=%s plugin=%s error=%s", skillName, pluginSlug, err);
       });
-  }, [workspacePath, skillName, latestVersion]);
+  }, [workspacePath, skillName, pluginSlug, latestVersion]);
 
   const purpose = skill.purpose;
   const description = isBuilderSkill ? skill.description : skill.description;
@@ -319,6 +320,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
               if (!open) setSelectedShas([]);
             }}
             skillName={skillName}
+            pluginSlug={pluginSlug}
             workspacePath={workspacePath}
             shaA={olderSha}
             shaB={newerSha}

@@ -17,6 +17,7 @@ import type { SkillCommit } from "@/lib/types";
 
 interface RestoreVersionDialogProps {
   skillName: string;
+  pluginSlug: string;
   workspacePath: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -44,6 +45,7 @@ function formatCommitMessage(message: string): string {
 
 export default function RestoreVersionDialog({
   skillName,
+  pluginSlug,
   workspacePath,
   open,
   onOpenChange,
@@ -56,7 +58,7 @@ export default function RestoreVersionDialog({
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    getSkillHistory(workspacePath, skillName, 50)
+    getSkillHistory(workspacePath, skillName, pluginSlug, 50)
       .then((history) => {
         // Only show tagged commits (versions)
         setCommits(history.filter((c) => c.version));
@@ -66,12 +68,12 @@ export default function RestoreVersionDialog({
         toast.error("Failed to load version history", { duration: Infinity });
       })
       .finally(() => setLoading(false));
-  }, [open, workspacePath, skillName]);
+  }, [open, workspacePath, skillName, pluginSlug]);
 
   const handleRestore = async (commit: SkillCommit) => {
     setRestoring(commit.sha);
     try {
-      const newVersion = await restoreSkillVersion(workspacePath, skillName, commit.sha);
+      const newVersion = await restoreSkillVersion(workspacePath, skillName, pluginSlug, commit.sha);
       useSkillStore.getState().setLatestVersion(newVersion);
       toast.success(`Restored — tagged as v${newVersion}`);
       onOpenChange(false);
