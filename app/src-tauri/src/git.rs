@@ -415,11 +415,13 @@ pub fn restore_version(repo_path: &Path, sha: &str, skill_name: &str, plugin_slu
 
     // Candidate read prefixes from the historical tree, tried in priority order:
     // 1. Non-default plugin layout  ({plugin}/skills/{name}/)  — skip if default plugin
-    // 2. Default plugin layout      (skills/{name}/)
-    // 3. Legacy flat layout         ({name}/)
+    // 2. Legacy nested layout       ({plugin}/{name}/)          — skip if default plugin
+    // 3. Default plugin layout      (skills/{name}/)
+    // 4. Legacy flat layout         ({name}/)
     let mut read_prefixes: Vec<String> = Vec::new();
     if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
         read_prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
+        read_prefixes.push(format!("{}/{}/", plugin_slug, skill_name));
     }
     read_prefixes.push(format!("skills/{}/", skill_name));
     read_prefixes.push(format!("{}/", skill_name));
@@ -669,6 +671,7 @@ pub fn get_skill_files_at_sha(
     let mut prefixes: Vec<String> = Vec::new();
     if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
         prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
+        prefixes.push(format!("{}/{}/", plugin_slug, skill_name));
     }
     prefixes.push(format!("skills/{}/", skill_name));
     prefixes.push(format!("{}/", skill_name));
