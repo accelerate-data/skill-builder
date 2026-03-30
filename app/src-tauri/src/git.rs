@@ -369,7 +369,9 @@ pub fn get_history(
             .find_commit(oid)
             .map_err(|e| format!("Failed to find commit {}: {}", oid, e))?;
 
-        if commit_touches_path(&repo, &commit, &prefix)? {
+        let touches_current = commit_touches_path(&repo, &commit, &prefix)?;
+        let is_tagged = tag_map.contains_key(&oid);
+        if touches_current || is_tagged {
             let timestamp = chrono::DateTime::from_timestamp(commit.time().seconds(), 0)
                 .map(|dt| dt.to_rfc3339())
                 .unwrap_or_default();
