@@ -71,6 +71,7 @@ mod tests {
                 enabled: true,
             }],
             marketplace_initialized: false,
+            legacy_tags_migrated: false,
             max_dimensions: 5,
             industry: Some("Financial Services".to_string()),
             function_role: Some("Analytics Engineer".to_string()),

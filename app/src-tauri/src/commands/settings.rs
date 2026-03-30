@@ -83,7 +83,11 @@ pub(crate) fn run_settings_startup_migrations(conn: &rusqlite::Connection) -> Re
     }
 
     if let Some(skills_path) = settings.skills_path.as_deref() {
-        migrate_legacy_skill_tags(Path::new(skills_path));
+        if !settings.legacy_tags_migrated {
+            migrate_legacy_skill_tags(Path::new(skills_path));
+            settings.legacy_tags_migrated = true;
+            crate::db::write_settings(conn, &settings)?;
+        }
         backfill_missing_skill_versions(conn, skills_path)?;
     }
 
@@ -92,7 +96,7 @@ pub(crate) fn run_settings_startup_migrations(conn: &rusqlite::Connection) -> Re
 
 /// Migrate all legacy `{skill_name}/vX.Y.Z` tags to the plugin-scoped format
 /// (`skills/{name}/vX.Y.Z` or `{plugin_slug}/skills/{name}/vX.Y.Z`).
-/// Runs unconditionally on every startup — idempotent when no legacy tags exist.
+/// Guarded by the `legacy_tags_migrated` flag — runs once, then never again.
 fn migrate_legacy_skill_tags(skills_root: &Path) {
     if !skills_root.join(".git").exists() {
         return;
@@ -269,6 +273,13 @@ fn preserve_backend_owned_settings(
             log_scope
         );
         settings.marketplace_initialized = true;
+    }
+    if old_settings.legacy_tags_migrated && !settings.legacy_tags_migrated {
+        log::warn!(
+            "[{}] stale save attempted to reset legacy_tags_migrated — preserving true",
+            log_scope
+        );
+        settings.legacy_tags_migrated = true;
     }
 }
 
