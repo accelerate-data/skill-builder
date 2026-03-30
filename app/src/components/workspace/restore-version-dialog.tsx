@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getSkillHistory, restoreSkillVersion } from "@/lib/tauri";
+import { useSkillStore } from "@/stores/skill-store";
 import { toast } from "@/lib/toast";
 import type { SkillCommit } from "@/lib/types";
 
@@ -71,6 +72,7 @@ export default function RestoreVersionDialog({
     setRestoring(commit.sha);
     try {
       const newVersion = await restoreSkillVersion(workspacePath, skillName, commit.sha);
+      useSkillStore.getState().setLatestVersion(newVersion);
       toast.success(`Restored — tagged as v${newVersion}`);
       onOpenChange(false);
       onRestored?.();

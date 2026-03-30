@@ -53,6 +53,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   const [benchmarkData, setBenchmarkData] = useState<BenchmarkData | null>(null);
   const [benchmarkIteration, setBenchmarkIteration] = useState<number | null>(null);
   const workspacePath = useSettingsStore((s) => s.workspacePath);
+  const latestVersion = useSkillStore((s) => s.latestVersion);
 
   const isBuilderSkill = "name" in skill;
   const skillName = isBuilderSkill ? skill.name : skill.skill_name;
@@ -92,7 +93,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
       .catch((err) => {
         console.warn("event=skill_history_fetch_failed skill=%s error=%s", skillName, err);
       });
-  }, [workspacePath, skillName, modified]);
+  }, [workspacePath, skillName, latestVersion]);
 
   const purpose = skill.purpose;
   const description = isBuilderSkill ? skill.description : skill.description;
