@@ -60,13 +60,9 @@ pub fn restore_skill_version(
             msg, e
         )
     })?;
-    if committed.is_none() {
-        // No file changes — nothing to tag; return the current version.
-        let current = crate::git::latest_skill_semver(root, &plugin_slug, &skill_name).unwrap_or_else(|_| "0.0.0".to_string());
-        log::info!("[restore_skill_version] no-op restore skill={} version={}", skill_name, current);
-        return Ok(current);
-    }
-    // Tag the restore commit with the next patch version
+    // Tag the restore with the next patch version.
+    // Even if commit_all returned None (content identical to HEAD), we still
+    // bump and tag HEAD so the user always sees a new version number.
     let current_version = crate::git::latest_skill_semver(root, &plugin_slug, &skill_name).unwrap_or_else(|_| "0.0.0".to_string());
     let new_version = bump_patch(&current_version);
     crate::git::create_skill_version_tag(root, &plugin_slug, &skill_name, &new_version).map_err(|e| {
@@ -75,7 +71,10 @@ pub fn restore_skill_version(
             new_version, e
         )
     })?;
-    log::info!("[restore_skill_version] skill={} new_version={}", skill_name, new_version);
+    log::info!(
+        "[restore_skill_version] skill={} new_version={} new_commit={}",
+        skill_name, new_version, committed.is_some()
+    );
     Ok(new_version)
 }
 
