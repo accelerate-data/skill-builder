@@ -69,7 +69,7 @@ function FileDiff({ linesA, linesB }: { linesA: string[] | null; linesB: string[
 
   if (!linesA) {
     return (
-      <div className="font-mono text-xs leading-5">
+      <div className="font-mono text-sm leading-6">
         {(linesB ?? []).map((line, idx) => (
           <div
             key={idx}
@@ -88,7 +88,7 @@ function FileDiff({ linesA, linesB }: { linesA: string[] | null; linesB: string[
 
   if (!linesB) {
     return (
-      <div className="font-mono text-xs leading-5">
+      <div className="font-mono text-sm leading-6">
         {(linesA ?? []).map((line, idx) => (
           <div
             key={idx}
@@ -106,12 +106,12 @@ function FileDiff({ linesA, linesB }: { linesA: string[] | null; linesB: string[
 
   if (diff.every((l) => l.type === "unchanged")) {
     return (
-      <p className="text-xs text-muted-foreground px-3 py-4">No differences between these versions.</p>
+      <p className="text-sm text-muted-foreground px-3 py-4">No differences between these versions.</p>
     );
   }
 
   return (
-    <div className="font-mono text-xs leading-5">
+    <div className="font-mono text-sm leading-6">
       {diff.map((line, idx) => {
         if (line.type === "unchanged") {
           return (
@@ -192,7 +192,20 @@ export function VersionDiffDialog({
     return a.localeCompare(b);
   });
 
-  const activePath = selectedPath ?? allPaths[0] ?? null;
+  // Pre-compute which files actually have differences
+  const changedPaths = new Set(
+    allPaths.filter((path) => {
+      const fa = filesA?.find((f) => f.path === path);
+      const fb = filesB?.find((f) => f.path === path);
+      if (!fa || !fb) return true; // file added or removed — definitely changed
+      return fa.content !== fb.content;
+    }),
+  );
+
+  const defaultPath = changedPaths.size > 0
+    ? (allPaths.find((p) => changedPaths.has(p)) ?? allPaths[0])
+    : allPaths[0];
+  const activePath = selectedPath ?? defaultPath ?? null;
 
   const fileA = activePath ? (filesA?.find((f) => f.path === activePath) ?? null) : null;
   const fileB = activePath ? (filesB?.find((f) => f.path === activePath) ?? null) : null;
@@ -201,7 +214,7 @@ export function VersionDiffDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[90vw] w-[900px] h-[80vh] flex flex-col gap-0 p-0">
+      <DialogContent className="!max-w-[95vw] !w-[1200px] h-[85vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-6 pt-5 pb-0 shrink-0">
           <div className="flex items-center justify-between gap-4">
             <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
@@ -236,11 +249,25 @@ export function VersionDiffDialog({
                   <SelectValue placeholder="Select file" />
                 </SelectTrigger>
                 <SelectContent>
-                  {allPaths.map((path) => (
-                    <SelectItem key={path} value={path} className="text-xs font-mono">
-                      {path}
-                    </SelectItem>
-                  ))}
+                  {allPaths.map((path) => {
+                    const hasChanges = changedPaths.has(path);
+                    return (
+                      <SelectItem key={path} value={path} className="text-xs font-mono">
+                        <span className="flex items-center gap-2">
+                          <span
+                            className="size-1.5 rounded-full shrink-0"
+                            style={{
+                              background: hasChanges
+                                ? "var(--color-pacific)"
+                                : "var(--color-muted-foreground, hsl(var(--muted-foreground)))",
+                              opacity: hasChanges ? 1 : 0.4,
+                            }}
+                          />
+                          {path}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             )}
