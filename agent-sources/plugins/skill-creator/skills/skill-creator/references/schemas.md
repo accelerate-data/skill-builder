@@ -6,7 +6,7 @@ This document defines the JSON schemas used by skill-creator.
 
 ## evals.json
 
-Defines the evals for a skill. Located at `evals/evals.json` within the skill directory. This file is finalized before the first benchmark iteration runs and then treated as the frozen source of truth for later iterations.
+Defines the evals for a skill. Located at `evals/evals.json` within the skill directory.
 
 ```json
 {
@@ -14,8 +14,6 @@ Defines the evals for a skill. Located at `evals/evals.json` within the skill di
   "evals": [
     {
       "id": 1,
-      "eval_name": "Customer returns workflow",
-      "slug": "customer-returns-workflow",
       "prompt": "User's example prompt",
       "expected_output": "Description of expected result",
       "files": ["evals/files/sample1.pdf"],
@@ -29,15 +27,12 @@ Defines the evals for a skill. Located at `evals/evals.json` within the skill di
 ```
 
 **Fields:**
-
 - `skill_name`: Name matching the skill's frontmatter
 - `evals[].id`: Unique integer identifier
-- `evals[].eval_name`: Human-readable eval name used in the viewer and per-iteration metadata
-- `evals[].slug`: Deterministic slug used for `eval-<id>-<slug>` directory names and copied into per-iteration metadata
 - `evals[].prompt`: The task to execute
 - `evals[].expected_output`: Human-readable description of success
 - `evals[].files`: Optional list of input file paths (relative to skill root)
-- `evals[].expectations`: List of verifiable statements, written at eval creation time and frozen for subsequent benchmark iterations
+- `evals[].expectations`: List of verifiable statements
 
 ---
 
@@ -77,7 +72,6 @@ Tracks version progression in Improve mode. Located at workspace root.
 ```
 
 **Fields:**
-
 - `started_at`: ISO timestamp of when improvement started
 - `skill_name`: Name of the skill being improved
 - `current_best`: Version identifier of the best performer
@@ -156,7 +150,6 @@ Output from the grader agent. Located at `<run-dir>/grading.json`.
 ```
 
 **Fields:**
-
 - `expectations[]`: Graded expectations with evidence
 - `summary`: Aggregate pass/fail counts
 - `execution_metrics`: Tool usage and output size (from executor's metrics.json)
@@ -191,7 +184,6 @@ Output from the executor agent. Located at `<run-dir>/outputs/metrics.json`.
 ```
 
 **Fields:**
-
 - `tool_calls`: Count per tool type
 - `total_tool_calls`: Sum of all tool calls
 - `total_steps`: Number of major execution steps
@@ -230,9 +222,6 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
 
 ```json
 {
-  "skill_version": "2.0.0",
-  "baseline_version": "pdf/v1",
-
   "metadata": {
     "skill_name": "pdf",
     "skill_path": "/path/to/pdf",
@@ -287,14 +276,16 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
     }
   },
 
-  "notes": "## Analyst Observations\n\n| Eval | with_skill | without_skill | Δ |\n|---|---|---|---|\n| 1 | 100% | 43% | +57pp |\n\n- Eval 3 baseline is highest (67%) — general knowledge covers most of it\n- Skill adds 13s avg but improves pass rate by 50%"
+  "notes": [
+    "Assertion 'Output is a PDF file' passes 100% in both configurations - may not differentiate skill value",
+    "Eval 3 shows high variance (50% ± 40%) - may be flaky or model-dependent",
+    "Without-skill runs consistently fail on table extraction expectations",
+    "Skill adds 13s average execution time but improves pass rate by 50%"
+  ]
 }
 ```
 
 **Fields:**
-
-- `skill_version`: The skill version from `SKILL.md` frontmatter (e.g. `"2.0.0"`). Used for result reuse — a cached iteration is only valid when both `skill_version` and `baseline_version` match.
-- `baseline_version`: `"no_skill"` when benchmarked without any skill, or the prior git tag (e.g. `"pdf/v1"`) when benchmarked against a previous version. Used together with `skill_version` for result reuse.
 - `metadata`: Information about the benchmark run
   - `skill_name`: Name of the skill
   - `timestamp`: When the benchmark was run
@@ -303,13 +294,13 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
 - `runs[]`: Individual run results
   - `eval_id`: Numeric eval identifier
   - `eval_name`: Human-readable eval name (used as section header in the viewer)
-  - `configuration`: `"with_skill"`, `"without_skill"`, or `"old_skill"`. The viewer uses this string for grouping and color coding. Use `"without_skill"` for no-skill baseline and `"old_skill"` for prior-version baseline.
+  - `configuration`: Must be `"with_skill"` or `"without_skill"` (the viewer uses this exact string for grouping and color coding)
   - `run_number`: Integer run number (1, 2, 3...)
   - `result`: Nested object with `pass_rate`, `passed`, `total`, `time_seconds`, `tokens`, `errors`
 - `run_summary`: Statistical aggregates per configuration
-  - Keys match the `configuration` values used in runs (e.g. `with_skill` / `without_skill`, or `with_skill` / `old_skill`). Each contains `pass_rate`, `time_seconds`, `tokens` objects with `mean` and `stddev` fields
+  - `with_skill` / `without_skill`: Each contains `pass_rate`, `time_seconds`, `tokens` objects with `mean` and `stddev` fields
   - `delta`: Difference strings like `"+0.50"`, `"+13.0"`, `"+1700"`
-- `notes`: Markdown string with analyst observations (written by benchmark-skill Step 4 from `analyst-notes.md`)
+- `notes`: Freeform observations from the analyzer
 
 **Important:** The viewer reads these field names exactly. Using `config` instead of `configuration`, or putting `pass_rate` at the top level of a run instead of nested under `result`, will cause the viewer to show empty/zero values. Always reference this schema when generating benchmark.json manually.
 
