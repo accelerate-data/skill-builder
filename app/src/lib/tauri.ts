@@ -435,6 +435,9 @@ export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
 
 // --- Refine ---
 
+export const getSkillContentAtPath = (path: string) =>
+  invoke<SkillFileContent[]>("get_skill_content_at_path", { path })
+
 export const getSkillContentForRefine = (skillName: string, workspacePath: string, pluginSlug: string) =>
   invoke<SkillFileContent[]>("get_skill_content_for_refine", { skillName, workspacePath, pluginSlug })
 
@@ -530,6 +533,9 @@ export const restoreSkillVersion = (
   skillName,
   sha,
 })
+
+export const getSkillFilesAtSha = (workspacePath: string, skillName: string, sha: string) =>
+  invoke<SkillFileContent[]>("get_skill_files_at_sha", { workspacePath, skillName, sha })
 
 // --- Answer Evaluation (Transition Gate) ---
 

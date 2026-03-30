@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::db::Db;
-use crate::types::SkillCommit;
+use crate::types::{SkillCommit, SkillFileContent};
 
 /// Resolve the skill output root: skills_path if configured, else workspace_path.
 fn resolve_output_root(db: &Db, workspace_path: &str) -> Result<String, String> {
@@ -69,6 +69,26 @@ pub fn restore_skill_version(
     })?;
     log::info!("[restore_skill_version] skill={} new_version={}", skill_name, new_version);
     Ok(new_version)
+}
+
+#[tauri::command]
+pub fn get_skill_files_at_sha(
+    workspace_path: String,
+    skill_name: String,
+    sha: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<SkillFileContent>, String> {
+    log::info!("[get_skill_files_at_sha] skill={} sha={}", skill_name, sha);
+    let output_root = resolve_output_root(&db, &workspace_path)?;
+    let root = Path::new(&output_root);
+    let pairs = crate::git::get_skill_files_at_sha(root, &skill_name, &sha).map_err(|e| {
+        log::error!("[get_skill_files_at_sha] skill={} sha={} error={}", skill_name, sha, e);
+        e
+    })?;
+    Ok(pairs
+        .into_iter()
+        .map(|(path, content)| SkillFileContent { path, content })
+        .collect())
 }
 
 #[cfg(test)]

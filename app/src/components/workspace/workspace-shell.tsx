@@ -14,7 +14,7 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
-import { cleanupSkillSidecar, getSkillContentForRefine } from "@/lib/tauri";
+import { cleanupSkillSidecar, getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
@@ -87,13 +87,20 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
     }
 
     // Load skill files if not already loaded (e.g. opening from Overview tab).
-    if (store.skillFiles.length === 0 && isBuilderSkill && workspacePath) {
+    if (store.skillFiles.length === 0) {
       try {
-        const contents = await getSkillContentForRefine(
-          (skill as SkillSummary).name,
-          workspacePath,
-          (skill as SkillSummary).plugin_slug,
-        );
+        let contents: Awaited<ReturnType<typeof getSkillContentForRefine>>;
+        if (isBuilderSkill && workspacePath) {
+          contents = await getSkillContentForRefine(
+            (skill as SkillSummary).name,
+            workspacePath,
+            (skill as SkillSummary).plugin_slug,
+          );
+        } else if (!isBuilderSkill && "disk_path" in skill && (skill as ImportedSkill).disk_path) {
+          contents = await getSkillContentAtPath((skill as ImportedSkill).disk_path!);
+        } else {
+          return;
+        }
         const files: SkillFile[] = contents
           .map((c) => ({ filename: c.path, content: c.content }))
           .sort((a, b) => {

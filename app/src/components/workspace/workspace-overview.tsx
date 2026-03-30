@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import SkillDialog from "@/components/skill-dialog";
 import { BenchmarkOverviewCard } from "@/components/workspace/benchmark-overview-card";
+import { VersionDiffDialog } from "@/components/workspace/version-diff-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getSkillHistory, listSkills, readLatestBenchmark } from "@/lib/tauri";
 import { useSkillStore } from "@/stores/skill-store";
@@ -52,6 +53,8 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   const [showAllCommits, setShowAllCommits] = useState(false);
   const [benchmarkData, setBenchmarkData] = useState<BenchmarkData | null>(null);
   const [benchmarkIteration, setBenchmarkIteration] = useState<number | null>(null);
+  const [selectedShas, setSelectedShas] = useState<string[]>([]);
+  const [diffDialogOpen, setDiffDialogOpen] = useState(false);
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const latestVersion = useSkillStore((s) => s.latestVersion);
 
@@ -214,31 +217,62 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
 
       {/* Version History card */}
       <div className="rounded-lg border bg-card p-4">
-        <h3 className="text-sm font-semibold mb-3">Version History</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold">Version History</h3>
+          {selectedShas.length === 2 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDiffDialogOpen(true)}
+            >
+              Compare
+            </Button>
+          )}
+        </div>
         {commits.length === 0 ? (
           <p className="text-sm text-muted-foreground">No version history yet</p>
         ) : (
           <div className="space-y-2">
-            {visibleCommits.map((commit) => (
-              <div key={commit.sha} className="flex items-start gap-2 text-sm">
-                <span className="font-mono shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs">
-                  {commit.sha.slice(0, 7)}
-                </span>
-                {commit.version && (
-                  <span
-                    className="shrink-0 rounded-full text-xs font-medium px-2 py-0.5"
-                    style={{
-                      color: "var(--color-seafoam)",
-                      background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
+            {visibleCommits.map((commit) => {
+              const isSelected = selectedShas.includes(commit.sha);
+              return (
+                <div key={commit.sha} className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 shrink-0 cursor-pointer accent-foreground"
+                    checked={isSelected}
+                    onChange={() => {
+                      setSelectedShas((prev) => {
+                        if (prev.includes(commit.sha)) {
+                          return prev.filter((s) => s !== commit.sha);
+                        }
+                        if (prev.length >= 2) {
+                          return [prev[1], commit.sha];
+                        }
+                        return [...prev, commit.sha];
+                      });
                     }}
-                  >
-                    v{commit.version}
+                    aria-label={`Select commit ${commit.sha.slice(0, 7)} for comparison`}
+                  />
+                  <span className="font-mono shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs">
+                    {commit.sha.slice(0, 7)}
                   </span>
-                )}
-                <span className="min-w-0 truncate">{formatCommitMessage(commit.message)}</span>
-                <span className="shrink-0 text-muted-foreground">{formatRelativeDate(commit.timestamp)}</span>
-              </div>
-            ))}
+                  {commit.version && (
+                    <span
+                      className="shrink-0 rounded-full text-xs font-medium px-2 py-0.5"
+                      style={{
+                        color: "var(--color-seafoam)",
+                        background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
+                      }}
+                    >
+                      v{commit.version}
+                    </span>
+                  )}
+                  <span className="min-w-0 truncate">{formatCommitMessage(commit.message)}</span>
+                  <span className="shrink-0 text-muted-foreground">{formatRelativeDate(commit.timestamp)}</span>
+                </div>
+              );
+            })}
             {commits.length > 5 && !showAllCommits && (
               <button
                 type="button"
@@ -264,6 +298,26 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
               listSkills(workspacePath).then(useSkillStore.getState().setSkills).catch(() => {});
             }
           }}
+        />
+      )}
+
+      {diffDialogOpen && selectedShas.length === 2 && workspacePath && (
+        <VersionDiffDialog
+          open={diffDialogOpen}
+          onOpenChange={(open) => {
+            setDiffDialogOpen(open);
+            if (!open) setSelectedShas([]);
+          }}
+          skillName={skillName}
+          workspacePath={workspacePath}
+          shaA={selectedShas[0]}
+          shaB={selectedShas[1]}
+          labelA={commits.find((c) => c.sha === selectedShas[0])?.version
+            ? `v${commits.find((c) => c.sha === selectedShas[0])!.version}`
+            : selectedShas[0].slice(0, 7)}
+          labelB={commits.find((c) => c.sha === selectedShas[1])?.version
+            ? `v${commits.find((c) => c.sha === selectedShas[1])!.version}`
+            : selectedShas[1].slice(0, 7)}
         />
       )}
     </div>

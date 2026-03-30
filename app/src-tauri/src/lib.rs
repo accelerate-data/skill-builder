@@ -374,6 +374,8 @@ pub fn run() {
             commands::usage::get_workflow_skill_names,
             commands::git::get_skill_history,
             commands::git::restore_skill_version,
+            commands::git::get_skill_files_at_sha,
+            commands::refine::content::get_skill_content_at_path,
             commands::refine::content::get_skill_content_for_refine,
             commands::refine::start_refine_session,
             commands::refine::send_refine_message,

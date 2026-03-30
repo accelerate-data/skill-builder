@@ -506,6 +506,70 @@ pub fn extract_skill_at_tag(
     Ok(())
 }
 
+/// Read SKILL.md and references/ blobs for a skill at a given commit SHA,
+/// returning (relative_path, utf8_content) pairs without touching the working directory.
+pub fn get_skill_files_at_sha(
+    repo_path: &Path,
+    skill_name: &str,
+    sha: &str,
+) -> Result<Vec<(String, String)>, String> {
+    log::debug!("[git] get_skill_files_at_sha: skill='{}' sha={}", skill_name, sha);
+    let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+
+    let oid = git2::Oid::from_str(sha)
+        .map_err(|e| format!("Invalid SHA '{}': {}", sha, e))?;
+    let commit = repo
+        .find_commit(oid)
+        .map_err(|e| format!("Commit '{}' not found: {}", sha, e))?;
+    let tree = commit
+        .tree()
+        .map_err(|e| format!("Failed to get tree for commit '{}': {}", sha, e))?;
+
+    let prefix = format!("{}/", skill_name);
+    let skill_md_path = format!("{}SKILL.md", prefix);
+    let refs_prefix = format!("{}references/", prefix);
+
+    let mut files: Vec<(String, String)> = Vec::new();
+
+    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+        let full_path = if dir.is_empty() {
+            entry.name().unwrap_or("").to_string()
+        } else {
+            format!("{}{}", dir, entry.name().unwrap_or(""))
+        };
+
+        if full_path != skill_md_path && !full_path.starts_with(&refs_prefix) {
+            return git2::TreeWalkResult::Ok;
+        }
+
+        if let Some(git2::ObjectType::Blob) = entry.kind() {
+            if let Ok(blob) = repo.find_blob(entry.id()) {
+                if let Ok(content) = std::str::from_utf8(blob.content()) {
+                    let relative = full_path[prefix.len()..].to_string();
+                    files.push((relative, content.to_string()));
+                }
+            }
+        }
+
+        git2::TreeWalkResult::Ok
+    })
+    .map_err(|e| format!("Failed to walk tree: {}", e))?;
+
+    // Sort: SKILL.md first, then references/ alphabetically
+    files.sort_by(|a, b| {
+        if a.0 == "SKILL.md" {
+            std::cmp::Ordering::Less
+        } else if b.0 == "SKILL.md" {
+            std::cmp::Ordering::Greater
+        } else {
+            a.0.cmp(&b.0)
+        }
+    });
+
+    log::debug!("[git] get_skill_files_at_sha: returning {} files", files.len());
+    Ok(files)
+}
+
 /// Result of auto-detecting the benchmark baseline from git tags.
 pub struct BenchmarkBaseline {
     /// `"prior_version"` or `"no_skill"`
