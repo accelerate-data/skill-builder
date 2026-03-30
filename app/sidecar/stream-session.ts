@@ -235,54 +235,76 @@ export class StreamSession {
     onMessage: (requestId: string, message: Record<string, unknown>) => void,
   ): CanUseTool {
     return async (toolName, input, options) => {
-      if (toolName !== "AskUserQuestion") {
-        return { behavior: "allow" };
-      }
+      try {
+        if (toolName !== "AskUserQuestion") {
+          // Always include updatedInput in the allow response. The SDK's Zod schema
+          // for the can_use_tool IPC response requires `updatedInput: Record<string,
+          // unknown>` (not optional). Returning a bare `{ behavior: "allow" }` causes
+          // a ZodError ("expected record, received undefined") that silently converts
+          // the allow into a deny — so Edit/Write tools fail without user feedback.
+          return {
+            behavior: "allow",
+            updatedInput: (input ?? {}) as Record<string, unknown>,
+          };
+        }
 
-      const rawQuestions = (input as AskUserQuestionInput).questions;
-      if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
-        return {
-          behavior: "deny",
-          message: "AskUserQuestion requires at least one question",
-        };
-      }
+        const rawQuestions = (input as AskUserQuestionInput).questions;
+        if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
+          return {
+            behavior: "deny",
+            message: "AskUserQuestion requires at least one question",
+          };
+        }
 
-      if (this.pendingQuestion) {
-        return {
-          behavior: "deny",
-          message: "Another user question is already pending",
-        };
-      }
+        if (this.pendingQuestion) {
+          return {
+            behavior: "deny",
+            message: "Another user question is already pending",
+          };
+        }
 
-      onMessage(this.currentRequestId, {
-        type: "refine_question",
-        tool_use_id: options.toolUseID,
-        questions: rawQuestions,
-        timestamp: Date.now(),
-      });
-
-      return await new Promise<PermissionResult>((resolve, reject) => {
-        const onAbort = () => {
-          if (this.pendingQuestion?.toolUseId === options.toolUseID) {
-            this.pendingQuestion = null;
-          }
-          reject(new Error("AskUserQuestion aborted"));
-        };
-
-        options.signal.addEventListener("abort", onAbort, { once: true });
-        this.pendingQuestion = {
-          toolUseId: options.toolUseID,
+        onMessage(this.currentRequestId, {
+          type: "refine_question",
+          tool_use_id: options.toolUseID,
           questions: rawQuestions,
-          resolve: (result) => {
-            options.signal.removeEventListener("abort", onAbort);
-            resolve(result);
-          },
-          reject: (error) => {
-            options.signal.removeEventListener("abort", onAbort);
-            reject(error);
-          },
+          timestamp: Date.now(),
+        });
+
+        return await new Promise<PermissionResult>((resolve, reject) => {
+          const onAbort = () => {
+            if (this.pendingQuestion?.toolUseId === options.toolUseID) {
+              this.pendingQuestion = null;
+            }
+            reject(new Error("AskUserQuestion aborted"));
+          };
+
+          options.signal.addEventListener("abort", onAbort, { once: true });
+          this.pendingQuestion = {
+            toolUseId: options.toolUseID,
+            questions: rawQuestions,
+            resolve: (result) => {
+              options.signal.removeEventListener("abort", onAbort);
+              resolve(result);
+            },
+            reject: (error) => {
+              options.signal.removeEventListener("abort", onAbort);
+              reject(error);
+            },
+          };
+        });
+      } catch (err) {
+        // Surface permission callback errors as a visible, structured denial so
+        // the agent logs show a clear cause rather than silently falling back to
+        // read-only behavior.
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(
+          `[stream-session] event=canUseTool_error tool=${toolName} session=${this.sessionId} error=${message}\n`,
+        );
+        return {
+          behavior: "deny",
+          message: `Permission check failed for tool ${toolName}: ${message}`,
         };
-      });
+      }
     };
   }
 
