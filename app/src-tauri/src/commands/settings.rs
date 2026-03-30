@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::db::Db;
-use crate::skill_paths::{enumerate_skill_locations, skill_library_key, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::enumerate_skill_locations;
 use crate::types::AppSettings;
 
 /// Default built-in marketplace registry URL. Used for both the initial migration
@@ -121,12 +121,14 @@ fn backfill_missing_skill_versions(
         )?;
 
         if missing_version {
-            let tag_key = if skill.plugin_slug == DEFAULT_PLUGIN_SLUG {
-                skill_name.clone()
-            } else {
-                skill_library_key(&skill.plugin_slug, &skill_name)
-            };
-            if crate::git::skill_has_any_tag(skills_root, &tag_key)? {
+            // Migrate any legacy {skill_name}/vX.Y.Z tags to the plugin-scoped format.
+            let migrated = crate::git::migrate_skill_tags(skills_root, &skill.plugin_slug, &skill_name, None)
+                .unwrap_or(0);
+            if migrated > 0 {
+                log::info!("[startup] migrated {} legacy tags for '{}'", migrated, skill_name);
+            }
+
+            if crate::git::skill_has_any_tag(skills_root, &skill.plugin_slug, &skill_name)? {
                 log::info!(
                     "[startup] skipping version tag backfill for '{}' because a tag already exists",
                     skill_name
@@ -142,12 +144,12 @@ fn backfill_missing_skill_versions(
                     skills_root,
                     &format!("{}: backfill imported skill version", skill_name),
                 )?;
-                crate::git::create_skill_version_tag(skills_root, &tag_key, &normalized.version)?;
+                crate::git::create_skill_version_tag(skills_root, &skill.plugin_slug, &skill_name, &normalized.version)?;
 
                 log::info!(
-                    "[startup] backfilled missing version for '{}' with tag {}/v{}",
+                    "[startup] backfilled missing version for '{}' plugin='{}' v{}",
                     skill_name,
-                    tag_key,
+                    skill.plugin_slug,
                     normalized.version
                 );
             }
@@ -541,7 +543,7 @@ mod tests {
             std::fs::read_to_string(skills_path.join("legacy-skill").join("SKILL.md")).unwrap();
         assert!(updated.contains("metadata:\n  version: \"1.0.0\""));
         assert!(
-            crate::git::skill_version_tag_exists(&skills_path, "legacy-skill", "1.0.0").unwrap()
+            crate::git::skill_version_tag_exists(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "legacy-skill", "1.0.0").unwrap()
         );
         let skill = crate::db::list_all_skills(&conn)
             .unwrap()
@@ -565,7 +567,7 @@ mod tests {
         )
         .unwrap();
         crate::git::commit_all(&skills_path, "legacy-skill: seed").unwrap();
-        crate::git::create_skill_version_tag(&skills_path, "legacy-skill", "1.0.0").unwrap();
+        crate::git::create_skill_version_tag(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "legacy-skill", "1.0.0").unwrap();
 
         let mut settings = crate::types::AppSettings::default();
         settings.skills_path = Some(skills_path.to_str().unwrap().to_string());
@@ -691,12 +693,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let old_path = dir.path().join("old");
         let new_path = dir.path().join("new");
+        let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        // Set up old path with git repo and a commit
+        // Set up old path with git repo and a commit using the plugin-aware layout
         fs::create_dir_all(&old_path).unwrap();
         crate::git::ensure_repo(&old_path).unwrap();
-        fs::create_dir_all(old_path.join("my-skill")).unwrap();
-        fs::write(old_path.join("my-skill").join("SKILL.md"), "# V1").unwrap();
+        fs::create_dir_all(old_path.join(plugin).join("my-skill")).unwrap();
+        fs::write(old_path.join(plugin).join("my-skill").join("SKILL.md"), "# V1").unwrap();
         crate::git::commit_all(&old_path, "v1").unwrap();
 
         handle_skills_path_change(
@@ -706,7 +709,7 @@ mod tests {
         .unwrap();
 
         // Git history should be preserved at new location
-        let history = crate::git::get_history(&new_path, "my-skill", 50).unwrap();
+        let history = crate::git::get_history(&new_path, "my-skill", plugin, 50).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].message, "v1");
     }

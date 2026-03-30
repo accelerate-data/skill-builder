@@ -599,14 +599,14 @@ async fn import_marketplace_entries_to_library(
                 };
 
                 if let Err(e) = (|| -> Result<(), String> {
-                    if crate::git::skill_version_tag_exists(skills_root, &skill.skill_name, &final_version)? {
+                    if crate::git::skill_version_tag_exists(skills_root, &plugin_slug, &skill.skill_name, &final_version)? {
                         return Err(format!(
                             "Tag '{}' already exists",
-                            crate::git::skill_version_tag_name(&skill.skill_name, &final_version)
+                            crate::git::skill_version_tag_name(&plugin_slug, &skill.skill_name, &final_version)
                         ));
                     }
                     crate::git::commit_all(skills_root, &format!("{}: import from marketplace", skill.skill_name))?;
-                    crate::git::create_skill_version_tag(skills_root, &skill.skill_name, &final_version)?;
+                    crate::git::create_skill_version_tag(skills_root, &plugin_slug, &skill.skill_name, &final_version)?;
                     Ok(())
                 })() {
                     results.push(MarketplaceImportResult {
@@ -915,8 +915,8 @@ pub async fn import_marketplace_plugin_to_library(
         // Git: commit and tag
         if let Err(e) = (|| -> Result<(), String> {
             crate::git::commit_all(skills_root, &format!("{}: import from marketplace", skill_name))?;
-            if !crate::git::skill_version_tag_exists(skills_root, skill_name, version)? {
-                crate::git::create_skill_version_tag(skills_root, skill_name, version)?;
+            if !crate::git::skill_version_tag_exists(skills_root, &plugin_slug, skill_name, version)? {
+                crate::git::create_skill_version_tag(skills_root, &plugin_slug, skill_name, version)?;
             }
             Ok(())
         })() {

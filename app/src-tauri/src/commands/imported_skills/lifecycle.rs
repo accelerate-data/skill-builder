@@ -436,6 +436,15 @@ pub fn move_skill_to_plugin(
     if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
         crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
     }
+    // Migrate version tags to the new plugin namespace
+    if let Some(ref sp) = settings.skills_path {
+        let root = std::path::Path::new(sp);
+        if root.join(".git").exists() {
+            let migrated = crate::git::migrate_skill_tags(root, &plugin_slug, &skill_name, Some(&current_plugin_slug))
+                .unwrap_or(0);
+            log::info!("[move_skill_to_plugin] migrated {} tags for '{}' ({} → {})", migrated, skill_name, current_plugin_slug, plugin_slug);
+        }
+    }
     // Update marketplace.json to reflect the move
     if let Some(ref sp) = settings.skills_path {
         if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(std::path::Path::new(sp)) {
@@ -467,6 +476,15 @@ pub fn remove_skill_from_plugin(
     )?;
     if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
         crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
+    }
+    // Migrate version tags back to the default plugin namespace
+    if let Some(ref sp) = settings.skills_path {
+        let root = std::path::Path::new(sp);
+        if root.join(".git").exists() {
+            let migrated = crate::git::migrate_skill_tags(root, DEFAULT_PLUGIN_SLUG, &skill_name, Some(&current_plugin_slug))
+                .unwrap_or(0);
+            log::info!("[remove_skill_from_plugin] migrated {} tags for '{}' ({} → {})", migrated, skill_name, current_plugin_slug, DEFAULT_PLUGIN_SLUG);
+        }
     }
     // Update marketplace.json to reflect the move
     if let Some(ref sp) = settings.skills_path {

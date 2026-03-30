@@ -171,15 +171,15 @@ fn import_skill_from_file_inner(
     let final_version = normalized_frontmatter.version.clone();
 
     let import_git_result = (|| -> Result<(), String> {
-        if crate::git::skill_version_tag_exists(skills_repo, name, &final_version)? {
+        if crate::git::skill_version_tag_exists(skills_repo, default_slug, name, &final_version)? {
             return Err(format!(
                 "Tag '{}' already exists",
-                crate::git::skill_version_tag_name(name, &final_version)
+                crate::git::skill_version_tag_name(default_slug, name, &final_version)
             ));
         }
 
         crate::git::commit_all(skills_repo, &format!("{}: import from upload", name))?;
-        crate::git::create_skill_version_tag(skills_repo, name, &final_version)?;
+        crate::git::create_skill_version_tag(skills_repo, default_slug, name, &final_version)?;
         Ok(())
     })();
     if let Err(e) = import_git_result {
@@ -275,7 +275,7 @@ mod tests {
 
         assert!(result.is_ok(), "expected import to succeed: {:?}", result);
         assert!(
-            crate::git::skill_version_tag_exists(&skills_path, "imported-skill", "1.0.0").unwrap()
+            crate::git::skill_version_tag_exists(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill", "1.0.0").unwrap()
         );
         assert_eq!(
             crate::db::get_imported_skill(&conn, "imported-skill")
@@ -308,7 +308,7 @@ mod tests {
         )
         .unwrap();
         crate::git::commit_all(&skills_path, "imported-skill: seed").unwrap();
-        crate::git::create_skill_version_tag(&skills_path, "imported-skill", "1.0.0").unwrap();
+        crate::git::create_skill_version_tag(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill", "1.0.0").unwrap();
         std::fs::remove_dir_all(&skill_dir).unwrap();
 
         let zip_path = dir.path().join("skill.zip");
