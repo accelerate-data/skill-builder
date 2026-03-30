@@ -301,25 +301,32 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
         />
       )}
 
-      {diffDialogOpen && selectedShas.length === 2 && workspacePath && (
-        <VersionDiffDialog
-          open={diffDialogOpen}
-          onOpenChange={(open) => {
-            setDiffDialogOpen(open);
-            if (!open) setSelectedShas([]);
-          }}
-          skillName={skillName}
-          workspacePath={workspacePath}
-          shaA={selectedShas[0]}
-          shaB={selectedShas[1]}
-          labelA={commits.find((c) => c.sha === selectedShas[0])?.version
-            ? `v${commits.find((c) => c.sha === selectedShas[0])!.version}`
-            : selectedShas[0].slice(0, 7)}
-          labelB={commits.find((c) => c.sha === selectedShas[1])?.version
-            ? `v${commits.find((c) => c.sha === selectedShas[1])!.version}`
-            : selectedShas[1].slice(0, 7)}
-        />
-      )}
+      {diffDialogOpen && selectedShas.length === 2 && workspacePath && (() => {
+        // Always show older → newer regardless of selection order
+        const commitA = commits.find((c) => c.sha === selectedShas[0]);
+        const commitB = commits.find((c) => c.sha === selectedShas[1]);
+        const [olderSha, newerSha, olderCommit, newerCommit] =
+          commitA && commitB && new Date(commitA.timestamp) > new Date(commitB.timestamp)
+            ? [selectedShas[1], selectedShas[0], commitB, commitA]
+            : [selectedShas[0], selectedShas[1], commitA, commitB];
+        const makeLabel = (sha: string, commit: typeof commitA) =>
+          commit?.version ? `v${commit.version}` : sha.slice(0, 7);
+        return (
+          <VersionDiffDialog
+            open={diffDialogOpen}
+            onOpenChange={(open) => {
+              setDiffDialogOpen(open);
+              if (!open) setSelectedShas([]);
+            }}
+            skillName={skillName}
+            workspacePath={workspacePath}
+            shaA={olderSha}
+            shaB={newerSha}
+            labelA={makeLabel(olderSha, olderCommit)}
+            labelB={makeLabel(newerSha, newerCommit)}
+          />
+        );
+      })()}
     </div>
   );
 }

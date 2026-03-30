@@ -5,7 +5,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getSkillFilesAtSha } from "@/lib/tauri";
 import type { SkillFileContent } from "@/lib/types";
@@ -27,11 +33,8 @@ interface DiffLine {
 }
 
 function computeLineDiff(aLines: string[], bLines: string[]): DiffLine[] {
-  // Myers diff via DP LCS
   const m = aLines.length;
   const n = bLines.length;
-
-  // Build LCS length table
   const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
   for (let i = m - 1; i >= 0; i--) {
     for (let j = n - 1; j >= 0; j--) {
@@ -42,7 +45,6 @@ function computeLineDiff(aLines: string[], bLines: string[]): DiffLine[] {
       }
     }
   }
-
   const result: DiffLine[] = [];
   let i = 0;
   let j = 0;
@@ -71,8 +73,11 @@ function FileDiff({ linesA, linesB }: { linesA: string[] | null; linesB: string[
         {(linesB ?? []).map((line, idx) => (
           <div
             key={idx}
-            className="px-2"
-            style={{ background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)", color: "var(--color-seafoam)" }}
+            className="px-3 whitespace-pre-wrap break-all"
+            style={{
+              color: "var(--color-seafoam)",
+              background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
+            }}
           >
             {`+ ${line}`}
           </div>
@@ -87,8 +92,8 @@ function FileDiff({ linesA, linesB }: { linesA: string[] | null; linesB: string[
         {(linesA ?? []).map((line, idx) => (
           <div
             key={idx}
-            className="px-2 text-destructive"
-            style={{ background: "var(--destructive-foreground, hsl(var(--destructive) / 0.1))" }}
+            className="px-3 text-destructive whitespace-pre-wrap break-all"
+            style={{ background: "color-mix(in oklch, hsl(var(--destructive)), transparent 88%)" }}
           >
             {`- ${line}`}
           </div>
@@ -101,7 +106,7 @@ function FileDiff({ linesA, linesB }: { linesA: string[] | null; linesB: string[
 
   if (diff.every((l) => l.type === "unchanged")) {
     return (
-      <p className="text-xs text-muted-foreground px-2 py-4">No differences</p>
+      <p className="text-xs text-muted-foreground px-3 py-4">No differences between these versions.</p>
     );
   }
 
@@ -110,7 +115,7 @@ function FileDiff({ linesA, linesB }: { linesA: string[] | null; linesB: string[
       {diff.map((line, idx) => {
         if (line.type === "unchanged") {
           return (
-            <div key={idx} className="px-2 text-muted-foreground">
+            <div key={idx} className="px-3 text-muted-foreground whitespace-pre-wrap break-all">
               {`  ${line.content}`}
             </div>
           );
@@ -119,7 +124,7 @@ function FileDiff({ linesA, linesB }: { linesA: string[] | null; linesB: string[
           return (
             <div
               key={idx}
-              className="px-2"
+              className="px-3 whitespace-pre-wrap break-all"
               style={{
                 color: "var(--color-seafoam)",
                 background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
@@ -132,8 +137,8 @@ function FileDiff({ linesA, linesB }: { linesA: string[] | null; linesB: string[
         return (
           <div
             key={idx}
-            className="px-2 text-destructive"
-            style={{ background: "color-mix(in oklch, hsl(var(--destructive)), transparent 85%)" }}
+            className="px-3 text-destructive whitespace-pre-wrap break-all"
+            style={{ background: "color-mix(in oklch, hsl(var(--destructive)), transparent 88%)" }}
           >
             {`- ${line.content}`}
           </div>
@@ -157,11 +162,13 @@ export function VersionDiffDialog({
   const [filesB, setFilesB] = useState<SkillFileContent[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
     setError(null);
+    setSelectedPath(null);
     Promise.all([
       getSkillFilesAtSha(workspacePath, skillName, shaA),
       getSkillFilesAtSha(workspacePath, skillName, shaB),
@@ -177,7 +184,6 @@ export function VersionDiffDialog({
       .finally(() => setLoading(false));
   }, [open, workspacePath, skillName, shaA, shaB]);
 
-  // Collect all unique file paths across both versions
   const allPaths = Array.from(
     new Set([...(filesA ?? []).map((f) => f.path), ...(filesB ?? []).map((f) => f.path)]),
   ).sort((a, b) => {
@@ -186,37 +192,64 @@ export function VersionDiffDialog({
     return a.localeCompare(b);
   });
 
+  const activePath = selectedPath ?? allPaths[0] ?? null;
+
+  const fileA = activePath ? (filesA?.find((f) => f.path === activePath) ?? null) : null;
+  const fileB = activePath ? (filesB?.find((f) => f.path === activePath) ?? null) : null;
+  const linesA = fileA ? fileA.content.split("\n") : null;
+  const linesB = fileB ? fileB.content.split("\n") : null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col gap-0 p-0">
-        <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
-          <DialogTitle>
-            Compare{" "}
-            <span
-              className="rounded-full text-xs font-medium px-2 py-0.5"
-              style={{
-                color: "var(--color-seafoam)",
-                background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
-              }}
-            >
-              {labelA}
-            </span>{" "}
-            →{" "}
-            <span
-              className="rounded-full text-xs font-medium px-2 py-0.5"
-              style={{
-                color: "var(--color-pacific)",
-                background: "color-mix(in oklch, var(--color-pacific), transparent 85%)",
-              }}
-            >
-              {labelB}
-            </span>
-          </DialogTitle>
+      <DialogContent className="max-w-[90vw] w-[900px] h-[80vh] flex flex-col gap-0 p-0">
+        <DialogHeader className="px-6 pt-5 pb-0 shrink-0">
+          <div className="flex items-center justify-between gap-4">
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+              Compare
+              <span
+                className="rounded-full text-xs font-medium px-2 py-0.5"
+                style={{
+                  color: "var(--color-seafoam)",
+                  background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
+                }}
+              >
+                {labelA}
+              </span>
+              <span className="text-muted-foreground">→</span>
+              <span
+                className="rounded-full text-xs font-medium px-2 py-0.5"
+                style={{
+                  color: "var(--color-pacific)",
+                  background: "color-mix(in oklch, var(--color-pacific), transparent 85%)",
+                }}
+              >
+                {labelB}
+              </span>
+            </DialogTitle>
+
+            {allPaths.length > 0 && (
+              <Select
+                value={activePath ?? undefined}
+                onValueChange={setSelectedPath}
+              >
+                <SelectTrigger className="w-56 h-7 text-xs shrink-0">
+                  <SelectValue placeholder="Select file" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allPaths.map((path) => (
+                    <SelectItem key={path} value={path} className="text-xs font-mono">
+                      {path}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden mt-4">
           {loading ? (
-            <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
               Loading diff…
             </div>
           ) : error ? (
@@ -224,30 +257,11 @@ export function VersionDiffDialog({
           ) : allPaths.length === 0 ? (
             <div className="px-6 py-4 text-sm text-muted-foreground">No files found</div>
           ) : (
-            <Tabs defaultValue={allPaths[0]} className="flex flex-col h-full">
-              <TabsList variant="line" className="shrink-0 border-b px-4">
-                {allPaths.map((path) => (
-                  <TabsTrigger key={path} value={path} className="text-xs max-w-[160px] truncate">
-                    {path.replace("references/", "")}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              {allPaths.map((path) => {
-                const fileA = filesA?.find((f) => f.path === path);
-                const fileB = filesB?.find((f) => f.path === path);
-                const linesA = fileA ? fileA.content.split("\n") : null;
-                const linesB = fileB ? fileB.content.split("\n") : null;
-                return (
-                  <TabsContent key={path} value={path} className="flex-1 min-h-0 mt-0">
-                    <ScrollArea className="h-full">
-                      <div className="py-2">
-                        <FileDiff linesA={linesA} linesB={linesB} />
-                      </div>
-                    </ScrollArea>
-                  </TabsContent>
-                );
-              })}
-            </Tabs>
+            <ScrollArea className="h-full">
+              <div className="pb-6">
+                <FileDiff linesA={linesA} linesB={linesB} />
+              </div>
+            </ScrollArea>
           )}
         </div>
       </DialogContent>
