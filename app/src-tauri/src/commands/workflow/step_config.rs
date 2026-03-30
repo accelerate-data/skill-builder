@@ -210,8 +210,8 @@ pub(crate) fn validate_clarifications_json(
 
     let version = root
         .get("version")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "clarifications_json.version must be a string".to_string())?;
+        .and_then(|v| super::coerce_to_string(v))
+        .ok_or_else(|| "clarifications_json.version must be present".to_string())?;
     if version.trim().is_empty() {
         return Err("clarifications_json.version must not be empty".to_string());
     }
@@ -252,13 +252,13 @@ pub(crate) fn validate_clarifications_json(
                 section_idx
             )
         })?;
-        if section_obj.get("id").and_then(|v| v.as_u64()).is_none() {
+        if section_obj.get("id").and_then(|v| super::coerce_to_i64(v)).is_none() {
             return Err(format!(
                 "clarifications_json.sections[{}].id must be a number",
                 section_idx
             ));
         }
-        if section_obj.get("title").and_then(|v| v.as_str()).is_none() {
+        if section_obj.get("title").and_then(|v| super::coerce_to_string(v)).is_none() {
             return Err(format!(
                 "clarifications_json.sections[{}].title must be a string",
                 section_idx
@@ -278,7 +278,7 @@ pub(crate) fn validate_clarifications_json(
                 )
             })?;
             for field in ["id", "title", "text"] {
-                if question_obj.get(field).and_then(|v| v.as_str()).is_none() {
+                if question_obj.get(field).and_then(|v| super::coerce_to_string(v)).is_none() {
                     return Err(format!(
                         "clarifications_json.sections[{}].questions[{}].{} must be a string",
                         section_idx, question_idx, field
@@ -287,7 +287,7 @@ pub(crate) fn validate_clarifications_json(
             }
             if question_obj
                 .get("must_answer")
-                .and_then(|v| v.as_bool())
+                .and_then(|v| super::coerce_to_bool(v))
                 .is_none()
             {
                 return Err(format!(
@@ -312,7 +312,7 @@ pub(crate) fn validate_clarifications_json(
                     )
                 })?;
                 for field in ["id", "text"] {
-                    if choice_obj.get(field).and_then(|v| v.as_str()).is_none() {
+                    if choice_obj.get(field).and_then(|v| super::coerce_to_string(v)).is_none() {
                         return Err(format!(
                             "clarifications_json.sections[{}].questions[{}].choices[{}].{} must be a string",
                             section_idx, question_idx, choice_idx, field
@@ -321,7 +321,7 @@ pub(crate) fn validate_clarifications_json(
                 }
                 if choice_obj
                     .get("is_other")
-                    .and_then(|v| v.as_bool())
+                    .and_then(|v| super::coerce_to_bool(v))
                     .is_none()
                 {
                     return Err(format!(

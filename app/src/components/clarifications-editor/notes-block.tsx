@@ -73,7 +73,7 @@ function NoteCard({ note }: { note: Note }) {
           {note.title}
         </span>
         <span className="rounded border px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
-          {note.type.replace(/_/g, " ")}
+          {(note.type ?? "note").replace(/_/g, " ")}
         </span>
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground">{note.body}</p>
