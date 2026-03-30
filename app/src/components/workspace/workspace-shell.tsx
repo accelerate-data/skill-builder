@@ -146,7 +146,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
             <TabsTrigger value="refine">Refine</TabsTrigger>
             <TabsTrigger value="evals">Evals</TabsTrigger>
             <TabsTrigger value="description">
-              Description
+              What it does
             </TabsTrigger>
           </TabsList>
 

@@ -58,15 +58,6 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   const skillName = isBuilderSkill ? skill.name : skill.skill_name;
 
   useEffect(() => {
-    if (!workspacePath || !skillName) return;
-    getSkillHistory(workspacePath, skillName, 50)
-      .then((result) => setCommits(result ?? []))
-      .catch((err) => {
-        console.warn("event=skill_history_fetch_failed skill=%s error=%s", skillName, err);
-      });
-  }, [workspacePath, skillName]);
-
-  useEffect(() => {
     if (!isBuilderSkill || !workspacePath || !skillName) {
       setBenchmarkData(null);
       return;
@@ -92,10 +83,20 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
     return () => { cancelled = true; };
   }, [isBuilderSkill, workspacePath, skillName]);
 
+  const { created, modified } = getSkillDates(skill);
+
+  useEffect(() => {
+    if (!workspacePath || !skillName) return;
+    getSkillHistory(workspacePath, skillName, 50)
+      .then((result) => setCommits(result ?? []))
+      .catch((err) => {
+        console.warn("event=skill_history_fetch_failed skill=%s error=%s", skillName, err);
+      });
+  }, [workspacePath, skillName, modified]);
+
   const purpose = skill.purpose;
   const description = isBuilderSkill ? skill.description : skill.description;
   const tags = isBuilderSkill ? skill.tags : [];
-  const { created, modified } = getSkillDates(skill);
 
   const canEdit = !!workspacePath && !!skillName;
   const visibleCommits = showAllCommits ? commits : commits.slice(0, 5);
@@ -155,7 +156,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
 
           {description && (
             <div className="space-y-0.5">
-              <p className="text-xs text-muted-foreground">Description</p>
+              <p className="text-xs text-muted-foreground">What the skill does</p>
               <p className="text-sm">{description}</p>
             </div>
           )}

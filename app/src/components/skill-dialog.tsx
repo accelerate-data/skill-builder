@@ -446,7 +446,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   )}
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="description">Description <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="description">What the skill does <span className="text-destructive">*</span></Label>
                   <GhostTextarea
                     id="description"
                     placeholder="Brief description of what this skill does (1-2 sentences)"

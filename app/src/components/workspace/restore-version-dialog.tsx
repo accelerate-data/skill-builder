@@ -70,8 +70,8 @@ export default function RestoreVersionDialog({
   const handleRestore = async (commit: SkillCommit) => {
     setRestoring(commit.sha);
     try {
-      await restoreSkillVersion(workspacePath, skillName, commit.sha);
-      toast.success(`Restored to v${commit.version}`);
+      const newVersion = await restoreSkillVersion(workspacePath, skillName, commit.sha);
+      toast.success(`Restored — tagged as v${newVersion}`);
       onOpenChange(false);
       onRestored?.();
     } catch (err) {

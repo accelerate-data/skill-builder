@@ -525,7 +525,7 @@ export const restoreSkillVersion = (
   workspacePath: string,
   skillName: string,
   sha: string,
-) => invoke<void>("restore_skill_version", {
+) => invoke<string>("restore_skill_version", {
   workspacePath,
   skillName,
   sha,
