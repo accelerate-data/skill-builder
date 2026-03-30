@@ -1,7 +1,6 @@
 import { useEffect, useCallback, useState } from "react"
-import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "@/lib/toast"
-import { FolderInput, Package, FolderTree, Trash2, Lock, LockOpen } from "lucide-react"
+import { Package, FolderTree, Trash2, Lock, LockOpen } from "lucide-react"
 import { Github } from "@/components/icons/github"
 import {
   Card,
@@ -14,10 +13,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useSettingsStore } from "@/stores/settings-store"
 import { usePluginStore } from "@/stores/plugin-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
-import { ImportSkillDialog } from "@/components/import-skill-dialog"
 import { CreatePluginDialog } from "@/components/create-plugin-dialog"
-import { deletePlugin, parseSkillFile, setPluginUpgradeLock } from "@/lib/tauri"
-import type { LibraryPlugin, SkillFileMeta } from "@/lib/types"
+import { deletePlugin, setPluginUpgradeLock } from "@/lib/tauri"
+import type { LibraryPlugin } from "@/lib/types"
 
 export function ImportedSkillsTab() {
   const plugins = usePluginStore((s) => s.plugins)
@@ -28,37 +26,10 @@ export function ImportedSkillsTab() {
   const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
   const [showGitHubImport, setShowGitHubImport] = useState(false)
   const [createPluginOpen, setCreatePluginOpen] = useState(false)
-  const [importOpen, setImportOpen] = useState(false)
-  const [importFile, setImportFile] = useState("")
-  const [importMeta, setImportMeta] = useState<SkillFileMeta>({
-    name: null, description: null, version: null, model: null,
-    argument_hint: null, user_invocable: null, disable_model_invocation: null,
-  })
 
   useEffect(() => {
     fetchPlugins()
   }, [fetchPlugins])
-
-  const handleImport = useCallback(async () => {
-    const filePath = await open({
-      title: "Import Skill Package",
-      filters: [{ name: "Skill Package", extensions: ["skill", "zip"] }],
-    })
-    if (!filePath) return
-
-    try {
-      const meta = await parseSkillFile(filePath)
-      setImportFile(filePath)
-      setImportMeta(meta)
-      setImportOpen(true)
-    } catch (err) {
-      console.error("[imported-skills] parse failed:", err)
-      toast.error(
-        "Import failed: not a valid skill package.",
-        { duration: Infinity, cause: err, context: { operation: "imported_skills_import_parse" } }
-      )
-    }
-  }, [])
 
   const handleToggleLock = useCallback(async (plugin: LibraryPlugin) => {
     const newLocked = !plugin.upgrade_locked
@@ -112,10 +83,6 @@ export function ImportedSkillsTab() {
         >
           <Github className="size-4" />
           Marketplace
-        </Button>
-        <Button variant="outline" className="w-36" onClick={handleImport}>
-          <FolderInput className="size-4" />
-          Upload
         </Button>
       </div>
 
@@ -215,14 +182,6 @@ export function ImportedSkillsTab() {
         onOpenChange={setShowGitHubImport}
         onImported={fetchPlugins}
         registries={marketplaceRegistries.filter(r => r.enabled)}
-      />
-
-      <ImportSkillDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        filePath={importFile}
-        meta={importMeta}
-        onImported={fetchPlugins}
       />
 
       <CreatePluginDialog

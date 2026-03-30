@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSkillStore } from "@/stores/skill-store";
-import { PanelLeftClose, Plus, Search } from "lucide-react";
+import { PanelLeftClose, Plus, Search, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -18,6 +18,7 @@ import { toast } from "@/lib/toast";
 import SkillDialog from "@/components/skill-dialog";
 import DeleteSkillDialog from "@/components/delete-skill-dialog";
 import RestoreVersionDialog from "@/components/workspace/restore-version-dialog";
+import { ImportSkillDialog } from "@/components/import-skill-dialog";
 import { CreatePluginDialog } from "@/components/create-plugin-dialog";
 import { MoveToPluginDialog } from "@/components/move-to-plugin-dialog";
 import { SkillRow } from "@/components/skill-row";
@@ -30,13 +31,16 @@ import {
 } from "@/hooks/use-unified-skills";
 import type { UnifiedSkill } from "@/hooks/use-unified-skills";
 import type { SkillSummary } from "@/lib/types";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   deletePlugin,
   getExternallyLockedSkills,
   listSkills,
+  parseSkillFile,
   removeSkillFromPlugin,
   resetWorkflowStep,
 } from "@/lib/tauri";
+import type { SkillFileMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export interface SkillListPanelProps {
@@ -53,6 +57,12 @@ export function SkillListPanel({
   className,
 }: SkillListPanelProps) {
   const [createOpen, setCreateOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState("");
+  const [uploadMeta, setUploadMeta] = useState<SkillFileMeta>({
+    name: null, description: null, version: null, model: null,
+    argument_hint: null, user_invocable: null, disable_model_invocation: null,
+  });
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -245,6 +255,25 @@ export function SkillListPanel({
     setMoveTarget(skill)
   }
 
+  async function handleUpload() {
+    const filePath = await open({
+      title: "Import Skill Package",
+      filters: [{ name: "Skill Package", extensions: ["skill", "zip"] }],
+    });
+    if (!filePath) return;
+    try {
+      const meta = await parseSkillFile(filePath);
+      setUploadFile(filePath);
+      setUploadMeta(meta);
+      setUploadOpen(true);
+    } catch (err) {
+      console.error("[skill-list-panel] parse failed:", err);
+      toast.error("Import failed: not a valid skill package.", {
+        duration: Infinity, cause: err, context: { operation: "skill_list_upload_parse" },
+      });
+    }
+  }
+
   async function handleRemoveFromPlugin(skill: UnifiedSkill) {
     const toastId = toast.loading(`Removing "${skill.name}" from plugin...`)
     try {
@@ -279,6 +308,15 @@ export function SkillListPanel({
           title="New skill"
         >
           <Plus className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="size-7"
+          onClick={handleUpload}
+          title="Upload skill"
+        >
+          <Upload className="size-4" />
         </Button>
         {onCollapse && (
           <Button
@@ -424,6 +462,17 @@ export function SkillListPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ImportSkillDialog
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        filePath={uploadFile}
+        meta={uploadMeta}
+        onImported={() => {
+          setUploadOpen(false);
+          fetchImportedSkills().catch(() => {});
+        }}
+      />
 
       {restoreTarget && workspacePath && (
         <RestoreVersionDialog
