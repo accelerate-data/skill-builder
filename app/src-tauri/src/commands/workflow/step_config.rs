@@ -226,7 +226,7 @@ pub(crate) fn validate_clarifications_json(
         "refinement_count",
         "must_answer_count",
     ] {
-        if metadata.get(field).and_then(|v| v.as_i64()).is_none() {
+        if metadata.get(field).and_then(|v| super::coerce_to_i64(v)).is_none() {
             return Err(format!(
                 "clarifications_json.metadata.{} must be an integer",
                 field

@@ -396,7 +396,7 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
         "contradictory_count",
         "total_count",
     ] {
-        if root.get(field).and_then(|v| v.as_i64()).is_none() {
+        if root.get(field).and_then(|v| super::coerce_to_i64(v)).is_none() {
             return Err(format!("answer_evaluation.{} must be an integer", field));
         }
     }

@@ -30,5 +30,12 @@ pub(crate) use evaluation::get_step_output_files;
 // user_context
 pub(crate) use user_context::write_user_context_file;
 
+/// Coerce a JSON value to i64: accepts native integers or string-encoded integers.
+/// LLMs occasionally emit numbers as strings (e.g., `"3"` instead of `3`).
+pub(crate) fn coerce_to_i64(v: &serde_json::Value) -> Option<i64> {
+    v.as_i64()
+        .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
+}
+
 #[cfg(test)]
 mod tests;

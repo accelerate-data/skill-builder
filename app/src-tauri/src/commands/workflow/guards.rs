@@ -31,7 +31,7 @@ pub(crate) fn parse_decisions_guard(decisions_path: &Path) -> bool {
         Err(_) => return false,
     };
     let metadata = &data["metadata"];
-    if metadata["decision_count"].as_i64() == Some(0) {
+    if super::coerce_to_i64(&metadata["decision_count"]) == Some(0) {
         return true;
     }
     if metadata["contradictory_inputs"].as_bool() == Some(true) {
