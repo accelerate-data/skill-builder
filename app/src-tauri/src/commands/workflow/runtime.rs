@@ -242,10 +242,11 @@ pub async fn run_workflow_step(
         &workspace_path,
     )?;
 
-    // Cancel any stale streaming sessions for this skill before starting a new step.
-    // Without this, a reset + re-run hangs on "Initializing agent" because the sidecar
-    // is still blocked on the previous session (e.g. a hung research-orchestrator subagent)
-    // and cannot start the new stream_start until the old one finishes.
+    // Close any stale streaming sessions for this skill before starting a new step.
+    // Uses stream_end (not stream_cancel) so the sidecar removes the session from
+    // activeSessions and releases SDK resources (including any cli.js child process).
+    // Without this, a reset + re-run hangs because the old session's SDK resources
+    // are still held when the new stream_start arrives.
     let stale_sessions: Vec<(String, String)> = {
         let map = sessions.0.lock().map_err(|e| e.to_string())?;
         map.iter()
@@ -255,11 +256,11 @@ pub async fn run_workflow_step(
     };
     for (stale_agent_id, stale_session_id) in &stale_sessions {
         log::info!(
-            "[run_workflow_step] cancelling stale session agent={} before starting step_id={}",
+            "[run_workflow_step] closing stale session agent={} before starting step_id={}",
             stale_agent_id,
             step_id,
         );
-        let _ = pool.send_stream_cancel(&skill_name, stale_session_id).await;
+        let _ = pool.send_stream_end(&skill_name, stale_session_id).await;
     }
     if !stale_sessions.is_empty() {
         let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
