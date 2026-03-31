@@ -315,7 +315,7 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
         })?;
 
     let rows = stmt
-        .query_map([], |row| map_skill_master_row(row))
+        .query_map([], map_skill_master_row)
         .map_err(|e| {
             log::error!("list_all_skills: query failed: {}", e);
             e.to_string()
@@ -355,7 +355,7 @@ pub fn get_skill_master_any_plugin(
         )
         .map_err(|e| e.to_string())?;
 
-    let result = stmt.query_row(rusqlite::params![skill_name], |row| map_skill_master_row(row));
+    let result = stmt.query_row(rusqlite::params![skill_name], map_skill_master_row);
 
     match result {
         Ok(row) => Ok(Some(row)),
@@ -381,7 +381,7 @@ pub fn get_skill_master_in_plugin(
         )
         .map_err(|e| e.to_string())?;
 
-    let result = stmt.query_row(rusqlite::params![skill_name, plugin_slug], |row| map_skill_master_row(row));
+    let result = stmt.query_row(rusqlite::params![skill_name, plugin_slug], map_skill_master_row);
 
     match result {
         Ok(row) => Ok(Some(row)),

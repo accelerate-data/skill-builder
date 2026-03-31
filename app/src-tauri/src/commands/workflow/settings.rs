@@ -12,7 +12,6 @@ pub(crate) struct WorkflowSettings {
     pub extended_thinking: bool,
     pub interleaved_thinking_beta: bool,
     pub sdk_effort: Option<String>,
-    pub fallback_model: Option<String>,
     pub purpose: String,
     pub tags: Vec<String>,
     pub author_login: Option<String>,
@@ -54,7 +53,6 @@ pub(crate) fn read_workflow_settings(
     let extended_thinking = settings.extended_thinking;
     let interleaved_thinking_beta = settings.interleaved_thinking_beta;
     let sdk_effort = settings.sdk_effort.clone();
-    let fallback_model = Some(preferred_model.clone());
     let max_dimensions = settings.max_dimensions;
     let industry = settings.industry;
     let function_role = settings.function_role;
@@ -120,7 +118,6 @@ pub(crate) fn read_workflow_settings(
         extended_thinking,
         interleaved_thinking_beta,
         sdk_effort,
-        fallback_model,
         purpose,
         tags,
         author_login,
