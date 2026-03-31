@@ -780,11 +780,11 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
           <div className="flex flex-col gap-2">
             {/* Header row */}
             <div className="grid grid-cols-[auto_1fr_2fr_auto_auto] items-center gap-4 px-3 pb-1">
-              <span className="sr-only">Select</span>
+              <span className="size-4 shrink-0" />
               <span className="text-xs font-medium text-muted-foreground">Name</span>
               <span className="text-xs font-medium text-muted-foreground">Prompt</span>
-              <span className="text-xs font-medium text-muted-foreground">Assertions</span>
-              <span className="sr-only">Actions</span>
+              <span className="rounded-full px-2 py-0.5 text-xs font-medium invisible">0 assertions</span>
+              <div className="flex items-center gap-1 invisible"><span className="size-7" /><span className="size-7" /></div>
             </div>
             <Separator />
             {evals.map((tc) => (
