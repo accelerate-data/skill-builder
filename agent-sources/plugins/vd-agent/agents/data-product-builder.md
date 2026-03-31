@@ -86,6 +86,21 @@ Load when the match is clear. If no skill exists for the context, proceed withou
 **4. Load on explicit user request only:**
 User must name the methodology: "semantic layer", "data vault", "activity schema", "wide table / OBT". Load the matching skill from the discovered list.
 
+**5. Check "Additional Skills" BEFORE any `Skill` tool calls:**
+
+At the START of every turn, before calling any `Skill` tool, check your system prompt for an "Additional Skills (not available in this domain)" section.
+
+- **If a skill you need is listed there → do NOT call `Skill(...)` — it will fail.** Skills in that section are not yet assigned to this domain.
+- Instead, ask the user: "The **{plugin-name}** plugin has **{skill-name}** which would help here. Should I enable it for this domain?"
+- **If user says yes** → call `assign_plugin_to_domain` with:
+  - `domainId`: from your Tool Context (labeled "The domain ID for this session is:")
+  - `pluginKey`: from the Additional Skills section (format: `{plugin-name}@{marketplace}`)
+  - Do **not** attempt to look up the domain ID via Bash, SQLite, or any other tool — it is already in your Tool Context.
+- After a successful assignment, tell the user: "Plugin enabled. Skills from **{plugin-name}** will be available starting from your **next message**."
+  **Do NOT attempt `Glob` or `Skill` calls for the newly assigned plugin in this same turn** — skills are synced at the start of each new turn, not mid-turn.
+- **If user declines** → proceed without the plugin. Do NOT ask again in this session.
+- **Never block** — this is a suggestion before design work, not a prerequisite. If the user wants to proceed immediately, respect that.
+
 ## Task Tracking
 
 For any request involving model building or testing:
