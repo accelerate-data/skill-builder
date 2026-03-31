@@ -133,30 +133,10 @@ pub fn commit_all(path: &Path, message: &str) -> Result<Option<String>, String> 
     Ok(Some(oid.to_string()))
 }
 
-// --- Tag name helpers ---
-
-/// Compute the version tag prefix for a skill, mirroring the on-disk path layout.
-///   default plugin ("skills")  → "skills/{name}/v"
-///   other plugins              → "{plugin_slug}/skills/{name}/v"
-fn skill_tag_prefix(plugin_slug: &str, skill_name: &str) -> String {
-    if plugin_slug == crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        format!("skills/{}/v", skill_name)
-    } else {
-        format!("{}/skills/{}/v", plugin_slug, skill_name)
-    }
-}
-
-/// Glob pattern that matches all version tags for a skill in a given plugin.
-fn skill_tag_glob(plugin_slug: &str, skill_name: &str) -> String {
-    if plugin_slug == crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        format!("skills/{}/*", skill_name)
-    } else {
-        format!("{}/skills/{}/*", plugin_slug, skill_name)
-    }
-}
+// --- Tag name helpers (templates from plugin-paths.json via skill_paths) ---
 
 pub fn skill_version_tag_name(plugin_slug: &str, skill_name: &str, version: &str) -> String {
-    format!("{}{}", skill_tag_prefix(plugin_slug, skill_name), version)
+    format!("{}{}", crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name), version)
 }
 
 pub fn skill_version_tag_exists(
@@ -176,7 +156,7 @@ pub fn skill_version_tag_exists(
 pub fn skill_has_any_tag(path: &Path, plugin_slug: &str, skill_name: &str) -> Result<bool, String> {
     let repo = ensure_repo(path)?;
     let tags = repo
-        .tag_names(Some(&skill_tag_glob(plugin_slug, skill_name)))
+        .tag_names(Some(&crate::skill_paths::skill_tag_glob(plugin_slug, skill_name)))
         .map_err(|e| format!("Failed to list tags: {}", e))?;
     Ok(tags.iter().flatten().next().is_some())
 }
@@ -229,7 +209,7 @@ pub fn migrate_skill_tags(
     let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
     let (old_glob, old_prefix) = match old_plugin_slug {
-        Some(old) => (skill_tag_glob(old, skill_name), skill_tag_prefix(old, skill_name)),
+        Some(old) => (crate::skill_paths::skill_tag_glob(old, skill_name), crate::skill_paths::skill_tag_prefix(old, skill_name)),
         None => (
             format!("{}/*", skill_name),      // legacy: {name}/*
             format!("{}/v", skill_name),       // legacy prefix: {name}/v
@@ -271,6 +251,58 @@ pub fn migrate_skill_tags(
 
     if count > 0 {
         log::info!("[git] migrate_skill_tags: '{}' → plugin='{}': {} tags migrated", skill_name, new_plugin_slug, count);
+    }
+    Ok(count)
+}
+
+/// Migrate tags from old marketplace format `{slug}/skills/{name}/vX.Y.Z`
+/// to the current format `{slug}/{name}/vX.Y.Z`.
+pub fn migrate_marketplace_skill_tags(
+    repo_path: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<u32, String> {
+    if !repo_path.join(".git").exists() {
+        return Ok(0);
+    }
+    let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+
+    let old_glob = format!("{}/skills/{}/*", plugin_slug, skill_name);
+    let old_prefix = format!("{}/skills/{}/v", plugin_slug, skill_name);
+
+    let tag_names: Vec<String> = repo
+        .tag_names(Some(&old_glob))
+        .map_err(|e| format!("Failed to list tags: {}", e))?
+        .iter()
+        .flatten()
+        .map(|s| s.to_string())
+        .collect();
+
+    let mut count = 0u32;
+    for tag_name in &tag_names {
+        let version = match tag_name.strip_prefix(&old_prefix) {
+            Some(v) if v.matches('.').count() == 2 => v.to_string(),
+            _ => continue,
+        };
+        let obj = match repo.revparse_single(&format!("refs/tags/{}", tag_name)) {
+            Ok(o) => o,
+            Err(_) => continue,
+        };
+        let commit_obj = match obj.peel(git2::ObjectType::Commit) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let new_tag = skill_version_tag_name(plugin_slug, skill_name, &version);
+        let _ = repo.tag_lightweight(&new_tag, &commit_obj, false);
+        if let Ok(mut reference) = repo.find_reference(&format!("refs/tags/{}", tag_name)) {
+            let _ = reference.delete();
+        }
+        log::debug!("[git] migrated marketplace tag '{}' → '{}'", tag_name, new_tag);
+        count += 1;
+    }
+
+    if count > 0 {
+        log::info!("[git] migrate_marketplace_skill_tags: '{}' plugin='{}': {} tags migrated", skill_name, plugin_slug, count);
     }
     Ok(count)
 }
@@ -324,8 +356,8 @@ pub fn get_history(
     let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
     // Build tag→commit lookup for this skill's version tags.
-    let tag_prefix = skill_tag_prefix(plugin_slug, skill_name);
-    let tag_glob = skill_tag_glob(plugin_slug, skill_name);
+    let tag_prefix = crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name);
+    let tag_glob = crate::skill_paths::skill_tag_glob(plugin_slug, skill_name);
     let mut tag_map = std::collections::HashMap::new();
     if let Ok(tags) = repo.tag_names(Some(&tag_glob)) {
         for tag_name in tags.iter().flatten() {
@@ -349,14 +381,9 @@ pub fn get_history(
         .map_err(|e| format!("Failed to push HEAD: {}", e))?;
     revwalk.set_sorting(git2::Sort::TIME).ok();
 
-    // Compute the repo-relative path prefix:
-    //   default plugin ("skills")  → "skills/{skill_name}/"
-    //   other plugins              → "{plugin_slug}/skills/{skill_name}/"
-    let prefix = if plugin_slug == crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        format!("skills/{}/", skill_name)
-    } else {
-        format!("{}/skills/{}/", plugin_slug, skill_name)
-    };
+    // Repo-relative path prefix — derived from the tag prefix (strip trailing "v")
+    let tag_prefix = crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name);
+    let prefix = tag_prefix.trim_end_matches('v').to_string();
 
     let mut commits = Vec::new();
 
@@ -414,14 +441,14 @@ pub fn restore_version(repo_path: &Path, sha: &str, skill_name: &str, plugin_slu
     let write_dir = crate::skill_paths::nested_skill_dir(repo_path, plugin_slug, skill_name);
 
     // Candidate read prefixes from the historical tree, tried in priority order:
-    // 1. Non-default plugin layout  ({plugin}/skills/{name}/)  — skip if default plugin
-    // 2. Legacy nested layout       ({plugin}/{name}/)          — skip if default plugin
+    // 1. Plugin layout              ({plugin}/{name}/)          — skip if default plugin
+    // 2. Old marketplace layout     ({plugin}/skills/{name}/)   — skip if default plugin (historical)
     // 3. Default plugin layout      (skills/{name}/)
     // 4. Legacy flat layout         ({name}/)
     let mut read_prefixes: Vec<String> = Vec::new();
     if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        read_prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
         read_prefixes.push(format!("{}/{}/", plugin_slug, skill_name));
+        read_prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
     }
     read_prefixes.push(format!("skills/{}/", skill_name));
     read_prefixes.push(format!("{}/", skill_name));
@@ -512,8 +539,8 @@ pub fn latest_skill_semver(path: &Path, plugin_slug: &str, skill_name: &str) -> 
     );
     let repo = Repository::open(path)
         .map_err(|e| format!("Failed to open repo at {}: {}", path.display(), e))?;
-    let prefix = skill_tag_prefix(plugin_slug, skill_name);
-    let glob = skill_tag_glob(plugin_slug, skill_name);
+    let prefix = crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name);
+    let glob = crate::skill_paths::skill_tag_glob(plugin_slug, skill_name);
     let mut best: (u32, u32, u32) = (0, 0, 0);
 
     repo.tag_names(Some(&glob))
@@ -543,8 +570,8 @@ pub fn latest_skill_semver(path: &Path, plugin_slug: &str, skill_name: &str) -> 
 /// Returns `None` if fewer than 2 valid tags exist.
 pub fn prior_skill_tag(path: &Path, plugin_slug: &str, skill_name: &str) -> Option<String> {
     let repo = Repository::open(path).ok()?;
-    let prefix = skill_tag_prefix(plugin_slug, skill_name);
-    let glob = skill_tag_glob(plugin_slug, skill_name);
+    let prefix = crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name);
+    let glob = crate::skill_paths::skill_tag_glob(plugin_slug, skill_name);
     let mut versions: Vec<(u32, u32, u32, String)> = Vec::new();
 
     if let Ok(tags) = repo.tag_names(Some(&glob)) {

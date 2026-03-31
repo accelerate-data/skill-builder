@@ -51,7 +51,7 @@ pub fn detect_furthest_step_with_options(
 
     // Detectable steps: those that write unique output files.
     // Steps 0, 2 write context files to workspace_path/{plugin_slug}/skill_name/context/.
-    // Step 3 writes SKILL.md to skills_path/{plugin_slug}/skills/skill_name/.
+    // Step 3 writes SKILL.md to skills_path/{plugin_slug}/skill_name/.
     // Step 1 edits clarifications.json in-place (no unique artifact) — non-detectable.
     for step_id in [0u32, 2, 3] {
         let files = get_step_output_files(step_id);

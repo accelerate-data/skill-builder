@@ -5,6 +5,10 @@ import type { EvalQuery, OptimizationResult } from "@/lib/description-optimizati
 // Re-export invoke for flexible Tauri command invocation
 export { invoke };
 
+/** Write a log message to the Rust app.log file from the frontend. */
+export const logFrontend = (level: "info" | "warn" | "error" | "debug", message: string) =>
+  invoke<void>("log_frontend", { level, message }).catch(() => {});
+
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
 export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry, Document } from "@/lib/types";
 

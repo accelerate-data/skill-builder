@@ -189,7 +189,7 @@ fn test_marketplace_plugin_deleted_when_skill_md_missing() {
     let plugin_slug = "test-marketplace";
     crate::db::ensure_plugin(&conn, plugin_slug, "Test Marketplace", "marketplace", None, None, false).unwrap();
     crate::db::upsert_skill_in_plugin(&conn, "some-skill", "marketplace", "domain", plugin_slug).unwrap();
-    let plugin_skills = skills_tmp.path().join(plugin_slug).join("skills").join("some-skill");
+    let plugin_skills = skills_tmp.path().join(plugin_slug).join("some-skill");
     std::fs::create_dir_all(&plugin_skills).unwrap();
     // Deliberately NOT creating SKILL.md — simulates tampering
 

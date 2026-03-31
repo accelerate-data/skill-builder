@@ -35,7 +35,7 @@ pub(super) fn resolve_skill_plugin_slug(db: &Db, skill_name: &str) -> Result<Str
 
 /// Resolve the directory that contains SKILL.md for the given skill.
 /// Uses the correct plugin slug (cross-plugin lookup) so imported skills
-/// resolve to `skills_path/{plugin_slug}/skills/{skill_name}/`.
+/// resolve to `skills_path/{plugin_slug}/{skill_name}/`.
 pub(super) fn resolve_skill_output_dir(
     db: &Db,
     skill_name: &str,

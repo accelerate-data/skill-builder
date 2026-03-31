@@ -538,9 +538,10 @@ fn test_delete_skill_directory_traversal() {
     )
     .unwrap();
 
-    // Attempt to delete using ".." to escape the workspace
-    // This creates workspace/../outside-target which resolves to outside_dir
-    let result = delete_skill_inner(workspace_str, "../outside-target", DEFAULT_PLUGIN_SLUG, None, None);
+    // Attempt to delete using "../.." to escape the workspace
+    // With plugin-namespaced paths, workspace_skill_dir resolves to
+    // workspace/skills/../../outside-target which is dir/outside-target
+    let result = delete_skill_inner(workspace_str, "../../outside-target", DEFAULT_PLUGIN_SLUG, None, None);
     assert!(result.is_err(), "Directory traversal should be rejected");
 
     // The outside directory should still exist (not deleted)

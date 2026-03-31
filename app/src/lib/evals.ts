@@ -18,17 +18,24 @@ export const EMPTY_TEST_CASE: TestCase = {
   expectations: [""],
 };
 
-// --- Path helpers ---
+// --- Path helpers (templates from plugin-paths.json) ---
 
-/**
- * Compute the plugin-aware workspace skill directory, matching Rust's `workspace_skill_dir`.
- * - Default plugin ("skills"): `{workspace}/skills/{skillName}`
- * - Other plugins: `{workspace}/{pluginSlug}/skills/{skillName}`
- */
+import pluginPaths from "../../plugin-paths.json";
+
+function resolveTemplate(template: string, vars: Record<string, string>): string {
+  let result = template;
+  for (const [key, value] of Object.entries(vars)) {
+    result = result.split(`{${key}}`).join(value);
+  }
+  return result;
+}
+
 export function workspaceSkillDir(workspacePath: string, pluginSlug: string, skillName: string): string {
-  return pluginSlug === "skills"
-    ? `${workspacePath}/skills/${skillName}`
-    : `${workspacePath}/${pluginSlug}/skills/${skillName}`;
+  return resolveTemplate(pluginPaths.workspace_skill_dir, {
+    workspace: workspacePath,
+    plugin_slug: pluginSlug,
+    skill_name: skillName,
+  });
 }
 
 // --- Calculations ---

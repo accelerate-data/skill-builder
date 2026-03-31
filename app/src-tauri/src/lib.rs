@@ -297,6 +297,7 @@ pub fn run() {
             commands::api_validation::list_models,
             commands::lifecycle::set_log_level,
             commands::lifecycle::get_log_file_path,
+            commands::lifecycle::log_frontend,
             commands::settings::get_default_skills_path,
             commands::skill::list_skills,
             commands::skill::create_skill,

@@ -1138,10 +1138,16 @@ pub fn build_eval_prompt(
     let skill_path_fwd = skill_path.replace('\\', "/");
     let iter_dir_fwd = iter_dir.replace('\\', "/");
 
+    // Resolve skill_workspace from plugin-paths.json template
+    let skill_workspace = crate::skill_paths::workspace_skill_dir(
+        std::path::Path::new(&workspace_fwd), &plugin_slug, &skill_name,
+    ).to_string_lossy().replace('\\', "/");
+
     let system_prompt = EVAL_PROMPT_TEMPLATE
         .replace("{{skill_name}}", &skill_name)
         .replace("{{plugin_slug}}", &plugin_slug)
         .replace("{{workspace_path}}", &workspace_fwd)
+        .replace("{{skill_workspace}}", &skill_workspace)
         .replace("{{skill_path}}", &skill_path_fwd)
         .replace("{{eval_ids}}", &eval_ids_json)
         .replace("{{run_count}}", &run_count.to_string())

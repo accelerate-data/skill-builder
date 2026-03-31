@@ -215,7 +215,7 @@ pub fn reconcile_on_startup(
             if plugin.is_default || plugin.source_type != "marketplace" {
                 continue;
             }
-            let plugin_skills_dir = skills_dir.join(&plugin.slug).join("skills");
+            let plugin_skills_dir = skills_dir.join(&plugin.slug);
             if !plugin_skills_dir.is_dir() {
                 continue;
             }

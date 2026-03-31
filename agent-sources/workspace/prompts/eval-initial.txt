@@ -4,6 +4,7 @@ INPUTS:
 - skill_name: {{skill_name}}
 - plugin_slug: {{plugin_slug}}
 - workspace_path: {{workspace_path}}
+- skill_workspace: {{skill_workspace}}
 - skill_path: {{skill_path}}
 - eval_ids: {{eval_ids}}
 - run_count: {{run_count}}
@@ -19,9 +20,7 @@ RULES:
 
 PHASE 0 — SETUP:
 
-Step 0: Derive per-skill workspace path.
-- If plugin_slug is "skills" (default): skill_workspace = {workspace_path}/skills/{skill_name}
-- Otherwise: skill_workspace = {workspace_path}/{plugin_slug}/skills/{skill_name}
+Step 0: skill_workspace is provided as an input — use it directly. Do NOT derive it.
 
 Step 1: Read evals.
 1. Read {skill_workspace}/evals/evals.json

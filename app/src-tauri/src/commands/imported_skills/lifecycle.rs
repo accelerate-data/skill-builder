@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::skill_paths::{ensure_nested_skill_dir, resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{ensure_nested_skill_dir, resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
 use std::fs;
 use std::path::Path;
 
@@ -167,7 +167,7 @@ fn move_skill_directories(
     let mut skills_target = None;
 
     if let Some(workspace_path) = workspace_path {
-        let source = resolve_skill_dir(Path::new(workspace_path), from_plugin_slug, skill_name);
+        let source = resolve_workspace_skill_dir(Path::new(workspace_path), from_plugin_slug, skill_name);
         if source.exists() {
             let target = ensure_nested_skill_dir(Path::new(workspace_path), to_plugin_slug, skill_name)?;
             if let Some(parent) = target.parent() {

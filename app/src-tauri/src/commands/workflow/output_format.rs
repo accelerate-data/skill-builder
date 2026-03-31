@@ -25,6 +25,13 @@ pub(crate) fn materialize_workflow_step_output_value(
         )
     })?;
 
+    log::info!(
+        "[materialize_step] step_id={} skill_root={} output_keys={:?}",
+        step_id,
+        skill_root.display(),
+        structured_output.as_object().map(|o| o.keys().collect::<Vec<_>>())
+    );
+
     match step_id {
         0 => {
             let parsed =
@@ -37,6 +44,11 @@ pub(crate) fn materialize_workflow_step_output_value(
                     parsed.status
                 ));
             }
+
+            log::info!(
+                "[materialize_step] step=0 research_output keys={:?}",
+                parsed.research_output.as_object().map(|o| o.keys().collect::<Vec<_>>())
+            );
 
             validate_clarifications_json(&parsed.research_output)
                 .map_err(|e| format!("Invalid research_output: {}", e))?;
@@ -65,6 +77,11 @@ pub(crate) fn materialize_workflow_step_output_value(
                     parsed.status
                 ));
             }
+
+            log::info!(
+                "[materialize_step] step=1 clarifications_json keys={:?}",
+                parsed.clarifications_json.as_object().map(|o| o.keys().collect::<Vec<_>>())
+            );
 
             validate_clarifications_json(&parsed.clarifications_json)
                 .map_err(|e| format!("Invalid clarifications_json: {}", e))?;

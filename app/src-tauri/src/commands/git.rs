@@ -140,11 +140,7 @@ mod tests {
         content: &str,
     ) -> String {
         crate::git::ensure_repo(dir).unwrap();
-        let skill_dir = if plugin_slug == crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-            dir.join(plugin_slug).join(skill_name)
-        } else {
-            dir.join(plugin_slug).join("skills").join(skill_name)
-        };
+        let skill_dir = dir.join(plugin_slug).join(skill_name);
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
         crate::git::commit_all(dir, &format!("{}: initial", skill_name))
@@ -200,7 +196,7 @@ mod tests {
 
         // Two skills with the same name in different plugins.
         init_skill_repo_plugin(repo_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "shared-skill", "# default");
-        let other_dir = repo_path.join("other-plugin").join("skills").join("shared-skill");
+        let other_dir = repo_path.join("other-plugin").join("shared-skill");
         std::fs::create_dir_all(&other_dir).unwrap();
         std::fs::write(other_dir.join("SKILL.md"), "# other").unwrap();
         crate::git::commit_all(repo_path, "shared-skill: other-plugin initial").unwrap();

@@ -143,7 +143,7 @@ fn import_skill_from_file_inner(
         ));
     }
 
-    // Extract to plugin-nested path: {skills_path}/{default_slug}/skills/{name}/
+    // Extract to plugin-nested path: {skills_path}/{default_slug}/{name}/
     let dest_dir = crate::skill_paths::nested_skill_dir(Path::new(skills_path), default_slug, name);
     if let Some(parent) = dest_dir.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;

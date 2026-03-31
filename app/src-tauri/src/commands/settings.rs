@@ -94,8 +94,10 @@ pub(crate) fn run_settings_startup_migrations(conn: &rusqlite::Connection) -> Re
     Ok(())
 }
 
-/// Migrate all legacy `{skill_name}/vX.Y.Z` tags to the plugin-scoped format
-/// (`skills/{name}/vX.Y.Z` or `{plugin_slug}/skills/{name}/vX.Y.Z`).
+/// Migrate skill tags to the current `{plugin_slug}/{name}/vX.Y.Z` format.
+/// Handles two legacy formats:
+/// - Bare: `{name}/vX.Y.Z` (pre-plugin era)
+/// - Old marketplace: `{slug}/skills/{name}/vX.Y.Z`
 /// Guarded by the `legacy_tags_migrated` flag — runs once, then never again.
 fn migrate_legacy_skill_tags(skills_root: &Path) {
     if !skills_root.join(".git").exists() {
@@ -110,14 +112,26 @@ fn migrate_legacy_skill_tags(skills_root: &Path) {
     };
     let mut total = 0u32;
     for skill in &skills {
+        // Migrate bare {name}/vX.Y.Z tags
         let migrated = crate::git::migrate_skill_tags(
             skills_root,
             &skill.plugin_slug,
             &skill.skill_name,
-            None, // None = migrate legacy {name}/vX.Y.Z format
+            None,
         )
         .unwrap_or(0);
         total += migrated;
+
+        // Migrate old marketplace {slug}/skills/{name}/vX.Y.Z tags
+        if !skill.is_default_plugin {
+            let migrated = crate::git::migrate_marketplace_skill_tags(
+                skills_root,
+                &skill.plugin_slug,
+                &skill.skill_name,
+            )
+            .unwrap_or(0);
+            total += migrated;
+        }
     }
     if total > 0 {
         log::info!(

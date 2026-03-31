@@ -1,8 +1,75 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 pub const DEFAULT_PLUGIN_SLUG: &str = "skills";
 pub const DEFAULT_PLUGIN_DISPLAY_NAME: &str = "Skills";
+
+// --- Centralised path templates (from app/plugin-paths.json) ---
+
+#[derive(Debug, serde::Deserialize)]
+pub struct PluginPaths {
+    pub default_plugin_slug: String,
+    pub skill_dir: String,
+    pub workspace_skill_dir: String,
+    pub tag_prefix: String,
+    pub tag_glob: String,
+}
+
+static PLUGIN_PATHS: OnceLock<PluginPaths> = OnceLock::new();
+
+pub fn paths() -> &'static PluginPaths {
+    PLUGIN_PATHS.get_or_init(|| {
+        let json = include_str!("../../plugin-paths.json");
+        serde_json::from_str(json).expect("plugin-paths.json is invalid")
+    })
+}
+
+/// Replace `{key}` placeholders in a template string.
+pub fn resolve_template(template: &str, vars: &[(&str, &str)]) -> String {
+    let mut result = template.to_string();
+    for (key, value) in vars {
+        result = result.replace(&format!("{{{}}}", key), value);
+    }
+    result
+}
+
+/// Resolve a path template, returning a proper OS-native PathBuf.
+/// The root variable (first path segment) may already contain OS separators,
+/// so we only join the template segments that follow the root.
+fn resolve_path_template(template: &str, vars: &[(&str, &str)]) -> PathBuf {
+    // Find the first variable in the template — it's the root/base path.
+    // Extract just the non-root segments from the template and join them onto the root.
+    let resolved = resolve_template(template, vars);
+    // The root variable value may contain native separators; the rest uses `/` from the template.
+    // Strategy: find the root value, use it as PathBuf, then join remaining segments.
+    if let Some((root_key, root_val)) = vars.first() {
+        let placeholder = format!("{{{}}}", root_key);
+        if let Some(rest) = template.strip_prefix(&placeholder) {
+            // rest is like "/{plugin_slug}/{skill_name}"
+            let rest_resolved = resolve_template(rest, vars);
+            let mut path = PathBuf::from(*root_val);
+            for segment in rest_resolved.split('/') {
+                if !segment.is_empty() {
+                    path.push(segment);
+                }
+            }
+            return path;
+        }
+    }
+    // Fallback: just use the resolved string as-is
+    PathBuf::from(resolved)
+}
+
+pub fn skill_tag_prefix(plugin_slug: &str, skill_name: &str) -> String {
+    resolve_template(&paths().tag_prefix, &[("plugin_slug", plugin_slug), ("skill_name", skill_name)])
+}
+
+pub fn skill_tag_glob(plugin_slug: &str, skill_name: &str) -> String {
+    resolve_template(&paths().tag_glob, &[("plugin_slug", plugin_slug), ("skill_name", skill_name)])
+}
+
+// --- Skill location types ---
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillLocation {
@@ -17,36 +84,25 @@ pub fn skill_library_key(plugin_slug: &str, skill_name: &str) -> String {
     format!("skill-builder:{plugin_slug}:{skill_name}")
 }
 
-/// Workspace scratch directory for a skill.
-/// Always plugin-namespaced: `{workspace}/{plugin_slug}/{skill_name}/`
-/// This gives each (plugin, skill) pair a unique workspace directory,
-/// preventing collisions when two plugins contain skills with the same name.
+/// Workspace scratch directory for a skill (from `plugin-paths.json` → `workspace_skill_dir`).
 pub fn workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    workspace.join(plugin_slug).join(skill_name)
+    resolve_path_template(
+        &paths().workspace_skill_dir,
+        &[("workspace", &workspace.to_string_lossy()), ("plugin_slug", plugin_slug), ("skill_name", skill_name)],
+    )
 }
 
 /// Resolve the workspace scratch directory for a skill.
-/// Tries the plugin-organised layout first; falls back to the legacy flat
-/// layout (`{workspace}/{skill_name}`) so that existing flat dirs are still
-/// found before the startup migration has moved them.
 pub fn resolve_workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    let organised = workspace_skill_dir(workspace, plugin_slug, skill_name);
-    if organised.exists() {
-        return organised;
-    }
-    // Legacy flat fallback — used during startup migration window
-    workspace.join(skill_name)
+    workspace_skill_dir(workspace, plugin_slug, skill_name)
 }
 
-/// Skill directory.
-/// - Default plugin: `root/skills/{name}` (skills directly inside the plugin folder)
-/// - Other plugins: `root/{slug}/skills/{name}`
+/// Skill directory (from `plugin-paths.json` → `skill_dir`).
 pub fn nested_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    if plugin_slug == DEFAULT_PLUGIN_SLUG {
-        root.join(plugin_slug).join(skill_name)
-    } else {
-        root.join(plugin_slug).join("skills").join(skill_name)
-    }
+    resolve_path_template(
+        &paths().skill_dir,
+        &[("root", &root.to_string_lossy()), ("plugin_slug", plugin_slug), ("skill_name", skill_name)],
+    )
 }
 
 /// Legacy flat skill directory: `root/{name}` (pre-plugin era)
@@ -54,20 +110,12 @@ pub fn legacy_skill_dir(root: &Path, skill_name: &str) -> PathBuf {
     root.join(skill_name)
 }
 
-/// Pre-marketplace nested layout: `root/{slug}/{name}` (before plugins/ and skills/ nesting)
-pub fn legacy_nested_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    root.join(plugin_slug).join(skill_name)
-}
-
-/// Resolve the skill directory, trying marketplace layout first, then old nested, then legacy flat.
+/// Resolve the skill directory. Returns canonical `root/{slug}/{name}` if it exists,
+/// otherwise falls back to legacy flat `root/{name}/`.
 pub fn resolve_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    let marketplace = nested_skill_dir(root, plugin_slug, skill_name);
-    if marketplace.exists() {
-        return marketplace;
-    }
-    let old_nested = legacy_nested_skill_dir(root, plugin_slug, skill_name);
-    if old_nested.exists() {
-        return old_nested;
+    let canonical = nested_skill_dir(root, plugin_slug, skill_name);
+    if canonical.exists() {
+        return canonical;
     }
     legacy_skill_dir(root, skill_name)
 }
@@ -83,8 +131,8 @@ pub fn ensure_nested_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str)
 
 /// Enumerate all skill locations under the root directory.
 ///
-/// Primary scan: `root/{slug}/skills/*/` (plugin layout).
-/// Fallback: `root/{name}/` (legacy flat, no skills/ nesting).
+/// Primary scan: `root/{slug}/{name}/` (plugin layout).
+/// Fallback: `root/{name}/` (legacy flat).
 /// Deduplicates by (plugin_slug, skill_name).
 pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, String> {
     if !root.exists() {
@@ -94,7 +142,7 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
     let mut discovered = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
-    // Scan root/{slug}/skills/*/ for plugin layout, root/{name}/ for legacy flat
+    // Scan root/{slug}/*/ for skills, root/{name}/ for legacy flat
     for entry in fs::read_dir(root).map_err(|e| format!("Failed to read '{}': {}", root.display(), e))? {
         let entry = entry.map_err(|e| format!("Failed to read entry in '{}': {}", root.display(), e))?;
         let path = entry.path();
@@ -108,19 +156,10 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
 
         let is_default = name == DEFAULT_PLUGIN_SLUG;
 
-        // Default plugin: skills are directly in root/skills/*/
-        // Other plugins: skills are in root/{slug}/skills/*/
-        let scan_dir = if is_default {
-            path.clone()
-        } else {
-            path.join("skills")
-        };
-
-        if scan_dir.is_dir() && (is_default || path.join("skills").is_dir() || path.join(".claude-plugin").is_dir()) {
-            for skill_entry in fs::read_dir(&scan_dir)
-                .map_err(|e| format!("Failed to read '{}': {}", scan_dir.display(), e))?
-            {
-                let skill_entry = skill_entry.map_err(|e| format!("Failed to read entry in '{}': {}", scan_dir.display(), e))?;
+        // Scan root/{slug}/*/ — each child directory that is a skill dir
+        let mut found_child_skill = false;
+        if let Ok(children) = fs::read_dir(&path) {
+            for skill_entry in children.flatten() {
                 let skill_path = skill_entry.path();
                 if !skill_path.is_dir() {
                     continue;
@@ -140,7 +179,10 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
                         dir: skill_path,
                     });
                 }
+                found_child_skill = true;
             }
+        }
+        if found_child_skill {
             continue;
         }
 
@@ -168,8 +210,8 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
     Ok(discovered)
 }
 
-/// Enumerate skills using only the pre-marketplace layout (for migration).
-/// Scans `root/{name}/` (legacy flat) and `root/{slug}/{name}/` (old nested).
+/// Enumerate skills using the flat and nested layouts (for migration).
+/// Scans `root/{name}/` (legacy flat) and `root/{slug}/{name}/` (nested).
 pub fn enumerate_skill_locations_legacy(root: &Path) -> Result<Vec<SkillLocation>, String> {
     if !root.exists() {
         return Ok(vec![]);
@@ -256,20 +298,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn nested_skill_dir_uses_marketplace_layout() {
-        let root = Path::new("/skills");
+    fn nested_skill_dir_uses_slug_name_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
         assert_eq!(
             nested_skill_dir(root, "analytics", "weekly-report"),
-            PathBuf::from("/skills/analytics/skills/weekly-report")
+            root.join("analytics").join("weekly-report")
         );
     }
 
     #[test]
-    fn enumerate_discovers_marketplace_layout() {
+    fn enumerate_discovers_plugin_layout() {
         let tmp = tempfile::tempdir().unwrap();
-        let skill_dir = tmp.path().join("analytics").join("skills").join("weekly-report");
+        let skill_dir = tmp.path().join("analytics").join("weekly-report");
         fs::create_dir_all(&skill_dir).unwrap();
-        fs::write(skill_dir.join("SKILL.md"), "# marketplace").unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# plugin").unwrap();
 
         let locations = enumerate_skill_locations(tmp.path()).unwrap();
         assert_eq!(locations.len(), 1);
@@ -287,8 +330,8 @@ mod tests {
         fs::create_dir_all(&legacy).unwrap();
         fs::write(legacy.join("SKILL.md"), "# legacy").unwrap();
 
-        // Plugin layout: root/{slug}/skills/{name}/SKILL.md
-        let plugin_skill = tmp.path().join("analytics").join("skills").join("weekly-report");
+        // Plugin layout: root/{slug}/{name}/SKILL.md
+        let plugin_skill = tmp.path().join("analytics").join("weekly-report");
         fs::create_dir_all(&plugin_skill).unwrap();
         fs::write(plugin_skill.join("SKILL.md"), "# plugin").unwrap();
 
@@ -301,28 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn enumerate_marketplace_wins_over_legacy() {
-        let tmp = tempfile::tempdir().unwrap();
-
-        // Marketplace layout
-        let marketplace = tmp.path().join("analytics").join("skills").join("report");
-        fs::create_dir_all(&marketplace).unwrap();
-        fs::write(marketplace.join("SKILL.md"), "# marketplace").unwrap();
-
-        // Old nested with same slug/name
-        let old = tmp.path().join("analytics").join("report");
-        fs::create_dir_all(&old).unwrap();
-        fs::write(old.join("SKILL.md"), "# old").unwrap();
-
-        let locations = enumerate_skill_locations(tmp.path()).unwrap();
-        assert_eq!(locations.len(), 1);
-        assert_eq!(locations[0].plugin_slug, "analytics");
-        assert_eq!(locations[0].skill_name, "report");
-        assert_eq!(locations[0].dir, marketplace);
-    }
-
-    #[test]
-    fn resolve_skill_dir_prefers_marketplace_then_old_nested_then_legacy() {
+    fn resolve_skill_dir_prefers_canonical_then_legacy_flat() {
         let tmp = tempfile::tempdir().unwrap();
 
         // Only legacy flat exists
@@ -331,45 +353,33 @@ mod tests {
         let resolved = resolve_skill_dir(tmp.path(), "analytics", "same-skill");
         assert_eq!(resolved, legacy);
 
-        // Old nested also exists — wins over legacy
-        let old_nested = tmp.path().join("analytics").join("same-skill");
-        fs::create_dir_all(&old_nested).unwrap();
+        // Canonical path also exists — wins over legacy
+        let canonical = tmp.path().join("analytics").join("same-skill");
+        fs::create_dir_all(&canonical).unwrap();
         let resolved = resolve_skill_dir(tmp.path(), "analytics", "same-skill");
-        assert_eq!(resolved, old_nested);
-
-        // Marketplace also exists — wins over all
-        let marketplace = tmp.path().join("analytics").join("skills").join("same-skill");
-        fs::create_dir_all(&marketplace).unwrap();
-        let resolved = resolve_skill_dir(tmp.path(), "analytics", "same-skill");
-        assert_eq!(resolved, marketplace);
+        assert_eq!(resolved, canonical);
     }
 
     #[test]
-    fn enumerate_legacy_only_scans_old_layout() {
+    fn enumerate_legacy_only_scans_flat_and_nested() {
         let tmp = tempfile::tempdir().unwrap();
 
-        // Marketplace layout — should be ignored by legacy enumeration
-        let marketplace = tmp.path().join("analytics").join("skills").join("report");
-        fs::create_dir_all(&marketplace).unwrap();
-        fs::write(marketplace.join("SKILL.md"), "# marketplace").unwrap();
-
-        // Old nested
-        let old = tmp.path().join("analytics").join("report");
-        fs::create_dir_all(&old).unwrap();
-        fs::write(old.join("SKILL.md"), "# old").unwrap();
+        // Nested layout
+        let nested = tmp.path().join("analytics").join("report");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("SKILL.md"), "# nested").unwrap();
 
         let locations = enumerate_skill_locations_legacy(tmp.path()).unwrap();
         assert_eq!(locations.len(), 1);
         assert_eq!(locations[0].plugin_slug, "analytics");
         assert_eq!(locations[0].skill_name, "report");
-        assert_eq!(locations[0].dir, old);
+        assert_eq!(locations[0].dir, nested);
     }
 
     #[test]
     fn enumerate_discovers_default_plugin_directly() {
         let tmp = tempfile::tempdir().unwrap();
-        // Default plugin: skills are directly at root/skills/my-skill/SKILL.md
-        // (no inner skills/ nesting for the default plugin)
+        // Default plugin: root/skills/my-skill/SKILL.md
         let skill_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(skill_dir.join("SKILL.md"), "# default plugin skill").unwrap();

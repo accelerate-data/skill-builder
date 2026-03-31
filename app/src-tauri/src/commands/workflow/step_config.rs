@@ -204,6 +204,10 @@ pub fn build_betas(
 pub(crate) fn validate_clarifications_json(
     clarifications: &serde_json::Value,
 ) -> Result<(), String> {
+    log::debug!(
+        "[validate_clarifications_json] input keys: {:?}",
+        clarifications.as_object().map(|o| o.keys().collect::<Vec<_>>())
+    );
     let root = clarifications
         .as_object()
         .ok_or_else(|| "clarifications_json must be a JSON object".to_string())?;

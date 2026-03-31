@@ -618,7 +618,7 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
 fn test_refine_prompt_includes_all_three_paths() {
     let ws = test_workspace_path();
     let skills = std::env::temp_dir().join("skills").to_string_lossy().to_string();
-    let (system_prompt, _user_prompt) = build_refine_prompt(
+    let system_prompt = build_refine_prompt(
         "my-skill",
         &ws,
         &skills,
@@ -629,26 +629,24 @@ fn test_refine_prompt_includes_all_three_paths() {
     let ws_fwd = ws.replace('\\', "/");
     let skills_fwd = skills.replace('\\', "/");
     assert!(system_prompt
-        .contains(&format!("workspace directory is: {}/my-skill", ws_fwd)));
-    assert!(system_prompt.contains(
-        &format!("skill directory is: {}/my-skill", skills_fwd)
-    ));
-    assert!(system_prompt.contains("context directory is:"));
+        .contains(&format!("The workspace directory is: {}/skills/my-skill", ws_fwd)));
+    assert!(system_prompt.contains("The skill directory is:"));
+    assert!(system_prompt.contains("The context directory is:"));
 }
 
 #[test]
 fn test_refine_prompt_includes_metadata() {
-    let (system_prompt, _user_prompt) = build_refine_prompt("my-skill", "/ws", "/skills", "Fix overview", None);
+    let system_prompt = build_refine_prompt("my-skill", "/ws", "/skills", "Fix overview", None);
     assert!(system_prompt.contains("The skill name is: my-skill"));
-    assert!(system_prompt.contains("workspace directory is:"));
-    assert!(system_prompt.contains("skill directory is:"));
+    assert!(system_prompt.contains("The workspace directory is:"));
+    assert!(system_prompt.contains("The skill directory is:"));
 }
 
 
 #[test]
 fn test_refine_prompt_file_targeting() {
     let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
-    let (system_prompt, _user_prompt) = build_refine_prompt(
+    let system_prompt = build_refine_prompt(
         "my-skill",
         "/ws",
         "/skills",
@@ -663,51 +661,47 @@ fn test_refine_prompt_file_targeting() {
 
 #[test]
 fn test_refine_prompt_no_file_constraint_when_empty() {
-    let (system_prompt, _user_prompt) = build_refine_prompt("s", "/ws", "/sk", "edit freely", None);
+    let system_prompt = build_refine_prompt("s", "/ws", "/sk", "edit freely", None);
     assert!(!system_prompt.contains("Only edit these files"));
 }
 
 #[test]
 fn test_refine_prompt_includes_user_message() {
-    let (_system_prompt, user_prompt) = build_refine_prompt(
+    let prompt = build_refine_prompt(
         "s",
         "/ws",
         "/sk",
         "Add SLA metrics to the overview",
         None,
     );
-    assert_eq!(user_prompt, "Add SLA metrics to the overview");
+    assert!(prompt.contains("Add SLA metrics to the overview"));
 }
 
 #[test]
 fn test_refine_prompt_includes_derived_paths() {
-    let (system_prompt, _user_prompt) = build_refine_prompt("s", "/ws", "/sk", "edit", None);
-    assert!(system_prompt.contains("context directory"));
-    assert!(system_prompt.contains("workspace directory"));
+    let system_prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None);
+    assert!(system_prompt.contains("The context directory is:"));
+    assert!(system_prompt.contains("The workspace directory is:"));
 }
 
 #[test]
 fn test_refine_prompt_no_inline_user_context() {
-    let (system_prompt, _user_prompt) = build_refine_prompt("s", "/ws", "/sk", "edit", None);
+    let system_prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None);
     assert!(!system_prompt.contains("**Industry**:"));
     assert!(!system_prompt.contains("**Target Audience**:"));
     assert!(!system_prompt.contains("**Function**:"));
 }
 
 #[test]
-fn test_refine_prompt_includes_eval_failure_feedback_routing() {
-    let (system_prompt, _user_prompt) = build_refine_prompt("s", "/ws", "/sk", "edit", None);
+fn test_refine_prompt_includes_routing() {
+    let system_prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None);
     assert!(
-        system_prompt.contains("EVAL FAILURE FEEDBACK"),
-        "prompt must contain EVAL FAILURE FEEDBACK routing"
-    );
-    assert!(
-        system_prompt.contains("AskUserQuestion"),
-        "prompt must instruct agent to call AskUserQuestion"
+        system_prompt.contains("ROUTING"),
+        "prompt must contain ROUTING section"
     );
     assert!(
         system_prompt.contains("skill-creator:rewrite-skill"),
-        "prompt must direct agent to rewrite-skill after selection"
+        "prompt must direct agent to rewrite-skill"
     );
 }
 
@@ -1032,8 +1026,8 @@ fn test_finalize_refine_run_cleans_up_snapshot_dir() {
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
     crate::git::commit_all(dir.path(), "initial").unwrap();
 
-    // Create a stale snapshot in the workspace
-    let snapshot_dir = workspace_dir.path().join("my-skill").join("skill-snapshot");
+    // Create a stale snapshot in the workspace (under default plugin slug)
+    let snapshot_dir = workspace_dir.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill").join("skill-snapshot");
     std::fs::create_dir_all(&snapshot_dir).unwrap();
     std::fs::write(snapshot_dir.join("SKILL.md"), "# Old version\n").unwrap();
     assert!(snapshot_dir.exists());

@@ -552,11 +552,11 @@ mod tests {
             tmp.path().join(crate::skill_paths::DEFAULT_PLUGIN_SLUG).join("my-skill"),
             "default plugin should not have skills/ intermediate directory"
         );
-        // Non-default plugin should have skills/ intermediate
+        // Non-default plugin uses {slug}/{name}/ layout
         let other_dir = crate::skill_paths::nested_skill_dir(tmp.path(), "analytics", "report");
         assert_eq!(
             other_dir,
-            tmp.path().join("analytics").join("skills").join("report")
+            tmp.path().join("analytics").join("report")
         );
     }
 }

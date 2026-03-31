@@ -103,7 +103,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
     pre_run_sha: Option<&str>,
 ) -> Result<RefineFinalizeResult, String> {
     let skill_root = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
-    let workspace_skill_root = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_skill_root = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     if !skill_root.exists() {
         return Err(format!(
             "Skill '{}' not found at {}",

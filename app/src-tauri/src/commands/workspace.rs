@@ -66,7 +66,7 @@ fn migrate_workspace_layout(workspace_path: &str) {
 /// - Legacy flat:  `{skills_path}/{skill}/context/`
 ///   → `{workspace}/{DEFAULT_PLUGIN_SLUG}/{skill}/context/`
 ///
-/// - Plugin layout: `{skills_path}/{plugin}/skills/{skill}/context/`
+/// - Plugin layout: `{skills_path}/{plugin}/{skill}/context/`
 ///   → `{workspace}/{plugin}/{skill}/context/`
 ///
 /// Idempotent: skips any target context dir that already has content.
@@ -99,11 +99,10 @@ fn migrate_context_from_skills_path(workspace_path: &str, skills_path: &str) {
             continue;
         }
 
-        let skills_subdir = dir_path.join("skills");
-        if skills_subdir.is_dir() {
-            // Plugin layout: scan {plugin}/skills/{skill}/context/
+        // Plugin layout: scan {plugin}/{skill}/context/
+        let mut found_child = false;
+        if let Ok(skill_entries) = fs::read_dir(&dir_path) {
             let plugin_slug = dir_name.as_ref();
-            let Ok(skill_entries) = fs::read_dir(&skills_subdir) else { continue };
             for skill_entry in skill_entries.flatten() {
                 let skill_name = skill_entry.file_name();
                 let skill_name_str = skill_name.to_string_lossy();
@@ -117,8 +116,10 @@ fn migrate_context_from_skills_path(workspace_path: &str, skills_path: &str) {
                     .join(skill_name_str.as_ref())
                     .join("context");
                 move_context_files(&legacy_context, &target_context);
+                found_child = true;
             }
-        } else {
+        }
+        if !found_child {
             // Legacy flat layout: {skill}/context/ — flat skills belonged to the default plugin
             let legacy_context = dir_path.join("context");
             if !legacy_context.is_dir() { continue; }
@@ -255,28 +256,14 @@ fn cleanup_stale_snapshots(workspace_path: &str) {
     }
 }
 
-/// Migrate the skills folder from old nested layout (`{slug}/{skill}/`) to
-/// the plugin layout (`{slug}/skills/{skill}/`).
+/// Migrate skills from legacy flat layout (`{name}/`) to
+/// the plugin layout (`{slug}/{name}/`).
 ///
-/// Idempotent: if any `{slug}/skills/` directory exists, skips the move phase and only
-/// regenerates manifests. Non-fatal: logs warnings on failure, never crashes.
+/// Idempotent: if skills are already in `{slug}/{name}/` layout, the move is a no-op.
+/// Non-fatal: logs warnings on failure, never crashes.
 fn migrate_to_marketplace_layout(skills_path: &str) {
     let root = Path::new(skills_path);
     if !root.exists() {
-        return;
-    }
-
-    // Guard: if any {slug}/skills/ directory exists at root level, migration is already done.
-    // Just ensure manifests are up-to-date.
-    let has_plugin_layout = fs::read_dir(root)
-        .map(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .any(|e| e.path().is_dir() && e.path().join("skills").is_dir())
-        })
-        .unwrap_or(false);
-    if has_plugin_layout {
-        // Plugin layout already exists — marketplace.json is git-backed source of truth, do not regenerate
         return;
     }
 
@@ -306,8 +293,8 @@ fn migrate_to_marketplace_layout(skills_path: &str) {
     // Collect old plugin directory paths for cleanup
     let mut old_plugin_dirs: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
 
-    // Move each skill to the new location using nested_skill_dir
-    // (default plugin: root/skills/{name}, others: root/{slug}/skills/{name})
+    // Move each skill to the plugin layout using nested_skill_dir
+    // (default plugin: root/skills/{name}, others: root/{slug}/{name})
     for loc in &locations {
         let new_dir = crate::skill_paths::nested_skill_dir(root, &loc.plugin_slug, &loc.skill_name);
 
@@ -755,35 +742,25 @@ mod tests {
     // --- migrate_to_marketplace_layout tests ---
 
     #[test]
-    fn test_migrate_marketplace_moves_old_nested_skills() {
+    fn test_migrate_marketplace_nested_skills_stay_in_place() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
 
-        // Create old nested layout: root/analytics/weekly-report/SKILL.md
-        let old_skill = root.join("analytics").join("weekly-report");
-        fs::create_dir_all(&old_skill).unwrap();
-        fs::write(old_skill.join("SKILL.md"), "# weekly report").unwrap();
-        fs::create_dir_all(old_skill.join("references")).unwrap();
+        // Create nested layout: root/analytics/weekly-report/SKILL.md
+        // This is already the canonical layout — migration should be a no-op.
+        let skill = root.join("analytics").join("weekly-report");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), "# weekly report").unwrap();
+        fs::create_dir_all(skill.join("references")).unwrap();
 
-        // Initialize git so commit_all works
         let _ = crate::git::ensure_repo(root);
 
         migrate_to_marketplace_layout(root.to_str().unwrap());
 
-        // Skill should be at marketplace path
-        let new_skill = root.join("analytics").join("skills").join("weekly-report");
-        assert!(new_skill.join("SKILL.md").is_file(), "SKILL.md should be at marketplace path");
-        assert!(new_skill.join("references").is_dir(), "references/ should be moved");
-
-        // Old direct child should be gone (moved into skills/ subfolder)
-        assert!(!old_skill.exists(), "old nested dir should be moved into skills/");
-
-        // Plugin dir stays (now contains skills/)
+        // Skill should still be at the same path
+        assert!(skill.join("SKILL.md").is_file(), "SKILL.md should remain in place");
+        assert!(skill.join("references").is_dir(), "references/ should remain");
         assert!(root.join("analytics").is_dir(), "plugin dir should exist");
-
-        // Manifests should exist
-        assert!(root.join(".claude-plugin").join("marketplace.json").is_file());
-        assert!(root.join("analytics").join(".claude-plugin").join("plugin.json").is_file());
     }
 
     #[test]
@@ -810,8 +787,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
 
-        // Create marketplace layout directly
-        let skill = root.join("analytics").join("skills").join("report");
+        // Create canonical layout directly: root/analytics/report/SKILL.md
+        let skill = root.join("analytics").join("report");
         fs::create_dir_all(&skill).unwrap();
         fs::write(skill.join("SKILL.md"), "# report").unwrap();
 
@@ -823,7 +800,6 @@ mod tests {
 
         // Skill should still be at the same place
         assert!(skill.join("SKILL.md").is_file());
-        // marketplace.json is not regenerated on idempotent runs (git-backed source of truth)
     }
 
     #[test]
@@ -861,8 +837,8 @@ mod tests {
         let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
         assert!(root.join(default_slug).join("my-skill").join("SKILL.md").is_file());
 
-        // Nested skill should be under its plugin
-        assert!(root.join("analytics").join("skills").join("report").join("SKILL.md").is_file());
+        // Nested skill should stay under its plugin (already at canonical path)
+        assert!(root.join("analytics").join("report").join("SKILL.md").is_file());
 
         // Both should be discoverable
         let locations = crate::skill_paths::enumerate_skill_locations(root).unwrap();
@@ -870,21 +846,20 @@ mod tests {
     }
 
     #[test]
-    fn test_migrate_marketplace_cleans_empty_old_dirs() {
+    fn test_migrate_marketplace_nested_already_canonical() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
 
-        // Old nested: root/analytics/report/SKILL.md — analytics/ should become empty after move
-        let old = root.join("analytics").join("report");
-        fs::create_dir_all(&old).unwrap();
-        fs::write(old.join("SKILL.md"), "# report").unwrap();
+        // Nested: root/analytics/report/SKILL.md — already at canonical path
+        let skill = root.join("analytics").join("report");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), "# report").unwrap();
 
         let _ = crate::git::ensure_repo(root);
         migrate_to_marketplace_layout(root.to_str().unwrap());
 
-        // The old "analytics/report" directory should not exist (moved to analytics/skills/report)
-        assert!(!old.exists(), "old nested skill dir should be moved");
-        // analytics/ itself still exists because it's the plugin dir now (contains skills/)
-        assert!(root.join("analytics").join("skills").join("report").is_dir());
+        // Skill stays in place — already at canonical path
+        assert!(skill.join("SKILL.md").is_file());
+        assert!(root.join("analytics").is_dir());
     }
 }
