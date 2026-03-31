@@ -422,7 +422,11 @@ fn test_delete_skill_soft_deletes_from_master() {
 
     delete_skill(&conn, "to-delete").unwrap();
     // Row remains for historical joins but is hidden from active skill lists.
-    assert!(get_skill_master_id(&conn, "to-delete").unwrap().is_some());
+    // get_skill_master_id now filters deleted rows, so verify existence via raw SQL.
+    let row_exists: bool = conn
+        .query_row("SELECT COUNT(*) > 0 FROM skills WHERE name = 'to-delete'", [], |r| r.get(0))
+        .unwrap();
+    assert!(row_exists, "soft-deleted row should still exist in the table");
     let listed = list_all_skills(&conn).unwrap();
     assert!(!listed.iter().any(|s| s.name == "to-delete"));
 
@@ -479,7 +483,11 @@ fn test_delete_workflow_run_soft_deletes_skills_master() {
 
     // Workflow state is removed while the skills master row is soft-deleted.
     assert!(get_workflow_run(&conn, "my-skill").unwrap().is_none());
-    assert!(get_skill_master_id(&conn, "my-skill").unwrap().is_some());
+    // get_skill_master_id now filters deleted rows; verify existence via raw SQL.
+    let row_exists: bool = conn
+        .query_row("SELECT COUNT(*) > 0 FROM skills WHERE name = 'my-skill'", [], |r| r.get(0))
+        .unwrap();
+    assert!(row_exists, "soft-deleted row should still exist in the table");
     let listed = list_all_skills(&conn).unwrap();
     assert!(!listed.iter().any(|s| s.name == "my-skill"));
 }

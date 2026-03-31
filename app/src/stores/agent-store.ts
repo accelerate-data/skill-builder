@@ -565,7 +565,11 @@ export const useAgentStore = create<AgentState>((set) => ({
         return {
           runs: {
             ...state.runs,
-            [agentId]: { ...run, endTime: Date.now() },
+            [agentId]: {
+              ...run,
+              endTime: Date.now(),
+              resultErrors: errorDetail ? [errorDetail] : run.resultErrors,
+            },
           },
         };
       }

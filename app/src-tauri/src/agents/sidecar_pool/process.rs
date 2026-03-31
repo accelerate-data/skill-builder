@@ -398,7 +398,6 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                 request_id,
             );
         } else {
-            // Collect error detail for forwarding to the frontend via agent-exit.
             let mut exit_error_detail: Option<String> = None;
 
             if msg_type == "agent_event" {
@@ -425,7 +424,7 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                             .and_then(|e| e.get("status"))
                             .and_then(|s| s.as_str())
                             .unwrap_or("error");
-                        let result_errors_str = event_obj
+                        let detail = event_obj
                             .and_then(|e| e.get("resultErrors"))
                             .and_then(|e| e.as_array())
                             .map(|arr| {
@@ -434,12 +433,8 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                                     .collect::<Vec<_>>()
                                     .join("; ")
                             })
-                            .unwrap_or_default();
-                        let detail = if result_errors_str.is_empty() {
-                            status.to_string()
-                        } else {
-                            result_errors_str.clone()
-                        };
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or_else(|| status.to_string());
                         exit_error_detail = Some(detail.clone());
                         log::warn!(
                             "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
@@ -467,23 +462,23 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                 let error_detail = msg.get("message")
                     .and_then(|m| m.as_str())
                     .unwrap_or("(no message)");
-                exit_error_detail = Some(error_detail.to_string());
-                // Redact API keys before logging (error messages may contain raw config)
+                // Redact API keys before logging and forwarding to frontend
                 let redacted = redact_api_key(error_detail);
+                exit_error_detail = Some(redacted.clone());
                 log::info!(
                     "[persistent-sidecar:{}] Agent error for '{}': {}",
                     ctx.skill_name,
                     request_id,
                     redacted,
                 );
-                // Emit the error detail as an agent-message so the
+                // Emit the redacted error detail as an agent-message so the
                 // frontend can display it (instead of "Unknown error").
                 events::handle_sidecar_message(
                     &ctx.app_handle,
                     request_id,
                     &serde_json::json!({
                         "type": "error",
-                        "error": error_detail,
+                        "error": redacted,
                     }).to_string(),
                 );
             }
