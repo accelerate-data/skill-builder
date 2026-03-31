@@ -2099,6 +2099,7 @@ fn create_skill_on_disk(
 #[test]
 fn test_generate_skills_section_single_active_skill() {
     let conn = super::super::test_utils::create_test_db();
+    crate::db::upsert_skill(&conn, "test-practices", "imported", "domain").unwrap();
     let skill_tmp = tempfile::tempdir().unwrap();
     let disk_path = create_skill_on_disk(
         skill_tmp.path(),
@@ -2156,6 +2157,7 @@ fn test_generate_skills_section_single_active_skill() {
 #[test]
 fn test_generate_skills_section_inactive_skill_excluded() {
     let conn = super::super::test_utils::create_test_db();
+    crate::db::upsert_skill(&conn, "test-practices", "imported", "domain").unwrap();
     let skill = crate::types::ImportedSkill {
         skill_id: "bundled-test-practices".to_string(),
         skill_name: "test-practices".to_string(),
@@ -2198,6 +2200,8 @@ fn test_generate_skills_section_multiple_skills_same_format() {
         Some("Analytics patterns."),
     );
 
+    crate::db::upsert_skill(&conn, "test-practices", "imported", "domain").unwrap();
+    crate::db::upsert_skill(&conn, "data-analytics", "imported", "domain").unwrap();
     let bundled = crate::types::ImportedSkill {
         skill_id: "bundled-test-practices".to_string(),
         skill_name: "test-practices".to_string(),
@@ -2269,6 +2273,7 @@ fn test_generate_skills_section_no_skills() {
 fn test_generate_skills_section_no_trigger_no_path() {
     // Regression test: section must never contain "Read and follow" path line or trigger text
     let conn = super::super::test_utils::create_test_db();
+    crate::db::upsert_skill(&conn, "my-skill", "imported", "domain").unwrap();
     let skill_tmp = tempfile::tempdir().unwrap();
     let disk_path = create_skill_on_disk(
         skill_tmp.path(),

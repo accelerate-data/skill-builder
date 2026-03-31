@@ -2,10 +2,52 @@ use crate::types::{SkillMasterRow, WorkflowRunRow, WorkflowStepRow};
 use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashMap;
 
+const DEFAULT_PLUGIN_SLUG: &str = "skills";
+
+// --- Plugin Helpers ---
+
+pub fn ensure_default_plugin(conn: &Connection) -> Result<i64, String> {
+    conn.execute(
+        "INSERT INTO plugins (slug, display_name, version, source_type, source_url, is_default, updated_at)
+         VALUES (?1, ?2, NULL, 'synthetic', NULL, 1, datetime('now') || 'Z')
+         ON CONFLICT(slug) DO UPDATE SET
+             updated_at = datetime('now') || 'Z'",
+        rusqlite::params![DEFAULT_PLUGIN_SLUG, "Skills"],
+    )
+    .map_err(|e| format!("ensure_default_plugin: {}", e))?;
+    conn.query_row(
+        "SELECT id FROM plugins WHERE slug = ?1",
+        rusqlite::params![DEFAULT_PLUGIN_SLUG],
+        |row| row.get(0),
+    )
+    .map_err(|e| format!("ensure_default_plugin id lookup: {}", e))
+}
+
+pub fn get_plugin_id_by_slug(conn: &Connection, slug: &str) -> Result<Option<i64>, String> {
+    conn.query_row(
+        "SELECT id FROM plugins WHERE slug = ?1",
+        rusqlite::params![slug],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("get_plugin_id_by_slug: {}", e))
+}
+
+/// Resolve the plugin_id for a given slug, falling back to the default plugin.
+fn resolve_plugin_id(conn: &Connection, plugin_slug: &str) -> Result<i64, String> {
+    if plugin_slug == DEFAULT_PLUGIN_SLUG {
+        ensure_default_plugin(conn)
+    } else {
+        get_plugin_id_by_slug(conn, plugin_slug)?
+            .ok_or_else(|| format!("Unknown plugin slug '{}'", plugin_slug))
+    }
+}
+
 // --- Skills Master ---
 
 /// Upsert a row in the `skills` master table. Used by `save_workflow_run` (skill-builder)
 /// and marketplace import. Returns the skill id.
+/// Skills are scoped to the default plugin.
 pub fn upsert_skill(
     conn: &Connection,
     name: &str,
@@ -13,12 +55,13 @@ pub fn upsert_skill(
     purpose: &str,
 ) -> Result<i64, String> {
     log::debug!("upsert_skill: name={} skill_source={}", name, skill_source);
+    let plugin_id = resolve_plugin_id(conn, DEFAULT_PLUGIN_SLUG)?;
     conn.execute(
-        "INSERT INTO skills (name, skill_source, purpose, updated_at)
-         VALUES (?1, ?2, ?3, datetime('now'))
-         ON CONFLICT(name) DO UPDATE SET
-             purpose = ?3, updated_at = datetime('now'), deleted_at = NULL",
-        rusqlite::params![name, skill_source, purpose],
+        "INSERT INTO skills (name, skill_source, plugin_id, purpose, updated_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+         ON CONFLICT(plugin_id, name) DO UPDATE SET
+             purpose = excluded.purpose, updated_at = datetime('now'), deleted_at = NULL",
+        rusqlite::params![name, skill_source, plugin_id, purpose],
     )
     .map_err(|e| {
         log::error!("upsert_skill: failed to upsert '{}': {}", name, e);
@@ -26,8 +69,8 @@ pub fn upsert_skill(
     })?;
     let id: i64 = conn
         .query_row(
-            "SELECT id FROM skills WHERE name = ?1",
-            rusqlite::params![name],
+            "SELECT id FROM skills WHERE name = ?1 AND plugin_id = ?2",
+            rusqlite::params![name, plugin_id],
             |row| row.get(0),
         )
         .map_err(|e| {
@@ -52,12 +95,14 @@ pub fn upsert_skill_with_source(
         name,
         skill_source
     );
+    let plugin_id = resolve_plugin_id(conn, DEFAULT_PLUGIN_SLUG)?;
     conn.execute(
-        "INSERT INTO skills (name, skill_source, purpose, updated_at)
-         VALUES (?1, ?2, ?3, datetime('now'))
-         ON CONFLICT(name) DO UPDATE SET
-             skill_source = ?2, purpose = ?3, updated_at = datetime('now'), deleted_at = NULL",
-        rusqlite::params![name, skill_source, purpose],
+        "INSERT INTO skills (name, skill_source, plugin_id, purpose, updated_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+         ON CONFLICT(plugin_id, name) DO UPDATE SET
+             skill_source = excluded.skill_source, purpose = excluded.purpose,
+             updated_at = datetime('now'), deleted_at = NULL",
+        rusqlite::params![name, skill_source, plugin_id, purpose],
     )
     .map_err(|e| {
         log::error!(
@@ -69,8 +114,8 @@ pub fn upsert_skill_with_source(
     })?;
     let id: i64 = conn
         .query_row(
-            "SELECT id FROM skills WHERE name = ?1",
-            rusqlite::params![name],
+            "SELECT id FROM skills WHERE name = ?1 AND plugin_id = ?2",
+            rusqlite::params![name, plugin_id],
             |row| row.get(0),
         )
         .map_err(|e| {

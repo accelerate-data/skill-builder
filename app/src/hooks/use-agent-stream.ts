@@ -41,6 +41,7 @@ type AgentContextWindowPayload = { agent_id: string; timestamp: number } & Conte
 interface AgentExitPayload {
   agent_id: string;
   success: boolean;
+  error_detail?: string;
 }
 
 type AgentInitProgressPayload = { agent_id: string; timestamp: number } & InitProgressEvent;
@@ -212,6 +213,7 @@ export async function initAgentStream() {
       useAgentStore.getState().completeRun(
         event.payload.agent_id,
         event.payload.success,
+        event.payload.error_detail,
       );
     }),
     reg<AgentShutdownPayload>("agent-shutdown", (event) => {

@@ -7,10 +7,25 @@ pub fn create_test_db() -> rusqlite::Connection {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS plugins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
+            version TEXT,
+            source_type TEXT NOT NULL DEFAULT 'synthetic',
+            source_url TEXT,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            upgrade_locked INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO plugins (slug, display_name, source_type, is_default)
+            VALUES ('skills', 'Skills', 'synthetic', 1);
         CREATE TABLE IF NOT EXISTS skills (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            name         TEXT NOT NULL UNIQUE,
+            name         TEXT NOT NULL,
             skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'imported')),
+            plugin_id    INTEGER NOT NULL DEFAULT 1 REFERENCES plugins(id),
             purpose      TEXT,
             created_at   TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
@@ -20,7 +35,8 @@ pub fn create_test_db() -> rusqlite::Connection {
             model        TEXT,
             argument_hint TEXT,
             user_invocable INTEGER,
-            disable_model_invocation INTEGER
+            disable_model_invocation INTEGER,
+            UNIQUE (plugin_id, name)
         );
         CREATE TABLE IF NOT EXISTS workflow_runs (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,7 +114,7 @@ pub fn create_test_db() -> rusqlite::Connection {
             argument_hint TEXT,
             user_invocable INTEGER,
             disable_model_invocation INTEGER,
-            skill_master_id INTEGER REFERENCES skills(id),
+            skill_master_id INTEGER NOT NULL UNIQUE REFERENCES skills(id) ON DELETE CASCADE,
             content_hash TEXT,
             marketplace_source_url TEXT
         );

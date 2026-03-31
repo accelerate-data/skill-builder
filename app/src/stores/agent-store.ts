@@ -291,7 +291,7 @@ interface AgentState {
   applyCompaction: (agentId: string, event: CompactionEvent) => void;
   applyContextWindow: (agentId: string, event: ContextWindowEvent) => void;
   setPromptSuggestion: (agentId: string, suggestion: string) => void;
-  completeRun: (agentId: string, success: boolean) => void;
+  completeRun: (agentId: string, success: boolean, errorDetail?: string) => void;
   shutdownRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
   clearRuns: () => void;
@@ -545,7 +545,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     }),
 
-  completeRun: (agentId, success) => {
+  completeRun: (agentId, success, errorDetail) => {
     clearPhantomTimer(agentId);
     // Flush any buffered display items so they are visible in the final run state
     flushDisplayItems();
@@ -576,6 +576,7 @@ export const useAgentStore = create<AgentState>((set) => ({
             ...run,
             status: success ? "completed" : "error",
             endTime: Date.now(),
+            resultErrors: errorDetail ? [errorDetail] : run.resultErrors,
           },
         },
       };

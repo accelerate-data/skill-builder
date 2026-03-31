@@ -20,7 +20,8 @@ pub use workflow::*;
 
 // Re-export migration helpers needed by init_db, create_test_db_for_tests, and tests
 use migrations::{
-    ensure_migration_table, mark_migration_applied, migration_applied, repair_skills_table_schema,
+    ensure_migration_table, mark_migration_applied, migration_applied,
+    repair_plugin_ownership_schema, repair_skills_table_schema,
     run_marketplace_source_url_migration, run_migrations, NUMBERED_MIGRATIONS,
 };
 
@@ -38,6 +39,7 @@ pub(crate) fn create_test_db_for_tests() -> Connection {
     }
     repair_skills_table_schema(&conn).unwrap();
     run_marketplace_source_url_migration(&conn).unwrap();
+    repair_plugin_ownership_schema(&conn).unwrap();
 
     conn.pragma_update(None, "foreign_keys", true).unwrap();
     conn
@@ -89,6 +91,10 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
     run_marketplace_source_url_migration(&conn)
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
+    // Startup repair: ensure first-class plugin ownership exists regardless of migration state.
+    // Guards against dev builds that recorded migration 38 before the schema rebuild ran.
+    repair_plugin_ownership_schema(&conn)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     // Re-enable FK enforcement now that all migrations are complete.
     // This ensures ON DELETE CASCADE and other FK constraints are active for all app writes.

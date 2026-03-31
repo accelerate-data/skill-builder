@@ -74,6 +74,7 @@ mod tests {
     #[test]
     fn test_list_imported_skills_returns_inserted_skill() {
         let conn = create_test_db_for_tests();
+        crate::db::upsert_skill(&conn, "listing-test", "imported", "domain").unwrap();
         let skill = ImportedSkill {
             skill_id: "listing-test-id".to_string(),
             skill_name: "listing-test".to_string(),

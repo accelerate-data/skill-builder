@@ -11,6 +11,8 @@ pub struct AgentEvent {
 pub struct AgentExitPayload {
     pub agent_id: String,
     pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_detail: Option<String>,
 }
 
 /// Payload emitted as the `agent-shutdown` Tauri event when an agent is shut down.

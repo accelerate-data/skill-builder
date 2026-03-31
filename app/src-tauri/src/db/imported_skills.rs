@@ -30,7 +30,9 @@ pub fn hydrate_skills_metadata(skills: &mut [ImportedSkill]) {
 
 #[allow(dead_code)]
 pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
-    let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
+    let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?
+        .ok_or_else(|| format!("No skills master row for '{}'; create one before importing", skill.skill_name))?;
+    let skill_master_id = Some(skill_master_id);
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
              purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
@@ -67,13 +69,16 @@ pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result
 /// updates the existing record rather than failing with a UNIQUE constraint.
 /// Also mirrors frontmatter fields to the `skills` master table (canonical store).
 pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
-    let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
+    let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?
+        .ok_or_else(|| format!("No skills master row for '{}'; create one before importing", skill.skill_name))?;
+    let skill_master_id = Some(skill_master_id);
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
              purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
-         ON CONFLICT(skill_name) DO UPDATE SET
+         ON CONFLICT(skill_master_id) DO UPDATE SET
              skill_id = excluded.skill_id,
+             skill_name = excluded.skill_name,
              disk_path = excluded.disk_path,
              imported_at = excluded.imported_at,
              purpose = excluded.purpose,
@@ -82,7 +87,6 @@ pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result
              argument_hint = excluded.argument_hint,
              user_invocable = excluded.user_invocable,
              disable_model_invocation = excluded.disable_model_invocation,
-             skill_master_id = excluded.skill_master_id,
              marketplace_source_url = excluded.marketplace_source_url",
         rusqlite::params![
             skill.skill_id,

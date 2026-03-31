@@ -119,6 +119,7 @@ mod tests {
     #[test]
     fn test_delete_imported_skill_inner_happy_path() {
         let conn = create_test_db_for_tests();
+        crate::db::upsert_skill(&conn, "del-happy", "imported", "domain").unwrap();
         let skill = make_test_skill("del-happy-id", "del-happy");
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
         // disk_path points to a non-existent temp dir — absence is handled gracefully

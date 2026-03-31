@@ -2587,6 +2587,11 @@ fn test_backfill_synthetic_sessions_migration_creates_missing_sessions() {
 fn test_list_active_skills() {
     let conn = create_test_db();
 
+    // Skills master rows required for FK
+    upsert_skill(&conn, "active-with-trigger", "imported", "domain").unwrap();
+    upsert_skill(&conn, "active-no-trigger", "imported", "domain").unwrap();
+    upsert_skill(&conn, "inactive-with-trigger", "imported", "domain").unwrap();
+
     // Skill 1: active (trigger comes from disk, not DB)
     let skill1 = ImportedSkill {
         skill_id: "imp-1".to_string(),
@@ -2694,30 +2699,46 @@ fn test_migration_19_cleans_orphaned_imported_skills() {
     // Migration 19 performs two operations:
     //   1. UPDATE skills SET skill_source = 'imported' WHERE skill_source = 'upload'
     //   2. DELETE orphaned imported_skills (non-bundled, no matching skills master row)
-    // The CHECK constraint on skills.skill_source prevents inserting 'upload' after
-    // migration 17, so we test the orphan cleanup logic (the core new behavior).
+    // Post migration 38, imported_skills.skill_master_id is NOT NULL so true orphans
+    // (no skills row at all) can't exist. This test verifies the cleanup SQL still
+    // works when the skills master row is soft-deleted (deleted_at set).
     let conn = create_test_db();
 
-    // Insert a skills master row that has a corresponding imported_skills row
-    conn.execute(
-        "INSERT INTO skills (name, skill_source, purpose) VALUES ('kept-skill', 'imported', 'domain')",
-        [],
-    ).unwrap();
-    conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled) VALUES ('kept-id', 'kept-skill', '/tmp/kept', 0)",
-        [],
+    let default_pid = conn.query_row(
+        "SELECT id FROM plugins WHERE slug = 'skills'", [], |r| r.get::<_, i64>(0),
     ).unwrap();
 
-    // Insert an orphaned imported_skills row (no skills master row)
+    // Insert skills master rows
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled) VALUES ('orphan-id', 'orphan-skill', '/tmp/orphan', 0)",
-        [],
+        "INSERT INTO skills (name, skill_source, plugin_id, purpose) VALUES ('kept-skill', 'imported', ?1, 'domain')",
+        rusqlite::params![default_pid],
     ).unwrap();
+    let kept_id: i64 = conn.query_row("SELECT id FROM skills WHERE name = 'kept-skill'", [], |r| r.get(0)).unwrap();
 
-    // Insert a bundled imported_skills row (should be preserved even without master row)
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled) VALUES ('bundled-id', 'bundled-skill', '/tmp/bundled', 1)",
-        [],
+        "INSERT INTO skills (name, skill_source, plugin_id, purpose, deleted_at) VALUES ('orphan-skill', 'imported', ?1, 'domain', datetime('now'))",
+        rusqlite::params![default_pid],
+    ).unwrap();
+    let orphan_id: i64 = conn.query_row("SELECT id FROM skills WHERE name = 'orphan-skill'", [], |r| r.get(0)).unwrap();
+
+    conn.execute(
+        "INSERT INTO skills (name, skill_source, plugin_id, purpose, deleted_at) VALUES ('bundled-skill', 'imported', ?1, 'domain', datetime('now'))",
+        rusqlite::params![default_pid],
+    ).unwrap();
+    let bundled_id: i64 = conn.query_row("SELECT id FROM skills WHERE name = 'bundled-skill'", [], |r| r.get(0)).unwrap();
+
+    // Insert imported_skills rows
+    conn.execute(
+        "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled, skill_master_id) VALUES ('kept-id', 'kept-skill', '/tmp/kept', 0, ?1)",
+        rusqlite::params![kept_id],
+    ).unwrap();
+    conn.execute(
+        "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled, skill_master_id) VALUES ('orphan-id', 'orphan-skill', '/tmp/orphan', 0, ?1)",
+        rusqlite::params![orphan_id],
+    ).unwrap();
+    conn.execute(
+        "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled, skill_master_id) VALUES ('bundled-id', 'bundled-skill', '/tmp/bundled', 1, ?1)",
+        rusqlite::params![bundled_id],
     ).unwrap();
 
     // Run migration 19's orphan cleanup SQL directly
@@ -2729,7 +2750,7 @@ fn test_migration_19_cleans_orphaned_imported_skills() {
     )
     .unwrap();
 
-    // Orphaned non-bundled row should be gone
+    // Orphaned (soft-deleted master) non-bundled row should be gone
     let orphan_count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'orphan-skill'",
@@ -2752,7 +2773,7 @@ fn test_migration_19_cleans_orphaned_imported_skills() {
         .unwrap();
     assert_eq!(kept_count, 1, "Non-orphaned row should be preserved");
 
-    // Bundled row should be preserved (even without master row)
+    // Bundled row should be preserved (even with soft-deleted master)
     let bundled_count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'bundled-skill'",
@@ -3122,6 +3143,9 @@ fn test_list_imported_skills_filtered() {
     let skills = list_imported_skills_filtered(&conn, None).unwrap();
     assert!(skills.is_empty());
 
+    // Skills master row required for FK
+    upsert_skill(&conn, "test-skill", "imported", "domain").unwrap();
+
     // Insert a skill and verify it appears
     let skill = ImportedSkill {
         skill_id: "imp-test-1".to_string(),
@@ -3155,6 +3179,7 @@ fn test_list_imported_skills_filtered() {
 #[test]
 fn test_get_imported_skill_by_id() {
     let conn = create_test_db();
+    upsert_skill(&conn, "test-byid", "imported", "domain").unwrap();
     let skill = ImportedSkill {
         skill_id: "imp-test-byid".to_string(),
         skill_name: "test-byid".to_string(),
@@ -3184,6 +3209,7 @@ fn test_get_imported_skill_by_id() {
 #[test]
 fn test_delete_imported_skill_by_skill_id() {
     let conn = create_test_db();
+    upsert_skill(&conn, "test-del", "imported", "domain").unwrap();
     let skill = ImportedSkill {
         skill_id: "imp-test-del".to_string(),
         skill_name: "test-del".to_string(),
@@ -3211,6 +3237,7 @@ fn test_delete_imported_skill_by_skill_id() {
 #[test]
 fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
     let conn = create_test_db();
+    upsert_skill(&conn, "market-skill", "marketplace", "domain").unwrap();
     let imported = ImportedSkill {
         skill_id: "imp-market-skill".to_string(),
         skill_name: "market-skill".to_string(),

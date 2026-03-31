@@ -378,6 +378,9 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                 request_id,
             );
         } else {
+            // Collect error detail for forwarding to the frontend via agent-exit.
+            let mut exit_error_detail: Option<String> = None;
+
             if msg_type == "agent_event" {
                 match &outcome {
                     TerminalOutcome::Completed => {
@@ -397,12 +400,27 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                         );
                     }
                     TerminalOutcome::Error => {
-                        let detail = msg
-                            .get("event")
-                            .and_then(|event| event.get("status"))
-                            .and_then(|status| status.as_str())
-                            .unwrap_or("error")
-                            .to_string();
+                        let event_obj = msg.get("event");
+                        let status = event_obj
+                            .and_then(|e| e.get("status"))
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("error");
+                        let result_errors_str = event_obj
+                            .and_then(|e| e.get("resultErrors"))
+                            .and_then(|e| e.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| v.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join("; ")
+                            })
+                            .unwrap_or_default();
+                        let detail = if result_errors_str.is_empty() {
+                            status.to_string()
+                        } else {
+                            result_errors_str.clone()
+                        };
+                        exit_error_detail = Some(detail.clone());
                         log::warn!(
                             "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
                             ctx.skill_name,
@@ -429,6 +447,7 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                 let error_detail = msg.get("message")
                     .and_then(|m| m.as_str())
                     .unwrap_or("(no message)");
+                exit_error_detail = Some(error_detail.to_string());
                 log::info!(
                     "[persistent-sidecar:{}] Agent error for '{}': {}",
                     ctx.skill_name,
@@ -479,10 +498,11 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                     request_id,
                 );
             } else {
-                events::handle_sidecar_exit(
+                events::handle_sidecar_exit_with_detail(
                     &ctx.app_handle,
                     request_id,
                     outcome == TerminalOutcome::Completed,
+                    exit_error_detail,
                 );
             }
         }
