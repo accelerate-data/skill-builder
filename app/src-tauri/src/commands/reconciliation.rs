@@ -1,4 +1,7 @@
 use crate::db::Db;
+use crate::skill_paths::{
+    ensure_nested_skill_dir, resolve_skill_dir, DEFAULT_PLUGIN_SLUG,
+};
 use crate::types::ReconciliationResult;
 use std::fs;
 use std::path::Path;
@@ -31,20 +34,27 @@ pub fn reconcile_startup(
         skills_path
     );
 
-    let result = if apply {
-        // Reconcile orphaned workflow sessions from crashed instances
-        match crate::db::reconcile_orphaned_sessions(&conn) {
-            Ok(count) if count > 0 => {
-                log::info!("Reconciled {} orphaned workflow session(s)", count);
-            }
-            Err(e) => {
-                log::warn!("Failed to reconcile orphaned sessions: {}", e);
-            }
-            _ => {}
-        }
+    // Migrate flat workspace dirs to plugin-organised layout.
+    // e.g. workspace/britney-spears/ → workspace/skills/britney-spears/
+    migrate_workspace_to_plugin_layout(Path::new(&workspace_path), &conn);
 
-        let result =
-            crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
+    // Always run full reconciliation — Phase 1 (plugin recon) is idempotent
+    // and must run even in preview mode to discover plugins on disk.
+    // Phase 2 (workflow recon) only touches incomplete skills.
+    match crate::db::reconcile_orphaned_sessions(&conn) {
+        Ok(count) if count > 0 => {
+            log::info!("Reconciled {} orphaned workflow session(s)", count);
+        }
+        Err(e) => {
+            log::warn!("Failed to reconcile orphaned sessions: {}", e);
+        }
+        _ => {}
+    }
+
+    let result =
+        crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
+
+    if apply {
 
         // Auto-commit new skill folders added while offline.
         // This is non-fatal: log warnings but don't block startup.
@@ -89,10 +99,7 @@ pub fn reconcile_startup(
             );
         }
 
-        result
-    } else {
-        crate::reconciliation::preview_reconcile_on_startup(&conn, &workspace_path, &skills_path)?
-    };
+    }
 
     if !apply {
         let details = serde_json::to_string(&serde_json::json!({
@@ -142,11 +149,74 @@ pub fn resolve_orphan(
     crate::reconciliation::resolve_orphan(&conn, &skill_name, &action, &skills_path)
 }
 
+/// Migrate flat workspace dirs to the plugin-organised layout.
+///
+/// Workspace dirs were previously flat: `workspace/{skill_name}/`.
+/// The new canonical layout is plugin-organised: `workspace/{plugin_slug}/{skill_name}/`.
+///
+/// This function reads all skills from the DB and moves any existing flat dirs
+/// to the correct plugin-organised location. It is idempotent: already-migrated
+/// dirs are skipped. Non-fatal: individual move failures are logged as warnings.
+fn migrate_workspace_to_plugin_layout(workspace_path: &Path, conn: &rusqlite::Connection) {
+    let all_skills = match crate::db::list_all_skills(conn) {
+        Ok(s) => s,
+        Err(e) => {
+            log::warn!("[migrate_workspace] failed to list skills: {}", e);
+            return;
+        }
+    };
+
+    for skill in &all_skills {
+        let flat_dir = workspace_path.join(&skill.name);
+        if !flat_dir.exists() {
+            continue;
+        }
+        let plugin_dir = workspace_path
+            .join(&skill.plugin_slug)
+            .join(&skill.name);
+        if plugin_dir.exists() {
+            log::debug!(
+                "[migrate_workspace] '{}': already at plugin-organised path, skipping",
+                skill.name
+            );
+            continue;
+        }
+        if flat_dir == plugin_dir {
+            // Shouldn't happen in practice but guard against no-op rename.
+            continue;
+        }
+        if let Some(parent) = plugin_dir.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                log::warn!(
+                    "[migrate_workspace] '{}': failed to create parent '{}': {}",
+                    skill.name,
+                    parent.display(),
+                    e
+                );
+                continue;
+            }
+        }
+        match std::fs::rename(&flat_dir, &plugin_dir) {
+            Ok(()) => log::info!(
+                "[migrate_workspace] moved '{}' → '{}'",
+                flat_dir.display(),
+                plugin_dir.display()
+            ),
+            Err(e) => log::warn!(
+                "[migrate_workspace] failed to move '{}': {}",
+                flat_dir.display(),
+                e
+            ),
+        }
+    }
+}
+
 /// Validate that a path derived from `skill_name` stays inside `parent`.
 /// The `parent` directory must exist; `child` is joined from it.
 fn validate_path_within(parent: &Path, skill_name: &str, label: &str) -> Result<(), String> {
     let child = parent.join(skill_name);
     if child.exists() {
+        // Path exists — use canonicalize for the most reliable traversal check.
         let canonical_parent = fs::canonicalize(parent).map_err(|e| {
             format!(
                 "[resolve_discovery] Failed to canonicalize {}: {}",
@@ -170,6 +240,21 @@ fn validate_path_within(parent: &Path, skill_name: &str, label: &str) -> Result<
                 label
             ));
         }
+    } else {
+        // Path does not exist yet — canonicalize would fail, so check components directly.
+        // Any ParentDir (`..`) component in the constructed path indicates a traversal attempt.
+        use std::path::Component;
+        if child.components().any(|c| c == Component::ParentDir) {
+            log::error!(
+                "[resolve_discovery] Path traversal attempt on {} (non-existent path): {}",
+                label,
+                skill_name
+            );
+            return Err(format!(
+                "Invalid skill path: path traversal not allowed on {}",
+                label
+            ));
+        }
     }
     Ok(())
 }
@@ -178,6 +263,7 @@ fn validate_path_within(parent: &Path, skill_name: &str, label: &str) -> Result<
 pub fn resolve_discovery(
     skill_name: String,
     action: String,
+    plugin_slug: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!("[resolve_discovery] skill={} action={}", skill_name, action);
@@ -197,34 +283,62 @@ pub fn resolve_discovery(
         .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
 
+    let plugin_slug = plugin_slug.unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string());
+
     match action.as_str() {
         "add-skill-builder" => {
             // Add as skill-builder with workflow_runs at step 5
-            crate::db::save_workflow_run(
-                &conn, &skill_name, 5, "completed", "domain",
-            )?;
+            let plugin_id = if plugin_slug == DEFAULT_PLUGIN_SLUG {
+                crate::db::ensure_default_plugin(&conn)?
+            } else {
+                let display_name = crate::skill_paths::plugin_display_name(&plugin_slug);
+                crate::db::ensure_plugin(&conn, &plugin_slug, &display_name, "local", None, None, false)?
+            };
+            crate::db::upsert_skill_in_plugin(&conn, &skill_name, "skill-builder", "domain", &plugin_slug)?;
+            conn.execute(
+                "INSERT INTO workflow_runs (skill_name, current_step, status, purpose, skill_id, updated_at)
+                 VALUES (?1, 5, 'completed', 'domain',
+                         (SELECT s.id FROM skills s JOIN plugins p ON p.id = s.plugin_id WHERE s.name = ?1 AND p.id = ?2),
+                         datetime('now') || 'Z')
+                 ON CONFLICT(skill_name) DO UPDATE SET current_step = 5, status = 'completed', purpose = 'domain', updated_at = datetime('now') || 'Z'",
+                rusqlite::params![&skill_name, plugin_id],
+            )
+            .map_err(|e| e.to_string())?;
             // Validate workspace path before creating directory
             let ws_path = Path::new(&workspace_path);
-            validate_path_within(ws_path, &skill_name, "workspace_path")?;
+            let workspace_dir = ensure_nested_skill_dir(ws_path, &plugin_slug, &skill_name)?;
+            if workspace_dir.exists() {
+                validate_path_within(ws_path, &skill_name, "workspace_path")?;
+            }
             // Create workspace marker
-            let workspace_dir = ws_path.join(&skill_name);
             let _ = fs::create_dir_all(&workspace_dir);
-            log::info!("[resolve_discovery] '{}': added as skill-builder (completed)", skill_name);
+            log::info!(
+                "[resolve_discovery] '{}': added as skill-builder (completed) in plugin '{}'",
+                skill_name,
+                plugin_slug
+            );
             Ok(())
         }
         "add-imported" => {
             // Add as imported, clear context folder — force skill_source to "imported"
-            crate::db::upsert_skill_with_source(&conn, &skill_name, "imported", "domain")?;
+            crate::db::upsert_skill_with_source_in_plugin(&conn, &skill_name, "imported", "domain", &plugin_slug)?;
             // Validate workspace_path before touching context filesystem
             let wp = Path::new(&workspace_path);
-            validate_path_within(wp, &skill_name, "workspace_path")?;
+            let workspace_root = resolve_skill_dir(wp, &plugin_slug, &skill_name);
+            if workspace_root.exists() {
+                validate_path_within(wp, &skill_name, "workspace_path")?;
+            }
             // Clear context folder
-            let context_dir = wp.join(&skill_name).join("context");
+            let context_dir = workspace_root.join("context");
             if context_dir.exists() {
                 let _ = fs::remove_dir_all(&context_dir);
                 log::info!("[resolve_discovery] '{}': cleared context folder", skill_name);
             }
-            log::info!("[resolve_discovery] '{}': added as imported", skill_name);
+            log::info!(
+                "[resolve_discovery] '{}': added as imported in plugin '{}'",
+                skill_name,
+                plugin_slug
+            );
             Ok(())
         }
         "remove" => {
@@ -232,7 +346,7 @@ pub fn resolve_discovery(
             let sp = Path::new(&skills_path);
             validate_path_within(sp, &skill_name, "skills_path")?;
             // Delete from disk
-            let skill_dir = sp.join(&skill_name);
+            let skill_dir = resolve_skill_dir(sp, &plugin_slug, &skill_name);
             if skill_dir.exists() {
                 fs::remove_dir_all(&skill_dir)
                     .map_err(|e| format!("Failed to remove '{}': {}", skill_name, e))?;
@@ -295,5 +409,74 @@ mod tests {
             result.is_ok(),
             "Non-existent path should be accepted (not yet created)"
         );
+    }
+
+    #[test]
+    fn test_migrate_workspace_to_plugin_layout_moves_flat_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let conn = crate::commands::test_utils::create_test_db();
+
+        // Create a skill in the DB (default plugin "skills")
+        crate::db::upsert_skill(&conn, "britney-spears", "skill-builder", "domain").unwrap();
+
+        // Create a flat workspace dir for the skill
+        let flat_path = workspace.join("britney-spears");
+        fs::create_dir_all(&flat_path).unwrap();
+        fs::write(flat_path.join("user-context.md"), "context").unwrap();
+
+        migrate_workspace_to_plugin_layout(workspace, &conn);
+
+        // Should have been moved to the plugin-organised location
+        let new_path = workspace.join("skills").join("britney-spears");
+        assert!(new_path.exists(), "plugin-organised dir should exist after migration");
+        assert!(new_path.join("user-context.md").exists(), "contents should be preserved");
+        // Flat dir should be gone
+        assert!(!flat_path.exists(), "flat dir should be removed after migration");
+    }
+
+    #[test]
+    fn test_migrate_workspace_to_plugin_layout_skips_already_migrated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let conn = crate::commands::test_utils::create_test_db();
+
+        crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+
+        // Pre-existing plugin-organised dir (already migrated)
+        let plugin_path = workspace.join("skills").join("my-skill");
+        fs::create_dir_all(&plugin_path).unwrap();
+        fs::write(plugin_path.join("existing.md"), "existing").unwrap();
+
+        // Also a flat dir (stale, should not overwrite)
+        let flat_path = workspace.join("my-skill");
+        fs::create_dir_all(&flat_path).unwrap();
+        fs::write(flat_path.join("stale.md"), "stale").unwrap();
+
+        migrate_workspace_to_plugin_layout(workspace, &conn);
+
+        // Plugin-organised dir should be untouched (existing content preserved)
+        assert!(plugin_path.join("existing.md").exists());
+        assert!(!plugin_path.join("stale.md").exists(), "stale content must not overwrite");
+        // Flat dir should still be there (was not moved since target already exists)
+        assert!(flat_path.exists(), "flat dir kept when plugin-organised already exists");
+    }
+
+    #[test]
+    fn test_migrate_workspace_to_plugin_layout_skips_unknown_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let conn = crate::commands::test_utils::create_test_db();
+
+        // No skills in DB — nothing should be moved
+
+        let flat_path = workspace.join("unknown-skill");
+        fs::create_dir_all(&flat_path).unwrap();
+        fs::write(flat_path.join("data.md"), "data").unwrap();
+
+        migrate_workspace_to_plugin_layout(workspace, &conn);
+
+        // Should be untouched since it's not in the DB
+        assert!(flat_path.exists(), "unknown skill dir should not be moved");
     }
 }

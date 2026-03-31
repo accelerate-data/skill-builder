@@ -39,7 +39,6 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 | Command | Description |
 |---|---|
 | `run_workflow_step` | Execute a workflow step (spawns agent) |
-| `package_skill` | Package a skill directory as a `.skill` ZIP archive |
 | `get_workflow_state` | Current step and all step statuses |
 | `save_workflow_state` | Persist workflow run and step data |
 | `verify_step_output` | Check that expected output files exist |

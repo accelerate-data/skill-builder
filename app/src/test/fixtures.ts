@@ -42,6 +42,9 @@ export function makeSkillSummary(overrides?: Partial<SkillSummary>): SkillSummar
     author_avatar: null,
     intake_json: null,
     source: null,
+    plugin_slug: "skills",
+    plugin_display_name: "Skills",
+    is_default_plugin: true,
     ...overrides,
   };
 }

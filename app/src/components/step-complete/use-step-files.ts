@@ -4,7 +4,6 @@ import {
   listSkillFiles,
   getContextFileContent,
 } from "@/lib/tauri";
-import { joinPath } from "@/lib/path-utils";
 
 /**
  * Load and resolve output file contents for a completed workflow step.
@@ -38,20 +37,34 @@ export function useStepFiles(
       const filePaths = outputFiles.filter((f) => !f.endsWith("/"));
       expandedFiles.push(...filePaths);
 
-      if (dirPaths.length > 0 && skillsPath) {
+      // Fetch the skill's file listing whenever skillsPath is set. This serves
+      // two purposes: (1) directory expansion, (2) absolute-path resolution so
+      // that readFile uses paths that include the plugin-slug directory component
+      // (e.g. skills_root/skills/skill-name/) rather than a manually-joined path
+      // that omits the plugin slug.
+      const absPathMap = new Map<string, string>(); // relative_path → absolute_path
+      if (skillsPath) {
         try {
           const allEntries = await listSkillFiles(skillsPath, skillName);
           console.log(`[step-complete] listSkillFiles returned ${allEntries.length} entries for ${skillName}`);
+          for (const entry of allEntries) {
+            if (!entry.is_directory) {
+              absPathMap.set(entry.relative_path, entry.absolute_path);
+            }
+          }
           for (const dir of dirPaths) {
             const diskPrefix = dir.startsWith("skill/") ? dir.slice("skill/".length) : dir;
-            for (const entry of allEntries) {
-              if (!entry.is_directory && entry.relative_path.startsWith(diskPrefix)) {
-                expandedFiles.push(`skill/${entry.relative_path}`);
+            for (const [relPath] of absPathMap) {
+              if (relPath.startsWith(diskPrefix)) {
+                expandedFiles.push(`skill/${relPath}`);
               }
             }
           }
         } catch (err) {
-          console.error("[step-complete] Failed to expand directory paths:", err);
+          console.error("[step-complete] Failed to list skill files:", err);
+          if (dirPaths.length > 0) {
+            console.warn("[step-complete] Cannot expand directories: listSkillFiles failed");
+          }
         }
       } else if (dirPaths.length > 0) {
         console.warn("[step-complete] Cannot expand directories: skillsPath is not set");
@@ -76,11 +89,16 @@ export function useStepFiles(
             } catch {
               // not found in workspace context
             }
-          } else if (skillsPath) {
-            try {
-              content = await readFile(joinPath(skillsPath, skillName, skillsRelative));
-            } catch {
-              // not found in skills path
+          } else {
+            // Use the absolute path from the listing (correct plugin-slug layout).
+            // Fall back to a direct readFile only if the listing didn't include this file.
+            const absPath = absPathMap.get(skillsRelative);
+            if (absPath) {
+              try {
+                content = await readFile(absPath);
+              } catch {
+                // not found at absolute path
+              }
             }
           }
 

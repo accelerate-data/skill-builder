@@ -52,6 +52,10 @@ pub struct SkillMasterRow {
     pub id: i64,
     pub name: String,
     pub skill_source: String,
+    pub plugin_id: i64,
+    pub plugin_slug: String,
+    pub plugin_display_name: String,
+    pub plugin_is_default: bool,
     pub purpose: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -107,6 +111,12 @@ pub struct OrphanSkill {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoveredSkill {
     pub name: String,
+    #[serde(default)]
+    pub plugin_slug: Option<String>,
+    #[serde(default)]
+    pub plugin_display_name: Option<String>,
+    #[serde(default)]
+    pub is_default_plugin: Option<bool>,
     pub detected_step: i32,
     pub scenario: String, // "9a", "9b", "9c"
 }

@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod documents;
 pub mod api_validation;
 pub mod feedback;
 pub mod files;

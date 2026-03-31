@@ -40,7 +40,6 @@ import {
   getDisabledSteps,
   navigateBackToStepDb,
 } from "@/lib/tauri";
-import { TransitionGateDialog } from "@/components/transition-gate-dialog";
 import { STEP_CONFIGS } from "@/lib/workflow-step-configs";
 import { useWorkflowPersistence } from "@/hooks/use-workflow-persistence";
 import { useWorkflowAutosave } from "@/hooks/use-workflow-autosave";
@@ -168,10 +167,6 @@ export default function WorkflowPage() {
 
   // 4. State machine — step transitions, agent orchestration, gate evaluation
   const {
-    showGateDialog,
-    gateVerdict,
-    gateEvaluation,
-    gateContext,
     pendingStepSwitch,
     showResetConfirm,
     resetTarget,
@@ -182,10 +177,6 @@ export default function WorkflowPage() {
     handleStartAgentStep,
     handleReviewContinue,
     performStepReset,
-    handleGateSkip,
-    handleGateResearch,
-    handleGateContinueAnyway,
-    handleGateLetMeAnswer,
   } = useWorkflowStateMachine({
     skillName,
     workspacePath,
@@ -467,25 +458,13 @@ export default function WorkflowPage() {
         </Dialog>
       )}
 
-      {/* Transition gate dialog */}
-      <TransitionGateDialog
-        open={showGateDialog}
-        verdict={gateVerdict}
-        evaluation={gateEvaluation}
-        context={gateContext}
-        onSkip={handleGateSkip}
-        onResearch={handleGateResearch}
-        onLetMeAnswer={handleGateLetMeAnswer}
-        onContinueAnyway={handleGateContinueAnyway}
-      />
-
-      {/* Gate evaluation progress modal */}
-      <Dialog open={gateLoading && !showGateDialog}>
+      {/* Gate evaluation progress modal — shown while the answer-evaluator agent runs */}
+      <Dialog open={gateLoading}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Analyzing Responses</DialogTitle>
             <DialogDescription>
-              Reviewing your answers to determine whether to continue, ask for refinements, or skip ahead.
+              Reviewing your answers before continuing.
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

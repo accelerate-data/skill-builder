@@ -184,21 +184,47 @@ describe("parsePromptPaths (inline)", () => {
  * resolveStepTemplate() — don't just add it here.
  */
 const AGENTS_WITHOUT_MOCK = new Set<string>([
+  "vd-agent:analyst",
+  "vd-agent:design-firmer",
+  "vd-agent:dq-test-generator",
+  "vd-agent:model-builder",
+  "vd-agent:test-generator",
+  "vd-agent:validator",
 ]);
 
+/** Collect all plugin-qualified agent names from agent-sources/plugins/{name}/agents/{name}.md */
+async function collectPluginAgents(): Promise<string[]> {
+  const pluginsDir = path.resolve(__dirname, "../../../agent-sources/plugins");
+  const plugins = await fs.readdir(pluginsDir);
+  const agents: string[] = [];
+  for (const plugin of plugins) {
+    const agentsDir = path.join(pluginsDir, plugin, "agents");
+    try {
+      const files = await fs.readdir(agentsDir);
+      for (const f of files) {
+        if (f.endsWith(".md")) {
+          agents.push(`${plugin}:${f.replace(/\.md$/, "")}`);
+        }
+      }
+    } catch {
+      // plugin has no agents/ directory — skip
+    }
+  }
+  return agents;
+}
+
 describe("mock-agent drift detection", () => {
-  it("every agent in agent-sources/agents has a mock template mapping or is explicitly excluded", async () => {
-    const agentsDir = path.resolve(__dirname, "../../../agent-sources/agents");
-    const files = await fs.readdir(agentsDir);
-    const agentNames = files
-      .filter((f) => f.endsWith(".md"))
-      .map((f) => f.replace(/\.md$/, ""));
+  it("every plugin agent has a mock template mapping or is explicitly excluded", async () => {
+    const agentNames = await collectPluginAgents();
 
     expect(agentNames.length).toBeGreaterThan(0);
 
     const unmapped: string[] = [];
     for (const name of agentNames) {
-      const template = resolveStepTemplate(name);
+      // Try plugin-qualified name first, then bare agent name (some agents are
+      // invoked without the plugin prefix at runtime).
+      const bare = name.includes(":") ? name.split(":")[1] : name;
+      const template = resolveStepTemplate(name) ?? resolveStepTemplate(bare);
       if (template === null && !AGENTS_WITHOUT_MOCK.has(name)) {
         unmapped.push(name);
       }
@@ -213,15 +239,12 @@ describe("mock-agent drift detection", () => {
   });
 
   it("each mapped template resolves to a valid template name", async () => {
-    const agentsDir = path.resolve(__dirname, "../../../agent-sources/agents");
-    const files = await fs.readdir(agentsDir);
-    const agentNames = files
-      .filter((f) => f.endsWith(".md"))
-      .map((f) => f.replace(/\.md$/, ""));
+    const agentNames = await collectPluginAgents();
 
     const templateNames = new Set<string>();
     for (const name of agentNames) {
-      const template = resolveStepTemplate(name);
+      const bare = name.includes(":") ? name.split(":")[1] : name;
+      const template = resolveStepTemplate(name) ?? resolveStepTemplate(bare);
       if (template !== null) {
         templateNames.add(template);
       }
@@ -247,16 +270,12 @@ describe("mock-agent drift detection", () => {
   });
 
   it("exclusion list only contains agents that actually exist", async () => {
-    const agentsDir = path.resolve(__dirname, "../../../agent-sources/agents");
-    const files = await fs.readdir(agentsDir);
-    const agentNames = new Set(
-      files.filter((f) => f.endsWith(".md")).map((f) => f.replace(/\.md$/, "")),
-    );
+    const agentNames = new Set(await collectPluginAgents());
 
     for (const excluded of AGENTS_WITHOUT_MOCK) {
       expect(
         agentNames.has(excluded),
-        `AGENTS_WITHOUT_MOCK contains "${excluded}" but no agent-sources/agents/${excluded}.md exists. ` +
+        `AGENTS_WITHOUT_MOCK contains "${excluded}" but no matching agent file exists. ` +
           `Remove it from the exclusion list.`,
       ).toBe(true);
     }

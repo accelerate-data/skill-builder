@@ -60,7 +60,7 @@ export function useWorkflowStateMachine({
   stepConfig,
   hydrated,
   reviewMode,
-  disabledSteps,
+  disabledSteps: _disabledSteps,
   errorHasArtifacts: _errorHasArtifacts,
   purpose,
   clarificationsData,
@@ -150,7 +150,6 @@ export function useWorkflowStateMachine({
     skillName,
     workspacePath,
     currentStep,
-    disabledSteps,
     purpose,
     clarificationsData,
     onClarificationsUpdated,
@@ -310,12 +309,22 @@ export function useWorkflowStateMachine({
           }
         }
 
+        // Guard against race with reset: if the step was reset while async operations
+        // were in flight, abort rather than overwriting the reset state with "completed".
+        if (useWorkflowStore.getState().steps[step]?.status !== "in_progress") {
+          console.warn("[workflow] finish() aborted for step %d — step was reset during async completion", step);
+          return;
+        }
+
         updateStepStatus(step, "completed");
         setRunning(false);
       };
 
       finish();
     } else if (activeRunStatus === "error") {
+      const errorDetail = activeRun?.resultErrors?.length
+        ? activeRun.resultErrors.join("; ")
+        : null;
       updateStepStatus(step, "error");
       setRunning(false);
       setActiveAgent(null);
@@ -323,7 +332,16 @@ export function useWorkflowStateMachine({
       if (workflowState.isInitializing) {
         workflowState.clearInitializing();
       }
-      toast.error(`Step ${step + 1} failed`, { duration: Infinity });
+      toast.error(
+        errorDetail
+          ? `Step ${step + 1} failed: ${errorDetail}`
+          : `Step ${step + 1} failed`,
+        { duration: Infinity },
+      );
+    } else if (activeRunStatus === "shutdown") {
+      setActiveAgent(null);
+      setRunning(false);
+      updateStepStatus(step, "pending");
     }
   }, [activeRunStatus, activeAgentId, extractStructuredResultPayload, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, clearInitializing]);
 
@@ -374,6 +392,9 @@ export function useWorkflowStateMachine({
 
   const performStepReset = async (stepId: number) => {
     endActiveSession();
+    // Clear gate state so Effect A isn't blocked when auto-starting after reset.
+    gate.gateAgentIdRef.current = null;
+    useWorkflowStore.getState().setGateLoading(false);
     if (workspacePath) {
       try {
         await resetWorkflowStep(workspacePath, skillName, stepId);

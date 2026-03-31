@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "@/lib/toast"
-import { FolderInput, Package, Trash2 } from "lucide-react"
+import { FolderInput, Package, FolderTree, Trash2, Lock, LockOpen } from "lucide-react"
 import { Github } from "@/components/icons/github"
 import {
   Card,
@@ -9,52 +9,25 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import { useSettingsStore } from "@/stores/settings-store"
+import { usePluginStore } from "@/stores/plugin-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
 import { ImportSkillDialog } from "@/components/import-skill-dialog"
-import { parseSkillFile } from "@/lib/tauri"
-import type { ImportedSkill } from "@/lib/types"
-import type { SkillFileMeta } from "@/lib/types"
-
-function formatRelativeTime(dateString: string): string {
-  try {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMinutes = Math.floor(diffMs / 60000)
-
-    if (diffMinutes < 1) return "just now"
-    if (diffMinutes < 60) return `${diffMinutes}m ago`
-    const diffHours = Math.floor(diffMinutes / 60)
-    if (diffHours < 24) return `${diffHours}h ago`
-    const diffDays = Math.floor(diffHours / 24)
-    if (diffDays < 30) return `${diffDays}d ago`
-    return date.toLocaleDateString()
-  } catch {
-    return ""
-  }
-}
-
-function sourceLabel(skill: ImportedSkill): string {
-  if (skill.marketplace_source_url) return "marketplace"
-  return "file"
-}
+import { CreatePluginDialog } from "@/components/create-plugin-dialog"
+import { deletePlugin, parseSkillFile, setPluginUpgradeLock } from "@/lib/tauri"
+import type { LibraryPlugin, SkillFileMeta } from "@/lib/types"
 
 export function ImportedSkillsTab() {
-  const {
-    skills,
-    isLoading,
-    fetchSkills,
-    deleteSkill,
-  } = useImportedSkillsStore()
+  const plugins = usePluginStore((s) => s.plugins)
+  const isLoading = usePluginStore((s) => s.isLoading)
+  const fetchPlugins = usePluginStore((s) => s.fetchPlugins)
 
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
   const [showGitHubImport, setShowGitHubImport] = useState(false)
+  const [createPluginOpen, setCreatePluginOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState("")
   const [importMeta, setImportMeta] = useState<SkillFileMeta>({
@@ -63,8 +36,8 @@ export function ImportedSkillsTab() {
   })
 
   useEffect(() => {
-    fetchSkills()
-  }, [fetchSkills])
+    fetchPlugins()
+  }, [fetchPlugins])
 
   const handleImport = useCallback(async () => {
     const filePath = await open({
@@ -87,28 +60,49 @@ export function ImportedSkillsTab() {
     }
   }, [])
 
-  const handleDelete = useCallback(
-    async (skill: ImportedSkill) => {
-      const toastId = toast.loading(`Deleting "${skill.skill_name}"...`)
-      try {
-        await deleteSkill(skill.skill_id, fetchSkills)
-        toast.success(`Deleted "${skill.skill_name}"`, { id: toastId })
-      } catch (err) {
-        console.error("[imported-skills] delete failed:", err)
-        toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`, {
-          id: toastId,
-          duration: Infinity,
-          cause: err,
-          context: { operation: "imported_skills_delete", skillId: skill.skill_id },
-        })
-      }
-    },
-    [deleteSkill, fetchSkills]
-  )
+  const handleToggleLock = useCallback(async (plugin: LibraryPlugin) => {
+    const newLocked = !plugin.upgrade_locked
+    try {
+      await setPluginUpgradeLock(plugin.slug, newLocked)
+      await fetchPlugins()
+      toast.success(
+        newLocked
+          ? `Upgrades locked for "${plugin.display_name}"`
+          : `Upgrades unlocked for "${plugin.display_name}"`,
+      )
+    } catch (err) {
+      toast.error(
+        `Failed to ${newLocked ? "lock" : "unlock"} plugin: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }, [fetchPlugins])
+
+  const handleDeletePlugin = useCallback(async (plugin: LibraryPlugin) => {
+    const toastId = toast.loading(`Deleting plugin "${plugin.display_name}"...`)
+    try {
+      await deletePlugin(plugin.slug)
+      await fetchPlugins()
+      toast.success(`Deleted plugin "${plugin.display_name}"`, { id: toastId })
+    } catch (err) {
+      toast.error(
+        `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
+        { id: toastId },
+      )
+    }
+  }, [fetchPlugins])
+
+  const displayPlugins = plugins.filter((p) => !p.is_default)
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
+        <Button
+          className="w-40"
+          onClick={() => setCreatePluginOpen(true)}
+        >
+          <FolderTree className="size-4" />
+          Create Plugin
+        </Button>
         <Button
           variant="outline"
           className="w-36"
@@ -119,7 +113,7 @@ export function ImportedSkillsTab() {
           <Github className="size-4" />
           Marketplace
         </Button>
-        <Button className="w-36" onClick={handleImport}>
+        <Button variant="outline" className="w-36" onClick={handleImport}>
           <FolderInput className="size-4" />
           Upload
         </Button>
@@ -135,77 +129,91 @@ export function ImportedSkillsTab() {
             </div>
           ))}
         </div>
-      ) : skills.length === 0 ? (
+      ) : displayPlugins.length === 0 ? (
         <Card>
           <CardHeader className="text-center">
             <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-muted">
               <Package className="size-6 text-muted-foreground" />
             </div>
-            <CardTitle>No imported skills</CardTitle>
+            <CardTitle>No plugins</CardTitle>
             <CardDescription>
-              Import a .skill package or browse the marketplace to add skills.
+              Browse the marketplace or upload a skill package to get started.
             </CardDescription>
           </CardHeader>
         </Card>
       ) : (
-        <div className="rounded-md border">
-          <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
-            <span className="flex-1">Name</span>
-            <span className="w-24">Version</span>
-            <span className="w-24">Source</span>
-            <span className="w-28">Imported</span>
-            <span className="w-8" />
-          </div>
-          {skills.map((skill) => (
-            <div
-              key={skill.skill_id}
-              className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium">{skill.skill_name}</span>
-                  {skill.is_bundled && (
-                    <Badge variant="secondary" className="text-xs">Built-in</Badge>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs text-muted-foreground">
+              <th className="pb-2 font-medium">Name</th>
+              <th className="pb-2 font-medium">Version</th>
+              <th className="pb-2 font-medium">Source</th>
+              <th className="pb-2 font-medium">Status</th>
+              <th className="pb-2 font-medium w-8" />
+            </tr>
+          </thead>
+          <tbody>
+            {displayPlugins.map((plugin) => (
+              <tr key={plugin.id} className="border-b last:border-b-0 hover:bg-muted/30 transition-colors">
+                <td className="py-2.5 pr-4">
+                  <div className="font-medium">{plugin.display_name}</div>
+                  <div className="text-xs text-muted-foreground">{plugin.slug}</div>
+                </td>
+                <td className="py-2.5 pr-4 text-muted-foreground font-mono text-xs">
+                  {plugin.version ?? "\u2014"}
+                </td>
+                <td className="py-2.5 pr-4 text-xs text-muted-foreground truncate max-w-[200px]">
+                  {plugin.source_url ?? plugin.source_type}
+                </td>
+                <td className="py-2.5 pr-4">
+                  {plugin.upgrade_locked ? (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-xs font-medium transition-colors"
+                      style={{ color: "var(--color-amber, #d97706)" }}
+                      title="Upgrades disabled — skill was edited locally. Click to unlock."
+                      onClick={() => handleToggleLock(plugin)}
+                    >
+                      <Lock className="size-3" />
+                      Upgrades locked
+                    </button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">\u2014</span>
                   )}
-                </div>
-                {skill.description && (
-                  <div className="text-xs text-muted-foreground">{skill.description}</div>
-                )}
-              </div>
-              <div className="w-24 shrink-0">
-                {skill.version ? (
-                  <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">&mdash;</span>
-                )}
-              </div>
-              <div className="w-24 shrink-0">
-                <span className="text-xs text-muted-foreground">{sourceLabel(skill)}</span>
-              </div>
-              <div className="w-28 shrink-0">
-                <span className="text-xs text-muted-foreground">{formatRelativeTime(skill.imported_at)}</span>
-              </div>
-              <div className="w-8 shrink-0 flex items-center justify-end">
-                {!skill.is_bundled && (
-                  <button
-                    type="button"
-                    className="text-muted-foreground hover:text-destructive transition-colors"
-                    aria-label={`Delete ${skill.skill_name}`}
-                    onClick={() => handleDelete(skill)}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+                </td>
+                <td className="py-2.5">
+                  <div className="flex items-center gap-2">
+                    {plugin.upgrade_locked && (
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label={`Unlock upgrades for ${plugin.display_name}`}
+                        title="Unlock upgrades"
+                        onClick={() => handleToggleLock(plugin)}
+                      >
+                        <LockOpen className="size-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                      aria-label={`Delete ${plugin.display_name}`}
+                      onClick={() => handleDeletePlugin(plugin)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
 
       <GitHubImportDialog
         open={showGitHubImport}
         onOpenChange={setShowGitHubImport}
-        onImported={fetchSkills}
+        onImported={fetchPlugins}
         registries={marketplaceRegistries.filter(r => r.enabled)}
       />
 
@@ -214,7 +222,13 @@ export function ImportedSkillsTab() {
         onOpenChange={setImportOpen}
         filePath={importFile}
         meta={importMeta}
-        onImported={fetchSkills}
+        onImported={fetchPlugins}
+      />
+
+      <CreatePluginDialog
+        open={createPluginOpen}
+        onOpenChange={setCreatePluginOpen}
+        onCreated={fetchPlugins}
       />
     </div>
   )

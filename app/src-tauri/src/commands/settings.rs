@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::db::Db;
+use crate::skill_paths::{enumerate_skill_locations, skill_library_key, DEFAULT_PLUGIN_SLUG};
 use crate::types::AppSettings;
 
 /// Default built-in marketplace registry URL. Used for both the initial migration
@@ -97,21 +98,9 @@ fn backfill_missing_skill_versions(
         return Ok(());
     }
 
-    for entry in
-        fs::read_dir(skills_root).map_err(|e| format!("Failed to read skills path: {}", e))?
-    {
-        let entry = entry.map_err(|e| format!("Failed to read skills entry: {}", e))?;
-        let skill_dir = entry.path();
-        if !skill_dir.is_dir() {
-            continue;
-        }
-
-        let skill_name = entry.file_name().to_string_lossy().to_string();
-        if skill_name.starts_with('.') {
-            continue;
-        }
-
-        let skill_md = skill_dir.join("SKILL.md");
+    for skill in enumerate_skill_locations(skills_root)? {
+        let skill_name = skill.skill_name;
+        let skill_md = skill.dir.join("SKILL.md");
         if !skill_md.exists() {
             continue;
         }
@@ -132,7 +121,12 @@ fn backfill_missing_skill_versions(
         )?;
 
         if missing_version {
-            if crate::git::skill_has_any_tag(skills_root, &skill_name)? {
+            let tag_key = if skill.plugin_slug == DEFAULT_PLUGIN_SLUG {
+                skill_name.clone()
+            } else {
+                skill_library_key(&skill.plugin_slug, &skill_name)
+            };
+            if crate::git::skill_has_any_tag(skills_root, &tag_key)? {
                 log::info!(
                     "[startup] skipping version tag backfill for '{}' because a tag already exists",
                     skill_name
@@ -148,12 +142,12 @@ fn backfill_missing_skill_versions(
                     skills_root,
                     &format!("{}: backfill imported skill version", skill_name),
                 )?;
-                crate::git::create_skill_version_tag(skills_root, &skill_name, &normalized.version)?;
+                crate::git::create_skill_version_tag(skills_root, &tag_key, &normalized.version)?;
 
                 log::info!(
                     "[startup] backfilled missing version for '{}' with tag {}/v{}",
                     skill_name,
-                    skill_name,
+                    tag_key,
                     normalized.version
                 );
             }
@@ -539,7 +533,7 @@ mod tests {
         let mut settings = crate::types::AppSettings::default();
         settings.skills_path = Some(skills_path.to_str().unwrap().to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
-        crate::db::upsert_skill_with_source(&conn, "legacy-skill", "imported", "domain").unwrap();
+        crate::db::upsert_skill_with_source_in_plugin(&conn, "legacy-skill", "imported", "domain", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
         run_settings_startup_migrations(&conn).unwrap();
 

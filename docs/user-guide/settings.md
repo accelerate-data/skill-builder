@@ -6,7 +6,7 @@ The current sections are:
 
 - **General**
 - **Claude SDK**
-- **Import**
+- **Plugins**
 - **Marketplace**
 - **GitHub**
 - **Advanced**
@@ -61,18 +61,21 @@ Use **Max dimensions** to control how broad the initial research pass can be bef
 
 ---
 
-## Import
+## Plugins
 
-This section manages imported skills. It is currently named **Import**, not **Skills**.
+This section manages plugins — named groups of related skills. See [Plugins](plugins.md) for full details.
 
-You can:
+The action bar provides:
 
-- import from **Marketplace**
-- **Upload** a `.skill` or `.zip`
-- review imported skill rows
-- delete non-bundled imported skills
+- **Create Plugin** — create a new empty plugin
+- **Marketplace** — browse and install plugins from configured registries (disabled until at least one enabled registry exists in **Marketplace**)
+- **Upload** — import a skill package from a `.skill` or `.zip` file
 
-The marketplace import button is disabled until at least one enabled registry exists in **Marketplace**.
+Below the actions, a table lists installed non-default plugins with their display name, slug, version, and source. Click the trash icon on a row to delete a plugin.
+
+The default **Skills** plugin is managed automatically and does not appear as a row in this table.
+
+When no non-default plugins exist, an empty state card reads "No plugins".
 
 ---
 

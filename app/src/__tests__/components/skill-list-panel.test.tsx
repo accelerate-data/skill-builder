@@ -27,19 +27,22 @@ vi.mock("@/components/skill-dialog", () => ({
 vi.mock("@/lib/tauri", () => ({
   listSkills: vi.fn().mockResolvedValue([]),
   getExternallyLockedSkills: vi.fn().mockResolvedValue([]),
-  exportSkill: vi.fn(),
-  packageSkill: vi.fn(),
-  saveExportTo: vi.fn(),
+  listPlugins: vi.fn().mockResolvedValue([]),
   resetWorkflowStep: vi.fn(),
+  createPluginFromSkills: vi.fn(),
+  moveSkillToPlugin: vi.fn(),
+  removeSkillFromPlugin: vi.fn(),
 }));
 
 import { SkillListPanel } from "@/components/skill-list-panel";
+import { removeSkillFromPlugin } from "@/lib/tauri";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): SkillSummary {
   const base: SkillSummary = {
     name: overrides.name,
+    library_key: overrides.name,
     current_step: null,
     status: null,
     last_modified: new Date(Date.now() - 3600_000).toISOString(), // 1h ago
@@ -56,6 +59,9 @@ function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): 
     argumentHint: null,
     userInvocable: null,
     disableModelInvocation: null,
+    plugin_slug: "skills",
+    plugin_display_name: "Skills",
+    is_default_plugin: true,
   };
   return { ...base, ...overrides };
 }
@@ -66,6 +72,7 @@ function makeImportedSkill(
   const base: ImportedSkill = {
     skill_id: `id-${overrides.skill_name}`,
     skill_name: overrides.skill_name,
+    library_key: `imported:id-${overrides.skill_name}`,
     description: null,
     is_active: true,
     disk_path: `/skills/${overrides.skill_name}`,
@@ -78,6 +85,9 @@ function makeImportedSkill(
     user_invocable: null,
     disable_model_invocation: null,
     marketplace_source_url: null,
+    plugin_slug: "skills",
+    plugin_display_name: "Skills",
+    is_default_plugin: true,
   };
   return { ...base, ...overrides };
 }
@@ -230,7 +240,7 @@ describe("SkillListPanel", () => {
 
     render(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-imp-skill");
+    const dot = screen.getByLabelText("status-dot-imported:id-imp-skill");
     expect(dot.style.backgroundColor).toBe("var(--color-violet)");
   });
 
@@ -243,8 +253,70 @@ describe("SkillListPanel", () => {
 
     render(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-mkt-skill");
+    const dot = screen.getByLabelText("status-dot-imported:id-mkt-skill");
     expect(dot.style.backgroundColor).toBe("var(--color-pacific)");
+  });
+
+  it("creates a plugin from a builder skill in the main sidebar", async () => {
+    const user = userEvent.setup();
+    useSkillStore.setState({ skills: [recentBuilder] });
+
+    render(<SkillListPanel />);
+
+    await openSkillMenu("recent-skill", user);
+    await user.click(screen.getByRole("menuitem", { name: "Create plugin" }));
+
+    // The Create Plugin dialog should open
+    expect(screen.getByText("Create Plugin")).toBeInTheDocument();
+  });
+
+  it("moves a builder skill to another existing plugin from the main sidebar", async () => {
+    const user = userEvent.setup();
+    useSkillStore.setState({
+      skills: [
+        recentBuilder,
+        makeBuilderSkill({
+          name: "plugin-skill",
+          library_key: "skill-builder:analytics-pack:plugin-skill",
+          plugin_slug: "analytics-pack",
+          plugin_display_name: "Analytics Pack",
+          is_default_plugin: false,
+          status: "completed",
+          created_at: new Date(Date.now() - 120_000).toISOString(),
+        }),
+      ],
+    });
+
+    render(<SkillListPanel />);
+
+    await openSkillMenu("recent-skill", user);
+    await user.click(screen.getByRole("menuitem", { name: "Move to plugin" }));
+
+    // The Move to Plugin dialog should open
+    expect(screen.getByText("Move to Plugin")).toBeInTheDocument();
+  });
+
+  it("removes a builder skill from its plugin from the main sidebar", async () => {
+    const user = userEvent.setup();
+    useSkillStore.setState({
+      skills: [
+        makeBuilderSkill({
+          name: "plugin-skill",
+          library_key: "skill-builder:analytics-pack:plugin-skill",
+          plugin_slug: "analytics-pack",
+          plugin_display_name: "Analytics Pack",
+          is_default_plugin: false,
+          status: "completed",
+        }),
+      ],
+    });
+
+    render(<SkillListPanel />);
+
+    await openSkillMenu("plugin-skill", user);
+    await user.click(screen.getByRole("menuitem", { name: "Remove from plugin" }));
+
+    expect(removeSkillFromPlugin).toHaveBeenCalledWith("skill-builder:analytics-pack:plugin-skill");
   });
 
   // ── Pulse animation ───────────────────────────────────────────────────────
@@ -441,7 +513,7 @@ describe("SkillListPanel", () => {
     render(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("my-import").closest('[role="button"]')!);
 
-    expect(onSelectSkill).toHaveBeenCalledWith("my-import");
+    expect(onSelectSkill).toHaveBeenCalledWith("imported:id-my-import");
   });
 
   it("does not navigate or call onSelectSkill when clicking a locked row", () => {
@@ -568,7 +640,7 @@ describe("SkillListPanel", () => {
     expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveClass("text-destructive");
   });
 
@@ -586,7 +658,7 @@ describe("SkillListPanel", () => {
     expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
   });
@@ -608,7 +680,7 @@ describe("SkillListPanel", () => {
     expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
   });

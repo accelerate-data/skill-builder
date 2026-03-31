@@ -52,10 +52,11 @@ The app has three primary surfaces:
 |---|---|
 | [Dashboard](dashboard.md) | Shows the skill list and, when a skill is selected, its workspace tabs |
 | [Workflow](workflow/overview.md) | Runs the 4-step builder flow for Skill Builder skills |
-| [Settings](settings.md) | Holds app configuration, imports, marketplace settings, GitHub, and usage |
+| [Settings](settings.md) | Holds app configuration, plugins, marketplace settings, GitHub, and usage |
 
 Two important areas are embedded inside those surfaces rather than being standalone routes:
 
+- [Plugins](plugins.md) explains how skills are grouped into plugins.
 - [Refine](refine.md) is a workspace tab on the dashboard for builder skills.
 - [Evals](test.md) is also a workspace tab, but it is currently a placeholder.
 - [Usage](usage.md) lives in **Settings → Usage**.
@@ -64,12 +65,14 @@ Two important areas are embedded inside those surfaces rather than being standal
 
 ## Quick concepts
 
-**Skill** — A `SKILL.md` file plus optional `references/*.md` files.
+**Skill** — A `SKILL.md` file plus optional `references/*.md` files. Every skill belongs to exactly one [plugin](plugins.md).
+
+**Plugin** — A named group of related skills. The app creates a default **Skills** plugin automatically. You can create additional plugins to organise skills into logical bundles. See [Plugins](plugins.md).
 
 **Skill source**
 
 - **Skill Builder**: built in the workflow
 - **Marketplace**: imported from a GitHub-backed registry
-- **Imported**: uploaded from a package file
+- **Imported**: uploaded from a single-skill package file
 
 **Workspace** — The app-managed working area for builder runs, refine sessions, and related artifacts. Completed skills are saved separately in your Skills Folder.

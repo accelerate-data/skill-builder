@@ -1,3 +1,77 @@
+pub(crate) fn resolve_plugin_path(
+    source_str: &str,
+    plugin_root: Option<&str>,
+    subpath: Option<&str>,
+) -> String {
+    let relative_part: String = if source_str.starts_with("./") {
+        source_str
+            .strip_prefix("./")
+            .unwrap_or(source_str)
+            .trim_end_matches('/')
+            .to_string()
+    } else {
+        let trimmed = source_str.trim_end_matches('/');
+        match plugin_root.filter(|r| !r.is_empty()) {
+            Some(root) => format!("{}/{}", root.trim_end_matches('/'), trimmed),
+            None => trimmed.to_string(),
+        }
+    };
+
+    match subpath.filter(|s| !s.is_empty()) {
+        Some(sp) if !relative_part.is_empty() => {
+            format!("{}/{}", sp.trim_end_matches('/'), relative_part)
+        }
+        Some(sp) => sp.trim_end_matches('/').to_string(),
+        None => relative_part,
+    }
+}
+
+/// Pure plugin-discovery kernel: return marketplace plugins using only marketplace.json.
+/// No skill-level discovery or fallback naming is performed here.
+pub(crate) fn discover_plugins_from_catalog(
+    plugins: &[crate::types::MarketplacePlugin],
+    plugin_root: Option<&str>,
+    subpath: Option<&str>,
+) -> Vec<crate::types::AvailablePlugin> {
+    use crate::types::{AvailablePlugin, MarketplacePluginSource};
+
+    let mut result = Vec::new();
+
+    for plugin in plugins {
+        let source_str = match &plugin.source {
+            MarketplacePluginSource::Path(s) => s,
+            MarketplacePluginSource::External { source, .. } => {
+                let name = plugin.name.as_deref().unwrap_or("<unnamed>");
+                log::warn!(
+                    "[discover_plugins] skipping plugin '{}' — unsupported source type '{}'",
+                    name,
+                    source
+                );
+                continue;
+            }
+        };
+
+        let Some(name) = plugin.name.as_ref().filter(|n| !n.trim().is_empty()) else {
+            log::debug!(
+                "[discover_plugins] skipping plugin with source '{}' — missing marketplace entry name",
+                source_str
+            );
+            continue;
+        };
+
+        result.push(AvailablePlugin {
+            path: resolve_plugin_path(source_str, plugin_root, subpath),
+            name: name.clone(),
+            description: plugin.description.clone(),
+            version: plugin.version.clone(),
+            skill_count: 0,
+            skill_names: vec![],
+        });
+    }
+
+    result
+}
+
 /// Pure skill-discovery kernel: given a marketplace catalog and a pre-built set of
 /// repository-relative directory paths that contain a `SKILL.md` blob, return all
 /// importable [`AvailableSkill`] entries.
@@ -49,27 +123,7 @@ pub(crate) fn discover_skills_from_catalog(
         //   relative to the marketplace directory.
         // • Bare names (no `./`): prepend `plugin_root` if set.
         // • Then prepend `subpath` to anchor to the repo root.
-        let relative_part: String = if source_str.starts_with("./") {
-            source_str
-                .strip_prefix("./")
-                .unwrap_or(source_str)
-                .trim_end_matches('/')
-                .to_string()
-        } else {
-            let trimmed = source_str.trim_end_matches('/');
-            match plugin_root.filter(|r| !r.is_empty()) {
-                Some(root) => format!("{}/{}", root.trim_end_matches('/'), trimmed),
-                None => trimmed.to_string(),
-            }
-        };
-
-        let plugin_path: String = match subpath.filter(|s| !s.is_empty()) {
-            Some(sp) if !relative_part.is_empty() => {
-                format!("{}/{}", sp.trim_end_matches('/'), relative_part)
-            }
-            Some(sp) => sp.trim_end_matches('/').to_string(),
-            None => relative_part,
-        };
+        let plugin_path = resolve_plugin_path(source_str, plugin_root, subpath);
 
         // Skills prefix: all valid skill dirs for this plugin start with this.
         // When plugin_path is empty (source was `"./"`), prefix is simply `"skills/"`.
@@ -139,5 +193,126 @@ pub(crate) fn extract_plugin_path(skill_path: &str) -> &str {
         // root plugin — skills/ is directly under the repo root (or subpath root),
         // or unrecognised path structure
         ""
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- resolve_plugin_path ---
+
+    #[test]
+    fn resolve_relative_path_strips_dot_slash() {
+        assert_eq!(resolve_plugin_path("./my-plugin", None, None), "my-plugin");
+    }
+
+    #[test]
+    fn resolve_relative_path_ignores_plugin_root() {
+        assert_eq!(resolve_plugin_path("./my-plugin", Some("plugins"), None), "my-plugin");
+    }
+
+    #[test]
+    fn resolve_bare_name_prepends_plugin_root() {
+        assert_eq!(resolve_plugin_path("my-plugin", Some("plugins"), None), "plugins/my-plugin");
+    }
+
+    #[test]
+    fn resolve_bare_name_no_plugin_root() {
+        assert_eq!(resolve_plugin_path("my-plugin", None, None), "my-plugin");
+    }
+
+    #[test]
+    fn resolve_with_subpath_prepends() {
+        assert_eq!(resolve_plugin_path("./my-plugin", None, Some("sub")), "sub/my-plugin");
+    }
+
+    #[test]
+    fn resolve_bare_with_root_and_subpath() {
+        assert_eq!(
+            resolve_plugin_path("my-plugin", Some("plugins"), Some("sub")),
+            "sub/plugins/my-plugin"
+        );
+    }
+
+    #[test]
+    fn resolve_trims_trailing_slashes() {
+        assert_eq!(resolve_plugin_path("./my-plugin/", None, Some("sub/")), "sub/my-plugin");
+    }
+
+    // --- discover_plugins_from_catalog ---
+
+    fn make_plugin(name: Option<&str>, source: &str) -> crate::types::MarketplacePlugin {
+        crate::types::MarketplacePlugin {
+            name: name.map(|s| s.to_string()),
+            source: crate::types::MarketplacePluginSource::Path(source.to_string()),
+            description: Some("desc".to_string()),
+            version: Some("1.0.0".to_string()),
+            author: None,
+            category: None,
+            tags: None,
+        }
+    }
+
+    fn make_external_plugin(name: &str) -> crate::types::MarketplacePlugin {
+        crate::types::MarketplacePlugin {
+            name: Some(name.to_string()),
+            source: crate::types::MarketplacePluginSource::External {
+                source: "npm".to_string(),
+                extra: serde_json::json!({}),
+            },
+            description: None,
+            version: None,
+            author: None,
+            category: None,
+            tags: None,
+        }
+    }
+
+    #[test]
+    fn discover_plugins_returns_valid_entries() {
+        let plugins = vec![make_plugin(Some("analytics"), "./analytics")];
+        let result = discover_plugins_from_catalog(&plugins, None, None);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "analytics");
+        assert_eq!(result[0].path, "analytics");
+    }
+
+    #[test]
+    fn discover_plugins_skips_external_source() {
+        let plugins = vec![make_external_plugin("npm-plugin")];
+        let result = discover_plugins_from_catalog(&plugins, None, None);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn discover_plugins_skips_missing_name() {
+        let plugins = vec![make_plugin(None, "./orphan")];
+        let result = discover_plugins_from_catalog(&plugins, None, None);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn discover_plugins_skips_empty_name() {
+        let plugins = vec![make_plugin(Some("  "), "./empty-name")];
+        let result = discover_plugins_from_catalog(&plugins, None, None);
+        assert!(result.is_empty());
+    }
+
+    // --- extract_plugin_path ---
+
+    #[test]
+    fn extract_plugin_path_nested() {
+        assert_eq!(extract_plugin_path("engineering/skills/standup"), "engineering");
+    }
+
+    #[test]
+    fn extract_plugin_path_deep_nested() {
+        assert_eq!(extract_plugin_path("plugins/eng/skills/standup"), "plugins/eng");
+    }
+
+    #[test]
+    fn extract_plugin_path_root() {
+        assert_eq!(extract_plugin_path("skills/standup"), "");
     }
 }

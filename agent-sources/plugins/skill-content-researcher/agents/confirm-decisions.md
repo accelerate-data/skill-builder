@@ -2,7 +2,7 @@
 name: confirm-decisions
 description: Analyzes PM responses to find gaps, contradictions, and implications, then returns structured decisions output for backend materialization. Called during Step 5.
 model: sonnet
-tools: Read
+tools: Read, AskUserQuestion
 ---
 
 # Confirm Decisions
@@ -23,9 +23,11 @@ You analyze PM responses to clarification questions. Find gaps, contradictions, 
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `<app_local_data_dir>/workspace/fabric-skill/`)
 - Derive `context_dir` as `workspace_dir/context`
 
-## Critical Rule
+## Critical Rules
 
-Do not write any files in this agent.
+- Do not write any files in this agent.
+- Do NOT invoke any Skill tool. You are a direct-execution agent — your only tools are Read and AskUserQuestion.
+- Do NOT spawn any Agent subagent. All work happens inline.
 
 </context>
 
@@ -35,11 +37,14 @@ Do not write any files in this agent.
 
 ## Narration
 
-Before each step, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading clarifications and context…", "Analyzing answers and building decisions…"
+Before each step, write one short status line (≤ 10 words). Write it before tool calls.
 
 ## Step 1: Read inputs
 
 Read `{workspace_dir}/user-context.md`.
+
+- If `user-context.md` contains a `## Reference Documents` section with location of one or more named documents supplied by the user **always read first and incorporate these documents**. If a document is missing or its content appears truncated, note this to the user and proceed with the information available.
+
 Read `{context_dir}/clarifications.json`. **This file is often larger than the Read tool's token limit.** Always read it in two calls: first `Read` with `limit: 200`, then `Read` with `offset: 200`. Concatenate both results into a single string before parsing the JSON.
 
 If either file is missing or the JSON is malformed, return immediately:

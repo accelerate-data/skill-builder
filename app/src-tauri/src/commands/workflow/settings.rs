@@ -5,13 +5,13 @@ use super::step_config::resolve_model_id;
 
 /// Shared settings extracted from the DB, used by `run_workflow_step`.
 pub(crate) struct WorkflowSettings {
+    pub plugin_slug: String,
     pub skills_path: String,
     pub api_key: crate::types::SecretString,
     pub preferred_model: String,
     pub extended_thinking: bool,
     pub interleaved_thinking_beta: bool,
     pub sdk_effort: Option<String>,
-    pub fallback_model: Option<String>,
     pub purpose: String,
     pub tags: Vec<String>,
     pub author_login: Option<String>,
@@ -26,6 +26,8 @@ pub(crate) struct WorkflowSettings {
     pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
+    /// Applicable reference documents for this skill (scope=all or skill-specific).
+    pub documents: Vec<crate::db::DocumentContent>,
 }
 
 /// Read all workflow settings from the DB in a single lock acquisition.
@@ -51,14 +53,25 @@ pub(crate) fn read_workflow_settings(
     let extended_thinking = settings.extended_thinking;
     let interleaved_thinking_beta = settings.interleaved_thinking_beta;
     let sdk_effort = settings.sdk_effort.clone();
-    let fallback_model = Some(preferred_model.clone());
     let max_dimensions = settings.max_dimensions;
     let industry = settings.industry;
     let function_role = settings.function_role;
 
+    // Metadata fields are read exclusively from the `skills` master table.
+    // This is the canonical source since migration 24 moved these columns
+    // from `workflow_runs` to `skills`, and migration 35 dropped them from
+    // `workflow_runs` entirely. Never read metadata from `workflow_runs` or
+    // from frontend-supplied payload — always call `get_skill_master_any_plugin` here.
+    // Use any-plugin lookup so non-default-plugin skills are found correctly.
+    let master_row = crate::db::get_skill_master_any_plugin(&conn, skill_name).ok().flatten();
+    let plugin_slug = master_row
+        .as_ref()
+        .map(|m| m.plugin_slug.clone())
+        .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+
     // Validate prerequisites (step 3 requires decisions.json)
     if step_id == 3 {
-        validate_decisions_exist_inner(skill_name, workspace_path, &skills_path)?;
+        validate_decisions_exist_inner(skill_name, workspace_path, &plugin_slug, &skills_path)?;
     }
 
     // Get skill purpose
@@ -75,12 +88,6 @@ pub(crate) fn read_workflow_settings(
         .or_else(|| run_row.as_ref().and_then(|r| r.author_login.clone()));
     let created_at = run_row.as_ref().map(|r| r.created_at.clone());
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-    // Metadata fields are read exclusively from the `skills` master table.
-    // This is the canonical source since migration 24 moved these columns
-    // from `workflow_runs` to `skills`, and migration 35 dropped them from
-    // `workflow_runs` entirely. Never read metadata from `workflow_runs` or
-    // from frontend-supplied payload — always call `get_skill_master` here.
-    let master_row = crate::db::get_skill_master(&conn, skill_name).ok().flatten();
     let description = master_row.as_ref().and_then(|m| m.description.clone());
     let version = master_row.as_ref().and_then(|m| m.version.clone());
     let skill_model = master_row.as_ref().and_then(|m| m.model.clone());
@@ -92,14 +99,25 @@ pub(crate) fn read_workflow_settings(
         .remove(skill_name)
         .unwrap_or_default();
 
+    let documents = master_row
+        .as_ref()
+        .map(|m| m.id)
+        .map(|sid| {
+            crate::db::db_documents_for_skill(&conn, sid).unwrap_or_else(|e| {
+                log::warn!("read_workflow_settings: failed to load documents for skill {}: {}", skill_name, e);
+                vec![]
+            })
+        })
+        .unwrap_or_default();
+
     Ok(WorkflowSettings {
+        plugin_slug,
         skills_path,
         api_key,
         preferred_model,
         extended_thinking,
         interleaved_thinking_beta,
         sdk_effort,
-        fallback_model,
         purpose,
         tags,
         author_login,
@@ -114,5 +132,6 @@ pub(crate) fn read_workflow_settings(
         argument_hint,
         user_invocable,
         disable_model_invocation,
+        documents,
     })
 }

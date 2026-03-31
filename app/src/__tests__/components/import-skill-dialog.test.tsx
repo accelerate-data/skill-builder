@@ -160,7 +160,7 @@ describe("ImportSkillDialog", () => {
     it("shows inline error below Name field when importSkillFromFile rejects with conflict_no_overwrite", async () => {
       const user = userEvent.setup();
       mockImportSkillFromFile.mockRejectedValue(
-        new Error("conflict_no_overwrite:my-skill")
+        new Error("A skill named 'my-skill' already exists in the default plugin. Rename or delete it first.")
       );
 
       renderDialog();
@@ -177,7 +177,7 @@ describe("ImportSkillDialog", () => {
     it("does not show overwrite confirm when conflict_no_overwrite fires", async () => {
       const user = userEvent.setup();
       mockImportSkillFromFile.mockRejectedValue(
-        new Error("conflict_no_overwrite:my-skill")
+        new Error("A skill named 'my-skill' already exists in the default plugin. Rename or delete it first.")
       );
 
       renderDialog();
@@ -196,131 +196,14 @@ describe("ImportSkillDialog", () => {
   });
 
   // -------------------------------------------------------------------
-  // conflict_overwrite_required
+  // Conflict — error clears on name edit
   // -------------------------------------------------------------------
 
-  describe("conflict_overwrite_required error", () => {
-    it("shows overwrite confirmation prompt when importSkillFromFile rejects with conflict_overwrite_required", async () => {
-      const user = userEvent.setup();
-      mockImportSkillFromFile.mockRejectedValue(
-        new Error("conflict_overwrite_required:my-skill")
-      );
-
-      renderDialog();
-
-      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
-
-      await waitFor(() => {
-        expect(
-          screen.getByRole("button", { name: /Overwrite/i })
-        ).toBeInTheDocument();
-      });
-    });
-
-    it("shows skill name in overwrite confirmation text", async () => {
-      const user = userEvent.setup();
-      mockImportSkillFromFile.mockRejectedValue(
-        new Error("conflict_overwrite_required:my-skill")
-      );
-
-      renderDialog();
-
-      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
-
-      await waitFor(() => {
-        expect(screen.getByText(/is already imported/i)).toBeInTheDocument();
-      });
-    });
-  });
-
-  // -------------------------------------------------------------------
-  // Overwrite confirm — calls importSkillFromFile with forceOverwrite:true
-  // -------------------------------------------------------------------
-
-  describe("Overwrite confirm", () => {
-    it("calls importSkillFromFile with forceOverwrite:true when Overwrite is clicked", async () => {
-      const user = userEvent.setup();
-
-      // First call triggers the overwrite required prompt, second call succeeds
-      mockImportSkillFromFile
-        .mockRejectedValueOnce(new Error("conflict_overwrite_required:my-skill"))
-        .mockResolvedValueOnce("ok");
-
-      renderDialog();
-
-      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
-
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Overwrite/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole("button", { name: /Overwrite/i }));
-
-      await waitFor(() => {
-        expect(mockImportSkillFromFile).toHaveBeenCalledWith(
-          expect.objectContaining({ forceOverwrite: true })
-        );
-      });
-    });
-
-    it("hides the main form while overwrite confirmation is shown", async () => {
-      const user = userEvent.setup();
-      mockImportSkillFromFile.mockRejectedValue(
-        new Error("conflict_overwrite_required:my-skill")
-      );
-
-      renderDialog();
-
-      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
-
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Overwrite/i })).toBeInTheDocument();
-      });
-
-      // The main form submit button must not be visible at the same time
-      expect(screen.queryByRole("button", { name: /Confirm Import/i })).not.toBeInTheDocument();
-    });
-
-    it("returns to the main form when Cancel is clicked on the overwrite panel", async () => {
-      const user = userEvent.setup();
-      mockImportSkillFromFile.mockRejectedValue(
-        new Error("conflict_overwrite_required:my-skill")
-      );
-
-      renderDialog();
-
-      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
-
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Overwrite/i })).toBeInTheDocument();
-      });
-
-      // Click Cancel on the overwrite panel
-      const cancelButtons = screen.getAllByRole("button", { name: /Cancel/i });
-      // The overwrite panel's Cancel is the one in the confirmation view
-      await user.click(cancelButtons[cancelButtons.length - 1]);
-
-      // Form should be visible again
-      await waitFor(() => {
-        expect(
-          screen.getByRole("button", { name: /Confirm Import/i })
-        ).toBeInTheDocument();
-      });
-
-      // Overwrite button must be gone
-      expect(screen.queryByRole("button", { name: /Overwrite/i })).not.toBeInTheDocument();
-    });
-  });
-
-  // -------------------------------------------------------------------
-  // conflict_no_overwrite — error clears on name edit
-  // -------------------------------------------------------------------
-
-  describe("conflict_no_overwrite error clears on name edit", () => {
+  describe("conflict error clears on name edit", () => {
     it("clears the inline name error when the user types in the name field", async () => {
       const user = userEvent.setup();
       mockImportSkillFromFile.mockRejectedValue(
-        new Error("conflict_no_overwrite:my-skill")
+        new Error("A skill named 'my-skill' already exists in the default plugin. Rename or delete it first.")
       );
 
       renderDialog();
