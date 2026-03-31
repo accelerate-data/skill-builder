@@ -193,6 +193,56 @@ fn test_migration_count_matches_expected() {
 }
 
 #[test]
+fn test_repair_plugin_ownership_schema_recovers_when_migration_38_was_only_marked_applied() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    run_migrations(&conn).unwrap();
+
+    for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+        if version == 38 {
+            super::mark_migration_applied(&conn, version).unwrap();
+            continue;
+        }
+        migrate_fn(&conn).unwrap();
+        super::mark_migration_applied(&conn, version).unwrap();
+    }
+
+    let has_plugin_id_before: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('skills') WHERE name = 'plugin_id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(has_plugin_id_before, 0);
+
+    run_marketplace_source_url_migration(&conn).unwrap();
+    repair_plugin_ownership_schema(&conn).unwrap();
+
+    let has_plugin_id_after: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('skills') WHERE name = 'plugin_id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(has_plugin_id_after, 1);
+
+    let default_plugin_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM plugins WHERE slug = 'skills'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(default_plugin_count, 1);
+
+    save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
+    let skill = get_skill_master(&conn, "test-skill").unwrap().unwrap();
+    assert_eq!(skill.plugin_slug, "skills");
+}
+
+#[test]
 fn test_workflow_run_crud() {
     let conn = create_test_db();
     save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();
@@ -394,9 +444,9 @@ fn test_delete_skill_nonexistent_is_ok() {
 }
 
 #[test]
-fn test_save_marketplace_skill_creates_master_row_only() {
+fn test_marketplace_skill_creates_master_row_only() {
     let conn = create_test_db();
-    save_marketplace_skill(&conn, "mkt-skill", "platform").unwrap();
+    upsert_skill_in_plugin(&conn, "mkt-skill", "marketplace", "platform", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
     // Skills master row should exist with source=marketplace
     let skills = list_all_skills(&conn).unwrap();
@@ -534,15 +584,22 @@ fn test_backfill_migration_populates_skills_from_workflow_runs() {
     run_rename_purpose_drop_domain_migration(&conn).unwrap();
     run_skills_soft_delete_migration(&conn).unwrap();
 
-    // Verify skills master was populated
-    let skills = list_all_skills(&conn).unwrap();
-    assert_eq!(skills.len(), 2);
-
-    let created = skills.iter().find(|s| s.name == "created-skill").unwrap();
-    assert_eq!(created.skill_source, "skill-builder");
-
-    let mkt = skills.iter().find(|s| s.name == "mkt-skill").unwrap();
-    assert_eq!(mkt.skill_source, "marketplace");
+    // Verify skills master was populated using the pre-plugin schema active at this migration point.
+    let mut stmt = conn
+        .prepare("SELECT name, skill_source FROM skills ORDER BY name")
+        .unwrap();
+    let skills: Vec<(String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(
+        skills,
+        vec![
+            ("created-skill".to_string(), "skill-builder".to_string()),
+            ("mkt-skill".to_string(), "marketplace".to_string()),
+        ]
+    );
 
     // Marketplace row should be removed from workflow_runs
     let run = get_workflow_run(&conn, "mkt-skill").unwrap();
@@ -564,7 +621,14 @@ fn test_backfill_migration_populates_skills_from_workflow_runs() {
         )
         .unwrap();
     assert!(skill_id.is_some());
-    assert_eq!(skill_id.unwrap(), created.id);
+    let created_skill_id: i64 = conn
+        .query_row(
+            "SELECT id FROM skills WHERE name = 'created-skill'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(skill_id.unwrap(), created_skill_id);
 }
 
 // --- Skill Tags tests ---
@@ -2587,15 +2651,11 @@ fn test_backfill_synthetic_sessions_migration_creates_missing_sessions() {
 fn test_list_active_skills() {
     let conn = create_test_db();
 
-    // Skills master rows required for FK
-    upsert_skill(&conn, "active-with-trigger", "imported", "domain").unwrap();
-    upsert_skill(&conn, "active-no-trigger", "imported", "domain").unwrap();
-    upsert_skill(&conn, "inactive-with-trigger", "imported", "domain").unwrap();
-
     // Skill 1: active (trigger comes from disk, not DB)
     let skill1 = ImportedSkill {
         skill_id: "imp-1".to_string(),
         skill_name: "active-with-trigger".to_string(),
+        library_key: Some("imported:imp-1".to_string()),
         is_active: true,
         disk_path: "/tmp/s1".to_string(),
         imported_at: "2025-01-01 00:00:00".to_string(),
@@ -2608,13 +2668,17 @@ fn test_list_active_skills() {
         disable_model_invocation: None,
         purpose: None,
         marketplace_source_url: None,
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
+        is_default_plugin: Some(true),
     };
-    insert_imported_skill(&conn, &skill1).unwrap();
+    test_insert_imported_skill(&conn, &skill1).unwrap();
 
     // Skill 2: active
     let skill2 = ImportedSkill {
         skill_id: "imp-2".to_string(),
         skill_name: "active-no-trigger".to_string(),
+        library_key: Some("imported:imp-2".to_string()),
         is_active: true,
         disk_path: "/tmp/s2".to_string(),
         imported_at: "2025-01-01 00:00:00".to_string(),
@@ -2627,13 +2691,17 @@ fn test_list_active_skills() {
         disable_model_invocation: None,
         purpose: None,
         marketplace_source_url: None,
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
+        is_default_plugin: Some(true),
     };
-    insert_imported_skill(&conn, &skill2).unwrap();
+    test_insert_imported_skill(&conn, &skill2).unwrap();
 
     // Skill 3: inactive
     let skill3 = ImportedSkill {
         skill_id: "imp-3".to_string(),
         skill_name: "inactive-with-trigger".to_string(),
+        library_key: Some("imported:imp-3".to_string()),
         is_active: false,
         disk_path: "/tmp/s3".to_string(),
         imported_at: "2025-01-01 00:00:00".to_string(),
@@ -2646,8 +2714,11 @@ fn test_list_active_skills() {
         disable_model_invocation: None,
         purpose: None,
         marketplace_source_url: None,
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
+        is_default_plugin: Some(true),
     };
-    insert_imported_skill(&conn, &skill3).unwrap();
+    test_insert_imported_skill(&conn, &skill3).unwrap();
 
     // Only active skills should be returned (inactive filtered out)
     let result = list_active_skills(&conn).unwrap();
@@ -2665,6 +2736,7 @@ fn test_delete_imported_skill_by_name() {
     let skill = ImportedSkill {
         skill_id: "id-del".to_string(),
         skill_name: "delete-me".to_string(),
+        library_key: Some("imported:id-del".to_string()),
 
         is_active: true,
         disk_path: "/tmp/delete-me".to_string(),
@@ -2678,8 +2750,11 @@ fn test_delete_imported_skill_by_name() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
+        is_default_plugin: Some(true),
     };
-    insert_imported_skill(&conn, &skill).unwrap();
+    test_insert_imported_skill(&conn, &skill).unwrap();
 
     // Verify it exists
     assert!(get_imported_skill(&conn, "delete-me").unwrap().is_some());
@@ -2699,47 +2774,44 @@ fn test_migration_19_cleans_orphaned_imported_skills() {
     // Migration 19 performs two operations:
     //   1. UPDATE skills SET skill_source = 'imported' WHERE skill_source = 'upload'
     //   2. DELETE orphaned imported_skills (non-bundled, no matching skills master row)
-    // Post migration 38, imported_skills.skill_master_id is NOT NULL so true orphans
-    // (no skills row at all) can't exist. This test verifies the cleanup SQL still
-    // works when the skills master row is soft-deleted (deleted_at set).
-    let conn = create_test_db();
-
-    let default_pid = conn.query_row(
-        "SELECT id FROM plugins WHERE slug = 'skills'", [], |r| r.get::<_, i64>(0),
-    ).unwrap();
-
-    // Insert skills master rows
-    conn.execute(
-        "INSERT INTO skills (name, skill_source, plugin_id, purpose) VALUES ('kept-skill', 'imported', ?1, 'domain')",
-        rusqlite::params![default_pid],
-    ).unwrap();
-    let kept_id: i64 = conn.query_row("SELECT id FROM skills WHERE name = 'kept-skill'", [], |r| r.get(0)).unwrap();
-
-    conn.execute(
-        "INSERT INTO skills (name, skill_source, plugin_id, purpose, deleted_at) VALUES ('orphan-skill', 'imported', ?1, 'domain', datetime('now'))",
-        rusqlite::params![default_pid],
-    ).unwrap();
-    let orphan_id: i64 = conn.query_row("SELECT id FROM skills WHERE name = 'orphan-skill'", [], |r| r.get(0)).unwrap();
+    // The CHECK constraint on skills.skill_source prevents inserting 'upload' after
+    // migration 17, so we test the orphan cleanup logic (the core new behavior).
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "CREATE TABLE skills (
+            name TEXT PRIMARY KEY,
+            skill_source TEXT NOT NULL,
+            deleted_at TEXT
+        );
+        CREATE TABLE imported_skills (
+            skill_id TEXT PRIMARY KEY,
+            skill_name TEXT NOT NULL UNIQUE,
+            disk_path TEXT NOT NULL,
+            is_bundled INTEGER NOT NULL DEFAULT 0
+        );",
+    )
+    .unwrap();
 
     conn.execute(
-        "INSERT INTO skills (name, skill_source, plugin_id, purpose, deleted_at) VALUES ('bundled-skill', 'imported', ?1, 'domain', datetime('now'))",
-        rusqlite::params![default_pid],
-    ).unwrap();
-    let bundled_id: i64 = conn.query_row("SELECT id FROM skills WHERE name = 'bundled-skill'", [], |r| r.get(0)).unwrap();
-
-    // Insert imported_skills rows
+        "INSERT INTO skills (name, skill_source, deleted_at) VALUES ('kept-skill', 'imported', NULL)",
+        [],
+    )
+    .unwrap();
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled, skill_master_id) VALUES ('kept-id', 'kept-skill', '/tmp/kept', 0, ?1)",
-        rusqlite::params![kept_id],
-    ).unwrap();
+        "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled) VALUES ('kept-id', 'kept-skill', '/tmp/kept', 0)",
+        [],
+    )
+    .unwrap();
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled, skill_master_id) VALUES ('orphan-id', 'orphan-skill', '/tmp/orphan', 0, ?1)",
-        rusqlite::params![orphan_id],
-    ).unwrap();
+        "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled) VALUES ('orphan-id', 'orphan-skill', '/tmp/orphan', 0)",
+        [],
+    )
+    .unwrap();
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled, skill_master_id) VALUES ('bundled-id', 'bundled-skill', '/tmp/bundled', 1, ?1)",
-        rusqlite::params![bundled_id],
-    ).unwrap();
+        "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled) VALUES ('bundled-id', 'bundled-skill', '/tmp/bundled', 1)",
+        [],
+    )
+    .unwrap();
 
     // Run migration 19's orphan cleanup SQL directly
     conn.execute(
@@ -2750,7 +2822,7 @@ fn test_migration_19_cleans_orphaned_imported_skills() {
     )
     .unwrap();
 
-    // Orphaned (soft-deleted master) non-bundled row should be gone
+    // Orphaned non-bundled row should be gone
     let orphan_count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'orphan-skill'",
@@ -2773,7 +2845,7 @@ fn test_migration_19_cleans_orphaned_imported_skills() {
         .unwrap();
     assert_eq!(kept_count, 1, "Non-orphaned row should be preserved");
 
-    // Bundled row should be preserved (even with soft-deleted master)
+    // Bundled row should be preserved (even without master row)
     let bundled_count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'bundled-skill'",
@@ -2907,11 +2979,12 @@ fn test_fk_backfill_populates_all_child_tables() {
     run_workflow_runs_id_migration(&conn).unwrap();
     // NOTE: run_fk_columns_migration NOT called yet.
 
-    // Insert a skills master row.
+    // Insert a skills master row using the pre-plugin schema active at this migration point.
     conn.execute(
         "INSERT INTO skills (name, skill_source, domain, skill_type) VALUES ('backfill-skill', 'skill-builder', 'test', 'domain')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
     let skill_master_id: i64 = conn
         .query_row(
             "SELECT id FROM skills WHERE name = 'backfill-skill'",
@@ -3143,13 +3216,11 @@ fn test_list_imported_skills_filtered() {
     let skills = list_imported_skills_filtered(&conn, None).unwrap();
     assert!(skills.is_empty());
 
-    // Skills master row required for FK
-    upsert_skill(&conn, "test-skill", "imported", "domain").unwrap();
-
     // Insert a skill and verify it appears
     let skill = ImportedSkill {
         skill_id: "imp-test-1".to_string(),
         skill_name: "test-skill".to_string(),
+        library_key: Some("imported:imp-test-1".to_string()),
         is_active: true,
         disk_path: std::env::temp_dir().join("test-skill").to_string_lossy().to_string(),
         imported_at: "2025-01-01T00:00:00Z".to_string(),
@@ -3162,8 +3233,21 @@ fn test_list_imported_skills_filtered() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: Some("https://github.com/acme/skills".to_string()),
+        plugin_slug: Some("market-test".to_string()),
+        plugin_display_name: Some("market-test".to_string()),
+        is_default_plugin: Some(false),
     };
-    insert_imported_skill(&conn, &skill).unwrap();
+    ensure_plugin(
+        &conn,
+        "market-test",
+        "market-test",
+        "marketplace",
+        Some("https://github.com/acme/skills"),
+        None,
+        false,
+    )
+    .unwrap();
+    test_insert_imported_skill(&conn, &skill).unwrap();
 
     let all = list_imported_skills_filtered(&conn, None).unwrap();
     assert_eq!(all.len(), 1);
@@ -3179,10 +3263,10 @@ fn test_list_imported_skills_filtered() {
 #[test]
 fn test_get_imported_skill_by_id() {
     let conn = create_test_db();
-    upsert_skill(&conn, "test-byid", "imported", "domain").unwrap();
     let skill = ImportedSkill {
         skill_id: "imp-test-byid".to_string(),
         skill_name: "test-byid".to_string(),
+        library_key: Some("imported:imp-test-byid".to_string()),
         is_active: true,
         disk_path: std::env::temp_dir().join("test-byid").to_string_lossy().to_string(),
         imported_at: "2025-01-01T00:00:00Z".to_string(),
@@ -3195,8 +3279,11 @@ fn test_get_imported_skill_by_id() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
+        is_default_plugin: Some(true),
     };
-    insert_imported_skill(&conn, &skill).unwrap();
+    test_insert_imported_skill(&conn, &skill).unwrap();
 
     let found = get_imported_skill_by_id(&conn, "imp-test-byid").unwrap();
     assert!(found.is_some());
@@ -3209,10 +3296,10 @@ fn test_get_imported_skill_by_id() {
 #[test]
 fn test_delete_imported_skill_by_skill_id() {
     let conn = create_test_db();
-    upsert_skill(&conn, "test-del", "imported", "domain").unwrap();
     let skill = ImportedSkill {
         skill_id: "imp-test-del".to_string(),
         skill_name: "test-del".to_string(),
+        library_key: Some("imported:imp-test-del".to_string()),
         is_active: true,
         disk_path: std::env::temp_dir().join("test-del").to_string_lossy().to_string(),
         imported_at: "2025-01-01T00:00:00Z".to_string(),
@@ -3225,8 +3312,11 @@ fn test_delete_imported_skill_by_skill_id() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
+        plugin_slug: Some("skills".to_string()),
+        plugin_display_name: Some("Skills".to_string()),
+        is_default_plugin: Some(true),
     };
-    insert_imported_skill(&conn, &skill).unwrap();
+    test_insert_imported_skill(&conn, &skill).unwrap();
     assert!(get_imported_skill_by_id(&conn, "imp-test-del").unwrap().is_some());
 
     delete_imported_skill_by_skill_id(&conn, "imp-test-del").unwrap();
@@ -3237,10 +3327,10 @@ fn test_delete_imported_skill_by_skill_id() {
 #[test]
 fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
     let conn = create_test_db();
-    upsert_skill(&conn, "market-skill", "marketplace", "domain").unwrap();
     let imported = ImportedSkill {
         skill_id: "imp-market-skill".to_string(),
         skill_name: "market-skill".to_string(),
+        library_key: Some("imported:imp-market-skill".to_string()),
         is_active: true,
         disk_path: "/tmp/market-skill".to_string(),
         imported_at: "2025-01-01T00:00:00Z".to_string(),
@@ -3253,8 +3343,21 @@ fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: Some("https://github.com/acme/skills-a".to_string()),
+        plugin_slug: Some("market-skill-a".to_string()),
+        plugin_display_name: Some("market-skill-a".to_string()),
+        is_default_plugin: Some(false),
     };
-    insert_imported_skill(&conn, &imported).unwrap();
+    ensure_plugin(
+        &conn,
+        "market-skill-a",
+        "market-skill-a",
+        "marketplace",
+        Some("https://github.com/acme/skills-a"),
+        None,
+        false,
+    )
+    .unwrap();
+    test_insert_imported_skill(&conn, &imported).unwrap();
 
     let found = get_imported_skill_by_name_and_source(
         &conn,

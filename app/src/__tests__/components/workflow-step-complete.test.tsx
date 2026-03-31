@@ -16,6 +16,7 @@ vi.mock("@/lib/tauri", () => ({
   getContextFileContent: (...args: unknown[]) => mockGetContextFileContent(...args),
   saveDecisionsContent: (...args: unknown[]) => mockSaveDecisionsContent(...args),
   getDisabledSteps: (...args: unknown[]) => mockGetDisabledSteps(...args),
+  listSkillFiles: vi.fn().mockResolvedValue([]),
 }));
 
 // Mock react-markdown to avoid ESM issues in tests
@@ -161,6 +162,7 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
     stepId: 0,
     outputFiles: ["context/clarifications.json"],
     skillName: "my-skill",
+    workspacePath: "/workspace",
     skillsPath: "/skills",
   };
 
@@ -169,12 +171,17 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
     stepId: 1,
     outputFiles: ["context/clarifications.json"],
     skillName: "my-skill",
+    workspacePath: "/workspace",
     skillsPath: "/skills",
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetStepAgentRuns.mockResolvedValue([]);
+    mockGetContextFileContent.mockImplementation((_skill: string, _workspace: string, filename: string) => {
+      if (filename === "clarifications.json") return Promise.resolve(clarificationsJson);
+      return Promise.resolve(null);
+    });
   });
 
   it("renders ResearchSummaryCard as editable when clarificationsEditable=true on research step", async () => {

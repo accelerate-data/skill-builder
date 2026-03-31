@@ -2,11 +2,12 @@ use std::path::Path;
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::Db;
+use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::{RefineDiff, RefineFileDiff, RefineFinalizeResult, SkillFileContent};
 
-use super::content::get_skill_content_inner;
+use super::content::get_skill_content_inner_for_plugin;
 use super::diff::get_refine_diff_for_commit_range_inner;
-use super::resolve_skills_path;
+use super::{resolve_skill_plugin_slug, resolve_skills_path};
 
 fn is_mock_agents_enabled() -> bool {
     matches!(std::env::var("MOCK_AGENTS").as_deref(), Ok("true"))
@@ -75,6 +76,7 @@ pub(crate) fn cleanup_skill_snapshot(workspace_skill_root: &Path) {
 
 // ─── Output finalization ────────────────────────────────────────────────────
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn finalize_refine_run_inner(
     skill_name: &str,
     skills_path: &str,
@@ -82,8 +84,26 @@ pub(crate) fn finalize_refine_run_inner(
     _structured_output: Option<&serde_json::Value>,
     pre_run_sha: Option<&str>,
 ) -> Result<RefineFinalizeResult, String> {
-    let skill_root = Path::new(skills_path).join(skill_name);
-    let workspace_skill_root = Path::new(workspace_path).join(skill_name);
+    finalize_refine_run_inner_for_plugin(
+        skill_name,
+        skills_path,
+        workspace_path,
+        DEFAULT_PLUGIN_SLUG,
+        _structured_output,
+        pre_run_sha,
+    )
+}
+
+pub(crate) fn finalize_refine_run_inner_for_plugin(
+    skill_name: &str,
+    skills_path: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+    _structured_output: Option<&serde_json::Value>,
+    pre_run_sha: Option<&str>,
+) -> Result<RefineFinalizeResult, String> {
+    let skill_root = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
+    let workspace_skill_root = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     if !skill_root.exists() {
         return Err(format!(
             "Skill '{}' not found at {}",
@@ -116,7 +136,7 @@ pub(crate) fn finalize_refine_run_inner(
             "[finalize_refine_run] HEAD unchanged skill={} — no agent commit, skipping diff",
             skill_name,
         );
-        let files = get_skill_content_inner(skill_name, skills_path)?;
+        let files = get_skill_content_inner_for_plugin(skill_name, skills_path, plugin_slug)?;
         return Ok(RefineFinalizeResult {
             files,
             diff: RefineDiff {
@@ -160,7 +180,7 @@ pub(crate) fn finalize_refine_run_inner(
         }
     };
 
-    let files = get_skill_content_inner(skill_name, skills_path)?;
+    let files = get_skill_content_inner_for_plugin(skill_name, skills_path, plugin_slug)?;
     let diff = if is_mock_agents_enabled() && diff.files.is_empty() && !files.is_empty() {
         log::info!(
             "[finalize_refine_run] mock fallback diff generated skill={} files={}",
@@ -185,10 +205,13 @@ pub(crate) fn finalize_refine_run_inner(
 pub fn clean_benchmark_snapshot(
     skill_name: String,
     workspace_path: String,
+    db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!("[clean_benchmark_snapshot] skill={}", skill_name);
     validate_skill_name(&skill_name)?;
-    let workspace_skill_root = Path::new(&workspace_path).join(&skill_name);
+    let plugin_slug = super::resolve_skill_plugin_slug(&db, &skill_name)
+        .unwrap_or_else(|_| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+    let workspace_skill_root = resolve_workspace_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name);
     cleanup_skill_snapshot(&workspace_skill_root);
     Ok(())
 }
@@ -207,6 +230,10 @@ pub fn finalize_refine_run(
         log::error!("[finalize_refine_run] Failed to resolve skills path: {}", e);
         e
     })?;
+    let plugin_slug = resolve_skill_plugin_slug(&db, &skill_name).map_err(|e| {
+        log::error!("[finalize_refine_run] Failed to resolve plugin slug: {}", e);
+        e
+    })?;
 
     // Look up the session's pre-run HEAD SHA to detect no-op turns.
     let pre_run_sha = sessions
@@ -219,10 +246,11 @@ pub fn finalize_refine_run(
                 .and_then(|s| s.head_sha_at_start.clone())
         });
 
-    let result = finalize_refine_run_inner(
+    let result = finalize_refine_run_inner_for_plugin(
         &skill_name,
         &skills_path,
         &workspace_path,
+        &plugin_slug,
         structured_output.as_ref(),
         pre_run_sha.as_deref(),
     )

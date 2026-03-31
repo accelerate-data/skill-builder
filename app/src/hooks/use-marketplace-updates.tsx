@@ -1,7 +1,7 @@
 import { useRouter } from "@tanstack/react-router";
 import { toast } from "@/lib/toast";
 import { useSettingsStore } from "@/stores/settings-store";
-import { checkMarketplaceUpdates, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
+import { checkMarketplaceUpdates, importMarketplaceToLibrary, checkSkillCustomized, listPlugins } from "@/lib/tauri";
 import type { AppSettings, SkillUpdateInfo } from "@/lib/types";
 
 /** Filter out customized skills, returning only those safe to auto-update. */
@@ -13,6 +13,21 @@ export async function filterNonCustomized(skills: SkillUpdateInfo[]): Promise<Sk
     })
   );
   return results.filter((s): s is SkillUpdateInfo => s !== null);
+}
+
+/**
+ * Filter out skills belonging to upgrade-locked plugins.
+ * Compares skill.source_url against each locked plugin's source_url.
+ */
+export async function filterUpgradeLockedPlugins(skills: SkillUpdateInfo[]): Promise<SkillUpdateInfo[]> {
+  const plugins = (await listPlugins().catch(() => [])) ?? [];
+  const lockedSourceUrls = new Set(
+    plugins
+      .filter((p) => p.upgrade_locked && p.source_url)
+      .map((p) => p.source_url as string)
+  );
+  if (lockedSourceUrls.size === 0) return skills;
+  return skills.filter((s) => !s.source_url || !lockedSourceUrls.has(s.source_url));
 }
 
 /** Check the marketplace for updates and either auto-update or show notification toasts.
@@ -29,7 +44,7 @@ export async function checkForMarketplaceUpdates(
     if (settings.auto_update) {
       await handleAutoUpdate(library, workspace, cancelledRef);
     } else {
-      showManualUpdateToasts(library, workspace, router);
+      await showManualUpdateToasts(library, workspace, router);
     }
     const bySource = new Map<string, string>();
     for (const entry of registry_names ?? []) {
@@ -64,7 +79,7 @@ export async function handleAutoUpdate(
     return grouped;
   };
 
-  const libFiltered = await filterNonCustomized(library);
+  const libFiltered = await filterNonCustomized(await filterUpgradeLockedPlugins(library));
   if (cancelledRef.current) return;
 
   const libBySource = groupBySource(libFiltered);
@@ -90,15 +105,16 @@ export async function handleAutoUpdate(
 }
 
 /** Show persistent notification toasts for available skill updates. */
-export function showManualUpdateToasts(
+export async function showManualUpdateToasts(
   library: SkillUpdateInfo[],
   _workspace: SkillUpdateInfo[],
   router: ReturnType<typeof useRouter>,
-): void {
-  if (library.length > 0) {
-    const names = library.map((s) => s.name);
+): Promise<void> {
+  const upgradeableLibrary = await filterUpgradeLockedPlugins(library);
+  if (upgradeableLibrary.length > 0) {
+    const names = upgradeableLibrary.map((s) => s.name);
     toast.info(
-      `Dashboard: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+      `Dashboard: update available for ${upgradeableLibrary.length} skill${upgradeableLibrary.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
         duration: Infinity,
         action: {

@@ -9,6 +9,7 @@ user_invocable: false
 Given a `purpose`, produce clarification questions which can be used for writing the skill.
 The overall flow is as follows
 
+- Understand the user's intent and the skill's purpose
 - Resolve `purpose` to one dimension set from `references/dimension-sets.md`
 - Score all candidate dimensions using `references/scoring-rubric.md`
 - Emit scope recommendation output when rubric `topic_relevance` is `not_relevant`.
@@ -18,10 +19,112 @@ The overall flow is as follows
 - Validate final payload against `references/schemas.md`
 - Return the canonical `clarifications.json` object as top-level JSON
 
-## Step 1 — Select Dimension Set
+## Step 0: Read user context
 
-Read `references/dimension-sets.md` and select the matching section.
-Use table below to resolve `purpose` to one dimension set from `references/dimension-sets.md`
+Read `{workspace_dir}/user-context.md`.
+
+- If `user-context.md` contains a `## Reference Documents` section with location of one or more named documents supplied by the user **always read first and incorporate these documents**. If a document is missing or its content appears truncated, note this to the user and proceed with the information available.
+
+If missing, return:
+
+```json
+{
+  "status": "research_complete",
+  "dimensions_selected": 0,
+  "question_count": 0,
+  "research_output": {
+    "version": "1",
+    "metadata": {
+      "question_count": 0,
+      "section_count": 0,
+      "refinement_count": 0,
+      "must_answer_count": 0,
+      "priority_questions": [],
+      "scope_recommendation": false,
+      "scope_reason": "missing user-context.md",
+      "warning": null,
+      "error": {
+        "code": "missing_user_context",
+        "message": "user-context.md not found in workspace directory"
+      },
+      "research_plan": {
+        "purpose": "",
+        "domain": "",
+        "topic_relevance": "not_relevant",
+        "dimensions_evaluated": 0,
+        "dimensions_selected": 0,
+        "dimension_scores": [],
+        "selected_dimensions": []
+      }
+    },
+    "sections": [],
+    "notes": [],
+    "answer_evaluator_notes": []
+  }
+}
+```
+
+## Step 1: Insufficient context guard
+
+After reading `user-context.md`, check whether the description is clearly insufficient for research — e.g. fewer than 20 non-whitespace characters, contains only placeholder text like "just testing" or "test skill", or is not relevant or lacks substantive domain detail.
+
+If any of these conditions exist, stop and return:
+
+```json
+{
+  "status": "research_complete",
+  "dimensions_selected": 0,
+  "question_count": 0,
+  "research_output": {
+    "version": "1",
+    "metadata": {
+      "question_count": 0,
+      "section_count": 0,
+      "refinement_count": 0,
+      "must_answer_count": 0,
+      "priority_questions": [],
+      "scope_recommendation": true,
+      "scope_reason": "<one-sentence reason the context was insufficient>",
+      "warning": {
+        "code": "scope_guard_triggered",
+        "message": "<concise explanation for UI>"
+      },
+      "error": null,
+      "research_plan": {
+        "purpose": "",
+        "domain": "",
+        "topic_relevance": "not_relevant",
+        "dimensions_evaluated": 0,
+        "dimensions_selected": 0,
+        "dimension_scores": [],
+        "selected_dimensions": []
+      }
+    },
+    "sections": [],
+    "notes": [],
+    "answer_evaluator_notes": []
+  }
+}
+```
+
+## Step 2 - Capture Intent
+
+The research should focus on producing high-quality, actionable clarifications that directly inform skill-building.
+
+Start by understanding the user's intent. The user may need to fill the gaps, and should confirm before proceeding to the next step.
+
+1. What should this skill enable Claude to do?
+2. When should this skill trigger? (what user phrases/contexts)
+3. What's the expected output format?
+4. Who's the typical user?
+
+Proactively ask questions about edge cases, input/output formats, example files, success criteria, and dependencies.
+
+Check available MCPs - if useful for research (searching docs, finding similar skills, looking up best practices), research in parallel via subagents if available, otherwise inline. Come prepared with context to reduce burden on the user.
+
+## Step 3 — Select Dimension Set
+
+Extract `purpose` from the `**Purpose**` field in `user_context`. Read `references/dimension-sets.md` and resolve it to the matching dimension set using the table below.
 
 | Purpose (label or token) | Dimension set |
 | --- | --- |
@@ -30,7 +133,7 @@ Use table below to resolve `purpose` to one dimension set from `references/dimen
 | Organization specific data engineering standards (`data-engineering`) | Data-Engineering Dimensions |
 | Organization specific Azure or Fabric standards (`platform`) | Platform Dimensions |
 
-## Step 2 — Score dimensions
+## Step 4 — Score dimensions
 
 Use `references/scoring-rubric.md` to score all candidate dimensions. Emit a markdown summary table of dimension scores (dimension, score, reason) as visible output, then construct the scoring JSON internally — do not emit the JSON as visible text output.
 Use that scoring JSON to construct `metadata.research_plan` which is part of clarifications.json and schema defined in `references/schemas.md`.
@@ -46,7 +149,7 @@ Use that scoring JSON to construct `metadata.research_plan` which is part of cla
   - `metadata.research_plan` present and schema-valid with minimal values per `references/schemas.md` Scope/Error Minimal Output (including `topic_relevance: "not_relevant"`, zero counts, and empty selected arrays)
   - zero selected dimensions.
 
-## Step 3 - Select dimensions for research
+## Step 5 - Select dimensions for research
 
 Apply these only when `topic_relevance` is `relevant`.
 
@@ -60,7 +163,7 @@ Update the `metadata.research_plan` created in Step 2.
 - Set `selected_dimensions` as an array of `{ name, focus }` objects copied from the selected `dimension_scores` entries.
 - Set accurate counts `dimensions_selected`.
 
-## Step 4 — Parallel Dimension Research
+## Step 6 — Parallel Dimension Research
 
 For each selected dimension object in `metadata.research_plan.selected_dimensions` spawn one subagent in parallel the same turn, mode: bypassPermissions. **This is important:** don't spawn one and and then come back for the others. Launch everything at once so it all finishes around the same time.
 
@@ -91,10 +194,10 @@ Proactively think about edge cases, input/output formats, example files, success
 
 ---
 
-## Step 5 — Consolidate
+## Step 7 — Consolidate
 
 - Use `references/consolidation-handoff.md` to produce `clarifications_json`.
-- Return the results as JSON only (no wrappers and no additional text).
+- Construct the result object internally — **do not emit it as visible text output**. Pass it directly to `StructuredOutput` using the schema below.
 
   ```json
   {
@@ -121,6 +224,19 @@ Proactively think about edge cases, input/output formats, example files, success
   }
   ```
 
+## Step 8 — Return final payload
+
+Return JSON only in this envelope shape:
+
+```json
+{
+  "status": "research_complete",
+  "dimensions_selected": 0,
+  "question_count": 0,
+  "research_output": { "...": "canonical clarifications object" }
+}
+```
+
 ### Output Contract
 
 1. `research_output` should follow the the canonical clarifications JSON object.
@@ -135,3 +251,6 @@ Proactively think about edge cases, input/output formats, example files, success
 4. If the research task fails for a selected dimension:
    - Remove the dimension from `metadata.research_plan.selected_dimensions`.
    - Update the score of that dimension in `metadata.research_plan.dimension_scores` as `1` with reason `Research task failed`. This is not an error.
+5. If all selected dimension research tasks fail:
+   - Return the error envelope with `metadata.error.code: "all_dimensions_failed"` and `metadata.error.message: "all selected dimension research tasks failed"`.
+   - Set `metadata.research_plan.selected_dimensions` to `[]` and `dimensions_selected` to `0`.

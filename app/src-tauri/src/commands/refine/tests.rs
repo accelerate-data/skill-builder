@@ -951,6 +951,7 @@ fn test_user_context_written_to_file() {
         None,
         None,
         None,
+        &[]
     );
     assert!(ctx.is_some());
     let ctx = ctx.unwrap();
@@ -976,6 +977,7 @@ fn test_no_user_context_when_fields_empty() {
         None,
         None,
         None,
+        &[]
     );
     assert!(ctx.is_none());
 }

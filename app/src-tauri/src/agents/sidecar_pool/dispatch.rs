@@ -550,7 +550,10 @@ impl SidecarPool {
         let transcript_first_line = build_transcript_first_line(&config);
 
         // Create per-request JSONL transcript file alongside chat storage:
-        //   {cwd}/{skill_name}/logs/{step_label}-{iso_timestamp}.jsonl
+        //   {cwd}/logs/{step_label}-{iso_timestamp}.jsonl
+        //
+        // config.cwd is already the skill root (workspace/{plugin_slug}/{skill_name}),
+        // so the logs directory is simply cwd/logs.
         //
         // When transcript_log_dir is set, transcripts are written there instead.
         // This allows agents whose cwd differs from the workspace (e.g. test
@@ -566,7 +569,7 @@ impl SidecarPool {
             let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
             let log_dir = match transcript_log_dir {
                 Some(dir) => PathBuf::from(dir),
-                None => Path::new(&config.cwd).join(skill_name).join("logs"),
+                None => Path::new(&config.cwd).join("logs"),
             };
             let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
 
@@ -793,7 +796,10 @@ impl SidecarPool {
             let step_label = extract_step_label(agent_id, skill_name);
             let now = chrono::Local::now();
             let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
-            let log_dir = Path::new(&config.cwd).join(skill_name).join("logs");
+            let log_dir = match &config.transcript_log_dir {
+                Some(dir) => std::path::PathBuf::from(dir),
+                None => Path::new(&config.cwd).join("logs"),
+            };
             let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
 
             if let Ok(mut f) =
@@ -961,6 +967,22 @@ impl SidecarPool {
                 "[send_stream_cancel] session=[REDACTED] on skill '{}'",
                 skill_name
             );
+        }
+        result
+    }
+
+    /// Cancel a one-shot agent_request by request_id (= agent_id).
+    /// The sidecar matches `currentRequestId` and calls `currentAbort.abort()`.
+    pub async fn send_cancel(&self, skill_name: &str, request_id: &str) -> Result<(), String> {
+        let message = serde_json::json!({
+            "type": "cancel",
+            "request_id": request_id,
+        });
+        let result = self.write_to_sidecar_stdin(skill_name, &message).await;
+        if let Err(ref e) = result {
+            log::warn!("[send_cancel] Failed for request '[REDACTED]' on skill '{}': {}", skill_name, e);
+        } else {
+            log::info!("[send_cancel] request=[REDACTED] on skill '{}'", skill_name);
         }
         result
     }
@@ -1221,6 +1243,7 @@ mod tests {
             workflow_session_id: Some("session-123".to_string()),
             usage_session_id: None,
             run_source: Some("workflow".to_string()),
+            transcript_log_dir: None,
         }
     }
 

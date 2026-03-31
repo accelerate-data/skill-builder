@@ -6,7 +6,9 @@ mod fs_utils;
 mod fs_validation;
 pub mod git;
 mod logging;
+mod marketplace_manifest;
 mod reconciliation;
+mod skill_paths;
 mod types;
 
 use std::fs;
@@ -281,6 +283,7 @@ pub fn run() {
         .manage(agents::sidecar_pool::SidecarPool::new())
         .manage(CloseGuardState::default())
         .manage(commands::refine::RefineSessionManager::new())
+        .manage(commands::workflow::runtime::WorkflowStepSessionManager::new())
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,
             commands::node::check_node,
@@ -308,10 +311,8 @@ pub fn run() {
             commands::files::list_skill_files,
             commands::files::read_file,
             commands::files::write_file,
-            commands::files::save_export_to,
             commands::workflow::runtime::run_workflow_step,
             commands::workflow::output_format::materialize_workflow_step_output,
-            commands::workflow::packaging::package_skill,
             commands::workflow::evaluation::reset_workflow_step,
             commands::workflow::evaluation::navigate_back_to_step,
             commands::workflow::evaluation::preview_step_reset,
@@ -327,6 +328,8 @@ pub fn run() {
             commands::workflow::runtime::run_answer_evaluator,
             commands::workflow::output_format::materialize_answer_evaluation_output,
             commands::workflow::runtime::log_gate_decision,
+            commands::workflow::runtime::answer_workflow_step_question,
+            commands::workflow::runtime::cancel_workflow_step,
             commands::sidecar_lifecycle::cleanup_skill_sidecar,
             commands::sidecar_lifecycle::graceful_shutdown,
             commands::sidecar_lifecycle::allow_app_exit,
@@ -340,18 +343,25 @@ pub fn run() {
             commands::workflow_session::end_workflow_session,
             commands::imported_skills::listing::list_imported_skills,
             commands::imported_skills::lifecycle::delete_imported_skill,
-            commands::imported_skills::listing::export_skill,
+            commands::imported_skills::lifecycle::list_plugins,
+            commands::imported_skills::lifecycle::delete_plugin,
+            commands::imported_skills::lifecycle::create_plugin_from_skills,
+            commands::imported_skills::lifecycle::move_skill_to_plugin,
+            commands::imported_skills::lifecycle::remove_skill_from_plugin,
+            commands::imported_skills::lifecycle::set_plugin_upgrade_lock,
             commands::feedback::create_github_issue,
             commands::github_import::url::parse_github_url,
             commands::github_import::commands::check_marketplace_url,
+            commands::github_import::commands::list_github_plugins,
             commands::github_import::commands::list_github_skills,
             commands::github_auth::github_start_device_flow,
             commands::github_auth::github_poll_for_token,
             commands::github_auth::github_get_user,
             commands::github_auth::github_logout,
             commands::github_import::commands::import_marketplace_to_library,
+            commands::github_import::commands::import_marketplace_plugin_to_library,
             commands::github_import::commands::get_dashboard_skill_names,
-            commands::github_import::commands::check_marketplace_updates,
+            commands::github_import::updates::check_marketplace_updates,
             commands::github_import::commands::check_skill_customized,
             commands::usage::get_usage_summary,
             commands::usage::get_usage_by_step,
@@ -369,12 +379,20 @@ pub fn run() {
             commands::refine::send_refine_message,
             commands::refine::answer_refine_question,
             commands::refine::cancel_refine_turn,
+            commands::refine::cancel_agent_run,
             commands::refine::close_refine_session,
             commands::refine::output::finalize_refine_run,
             commands::refine::output::clean_benchmark_snapshot,
             commands::workflow::evaluation::read_latest_benchmark,
             commands::imported_skills::upload::parse_skill_file,
             commands::imported_skills::upload::import_skill_from_file,
+            commands::documents::list_documents,
+            commands::documents::list_skills_for_documents,
+            commands::documents::add_document_file,
+            commands::documents::add_document_url,
+            commands::documents::add_document_folder,
+            commands::documents::update_document,
+            commands::documents::delete_document,
         ])
         .on_window_event(|window, event| {
             use tauri::{Emitter, Manager};

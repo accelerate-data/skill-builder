@@ -33,10 +33,6 @@ Do NOT evaluate skill viability, alternative approaches, domain correctness, or 
 
 <instructions>
 
-## Narration
-
-Before each validation pass, write one short status line (≤ 10 words). Write it before tool calls. Examples: "Reading skill files…", "Validating structure…", "Validating coverage…", "Checking content quality…", "Running boundary checks…"
-
 ## Step 0: Read Inputs
 
 Read `{workspace_dir}/user-context.md`.

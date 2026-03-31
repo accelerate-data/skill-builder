@@ -7,6 +7,7 @@ const sampleSkills: ImportedSkill[] = [
   {
     skill_id: "id-1",
     skill_name: "sales-analytics",
+    library_key: "imported:id-1",
     description: "Analytics skill for sales data",
     is_active: true,
     disk_path: "/skills/sales-analytics",
@@ -19,10 +20,14 @@ const sampleSkills: ImportedSkill[] = [
     user_invocable: null,
     disable_model_invocation: null,
     marketplace_source_url: null,
+    plugin_slug: "skills",
+    plugin_display_name: "Skills",
+    is_default_plugin: true,
   },
   {
     skill_id: "id-2",
     skill_name: "hr-metrics",
+    library_key: "imported:id-2",
     description: null,
     is_active: true,
     disk_path: "/skills/hr-metrics",
@@ -35,6 +40,9 @@ const sampleSkills: ImportedSkill[] = [
     user_invocable: null,
     disable_model_invocation: null,
     marketplace_source_url: null,
+    plugin_slug: "skills",
+    plugin_display_name: "Skills",
+    is_default_plugin: true,
   },
 ];
 

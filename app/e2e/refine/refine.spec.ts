@@ -56,10 +56,10 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     // Click the "Validate this skill" quick-action button — prefills input
     await page.getByRole("button", { name: "Validate this skill" }).click();
     const input = page.getByTestId("refine-chat-input");
-    await expect(input).toHaveValue("Validate this skill");
+    await expect(input).toContainText("Validate this skill");
 
-    // Press Enter to send
-    await input.press("Enter");
+    // Send the prefilling quick-action through the same explicit button path used elsewhere.
+    await page.getByTestId("refine-send-button").click();
 
     const invokes = await getTrackedInvokes(page, "send_refine_message");
     expect(invokes).toHaveLength(1);
@@ -244,8 +244,9 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     // Verify chat input is still enabled (user can retry)
     await expect(page.getByTestId("refine-chat-input")).toBeEnabled();
 
-    // Turn 2 clears the stale turn 1 modified-file pills immediately
-    await expect(page.getByTestId("refine-modified-files")).not.toBeVisible();
+    // The last successful diff remains available even if the next refine turn fails.
+    await expect(page.getByTestId("refine-modified-files")).toBeVisible();
+    await expect(page.getByTestId("refine-modified-file-pill-SKILL.md")).toBeVisible();
   });
 
   test("multi-file refine run keeps the selected file aligned with Preview/Diff", async ({ page }) => {
@@ -398,12 +399,12 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await getAgentId(page);
 
     await emitTauriEvent(page, "close-requested", null);
-    await expect(page.getByRole("heading", { name: "Agents Still Running" })).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("One or more agents are still running. Closing now will stop them.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Agent Still Running" })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("An agent is still running. Close anyway?")).toBeVisible();
     await expect(page.getByRole("button", { name: "Stay" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Close Anyway" })).toBeVisible();
 
     await page.getByRole("button", { name: "Stay" }).click();
-    await expect(page.getByRole("heading", { name: "Agents Still Running" })).not.toBeVisible();
+    await expect(page.getByRole("heading", { name: "Agent Still Running" })).not.toBeVisible();
   });
 });

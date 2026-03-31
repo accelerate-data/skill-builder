@@ -1,7 +1,6 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
-import type { GateVerdict } from "@/components/transition-gate-dialog";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
 import type { AnswerEvaluation } from "@/lib/tauri";
 import {
@@ -9,7 +8,6 @@ import {
   materializeAnswerEvaluationOutput,
   logGateDecision,
   readFile,
-  saveWorkflowState,
   getClarificationsContent,
   saveClarificationsContent,
   writeFile,
@@ -17,14 +15,12 @@ import {
 import { resolveModelId } from "@/lib/models";
 import { joinPath } from "@/lib/path-utils";
 import { parseClarifications } from "@/lib/clarifications-types";
-import { toast } from "@/lib/toast";
 import { buildGateFeedbackNotes } from "@/lib/gate-feedback";
 
 export interface UseWorkflowGateOptions {
   skillName: string;
   workspacePath: string | null;
   currentStep: number;
-  disabledSteps: number[];
   purpose: string | null;
   clarificationsData: ClarificationsFile | null;
   onClarificationsUpdated?: (data: ClarificationsFile, content: string) => void;
@@ -33,22 +29,8 @@ export interface UseWorkflowGateOptions {
 }
 
 export interface UseWorkflowGateReturn {
-  showGateDialog: boolean;
-  gateVerdict: GateVerdict | null;
-  gateEvaluation: AnswerEvaluation | null;
-  gateContext: "clarifications" | "refinements";
-  setShowGateDialog: (v: boolean) => void;
-  setGateVerdict: (v: GateVerdict | null) => void;
-  setGateEvaluation: (v: AnswerEvaluation | null) => void;
-  setGateContext: (v: "clarifications" | "refinements") => void;
   runGateOrAdvance: () => void;
   handleReviewContinue: () => void;
-  closeGateDialog: () => void;
-  skipToDecisions: () => void;
-  handleGateSkip: () => void;
-  handleGateResearch: () => void;
-  handleGateContinueAnyway: () => void;
-  handleGateLetMeAnswer: () => void;
   /** Ref tracking the active gate evaluator agent ID (null when idle) */
   gateAgentIdRef: React.MutableRefObject<string | null>;
   /** Process gate agent completion — called by the agent watcher effect */
@@ -57,7 +39,11 @@ export interface UseWorkflowGateReturn {
 
 /**
  * Manages the gate evaluation lifecycle: running the answer evaluator,
- * processing its output, showing the gate dialog, and handling user decisions.
+ * processing its output, and automatically advancing based on gate_decision.
+ *
+ * The answer-evaluator agent evaluates answers silently (no user interaction).
+ * If contradictions are found it returns gate_decision="revise"; otherwise
+ * "run_research". The frontend reads gate_decision and routes automatically.
  *
  * Extracted from useWorkflowStateMachine for independent testability and
  * to reduce the main hook from 640+ lines to ~400.
@@ -66,22 +52,15 @@ export function useWorkflowGate({
   skillName,
   workspacePath,
   currentStep,
-  disabledSteps,
   purpose,
   clarificationsData: _clarificationsData,
   onClarificationsUpdated,
   advanceToNextStep,
 }: UseWorkflowGateOptions): UseWorkflowGateReturn {
   const updateStepStatus = useWorkflowStore((s) => s.updateStepStatus);
-  const setCurrentStep = useWorkflowStore((s) => s.setCurrentStep);
   const setGateLoading = useWorkflowStore((s) => s.setGateLoading);
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   const agentStartRun = useAgentStore((s) => s.startRun);
-
-  const [showGateDialog, setShowGateDialog] = useState(false);
-  const [gateVerdict, setGateVerdict] = useState<GateVerdict | null>(null);
-  const [gateEvaluation, setGateEvaluation] = useState<AnswerEvaluation | null>(null);
-  const [gateContext, setGateContext] = useState<"clarifications" | "refinements">("clarifications");
 
   const gateAgentIdRef = useRef<string | null>(null);
 
@@ -153,103 +132,43 @@ export function useWorkflowGate({
         }
       }
 
+      const gateDecision = evaluation.gate_decision ?? "run_research";
+
       if (workspacePath) {
-        const gateLog = JSON.stringify({ ...evaluation, action: "show_dialog", timestamp: new Date().toISOString() });
+        const gateLog = JSON.stringify({ ...evaluation, action: gateDecision, timestamp: new Date().toISOString() });
         writeFile(joinPath(workspacePath, skillName, "gate-result.json"), gateLog).catch((e) => console.warn("[use-workflow-gate] non-fatal: op=writeFile err=%s", e));
       }
 
+      logGateDecision(skillName, evaluation.verdict, gateDecision).catch((e) => console.warn("[use-workflow-gate] non-fatal: op=logGateDecision err=%s", e));
+
       setGateLoading(false);
-      setGateVerdict(evaluation.verdict);
-      setGateEvaluation(evaluation);
-      setShowGateDialog(true);
+
+      if (gateDecision === "revise") {
+        // Contradictions found or answers insufficient — stay on step 0 so the user can revise.
+        updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+        // Refresh clarifications so the feedback notes are visible to the user.
+        if (workspacePath) {
+          getClarificationsContent(skillName, workspacePath)
+            .then((content) => {
+              const parsed = parseClarifications(content ?? null);
+              if (parsed) {
+                onClarificationsUpdated?.(parsed, content ?? "");
+              }
+            })
+            .catch(() => {
+              console.warn("[use-workflow-gate] Could not refresh clarifications after revise decision");
+            });
+        }
+      } else {
+        // "run_research" or unrecognized — advance to step 1.
+        updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+        advanceToNextStep();
+      }
     } catch (err) {
       console.warn("[workflow] Gate evaluation materialization failed — proceeding normally:", err);
       proceedNormally();
     }
-  }, [workspacePath, skillName, setGateLoading, updateStepStatus, advanceToNextStep, onClarificationsUpdated]);
-
-  // --- Dialog handlers ---
-
-  const closeGateDialog = useCallback(() => {
-    setShowGateDialog(false);
-    setGateVerdict(null);
-    setGateEvaluation(null);
-  }, []);
-
-  const skipToDecisions = useCallback(() => {
-    closeGateDialog();
-    if (gateContext === "refinements") {
-      updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
-      advanceToNextStep();
-    } else {
-      updateStepStatus(1, "completed");
-      setCurrentStep(2);
-    }
-
-    const s = useWorkflowStore.getState();
-    const stepStatuses = s.steps.map((step) => ({ step_id: step.id, status: step.status }));
-    const runStatus = s.steps.every((step) => step.status === "completed") ? "completed" : "pending";
-    saveWorkflowState(skillName, s.currentStep, runStatus, stepStatuses, purpose ?? undefined).catch(
-      (err) => console.error("skipToDecisions: failed to persist state:", err),
-    );
-  }, [gateContext, skillName, purpose, closeGateDialog, updateStepStatus, advanceToNextStep, setCurrentStep]);
-
-  const logGateAction = useCallback((decision: string) => {
-    if (!workspacePath) return;
-    const entry = JSON.stringify({ decision, verdict: gateVerdict, timestamp: new Date().toISOString() });
-    writeFile(joinPath(workspacePath, skillName, "gate-result.json"), entry).catch((e) => console.warn("[use-workflow-gate] non-fatal: op=writeFile err=%s", e));
-    logGateDecision(skillName, gateVerdict ?? "unknown", decision).catch((e) => console.warn("[use-workflow-gate] non-fatal: op=logGateDecision err=%s", e));
-  }, [workspacePath, skillName, gateVerdict]);
-
-  const handleGateSkip = useCallback(() => {
-    logGateAction("skip");
-    if (gateContext === "refinements") {
-      skipToDecisions();
-    } else {
-      skipToDecisions();
-    }
-  }, [gateContext, logGateAction, skipToDecisions]);
-
-  const handleGateResearch = useCallback(() => {
-    logGateAction(gateContext === "refinements" ? "continue_to_decisions" : "research_anyway");
-    closeGateDialog();
-    updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
-    advanceToNextStep();
-  }, [gateContext, logGateAction, closeGateDialog, updateStepStatus, advanceToNextStep]);
-
-  const handleGateContinueAnyway = useCallback(() => {
-    logGateAction("continue_anyway");
-    closeGateDialog();
-    updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
-    advanceToNextStep();
-  }, [logGateAction, closeGateDialog, updateStepStatus, advanceToNextStep]);
-
-  const handleGateLetMeAnswer = useCallback(() => {
-    logGateAction("let_me_answer");
-    closeGateDialog();
-    const loadingId = toast.loading("Refreshing evaluator feedback...");
-
-    if (!workspacePath) {
-      toast.warning("Workspace path is missing in settings. Could not refresh feedback from disk.", { id: loadingId, duration: Infinity });
-      return;
-    }
-
-    getClarificationsContent(skillName, workspacePath)
-      .then((content) => {
-        const parsed = parseClarifications(content ?? null);
-        if (!parsed) {
-          toast.warning("Feedback file could not be parsed. You can still answer manually.", { id: loadingId, duration: Infinity });
-          return;
-        }
-
-        onClarificationsUpdated?.(parsed, content ?? "");
-
-        toast.success("Feedback refreshed. You can update your answers now.", { id: loadingId });
-      })
-      .catch(() => {
-        toast.warning("Could not refresh feedback from disk. You can still answer manually.", { id: loadingId, duration: Infinity });
-      });
-  }, [logGateAction, closeGateDialog, workspacePath, skillName, onClarificationsUpdated]);
+  }, [workspacePath, skillName, purpose, setGateLoading, updateStepStatus, advanceToNextStep, onClarificationsUpdated]);
 
   // --- Routing ---
 
@@ -257,42 +176,21 @@ export function useWorkflowGate({
     const { gateLoading: gateLoadingNow } = useWorkflowStore.getState();
     if (gateLoadingNow || gateAgentIdRef.current) return;
 
-    if (currentStep === 0 && workspacePath && !disabledSteps.includes(1)) {
-      setGateContext("clarifications");
-      runGateEvaluation();
-      return;
-    }
-
-    if (currentStep === 1 && workspacePath && !disabledSteps.includes(2)) {
-      setGateContext("refinements");
+    if ((currentStep === 0 || currentStep === 1) && workspacePath) {
       runGateEvaluation();
       return;
     }
 
     advanceToNextStep();
-  }, [currentStep, workspacePath, disabledSteps, runGateEvaluation, advanceToNextStep]);
+  }, [currentStep, workspacePath, runGateEvaluation, advanceToNextStep]);
 
   const handleReviewContinue = useCallback(() => {
     runGateOrAdvance();
   }, [runGateOrAdvance]);
 
   return {
-    showGateDialog,
-    gateVerdict,
-    gateEvaluation,
-    gateContext,
-    setShowGateDialog,
-    setGateVerdict,
-    setGateEvaluation,
-    setGateContext,
     runGateOrAdvance,
     handleReviewContinue,
-    closeGateDialog,
-    skipToDecisions,
-    handleGateSkip,
-    handleGateResearch,
-    handleGateContinueAnyway,
-    handleGateLetMeAnswer,
     gateAgentIdRef,
     finishGateEvaluation,
   };

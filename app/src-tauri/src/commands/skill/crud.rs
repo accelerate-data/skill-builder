@@ -1,4 +1,7 @@
 use crate::db::Db;
+use crate::skill_paths::{
+    ensure_nested_skill_dir, resolve_skill_dir, skill_library_key, DEFAULT_PLUGIN_SLUG,
+};
 use crate::types::SkillSummary;
 use std::fs;
 use std::path::Path;
@@ -56,6 +59,11 @@ pub(crate) fn list_skills_inner(
         .into_iter()
         .map(|master| {
             let tags = tags_map.get(&master.name).cloned().unwrap_or_default();
+            let library_key = if master.skill_source == "skill-builder" {
+                Some(skill_library_key(&master.plugin_slug, &master.name))
+            } else {
+                Some(format!("imported:{}", master.id))
+            };
 
             if master.skill_source == "skill-builder" {
                 // For skill-builder: workflow_runs provides step state and workflow-specific fields.
@@ -63,6 +71,7 @@ pub(crate) fn list_skills_inner(
                 if let Some(run) = runs_map.get(&master.name) {
                     return SkillSummary {
                         name: run.skill_name.clone(),
+                        library_key,
                         current_step: Some(format!("Step {}", run.current_step)),
                         status: Some(run.status.clone()),
                         last_modified: Some(run.updated_at.clone()),
@@ -81,6 +90,9 @@ pub(crate) fn list_skills_inner(
                         argument_hint: master.argument_hint.clone(),
                         user_invocable: master.user_invocable,
                         disable_model_invocation: master.disable_model_invocation,
+                        plugin_slug: Some(master.plugin_slug.clone()),
+                        plugin_display_name: Some(master.plugin_display_name.clone()),
+                        is_default_plugin: Some(master.plugin_is_default),
                     };
                 }
             }
@@ -89,6 +101,7 @@ pub(crate) fn list_skills_inner(
             // show as completed with master data. Frontmatter fields all come from skills master.
             SkillSummary {
                 name: master.name.clone(),
+                library_key,
                 current_step: Some("Step 5".to_string()),
                 status: Some("completed".to_string()),
                 last_modified: Some(master.updated_at.clone()),
@@ -107,6 +120,9 @@ pub(crate) fn list_skills_inner(
                 argument_hint: master.argument_hint.clone(),
                 user_invocable: master.user_invocable,
                 disable_model_invocation: master.disable_model_invocation,
+                plugin_slug: Some(master.plugin_slug.clone()),
+                plugin_display_name: Some(master.plugin_display_name.clone()),
+                is_default_plugin: Some(master.plugin_is_default),
             }
         })
         .collect();
@@ -137,7 +153,8 @@ fn filter_by_skill_md_exists(skills_path: &str, completed: Vec<SkillSummary>) ->
     completed
         .into_iter()
         .filter(|s| {
-            let skill_md = Path::new(skills_path).join(&s.name).join("SKILL.md");
+            let plugin_slug = s.plugin_slug.as_deref().unwrap_or(DEFAULT_PLUGIN_SLUG);
+            let skill_md = resolve_skill_dir(Path::new(skills_path), plugin_slug, &s.name).join("SKILL.md");
             let exists = skill_md.exists();
             if !exists {
                 log::debug!(
@@ -250,19 +267,22 @@ pub(crate) fn create_skill_inner(
     disable_model_invocation: Option<bool>,
 ) -> Result<(), String> {
     super::super::imported_skills::validate_skill_name(name)?;
-    // Check for collision in workspace_path (working directory)
-    let base = Path::new(workspace_path).join(name);
-    if base.exists() {
+    // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
+    // New skills are always created in the default plugin.
+    let workspace_root = Path::new(workspace_path);
+    let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name);
+    if workspace_skill_dir.exists() {
         return Err(format!(
             "Skill '{}' already exists in workspace directory ({})",
             name,
-            base.display()
+            workspace_skill_dir.display()
         ));
     }
 
-    // Check for collision in skills_path (skill output directory)
+    // Check for collision in skills_path (skill output directory).
+    // Skills library IS organized by plugin (default plugin: skills/{name}).
     if let Some(sp) = skills_path {
-        let skill_output = Path::new(sp).join(name);
+        let skill_output = crate::skill_paths::nested_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name);
         if skill_output.exists() {
             return Err(format!(
                 "Skill '{}' already exists in skills output directory ({})",
@@ -272,14 +292,13 @@ pub(crate) fn create_skill_inner(
         }
     }
 
+    // Create plugin-organised workspace dir and context subdir.
+    fs::create_dir_all(workspace_skill_dir.join("context")).map_err(|e| e.to_string())?;
+
     if let Some(sp) = skills_path {
-        // Workspace dir holds runtime context; skill output remains in skills_path
-        fs::create_dir_all(base.join("context")).map_err(|e| e.to_string())?;
-        let skill_output = Path::new(sp).join(name);
+        // Skill output (SKILL.md, references/) lives in skills_path, plugin-organised.
+        let skill_output = ensure_nested_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name)?;
         fs::create_dir_all(skill_output.join("references")).map_err(|e| e.to_string())?;
-    } else {
-        // No skills_path — workspace holds everything including context
-        fs::create_dir_all(base.join("context")).map_err(|e| e.to_string())?;
     }
 
     let purpose = purpose.unwrap_or("domain");
@@ -343,6 +362,10 @@ pub(crate) fn create_skill_inner(
     // INTENTIONAL: DB committed first; git commit may fail.
     // Reconciler corrects disk/DB divergence on next startup.
     if let Some(sp) = skills_path {
+        // Regenerate marketplace manifests
+        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
+            log::warn!("Manifest regeneration failed after create: {}", e);
+        }
         let msg = format!("{}: created", name);
         if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
             log::warn!("Git auto-commit failed ({}): {}", msg, e);
@@ -375,12 +398,20 @@ pub fn delete_skill(
         );
     }
 
-    delete_skill_inner(&workspace_path, &name, Some(&conn), skills_path.as_deref())
+    // Look up plugin slug so we clean the right workspace dir.
+    let plugin_slug = crate::db::get_skill_master_any_plugin(&conn, &name)
+        .ok()
+        .flatten()
+        .map(|m| m.plugin_slug)
+        .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string());
+
+    delete_skill_inner(&workspace_path, &name, &plugin_slug, Some(&conn), skills_path.as_deref())
 }
 
 pub(crate) fn delete_skill_inner(
     workspace_path: &str,
     name: &str,
+    plugin_slug: &str,
     conn: Option<&rusqlite::Connection>,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
@@ -391,7 +422,7 @@ pub(crate) fn delete_skill_inner(
         skills_path
     );
 
-    let base = Path::new(workspace_path).join(name);
+    let base = crate::skill_paths::resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, name);
 
     // Delete workspace working directory if it exists
     if base.exists() {
@@ -412,7 +443,7 @@ pub(crate) fn delete_skill_inner(
 
     // Delete skill output directory if skills_path is configured and directory exists
     if let Some(sp) = skills_path {
-        let output_dir = Path::new(sp).join(name);
+        let output_dir = resolve_skill_dir(Path::new(sp), plugin_slug, name);
         if output_dir.exists() {
             let canonical_sp = fs::canonicalize(sp).map_err(|e| e.to_string())?;
             let canonical_out = fs::canonicalize(&output_dir).map_err(|e| e.to_string())?;
@@ -438,6 +469,10 @@ pub(crate) fn delete_skill_inner(
 
     // Auto-commit: record the deletion in git
     if let Some(sp) = skills_path {
+        // Regenerate marketplace manifests
+        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
+            log::warn!("Manifest regeneration failed after delete: {}", e);
+        }
         let msg = format!("{}: deleted", name);
         if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
             log::warn!("Git auto-commit failed ({}): {}", msg, e);

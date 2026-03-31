@@ -13,7 +13,10 @@ import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useSkillStore } from "@/stores/skill-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
+import { useAgentStore } from "@/stores/agent-store";
+import { useRefineStore } from "@/stores/refine-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
+import { cancelRefineTurn, cancelWorkflowStep } from "@/lib/tauri";
 
 export function AppLayout() {
   const isConfigured = useSettingsStore((s) => s.isConfigured);
@@ -63,6 +66,27 @@ export function AppLayout() {
         e.preventDefault();
         setPanelCollapsed((prev) => !prev);
       }
+      if (e.key === "Escape") {
+        // Refine (streaming): cancel via session UUID from RefineSessionManager.
+        const refineStore = useRefineStore.getState();
+        if (refineStore.isRunning && refineStore.sessionId) {
+          cancelRefineTurn(refineStore.sessionId).catch((err) => {
+            console.error("[app-layout] escape: cancel refine failed", err);
+          });
+          return;
+        }
+        // Workflow step (streaming): cancel via agentId → session lookup in backend.
+        const runs = useAgentStore.getState().runs;
+        const running = Object.values(runs).find(
+          (r): r is typeof r & { skillName: string } =>
+            r.status === "running" && r.runSource === "workflow" && !!r.skillName,
+        );
+        if (running) {
+          cancelWorkflowStep(running.agentId).catch((err) => {
+            console.error("[app-layout] escape: cancel workflow step failed", err);
+          });
+        }
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -77,9 +101,11 @@ export function AppLayout() {
     [navigate, setSelectedWorkspaceSkillName],
   );
 
-  const selectedBuilderSkill = builderSkills.find((s) => s.name === selectedWorkspaceSkillName);
+  const selectedBuilderSkill = builderSkills.find(
+    (s) => s.skill_source === "skill-builder" && (s.library_key ?? s.name) === selectedWorkspaceSkillName,
+  );
   const selectedImportedSkill = importedSkills.find(
-    (s) => s.skill_name === selectedWorkspaceSkillName,
+    (s) => (s.library_key ?? `imported:${s.skill_id}`) === selectedWorkspaceSkillName,
   );
   const selectedSkillData = selectedBuilderSkill ?? selectedImportedSkill ?? null;
   const selectedSkillType: "builder" | "imported" | "marketplace" = selectedBuilderSkill

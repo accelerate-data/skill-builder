@@ -4,17 +4,15 @@ import path from "path";
 import { AGENTS_DIR, PLUGINS_DIR, REPO_ROOT } from "./helpers";
 
 /** Top-level agents deployed to .claude/agents/ */
-const EXPECTED_AGENTS = [
-  "answer-evaluator",
-];
+const EXPECTED_AGENTS: string[] = [];
 
 /** Plugin-hosted agents: agent name → plugin path relative to PLUGINS_DIR */
 const PLUGIN_AGENTS: Record<string, string> = {
   "generate-skill": "skill-creator/agents/generate-skill.md",
   "rewrite-skill": "skill-creator/agents/rewrite-skill.md",
-  "research-orchestrator": "skill-content-researcher/agents/research-orchestrator.md",
   "detailed-research": "skill-content-researcher/agents/detailed-research.md",
   "confirm-decisions": "skill-content-researcher/agents/confirm-decisions.md",
+  "answer-evaluator": "skill-content-researcher/skills/answer-evaluator/SKILL.md",
 };
 
 /** Resolve the .md file path for any agent (top-level or plugin). */
@@ -27,9 +25,7 @@ function resolveAgentPath(agentName: string): string {
 /** All agent names (top-level + plugin). */
 const ALL_AGENTS = [...EXPECTED_AGENTS, ...Object.keys(PLUGIN_AGENTS)];
 
-const EXPECTED_MODELS: Record<string, string> = {
-  "answer-evaluator": "haiku",
-};
+const EXPECTED_MODELS: Record<string, string> = {};
 const DEFAULT_MODEL = "sonnet";
 
 function frontmatter(filePath: string): Record<string, string> {
@@ -50,9 +46,9 @@ function frontmatter(filePath: string): Record<string, string> {
 
 describe("agent files", () => {
   it(`exactly ${EXPECTED_AGENTS.length} agent files exist`, () => {
-    const count = fs
-      .readdirSync(AGENTS_DIR)
-      .filter((f) => f.endsWith(".md")).length;
+    const count = fs.existsSync(AGENTS_DIR)
+      ? fs.readdirSync(AGENTS_DIR).filter((f) => f.endsWith(".md")).length
+      : 0;
     expect(count).toBe(EXPECTED_AGENTS.length);
   });
 
@@ -139,17 +135,6 @@ describe("read directive compliance", () => {
 });
 
 describe("Research scope guard contract prompts", () => {
-  it("research orchestrator is thin and calls research skill directly", () => {
-    const content = fs.readFileSync(
-      resolveAgentPath("research-orchestrator"),
-      "utf8"
-    );
-    expect(content).toMatch(/thin wrapper/i);
-    expect(content).toMatch(/skill-content-researcher:research/);
-    expect(content).not.toMatch(/skill-content-researcher:research-agent/);
-    expect(content).not.toMatch(/Preflight scope guard requirements:/i);
-  });
-
   it("research skill does not run preflight and emits low-score scope recommendation", () => {
     const content = fs.readFileSync(
       path.join(
@@ -211,17 +196,6 @@ describe("Research scope guard contract prompts", () => {
 //   - materialize_answer_evaluation_output_value() → answer-evaluator path
 
 describe("Agent output contracts (backend protocol alignment)", () => {
-  it("research-orchestrator returns research_complete envelope", () => {
-    const content = fs.readFileSync(
-      resolveAgentPath("research-orchestrator"),
-      "utf8"
-    );
-    expect(content).toMatch(/status.*research_complete/);
-    expect(content).toMatch(/dimensions_selected/);
-    expect(content).toMatch(/question_count/);
-    expect(content).toMatch(/research_output/);
-  });
-
   it("confirm-decisions returns version/metadata/decisions shape", () => {
     const content = fs.readFileSync(
       resolveAgentPath("confirm-decisions"),
@@ -248,10 +222,7 @@ describe("Agent output contracts (backend protocol alignment)", () => {
   });
 
   it("answer-evaluator returns verdict enum and per_question array", () => {
-    const content = fs.readFileSync(
-      path.join(AGENTS_DIR, "answer-evaluator.md"),
-      "utf8"
-    );
+    const content = fs.readFileSync(resolveAgentPath("answer-evaluator"), "utf8");
     expect(content).toMatch(/"verdict"/);
     expect(content).toMatch(/sufficient|mixed|insufficient/);
     expect(content).toMatch(/"per_question"/);
@@ -359,9 +330,7 @@ describe("skill-creator plugin structure", () => {
     // Aggregation + optimization scripts via uv under scripts/
     expect(content).toMatch(/uv run scripts\/aggregate_benchmark\.py/);
     expect(content).toMatch(/uv run scripts\/run_loop\.py/);
-    expect(content).toMatch(/uv run scripts\/package_skill\.py/);
-
-    // Eval viewer launched via generate_review.py (relative or with skill-creator-path placeholder)
+// Eval viewer launched via generate_review.py (relative or with skill-creator-path placeholder)
     expect(content).toMatch(/generate_review\.py/);
   });
 

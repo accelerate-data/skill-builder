@@ -18,7 +18,8 @@ import { getSkillContentForRefine } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
-import type { SkillSummary, ImportedSkill } from "@/lib/types";
+import type { SkillSummary, ImportedSkill, EditableSkill } from "@/lib/types";
+import { toEditableSkill } from "@/lib/types";
 
 interface WorkspaceShellProps {
   skill: SkillSummary | ImportedSkill;
@@ -143,13 +144,9 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
           </TabsContent>
 
           <TabsContent value="refine" className="min-h-0 flex-1 overflow-hidden">
-            {"name" in skill ? (
-              <WorkspaceRefine skill={skill as SkillSummary} />
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                Refine is not available for imported skills.
-              </div>
-            )}
+            <WorkspaceRefine
+              skill={"name" in skill ? (skill as EditableSkill) : toEditableSkill(skill as ImportedSkill)}
+            />
           </TabsContent>
 
           <TabsContent value="evals" className="flex-1 overflow-y-auto p-6">

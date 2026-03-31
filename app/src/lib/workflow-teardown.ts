@@ -20,6 +20,9 @@ export function teardownWorkflowSession({
 
   store.setRunning(false);
   store.setGateLoading(false);
+  store.clearInitializing();
+  store.clearPendingQuestion();
+  store.clearRuntimeError();
   useAgentStore.getState().clearRuns();
 
   if (!workflowSessionId) return;

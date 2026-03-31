@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 
+pub mod documents;
 pub mod imported_skills;
 pub mod locks;
 pub mod migrations;
@@ -11,6 +12,7 @@ pub mod skills;
 pub mod usage;
 pub mod workflow;
 
+pub use documents::*;
 pub use imported_skills::*;
 pub use locks::*;
 pub use settings::*;
@@ -21,8 +23,8 @@ pub use workflow::*;
 // Re-export migration helpers needed by init_db, create_test_db_for_tests, and tests
 use migrations::{
     ensure_migration_table, mark_migration_applied, migration_applied,
-    repair_plugin_ownership_schema, repair_skills_table_schema,
-    run_marketplace_source_url_migration, run_migrations, NUMBERED_MIGRATIONS,
+    repair_plugin_ownership_schema, repair_skills_table_schema, run_marketplace_source_url_migration,
+    run_migrations, NUMBERED_MIGRATIONS,
 };
 
 pub struct Db(pub Mutex<Connection>);

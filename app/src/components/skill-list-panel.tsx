@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSkillStore } from "@/stores/skill-store";
-import { Lock, MoreHorizontal, PanelLeftClose, Plus, Search } from "lucide-react";
+import { PanelLeftClose, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,154 +14,36 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { save } from "@tauri-apps/plugin-dialog";
 import { toast } from "@/lib/toast";
 import SkillDialog from "@/components/skill-dialog";
 import DeleteSkillDialog from "@/components/delete-skill-dialog";
 import RestoreVersionDialog from "@/components/workspace/restore-version-dialog";
+import { CreatePluginDialog } from "@/components/create-plugin-dialog";
+import { MoveToPluginDialog } from "@/components/move-to-plugin-dialog";
+import { SkillRow } from "@/components/skill-row";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
-import type { SkillSummary, ImportedSkill, Purpose } from "@/lib/types";
-import { PURPOSE_SHORT_LABELS } from "@/lib/types";
-import { listSkills, exportSkill, packageSkill, saveExportTo, resetWorkflowStep, getExternallyLockedSkills } from "@/lib/tauri";
+import {
+  useUnifiedSkills,
+  isSkillComplete,
+} from "@/hooks/use-unified-skills";
+import type { UnifiedSkill } from "@/hooks/use-unified-skills";
+import type { SkillSummary } from "@/lib/types";
+import {
+  deletePlugin,
+  getExternallyLockedSkills,
+  listSkills,
+  removeSkillFromPlugin,
+  resetWorkflowStep,
+} from "@/lib/tauri";
 import { cn } from "@/lib/utils";
-
-interface UnifiedSkill {
-  name: string;
-  description: string | null;
-  purpose: string | null;
-  lastModified: Date | null;
-  createdAt: Date | null;
-  source: "builder" | "imported" | "marketplace";
-  status: string | null;
-  currentStep: string | null;
-}
-
-interface SkillMenuState {
-  isBuilder: boolean;
-  isComplete: boolean;
-  showsLifecycleActions: boolean;
-}
 
 export interface SkillListPanelProps {
   onSelectSkill?: (name: string) => void;
   onCreateSkill?: () => void;
   onCollapse?: () => void;
   className?: string;
-}
-
-function formatRelativeDate(date: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-function isSkillComplete(skill: UnifiedSkill): boolean {
-  return skill.status === "completed";
-}
-
-interface DotStyle {
-  className: string;
-  style?: React.CSSProperties;
-}
-
-function getStatusDot(skill: UnifiedSkill, isRunning: boolean): DotStyle {
-  const pulse = isRunning ? " animate-dot-pulse" : "";
-
-  if (skill.source === "marketplace") {
-    return { className: pulse.trim(), style: { backgroundColor: "var(--color-pacific)" } };
-  }
-
-  if (skill.source === "imported") {
-    return { className: pulse.trim(), style: { backgroundColor: "var(--color-violet)" } };
-  }
-
-  // Completed builder skill → seafoam
-  if (isSkillComplete(skill)) {
-    return { className: pulse.trim(), style: { backgroundColor: "var(--color-seafoam)" } };
-  }
-
-  const stepMatch = skill.currentStep?.match(/step\s*(\d+)/i);
-  const step = stepMatch ? Number(stepMatch[1]) : null;
-
-  // Step 1+ (step 1+ in 0-indexed, i.e. past Research) → amber
-  if (step !== null && step >= 1) {
-    return { className: `bg-amber-500 dark:bg-amber-400${pulse}` };
-  }
-
-  // Never started or on Step 1 (step 0 in 0-indexed) → red
-  return { className: `bg-destructive${pulse}` };
-}
-
-function mergeSkills(
-  builderSkills: SkillSummary[],
-  importedSkills: ImportedSkill[],
-): UnifiedSkill[] {
-  const fromBuilder: UnifiedSkill[] = builderSkills.map((s) => ({
-    name: s.name,
-    description: s.description ?? null,
-    purpose: s.purpose,
-    lastModified: s.last_modified ? new Date(s.last_modified) : null,
-    createdAt: s.created_at ? new Date(s.created_at) : null,
-    source: s.skill_source === "marketplace" ? "marketplace" : ("builder" as const),
-    status: s.status,
-    currentStep: s.current_step,
-  }));
-
-  const fromImported: UnifiedSkill[] = importedSkills.map((s) => ({
-    name: s.skill_name,
-    description: s.description,
-    purpose: s.purpose,
-    lastModified: new Date(s.imported_at),
-    createdAt: new Date(s.imported_at),
-    source: s.marketplace_source_url ? ("marketplace" as const) : ("imported" as const),
-    status: null,
-    currentStep: null,
-  }));
-
-  // Deduplicate by name — builder entry wins for status info, but marketplace imported
-  // entry wins if the builder record lacks the marketplace source flag.
-  const byName = new Map<string, UnifiedSkill>();
-  for (const s of fromBuilder) byName.set(s.name, s);
-  for (const s of fromImported) {
-    if (!byName.has(s.name)) {
-      byName.set(s.name, s);
-    } else if (s.source !== "builder" && byName.get(s.name)!.source === "builder") {
-      // Builder record exists but imported entry indicates non-builder origin — override source.
-      byName.set(s.name, { ...byName.get(s.name)!, source: s.source });
-    }
-  }
-
-  // Sort by creation date descending — newest skill first, stable across edits
-  return Array.from(byName.values()).sort((a, b) => {
-    const at = a.createdAt?.getTime() ?? 0;
-    const bt = b.createdAt?.getTime() ?? 0;
-    return bt - at;
-  });
-}
-
-function getSkillMenuState(skill: UnifiedSkill): SkillMenuState {
-  return {
-    isBuilder: skill.source === "builder",
-    isComplete: isSkillComplete(skill) || skill.source !== "builder",
-    showsLifecycleActions: isSkillComplete(skill) || skill.source !== "builder",
-  };
 }
 
 export function SkillListPanel({
@@ -177,6 +59,10 @@ export function SkillListPanel({
   const [redoTarget, setRedoTarget] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [externalLockedSkills, setExternalLockedSkills] = useState<Set<string>>(new Set());
+  const [moveTarget, setMoveTarget] = useState<UnifiedSkill | null>(null);
+  const [createPluginTarget, setCreatePluginTarget] = useState<UnifiedSkill | null>(null);
+  const [deletePluginTarget, setDeletePluginTarget] = useState<{ slug: string; displayName: string } | null>(null);
+  const [deletingPlugin, setDeletingPlugin] = useState(false);
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const builderSkills = useSkillStore((s) => s.skills);
@@ -208,18 +94,15 @@ export function SkillListPanel({
   }, [pathname]);
 
   // Sort by creation date (newest first) — stable across edits since created_at never changes.
-  const unifiedSkills = useMemo(
-    () => mergeSkills(builderSkills, importedSkills),
-    [builderSkills, importedSkills],
-  );
+  const unifiedSkills = useUnifiedSkills(builderSkills, importedSkills);
 
   // Default selection — run once on mount after stores are populated
   useEffect(() => {
     const stored = localStorage.getItem("last-selected-skill");
-    if (stored && unifiedSkills.some((s) => s.name === stored)) {
+    if (stored && unifiedSkills.some((s) => s.key === stored)) {
       setSelectedSkill(stored);
     } else if (unifiedSkills.length > 0) {
-      setSelectedSkill(unifiedSkills[0].name);
+      setSelectedSkill(unifiedSkills[0].key);
     }
     // Intentionally mount-only: we only restore the saved selection once
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -231,7 +114,18 @@ export function SkillListPanel({
   const runningSkillName = runningAgent?.skillName ?? null;
 
   const filteredSkills = unifiedSkills.filter((s) =>
-    s.name.toLowerCase().includes(search.toLowerCase()),
+    `${s.name} ${s.pluginDisplayName}`.toLowerCase().includes(search.toLowerCase()),
+  );
+  const pluginOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          unifiedSkills
+            .filter((skill) => !skill.isDefaultPlugin && skill.pluginSlug)
+            .map((skill) => [skill.pluginSlug, skill.pluginDisplayName]),
+        ).entries(),
+      ),
+    [unifiedSkills],
   );
 
   function handleRowClick(skill: UnifiedSkill) {
@@ -243,48 +137,15 @@ export function SkillListPanel({
     if (externalLockedSkills.has(skill.name)) return;
 
     console.log("event=skill_selected skill=%s", skill.name);
-    localStorage.setItem("last-selected-skill", skill.name);
-    setSelectedSkill(skill.name);
+    localStorage.setItem("last-selected-skill", skill.key);
+    setSelectedSkill(skill.key);
 
     if (isSkillComplete(skill) || skill.source !== "builder") {
-      onSelectSkill?.(skill.name);
+      onSelectSkill?.(skill.key);
     } else {
       // Row click always opens in Review mode — auto-start is only for explicit actions
       // (SkillDialog create, Continue Building, Redo) which pass state: { autoStart: true }.
       navigate({ to: "/skill/$skillName", params: { skillName: skill.name } });
-    }
-  }
-
-  async function handleExport(skill: UnifiedSkill) {
-    const toastId = toast.loading("Exporting skill...");
-    try {
-      // Builder skills live in the workspace — use package_skill.
-      // Imported/marketplace skills are in the installed-skills DB — use export_skill.
-      let zipPath: string;
-      if (skill.source === "builder") {
-        if (!workspacePath) throw new Error("Workspace path not set");
-        const result = await packageSkill(skill.name, workspacePath);
-        zipPath = result.file_path;
-      } else {
-        zipPath = await exportSkill(skill.name);
-      }
-      const savePath = await save({
-        defaultPath: `${skill.name}.zip`,
-        filters: [{ name: "Zip Archive", extensions: ["zip"] }],
-      });
-      if (savePath) {
-        await saveExportTo(zipPath, savePath);
-        toast.success(`Saved to ${savePath}`, { id: toastId });
-        console.log("event=skill_exported skill=%s dest=%s", skill.name, savePath);
-      } else {
-        toast.dismiss(toastId);
-      }
-    } catch (err) {
-      toast.error(
-        `Export failed: ${err instanceof Error ? err.message : String(err)}`,
-        { id: toastId },
-      );
-      console.error("event=skill_export_failed skill=%s error=%s", skill.name, err);
     }
   }
 
@@ -307,17 +168,17 @@ export function SkillListPanel({
     }
   }
 
-  function handleOverview(skillName: string) {
-    console.log("event=skill_overview skill=%s", skillName);
-    localStorage.setItem("last-selected-skill", skillName);
-    setSelectedSkill(skillName);
-    useSkillStore.getState().setActiveSkill(skillName);
+  function handleOverview(skillKey: string) {
+    console.log("event=skill_overview skill=%s", skillKey);
+    localStorage.setItem("last-selected-skill", skillKey);
+    setSelectedSkill(skillKey);
+    useSkillStore.getState().setActiveSkill(skillKey);
     navigate({ to: "/", search: { tab: "overview" } });
   }
 
-  function handleRefine(skillName: string) {
-    console.log("event=skill_refine skill=%s", skillName);
-    useSkillStore.getState().setActiveSkill(skillName);
+  function handleRefine(skillKey: string) {
+    console.log("event=skill_refine skill=%s", skillKey);
+    useSkillStore.getState().setActiveSkill(skillKey);
     navigate({ to: "/", search: { tab: "refine" } });
   }
 
@@ -336,9 +197,67 @@ export function SkillListPanel({
   }
 
   function handleDelete(skill: UnifiedSkill) {
+    if (skill.importedSkillId) {
+      const toastId = toast.loading(`Deleting "${skill.name}"...`);
+      useImportedSkillsStore.getState().deleteSkill(skill.importedSkillId, fetchImportedSkills)
+        .then(() => toast.success(`Deleted "${skill.name}"`, { id: toastId }))
+        .catch((err) => toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId }));
+      return;
+    }
     const summary = builderSkills.find((s) => s.name === skill.name) ?? null;
     setDeleteTarget(summary);
     setDeleteOpen(true);
+  }
+
+  async function refreshSkillLists() {
+    if (workspacePath) {
+      await listSkills(workspacePath).then(setSkills);
+    }
+    await fetchImportedSkills();
+  }
+
+  function handleDeletePlugin(pluginSlug: string, pluginDisplayName: string) {
+    setDeletePluginTarget({ slug: pluginSlug, displayName: pluginDisplayName });
+  }
+
+  async function confirmDeletePlugin() {
+    if (!deletePluginTarget) return;
+    setDeletingPlugin(true);
+    const toastId = toast.loading(`Deleting plugin "${deletePluginTarget.displayName}"...`);
+    try {
+      await deletePlugin(deletePluginTarget.slug);
+      toast.success(`Deleted plugin "${deletePluginTarget.displayName}"`, { id: toastId });
+      setDeletePluginTarget(null);
+      await refreshSkillLists();
+    } catch (err) {
+      toast.error(
+        `Failed to delete plugin: ${err instanceof Error ? err.message : String(err)}`,
+        { id: toastId },
+      );
+    } finally {
+      setDeletingPlugin(false);
+    }
+  }
+
+  function handleCreatePlugin(skill: UnifiedSkill) {
+    setCreatePluginTarget(skill)
+  }
+
+  function handleMoveToPlugin(skill: UnifiedSkill) {
+    setMoveTarget(skill)
+  }
+
+  async function handleRemoveFromPlugin(skill: UnifiedSkill) {
+    const toastId = toast.loading(`Removing "${skill.name}" from plugin...`)
+    try {
+      await removeSkillFromPlugin(skill.key)
+      await refreshSkillLists()
+      toast.success(`Removed "${skill.name}" from plugin`, { id: toastId })
+    } catch (err) {
+      toast.error(`Remove failed: ${err instanceof Error ? err.message : String(err)}`, {
+        id: toastId,
+      })
+    }
   }
 
   return (
@@ -391,134 +310,34 @@ export function SkillListPanel({
 
       {/* Skill rows */}
       <ScrollArea className="flex-1">
-        {filteredSkills.map((skill) => {
+        {filteredSkills.map((skill, index) => {
           const isLocked = (!!runningSkillName && skill.name !== runningSkillName) || externalLockedSkills.has(skill.name);
           const isRunning = skill.name === runningSkillName;
-          const isSelected = skill.name === selectedSkill;
-          const dot = getStatusDot(skill, isRunning);
-          const purposeLabel = skill.purpose
-            ? (PURPOSE_SHORT_LABELS[skill.purpose as Purpose] ?? skill.purpose)
-            : null;
-
-          const menuState = getSkillMenuState(skill);
+          const isSelected = skill.key === selectedSkill;
+          const showPluginHeader = index === 0 || filteredSkills[index - 1]?.pluginSlug !== skill.pluginSlug;
 
           return (
-            <div
-              key={skill.name}
-              role="button"
-              tabIndex={isLocked ? -1 : 0}
-              aria-selected={isSelected}
-              className={cn(
-                "group flex h-[46px] cursor-pointer items-center gap-2 px-3 transition-colors",
-                isSelected && "border-l-2 bg-muted/60 pl-[10px]",
-                !isSelected && "border-l-2 border-l-transparent",
-                !isSelected && !isLocked && "hover:bg-accent/50",
-                isLocked && "cursor-not-allowed opacity-[0.45]",
-              )}
-              style={isSelected ? { borderLeftColor: "var(--color-pacific)" } : undefined}
-              onClick={() => handleRowClick(skill)}
-              onKeyDown={(e) => {
-                if (!isLocked && (e.key === "Enter" || e.key === " ")) {
-                  e.preventDefault();
-                  handleRowClick(skill);
-                }
-              }}
-            >
-              {/* Status dot */}
-              <div
-                className={cn("size-2 shrink-0 rounded-full", dot.className)}
-                style={dot.style}
-                aria-label={`status-dot-${skill.name}`}
-              />
-
-              {/* Name + purpose */}
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-base font-medium">{skill.name}</span>
-                {purposeLabel && (
-                  <span className="truncate text-[13px] text-muted-foreground">
-                    {purposeLabel}
-                  </span>
-                )}
-              </div>
-
-              {/* Timestamp */}
-              {skill.lastModified && (
-                <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                  {formatRelativeDate(skill.lastModified)}
-                </span>
-              )}
-
-              {/* More button / Lock icon */}
-              {isLocked ? (
-                <Lock className="size-[10px] shrink-0 text-muted-foreground" />
-              ) : (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="size-5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-                      aria-label="More actions"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MoreHorizontal className="size-3" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                    {menuState.isComplete ? (
-                      <>
-                        {menuState.isBuilder && (
-                          <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
-                            WORKFLOW
-                          </DropdownMenuLabel>
-                        )}
-                        {menuState.isBuilder && (
-                          <DropdownMenuItem onSelect={() => handleReview(skill.name)}>
-                            Review
-                          </DropdownMenuItem>
-                        )}
-                        {menuState.isBuilder && (
-                          <DropdownMenuItem onSelect={() => handleRedo(skill.name)}>
-                            Redo workflow
-                          </DropdownMenuItem>
-                        )}
-                        {menuState.isBuilder && <DropdownMenuSeparator />}
-                        <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
-                          SKILL
-                        </DropdownMenuLabel>
-                        <DropdownMenuItem onSelect={() => handleOverview(skill.name)}>
-                          Overview
-                        </DropdownMenuItem>
-                        {menuState.showsLifecycleActions && (
-                          <DropdownMenuItem onSelect={() => handleRefine(skill.name)}>
-                            Refine
-                          </DropdownMenuItem>
-                        )}
-                        {menuState.showsLifecycleActions && (
-                          <DropdownMenuItem onSelect={() => setRestoreTarget(skill.name)}>
-                            Restore version
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onSelect={() => handleExport(skill)}>
-                          Export
-                        </DropdownMenuItem>
-                      </>
-                    ) : (
-                      <DropdownMenuItem onSelect={() => handleContinueBuilding(skill.name)}>
-                        Continue Building
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onSelect={() => handleDelete(skill)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
+            <SkillRow
+              key={skill.key}
+              skill={skill}
+              isSelected={isSelected}
+              isLocked={isLocked}
+              isRunning={isRunning}
+              showPluginHeader={showPluginHeader}
+              onRowClick={handleRowClick}
+              onReview={handleReview}
+              onRedo={handleRedo}
+              onOverview={handleOverview}
+              onRefine={handleRefine}
+              onContinueBuilding={handleContinueBuilding}
+              onRestore={(name) => setRestoreTarget(name)}
+              onDelete={handleDelete}
+              onCreatePlugin={handleCreatePlugin}
+              onMoveToPlugin={handleMoveToPlugin}
+              onRemoveFromPlugin={handleRemoveFromPlugin}
+              onDeletePlugin={handleDeletePlugin}
+              pluginOptions={pluginOptions}
+            />
           );
         })}
       </ScrollArea>
@@ -570,6 +389,44 @@ export function SkillListPanel({
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={deletePluginTarget !== null}
+        onOpenChange={(open) => { if (!open && !deletingPlugin) setDeletePluginTarget(null); }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Plugin?</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                if (!deletePluginTarget) return null;
+                const skillCount = unifiedSkills.filter(
+                  (s) => s.pluginSlug === deletePluginTarget.slug,
+                ).length;
+                return skillCount > 0
+                  ? `This will permanently delete the plugin "${deletePluginTarget.displayName}" and all ${skillCount} skill${skillCount === 1 ? "" : "s"} inside it, including their files. This cannot be undone.`
+                  : `This will permanently delete the plugin "${deletePluginTarget.displayName}". This cannot be undone.`;
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setDeletePluginTarget(null)}
+              disabled={deletingPlugin}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeletePlugin}
+              disabled={deletingPlugin}
+            >
+              {deletingPlugin ? "Deleting…" : "Delete Plugin"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {restoreTarget && workspacePath && (
         <RestoreVersionDialog
           skillName={restoreTarget}
@@ -582,6 +439,27 @@ export function SkillListPanel({
           }}
         />
       )}
+
+      {moveTarget && (
+        <MoveToPluginDialog
+          open={!!moveTarget}
+          onOpenChange={(open) => { if (!open) setMoveTarget(null); }}
+          skillName={moveTarget.name}
+          skillKey={moveTarget.key}
+          currentPluginSlug={moveTarget.pluginSlug}
+          onMoved={refreshSkillLists}
+        />
+      )}
+
+      <CreatePluginDialog
+        open={!!createPluginTarget}
+        onOpenChange={(open) => { if (!open) setCreatePluginTarget(null); }}
+        onCreated={async () => {
+          setCreatePluginTarget(null);
+          await refreshSkillLists();
+        }}
+        initialSkillKey={createPluginTarget?.key}
+      />
     </div>
   );
 }
