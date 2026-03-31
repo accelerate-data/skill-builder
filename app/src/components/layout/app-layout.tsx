@@ -150,6 +150,7 @@ export function AppLayout() {
     navigate({ to: "/", search: { tab: tab ?? undefined } });
   }, [pendingSkillSwitch, selectedWorkspaceSkillName, setSelectedWorkspaceSkillName, navigate]);
 
+
   const selectedBuilderSkill = builderSkills.find(
     (s) => s.skill_source === "skill-builder" && (s.library_key ?? s.name) === selectedWorkspaceSkillName,
   );

@@ -2,7 +2,9 @@ use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir};
 use std::path::Path;
 
 /// Construct the agent prompt string injected into every `SidecarConfig`.
-/// Embeds workspace path, skills output path, author, date, and dimension cap.
+/// Embeds workspace path, skills output path, author, and date.
+/// `subagent_directive` is appended as the final sentence — use it to instruct
+/// the model to launch a named subagent (steps 1–3).
 pub(crate) fn build_prompt(
     skill_name: &str,
     workspace_path: &str,
@@ -10,7 +12,7 @@ pub(crate) fn build_prompt(
     skills_path: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
-    max_dimensions: u32,
+    subagent_directive: Option<&str>,
 ) -> String {
     let workspace_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
@@ -39,12 +41,12 @@ pub(crate) fn build_prompt(
         }
     }
 
-    prompt.push_str(&format!(
-        " The maximum research dimensions before scope warning is: {}.",
-        max_dimensions
-    ));
-
     prompt.push_str(" The workspace directory may contain other files written by the workflow (such as answer-evaluation.json) — read only the files explicitly named in your agent instructions. Do not read the logs/ directory or any file not named in your instructions.");
+
+    if let Some(directive) = subagent_directive {
+        prompt.push(' ');
+        prompt.push_str(directive);
+    }
 
     prompt
 }

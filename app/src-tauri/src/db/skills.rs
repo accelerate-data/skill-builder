@@ -4,6 +4,33 @@ use std::collections::HashMap;
 
 const DEFAULT_PLUGIN_SLUG: &str = "skills";
 
+/// Map a row from the standard skills+plugins join into a SkillMasterRow.
+/// Column order must match the SELECT used in list_all_skills, get_skill_master_*:
+///   s.id, s.name, s.skill_source, p.id, p.slug, p.display_name, p.is_default,
+///   s.purpose, s.created_at, s.updated_at, s.description, s.version, s.model,
+///   s.argument_hint, s.user_invocable, s.disable_model_invocation
+fn map_skill_master_row(row: &rusqlite::Row) -> rusqlite::Result<SkillMasterRow> {
+    Ok(SkillMasterRow {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        skill_source: row.get(2)?,
+        plugin_id: row.get(3)?,
+        plugin_slug: row.get(4)?,
+        plugin_display_name: row.get(5)?,
+        plugin_is_default: row.get::<_, i32>(6)? != 0,
+        purpose: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+        description: row.get(10)?,
+        version: row.get(11)?,
+        model: row.get(12)?,
+        argument_hint: row.get(13)?,
+        user_invocable: row.get::<_, Option<i32>>(14)?.map(|v| v != 0),
+        disable_model_invocation: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
+    })
+}
+
+
 pub fn slugify_plugin_name(name: &str) -> String {
     let mut slug = String::with_capacity(name.len());
     let mut last_dash = false;
@@ -196,6 +223,60 @@ pub fn upsert_skill(
     upsert_skill_in_plugin(conn, name, skill_source, purpose, DEFAULT_PLUGIN_SLUG)
 }
 
+/// Resolve the plugin_id for a given slug, creating the default plugin if needed.
+fn resolve_plugin_id(conn: &Connection, plugin_slug: &str) -> Result<i64, String> {
+    if plugin_slug == DEFAULT_PLUGIN_SLUG {
+        ensure_default_plugin(conn)
+    } else {
+        get_plugin_id_by_slug(conn, plugin_slug)?
+            .ok_or_else(|| format!("Unknown plugin slug '{}'", plugin_slug))
+    }
+}
+
+/// Shared implementation for skill upsert. When `update_source` is true,
+/// the ON CONFLICT clause also overwrites `skill_source`.
+fn upsert_skill_impl(
+    conn: &Connection,
+    name: &str,
+    skill_source: &str,
+    purpose: &str,
+    plugin_slug: &str,
+    update_source: bool,
+) -> Result<i64, String> {
+    log::debug!("upsert_skill: name={} skill_source={} update_source={}", name, skill_source, update_source);
+    let plugin_id = resolve_plugin_id(conn, plugin_slug)?;
+    let sql = if update_source {
+        "INSERT INTO skills (name, skill_source, plugin_id, purpose, updated_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+         ON CONFLICT(plugin_id, name) DO UPDATE SET
+             skill_source = excluded.skill_source,
+             purpose = excluded.purpose,
+             updated_at = datetime('now'),
+             deleted_at = NULL"
+    } else {
+        "INSERT INTO skills (name, skill_source, plugin_id, purpose, updated_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+         ON CONFLICT(plugin_id, name) DO UPDATE SET
+             purpose = excluded.purpose,
+             updated_at = datetime('now'),
+             deleted_at = NULL"
+    };
+    conn.execute(sql, rusqlite::params![name, skill_source, plugin_id, purpose])
+        .map_err(|e| {
+            log::error!("upsert_skill: failed to upsert '{}': {}", name, e);
+            e.to_string()
+        })?;
+    conn.query_row(
+        "SELECT id FROM skills WHERE name = ?1 AND plugin_id = ?2",
+        rusqlite::params![name, plugin_id],
+        |row| row.get(0),
+    )
+    .map_err(|e| {
+        log::error!("upsert_skill: failed to retrieve id for '{}': {}", name, e);
+        e.to_string()
+    })
+}
+
 pub fn upsert_skill_in_plugin(
     conn: &Connection,
     name: &str,
@@ -203,37 +284,7 @@ pub fn upsert_skill_in_plugin(
     purpose: &str,
     plugin_slug: &str,
 ) -> Result<i64, String> {
-    log::debug!("upsert_skill: name={} skill_source={}", name, skill_source);
-    let plugin_id = if plugin_slug == DEFAULT_PLUGIN_SLUG {
-        ensure_default_plugin(conn)?
-    } else {
-        get_plugin_id_by_slug(conn, plugin_slug)?
-            .ok_or_else(|| format!("Unknown plugin slug '{}'", plugin_slug))?
-    };
-    conn.execute(
-        "INSERT INTO skills (name, skill_source, plugin_id, purpose, updated_at)
-         VALUES (?1, ?2, ?3, ?4, datetime('now'))
-         ON CONFLICT(plugin_id, name) DO UPDATE SET
-             purpose = excluded.purpose,
-             updated_at = datetime('now'),
-             deleted_at = NULL",
-        rusqlite::params![name, skill_source, plugin_id, purpose],
-    )
-    .map_err(|e| {
-        log::error!("upsert_skill: failed to upsert '{}': {}", name, e);
-        e.to_string()
-    })?;
-    let id: i64 = conn
-        .query_row(
-            "SELECT id FROM skills WHERE name = ?1 AND plugin_id = ?2",
-            rusqlite::params![name, plugin_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| {
-            log::error!("upsert_skill: failed to retrieve id for '{}': {}", name, e);
-            e.to_string()
-        })?;
-    Ok(id)
+    upsert_skill_impl(conn, name, skill_source, purpose, plugin_slug, false)
 }
 
 pub fn upsert_skill_with_source_in_plugin(
@@ -243,50 +294,7 @@ pub fn upsert_skill_with_source_in_plugin(
     purpose: &str,
     plugin_slug: &str,
 ) -> Result<i64, String> {
-    log::debug!(
-        "upsert_skill_with_source: name={} skill_source={}",
-        name,
-        skill_source
-    );
-    let plugin_id = if plugin_slug == DEFAULT_PLUGIN_SLUG {
-        ensure_default_plugin(conn)?
-    } else {
-        get_plugin_id_by_slug(conn, plugin_slug)?
-            .ok_or_else(|| format!("Unknown plugin slug '{}'", plugin_slug))?
-    };
-    conn.execute(
-        "INSERT INTO skills (name, skill_source, plugin_id, purpose, updated_at)
-         VALUES (?1, ?2, ?3, ?4, datetime('now'))
-         ON CONFLICT(plugin_id, name) DO UPDATE SET
-             skill_source = excluded.skill_source,
-             purpose = excluded.purpose,
-             updated_at = datetime('now'),
-             deleted_at = NULL",
-        rusqlite::params![name, skill_source, plugin_id, purpose],
-    )
-    .map_err(|e| {
-        log::error!(
-            "upsert_skill_with_source: failed to upsert '{}': {}",
-            name,
-            e
-        );
-        e.to_string()
-    })?;
-    let id: i64 = conn
-        .query_row(
-            "SELECT id FROM skills WHERE name = ?1 AND plugin_id = ?2",
-            rusqlite::params![name, plugin_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| {
-            log::error!(
-                "upsert_skill_with_source: failed to retrieve id for '{}': {}",
-                name,
-                e
-            );
-            e.to_string()
-        })?;
-    Ok(id)
+    upsert_skill_impl(conn, name, skill_source, purpose, plugin_slug, true)
 }
 
 /// List all skills from the master table, ordered by name.
@@ -308,26 +316,7 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
         })?;
 
     let rows = stmt
-        .query_map([], |row| {
-            Ok(SkillMasterRow {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                skill_source: row.get(2)?,
-                plugin_id: row.get(3)?,
-                plugin_slug: row.get(4)?,
-                plugin_display_name: row.get(5)?,
-                plugin_is_default: row.get::<_, i32>(6)? != 0,
-                purpose: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
-                description: row.get(10)?,
-                version: row.get(11)?,
-                model: row.get(12)?,
-                argument_hint: row.get(13)?,
-                user_invocable: row.get::<_, Option<i32>>(14)?.map(|v| v != 0),
-                disable_model_invocation: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
-            })
-        })
+        .query_map([], map_skill_master_row)
         .map_err(|e| {
             log::error!("list_all_skills: query failed: {}", e);
             e.to_string()
@@ -367,26 +356,7 @@ pub fn get_skill_master_any_plugin(
         )
         .map_err(|e| e.to_string())?;
 
-    let result = stmt.query_row(rusqlite::params![skill_name], |row| {
-        Ok(SkillMasterRow {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            skill_source: row.get(2)?,
-            plugin_id: row.get(3)?,
-            plugin_slug: row.get(4)?,
-            plugin_display_name: row.get(5)?,
-            plugin_is_default: row.get::<_, i32>(6)? != 0,
-            purpose: row.get(7)?,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
-            description: row.get(10)?,
-            version: row.get(11)?,
-            model: row.get(12)?,
-            argument_hint: row.get(13)?,
-            user_invocable: row.get::<_, Option<i32>>(14)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
-        })
-    });
+    let result = stmt.query_row(rusqlite::params![skill_name], map_skill_master_row);
 
     match result {
         Ok(row) => Ok(Some(row)),
@@ -412,26 +382,7 @@ pub fn get_skill_master_in_plugin(
         )
         .map_err(|e| e.to_string())?;
 
-    let result = stmt.query_row(rusqlite::params![skill_name, plugin_slug], |row| {
-        Ok(SkillMasterRow {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            skill_source: row.get(2)?,
-            plugin_id: row.get(3)?,
-            plugin_slug: row.get(4)?,
-            plugin_display_name: row.get(5)?,
-            plugin_is_default: row.get::<_, i32>(6)? != 0,
-            purpose: row.get(7)?,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
-            description: row.get(10)?,
-            version: row.get(11)?,
-            model: row.get(12)?,
-            argument_hint: row.get(13)?,
-            user_invocable: row.get::<_, Option<i32>>(14)?.map(|v| v != 0),
-            disable_model_invocation: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
-        })
-    });
+    let result = stmt.query_row(rusqlite::params![skill_name, plugin_slug], map_skill_master_row);
 
     match result {
         Ok(row) => Ok(Some(row)),
@@ -491,7 +442,7 @@ pub fn get_skill_master_id_in_plugin(
         "SELECT s.id
          FROM skills s
          JOIN plugins p ON p.id = s.plugin_id
-         WHERE s.name = ?1 AND p.slug = ?2",
+         WHERE s.name = ?1 AND p.slug = ?2 AND COALESCE(s.deleted_at, '') = ''",
         rusqlite::params![skill_name, plugin_slug],
         |row| row.get(0),
     )

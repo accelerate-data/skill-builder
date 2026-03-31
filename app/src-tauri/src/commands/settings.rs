@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::db::Db;
-use crate::skill_paths::enumerate_skill_locations;
+use crate::skill_paths::{enumerate_skill_locations, DEFAULT_PLUGIN_SLUG};
 use crate::types::AppSettings;
 
 /// Default built-in marketplace registry URL. Used for both the initial migration
@@ -179,9 +179,10 @@ fn backfill_missing_skill_versions(
                 crate::git::create_skill_version_tag(skills_root, &skill.plugin_slug, &skill_name, &normalized.version)?;
 
                 log::info!(
-                    "[startup] backfilled missing version for '{}' plugin='{}' v{}",
+                    "[startup] backfilled missing version for '{}' with tag {}/{}/v{}",
                     skill_name,
                     skill.plugin_slug,
+                    skill_name,
                     normalized.version
                 );
             }

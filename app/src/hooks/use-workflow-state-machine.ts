@@ -322,6 +322,9 @@ export function useWorkflowStateMachine({
 
       finish();
     } else if (activeRunStatus === "error") {
+      const errorDetail = activeRun?.resultErrors?.length
+        ? activeRun.resultErrors.join("; ")
+        : null;
       updateStepStatus(step, "error");
       setRunning(false);
       setActiveAgent(null);
@@ -329,7 +332,12 @@ export function useWorkflowStateMachine({
       if (workflowState.isInitializing) {
         workflowState.clearInitializing();
       }
-      toast.error(`Step ${step + 1} failed`, { duration: Infinity });
+      toast.error(
+        errorDetail
+          ? `Step ${step + 1} failed: ${errorDetail}`
+          : `Step ${step + 1} failed`,
+        { duration: Infinity },
+      );
     } else if (activeRunStatus === "shutdown") {
       setActiveAgent(null);
       setRunning(false);

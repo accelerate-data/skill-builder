@@ -839,7 +839,7 @@ fn test_build_prompt_all_three_paths() {
         "/home/user/my-skills",
         None,
         None,
-        5,
+        None,
     );
     assert!(prompt.contains("my-skill"));
     assert!(prompt
@@ -858,7 +858,7 @@ fn test_build_prompt_with_skill_type() {
         "/home/user/my-skills",
         None,
         None,
-        5,
+        None,
     );
     // Purpose is now in user-context.md, read by the agent
     assert!(prompt.contains("user-context.md"));
@@ -873,7 +873,7 @@ fn test_build_prompt_with_author_info() {
         "/home/user/my-skills",
         Some("octocat"),
         Some("2025-06-15T12:00:00Z"),
-        5,
+        None,
     );
     assert!(prompt.contains("The author of this skill is: octocat."));
     assert!(prompt.contains("The skill was created on: 2025-06-15."));
@@ -889,7 +889,7 @@ fn test_build_prompt_without_author_info() {
         "/home/user/my-skills",
         None,
         None,
-        5,
+        None,
     );
     assert!(!prompt.contains("The author of this skill is:"));
     assert!(!prompt.contains("The skill was created on:"));
@@ -1842,7 +1842,7 @@ fn test_format_user_context_partial_intake() {
 fn test_build_prompt_includes_user_context_md_instruction() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, 5);
+    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, None);
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
@@ -1851,7 +1851,7 @@ fn test_build_prompt_includes_user_context_md_instruction() {
 fn test_build_prompt_without_user_context() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, 5);
+    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, None);
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
@@ -1972,7 +1972,6 @@ fn test_save_clarifications_content_rejects_invalid_schema() {
             .unwrap_err();
     assert!(err.contains("priority_questions must be an array"));
 }
-
 
 // =============================================================================
 // CG-R1: format_user_context (workflow/runtime.rs)

@@ -26,7 +26,7 @@ pub(crate) fn resolve_skills_path(db: &Db, workspace_path: &str) -> Result<Strin
         .unwrap_or_else(|| workspace_path.to_string()))
 }
 
-pub(crate) fn resolve_skill_plugin_slug(db: &Db, skill_name: &str) -> Result<String, String> {
+pub(super) fn resolve_skill_plugin_slug(db: &Db, skill_name: &str) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     Ok(crate::db::get_skill_master_any_plugin(&conn, skill_name)?
         .map(|skill| skill.plugin_slug)
@@ -36,7 +36,6 @@ pub(crate) fn resolve_skill_plugin_slug(db: &Db, skill_name: &str) -> Result<Str
 /// Resolve the directory that contains SKILL.md for the given skill.
 /// Uses the correct plugin slug (cross-plugin lookup) so imported skills
 /// resolve to `skills_path/{plugin_slug}/skills/{skill_name}/`.
-#[allow(dead_code)]
 pub(super) fn resolve_skill_output_dir(
     db: &Db,
     skill_name: &str,
@@ -133,7 +132,7 @@ pub async fn start_refine_session(
     })?;
 
     // Verify SKILL.md exists
-    let skill_md = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name).join("SKILL.md");
+    let skill_md = resolve_skill_output_dir(&db, &skill_name, &skills_path)?.join("SKILL.md");
     if !skill_md.exists() {
         let msg = format!("SKILL.md not found at {}", skill_md.display());
         log::error!("[start_refine_session] {}", msg);
@@ -266,14 +265,14 @@ pub async fn send_refine_message(
 
     let runtime = load_refine_runtime_settings(&db, &workspace_path, &skill_name, &plugin_slug)?;
     ensure_skill_workspace_dir(&workspace_path, &runtime.plugin_slug, &skill_name);
-    let skill_output_dir = resolve_skill_dir(Path::new(&runtime.skills_path), &plugin_slug, &skill_name);
+    let skill_output_dir = resolve_skill_output_dir(&db, &skill_name, &runtime.skills_path)?;
 
     if !stream_started {
         // ─── First message: start streaming session ───────────────────────
         // All commands go through the same streaming config. No agent is
         // specified — Claude decides which agent to invoke based on the
         // user's message and the agents discovered from plugins.
-        let (system_prompt, user_prompt) = build_refine_prompt_with_output_dir(
+        let prompt = build_refine_prompt_with_output_dir(
             &skill_name,
             &workspace_path,
             &runtime.plugin_slug,
@@ -282,7 +281,7 @@ pub async fn send_refine_message(
             target_files.as_deref(),
         );
         let (mut config, agent_id) = build_refine_config(
-            user_prompt.clone(),
+            prompt.clone(),
             &skill_name,
             &usage_session_id,
             &workspace_path,
@@ -294,7 +293,6 @@ pub async fn send_refine_message(
             runtime.fallback_model,
             runtime.refine_prompt_suggestions,
         );
-        config.system_prompt = Some(system_prompt);
 
         log::info!(
             "[send_refine_message] skill={} model={}",
@@ -303,7 +301,7 @@ pub async fn send_refine_message(
         );
         log::debug!(
             "[send_refine_message] first message prompt ({} chars) for skill '{}' command={:?}",
-            user_prompt.len(),
+            prompt.len(),
             skill_name,
             command
         );

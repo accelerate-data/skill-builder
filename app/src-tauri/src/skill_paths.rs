@@ -18,21 +18,21 @@ pub fn skill_library_key(plugin_slug: &str, skill_name: &str) -> String {
 }
 
 /// Workspace scratch directory for a skill.
-/// Uses the same layout as `nested_skill_dir`:
-/// - Default plugin: `{workspace}/skills/{skill_name}/`
-/// - Other plugins: `{workspace}/{plugin_slug}/skills/{skill_name}/`
+/// Always plugin-namespaced: `{workspace}/{plugin_slug}/{skill_name}/`
+/// This gives each (plugin, skill) pair a unique workspace directory,
+/// preventing collisions when two plugins contain skills with the same name.
 pub fn workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    nested_skill_dir(workspace, plugin_slug, skill_name)
+    workspace.join(plugin_slug).join(skill_name)
 }
 
 /// Resolve the workspace scratch directory for a skill.
-/// Tries the canonical plugin layout first; falls back to the legacy flat
+/// Tries the plugin-organised layout first; falls back to the legacy flat
 /// layout (`{workspace}/{skill_name}`) so that existing flat dirs are still
 /// found before the startup migration has moved them.
 pub fn resolve_workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    let canonical = workspace_skill_dir(workspace, plugin_slug, skill_name);
-    if canonical.exists() {
-        return canonical;
+    let organised = workspace_skill_dir(workspace, plugin_slug, skill_name);
+    if organised.exists() {
+        return organised;
     }
     // Legacy flat fallback — used during startup migration window
     workspace.join(skill_name)
@@ -380,31 +380,5 @@ mod tests {
         assert_eq!(locations[0].skill_name, "my-skill");
         assert!(locations[0].is_default_plugin);
         assert_eq!(locations[0].dir, skill_dir);
-    }
-
-    // --- workspace_skill_dir contract tests ---
-    // These match the derivation in evaluate-skill.md Step 0.
-    // If either side changes, these tests must be updated in sync.
-
-    #[test]
-    fn workspace_skill_dir_default_plugin_no_double_skills() {
-        let root = Path::new("/workspace");
-        let result = workspace_skill_dir(root, DEFAULT_PLUGIN_SLUG, "my-skill");
-        assert_eq!(
-            result,
-            PathBuf::from("/workspace/skills/my-skill"),
-            "default plugin workspace path must be {{workspace}}/skills/{{skill_name}} (no double skills/)"
-        );
-    }
-
-    #[test]
-    fn workspace_skill_dir_non_default_plugin_includes_skills_intermediate() {
-        let root = Path::new("/workspace");
-        let result = workspace_skill_dir(root, "analytics", "weekly-report");
-        assert_eq!(
-            result,
-            PathBuf::from("/workspace/analytics/skills/weekly-report"),
-            "non-default plugin workspace path must be {{workspace}}/{{slug}}/skills/{{skill_name}}"
-        );
     }
 }

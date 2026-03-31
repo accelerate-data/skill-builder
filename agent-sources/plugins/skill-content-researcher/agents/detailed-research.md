@@ -198,12 +198,13 @@ Field rules:
 ### Additive-only invariant
 
 - Detailed research is **strictly additive** relative to the input `clarifications.json`.
-- Preserve every original top-level research question unchanged:
+- Preserve every original top-level research question **byte-for-byte** — copy the entire parsed question object (all fields: `id`, `title`, `text`, `choices`, `consolidated_from`, `must_answer`, `recommendation`, `answer_choice`, `answer_text`, `refinements`, and any other fields present) from the parsed `clarifications.json` into the output. **Never reconstruct a question object from memory or subagent output.**
   - do **not** delete any existing `sections[].questions[]` item
   - do **not** rewrite or replace an existing top-level question with a new phrasing
+  - do **not** drop any field from an existing top-level question object, even if you did not use it
   - do **not** renumber or reorder existing top-level questions in a way that changes their identity
 - Detailed research may only:
-  - add refinements under existing questions
+  - append objects into an existing question's `refinements[]` array
   - update metadata to reflect the additions
 
 ## Phase 4: Return
@@ -242,6 +243,8 @@ Return JSON only (no markdown) with this shape:
 
 ## Output example - Refinement format
 
+Refinement subagent output (intermediate, before merge):
+
 ```json
 [
   {
@@ -264,5 +267,48 @@ Return JSON only (no markdown) with this shape:
   }
 ]
 ```
+
+## Output example - Merged question object in final clarifications_json
+
+After merging R6.1 into Q6, the question object in `clarifications_json.sections[x].questions[y]` must look like this — **all original fields preserved, only `refinements` array extended**:
+
+```json
+{
+  "id": "Q6",
+  "title": "Coverage Ratio Targets",
+  "text": "What pipeline coverage ratio do you target? This determines how much pipeline is needed per quota dollar.",
+  "choices": [
+    {"id": "A", "text": "Fixed ratio (e.g., 3x)", "is_other": false},
+    {"id": "B", "text": "Tier-based ratio by segment", "is_other": false},
+    {"id": "C", "text": "Dynamic — set by leadership each quarter", "is_other": false},
+    {"id": "D", "text": "Other (please specify)", "is_other": true}
+  ],
+  "consolidated_from": [],
+  "must_answer": true,
+  "recommendation": "B",
+  "answer_choice": null,
+  "answer_text": null,
+  "refinements": [
+    {
+      "id": "R6.1",
+      "title": "Revenue recognition trigger?",
+      "text": "The skill cannot calculate pipeline metrics without knowing when revenue enters the model.",
+      "choices": [
+        {"id": "A", "text": "Booking date", "is_other": false},
+        {"id": "B", "text": "Invoice date", "is_other": false},
+        {"id": "C", "text": "Payment date", "is_other": false},
+        {"id": "D", "text": "Other (please specify)", "is_other": true}
+      ],
+      "recommendation": "B",
+      "must_answer": false,
+      "answer_choice": null,
+      "answer_text": null,
+      "refinements": []
+    }
+  ]
+}
+```
+
+Note: `detailed_research_type` and `parent_question_id` are removed from refinements after merge (step 6 of Phase 3). Every other field from the original question (`text`, `choices`, `consolidated_from`, `must_answer`, `recommendation`) is carried through unchanged.
 
 </output>

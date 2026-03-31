@@ -5,9 +5,6 @@ use crate::commands::workflow::resolve_model_id;
 use crate::db::{self, Db};
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use crate::skill_paths::resolve_skill_dir;
-
-/// The refine-initial.txt template, embedded at compile time.
-const REFINE_PROMPT_TEMPLATE: &str = include_str!("../../../../../agent-sources/workspace/prompts/refine-initial.txt");
 use crate::types::SecretString;
 
 /// Max agentic turns for the entire streaming session. Each user message may
@@ -62,6 +59,9 @@ pub(super) fn load_refine_runtime_settings(
     skill_name: &str,
     plugin_slug: &str,
 ) -> Result<RefineRuntimeSettings, String> {
+    // Resolve plugin slug before acquiring conn to avoid re-entrant lock deadlock.
+    let plugin_slug = super::resolve_skill_plugin_slug(db, skill_name)?;
+
     let conn = db.0.lock().map_err(|e| {
         log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -127,7 +127,7 @@ pub(super) fn load_refine_runtime_settings(
         refine_prompt_suggestions: settings.refine_prompt_suggestions,
         model,
         skills_path,
-        plugin_slug: plugin_slug.to_string(),
+        plugin_slug,
     })
 }
 
@@ -261,8 +261,6 @@ pub(super) fn build_followup_prompt_for_plugin(
 /// Build the initial refine prompt using a pre-resolved skill output directory.
 /// Use this instead of `build_refine_prompt_for_plugin` when the output dir is
 /// already known (e.g. `disk_path` for imported/marketplace skills).
-/// Returns (system_prompt, user_prompt).
-/// system_prompt contains routing/instructions; user_prompt is the user's message.
 pub(super) fn build_refine_prompt_with_output_dir(
     skill_name: &str,
     workspace_path: &str,
@@ -270,7 +268,7 @@ pub(super) fn build_refine_prompt_with_output_dir(
     skill_output_dir: &std::path::Path,
     user_message: &str,
     target_files: Option<&[String]>,
-) -> (String, String) {
+) -> String {
     // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
     let workspace_dir = crate::skill_paths::workspace_skill_dir(
         Path::new(workspace_path),
@@ -280,24 +278,31 @@ pub(super) fn build_refine_prompt_with_output_dir(
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
 
-    let target_files_clause = match target_files {
-        Some(files) if !files.is_empty() => format!(
-            "\n\nIMPORTANT: Only edit these files (relative to skill output directory): {}. Do not modify any other files.",
-            files.join(", ")
-        ),
-        _ => String::new(),
-    };
+    let mut prompt = format!(
+        "The skill name is: {skill_name}. \
+         The workspace directory is: \"{workspace_str}\". \
+         The skill output directory (SKILL.md and references/) is: \"{skill_output_str}\". \
+         Derive context_dir as \"{workspace_str}/context\". \
+         Derive eval_dir as \"{workspace_str}/evals\". \
+         Derive eval_results_dir as \"{workspace_str}/evals/workspace\". \
+         All directories already exist — never create directories with mkdir or any other method.\n\n\
+         ROUTING:\n\
+         - For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.\n\
+         - CONSTRAINT: You may only refine, evaluate, benchmark, or validate the existing skill '{skill_name}'. Do NOT create new skills. \
+         If the user asks to create a new skill, decline and direct them to the dashboard.",
+    );
 
-    let system_prompt = REFINE_PROMPT_TEMPLATE
-        .replace("{{skill_name}}", skill_name)
-        .replace("{{command}}", "refine")
-        .replace("{{skill_dir}}", &skill_output_str)
-        .replace("{{context_dir}}", &format!("{workspace_str}/context"))
-        .replace("{{workspace_dir}}", &workspace_str)
-        .replace("{{target_files_clause}}", &target_files_clause)
-        .replace("{{user_message}}", "");
+    if let Some(files) = target_files {
+        if !files.is_empty() {
+            prompt.push_str(&format!(
+                "\n\nIMPORTANT: Only edit these files (relative to skill output directory): {}. Do not modify any other files.",
+                files.join(", ")
+            ));
+        }
+    }
 
-    (system_prompt, user_message.to_string())
+    prompt.push_str(&format!("\n\nCurrent request: {}", user_message));
+    prompt
 }
 
 /// Build a follow-up prompt using a pre-resolved skill output directory.
@@ -337,7 +342,7 @@ pub(super) fn build_refine_prompt(
     skills_path: &str,
     user_message: &str,
     target_files: Option<&[String]>,
-) -> (String, String) {
+) -> String {
     build_refine_prompt_for_plugin(
         skill_name,
         workspace_path,
@@ -355,28 +360,14 @@ pub(super) fn build_refine_prompt_for_plugin(
     plugin_slug: &str,
     user_message: &str,
     target_files: Option<&[String]>,
-) -> (String, String) {
-    let workspace_dir = crate::skill_paths::resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+) -> String {
     let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
-    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
-
-    let target_files_clause = match target_files {
-        Some(files) if !files.is_empty() => format!(
-            "\n\nIMPORTANT: Only edit these files (relative to skill output directory): {}. Do not modify any other files.",
-            files.join(", ")
-        ),
-        _ => String::new(),
-    };
-
-    let system_prompt = REFINE_PROMPT_TEMPLATE
-        .replace("{{skill_name}}", skill_name)
-        .replace("{{command}}", "refine")
-        .replace("{{skill_dir}}", &skill_output_str)
-        .replace("{{context_dir}}", &format!("{workspace_str}/context"))
-        .replace("{{workspace_dir}}", &workspace_str)
-        .replace("{{target_files_clause}}", &target_files_clause)
-        .replace("{{user_message}}", "");  // user message goes in the user prompt, not system
-
-    (system_prompt, user_message.to_string())
+    build_refine_prompt_with_output_dir(
+        skill_name,
+        workspace_path,
+        plugin_slug,
+        &skill_output_dir,
+        user_message,
+        target_files,
+    )
 }

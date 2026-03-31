@@ -3,5 +3,5 @@
 
 pub use super::event_router::{
     emit_init_error, emit_runtime_error, handle_agent_shutdown, handle_sidecar_exit,
-    handle_sidecar_message, is_authentication_error,
+    handle_sidecar_exit_with_detail, handle_sidecar_message, is_authentication_error,
 };

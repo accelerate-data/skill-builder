@@ -578,7 +578,7 @@ mod tests {
 
         // Eval artifacts (eval-review.html is inside evals/)
         let skill_dir = tmp.path().join(SLUG).join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("evals/iterations")).unwrap();
+        std::fs::create_dir_all(skill_dir.join("evals/workspace")).unwrap();
         std::fs::write(skill_dir.join("evals/evals.json"), "{}").unwrap();
         std::fs::write(skill_dir.join("evals/eval-review.html"), "<html>").unwrap();
 

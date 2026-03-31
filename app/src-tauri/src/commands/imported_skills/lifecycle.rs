@@ -337,79 +337,34 @@ pub fn create_plugin_from_skills(
     let (_plugin_id, plugin_slug) =
         crate::db::create_plugin(&conn, &plugin_name, "local", None, None)?;
 
-    // Track successfully moved skills for rollback on failure
-    let mut moved_skills: Vec<(String, String)> = Vec::new(); // (skill_name, original_plugin_slug)
-
-    let result = (|| -> Result<(), String> {
-        // Write plugin directory and manifests to disk
-        if let Some(ref sp) = settings.skills_path {
-            let skills_root = std::path::Path::new(sp);
-            let plugin_skills_dir = skills_root.join(&plugin_slug).join("skills");
-            std::fs::create_dir_all(&plugin_skills_dir).map_err(|e| format!("Failed to create plugin directory: {}", e))?;
-            crate::marketplace_manifest::write_plugin_json(skills_root, &plugin_slug, &plugin_name, None, None)?;
-            crate::marketplace_manifest::write_marketplace_json(skills_root)?;
-            let msg = format!("{}: create plugin", plugin_slug);
-            if let Err(e) = crate::git::commit_all(skills_root, &msg) {
-                log::warn!("Git auto-commit failed ({}): {}", msg, e);
-            }
+    // Write plugin directory and manifests to disk
+    if let Some(ref sp) = settings.skills_path {
+        let skills_root = std::path::Path::new(sp);
+        // Create the plugin dir with skills/ subfolder and plugin.json
+        let plugin_skills_dir = skills_root.join(&plugin_slug).join("skills");
+        std::fs::create_dir_all(&plugin_skills_dir).map_err(|e| format!("Failed to create plugin directory: {}", e))?;
+        crate::marketplace_manifest::write_plugin_json(skills_root, &plugin_slug, &plugin_name, None, None)?;
+        crate::marketplace_manifest::write_marketplace_json(skills_root)?;
+        let msg = format!("{}: create plugin", plugin_slug);
+        if let Err(e) = crate::git::commit_all(skills_root, &msg) {
+            log::warn!("Git auto-commit failed ({}): {}", msg, e);
         }
-
-        for skill_key in &skill_keys {
-            let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, skill_key)?;
-            let (_, skills_target) = move_skill_directories(
-                settings.workspace_path.as_deref(),
-                settings.skills_path.as_deref(),
-                &skill_name,
-                &current_plugin_slug,
-                &plugin_slug,
-            )?;
-            crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)?;
-            moved_skills.push((skill_name.clone(), current_plugin_slug.clone()));
-            if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
-                crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
-            }
-        }
-
-        Ok(())
-    })();
-
-    if let Err(e) = result {
-        log::error!("[create_plugin_from_skills] rolling back plugin '{}': {}", plugin_slug, e);
-
-        // Reverse skill moves (DB + disk) in reverse order
-        for (skill_name, original_slug) in moved_skills.iter().rev() {
-            if let Err(err) = crate::db::move_skill_to_plugin(&conn, skill_name, &plugin_slug, original_slug) {
-                log::warn!("[create_plugin_from_skills] rollback DB move failed for '{}': {}", skill_name, err);
-            }
-            if let Err(err) = move_skill_directories(
-                settings.workspace_path.as_deref(),
-                settings.skills_path.as_deref(),
-                skill_name,
-                &plugin_slug,
-                original_slug,
-            ) {
-                log::warn!("[create_plugin_from_skills] rollback dir move failed for '{}': {}", skill_name, err);
-            }
-        }
-
-        // Remove plugin directory from disk
-        if let Some(ref sp) = settings.skills_path {
-            let plugin_dir = std::path::Path::new(sp).join(&plugin_slug);
-            if plugin_dir.exists() {
-                if let Err(err) = std::fs::remove_dir_all(&plugin_dir) {
-                    log::warn!("[create_plugin_from_skills] failed to remove plugin dir: {}", err);
-                }
-            }
-        }
-
-        // Delete the plugin DB row (must be after skill moves are reversed due to FK RESTRICT)
-        if let Err(err) = crate::db::delete_plugin_by_slug(&conn, &plugin_slug) {
-            log::warn!("[create_plugin_from_skills] failed to delete plugin row: {}", err);
-        }
-
-        return Err(e);
     }
 
+    for skill_key in skill_keys {
+        let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;
+        let (_, skills_target) = move_skill_directories(
+            settings.workspace_path.as_deref(),
+            settings.skills_path.as_deref(),
+            &skill_name,
+            &current_plugin_slug,
+            &plugin_slug,
+        )?;
+        crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)?;
+        if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
+            crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
+        }
+    }
     Ok(plugin_slug)
 }
 
@@ -435,15 +390,6 @@ pub fn move_skill_to_plugin(
     )?;
     if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
         crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
-    }
-    // Migrate version tags to the new plugin namespace
-    if let Some(ref sp) = settings.skills_path {
-        let root = std::path::Path::new(sp);
-        if root.join(".git").exists() {
-            let migrated = crate::git::migrate_skill_tags(root, &plugin_slug, &skill_name, Some(&current_plugin_slug))
-                .unwrap_or(0);
-            log::info!("[move_skill_to_plugin] migrated {} tags for '{}' ({} → {})", migrated, skill_name, current_plugin_slug, plugin_slug);
-        }
     }
     // Update marketplace.json to reflect the move
     if let Some(ref sp) = settings.skills_path {
@@ -476,15 +422,6 @@ pub fn remove_skill_from_plugin(
     )?;
     if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
         crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
-    }
-    // Migrate version tags back to the default plugin namespace
-    if let Some(ref sp) = settings.skills_path {
-        let root = std::path::Path::new(sp);
-        if root.join(".git").exists() {
-            let migrated = crate::git::migrate_skill_tags(root, DEFAULT_PLUGIN_SLUG, &skill_name, Some(&current_plugin_slug))
-                .unwrap_or(0);
-            log::info!("[remove_skill_from_plugin] migrated {} tags for '{}' ({} → {})", migrated, skill_name, current_plugin_slug, DEFAULT_PLUGIN_SLUG);
-        }
     }
     // Update marketplace.json to reflect the move
     if let Some(ref sp) = settings.skills_path {
@@ -569,6 +506,7 @@ mod tests {
     #[test]
     fn test_delete_imported_skill_inner_happy_path() {
         let conn = create_test_db_for_tests();
+        crate::db::upsert_skill(&conn, "del-happy", "imported", "domain").unwrap();
         let skill = make_test_skill("del-happy-id", "del-happy");
         crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
         // disk_path points to a non-existent temp dir — absence is handled gracefully

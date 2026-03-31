@@ -174,12 +174,32 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
                         .and_then(|i| i.get("id"))
                         .and_then(|t| t.as_str())
                         .unwrap_or("unknown");
-                    log::debug!(
-                        "[event:agent-message:{}] display_item type={} id={}",
-                        agent_id,
-                        item_type,
-                        item_id
-                    );
+                    if item_type == "error" {
+                        let error_content = event
+                            .message
+                            .get("item")
+                            .and_then(|i| i.get("content"))
+                            .map(|c| c.to_string())
+                            .or_else(|| {
+                                event.message.get("item")
+                                    .and_then(|i| i.get("error"))
+                                    .map(|e| e.to_string())
+                            })
+                            .unwrap_or_default();
+                        log::error!(
+                            "[event:agent-message:{}] display_item type=error id={} detail={}",
+                            agent_id,
+                            item_id,
+                            error_content
+                        );
+                    } else {
+                        log::debug!(
+                            "[event:agent-message:{}] display_item type={} id={}",
+                            agent_id,
+                            item_type,
+                            item_id
+                        );
+                    }
                 } else {
                     log::debug!(
                         "[event:agent-message:{}] pass_through type={}",
@@ -201,10 +221,20 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
 }
 
 pub fn handle_sidecar_exit(app_handle: &tauri::AppHandle, agent_id: &str, success: bool) {
+    handle_sidecar_exit_with_detail(app_handle, agent_id, success, None);
+}
+
+pub fn handle_sidecar_exit_with_detail(
+    app_handle: &tauri::AppHandle,
+    agent_id: &str,
+    success: bool,
+    error_detail: Option<String>,
+) {
     log::info!("[event:agent-exit:{}] success={}", agent_id, success);
     let payload = AgentExitPayload {
         agent_id: agent_id.to_string(),
         success,
+        error_detail,
     };
     if let Err(e) = app_handle.emit("agent-exit", &payload) {
         log::warn!(

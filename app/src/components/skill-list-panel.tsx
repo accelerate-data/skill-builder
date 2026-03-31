@@ -281,6 +281,7 @@ export function SkillListPanel({
     }
   }
 
+
   async function handleRemoveFromPlugin(skill: UnifiedSkill) {
     const toastId = toast.loading(`Removing "${skill.name}" from plugin...`)
     try {
@@ -481,6 +482,7 @@ export function SkillListPanel({
           fetchImportedSkills().catch(() => {});
         }}
       />
+
 
       {restoreTarget && workspacePath && (
         <RestoreVersionDialog
