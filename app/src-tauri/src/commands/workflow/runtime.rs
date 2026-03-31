@@ -85,6 +85,13 @@ async fn run_workflow_step_inner(
         &settings.documents,
     );
 
+    let subagent_directive: Option<&str> = match step_id {
+        1 => Some("Launch the `skill-content-researcher:detailed-research` subagent to do detailed research."),
+        2 => Some("Launch the `skill-content-researcher:confirm-decisions` subagent to confirm decisions used for building skills."),
+        3 => Some("Launch the `skill-creator:generate-skill` subagent to generate the skill."),
+        _ => None,
+    };
+
     let prompt = if step_id == 0 {
         build_step0_prompt(
             skill_name,
@@ -100,7 +107,7 @@ async fn run_workflow_step_inner(
             &settings.skills_path,
             settings.author_login.as_deref(),
             settings.created_at.as_deref(),
-            settings.max_dimensions,
+            subagent_directive,
         )
     };
     log::debug!(
@@ -122,17 +129,12 @@ async fn run_workflow_step_inner(
         required_plugins,
     );
 
-    // Step 0 invokes the research skill directly via prompt (no agent system prompt).
-    // This ensures AskUserQuestion is one level deep and intercepted by the streaming session.
-    let use_agent_system_prompt = step_id != 0;
-
+    // All steps use the prompt-directive approach: model is set explicitly and the
+    // prompt instructs the model to launch the named subagent. This avoids the
+    // unreliable --agent flag resolution that caused steps to misbehave.
     let mut config = SidecarConfig {
         prompt,
-        model: if use_agent_system_prompt {
-            None
-        } else {
-            Some(settings.preferred_model.clone())
-        },
+        model: Some(settings.preferred_model.clone()),
         api_key: settings.api_key.clone(),
         cwd: workspace_path.to_string(),
         allowed_tools: Some(step.allowed_tools),
@@ -149,22 +151,13 @@ async fn run_workflow_step_inner(
                 "budgetTokens": budget
             })
         }),
-        // When model is set explicitly, fallback_model must differ or the SDK errors.
-        // For step 0 (no agent system prompt), suppress fallback_model entirely.
-        fallback_model: if use_agent_system_prompt {
-            settings.fallback_model.clone()
-        } else {
-            None
-        },
+        // model is always set explicitly; suppress fallback_model to avoid SDK errors.
+        fallback_model: None,
         effort: settings.sdk_effort.clone(),
         output_format: workflow_output_format_for_agent(&agent_name),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
-        agent_name: if use_agent_system_prompt {
-            Some(agent_name)
-        } else {
-            None
-        },
+        agent_name: None,
         required_plugins: Some(required_plugins),
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
@@ -248,6 +241,33 @@ pub async fn run_workflow_step(
         step_id,
         &workspace_path,
     )?;
+
+    // Cancel any stale streaming sessions for this skill before starting a new step.
+    // Without this, a reset + re-run hangs on "Initializing agent" because the sidecar
+    // is still blocked on the previous session (e.g. a hung research-orchestrator subagent)
+    // and cannot start the new stream_start until the old one finishes.
+    let stale_sessions: Vec<(String, String)> = {
+        let map = sessions.0.lock().map_err(|e| e.to_string())?;
+        map.iter()
+            .filter(|(_, s)| s.skill_name == skill_name)
+            .map(|(agent_id, s)| (agent_id.clone(), s.session_id.clone()))
+            .collect()
+    };
+    for (stale_agent_id, stale_session_id) in &stale_sessions {
+        log::info!(
+            "[run_workflow_step] cancelling stale session agent={} before starting step_id={}",
+            stale_agent_id,
+            step_id,
+        );
+        let _ = pool.send_stream_cancel(&skill_name, stale_session_id).await;
+    }
+    if !stale_sessions.is_empty() {
+        let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
+        for (stale_agent_id, _) in &stale_sessions {
+            map.remove(stale_agent_id);
+        }
+    }
+
     // Ensure prompt files exist in workspace before running.
     // This deploys agents to .claude/agents/ and plugins to .claude/plugins/.
     ensure_workspace_prompts(&app, &workspace_path).await?;
