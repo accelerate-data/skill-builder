@@ -21,12 +21,14 @@ pub(crate) fn build_prompt(
     let mut prompt = format!(
         "The skill name is: {}. The workspace directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
-         Read user-context.md from the workspace directory. \
-         Derive context_dir as workspace_dir/context. \
+         The user context file is at: {}/user-context.md. \
+         The context directory is: {}/context. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         skill_name,
         workspace_str,
         skill_output_str,
+        workspace_str,
+        workspace_str,
     );
 
     if let Some(author) = author_login {
@@ -74,13 +76,15 @@ pub(crate) fn build_step0_prompt(
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     format!(
         "The skill name is: {}. The workspace directory is: {}. \
-         Read user-context.md from the workspace directory. \
-         Derive context_dir as workspace_dir/context. \
+         The user context file is at: {}/user-context.md. \
+         The context directory is: {}/context. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. \
          Read only the specific files named in your instructions and write files directly. \
          The maximum research dimensions before scope warning is: {}. \
          Use the skill-content-researcher:research to produce clarification questions which will be used to write the skill.",
         skill_name,
+        workspace_str,
+        workspace_str,
         workspace_str,
         max_dimensions,
     )
@@ -102,11 +106,12 @@ pub(crate) fn build_evaluator_prompt(
     format!(
         "The skill name is: {}. The workspace directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
-         Read user-context.md from the workspace directory. \
-         Derive context_dir as workspace_dir/context. \
+         The user context file is at: {}/user-context.md. \
+         The context directory is: {}/context. \
          All directories already exist — do not create any directories. \
          Use user-context.md to evaluate answers in the user's specific domain. \
          Use the skill-content-researcher:answer-evaluator skill to evaluate the user's answers.",
         skill_name, workspace_str, skill_output_str,
+        workspace_str, workspace_str,
     )
 }

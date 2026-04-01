@@ -172,8 +172,11 @@ export function useWorkflowStateMachine({
   // Auto-start when advancing from a completed step or on review→update toggle
   useEffect(() => {
     if (pendingAutoStartStep === null) return;
-    if (pendingAutoStartStep !== currentStep) {
-      logFrontend("warn", `[auto-start] BLOCKED: pendingAutoStartStep=${pendingAutoStartStep} !== currentStep=${currentStep}`);
+    // Read currentStep directly from the store to avoid stale selector values
+    // after resetToStep() + autoStartAfterReset() in the same tick.
+    const storeStep = useWorkflowStore.getState().currentStep;
+    if (pendingAutoStartStep !== storeStep) {
+      logFrontend("warn", `[auto-start] BLOCKED: pendingAutoStartStep=${pendingAutoStartStep} !== storeStep=${storeStep} (selectorStep=${currentStep})`);
       return;
     }
     if (!isAgentType) {
@@ -188,12 +191,13 @@ export function useWorkflowStateMachine({
       logFrontend("warn", `[auto-start] BLOCKED: gateLoading=${gateLoading} gateAgentId=${gate.gateAgentIdRef.current}`);
       return;
     }
-    if (steps[currentStep]?.status !== "pending") {
-      logFrontend("warn", `[auto-start] BLOCKED: step ${currentStep} status=${steps[currentStep]?.status} (expected pending)`);
+    const storeSteps = useWorkflowStore.getState().steps;
+    if (storeSteps[storeStep]?.status !== "pending") {
+      logFrontend("warn", `[auto-start] BLOCKED: step ${storeStep} status=${storeSteps[storeStep]?.status} (expected pending)`);
       setPendingAutoStartStep(null);
       return;
     }
-    logFrontend("info", `[auto-start] STARTING step ${currentStep}`);
+    logFrontend("info", `[auto-start] STARTING step ${storeStep}`);
     setPendingAutoStartStep(null);
     handleStartAgentStep();
     // eslint-disable-next-line react-hooks/exhaustive-deps

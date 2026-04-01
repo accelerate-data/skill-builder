@@ -788,12 +788,14 @@ export const buildEvalGenPrompt = (
   skillPath: string,
   outputPath: string,
   userIntent: string,
+  userContextFile: string,
 ) =>
   invoke<[string, string]>("build_eval_gen_prompt", {
     skillName,
     skillPath,
     outputPath,
     userIntent,
+    userContextFile,
   });
 
 

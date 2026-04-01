@@ -171,7 +171,9 @@ Wait for all subagents to complete and return results before proceeding to step 
 
 ### Sub-agent prompt
 
-Spawn each subagent with the following prompt verbatim, substituting `{name}`, `{focus}`, and `{user_context}`:
+Before spawning subagents, read `references/dimensions/entities.md`. Note the **absolute path** from the Read result (e.g. `/.../references/dimensions/entities.md`). Strip the filename to get `{dim_refs_dir}`. Subagents don't inherit the skill's `references/` resolution, so you must pass the absolute path.
+
+Spawn each subagent with the following prompt verbatim, substituting `{name}`, `{focus}`, `{user_context}`, and `{dim_refs_dir}`:
 
 ---
 **Dimension**: {name}
@@ -179,7 +181,7 @@ Spawn each subagent with the following prompt verbatim, substituting `{name}`, `
 
 {user_context}
 
-Read `references/dimensions/{name}.md`.
+Read `{dim_refs_dir}/{name}.md`.
 
 Your output should be raw research text only (500-800 words).
 Frame your research such that user responses will answer:

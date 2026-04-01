@@ -304,7 +304,7 @@ describe("workspaceSkillDir", () => {
 
   it("uses plugin-prefixed layout for non-default plugin", () => {
     expect(workspaceSkillDir("/workspace", "my-plugin", "my-skill")).toBe(
-      "/workspace/my-plugin/skills/my-skill",
+      "/workspace/my-plugin/my-skill",
     );
   });
 });

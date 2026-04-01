@@ -1168,17 +1168,20 @@ pub fn build_eval_gen_prompt(
     skill_path: String,
     output_path: String,
     user_intent: String,
+    user_context_file: String,
 ) -> Result<(String, String), String> {
     log::info!("[build_eval_gen_prompt] skill={}", skill_name);
 
     let skill_path_fwd = skill_path.replace('\\', "/");
     let output_path_fwd = output_path.replace('\\', "/");
+    let user_context_fwd = user_context_file.replace('\\', "/");
 
     let system_prompt = EVAL_GEN_PROMPT_TEMPLATE
         .replace("{{skill_name}}", &skill_name)
         .replace("{{skill_path}}", &skill_path_fwd)
         .replace("{{workspace_path}}", "")
-        .replace("{{output_path}}", &output_path_fwd);
+        .replace("{{output_path}}", &output_path_fwd)
+        .replace("{{user_context_file}}", &user_context_fwd);
 
     Ok((system_prompt, user_intent))
 }

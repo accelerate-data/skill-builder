@@ -5,7 +5,8 @@ CONTEXT:
 - skill_path: {{skill_path}}
 - output_path: {{output_path}}
 
-STEP 1 — Read the skill carefully.
+STEP 1 — Read the skill and user context.
+Read {{user_context_file}} for the user's domain, industry, and skill purpose.
 Read {{skill_path}}/SKILL.md and all files under {{skill_path}}/references/ using the Read and Glob tools. Understand what the skill does, its domain, its conventions, and its quality expectations. This context is essential for writing a realistic eval prompt and meaningful assertions.
 
 STEP 2 — Generate the eval.

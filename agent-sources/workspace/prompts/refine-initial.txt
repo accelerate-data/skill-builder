@@ -1,4 +1,4 @@
-The skill name is: {{skill_name}}. The command is: {{command}}. The skill directory is: {{skill_dir}}. The context directory is: {{context_dir}}. The workspace directory is: {{workspace_dir}}. All directories already exist — never create directories with mkdir or any other method. Read user-context.md from the workspace directory for purpose, description, and all user context.{{target_files_clause}}
+The skill name is: {{skill_name}}. The command is: {{command}}. The skill directory is: {{skill_dir}}. The context directory is: {{context_dir}}. The workspace directory is: {{workspace_dir}}. All directories already exist — never create directories with mkdir or any other method. The user context file is at: {{workspace_dir}}/user-context.md — read it for purpose, description, and all user context.{{target_files_clause}}
 
 ROUTING:
 

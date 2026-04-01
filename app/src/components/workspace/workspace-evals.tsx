@@ -295,11 +295,13 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     try {
       const skillPath = workspaceSkillDir(skillsPath, pluginSlug, skillName);
       const outputPath = `${workspaceSkillDir(workspacePath, pluginSlug, skillName)}/evals/pending-eval.json`;
+      const skillWorkspace = workspaceSkillDir(workspacePath, pluginSlug, skillName);
+      const userContextFile = `${skillWorkspace}/user-context.md`;
       const [genSystemPrompt, genUserPrompt] = await buildEvalGenPrompt(
-        skillName, skillPath, outputPath, userIntent,
+        skillName, skillPath, outputPath, userIntent, userContextFile,
       );
       const agentId = crypto.randomUUID();
-      const cwd = workspaceSkillDir(workspacePath, pluginSlug, skillName);
+      const cwd = skillWorkspace;
 
       await startAgent(
         agentId,
@@ -379,12 +381,14 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       // (Write tool requires the file not to exist, or to have been read first in the same session)
       await discardPendingEval(skillName, workspacePath, pluginSlug);
       const skillPath = workspaceSkillDir(skillsPath, pluginSlug, skillName);
-      const outputPath = `${workspaceSkillDir(workspacePath, pluginSlug, skillName)}/evals/pending-eval.json`;
+      const skillWorkspace = workspaceSkillDir(workspacePath, pluginSlug, skillName);
+      const outputPath = `${skillWorkspace}/evals/pending-eval.json`;
+      const regenUserContextFile = `${skillWorkspace}/user-context.md`;
       const [regenSystemPrompt, regenUserPrompt] = await buildEvalGenPrompt(
-        skillName, skillPath, outputPath, newIntent,
+        skillName, skillPath, outputPath, newIntent, regenUserContextFile,
       );
       const agentId = crypto.randomUUID();
-      const cwd = workspaceSkillDir(workspacePath, pluginSlug, skillName);
+      const cwd = skillWorkspace;
 
       await startAgent(
         agentId,
