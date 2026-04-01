@@ -478,6 +478,48 @@ fn test_save_workflow_run_creates_skills_master_row() {
 }
 
 #[test]
+fn test_save_workflow_run_moves_non_default_skill_to_default_plugin() {
+    // Regression: after redo (save_workflow_run on a non-default-plugin skill), the skill
+    // must appear only in the default plugin — no duplicates in the sidebar.
+    let conn = create_test_db();
+    // Create a non-default plugin
+    conn.execute(
+        "INSERT INTO plugins (slug, display_name, is_default) VALUES ('my-plugin', 'My Plugin', 0)",
+        [],
+    )
+    .unwrap();
+    let plugin_id: i64 = conn
+        .query_row("SELECT id FROM plugins WHERE slug = 'my-plugin'", [], |r| r.get(0))
+        .unwrap();
+    // Insert skill directly in non-default plugin (simulates existing non-default skill)
+    conn.execute(
+        "INSERT INTO skills (name, skill_source, plugin_id, purpose, updated_at)
+         VALUES ('redo-skill', 'skill-builder', ?1, 'domain', datetime('now'))",
+        rusqlite::params![plugin_id],
+    )
+    .unwrap();
+
+    // Simulate redo: save_workflow_run is called (from reset_workflow_step)
+    save_workflow_run(&conn, "redo-skill", 0, "pending", "domain").unwrap();
+
+    // Exactly one skills row must exist
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM skills WHERE name = 'redo-skill'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 1, "skill must be in exactly one plugin after redo");
+
+    // That row must be in the default plugin
+    let slug: String = conn
+        .query_row(
+            "SELECT p.slug FROM skills s JOIN plugins p ON p.id = s.plugin_id WHERE s.name = 'redo-skill'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(slug, "skills", "skill must move to default plugin on redo");
+}
+
+#[test]
 fn test_delete_workflow_run_soft_deletes_skills_master() {
     let conn = create_test_db();
     save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
