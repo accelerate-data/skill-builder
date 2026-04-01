@@ -173,7 +173,8 @@ pub(super) fn build_refine_config(
         ),
         model: Some(model),
         api_key,
-        cwd,
+        workspace_root_dir: cwd.clone(),
+        workspace_skill_dir: cwd,
         allowed_tools: Some(vec![
             "Read".into(), "Write".into(), "Edit".into(),
             "Glob".into(), "Grep".into(), "Bash".into(),

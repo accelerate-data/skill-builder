@@ -314,9 +314,9 @@ pub async fn send_refine_message(
         }
 
         log::debug!(
-            "[send_refine_message] starting stream agent={} cwd={}",
+            "[send_refine_message] starting stream agent={} workspace_skill_dir={}",
             agent_id,
-            config.cwd,
+            config.workspace_skill_dir,
         );
 
         pool.send_stream_start(&skill_name, &session_id, &agent_id, config, &app)

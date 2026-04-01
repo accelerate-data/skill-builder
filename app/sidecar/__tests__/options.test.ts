@@ -6,7 +6,8 @@ function makeConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
   return {
     prompt: "test prompt",
     apiKey: "sk-test",
-    cwd: "/tmp/project",
+    workspaceRootDir: "/tmp/project",
+    workspaceSkillDir: "/tmp/project",
     ...overrides,
   };
 }
@@ -196,13 +197,13 @@ describe("buildQueryOptions", () => {
     expect(opts.executable).toBe(process.execPath);
   });
 
-  it("always includes cwd from config", () => {
+  it("uses workspaceSkillDir as cwd", () => {
     const opts = buildQueryOptions(
-      makeConfig({ cwd: "/my/project" }),
+      makeConfig({ workspaceSkillDir: "/my/project/skills/test" }),
       new AbortController(),
       []
     );
-    expect(opts.cwd).toBe("/my/project");
+    expect(opts.cwd).toBe("/my/project/skills/test");
   });
 
   it("passes stderr callback when provided", () => {

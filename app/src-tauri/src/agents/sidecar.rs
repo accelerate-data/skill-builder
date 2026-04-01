@@ -11,7 +11,14 @@ pub struct SidecarConfig {
     pub model: Option<String>,
     #[serde(rename = "apiKey")]
     pub api_key: SecretString,
-    pub cwd: String,
+    /// Workspace root directory (`{data_dir}/workspace`). Used for plugin
+    /// discovery (`.claude/plugins/`) and SDK settings sources.
+    #[serde(rename = "workspaceRootDir")]
+    pub workspace_root_dir: String,
+    /// Skill-scoped workspace directory (`{workspace}/{plugin_slug}/{skill_name}`).
+    /// Used as the SDK `cwd` so agents resolve file paths relative to the skill workspace.
+    #[serde(rename = "workspaceSkillDir")]
+    pub workspace_skill_dir: String,
     #[serde(rename = "allowedTools", skip_serializing_if = "Option::is_none")]
     pub allowed_tools: Option<Vec<String>>,
     #[serde(rename = "maxTurns", skip_serializing_if = "Option::is_none")]
@@ -63,9 +70,7 @@ pub struct SidecarConfig {
     #[serde(rename = "runSource", skip_serializing_if = "Option::is_none")]
     pub run_source: Option<String>,
     /// Override the log directory for the JSONL transcript. When set, transcripts
-    /// are written here instead of the default `{cwd}/logs/`. Allows the cwd to
-    /// remain at the workspace root (for SDK .claude/ discovery) while logs land
-    /// in the skill-specific workspace subdir.
+    /// are written here instead of the default `{workspaceSkillDir}/logs/`.
     #[serde(rename = "transcriptLogDir", skip_serializing_if = "Option::is_none")]
     pub transcript_log_dir: Option<String>,
 }
@@ -76,7 +81,8 @@ impl std::fmt::Debug for SidecarConfig {
             .field("prompt", &self.prompt)
             .field("model", &self.model)
             .field("api_key", &"[redacted]")
-            .field("cwd", &self.cwd)
+            .field("workspace_root_dir", &self.workspace_root_dir)
+            .field("workspace_skill_dir", &self.workspace_skill_dir)
             .field("allowed_tools", &self.allowed_tools)
             .field("max_turns", &self.max_turns)
             .field("permission_mode", &self.permission_mode)
@@ -189,7 +195,8 @@ mod tests {
             system_prompt: None,
             model: Some("sonnet".to_string()),
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            cwd: "/home/user/project".to_string(),
+            workspace_root_dir: "/home/user/project".to_string(),
+            workspace_skill_dir: "/home/user/project".to_string(),
             allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
             max_turns: Some(25),
             permission_mode: Some("bypassPermissions".to_string()),
@@ -235,7 +242,8 @@ mod tests {
             system_prompt: None,
             model: Some("opus".to_string()),
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            cwd: "/home/user/project".to_string(),
+            workspace_root_dir: "/home/user/project".to_string(),
+            workspace_skill_dir: "/home/user/project".to_string(),
             allowed_tools: None,
             max_turns: None,
             permission_mode: None,
@@ -277,7 +285,8 @@ mod tests {
             system_prompt: None,
             model: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            cwd: "/tmp".to_string(),
+            workspace_root_dir: "/tmp".to_string(),
+            workspace_skill_dir: "/tmp".to_string(),
             allowed_tools: None,
             max_turns: None,
             permission_mode: None,
@@ -319,7 +328,8 @@ mod tests {
             system_prompt: None,
             model: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            cwd: "/tmp".to_string(),
+            workspace_root_dir: "/tmp".to_string(),
+            workspace_skill_dir: "/tmp".to_string(),
             allowed_tools: None,
             max_turns: None,
             permission_mode: None,

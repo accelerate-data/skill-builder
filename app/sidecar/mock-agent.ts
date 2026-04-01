@@ -347,15 +347,15 @@ async function writeMockOutputFiles(
 
   if (stepTemplate === "gate-answer-evaluator") {
     // Gate: answer-evaluation.json is an internal file written to the workspace directory.
-    destRoot = paths.workspaceDir ?? config.cwd;
+    destRoot = paths.workspaceDir ?? config.workspaceSkillDir;
   } else if (stepTemplate === "step3-generate-skill") {
     // Step 3: files go to skill output dir (may differ from skill dir when skills_path is set)
-    destRoot = paths.skillOutputDir ?? paths.skillDir ?? config.cwd;
+    destRoot = paths.skillOutputDir ?? paths.skillDir ?? config.workspaceSkillDir;
   } else if (stepTemplate === "eval-generator") {
     // Eval generator: pending-eval.json goes to {skills_path}/{skill}/evals/
     // Extract the evals directory from the absolute path embedded in the prompt.
     const match = config.prompt?.match(/`([^`]+)\/pending-eval\.json`/);
-    destRoot = match ? match[1] : config.cwd;
+    destRoot = match ? match[1] : config.workspaceSkillDir;
   } else if (stepTemplate === "evaluate-skill") {
     // Evaluate-skill: grading.json files go under {skill_workspace}/evals/iterations/
     // The mock template outputs have evals/iterations/... prefix so dest is the skill workspace root.
@@ -364,7 +364,7 @@ async function writeMockOutputFiles(
     const snMatch = config.prompt?.match(/skill_name:\s*(.+)/);
     const wp = wpMatch?.[1]?.trim();
     const sn = snMatch?.[1]?.trim();
-    const skillWorkspace = wp && sn ? path.join(wp, sn) : config.cwd;
+    const skillWorkspace = wp && sn ? path.join(wp, sn) : config.workspaceSkillDir;
     destRoot = skillWorkspace;
 
     // Eval history is immutable — never overwrite a previous iteration.
@@ -382,7 +382,7 @@ async function writeMockOutputFiles(
     if (paths.contextDir) {
       destRoot = path.dirname(paths.contextDir);
     } else {
-      destRoot = paths.skillDir ?? config.cwd;
+      destRoot = paths.skillDir ?? config.workspaceSkillDir;
     }
   }
 

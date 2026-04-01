@@ -566,6 +566,18 @@ pub fn latest_skill_semver(path: &Path, plugin_slug: &str, skill_name: &str) -> 
     Ok(result)
 }
 
+/// Bump the patch component of a semver string ("X.Y.Z" → "X.Y.Z+1").
+/// Returns "0.0.1" for any input that is not valid three-part semver.
+pub fn bump_patch(version: &str) -> String {
+    let parts: Vec<&str> = version.split('.').collect();
+    if parts.len() == 3 {
+        if let Ok(patch) = parts[2].parse::<u32>() {
+            return format!("{}.{}.{}", parts[0], parts[1], patch + 1);
+        }
+    }
+    "0.0.1".to_string()
+}
+
 /// Return the second-highest semver tag for a skill in the given plugin namespace (the version before the latest).
 /// Returns `None` if fewer than 2 valid tags exist.
 pub fn prior_skill_tag(path: &Path, plugin_slug: &str, skill_name: &str) -> Option<String> {
@@ -1109,6 +1121,24 @@ mod tests {
         let head = repo.head().unwrap().peel(git2::ObjectType::Commit).unwrap();
         repo.tag_lightweight(tag_name, &head, false).unwrap();
     }
+
+    // --- bump_patch ---
+
+    #[test]
+    fn test_bump_patch_increments_patch() {
+        assert_eq!(bump_patch("1.1.3"), "1.1.4");
+        assert_eq!(bump_patch("0.0.0"), "0.0.1");
+        assert_eq!(bump_patch("2.5.9"), "2.5.10");
+    }
+
+    #[test]
+    fn test_bump_patch_falls_back_on_invalid_input() {
+        assert_eq!(bump_patch(""), "0.0.1");
+        assert_eq!(bump_patch("not-semver"), "0.0.1");
+        assert_eq!(bump_patch("1.2"), "0.0.1");
+    }
+
+    // --- latest_skill_semver ---
 
     #[test]
     fn test_latest_skill_semver_no_tags() {

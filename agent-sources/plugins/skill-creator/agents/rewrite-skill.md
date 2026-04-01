@@ -208,28 +208,16 @@ Do not delegate:
 
 Perform a full preservation sweep to confirm no original domain knowledge was dropped. If coverage is incomplete, read additional references and close gaps.
 
-## Phase 6: Commit and tag
+## Phase 6: Commit
 
-After all file edits are complete, commit and tag the new version:
+After all file edits are complete, stage and commit:
 
-1. Find the current latest version tag:
+```bash
+git -c user.email="agent@skillbuilder" -c user.name="Skill Builder" add "{skill_name}/"
+git -c user.email="agent@skillbuilder" -c user.name="Skill Builder" commit -m "{skill_name}: {your commit_summary}"
+```
 
-   ```bash
-   cd "{skills_output_root}"
-   git tag --list "{skill_name}/v*" --sort=-v:refname | head -1
-   ```
-
-2. Compute the next version based on your `version_bump` decision (patch/minor/major). If no prior tag exists, use `v1.0.0`.
-
-3. Stage, commit, and tag:
-
-   ```bash
-   git -c user.email="agent@skillbuilder" -c user.name="Skill Builder" add "{skill_name}/"
-   git -c user.email="agent@skillbuilder" -c user.name="Skill Builder" commit -m "{skill_name}: {your commit_summary}"
-   git tag "{skill_name}/v{new_version}"
-   ```
-
-If the commit reports "nothing to commit", skip tagging.
+If the commit reports "nothing to commit", skip committing. Version tagging is handled automatically by the backend after the commit is detected.
 
 ---
 

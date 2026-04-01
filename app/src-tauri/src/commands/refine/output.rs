@@ -155,6 +155,24 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
         );
     }
 
+    // Tag the new commit with the next patch version.
+    {
+        let skills_root = Path::new(skills_path);
+        let current_version = crate::git::latest_skill_semver(skills_root, plugin_slug, skill_name)
+            .unwrap_or_else(|_| "0.0.0".to_string());
+        let new_version = crate::git::bump_patch(&current_version);
+        match crate::git::create_skill_version_tag(skills_root, plugin_slug, skill_name, &new_version) {
+            Ok(tag_name) => log::info!(
+                "[finalize_refine_run] tagged skill={} plugin={} tag={}",
+                skill_name, plugin_slug, tag_name
+            ),
+            Err(e) => log::warn!(
+                "[finalize_refine_run] version tag failed skill={} plugin={} version={} error={}",
+                skill_name, plugin_slug, new_version, e
+            ),
+        }
+    }
+
     let diff = if let Some(sha) = commit_sha.as_ref() {
         let repo = git2::Repository::open(Path::new(skills_path))
             .map_err(|e| format!("Failed to open repo: {}", e))?;

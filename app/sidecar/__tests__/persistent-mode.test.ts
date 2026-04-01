@@ -25,13 +25,13 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({
       type: "agent_request",
       request_id: "req_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
+      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
     });
     const result = parseIncomingMessage(line);
     expect(result).toEqual({
       type: "agent_request",
       request_id: "req_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
+      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
     });
   });
 
@@ -79,7 +79,7 @@ describe("parseIncomingMessage", () => {
   it("returns null for agent_request without request_id", () => {
     const line = JSON.stringify({
       type: "agent_request",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
+      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
     });
     expect(parseIncomingMessage(line)).toBeNull();
   });
@@ -88,7 +88,7 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({
       type: "agent_request",
       request_id: "",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
+      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
     });
     expect(parseIncomingMessage(line)).toBeNull();
   });
@@ -142,14 +142,14 @@ describe("parseIncomingMessage", () => {
       type: "stream_start",
       request_id: "req_1",
       session_id: "sess_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
+      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
     });
     const result = parseIncomingMessage(line);
     expect(result).toEqual({
       type: "stream_start",
       request_id: "req_1",
       session_id: "sess_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
+      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
     });
   });
 
@@ -157,7 +157,7 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({
       type: "stream_start",
       request_id: "req_1",
-      config: { prompt: "hello", apiKey: "sk-test", cwd: os.tmpdir() },
+      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
     });
     expect(parseIncomingMessage(line)).toBeNull();
   });
@@ -416,7 +416,7 @@ describe("runPersistent", () => {
     const config = {
       prompt: "test prompt",
       apiKey: "sk-test",
-      cwd: os.tmpdir(),
+      workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir(),
     };
 
     const input = createInputStream([
@@ -469,7 +469,7 @@ describe("runPersistent", () => {
     const config = {
       prompt: "test prompt",
       apiKey: "sk-test",
-      cwd: os.tmpdir(),
+      workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir(),
     };
 
     const input = createInputStream([
@@ -538,8 +538,8 @@ describe("runPersistent", () => {
       return fakeConversation() as ReturnType<typeof query>;
     });
 
-    const config1 = { prompt: "first", apiKey: "sk-test", cwd: os.tmpdir() };
-    const config2 = { prompt: "second", apiKey: "sk-test", cwd: os.tmpdir() };
+    const config1 = { prompt: "first", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() };
+    const config2 = { prompt: "second", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() };
 
     const { Readable } = await import("node:stream");
     const input = new Readable({ read() {} });
@@ -608,8 +608,8 @@ describe("runPersistent", () => {
       return fakeConversation() as ReturnType<typeof query>;
     });
 
-    const config1 = { prompt: "first", apiKey: "sk-test", cwd: os.tmpdir() };
-    const config2 = { prompt: "second", apiKey: "sk-test", cwd: os.tmpdir() };
+    const config1 = { prompt: "first", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() };
+    const config2 = { prompt: "second", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() };
 
     // Send requests one at a time with a gap so the first completes
     const { Readable } = await import("node:stream");
@@ -774,7 +774,7 @@ describe("runPersistent", () => {
     input.push(JSON.stringify({
       type: "agent_request",
       request_id: "req_stuck",
-      config: { prompt: "test", apiKey: "sk-test", cwd: os.tmpdir() },
+      config: { prompt: "test", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
     }) + "\n");
     await new Promise((r) => setTimeout(r, 20));
 
@@ -846,7 +846,7 @@ describe("runPersistent", () => {
     input.push(JSON.stringify({
       type: "agent_request",
       request_id: "req_real",
-      config: { prompt: "test", apiKey: "sk-test", cwd: os.tmpdir() },
+      config: { prompt: "test", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
     }) + "\n");
     await new Promise((r) => setTimeout(r, 10));
 
@@ -887,7 +887,7 @@ describe("runPersistent", () => {
       JSON.stringify({
         type: "agent_request",
         request_id: "req_json",
-        config: { prompt: "test", apiKey: "sk-test", cwd: os.tmpdir() },
+        config: { prompt: "test", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
       }),
       JSON.stringify({ type: "shutdown" }),
     ]);
@@ -924,7 +924,7 @@ describe("runPersistent", () => {
         type: "stream_start",
         request_id: "req-dup-1",
         session_id: "test-session",
-        config: { prompt: "first prompt", apiKey: "sk-test", cwd: os.tmpdir() },
+        config: { prompt: "first prompt", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
       }) + "\n");
       await new Promise((r) => setTimeout(r, 10));
 
@@ -933,7 +933,7 @@ describe("runPersistent", () => {
         type: "stream_start",
         request_id: "req-dup-2",
         session_id: "test-session",
-        config: { prompt: "second prompt", apiKey: "sk-test", cwd: os.tmpdir() },
+        config: { prompt: "second prompt", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
       }) + "\n");
       await new Promise((r) => setTimeout(r, 20));
 
@@ -984,7 +984,7 @@ describe("runPersistent", () => {
         type: "stream_start",
         request_id: "req_stream_1",
         session_id: "sess_mock",
-        config: { prompt: "initial stream prompt", apiKey: "sk-test", cwd: os.tmpdir() },
+        config: { prompt: "initial stream prompt", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
       }) + "\n");
       // Mock streaming mode has a 1500ms delay per turn for guard tests
       await new Promise((r) => setTimeout(r, 2000));
@@ -1087,7 +1087,7 @@ describe("runPersistent", () => {
           type: "stream_start",
           request_id: "req_start",
           session_id: "sess_qa",
-          config: { prompt: "help me", apiKey: "sk-test", cwd: os.tmpdir() },
+          config: { prompt: "help me", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
         }) + "\n",
       );
 

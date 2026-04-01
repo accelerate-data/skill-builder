@@ -33,7 +33,8 @@ function baseConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
   return {
     prompt: "test prompt",
     apiKey: "sk-test",
-    cwd: "/tmp/test",
+    workspaceRootDir: "/tmp/test",
+    workspaceSkillDir: "/tmp/test",
     ...overrides,
   };
 }
@@ -198,7 +199,7 @@ describe("runAgentRequest", () => {
 
     const callArgs = mockQuery.mock.calls[0][0];
     expect(callArgs.options).toMatchObject({
-      cwd: "/tmp/test",
+      cwd: "/tmp/test",  // SDK cwd derived from workspaceSkillDir
       maxTurns: 50,
       permissionMode: "bypassPermissions",
     });

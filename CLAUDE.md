@@ -12,6 +12,7 @@ NEVER make edits, run non-readonly tools, or create files while in plan mode. On
 ### Model tiers
 
 | Tier | Model | When |
+
 |---|---|---|
 | Reasoning | sonnet | Planning, architecture, requirements drafting |
 | Implementation | default | Coding, exploration, review, merge |

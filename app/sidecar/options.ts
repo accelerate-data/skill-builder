@@ -84,8 +84,8 @@ export function buildQueryOptions(
     ...modelField,
     ...envField,
     ...pluginsField,
-    // Load project settings from the project workspace at {cwd}
-    // (workspace-root CLAUDE.md plus .claude/ skills/agents).
+    // Load project settings from the skill workspace directory
+    // (CLAUDE.md plus .claude/ skills/agents).
     // 'user' is intentionally excluded — it causes the SDK to scan
     // ~/.claude/skills/ (wasted reads) and the sidecar can't use the
     // user's MCP servers anyway (those are CLI-process-only).
@@ -93,7 +93,7 @@ export function buildQueryOptions(
     // skills are suppressed so plugin-scoped agents cannot load unrelated
     // workspace skills (e.g. skill-test).
     settingSources: (config.settingSources ?? ['project']) as SettingSource[],
-    cwd: config.cwd,
+    cwd: config.workspaceSkillDir,
     allowedTools: config.allowedTools,
     maxTurns: config.maxTurns ?? 50,
     permissionMode: (config.permissionMode || "bypassPermissions") as

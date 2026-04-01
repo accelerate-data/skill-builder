@@ -40,7 +40,8 @@ function baseConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
   return {
     prompt: "test prompt",
     apiKey: "sk-test",
-    cwd: "/tmp/test",
+    workspaceRootDir: "/tmp/test",
+    workspaceSkillDir: "/tmp/test",
     ...overrides,
   };
 }

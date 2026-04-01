@@ -370,7 +370,7 @@ export class StreamSession {
     let discoveredPluginPaths: string[];
     let pluginPaths: string[];
     try {
-      discoveredPluginPaths = await discoverInstalledPlugins(config.cwd);
+      discoveredPluginPaths = await discoverInstalledPlugins(config.workspaceRootDir);
       pluginPaths = selectPluginPaths(discoveredPluginPaths, config.requiredPlugins);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);

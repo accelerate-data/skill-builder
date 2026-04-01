@@ -41,6 +41,17 @@ pub(crate) fn build_prompt(
         }
     }
 
+    // Inject the clarifications schema path so agents (e.g. detailed-research)
+    // can read the data contract before constructing clarifications_json output.
+    let schemas_path = format!(
+        "{}/.claude/plugins/skill-content-researcher/skills/research/references/schemas.md",
+        workspace_path.replace('\\', "/"),
+    );
+    prompt.push_str(&format!(
+        " The clarifications schema reference is at: {}.",
+        schemas_path,
+    ));
+
     prompt.push_str(" The workspace directory may contain other files written by the workflow (such as answer-evaluation.json) — read only the files explicitly named in your agent instructions. Do not read the logs/ directory or any file not named in your instructions.");
 
     if let Some(directive) = subagent_directive {

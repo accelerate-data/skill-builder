@@ -17,7 +17,8 @@ function baseMockConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
   return {
     prompt: "test prompt",
     apiKey: "sk-test",
-    cwd: os.tmpdir(),
+    workspaceRootDir: os.tmpdir(),
+    workspaceSkillDir: os.tmpdir(),
     ...overrides,
   };
 }

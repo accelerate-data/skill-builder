@@ -29,16 +29,6 @@ pub fn get_skill_history(
     crate::git::get_history(root, &skill_name, &plugin_slug, limit.unwrap_or(100))
 }
 
-fn bump_patch(version: &str) -> String {
-    let parts: Vec<&str> = version.split('.').collect();
-    if parts.len() == 3 {
-        if let Ok(patch) = parts[2].parse::<u32>() {
-            return format!("{}.{}.{}", parts[0], parts[1], patch + 1);
-        }
-    }
-    "0.0.1".to_string()
-}
-
 #[tauri::command]
 pub fn restore_skill_version(
     workspace_path: String,
@@ -64,7 +54,7 @@ pub fn restore_skill_version(
     // Even if commit_all returned None (content identical to HEAD), we still
     // bump and tag HEAD so the user always sees a new version number.
     let current_version = crate::git::latest_skill_semver(root, &plugin_slug, &skill_name).unwrap_or_else(|_| "0.0.0".to_string());
-    let new_version = bump_patch(&current_version);
+    let new_version = crate::git::bump_patch(&current_version);
     crate::git::create_skill_version_tag(root, &plugin_slug, &skill_name, &new_version).map_err(|e| {
         format!(
             "Restore committed but version tag failed (v{}): {}",
@@ -268,22 +258,6 @@ mod tests {
         );
     }
 
-    // --- bump_patch ---
-
-    #[test]
-    fn test_bump_patch_increments_patch() {
-        assert_eq!(bump_patch("1.1.3"), "1.1.4");
-        assert_eq!(bump_patch("0.0.0"), "0.0.1");
-        assert_eq!(bump_patch("2.5.9"), "2.5.10");
-    }
-
-    #[test]
-    fn test_bump_patch_falls_back_on_invalid_input() {
-        assert_eq!(bump_patch(""), "0.0.1");
-        assert_eq!(bump_patch("not-semver"), "0.0.1");
-        assert_eq!(bump_patch("1.2"), "0.0.1");
-    }
-
     // --- restore_skill_version tagging ---
 
     #[test]
@@ -307,7 +281,7 @@ mod tests {
         let msg = "tag-skill: restored to test";
         crate::git::commit_all(repo_path, msg).unwrap();
         let current = crate::git::latest_skill_semver(repo_path, plugin, "tag-skill").unwrap();
-        let new_version = bump_patch(&current);
+        let new_version = crate::git::bump_patch(&current);
         assert_eq!(new_version, "1.0.1");
         crate::git::create_skill_version_tag(repo_path, plugin, "tag-skill", &new_version).unwrap();
         let latest = crate::git::latest_skill_semver(repo_path, plugin, "tag-skill").unwrap();
@@ -332,7 +306,7 @@ mod tests {
         crate::git::commit_all(repo_path, "notag-skill: restored").unwrap();
         let current = crate::git::latest_skill_semver(repo_path, plugin, "notag-skill").unwrap();
         assert_eq!(current, "0.0.0");
-        let new_version = bump_patch(&current);
+        let new_version = crate::git::bump_patch(&current);
         assert_eq!(new_version, "0.0.1");
         crate::git::create_skill_version_tag(repo_path, plugin, "notag-skill", &new_version).unwrap();
         let latest = crate::git::latest_skill_semver(repo_path, plugin, "notag-skill").unwrap();

@@ -4,7 +4,10 @@ export interface SidecarConfig {
   model?: string;
   agentName?: string;
   apiKey: string;
-  cwd: string;
+  /** Workspace root directory ({data_dir}/workspace). Used for plugin discovery and SDK settings. */
+  workspaceRootDir: string;
+  /** Skill-scoped workspace directory ({workspace}/{plugin_slug}/{skill_name}). Used as SDK cwd. */
+  workspaceSkillDir: string;
   requiredPlugins?: string[];
   allowedTools?: string[];
   settingSources?: ('user' | 'project')[];
@@ -89,7 +92,8 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   // Required fields
   if (typeof c.prompt !== "string") throw new Error("Invalid SidecarConfig: missing prompt");
   if (typeof c.apiKey !== "string" || c.apiKey.length === 0) throw new Error("Invalid SidecarConfig: missing apiKey");
-  if (typeof c.cwd !== "string") throw new Error("Invalid SidecarConfig: missing cwd");
+  if (typeof c.workspaceRootDir !== "string") throw new Error("Invalid SidecarConfig: missing workspaceRootDir");
+  if (typeof c.workspaceSkillDir !== "string") throw new Error("Invalid SidecarConfig: missing workspaceSkillDir");
 
   // Optional string fields
   assertOptString(c, "model");

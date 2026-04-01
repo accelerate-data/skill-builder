@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
+use crate::skill_paths::resolve_workspace_skill_dir;
 
 use super::deploy::ensure_workspace_prompts;
 use super::evaluation::workflow_step_log_name;
@@ -138,7 +139,10 @@ async fn run_workflow_step_inner(
         system_prompt: None,
         model: Some(settings.preferred_model.clone()),
         api_key: settings.api_key.clone(),
-        cwd: workspace_path.to_string(),
+        workspace_root_dir: workspace_path.replace('\\', "/"),
+        workspace_skill_dir: resolve_workspace_skill_dir(Path::new(workspace_path), &settings.plugin_slug, skill_name)
+            .to_string_lossy()
+            .replace('\\', "/"),
         allowed_tools: Some(step.allowed_tools),
         max_turns: Some(step.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
@@ -189,9 +193,9 @@ async fn run_workflow_step_inner(
 
     let session_id = uuid::Uuid::new_v4().to_string();
     log::debug!(
-        "[run_workflow_step] starting stream session=[REDACTED] agent={} cwd={}",
+        "[run_workflow_step] starting stream session=[REDACTED] agent={} workspace_skill_dir={}",
         agent_id,
-        config.cwd,
+        config.workspace_skill_dir,
     );
 
     pool.send_stream_start(skill_name, &session_id, &agent_id, config, app)
@@ -547,7 +551,10 @@ pub async fn run_answer_evaluator(
         // Answer evaluator always uses Haiku for cost efficiency.
         model: Some(resolve_model_id("haiku")),
         api_key,
-        cwd: workspace_path.clone(),
+        workspace_root_dir: workspace_path.replace('\\', "/"),
+        workspace_skill_dir: resolve_workspace_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name)
+            .to_string_lossy()
+            .replace('\\', "/"),
         allowed_tools: Some(tools_for_agent("answer-evaluator")),
         max_turns: Some(20),
         permission_mode: Some("bypassPermissions".to_string()),
@@ -590,9 +597,9 @@ pub async fn run_answer_evaluator(
     let session_id = uuid::Uuid::new_v4().to_string();
 
     log::debug!(
-        "[run_answer_evaluator] starting stream session=[REDACTED] agent={} cwd={}",
+        "[run_answer_evaluator] starting stream session=[REDACTED] agent={} workspace_skill_dir={}",
         agent_id,
-        config.cwd,
+        config.workspace_skill_dir,
     );
 
     pool.send_stream_start(&skill_name, &session_id, &agent_id, config, &app)
