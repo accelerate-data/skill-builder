@@ -959,7 +959,7 @@ fn test_resolve_orphan_delete() {
     let conn = create_test_db();
 
     crate::db::save_workflow_run(&conn, "orphan", 7, "completed", "domain").unwrap();
-    let output_dir = tmp.path().join("orphan");
+    let output_dir = tmp.path().join(crate::skill_paths::DEFAULT_PLUGIN_SLUG).join("orphan");
     std::fs::create_dir_all(output_dir.join("references")).unwrap();
     std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 

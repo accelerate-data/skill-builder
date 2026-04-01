@@ -438,7 +438,7 @@ pub fn restore_version(repo_path: &Path, sha: &str, skill_name: &str, plugin_slu
         .map_err(|e| format!("Failed to get tree for {}: {}", sha, e))?;
 
     // Write destination: plugin-aware current layout.
-    let write_dir = crate::skill_paths::nested_skill_dir(repo_path, plugin_slug, skill_name);
+    let write_dir = crate::skill_paths::resolve_skill_dir(repo_path, plugin_slug, skill_name);
 
     // Candidate read prefixes from the historical tree, tried in priority order:
     // 1. Plugin layout              ({plugin}/{name}/)          — skip if default plugin

@@ -144,7 +144,7 @@ fn import_skill_from_file_inner(
     }
 
     // Extract to plugin-nested path: {skills_path}/{default_slug}/{name}/
-    let dest_dir = crate::skill_paths::nested_skill_dir(Path::new(skills_path), default_slug, name);
+    let dest_dir = crate::skill_paths::resolve_skill_dir(Path::new(skills_path), default_slug, name);
     if let Some(parent) = dest_dir.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -286,7 +286,7 @@ mod tests {
             Some("1.0.0")
         );
         assert!(
-            std::fs::read_to_string(crate::skill_paths::nested_skill_dir(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill").join("SKILL.md"))
+            std::fs::read_to_string(crate::skill_paths::resolve_skill_dir(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill").join("SKILL.md"))
                 .unwrap()
                 .contains("metadata:\n  version: \"1.0.0\"\n  author: \"hb@acceleratedata.ai\"")
         );

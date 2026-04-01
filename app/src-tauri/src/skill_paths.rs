@@ -97,31 +97,20 @@ pub fn resolve_workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_na
     workspace_skill_dir(workspace, plugin_slug, skill_name)
 }
 
-/// Skill directory (from `plugin-paths.json` → `skill_dir`).
-pub fn nested_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
+/// Returns the canonical plugin-layout skill directory path
+/// (`{root}/{plugin_slug}/{skill_name}`). Does not check existence.
+pub fn resolve_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
     resolve_path_template(
         &paths().skill_dir,
         &[("root", &root.to_string_lossy()), ("plugin_slug", plugin_slug), ("skill_name", skill_name)],
     )
 }
 
-/// Legacy flat skill directory: `root/{name}` (pre-plugin era)
-pub fn legacy_skill_dir(root: &Path, skill_name: &str) -> PathBuf {
-    root.join(skill_name)
-}
-
-/// Resolve the skill directory. Returns canonical `root/{slug}/{name}` if it exists,
-/// otherwise falls back to legacy flat `root/{name}/`.
-pub fn resolve_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    let canonical = nested_skill_dir(root, plugin_slug, skill_name);
-    if canonical.exists() {
-        return canonical;
-    }
-    legacy_skill_dir(root, skill_name)
-}
-
+/// Returns the canonical skill directory, creating the parent plugin
+/// directory if it doesn't exist. Used when the `{plugin_slug}/` folder
+/// may have been deleted and needs to be recreated before writing.
 pub fn ensure_nested_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> Result<PathBuf, String> {
-    let dir = nested_skill_dir(root, plugin_slug, skill_name);
+    let dir = resolve_skill_dir(root, plugin_slug, skill_name);
     if let Some(parent) = dir.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create plugin directory '{}': {}", parent.display(), e))?;
@@ -298,11 +287,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn nested_skill_dir_uses_slug_name_layout() {
+    fn resolve_skill_dir_uses_slug_name_layout() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         assert_eq!(
-            nested_skill_dir(root, "analytics", "weekly-report"),
+            resolve_skill_dir(root, "analytics", "weekly-report"),
             root.join("analytics").join("weekly-report")
         );
     }
@@ -341,23 +330,6 @@ mod tests {
         assert_eq!(locations[0].skill_name, "weekly-report");
         assert_eq!(locations[1].plugin_slug, DEFAULT_PLUGIN_SLUG);
         assert_eq!(locations[1].skill_name, "legacy-skill");
-    }
-
-    #[test]
-    fn resolve_skill_dir_prefers_canonical_then_legacy_flat() {
-        let tmp = tempfile::tempdir().unwrap();
-
-        // Only legacy flat exists
-        let legacy = tmp.path().join("same-skill");
-        fs::create_dir_all(&legacy).unwrap();
-        let resolved = resolve_skill_dir(tmp.path(), "analytics", "same-skill");
-        assert_eq!(resolved, legacy);
-
-        // Canonical path also exists — wins over legacy
-        let canonical = tmp.path().join("analytics").join("same-skill");
-        fs::create_dir_all(&canonical).unwrap();
-        let resolved = resolve_skill_dir(tmp.path(), "analytics", "same-skill");
-        assert_eq!(resolved, canonical);
     }
 
     #[test]

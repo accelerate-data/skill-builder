@@ -311,7 +311,7 @@ pub fn reconcile_on_startup(
         // to avoid a false positive — skills_path/skills/ is the default
         // plugin directory itself, not a skill named "skills".
         let skill_dir_exists = |plugin_slug: &str, name: &str| -> bool {
-            let new_path = crate::skill_paths::nested_skill_dir(skills_dir_1e, plugin_slug, name);
+            let new_path = crate::skill_paths::resolve_skill_dir(skills_dir_1e, plugin_slug, name);
             let legacy_exists =
                 name != DEFAULT_PLUGIN_SLUG && skills_dir_1e.join(name).exists();
             new_path.exists() || legacy_exists

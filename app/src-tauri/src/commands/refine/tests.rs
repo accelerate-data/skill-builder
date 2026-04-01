@@ -11,7 +11,7 @@ use tempfile::tempdir;
 #[test]
 fn test_get_skill_content_reads_skill_md() {
     let dir = tempdir().unwrap();
-    let skill_dir = dir.path().join("my-skill");
+    let skill_dir = dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# My Skill\n\nContent here").unwrap();
 
@@ -24,7 +24,7 @@ fn test_get_skill_content_reads_skill_md() {
 #[test]
 fn test_get_skill_content_includes_references() {
     let dir = tempdir().unwrap();
-    let skill_dir = dir.path().join("my-skill");
+    let skill_dir = dir.path().join("skills").join("my-skill");
     let refs_dir = skill_dir.join("references");
     std::fs::create_dir_all(&refs_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
@@ -44,7 +44,7 @@ fn test_get_skill_content_includes_references() {
 #[test]
 fn test_get_skill_content_includes_txt_references() {
     let dir = tempdir().unwrap();
-    let skill_dir = dir.path().join("my-skill");
+    let skill_dir = dir.path().join("skills").join("my-skill");
     let refs_dir = skill_dir.join("references");
     std::fs::create_dir_all(&refs_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
@@ -58,7 +58,7 @@ fn test_get_skill_content_includes_txt_references() {
 #[test]
 fn test_get_skill_content_includes_nested_reference_files() {
     let dir = tempdir().unwrap();
-    let skill_dir = dir.path().join("my-skill");
+    let skill_dir = dir.path().join("skills").join("my-skill");
     let nested_dir = skill_dir.join("references").join("patterns");
     std::fs::create_dir_all(&nested_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
@@ -80,7 +80,7 @@ fn test_get_skill_content_missing_skill_errors() {
 #[test]
 fn test_get_skill_content_no_references_dir() {
     let dir = tempdir().unwrap();
-    let skill_dir = dir.path().join("my-skill");
+    let skill_dir = dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
     // No references/ directory
@@ -462,7 +462,7 @@ fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     let workspace_dir = tempdir().unwrap();
     crate::git::ensure_repo(dir.path()).unwrap();
 
-    let skill_dir = dir.path().join("my-skill");
+    let skill_dir = dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
     crate::git::commit_all(dir.path(), "initial").unwrap();
@@ -485,7 +485,7 @@ fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     assert!(result.commit_sha.is_some());
     assert_eq!(result.files.len(), 2);
     assert_eq!(result.diff.files.len(), 1);
-    assert_eq!(result.diff.files[0].path, "my-skill/references/glossary.md");
+    assert_eq!(result.diff.files[0].path, "skills/my-skill/references/glossary.md");
     assert_eq!(result.diff.files[0].status, "added");
     assert!(result.diff.files[0].diff.contains("+# Glossary"));
 }
@@ -496,7 +496,7 @@ fn test_finalize_refine_run_returns_head_sha_even_when_no_new_changes() {
     let workspace_dir = tempdir().unwrap();
     crate::git::ensure_repo(dir.path()).unwrap();
 
-    let skill_dir = dir.path().join("my-skill");
+    let skill_dir = dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
     crate::git::commit_all(dir.path(), "initial").unwrap();
@@ -517,7 +517,7 @@ fn test_finalize_refine_run_returns_head_sha_even_when_no_new_changes() {
 #[test]
 fn test_get_skill_content_excludes_context_artifacts() {
     let dir = tempdir().unwrap();
-    let skill_dir = dir.path().join("my-skill");
+    let skill_dir = dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
     std::fs::create_dir_all(skill_dir.join("context")).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
@@ -536,7 +536,7 @@ fn test_finalize_refine_run_ignores_structured_output() {
     let workspace_dir = tempdir().unwrap();
     crate::git::ensure_repo(skills_dir.path()).unwrap();
 
-    let skill_dir = skills_dir.path().join("my-skill");
+    let skill_dir = skills_dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
     crate::git::commit_all(skills_dir.path(), "generate skill").unwrap();
@@ -574,7 +574,7 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
     let workspace_dir = tempdir().unwrap();
     crate::git::ensure_repo(skills_dir.path()).unwrap();
 
-    let skill_dir = skills_dir.path().join("my-skill");
+    let skill_dir = skills_dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n\nMock rewrite output\n").unwrap();
     std::fs::write(
@@ -603,7 +603,7 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
         .files
         .iter()
         .all(|file| file.status == "modified"));
-    assert!(result.diff.files[0].path.starts_with("my-skill/"));
+    assert!(result.diff.files[0].path.starts_with("skills/my-skill/"));
     assert!(result.diff.files[0].diff.contains("diff --git"));
     assert!(result.diff.stat.contains("2 file(s) changed"));
 
@@ -1022,7 +1022,7 @@ fn test_finalize_refine_run_cleans_up_snapshot_dir() {
     let workspace_dir = tempdir().unwrap();
     crate::git::ensure_repo(dir.path()).unwrap();
 
-    let skill_dir = dir.path().join("my-skill");
+    let skill_dir = dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
     crate::git::commit_all(dir.path(), "initial").unwrap();

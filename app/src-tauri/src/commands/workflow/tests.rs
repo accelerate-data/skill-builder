@@ -844,9 +844,9 @@ fn test_build_prompt_all_three_paths() {
     assert!(prompt.contains("my-skill"));
     assert!(prompt
         .contains("The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"));
-    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
-    assert!(prompt.contains("Read user-context.md from the workspace directory"));
-    assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
+    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/skills/my-skill"));
+    assert!(prompt.contains("The user context file is at: /home/user/.vibedata/skill-builder/skills/my-skill/user-context.md"));
+    assert!(prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/skills/my-skill/context"));
 }
 
 #[test]
@@ -902,26 +902,26 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
     let skills_path = "/home/user/my-skills";
     let workspace_dir = std::path::Path::new(workspace_path).join(DEFAULT_PLUGIN_SLUG).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let skill_output_str = std::path::Path::new(skills_path)
-        .join(skill_name)
-        .to_string_lossy()
-        .replace('\\', "/");
+    let skill_output_dir = std::path::Path::new(skills_path)
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join(skill_name);
+    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
 
     let prompt = format!(
         "The skill name is: {}. The workspace directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
-         Read user-context.md from the workspace directory. \
-         Derive context_dir as workspace_dir/context. \
+         The user context file is at: {}/user-context.md. \
+         The context directory is: {}/context. \
          All directories already exist — do not create any directories.",
-        skill_name, workspace_str, skill_output_str,
+        skill_name, workspace_str, skill_output_str, workspace_str, workspace_str,
     );
 
     assert!(prompt.contains("The skill name is: my-skill"));
     assert!(prompt
         .contains("The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"));
-    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
-    assert!(prompt.contains("Read user-context.md from the workspace directory"));
-    assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
+    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/skills/my-skill"));
+    assert!(prompt.contains("The user context file is at: /home/user/.vibedata/skill-builder/skills/my-skill/user-context.md"));
+    assert!(prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/skills/my-skill/context"));
     assert!(prompt.contains("do not create any directories"));
 }
 
@@ -969,7 +969,7 @@ fn test_delete_step_output_files_from_step_onwards() {
     let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
     // Context files live in workspace_path/{plugin_slug}/skill_name/context/
-    let skill_dir = skills_tmp.path().join("my-skill");
+    let skill_dir = skills_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
     let workspace_skill_dir = workspace_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
     std::fs::create_dir_all(workspace_skill_dir.join("context")).unwrap();
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();

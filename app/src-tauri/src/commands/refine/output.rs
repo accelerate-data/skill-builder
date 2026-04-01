@@ -13,8 +13,8 @@ fn is_mock_agents_enabled() -> bool {
     matches!(std::env::var("MOCK_AGENTS").as_deref(), Ok("true"))
 }
 
-fn build_mock_refine_patch(skill_name: &str, file: &SkillFileContent) -> String {
-    let repo_relative_path = format!("{}/{}", skill_name, file.path);
+fn build_mock_refine_patch(plugin_slug: &str, skill_name: &str, file: &SkillFileContent) -> String {
+    let repo_relative_path = format!("{}/{}/{}", plugin_slug, skill_name, file.path);
     let line_count = file.content.lines().count();
     let header = format!(
         "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -0,0 +1,{line_count} @@\n",
@@ -28,13 +28,13 @@ fn build_mock_refine_patch(skill_name: &str, file: &SkillFileContent) -> String 
     format!("{}{}", header, body)
 }
 
-fn build_mock_refine_diff(skill_name: &str, files: &[SkillFileContent]) -> RefineDiff {
+fn build_mock_refine_diff(plugin_slug: &str, skill_name: &str, files: &[SkillFileContent]) -> RefineDiff {
     let diff_files = files
         .iter()
         .map(|file| RefineFileDiff {
-            path: format!("{}/{}", skill_name, file.path),
+            path: format!("{}/{}/{}", plugin_slug, skill_name, file.path),
             status: "modified".to_string(),
-            diff: build_mock_refine_patch(skill_name, file),
+            diff: build_mock_refine_patch(plugin_slug, skill_name, file),
         })
         .collect::<Vec<_>>();
 
@@ -184,7 +184,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
         let parent_sha = commit.parent(0).ok().map(|parent| parent.id().to_string());
 
         if let Some(parent_sha) = parent_sha {
-            get_refine_diff_for_commit_range_inner(skill_name, skills_path, &parent_sha, sha)?
+            get_refine_diff_for_commit_range_inner(skill_name, skills_path, plugin_slug, &parent_sha, sha)?
         } else {
             RefineDiff {
                 stat: "no changes".to_string(),
@@ -205,7 +205,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
             skill_name,
             files.len()
         );
-        build_mock_refine_diff(skill_name, &files)
+        build_mock_refine_diff(plugin_slug, skill_name, &files)
     } else {
         diff
     };

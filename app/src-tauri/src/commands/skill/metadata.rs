@@ -328,7 +328,7 @@ pub(crate) fn rename_skill_inner(
     if let Some(sp) = skills_path {
         let skills_root = Path::new(sp);
         let skills_old = crate::skill_paths::resolve_skill_dir(skills_root, &plugin_slug, old_name);
-        let skills_new = crate::skill_paths::nested_skill_dir(skills_root, &plugin_slug, new_name);
+        let skills_new = crate::skill_paths::resolve_skill_dir(skills_root, &plugin_slug, new_name);
         if skills_old.exists() {
             let canonical_skills = fs::canonicalize(sp).map_err(|e| e.to_string())?;
             let canonical_old = fs::canonicalize(&skills_old).map_err(|e| e.to_string())?;

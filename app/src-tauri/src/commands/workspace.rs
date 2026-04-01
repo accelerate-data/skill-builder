@@ -293,10 +293,10 @@ fn migrate_to_marketplace_layout(skills_path: &str) {
     // Collect old plugin directory paths for cleanup
     let mut old_plugin_dirs: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
 
-    // Move each skill to the plugin layout using nested_skill_dir
+    // Move each skill to the plugin layout using resolve_skill_dir
     // (default plugin: root/skills/{name}, others: root/{slug}/{name})
     for loc in &locations {
-        let new_dir = crate::skill_paths::nested_skill_dir(root, &loc.plugin_slug, &loc.skill_name);
+        let new_dir = crate::skill_paths::resolve_skill_dir(root, &loc.plugin_slug, &loc.skill_name);
 
         if new_dir.exists() {
             log::debug!(

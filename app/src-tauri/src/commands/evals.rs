@@ -1402,9 +1402,10 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let root = test_skill_root(&tmp, "my-skill");
 
-        // Write SKILL.md
-        fs::create_dir_all(&root).unwrap();
-        fs::write(root.join("SKILL.md"), "# My Skill\nDoes something.").unwrap();
+        // Write SKILL.md at canonical plugin layout path (skills_path/{SLUG}/my-skill/)
+        let skill_output = tmp.path().join(crate::skill_paths::DEFAULT_PLUGIN_SLUG).join("my-skill");
+        fs::create_dir_all(&skill_output).unwrap();
+        fs::write(skill_output.join("SKILL.md"), "# My Skill\nDoes something.").unwrap();
 
         // Write evals.json directly
         let mut data = EvalsFile { skill_name: "my-skill".to_string(), evals: vec![] };
