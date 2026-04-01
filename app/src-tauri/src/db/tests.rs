@@ -478,8 +478,8 @@ fn test_save_workflow_run_creates_skills_master_row() {
 }
 
 #[test]
-fn test_save_workflow_run_moves_non_default_skill_to_default_plugin() {
-    // Regression: after redo (save_workflow_run on a non-default-plugin skill), the skill
+fn test_redo_workflow_moves_non_default_plugin_skill_to_default_plugin() {
+    // Regression: after "Redo workflow" on a skill in a non-default plugin, the skill
     // must appear only in the default plugin — no duplicates in the sidebar.
     let conn = create_test_db();
     // Create a non-default plugin
