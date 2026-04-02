@@ -683,6 +683,9 @@ export const runOptimizationLoop = (
   evalQueries: EvalQuery[],
 ) => invoke<OptimizationResult>("run_optimization_loop", { skillName, workspacePath, model, evalQueries });
 
+export const cancelDescriptionOptimization = () =>
+  invoke<void>("cancel_description_optimization");
+
 export const applyDescription = (
   skillName: string,
   pluginSlug: string,
