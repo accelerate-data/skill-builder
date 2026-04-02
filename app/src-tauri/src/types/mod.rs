@@ -71,6 +71,7 @@ mod tests {
                 enabled: true,
             }],
             marketplace_initialized: false,
+            legacy_tags_migrated: false,
             max_dimensions: 5,
             industry: Some("Financial Services".to_string()),
             function_role: Some("Analytics Engineer".to_string()),
@@ -138,9 +139,11 @@ mod tests {
     fn test_sidecar_config_serde() {
         let config = crate::agents::sidecar::SidecarConfig {
             prompt: "test prompt".to_string(),
+            system_prompt: None,
             model: Some("sonnet".to_string()),
             api_key: SecretString::new("sk-test".to_string()),
-            cwd: "/tmp".to_string(),
+            workspace_root_dir: "/tmp".to_string(),
+            workspace_skill_dir: "/tmp".to_string(),
             allowed_tools: Some(vec!["Read".to_string(), "Write".to_string()]),
             max_turns: Some(10),
             permission_mode: Some("bypassPermissions".to_string()),
@@ -153,6 +156,7 @@ mod tests {
             path_to_claude_code_executable: None,
             agent_name: Some("research-entities".to_string()),
             required_plugins: None,
+            setting_sources: None,
             conversation_history: None,
             skill_name: None,
             step_id: None,

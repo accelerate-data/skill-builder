@@ -88,7 +88,7 @@
   "modules": {
     "frontend_components": {
       "path": "app/src/components/",
-      "description": "Reusable UI components. Sub-directories: agent-items/ (display item renderers: base, bare-output, error, output, result, subagent, thinking, tool, tool-activity-group), layout/ (app-layout, sidebar/icon-rail), refine/ (chat panel, chat input, preview panel, git patch view, benchmark-prompt-inline, refine-question-inline), settings/ (general, github, marketplace, sdk, advanced, usage sections), ui/ (shadcn/ui primitives), workspace/ (workspace-shell, workspace-overview, workspace-refine, benchmark-overview-card — shown when a complete/imported/marketplace skill is selected in app-layout), step-complete/ (per-step completion views: research, detailed-research, decisions, benchmark, file-viewer + shared hooks use-step-files, use-benchmark-data). Flat components include skill-list-panel (260px panel), skill cards, dialogs (delete, import, github, skill, feedback, reset, transition-gate), clarifications-editor, agent panels, and more."
+      "description": "Reusable UI components. Sub-directories: agent-items/ (display item renderers: base, bare-output, error, output, result, subagent, thinking, tool, tool-activity-group), layout/ (app-layout, sidebar/icon-rail), refine/ (chat panel, chat input, preview panel, git patch view, benchmark-prompt-inline, refine-question-inline), settings/ (general, github, marketplace, sdk, advanced, usage sections), ui/ (shadcn/ui primitives), workspace/ (workspace-shell, workspace-overview, workspace-refine, workspace-evals, eval-form, eval-intent-dialog, workspace-description, benchmark-overview-card, eval-run-benchmark-card, version-diff-dialog, restore-version-dialog — shown when a complete/imported/marketplace skill is selected in app-layout), step-complete/ (per-step completion views: research, detailed-research, decisions, benchmark, file-viewer + shared hooks use-step-files, use-benchmark-data). Flat components include skill-list-panel (260px panel), skill cards, dialogs (delete, import, github, skill, feedback, reset, transition-gate), clarifications-editor, agent panels, and more."
     },
     "frontend_pages": {
       "path": "app/src/pages/",
@@ -96,7 +96,7 @@
     },
     "frontend_stores": {
       "path": "app/src/stores/",
-      "description": "Zustand state stores: agent (+ agent-display-buffer), auth, document, imported-skills, plugin, refine, settings, skill, test, usage, workflow"
+      "description": "Zustand state stores: agent (+ agent-display-buffer), auth, document, eval-run (cross-tab benchmark result + analyst notes from evaluate-skill runs), imported-skills, plugin, refine, settings, skill, test, usage, workflow"
     },
     "frontend_hooks": {
       "path": "app/src/hooks/",
@@ -104,11 +104,11 @@
     },
     "frontend_lib": {
       "path": "app/src/lib/",
-      "description": "Utilities and shared types: tauri.ts (typed Tauri command wrappers), types.ts (shared TS types), agent-events.ts (frontend AgentEvent types), display-types.ts (DisplayItem types), agent-results.ts (result parsing), models.ts (model list), workflow-steps.ts + workflow-step-configs.ts (step definitions), workflow-teardown.ts (shared workflow session teardown helper), clarifications-types.ts, path-utils.ts, app-log.ts, help-urls.ts, toast.ts, utils.ts"
+      "description": "Utilities and shared types: tauri.ts (typed Tauri command wrappers), types.ts (shared TS types), agent-events.ts (frontend AgentEvent types), display-types.ts (DisplayItem types), agent-results.ts (result parsing), eval-run.ts (pure calculation helpers for evaluate-skill runs: prompt builder, refine prefill builder, structuredOutput parser, progress percent), models.ts (model list), workflow-steps.ts + workflow-step-configs.ts (step definitions), workflow-teardown.ts (shared workflow session teardown helper), clarifications-types.ts, path-utils.ts, app-log.ts, help-urls.ts, toast.ts, utils.ts"
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
-      "description": "Tauri command handlers. Flat files: agent, api_validation, feedback, files, git, github_auth, lifecycle, node, reconciliation, settings, sidecar_lifecycle, test_utils, usage, workflow_artifacts, workflow_lifecycle, workflow_session, workspace. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, runtime, evaluation, tests), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands), skill/ (crud, metadata, suggestions, tests), refine/ (content, diff, output, protocol, tests), documents/ (list_documents, list_skills_for_documents, add_document_file, add_document_url, add_document_folder, update_document, delete_document)"
+      "description": "Tauri command handlers. Flat files: agent, api_validation, evals (list_test_cases, save_test_case, delete_test_case, list_iterations), feedback, files, git, github_auth, lifecycle, node, reconciliation, settings, sidecar_lifecycle, test_utils, usage, workflow_artifacts, workflow_lifecycle, workflow_session, workspace. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, packaging, runtime, evaluation, tests), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands), skill/ (crud, metadata, suggestions, tests), refine/ (content, diff, output, protocol, tests), documents/ (list_documents, list_skills_for_documents, add_document_file, add_document_url, add_document_folder, update_document, delete_document)"
     },
     "rust_db": {
       "path": "app/src-tauri/src/db/",
@@ -171,7 +171,7 @@
     "app/src-tauri/src/": "Rust backend runtime (Tauri commands, DB, agents, types, reconciliation, support modules)",
     "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, SDK invocation, mock mode)",
     "app/sidecar/__tests__/": "Sidecar unit tests (one test file per sidecar module)",
-    "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, settings, usage, skill-tester, skills-library, integration, desktop-smoke, fixtures, helpers, setup",
+    "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, evals, settings, usage, skill-tester, skills-library, integration, desktop-smoke, fixtures, helpers, setup",
     "agent-sources/agents/": "Agent prompt .md files — flat directory, structurally validated by test:agents:structural",
     "agent-sources/workspace/": "Workspace agent instructions: CLAUDE.md (full), CLAUDE-MINIMAL.md (lightweight), prompts/ (shared fragments). Deployed to workspace .claude/ at app startup.",
     "agent-sources/plugins/": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent",

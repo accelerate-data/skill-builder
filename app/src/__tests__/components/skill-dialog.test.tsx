@@ -196,8 +196,8 @@ describe("SkillDialog (edit mode)", () => {
     const nameInput = screen.getByLabelText(/^Skill Name/);
     await user.clear(nameInput);
     await user.type(nameInput, "sales-pipeline-renamed");
-    await user.clear(screen.getByLabelText(/^Description/));
-    await user.type(screen.getByLabelText(/^Description/), "Updated description");
+    await user.clear(screen.getByLabelText(/^What the skill does/));
+    await user.type(screen.getByLabelText(/^What the skill does/), "Updated description");
     await user.click(screen.getByRole("button", { name: /Next/i }));
     await user.click(screen.getByRole("button", { name: /^Save$/i }));
 

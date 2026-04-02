@@ -121,6 +121,7 @@ export default function WorkflowPage() {
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
   const runs = useAgentStore((s) => s.runs);
+  const pluginSlug = useSkillStore((s) => s.skills.find((sk) => sk.name === skillName)?.plugin_slug);
 
   const stepConfig = STEP_CONFIGS[currentStep];
 
@@ -179,6 +180,7 @@ export default function WorkflowPage() {
     performStepReset,
   } = useWorkflowStateMachine({
     skillName,
+    pluginSlug,
     workspacePath,
     skillsPath,
     currentStep,

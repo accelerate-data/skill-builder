@@ -1,0 +1,14 @@
+{
+  "eval_id": 3,
+  "eval_name": "dbt snapshot scd2 generation",
+  "configuration": "with_skill",
+  "run_number": 1,
+  "summary": { "pass_rate": 0.75, "passed": 3, "failed": 1, "total": 4 },
+  "expectations": [
+    { "text": "Generates a valid dbt snapshot model with strategy='check'", "passed": true, "evidence": "The generated model uses strategy='check' with check_cols=['status','amount']." },
+    { "text": "Includes target_schema configuration", "passed": true, "evidence": "Config block sets target_schema='snapshots'." },
+    { "text": "SCD2 columns (valid_from, valid_to) are present", "passed": true, "evidence": "Both dbt_valid_from and dbt_valid_to columns appear in the output." },
+    { "text": "Handles NULL values in check columns gracefully", "passed": false, "evidence": "No COALESCE or NULL-handling logic found for check columns; NULLs would cause missed change detection." }
+  ],
+  "notes": []
+}

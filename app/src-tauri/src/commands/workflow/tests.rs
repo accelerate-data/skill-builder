@@ -759,13 +759,13 @@ fn test_materialize_step3_generate_skipped_writes_skipped_benchmark() {
 fn test_materialize_step3_benchmark_complete() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
-    let bench_dir = skill_root.join("evals/workspace/iteration-1");
+    let bench_dir = skill_root.join("evals/iterations/iteration-1");
     std::fs::create_dir_all(&bench_dir).unwrap();
     std::fs::write(bench_dir.join("benchmark.json"), "{}").unwrap();
 
     let payload = serde_json::json!({
         "status": "complete",
-        "benchmark_path": "evals/workspace/iteration-1"
+        "benchmark_path": "evals/iterations/iteration-1"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
 
@@ -774,20 +774,20 @@ fn test_materialize_step3_benchmark_complete() {
     let meta: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
     assert_eq!(meta["benchmark_status"], "complete");
-    assert_eq!(meta["benchmark_path"], "evals/workspace/iteration-1");
+    assert_eq!(meta["benchmark_path"], "evals/iterations/iteration-1");
 }
 
 #[test]
 fn test_materialize_step3_partial_with_benchmark_json_upgrades_to_complete() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
-    let bench_dir = skill_root.join("evals/workspace/iteration-1");
+    let bench_dir = skill_root.join("evals/iterations/iteration-1");
     std::fs::create_dir_all(&bench_dir).unwrap();
     std::fs::write(bench_dir.join("benchmark.json"), "{}").unwrap();
 
     let payload = serde_json::json!({
         "status": "partial",
-        "benchmark_path": "evals/workspace/iteration-1"
+        "benchmark_path": "evals/iterations/iteration-1"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
 
@@ -797,7 +797,7 @@ fn test_materialize_step3_partial_with_benchmark_json_upgrades_to_complete() {
     .unwrap();
     // benchmark.json exists on disk — should be upgraded to "complete"
     assert_eq!(meta["benchmark_status"], "complete");
-    assert_eq!(meta["benchmark_path"], "evals/workspace/iteration-1");
+    assert_eq!(meta["benchmark_path"], "evals/iterations/iteration-1");
 }
 
 #[test]
@@ -807,7 +807,7 @@ fn test_materialize_step3_partial_without_benchmark_json_stays_partial() {
     // No benchmark.json on disk — partial stays partial
     let payload = serde_json::json!({
         "status": "partial",
-        "benchmark_path": "evals/workspace/iteration-1"
+        "benchmark_path": "evals/iterations/iteration-1"
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
 
@@ -843,10 +843,10 @@ fn test_build_prompt_all_three_paths() {
     );
     assert!(prompt.contains("my-skill"));
     assert!(prompt
-        .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
-    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
-    assert!(prompt.contains("Read user-context.md from the workspace directory"));
-    assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
+        .contains("The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"));
+    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/skills/my-skill"));
+    assert!(prompt.contains("The user context file is at: /home/user/.vibedata/skill-builder/skills/my-skill/user-context.md"));
+    assert!(prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/skills/my-skill/context"));
 }
 
 #[test]
@@ -900,28 +900,28 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
     let workspace_path = "/home/user/.vibedata/skill-builder";
     let skill_name = "my-skill";
     let skills_path = "/home/user/my-skills";
-    let workspace_dir = std::path::Path::new(workspace_path).join(skill_name);
+    let workspace_dir = std::path::Path::new(workspace_path).join(DEFAULT_PLUGIN_SLUG).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let skill_output_str = std::path::Path::new(skills_path)
-        .join(skill_name)
-        .to_string_lossy()
-        .replace('\\', "/");
+    let skill_output_dir = std::path::Path::new(skills_path)
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join(skill_name);
+    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
 
     let prompt = format!(
         "The skill name is: {}. The workspace directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
-         Read user-context.md from the workspace directory. \
-         Derive context_dir as workspace_dir/context. \
+         The user context file is at: {}/user-context.md. \
+         The context directory is: {}/context. \
          All directories already exist — do not create any directories.",
-        skill_name, workspace_str, skill_output_str,
+        skill_name, workspace_str, skill_output_str, workspace_str, workspace_str,
     );
 
     assert!(prompt.contains("The skill name is: my-skill"));
     assert!(prompt
-        .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
-    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
-    assert!(prompt.contains("Read user-context.md from the workspace directory"));
-    assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
+        .contains("The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"));
+    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/skills/my-skill"));
+    assert!(prompt.contains("The user context file is at: /home/user/.vibedata/skill-builder/skills/my-skill/user-context.md"));
+    assert!(prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/skills/my-skill/context"));
     assert!(prompt.contains("do not create any directories"));
 }
 
@@ -968,9 +968,9 @@ fn test_delete_step_output_files_from_step_onwards() {
     let skills_tmp = tempfile::tempdir().unwrap();
     let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
-    // Context files live in workspace_path/skill_name/context/
-    let skill_dir = skills_tmp.path().join("my-skill");
-    let workspace_skill_dir = workspace_tmp.path().join("my-skill");
+    // Context files live in workspace_path/{plugin_slug}/skill_name/context/
+    let skill_dir = skills_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
+    let workspace_skill_dir = workspace_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
     std::fs::create_dir_all(workspace_skill_dir.join("context")).unwrap();
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
@@ -1036,7 +1036,7 @@ fn test_delete_step_output_files_cleans_last_steps() {
     let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
     let _skill_dir = skills_tmp.path().join("my-skill");
-    let workspace_skill_dir = workspace_tmp.path().join("my-skill");
+    let workspace_skill_dir = workspace_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
     std::fs::create_dir_all(workspace_skill_dir.join("context")).unwrap();
 
     // Create files for step 2 (decisions) in workspace context
@@ -1258,9 +1258,10 @@ fn test_validate_decisions_missing() {
 fn test_validate_decisions_found_in_workspace_context() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().join("workspace");
-    std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+    std::fs::create_dir_all(workspace.join(DEFAULT_PLUGIN_SLUG).join("my-skill").join("context")).unwrap();
     std::fs::write(
         workspace
+            .join(DEFAULT_PLUGIN_SLUG)
             .join("my-skill")
             .join("context")
             .join("decisions.json"),
@@ -1277,10 +1278,11 @@ fn test_validate_decisions_found_in_workspace_context() {
 fn test_validate_decisions_rejects_empty_file() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().join("workspace");
-    std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+    std::fs::create_dir_all(workspace.join(DEFAULT_PLUGIN_SLUG).join("my-skill").join("context")).unwrap();
     // Write an empty decisions file
     std::fs::write(
         workspace
+            .join(DEFAULT_PLUGIN_SLUG)
             .join("my-skill")
             .join("context")
             .join("decisions.json"),
@@ -1593,8 +1595,8 @@ fn test_reset_cleans_workspace_context_files() {
     let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_path_tmp.path().to_str().unwrap();
 
-    // 2-3. Create workspace/my-skill/context/ with all context files
-    let context_dir = workspace_tmp.path().join("my-skill").join("context");
+    // 2-3. Create workspace/{plugin_slug}/my-skill/context/ with all context files
+    let context_dir = workspace_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill").join("context");
     std::fs::create_dir_all(&context_dir).unwrap();
 
     let context_files = ["clarifications.json", "decisions.json"];
@@ -1603,7 +1605,7 @@ fn test_reset_cleans_workspace_context_files() {
     }
 
     // 4. Working dir must exist in workspace
-    std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
+    std::fs::create_dir_all(workspace_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill")).unwrap();
 
     // 5. Call delete_step_output_files from step 0
     crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);

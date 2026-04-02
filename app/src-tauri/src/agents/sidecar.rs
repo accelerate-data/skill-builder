@@ -5,11 +5,20 @@ use crate::types::SecretString;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SidecarConfig {
     pub prompt: String,
+    #[serde(rename = "systemPrompt", skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(rename = "apiKey")]
     pub api_key: SecretString,
-    pub cwd: String,
+    /// Workspace root directory (`{data_dir}/workspace`). Used for plugin
+    /// discovery (`.claude/plugins/`) and SDK settings sources.
+    #[serde(rename = "workspaceRootDir")]
+    pub workspace_root_dir: String,
+    /// Skill-scoped workspace directory (`{workspace}/{plugin_slug}/{skill_name}`).
+    /// Used as the SDK `cwd` so agents resolve file paths relative to the skill workspace.
+    #[serde(rename = "workspaceSkillDir")]
+    pub workspace_skill_dir: String,
     #[serde(rename = "allowedTools", skip_serializing_if = "Option::is_none")]
     pub allowed_tools: Option<Vec<String>>,
     #[serde(rename = "maxTurns", skip_serializing_if = "Option::is_none")]
@@ -37,6 +46,8 @@ pub struct SidecarConfig {
     pub agent_name: Option<String>,
     #[serde(rename = "requiredPlugins", skip_serializing_if = "Option::is_none")]
     pub required_plugins: Option<Vec<String>>,
+    #[serde(rename = "settingSources", skip_serializing_if = "Option::is_none")]
+    pub setting_sources: Option<Vec<String>>,
     #[serde(
         rename = "conversationHistory",
         skip_serializing_if = "Option::is_none"
@@ -59,9 +70,7 @@ pub struct SidecarConfig {
     #[serde(rename = "runSource", skip_serializing_if = "Option::is_none")]
     pub run_source: Option<String>,
     /// Override the log directory for the JSONL transcript. When set, transcripts
-    /// are written here instead of the default `{cwd}/logs/`. Allows the cwd to
-    /// remain at the workspace root (for SDK .claude/ discovery) while logs land
-    /// in the skill-specific workspace subdir.
+    /// are written here instead of the default `{workspaceSkillDir}/logs/`.
     #[serde(rename = "transcriptLogDir", skip_serializing_if = "Option::is_none")]
     pub transcript_log_dir: Option<String>,
 }
@@ -72,7 +81,8 @@ impl std::fmt::Debug for SidecarConfig {
             .field("prompt", &self.prompt)
             .field("model", &self.model)
             .field("api_key", &"[redacted]")
-            .field("cwd", &self.cwd)
+            .field("workspace_root_dir", &self.workspace_root_dir)
+            .field("workspace_skill_dir", &self.workspace_skill_dir)
             .field("allowed_tools", &self.allowed_tools)
             .field("max_turns", &self.max_turns)
             .field("permission_mode", &self.permission_mode)
@@ -84,6 +94,7 @@ impl std::fmt::Debug for SidecarConfig {
             .field("prompt_suggestions", &self.prompt_suggestions)
             .field("agent_name", &self.agent_name)
             .field("required_plugins", &self.required_plugins)
+            .field("setting_sources", &self.setting_sources)
             .finish()
     }
 }
@@ -181,9 +192,11 @@ mod tests {
     fn test_sidecar_config_serialization() {
         let config = SidecarConfig {
             prompt: "Analyze this codebase".to_string(),
+            system_prompt: None,
             model: Some("sonnet".to_string()),
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            cwd: "/home/user/project".to_string(),
+            workspace_root_dir: "/home/user/project".to_string(),
+            workspace_skill_dir: "/home/user/project".to_string(),
             allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
             max_turns: Some(25),
             permission_mode: Some("bypassPermissions".to_string()),
@@ -196,6 +209,7 @@ mod tests {
             path_to_claude_code_executable: None,
             agent_name: Some("research-entities".to_string()),
             required_plugins: None,
+            setting_sources: None,
             conversation_history: None,
             skill_name: None,
             step_id: None,
@@ -225,9 +239,11 @@ mod tests {
     fn test_sidecar_config_serialization_with_thinking() {
         let config = SidecarConfig {
             prompt: "Reason about this".to_string(),
+            system_prompt: None,
             model: Some("opus".to_string()),
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            cwd: "/home/user/project".to_string(),
+            workspace_root_dir: "/home/user/project".to_string(),
+            workspace_skill_dir: "/home/user/project".to_string(),
             allowed_tools: None,
             max_turns: None,
             permission_mode: None,
@@ -243,6 +259,7 @@ mod tests {
             path_to_claude_code_executable: None,
             agent_name: None,
             required_plugins: None,
+            setting_sources: None,
             conversation_history: None,
             skill_name: None,
             step_id: None,
@@ -265,9 +282,11 @@ mod tests {
         // mock discriminator (config.skillName) receives the value correctly.
         let config = SidecarConfig {
             prompt: "test".to_string(),
+            system_prompt: None,
             model: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            cwd: "/tmp".to_string(),
+            workspace_root_dir: "/tmp".to_string(),
+            workspace_skill_dir: "/tmp".to_string(),
             allowed_tools: None,
             max_turns: None,
             permission_mode: None,
@@ -280,6 +299,7 @@ mod tests {
             path_to_claude_code_executable: None,
             agent_name: None,
             required_plugins: None,
+            setting_sources: None,
             conversation_history: None,
             skill_name: Some("my-skill".to_string()),
             step_id: None,
@@ -305,9 +325,11 @@ mod tests {
         // When skill_name is None, it must be omitted (skip_serializing_if = "Option::is_none").
         let config = SidecarConfig {
             prompt: "test".to_string(),
+            system_prompt: None,
             model: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            cwd: "/tmp".to_string(),
+            workspace_root_dir: "/tmp".to_string(),
+            workspace_skill_dir: "/tmp".to_string(),
             allowed_tools: None,
             max_turns: None,
             permission_mode: None,
@@ -320,6 +342,7 @@ mod tests {
             path_to_claude_code_executable: None,
             agent_name: None,
             required_plugins: None,
+            setting_sources: None,
             conversation_history: None,
             skill_name: None,
             step_id: None,

@@ -166,6 +166,7 @@ Field rules:
 
 ## Phase 3: Merge refinements into canonical payload
 
+0. Read the clarifications schema reference file (path provided in the prompt) to understand the data contract for `clarifications.json`. Validate your output against this schema — in particular, `sections[].id` must be sequential integers (`1`, `2`, ...), not strings.
 1. Use the `clarifications.json` object already parsed in Phase 0.
 2. Record the original top-level question IDs before merge. These IDs are immutable and must all still exist after merge.
 3. For each section's output from sub-agents: parse the JSON array and validate each object before merge. Drop any object that fails validation and continue with valid ones. Validation rules:

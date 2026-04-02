@@ -8,6 +8,20 @@ use crate::types::SkillFileContent;
 
 use super::{resolve_skill_output_dir, resolve_skills_path};
 
+// ─── get_skill_content_at_path ───────────────────────────────────────────────
+
+/// Returns SKILL.md + references/ from an arbitrary on-disk path.
+/// Used by the file viewer for imported skills that have a `disk_path`.
+#[tauri::command]
+pub fn get_skill_content_at_path(path: String) -> Result<Vec<SkillFileContent>, String> {
+    log::info!("[get_skill_content_at_path] path={}", path);
+    let root = Path::new(&path);
+    get_skill_content_from_dir(root).map_err(|e| {
+        log::error!("[get_skill_content_at_path] {}", e);
+        e
+    })
+}
+
 // ─── get_skill_content_for_refine ────────────────────────────────────────────
 
 /// Returns the content of SKILL.md and all reference files for a skill.
@@ -15,10 +29,11 @@ use super::{resolve_skill_output_dir, resolve_skills_path};
 #[tauri::command]
 pub fn get_skill_content_for_refine(
     skill_name: String,
+    plugin_slug: String,
     workspace_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillFileContent>, String> {
-    log::info!("[get_skill_content_for_refine] skill={}", skill_name);
+    log::info!("[get_skill_content_for_refine] skill={} plugin={}", skill_name, plugin_slug);
     validate_skill_name(&skill_name)?;
     let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
         log::error!(

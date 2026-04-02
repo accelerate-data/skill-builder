@@ -30,6 +30,7 @@ fn map_skill_master_row(row: &rusqlite::Row) -> rusqlite::Result<SkillMasterRow>
     })
 }
 
+
 pub fn slugify_plugin_name(name: &str) -> String {
     let mut slug = String::with_capacity(name.len());
     let mut last_dash = false;

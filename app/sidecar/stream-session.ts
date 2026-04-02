@@ -235,54 +235,76 @@ export class StreamSession {
     onMessage: (requestId: string, message: Record<string, unknown>) => void,
   ): CanUseTool {
     return async (toolName, input, options) => {
-      if (toolName !== "AskUserQuestion") {
-        return { behavior: "allow" };
-      }
+      try {
+        if (toolName !== "AskUserQuestion") {
+          // Always include updatedInput in the allow response. The SDK's Zod schema
+          // for the can_use_tool IPC response requires `updatedInput: Record<string,
+          // unknown>` (not optional). Returning a bare `{ behavior: "allow" }` causes
+          // a ZodError ("expected record, received undefined") that silently converts
+          // the allow into a deny — so Edit/Write tools fail without user feedback.
+          return {
+            behavior: "allow",
+            updatedInput: (input ?? {}) as Record<string, unknown>,
+          };
+        }
 
-      const rawQuestions = (input as AskUserQuestionInput).questions;
-      if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
-        return {
-          behavior: "deny",
-          message: "AskUserQuestion requires at least one question",
-        };
-      }
+        const rawQuestions = (input as AskUserQuestionInput).questions;
+        if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
+          return {
+            behavior: "deny",
+            message: "AskUserQuestion requires at least one question",
+          };
+        }
 
-      if (this.pendingQuestion) {
-        return {
-          behavior: "deny",
-          message: "Another user question is already pending",
-        };
-      }
+        if (this.pendingQuestion) {
+          return {
+            behavior: "deny",
+            message: "Another user question is already pending",
+          };
+        }
 
-      onMessage(this.currentRequestId, {
-        type: "refine_question",
-        tool_use_id: options.toolUseID,
-        questions: rawQuestions,
-        timestamp: Date.now(),
-      });
-
-      return await new Promise<PermissionResult>((resolve, reject) => {
-        const onAbort = () => {
-          if (this.pendingQuestion?.toolUseId === options.toolUseID) {
-            this.pendingQuestion = null;
-          }
-          reject(new Error("AskUserQuestion aborted"));
-        };
-
-        options.signal.addEventListener("abort", onAbort, { once: true });
-        this.pendingQuestion = {
-          toolUseId: options.toolUseID,
+        onMessage(this.currentRequestId, {
+          type: "refine_question",
+          tool_use_id: options.toolUseID,
           questions: rawQuestions,
-          resolve: (result) => {
-            options.signal.removeEventListener("abort", onAbort);
-            resolve(result);
-          },
-          reject: (error) => {
-            options.signal.removeEventListener("abort", onAbort);
-            reject(error);
-          },
+          timestamp: Date.now(),
+        });
+
+        return await new Promise<PermissionResult>((resolve, reject) => {
+          const onAbort = () => {
+            if (this.pendingQuestion?.toolUseId === options.toolUseID) {
+              this.pendingQuestion = null;
+            }
+            reject(new Error("AskUserQuestion aborted"));
+          };
+
+          options.signal.addEventListener("abort", onAbort, { once: true });
+          this.pendingQuestion = {
+            toolUseId: options.toolUseID,
+            questions: rawQuestions,
+            resolve: (result) => {
+              options.signal.removeEventListener("abort", onAbort);
+              resolve(result);
+            },
+            reject: (error) => {
+              options.signal.removeEventListener("abort", onAbort);
+              reject(error);
+            },
+          };
+        });
+      } catch (err) {
+        // Surface permission callback errors as a visible, structured denial so
+        // the agent logs show a clear cause rather than silently falling back to
+        // read-only behavior.
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(
+          `[stream-session] event=canUseTool_error tool=${toolName} session=${this.sessionId} error=${message}\n`,
+        );
+        return {
+          behavior: "deny",
+          message: `Permission check failed for tool ${toolName}: ${message}`,
         };
-      });
+      }
     };
   }
 
@@ -348,7 +370,7 @@ export class StreamSession {
     let discoveredPluginPaths: string[];
     let pluginPaths: string[];
     try {
-      discoveredPluginPaths = await discoverInstalledPlugins(config.cwd);
+      discoveredPluginPaths = await discoverInstalledPlugins(config.workspaceRootDir);
       pluginPaths = selectPluginPaths(discoveredPluginPaths, config.requiredPlugins);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -605,14 +627,72 @@ export class StreamSession {
   ): Promise<void> {
     if (this.closed) return;
     const requestId = this.currentRequestId;
+
+    // Detect eval failure triage pattern: lines like "eval_name: /path/to/grading.json"
+    const evalFailureLines = userMessage.trim().split(/\r?\n/).filter(
+      (line) => line.includes("grading.json"),
+    );
+
+    // Delay mock responses so the agent stays in "running" state long enough
+    // for guard tests (tab-switch, close-requested) to trigger.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    if (this.closed) return;
+
+    if (evalFailureLines.length > 0) {
+      // Mock the eval failure triage flow — emit assistant analysis then AskUserQuestion
+      const evalNames = evalFailureLines.map((line) => {
+        const colonIdx = line.indexOf(":");
+        return colonIdx > 0 ? line.slice(0, colonIdx).trim() : line.trim();
+      });
+
+      const analysisText = `I've reviewed the grading results for ${evalNames.length} failing eval(s):\n\n` +
+        evalNames.map((name, i) => `${i + 1}. **${name}** — assertion failures detected in grading results`).join("\n") +
+        "\n\nLet me triage these failures and identify genuine skill gaps.";
+
+      this.emitMockAssistantMessage(analysisText, onMessage);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Emit a refine_question event for the user to select which evals to fix
+      const options = evalNames.map((name) => ({
+        label: name,
+        description: `Fix failing assertions for ${name}`,
+      }));
+      if (evalNames.length > 1) {
+        options.push({
+          label: "Address all skill gaps",
+          description: "Fix all failing evals in one refine pass",
+        });
+      }
+
+      onMessage(requestId, {
+        type: "refine_question",
+        tool_use_id: `toolu_mock_eval_triage_${Date.now()}`,
+        questions: [{
+          question: "Which eval failures should I address?",
+          header: "Skill Gaps",
+          options,
+          multiSelect: true,
+        }],
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    // Default mock response for non-eval messages
     const trimmed = userMessage.trim();
     const preview = trimmed.length > 160 ? `${trimmed.slice(0, 157)}...` : trimmed;
     const text = preview.length > 0
       ? `Mock streaming response received:\n\n${preview}`
       : "Mock streaming response received.";
 
-    // Build a raw assistant message and process through MessageProcessor
-    // so the frontend receives display_item envelopes (not legacy raw messages).
+    this.emitMockAssistantMessage(text, onMessage);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  private emitMockAssistantMessage(
+    text: string,
+    onMessage: (requestId: string, message: Record<string, unknown>) => void,
+  ): void {
     const rawAssistant = {
       type: "assistant",
       message: {
@@ -630,15 +710,10 @@ export class StreamSession {
       },
     };
 
-    // Reuse the session-scoped processor so context accumulates across turns
     const processor = this.mockProcessor!;
     const items = processor.process(rawAssistant);
     for (const item of items) {
-      onMessage(requestId, item as Record<string, unknown>);
+      onMessage(this.currentRequestId, item as Record<string, unknown>);
     }
-
-    // turn_complete is emitted by MessageProcessor when it processes the
-    // stop_reason in rawAssistant. No manual emission needed here.
-    await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }

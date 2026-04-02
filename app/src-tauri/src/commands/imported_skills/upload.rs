@@ -143,8 +143,8 @@ fn import_skill_from_file_inner(
         ));
     }
 
-    // Extract to plugin-nested path: {skills_path}/{default_slug}/skills/{name}/
-    let dest_dir = crate::skill_paths::nested_skill_dir(Path::new(skills_path), default_slug, name);
+    // Extract to plugin-nested path: {skills_path}/{default_slug}/{name}/
+    let dest_dir = crate::skill_paths::resolve_skill_dir(Path::new(skills_path), default_slug, name);
     if let Some(parent) = dest_dir.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -171,15 +171,15 @@ fn import_skill_from_file_inner(
     let final_version = normalized_frontmatter.version.clone();
 
     let import_git_result = (|| -> Result<(), String> {
-        if crate::git::skill_version_tag_exists(skills_repo, name, &final_version)? {
+        if crate::git::skill_version_tag_exists(skills_repo, default_slug, name, &final_version)? {
             return Err(format!(
                 "Tag '{}' already exists",
-                crate::git::skill_version_tag_name(name, &final_version)
+                crate::git::skill_version_tag_name(default_slug, name, &final_version)
             ));
         }
 
         crate::git::commit_all(skills_repo, &format!("{}: import from upload", name))?;
-        crate::git::create_skill_version_tag(skills_repo, name, &final_version)?;
+        crate::git::create_skill_version_tag(skills_repo, default_slug, name, &final_version)?;
         Ok(())
     })();
     if let Err(e) = import_git_result {
@@ -275,7 +275,7 @@ mod tests {
 
         assert!(result.is_ok(), "expected import to succeed: {:?}", result);
         assert!(
-            crate::git::skill_version_tag_exists(&skills_path, "imported-skill", "1.0.0").unwrap()
+            crate::git::skill_version_tag_exists(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill", "1.0.0").unwrap()
         );
         assert_eq!(
             crate::db::get_imported_skill(&conn, "imported-skill")
@@ -286,7 +286,7 @@ mod tests {
             Some("1.0.0")
         );
         assert!(
-            std::fs::read_to_string(crate::skill_paths::nested_skill_dir(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill").join("SKILL.md"))
+            std::fs::read_to_string(crate::skill_paths::resolve_skill_dir(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill").join("SKILL.md"))
                 .unwrap()
                 .contains("metadata:\n  version: \"1.0.0\"\n  author: \"hb@acceleratedata.ai\"")
         );
@@ -308,7 +308,7 @@ mod tests {
         )
         .unwrap();
         crate::git::commit_all(&skills_path, "imported-skill: seed").unwrap();
-        crate::git::create_skill_version_tag(&skills_path, "imported-skill", "1.0.0").unwrap();
+        crate::git::create_skill_version_tag(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill", "1.0.0").unwrap();
         std::fs::remove_dir_all(&skill_dir).unwrap();
 
         let zip_path = dir.path().join("skill.zip");

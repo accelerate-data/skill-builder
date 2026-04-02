@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::SkillFileEntry;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -30,7 +30,7 @@ fn list_skill_files_with_plugin_roots(
 ) -> Result<Vec<SkillFileEntry>, String> {
     super::imported_skills::validate_skill_name(skill_name)?;
 
-    let skill_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let skill_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     // Validate workspace_path is within allowed roots
     if skill_dir.exists() {
         let canonical = fs::canonicalize(&skill_dir)
@@ -410,7 +410,8 @@ mod tests {
     use tempfile::tempdir;
 
     fn setup_skill_dir(base: &Path) {
-        let skill = base.join("my-skill");
+        // workspace_skill_dir resolves to base/{DEFAULT_PLUGIN_SLUG}/my-skill
+        let skill = base.join(DEFAULT_PLUGIN_SLUG).join("my-skill");
         fs::create_dir_all(skill.join("context")).unwrap();
         fs::create_dir_all(skill.join("skill").join("references")).unwrap();
         fs::write(skill.join("skill").join("SKILL.md"), "# My Skill").unwrap();

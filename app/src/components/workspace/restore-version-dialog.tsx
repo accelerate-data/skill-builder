@@ -11,11 +11,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getSkillHistory, restoreSkillVersion } from "@/lib/tauri";
+import { useSkillStore } from "@/stores/skill-store";
 import { toast } from "@/lib/toast";
 import type { SkillCommit } from "@/lib/types";
 
 interface RestoreVersionDialogProps {
   skillName: string;
+  pluginSlug: string;
   workspacePath: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -43,6 +45,7 @@ function formatCommitMessage(message: string): string {
 
 export default function RestoreVersionDialog({
   skillName,
+  pluginSlug,
   workspacePath,
   open,
   onOpenChange,
@@ -55,7 +58,7 @@ export default function RestoreVersionDialog({
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    getSkillHistory(workspacePath, skillName, 50)
+    getSkillHistory(workspacePath, skillName, pluginSlug, 50)
       .then((history) => {
         // Only show tagged commits (versions)
         setCommits(history.filter((c) => c.version));
@@ -65,13 +68,14 @@ export default function RestoreVersionDialog({
         toast.error("Failed to load version history", { duration: Infinity });
       })
       .finally(() => setLoading(false));
-  }, [open, workspacePath, skillName]);
+  }, [open, workspacePath, skillName, pluginSlug]);
 
   const handleRestore = async (commit: SkillCommit) => {
     setRestoring(commit.sha);
     try {
-      await restoreSkillVersion(workspacePath, skillName, commit.sha);
-      toast.success(`Restored to v${commit.version}`);
+      const newVersion = await restoreSkillVersion(workspacePath, skillName, pluginSlug, commit.sha);
+      useSkillStore.getState().setLatestVersion(newVersion);
+      toast.success(`Restored — tagged as v${newVersion}`);
       onOpenChange(false);
       onRestored?.();
     } catch (err) {
@@ -84,7 +88,7 @@ export default function RestoreVersionDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-lg">
+      <AlertDialogContent className="max-w-2xl">
         <AlertDialogHeader>
           <AlertDialogTitle>Restore Version</AlertDialogTitle>
           <AlertDialogDescription>
@@ -119,7 +123,7 @@ export default function RestoreVersionDialog({
                     >
                       v{commit.version}
                     </span>
-                    <span className="truncate text-sm">{formatCommitMessage(commit.message)}</span>
+                    <span className="text-sm line-clamp-2">{formatCommitMessage(commit.message)}</span>
                     <span className="shrink-0 text-xs text-muted-foreground">
                       {formatRelativeDate(commit.timestamp)}
                     </span>

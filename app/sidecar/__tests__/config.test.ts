@@ -16,56 +16,64 @@ describe("parseSidecarConfig", () => {
 
   it("throws when prompt is missing", () => {
     expect(() =>
-      parseSidecarConfig({ apiKey: "key", cwd: TEST_CWD })
+      parseSidecarConfig({ apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD })
     ).toThrow("Invalid SidecarConfig: missing prompt");
   });
 
   it("throws when apiKey is missing", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", cwd: TEST_CWD })
+      parseSidecarConfig({ prompt: "hello", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD })
     ).toThrow("Invalid SidecarConfig: missing apiKey");
   });
 
   it("throws when apiKey is empty string", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "", cwd: TEST_CWD })
+      parseSidecarConfig({ prompt: "hello", apiKey: "", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD })
     ).toThrow("Invalid SidecarConfig: missing apiKey");
   });
 
-  it("throws when cwd is missing", () => {
+  it("throws when workspaceRootDir is missing", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key" })
-    ).toThrow("Invalid SidecarConfig: missing cwd");
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceSkillDir: TEST_CWD })
+    ).toThrow("Invalid SidecarConfig: missing workspaceRootDir");
+  });
+
+  it("throws when workspaceSkillDir is missing", () => {
+    expect(() =>
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD })
+    ).toThrow("Invalid SidecarConfig: missing workspaceSkillDir");
   });
 
   it("throws when requiredPlugins contains non-string", () => {
     expect(() =>
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, requiredPlugins: [1, 2] })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, requiredPlugins: [1, 2] })
     ).toThrow("Invalid SidecarConfig: requiredPlugins must be string[]");
   });
 
   it("accepts valid config with all required fields", () => {
-    const result = parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD });
+    const result = parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD });
     expect(result.prompt).toBe("hello");
     expect(result.apiKey).toBe("key");
-    expect(result.cwd).toBe(TEST_CWD);
+    expect(result.workspaceRootDir).toBe(TEST_CWD);
+    expect(result.workspaceSkillDir).toBe(TEST_CWD);
   });
 
   it("accepts valid config with optional requiredPlugins", () => {
     const result = parseSidecarConfig({
       prompt: "hello",
       apiKey: "key",
-      cwd: TEST_CWD,
+      workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD,
       requiredPlugins: ["computer", "bash"],
     });
     expect(result.requiredPlugins).toEqual(["computer", "bash"]);
   });
 
-  it("accepts empty string cwd (no strict validation)", () => {
-    // cwd is type-checked but not value-validated — empty string passes.
-    // Callers are responsible for providing a valid directory.
-    const result = parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: "" });
-    expect(result.cwd).toBe("");
+  it("accepts empty string workspace dirs (no strict validation)", () => {
+    // workspace dirs are type-checked but not value-validated — empty string passes.
+    // Callers are responsible for providing valid directories.
+    const result = parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: "", workspaceSkillDir: "" });
+    expect(result.workspaceRootDir).toBe("");
+    expect(result.workspaceSkillDir).toBe("");
   });
 
   it("passes through extra unknown fields", () => {
@@ -74,7 +82,7 @@ describe("parseSidecarConfig", () => {
     const result = parseSidecarConfig({
       prompt: "hello",
       apiKey: "key",
-      cwd: TEST_CWD,
+      workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD,
       extraField: "should survive",
     });
     expect((result as Record<string, unknown>).extraField).toBe("should survive");
@@ -85,98 +93,98 @@ describe("parseSidecarConfig", () => {
   it("throws when model is not a string", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, model: 123 })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, model: 123 })
     ).toThrow("model must be a string");
   });
 
   it("throws when maxTurns is not a positive integer", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, maxTurns: "fifty" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, maxTurns: "fifty" })
     ).toThrow("maxTurns must be a positive integer");
   });
 
   it("throws when maxTurns is zero", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, maxTurns: 0 })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, maxTurns: 0 })
     ).toThrow("maxTurns must be a positive integer");
   });
 
   it("throws when maxTurns is negative", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, maxTurns: -5 })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, maxTurns: -5 })
     ).toThrow("maxTurns must be a positive integer");
   });
 
   it("throws when permissionMode is invalid", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, permissionMode: "yolo" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, permissionMode: "yolo" })
     ).toThrow("permissionMode must be one of");
   });
 
   it("throws when effort is invalid", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, effort: "extreme" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, effort: "extreme" })
     ).toThrow("effort must be one of");
   });
 
   it("throws when runSource is invalid", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, runSource: "deploy" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, runSource: "deploy" })
     ).toThrow("runSource must be one of");
   });
 
   it("throws when stepId is not a number", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, stepId: "two" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, stepId: "two" })
     ).toThrow("stepId must be a number");
   });
 
   it("throws when promptSuggestions is not a boolean", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, promptSuggestions: "yes" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, promptSuggestions: "yes" })
     ).toThrow("promptSuggestions must be a boolean");
   });
 
   it("throws when allowedTools is not a string array", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, allowedTools: [1, 2] })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, allowedTools: [1, 2] })
     ).toThrow("allowedTools must be string[]");
   });
 
   it("throws when betas is not a string array", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, betas: [true] })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, betas: [true] })
     ).toThrow("betas must be string[]");
   });
 
   it("throws when thinking is not an object", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, thinking: "enabled" })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, thinking: "enabled" })
     ).toThrow("thinking must be an object");
   });
 
   it("throws when thinking.type is invalid", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, thinking: { type: "turbo" } })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, thinking: { type: "turbo" } })
     ).toThrow("thinking.type must be disabled, adaptive, or enabled");
   });
 
   it("throws when thinking.budgetTokens is not a number", () => {
     expect(() =>
 
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", cwd: TEST_CWD, thinking: { type: "enabled", budgetTokens: "lots" } })
+      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, thinking: { type: "enabled", budgetTokens: "lots" } })
     ).toThrow("thinking.budgetTokens must be a number");
   });
 
@@ -185,7 +193,7 @@ describe("parseSidecarConfig", () => {
       prompt: "hello",
       apiKey: "key",
 
-      cwd: TEST_CWD,
+      workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD,
       model: "claude-sonnet-4-6",
       agentName: "my-agent",
       maxTurns: 50,
@@ -212,10 +220,10 @@ describe("parseSidecarConfig", () => {
 describe("redactConfig", () => {
   it("redacts apiKey", () => {
 
-    const config = parseSidecarConfig({ prompt: "hello", apiKey: "sk-secret-key", cwd: TEST_CWD });
+    const config = parseSidecarConfig({ prompt: "hello", apiKey: "sk-secret-key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD });
     const redacted = redactConfig(config);
     expect(redacted.apiKey).toBe("[REDACTED]");
     expect(redacted.prompt).toBe("hello");
-    expect(redacted.cwd).toBe(TEST_CWD);
+    expect(redacted.workspaceRootDir).toBe(TEST_CWD);
   });
 });

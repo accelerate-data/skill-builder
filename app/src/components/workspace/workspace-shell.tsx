@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,12 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
-import { getSkillContentForRefine } from "@/lib/tauri";
+import { cleanupSkillSidecar, getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
+import { WorkspaceEvals } from "./workspace-evals";
+import { WorkspaceDescription } from "./workspace-description";
 import type { SkillSummary, ImportedSkill, EditableSkill } from "@/lib/types";
 import { toEditableSkill } from "@/lib/types";
 
@@ -30,6 +32,7 @@ interface WorkspaceShellProps {
 export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellProps) {
   const [activeTab, setActiveTab] = useState(initialTab ?? "overview");
   const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const evalsRunningRef = useRef(false);
   const isSkillStoreLoading = useSkillStore((s) => s.isLoading);
 
   // Sync tab when a navigation sets initialTab (e.g. "Refine" from the More menu)
@@ -46,8 +49,15 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
         return;
       }
     }
+    // Guard: block switching away from Evals while eval run is in progress
+    if (activeTab === "evals" && value !== "evals" && evalsRunningRef.current) {
+      setPendingTab(value);
+      return;
+    }
     setActiveTab(value);
   }, [activeTab]);
+
+  const skillName = "name" in skill ? skill.name : skill.skill_name;
 
   const handleTabStay = useCallback(() => {
     setPendingTab(null);
@@ -55,12 +65,16 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
 
   const handleTabLeave = useCallback(() => {
     if (pendingTab) {
+      // Clean up sidecar processes when leaving a tab with a running agent
+      if (activeTab === "evals" && evalsRunningRef.current) {
+        cleanupSkillSidecar(skillName).catch((err) =>
+          console.error("[workspace-shell] eval sidecar cleanup failed:", err),
+        );
+      }
       setActiveTab(pendingTab);
       setPendingTab(null);
     }
-  }, [pendingTab]);
-
-  const skillName = "name" in skill ? skill.name : skill.skill_name;
+  }, [pendingTab, activeTab, skillName]);
   const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const isBuilderSkill = "name" in skill;
   const workspacePath = useSettingsStore((s) => s.workspacePath);
@@ -73,12 +87,20 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
     }
 
     // Load skill files if not already loaded (e.g. opening from Overview tab).
-    if (store.skillFiles.length === 0 && isBuilderSkill && workspacePath) {
+    if (store.skillFiles.length === 0) {
       try {
-        const contents = await getSkillContentForRefine(
-          (skill as SkillSummary).name,
-          workspacePath,
-        );
+        let contents: Awaited<ReturnType<typeof getSkillContentForRefine>>;
+        if (isBuilderSkill && workspacePath) {
+          contents = await getSkillContentForRefine(
+            (skill as SkillSummary).name,
+            workspacePath,
+            (skill as SkillSummary).plugin_slug,
+          );
+        } else if (!isBuilderSkill && "disk_path" in skill && (skill as ImportedSkill).disk_path) {
+          contents = await getSkillContentAtPath((skill as ImportedSkill).disk_path!);
+        } else {
+          return;
+        }
         const files: SkillFile[] = contents
           .map((c) => ({ filename: c.path, content: c.content }))
           .sort((a, b) => {
@@ -104,7 +126,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
       {/* 48px header */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
         <span className="truncate text-sm font-semibold">{skillName}</span>
-        {isBuilderSkill && (
+        {(isBuilderSkill || "disk_path" in skill) && (
           <Button
             type="button"
             variant={selectedModifiedFile ? "secondary" : "ghost"}
@@ -130,8 +152,8 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="refine">Refine</TabsTrigger>
             <TabsTrigger value="evals">Evals</TabsTrigger>
-            <TabsTrigger value="description" disabled>
-              Description
+            <TabsTrigger value="description">
+              Optimize Description
             </TabsTrigger>
           </TabsList>
 
@@ -150,9 +172,26 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
           </TabsContent>
 
           <TabsContent value="evals" className="flex-1 overflow-y-auto p-6">
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              Evals coming soon.
-            </div>
+            <WorkspaceEvals
+              key={"name" in skill ? skill.name : skill.skill_name}
+              skill={skill}
+              workspacePath={workspacePath}
+              onNavigateToRefine={() => setActiveTab("refine")}
+              onRunningChange={(running) => { evalsRunningRef.current = running; }}
+            />
+          </TabsContent>
+
+          <TabsContent value="description" className="flex-1 overflow-y-auto p-6">
+            {"name" in skill ? (
+              <WorkspaceDescription
+                skill={skill as SkillSummary}
+                workspacePath={workspacePath ?? ""}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Description optimization is not available for imported skills.
+              </div>
+            )}
           </TabsContent>
         </Tabs>
 
@@ -165,7 +204,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
             <DialogHeader>
               <DialogTitle>Agent Running</DialogTitle>
               <DialogDescription>
-                A refine agent is still running. Switching tabs will abandon it.
+                An agent is still running. Switching tabs will abandon the session.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

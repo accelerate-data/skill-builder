@@ -122,16 +122,16 @@ describe("WorkspaceShell", () => {
     expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
   });
 
-  it("Overview tab is active by default; Description trigger is disabled", () => {
+  it("Overview tab is active by default", () => {
     render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" />);
 
     const overviewTab = screen.getByRole("tab", { name: "Overview" });
     const evalsTab = screen.getByRole("tab", { name: "Evals" });
-    const descriptionTab = screen.getByRole("tab", { name: "Description" });
+    const descriptionTab = screen.getByRole("tab", { name: "Optimize Description" });
 
     expect(overviewTab).toHaveAttribute("data-state", "active");
     expect(evalsTab).not.toBeDisabled();
-    expect(descriptionTab).toBeDisabled();
+    expect(descriptionTab).not.toBeDisabled();
   });
 
   it("shows dialog when switching away from Refine while agent is running", async () => {
@@ -152,7 +152,7 @@ describe("WorkspaceShell", () => {
 
     // Dialog should appear
     expect(screen.getByText("Agent Running")).toBeInTheDocument();
-    expect(screen.getByText(/refine agent is still running/i)).toBeInTheDocument();
+    expect(screen.getByText(/agent is still running/i)).toBeInTheDocument();
 
     // Refine tab should still be active (check via container, not role query — dialog captures aria)
     const stillActive = container.querySelector('[role="tab"][data-state="active"]');

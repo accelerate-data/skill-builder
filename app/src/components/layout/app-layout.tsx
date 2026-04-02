@@ -16,7 +16,16 @@ import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
-import { cancelRefineTurn, cancelWorkflowStep } from "@/lib/tauri";
+import { cancelRefineTurn, cancelWorkflowStep, cleanupSkillSidecar } from "@/lib/tauri";
+import { getEvalsRunning, subscribeEvalsRunning } from "@/lib/eval-running-state";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export function AppLayout() {
   const isConfigured = useSettingsStore((s) => s.isConfigured);
@@ -24,6 +33,10 @@ export function AppLayout() {
   const selectedWorkspaceSkillName = useSkillStore((s) => s.activeSkill);
   const setSelectedWorkspaceSkillName = useSkillStore((s) => s.setActiveSkill);
   const importedSkills = useImportedSkillsStore((s) => s.skills);
+  const refineRunning = useRefineStore((s) => s.isRunning);
+  const [evalsRunningReactive, setEvalsRunningReactive] = useState(getEvalsRunning);
+  useEffect(() => subscribeEvalsRunning(setEvalsRunningReactive), []);
+  const agentRunning = refineRunning || evalsRunningReactive;
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const workspaceInitialTab = useRouterState({
@@ -93,13 +106,50 @@ export function AppLayout() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [navigate]);
 
+  const [pendingSkillSwitch, setPendingSkillSwitch] = useState<string | null>(null);
+
+  const pendingSkillSwitchTabRef = useRef<string | undefined>(undefined);
+
   const handleSelectSkill = useCallback(
-    (name: string) => {
+    (name: string, tab?: string) => {
+      // Guard: block skill switch while refine or evals are running
+      if (name !== selectedWorkspaceSkillName) {
+        const refineRunning = useRefineStore.getState().isRunning;
+        const evalsRunning = getEvalsRunning();
+        if (refineRunning || evalsRunning) {
+          setPendingSkillSwitch(name);
+          pendingSkillSwitchTabRef.current = tab;
+          return;
+        }
+      }
       setSelectedWorkspaceSkillName(name);
-      navigate({ to: "/", search: { tab: undefined } });
+      navigate({ to: "/", search: { tab: tab ?? undefined } });
     },
-    [navigate, setSelectedWorkspaceSkillName],
+    [navigate, setSelectedWorkspaceSkillName, selectedWorkspaceSkillName],
   );
+
+  const handleSkillSwitchStay = useCallback(() => {
+    setPendingSkillSwitch(null);
+  }, []);
+
+  const handleSkillSwitchLeave = useCallback(() => {
+    if (!pendingSkillSwitch) return;
+    // Clean up running agents for the current skill
+    if (selectedWorkspaceSkillName) {
+      // Extract the bare skill name from the library key (strip prefix if present)
+      const parts = selectedWorkspaceSkillName.split(":");
+      const bareSkillName = parts[parts.length - 1];
+      cleanupSkillSidecar(bareSkillName).catch(() => {});
+    }
+    useRefineStore.getState().clearSession();
+    useAgentStore.getState().clearRuns();
+    setSelectedWorkspaceSkillName(pendingSkillSwitch);
+    const tab = pendingSkillSwitchTabRef.current;
+    setPendingSkillSwitch(null);
+    pendingSkillSwitchTabRef.current = undefined;
+    navigate({ to: "/", search: { tab: tab ?? undefined } });
+  }, [pendingSkillSwitch, selectedWorkspaceSkillName, setSelectedWorkspaceSkillName, navigate]);
+
 
   const selectedBuilderSkill = builderSkills.find(
     (s) => s.skill_source === "skill-builder" && (s.library_key ?? s.name) === selectedWorkspaceSkillName,
@@ -168,6 +218,9 @@ export function AppLayout() {
               onSelectSkill={handleSelectSkill}
               onCollapse={() => setPanelCollapsed(true)}
             />
+            {agentRunning && (
+              <div className="absolute inset-0 z-10 bg-background/50 cursor-not-allowed" title="Agent is running — finish or cancel before switching skills" />
+            )}
             <div
               className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 transition-colors"
               onMouseDown={handleResizeStart}
@@ -183,6 +236,26 @@ export function AppLayout() {
           : null}
       </main>
       <CloseGuard />
+      {pendingSkillSwitch && (
+        <Dialog open onOpenChange={(open) => { if (!open) handleSkillSwitchStay(); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Agent Running</DialogTitle>
+              <DialogDescription>
+                An agent is still running. Switching skills will cancel it.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleSkillSwitchStay}>
+                Stay
+              </Button>
+              <Button variant="destructive" onClick={handleSkillSwitchLeave}>
+                Switch
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
       {!splashDismissed && (
         <SplashScreen
           onDismiss={() => setSplashDismissed(true)}

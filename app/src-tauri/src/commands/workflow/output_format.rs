@@ -25,6 +25,13 @@ pub(crate) fn materialize_workflow_step_output_value(
         )
     })?;
 
+    log::info!(
+        "[materialize_step] step_id={} skill_root={} output_keys={:?}",
+        step_id,
+        skill_root.display(),
+        structured_output.as_object().map(|o| o.keys().collect::<Vec<_>>())
+    );
+
     match step_id {
         0 => {
             let parsed =
@@ -37,6 +44,11 @@ pub(crate) fn materialize_workflow_step_output_value(
                     parsed.status
                 ));
             }
+
+            log::info!(
+                "[materialize_step] step=0 research_output keys={:?}",
+                parsed.research_output.as_object().map(|o| o.keys().collect::<Vec<_>>())
+            );
 
             validate_clarifications_json(&parsed.research_output)
                 .map_err(|e| format!("Invalid research_output: {}", e))?;
@@ -65,6 +77,11 @@ pub(crate) fn materialize_workflow_step_output_value(
                     parsed.status
                 ));
             }
+
+            log::info!(
+                "[materialize_step] step=1 clarifications_json keys={:?}",
+                parsed.clarifications_json.as_object().map(|o| o.keys().collect::<Vec<_>>())
+            );
 
             validate_clarifications_json(&parsed.clarifications_json)
                 .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
@@ -379,10 +396,11 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
         .as_object()
         .ok_or_else(|| "answer_evaluation must be a JSON object".to_string())?;
 
-    let verdict = root
+    let verdict_str = root
         .get("verdict")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "answer_evaluation.verdict must be a string".to_string())?;
+        .and_then(super::coerce_to_string)
+        .ok_or_else(|| "answer_evaluation.verdict must be present".to_string())?;
+    let verdict = verdict_str.as_str();
     if !["sufficient", "mixed", "insufficient"].contains(&verdict) {
         return Err(
             "answer_evaluation.verdict must be one of sufficient|mixed|insufficient".to_string(),
@@ -396,15 +414,16 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
         "contradictory_count",
         "total_count",
     ] {
-        if root.get(field).and_then(|v| v.as_i64()).is_none() {
+        if root.get(field).and_then(super::coerce_to_i64).is_none() {
             return Err(format!("answer_evaluation.{} must be an integer", field));
         }
     }
 
-    let reasoning = root
+    let reasoning_str = root
         .get("reasoning")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "answer_evaluation.reasoning must be a string".to_string())?;
+        .and_then(super::coerce_to_string)
+        .ok_or_else(|| "answer_evaluation.reasoning must be present".to_string())?;
+    let reasoning = reasoning_str.as_str();
     if reasoning.trim().is_empty() {
         return Err("answer_evaluation.reasoning must not be empty".to_string());
     }
@@ -417,18 +436,19 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
         let obj = entry
             .as_object()
             .ok_or_else(|| format!("answer_evaluation.per_question[{}] must be an object", idx))?;
-        if obj.get("question_id").and_then(|v| v.as_str()).is_none() {
+        if obj.get("question_id").and_then(super::coerce_to_string).is_none() {
             return Err(format!(
                 "answer_evaluation.per_question[{}].question_id must be a string",
                 idx
             ));
         }
-        let pq_verdict = obj.get("verdict").and_then(|v| v.as_str()).ok_or_else(|| {
+        let pq_verdict_str = obj.get("verdict").and_then(super::coerce_to_string).ok_or_else(|| {
             format!(
-                "answer_evaluation.per_question[{}].verdict must be a string",
+                "answer_evaluation.per_question[{}].verdict must be present",
                 idx
             )
         })?;
+        let pq_verdict = pq_verdict_str.as_str();
         if !["clear", "needs_refinement", "not_answered", "vague", "contradictory"].contains(&pq_verdict) {
             return Err(format!(
                 "answer_evaluation.per_question[{}].verdict is invalid",
@@ -436,13 +456,13 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
             ));
         }
         if pq_verdict == "vague" || pq_verdict == "contradictory" {
-            let reason = obj.get("reason").and_then(|v| v.as_str()).ok_or_else(|| {
+            let reason_str = obj.get("reason").and_then(super::coerce_to_string).ok_or_else(|| {
                 format!(
                     "answer_evaluation.per_question[{}].reason is required for {} verdict",
                     idx, pq_verdict
                 )
             })?;
-            if reason.trim().is_empty() {
+            if reason_str.trim().is_empty() {
                 return Err(format!(
                     "answer_evaluation.per_question[{}].reason must not be empty",
                     idx
@@ -452,7 +472,8 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
     }
 
     // gate_decision is optional (may be absent in fallback error outputs) but must be valid when present.
-    if let Some(gd) = root.get("gate_decision").and_then(|v| v.as_str()) {
+    if let Some(gd_str) = root.get("gate_decision").and_then(super::coerce_to_string) {
+        let gd = gd_str.as_str();
         if !["run_research", "revise"].contains(&gd) {
             return Err(format!(
                 "answer_evaluation.gate_decision must be one of run_research|revise (got '{}')",

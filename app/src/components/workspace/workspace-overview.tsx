@@ -4,8 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import SkillDialog from "@/components/skill-dialog";
 import { BenchmarkOverviewCard } from "@/components/workspace/benchmark-overview-card";
+import { VersionDiffDialog } from "@/components/workspace/version-diff-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getSkillHistory, readLatestBenchmark } from "@/lib/tauri";
+import { getSkillHistory, listSkills, readLatestBenchmark } from "@/lib/tauri";
+import { useSkillStore } from "@/stores/skill-store";
 import type { BenchmarkData, SkillSummary, ImportedSkill, Purpose, SkillCommit, EditableSkill } from "@/lib/types";
 import { PURPOSE_LABELS, toEditableSkill } from "@/lib/types";
 
@@ -51,19 +53,14 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   const [showAllCommits, setShowAllCommits] = useState(false);
   const [benchmarkData, setBenchmarkData] = useState<BenchmarkData | null>(null);
   const [benchmarkIteration, setBenchmarkIteration] = useState<number | null>(null);
+  const [selectedShas, setSelectedShas] = useState<string[]>([]);
+  const [diffDialogOpen, setDiffDialogOpen] = useState(false);
   const workspacePath = useSettingsStore((s) => s.workspacePath);
+  const latestVersion = useSkillStore((s) => s.latestVersion);
 
   const isBuilderSkill = "name" in skill;
   const skillName = isBuilderSkill ? skill.name : skill.skill_name;
-
-  useEffect(() => {
-    if (!workspacePath || !skillName) return;
-    getSkillHistory(workspacePath, skillName, 50)
-      .then((result) => setCommits(result ?? []))
-      .catch((err) => {
-        console.warn("event=skill_history_fetch_failed skill=%s error=%s", skillName, err);
-      });
-  }, [workspacePath, skillName]);
+  const pluginSlug = skill.plugin_slug;
 
   useEffect(() => {
     if (!isBuilderSkill || !workspacePath || !skillName) {
@@ -91,10 +88,20 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
     return () => { cancelled = true; };
   }, [isBuilderSkill, workspacePath, skillName]);
 
+  const { created, modified } = getSkillDates(skill);
+
+  useEffect(() => {
+    if (!workspacePath || !skillName || !pluginSlug) return;
+    getSkillHistory(workspacePath, skillName, pluginSlug, 50)
+      .then((result) => setCommits(result ?? []))
+      .catch((err) => {
+        console.warn("event=skill_history_fetch_failed skill=%s plugin=%s error=%s", skillName, pluginSlug, err);
+      });
+  }, [workspacePath, skillName, pluginSlug, latestVersion]);
+
   const purpose = skill.purpose;
   const description = isBuilderSkill ? skill.description : skill.description;
   const tags = isBuilderSkill ? skill.tags : [];
-  const { created, modified } = getSkillDates(skill);
 
   const canEdit = !!workspacePath && !!skillName;
   const visibleCommits = showAllCommits ? commits : commits.slice(0, 5);
@@ -154,7 +161,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
 
           {description && (
             <div className="space-y-0.5">
-              <p className="text-xs text-muted-foreground">Description</p>
+              <p className="text-xs text-muted-foreground">What the skill does</p>
               <p className="text-sm">{description}</p>
             </div>
           )}
@@ -211,31 +218,62 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
 
       {/* Version History card */}
       <div className="rounded-lg border bg-card p-4">
-        <h3 className="text-sm font-semibold mb-3">Version History</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold">Version History</h3>
+          {selectedShas.length === 2 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDiffDialogOpen(true)}
+            >
+              Compare
+            </Button>
+          )}
+        </div>
         {commits.length === 0 ? (
           <p className="text-sm text-muted-foreground">No version history yet</p>
         ) : (
           <div className="space-y-2">
-            {visibleCommits.map((commit) => (
-              <div key={commit.sha} className="flex items-start gap-2 text-sm">
-                <span className="font-mono shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs">
-                  {commit.sha.slice(0, 7)}
-                </span>
-                {commit.version && (
-                  <span
-                    className="shrink-0 rounded-full text-xs font-medium px-2 py-0.5"
-                    style={{
-                      color: "var(--color-seafoam)",
-                      background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
+            {visibleCommits.map((commit) => {
+              const isSelected = selectedShas.includes(commit.sha);
+              return (
+                <div key={commit.sha} className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 shrink-0 cursor-pointer accent-foreground"
+                    checked={isSelected}
+                    onChange={() => {
+                      setSelectedShas((prev) => {
+                        if (prev.includes(commit.sha)) {
+                          return prev.filter((s) => s !== commit.sha);
+                        }
+                        if (prev.length >= 2) {
+                          return [prev[1], commit.sha];
+                        }
+                        return [...prev, commit.sha];
+                      });
                     }}
-                  >
-                    v{commit.version}
+                    aria-label={`Select commit ${commit.sha.slice(0, 7)} for comparison`}
+                  />
+                  <span className="font-mono shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs">
+                    {commit.sha.slice(0, 7)}
                   </span>
-                )}
-                <span className="min-w-0 truncate">{formatCommitMessage(commit.message)}</span>
-                <span className="shrink-0 text-muted-foreground">{formatRelativeDate(commit.timestamp)}</span>
-              </div>
-            ))}
+                  {commit.version && (
+                    <span
+                      className="shrink-0 rounded-full text-xs font-medium px-2 py-0.5"
+                      style={{
+                        color: "var(--color-seafoam)",
+                        background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
+                      }}
+                    >
+                      v{commit.version}
+                    </span>
+                  )}
+                  <span className="min-w-0 truncate">{formatCommitMessage(commit.message)}</span>
+                  <span className="shrink-0 text-muted-foreground">{formatRelativeDate(commit.timestamp)}</span>
+                </div>
+              );
+            })}
             {commits.length > 5 && !showAllCommits && (
               <button
                 type="button"
@@ -255,9 +293,42 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
           skill={isBuilderSkill ? (skill as EditableSkill) : toEditableSkill(skill as ImportedSkill)}
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
-          onSaved={() => setEditDialogOpen(false)}
+          onSaved={() => {
+            setEditDialogOpen(false);
+            if (workspacePath) {
+              listSkills(workspacePath).then(useSkillStore.getState().setSkills).catch(() => {});
+            }
+          }}
         />
       )}
+
+      {diffDialogOpen && selectedShas.length === 2 && workspacePath && (() => {
+        // Always show older → newer regardless of selection order
+        const commitA = commits.find((c) => c.sha === selectedShas[0]);
+        const commitB = commits.find((c) => c.sha === selectedShas[1]);
+        const [olderSha, newerSha, olderCommit, newerCommit] =
+          commitA && commitB && new Date(commitA.timestamp) > new Date(commitB.timestamp)
+            ? [selectedShas[1], selectedShas[0], commitB, commitA]
+            : [selectedShas[0], selectedShas[1], commitA, commitB];
+        const makeLabel = (sha: string, commit: typeof commitA) =>
+          commit?.version ? `v${commit.version}` : sha.slice(0, 7);
+        return (
+          <VersionDiffDialog
+            open={diffDialogOpen}
+            onOpenChange={(open) => {
+              setDiffDialogOpen(open);
+              if (!open) setSelectedShas([]);
+            }}
+            skillName={skillName}
+            pluginSlug={pluginSlug}
+            workspacePath={workspacePath}
+            shaA={olderSha}
+            shaB={newerSha}
+            labelA={makeLabel(olderSha, olderCommit)}
+            labelB={makeLabel(newerSha, newerCommit)}
+          />
+        );
+      })()}
     </div>
   );
 }

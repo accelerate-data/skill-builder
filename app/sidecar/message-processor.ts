@@ -479,6 +479,9 @@ export class MessageProcessor {
         process.stderr.write(
           `[message-processor] event=emit_display_item item_type=output id=${item.id} len=${b.text.length}\n`,
         );
+        // Log text content to stderr for debugging. Trim to 2000 chars to avoid log bloat.
+        const textPreview = b.text.length > 2000 ? b.text.slice(0, 2000) + "…" : b.text;
+        process.stderr.write(`[message-processor] debug=output_text content=${textPreview}\n`);
 
         if (parentToolUseId) {
           this.addToSubagentAndEmitUpdate(parentToolUseId, item, results);

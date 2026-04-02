@@ -119,6 +119,7 @@ pub(crate) fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Resu
 pub(crate) fn get_refine_diff_for_commit_range_inner(
     skill_name: &str,
     skills_path: &str,
+    plugin_slug: &str,
     from_sha: &str,
     to_sha: &str,
 ) -> Result<RefineDiff, String> {
@@ -143,7 +144,7 @@ pub(crate) fn get_refine_diff_for_commit_range_inner(
         .tree()
         .map_err(|e| format!("Failed to get tree for {}: {}", to_sha, e))?;
 
-    let prefix = format!("{}/", skill_name);
+    let prefix = format!("{}/{}/", plugin_slug, skill_name);
     let mut opts = DiffOptions::new();
     opts.pathspec(&prefix);
 

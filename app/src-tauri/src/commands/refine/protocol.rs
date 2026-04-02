@@ -57,6 +57,7 @@ pub(super) fn load_refine_runtime_settings(
     db: &Db,
     workspace_path: &str,
     skill_name: &str,
+    _plugin_slug: &str,
 ) -> Result<RefineRuntimeSettings, String> {
     // Resolve plugin slug before acquiring conn to avoid re-entrant lock deadlock.
     let plugin_slug = super::resolve_skill_plugin_slug(db, skill_name)?;
@@ -164,6 +165,7 @@ pub(super) fn build_refine_config(
 
     let config = SidecarConfig {
         prompt,
+        system_prompt: None,
         betas: crate::commands::workflow::build_betas(
             thinking_budget,
             &model,
@@ -171,7 +173,8 @@ pub(super) fn build_refine_config(
         ),
         model: Some(model),
         api_key,
-        cwd,
+        workspace_root_dir: cwd.clone(),
+        workspace_skill_dir: cwd,
         allowed_tools: Some(vec![
             "Read".into(), "Write".into(), "Edit".into(),
             "Glob".into(), "Grep".into(), "Bash".into(),
@@ -196,6 +199,7 @@ pub(super) fn build_refine_config(
             "skill-content-researcher".to_string(),
             "skill-creator".to_string(),
         ]),
+        setting_sources: None,
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
         step_id: Some(-10),
@@ -255,9 +259,11 @@ pub(super) fn build_followup_prompt_for_plugin(
     prompt
 }
 
+/// The refine-initial.txt template, embedded at compile time.
+const REFINE_PROMPT_TEMPLATE: &str = include_str!("../../../../../agent-sources/workspace/prompts/refine-initial.txt");
+
 /// Build the initial refine prompt using a pre-resolved skill output directory.
-/// Use this instead of `build_refine_prompt_for_plugin` when the output dir is
-/// already known (e.g. `disk_path` for imported/marketplace skills).
+/// Uses the refine-initial.txt template with variable substitution.
 pub(super) fn build_refine_prompt_with_output_dir(
     skill_name: &str,
     workspace_path: &str,
@@ -266,7 +272,6 @@ pub(super) fn build_refine_prompt_with_output_dir(
     user_message: &str,
     target_files: Option<&[String]>,
 ) -> String {
-    // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
     let workspace_dir = crate::skill_paths::workspace_skill_dir(
         Path::new(workspace_path),
         plugin_slug,
@@ -274,32 +279,24 @@ pub(super) fn build_refine_prompt_with_output_dir(
     );
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
+    let context_str = format!("{}/context", workspace_str);
 
-    let mut prompt = format!(
-        "The skill name is: {skill_name}. \
-         The workspace directory is: \"{workspace_str}\". \
-         The skill output directory (SKILL.md and references/) is: \"{skill_output_str}\". \
-         Derive context_dir as \"{workspace_str}/context\". \
-         Derive eval_dir as \"{workspace_str}/evals\". \
-         Derive eval_results_dir as \"{workspace_str}/evals/workspace\". \
-         All directories already exist — never create directories with mkdir or any other method.\n\n\
-         ROUTING:\n\
-         - For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.\n\
-         - CONSTRAINT: You may only refine, evaluate, benchmark, or validate the existing skill '{skill_name}'. Do NOT create new skills. \
-         If the user asks to create a new skill, decline and direct them to the dashboard.",
-    );
+    let target_files_clause = match target_files {
+        Some(files) if !files.is_empty() => format!(
+            "\n\nIMPORTANT: Only edit these files (relative to skill output directory): {}. Do not modify any other files.",
+            files.join(", ")
+        ),
+        _ => String::new(),
+    };
 
-    if let Some(files) = target_files {
-        if !files.is_empty() {
-            prompt.push_str(&format!(
-                "\n\nIMPORTANT: Only edit these files (relative to skill output directory): {}. Do not modify any other files.",
-                files.join(", ")
-            ));
-        }
-    }
-
-    prompt.push_str(&format!("\n\nCurrent request: {}", user_message));
-    prompt
+    REFINE_PROMPT_TEMPLATE
+        .replace("{{skill_name}}", skill_name)
+        .replace("{{command}}", user_message)
+        .replace("{{skill_dir}}", &skill_output_str)
+        .replace("{{context_dir}}", &context_str)
+        .replace("{{workspace_dir}}", &workspace_str)
+        .replace("{{target_files_clause}}", &target_files_clause)
+        .replace("{{user_message}}", user_message)
 }
 
 /// Build a follow-up prompt using a pre-resolved skill output directory.
@@ -358,35 +355,13 @@ pub(super) fn build_refine_prompt_for_plugin(
     user_message: &str,
     target_files: Option<&[String]>,
 ) -> String {
-    let workspace_dir = crate::skill_paths::resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
-    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
-
-    let mut prompt = format!(
-        "The skill name is: {skill_name}. \
-         The workspace directory is: \"{workspace_str}\". \
-         The skill output directory (SKILL.md and references/) is: \"{skill_output_str}\". \
-         Derive context_dir as \"{workspace_str}/context\". \
-         Derive eval_dir as \"{workspace_str}/evals\". \
-         Derive eval_results_dir as \"{workspace_str}/evals/workspace\". \
-         All directories already exist — never create directories with mkdir or any other method.\n\n\
-         ROUTING:\n\
-         - For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.\n\
-         - CONSTRAINT: You may only refine, evaluate, benchmark, or validate the existing skill '{skill_name}'. Do NOT create new skills. \
-         If the user asks to create a new skill, decline and direct them to the dashboard.",
-    );
-
-    if let Some(files) = target_files {
-        if !files.is_empty() {
-            prompt.push_str(&format!(
-                "\n\nIMPORTANT: Only edit these files (relative to skill output directory): {}. Do not modify any other files.",
-                files.join(", ")
-            ));
-        }
-    }
-
-    prompt.push_str(&format!("\n\nCurrent request: {}", user_message));
-
-    prompt
+    build_refine_prompt_with_output_dir(
+        skill_name,
+        workspace_path,
+        plugin_slug,
+        &skill_output_dir,
+        user_message,
+        target_files,
+    )
 }

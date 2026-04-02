@@ -9,11 +9,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 /**
- * Discover all installed plugins under <cwd>/.claude/plugins/.
+ * Discover all installed plugins under <rootDir>/.claude/plugins/.
  * Returns an absolute path for each subdirectory found there.
  */
-export async function discoverInstalledPlugins(cwd: string): Promise<string[]> {
-  const pluginsDir = path.join(cwd, ".claude", "plugins");
+export async function discoverInstalledPlugins(rootDir: string): Promise<string[]> {
+  const pluginsDir = path.join(rootDir, ".claude", "plugins");
   try {
     const entries = await fs.readdir(pluginsDir, { withFileTypes: true });
     return entries
@@ -83,8 +83,8 @@ export async function runAgentRequest(
     linkExternalSignal(state, externalSignal);
   }
 
-  // Discover all installed plugins so every plugin agent is available to the SDK.
-  const discoveredPluginPaths = await discoverInstalledPlugins(config.cwd);
+  // Discover plugins from the workspace root where .claude/plugins/ lives.
+  const discoveredPluginPaths = await discoverInstalledPlugins(config.workspaceRootDir);
   const pluginPaths = selectPluginPaths(discoveredPluginPaths, config.requiredPlugins);
 
   // Route SDK subprocess stderr through onMessage so it gets wrapped with

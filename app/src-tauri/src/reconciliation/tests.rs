@@ -189,7 +189,7 @@ fn test_marketplace_plugin_deleted_when_skill_md_missing() {
     let plugin_slug = "test-marketplace";
     crate::db::ensure_plugin(&conn, plugin_slug, "Test Marketplace", "marketplace", None, None, false).unwrap();
     crate::db::upsert_skill_in_plugin(&conn, "some-skill", "marketplace", "domain", plugin_slug).unwrap();
-    let plugin_skills = skills_tmp.path().join(plugin_slug).join("skills").join("some-skill");
+    let plugin_skills = skills_tmp.path().join(plugin_slug).join("some-skill");
     std::fs::create_dir_all(&plugin_skills).unwrap();
     // Deliberately NOT creating SKILL.md — simulates tampering
 
@@ -959,7 +959,7 @@ fn test_resolve_orphan_delete() {
     let conn = create_test_db();
 
     crate::db::save_workflow_run(&conn, "orphan", 7, "completed", "domain").unwrap();
-    let output_dir = tmp.path().join("orphan");
+    let output_dir = tmp.path().join(crate::skill_paths::DEFAULT_PLUGIN_SLUG).join("orphan");
     std::fs::create_dir_all(output_dir.join("references")).unwrap();
     std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 

@@ -62,7 +62,7 @@ test.describe("Desktop Smoke", { tag: "@desktop-smoke" }, () => {
     await page.getByRole("textbox", { name: "Skill Name" }).fill("smoke-skill");
     await page.getByRole("combobox", { name: /what are you trying to capture/i }).click();
     await page.getByRole("option", { name: /business process knowledge/i }).click();
-    await page.getByRole("textbox", { name: "Description" }).fill("Smoke test skill.");
+    await page.getByRole("textbox", { name: /what the skill does/i }).fill("Smoke test skill.");
 
     // Advance to step 2 (confirmation)
     await expect(page.getByRole("button", { name: "Next" })).toBeEnabled({ timeout: 3_000 });

@@ -238,7 +238,7 @@ pub(crate) async fn import_single_skill(
     }
 
     // Check if skill directory already exists on disk
-    let dest_dir = crate::skill_paths::nested_skill_dir(skills_root, plugin_slug, &skill_name);
+    let dest_dir = crate::skill_paths::resolve_skill_dir(skills_root, plugin_slug, &skill_name);
     if dest_dir.exists() {
         if overwrite {
             log::debug!(

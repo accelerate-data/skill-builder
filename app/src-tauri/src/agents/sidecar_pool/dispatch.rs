@@ -549,16 +549,12 @@ impl SidecarPool {
         events::handle_sidecar_message(app_handle, agent_id, &config_event.to_string());
         let transcript_first_line = build_transcript_first_line(&config);
 
-        // Create per-request JSONL transcript file alongside chat storage:
-        //   {cwd}/logs/{step_label}-{iso_timestamp}.jsonl
-        //
-        // config.cwd is already the skill root (workspace/{plugin_slug}/{skill_name}),
-        // so the logs directory is simply cwd/logs.
+        // Create per-request JSONL transcript file:
+        //   {workspace_skill_dir}/logs/{step_label}-{iso_timestamp}.jsonl
         //
         // When transcript_log_dir is set, transcripts are written there instead.
-        // This allows agents whose cwd differs from the workspace (e.g. test
-        // baseline agents running in a temp dir) to still log under the skill's
-        // standard log directory.
+        // This allows agents whose workspace differs (e.g. test baseline agents
+        // running in a temp dir) to still log under the skill's standard log directory.
         //
         // The step_label is extracted from agent_id which has the format:
         //   {skill_name}-{label}-{timestamp_ms}
@@ -569,7 +565,7 @@ impl SidecarPool {
             let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
             let log_dir = match transcript_log_dir {
                 Some(dir) => PathBuf::from(dir),
-                None => Path::new(&config.cwd).join("logs"),
+                None => Path::new(&config.workspace_skill_dir).join("logs"),
             };
             let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
 
@@ -798,7 +794,7 @@ impl SidecarPool {
             let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
             let log_dir = match &config.transcript_log_dir {
                 Some(dir) => std::path::PathBuf::from(dir),
-                None => Path::new(&config.cwd).join("logs"),
+                None => Path::new(&config.workspace_skill_dir).join("logs"),
             };
             let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
 
@@ -1222,9 +1218,11 @@ mod tests {
     fn sample_config() -> SidecarConfig {
         SidecarConfig {
             prompt: "Top secret prompt".to_string(),
+            system_prompt: None,
             model: Some("claude-sonnet-4".to_string()),
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            cwd: "/tmp/skill-builder".to_string(),
+            workspace_root_dir: "/tmp/skill-builder".to_string(),
+            workspace_skill_dir: "/tmp/skill-builder".to_string(),
             allowed_tools: Some(vec!["Read".to_string()]),
             max_turns: Some(3),
             permission_mode: None,
@@ -1237,6 +1235,7 @@ mod tests {
             path_to_claude_code_executable: None,
             agent_name: Some("worker".to_string()),
             required_plugins: None,
+            setting_sources: None,
             conversation_history: None,
             skill_name: Some("demo-skill".to_string()),
             step_id: Some(1),
@@ -1254,7 +1253,8 @@ mod tests {
         assert_eq!(event["type"], "config");
         assert_eq!(event["config"]["apiKey"], "[REDACTED]");
         assert!(event["config"].get("prompt").is_none());
-        assert_eq!(event["config"]["cwd"], "/tmp/skill-builder");
+        assert_eq!(event["config"]["workspaceRootDir"], "/tmp/skill-builder");
+        assert_eq!(event["config"]["workspaceSkillDir"], "/tmp/skill-builder");
     }
 
     #[test]

@@ -53,9 +53,9 @@ function releaseSkillResources(skillName: string, reason: string): void {
 }
 
 /** Load skill files from disk, returning null on failure. */
-async function loadSkillFiles(basePath: string, skillName: string): Promise<SkillFile[] | null> {
+async function loadSkillFiles(basePath: string, skillName: string, pluginSlug: string): Promise<SkillFile[] | null> {
   try {
-    const contents = await getSkillContentForRefine(skillName, basePath);
+    const contents = await getSkillContentForRefine(skillName, basePath, pluginSlug);
     return contents
       .map((c): SkillFile => ({ filename: c.path, content: c.content }))
       .sort((a, b) => {
@@ -190,7 +190,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
       if (workspacePath) {
         try {
-          const session = await startRefineSession(s.name, workspacePath);
+          const session = await startRefineSession(s.name, workspacePath, s.plugin_slug);
           useRefineStore.getState().setSessionId(session.session_id);
           useRefineStore.getState().setAvailableAgents(session.available_agents ?? []);
         } catch (err) {
@@ -200,7 +200,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           return;
         }
 
-        const files = await loadSkillFiles(workspacePath, s.name);
+        const files = await loadSkillFiles(workspacePath, s.name, s.plugin_slug);
         if (files) {
           store.setSkillFiles(files);
           store.setGitDiff(null);
@@ -251,6 +251,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           sessionId,
           text,
           workspacePath,
+          selectedSkill.plugin_slug,
           targetFiles,
         );
 
@@ -389,6 +390,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           const finalized = await finalizeRefineRun(
             completionSkill.name,
             workspacePath,
+            completionSkill.plugin_slug,
             hasStructuredObject ? structuredOutput : undefined,
           );
           store.updateSkillFiles(
@@ -403,7 +405,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           }
         } catch {
           try {
-            const files = await loadSkillFiles(workspacePath, completionSkill.name);
+            const files = await loadSkillFiles(workspacePath, completionSkill.name, completionSkill.plugin_slug);
             if (files) {
               store.updateSkillFiles(files);
               store.setGitDiff(null);
@@ -416,8 +418,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           }
         }
       } else if (workspacePath && completionSkill) {
-        await cleanBenchmarkSnapshot(completionSkill.name, workspacePath).catch(() => {});
-        const files = await loadSkillFiles(workspacePath, completionSkill.name);
+        await cleanBenchmarkSnapshot(completionSkill.name, workspacePath, completionSkill.plugin_slug).catch(() => {});
+        const files = await loadSkillFiles(workspacePath, completionSkill.name, completionSkill.plugin_slug);
         if (files) {
           store.updateSkillFiles(files);
           store.setGitDiff(null);

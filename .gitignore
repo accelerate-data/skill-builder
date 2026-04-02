@@ -7,6 +7,9 @@ node_modules/
 # Allow mock-template context/ dirs (bundled test fixtures, not user output)
 !app/sidecar/mock-templates/**/context/
 
+# Draft docs (local review only)
+docs/test-strategy.md
+
 # Test results
 app/test-results/
 app/src-tauri/test-results/

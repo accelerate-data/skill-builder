@@ -1,9 +1,64 @@
 use crate::db::Db;
-use crate::skill_paths::{ensure_nested_skill_dir, resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{ensure_nested_skill_dir, resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
 use std::fs;
 use std::path::Path;
 
 use super::helpers::validate_skill_name;
+
+/// Move a directory from `source` to `target`. Tries `fs::rename` first; on
+/// failure (common on Windows when a process holds a directory handle), falls
+/// back to a recursive copy + delete.
+pub(crate) fn move_dir_fallback(source: &Path, target: &Path) -> Result<(), String> {
+    match fs::rename(source, target) {
+        Ok(()) => Ok(()),
+        Err(rename_err) => {
+            log::warn!(
+                "[move_dir] rename failed ('{}' -> '{}': {}), falling back to copy+delete",
+                source.display(),
+                target.display(),
+                rename_err
+            );
+            copy_dir_recursive(source, target).map_err(|e| {
+                format!(
+                    "Failed to move '{}' -> '{}': rename failed ({}), copy also failed ({})",
+                    source.display(),
+                    target.display(),
+                    rename_err,
+                    e
+                )
+            })?;
+            // Best-effort delete of source; non-fatal if it fails since the
+            // copy already succeeded and the data is at the target.
+            if let Err(e) = fs::remove_dir_all(source) {
+                log::warn!(
+                    "[move_dir] copy succeeded but failed to remove source '{}': {}",
+                    source.display(),
+                    e
+                );
+            }
+            Ok(())
+        }
+    }
+}
+
+fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
+    for entry in walkdir::WalkDir::new(source) {
+        let entry = entry.map_err(|e| format!("walkdir error: {}", e))?;
+        let rel = entry
+            .path()
+            .strip_prefix(source)
+            .map_err(|e| format!("strip_prefix error: {}", e))?;
+        let dest = target.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&dest)
+                .map_err(|e| format!("mkdir '{}': {}", dest.display(), e))?;
+        } else {
+            fs::copy(entry.path(), &dest)
+                .map_err(|e| format!("copy '{}' -> '{}': {}", entry.path().display(), dest.display(), e))?;
+        }
+    }
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------
 // delete_imported_skill
@@ -112,14 +167,14 @@ fn move_skill_directories(
     let mut skills_target = None;
 
     if let Some(workspace_path) = workspace_path {
-        let source = resolve_skill_dir(Path::new(workspace_path), from_plugin_slug, skill_name);
+        let source = resolve_workspace_skill_dir(Path::new(workspace_path), from_plugin_slug, skill_name);
         if source.exists() {
             let target = ensure_nested_skill_dir(Path::new(workspace_path), to_plugin_slug, skill_name)?;
             if let Some(parent) = target.parent() {
                 fs::create_dir_all(parent).map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
             }
-            fs::rename(&source, &target)
-                .map_err(|e| format!("Failed to move workspace dir '{}' -> '{}': {}", source.display(), target.display(), e))?;
+            move_dir_fallback(&source, &target)
+                .map_err(|e| format!("Failed to move workspace dir: {}", e))?;
             workspace_target = Some(target.to_string_lossy().to_string());
         }
     }
@@ -131,8 +186,8 @@ fn move_skill_directories(
             if let Some(parent) = target.parent() {
                 fs::create_dir_all(parent).map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
             }
-            fs::rename(&source, &target)
-                .map_err(|e| format!("Failed to move skills dir '{}' -> '{}': {}", source.display(), target.display(), e))?;
+            move_dir_fallback(&source, &target)
+                .map_err(|e| format!("Failed to move skills dir: {}", e))?;
             skills_target = Some(target.to_string_lossy().to_string());
         }
     }

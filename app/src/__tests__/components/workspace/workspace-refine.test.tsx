@@ -55,6 +55,7 @@ const refineStoreState = vi.hoisted(() => ({
   setSessionId: vi.fn(),
   setRunning: vi.fn(),
   setActiveAgentId: vi.fn(),
+  setAvailableAgents: vi.fn(),
   addUserMessage: vi.fn(),
   addAgentTurn: vi.fn(),
   updateSkillFiles: vi.fn(),
@@ -171,7 +172,7 @@ describe("WorkspaceRefine", () => {
       renderRefine(skill);
     });
 
-    expect(tauriMocks.startRefineSession).toHaveBeenCalledWith("my-skill", "/workspace");
+    expect(tauriMocks.startRefineSession).toHaveBeenCalledWith("my-skill", "/workspace", "skills");
   });
 
   it("calls closeRefineSession and startRefineSession when skill prop changes", async () => {
@@ -195,7 +196,7 @@ describe("WorkspaceRefine", () => {
     });
 
     expect(tauriMocks.closeRefineSession).toHaveBeenCalledWith("session-1");
-    expect(tauriMocks.startRefineSession).toHaveBeenCalledWith("skill-b", "/workspace");
+    expect(tauriMocks.startRefineSession).toHaveBeenCalledWith("skill-b", "/workspace", "skills");
   });
 
   it("calls closeRefineSession on unmount", async () => {

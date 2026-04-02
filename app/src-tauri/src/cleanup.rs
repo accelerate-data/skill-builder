@@ -293,8 +293,8 @@ mod tests {
         // Step 2
         create_step_output(tmp.path(), "my-skill", 2);
 
-        // Step 3 artifacts in legacy flat layout (resolve_skill_dir fallback)
-        let output_dir = skills_tmp.path().join("my-skill");
+        // Step 3 artifacts in canonical plugin layout
+        let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
         std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
@@ -350,8 +350,8 @@ mod tests {
         std::fs::write(skill_dir.join("evals/evals.json"), "{}").unwrap();
         std::fs::write(skill_dir.join("evals/eval-review.html"), "<html>").unwrap();
 
-        // Create skill output dir with SKILL.md in legacy flat layout
-        let output_dir = skills_tmp.path().join("my-skill");
+        // Create skill output dir with SKILL.md in canonical plugin layout
+        let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
@@ -449,8 +449,8 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        // Skill output in legacy flat skills_path (resolve_skill_dir fallback)
-        let output_dir = skills_tmp.path().join("my-skill");
+        // Skill output in canonical plugin layout
+        let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
         std::fs::write(output_dir.join("references/foo.md"), "ref").unwrap();
@@ -478,8 +478,8 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        // Only SKILL.md in legacy flat, no evals
-        let output_dir = skills_tmp.path().join("my-skill");
+        // Only SKILL.md in canonical plugin layout, no evals
+        let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(&output_dir).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
@@ -569,8 +569,8 @@ mod tests {
         create_step_output(tmp.path(), "my-skill", 0);
         create_step_output(tmp.path(), "my-skill", 2);
 
-        // Step 3 artifacts in legacy flat skills_path
-        let output_dir = skills_tmp.path().join("my-skill");
+        // Step 3 artifacts in canonical plugin layout
+        let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
         std::fs::write(output_dir.join("references/data-model.md"), "ref").unwrap();

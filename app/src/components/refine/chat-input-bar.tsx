@@ -271,6 +271,9 @@ export function ChatInputBar({
 }: ChatInputBarProps) {
   const [targetFiles, setTargetFiles] = useState<string[]>([]);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const onSendRef = useRef(onSend);
+  onSendRef.current = onSend;
+  const editorRef = useRef<ReturnType<typeof useEditor>>(null);
 
   // Keep a ref to the current options so the suggestion plugin reads fresh data.
   const optionsRef = useRef<MentionOption[]>([]);
@@ -343,11 +346,21 @@ export function ChatInputBar({
         class: "outline-none min-h-10 max-h-32 overflow-y-auto px-3 py-2 text-sm leading-relaxed",
         "data-testid": "refine-chat-input",
       },
-      handleKeyDown: (_, event) => {
+      handleKeyDown: (view, event) => {
         if (event.key === "Enter" && !event.shiftKey) {
           // Don't intercept if the suggestion popup is handling Enter
-          // The suggestion plugin returns true for Enter when active.
-          return false;
+          const popup = wrapperRef.current?.querySelector("[role='listbox']");
+          if (popup) return false;
+          // Send the message
+          const ed = view.state.doc;
+          if (!ed) return false;
+          if (!editorRef.current) return false;
+          const { text, targetFiles: files } = extractFromEditor(editorRef.current);
+          if (!text) return true; // consume Enter but don't send empty
+          onSendRef.current(text, files.length > 0 ? files : undefined);
+          editorRef.current?.commands.clearContent();
+          setTargetFiles([]);
+          return true;
         }
         return false;
       },
@@ -359,40 +372,14 @@ export function ChatInputBar({
     },
   });
 
-  // Handle Enter to send (registered as a Tiptap keyboard shortcut)
-  useEffect(() => {
-    if (!editor) return;
+  // Keep editor ref in sync for the handleKeyDown closure
+  useEffect(() => { editorRef.current = editor; }, [editor]);
 
-    const handleEnter = ({ editor: ed }: { editor: typeof editor }) => {
-      if (!ed) return false;
-      const { text, targetFiles: files } = extractFromEditor(ed);
-      if (!text) return false;
-      onSend(text, files.length > 0 ? files : undefined);
-      ed.commands.clearContent();
-      setTargetFiles([]);
-      return true;
-    };
-
-    // Register Enter as a keyboard shortcut
-    editor.setOptions({
-      editorProps: {
-        ...editor.options.editorProps,
-        handleKeyDown: (_view, event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            const popup = wrapperRef.current?.querySelector("[role='listbox']");
-            if (popup) return false;
-            return handleEnter({ editor });
-          }
-          return false;
-        },
-      },
-    });
-  }, [editor, onSend]);
-
-  // Prefilled value
+  // Prefilled value — convert plain-text newlines to HTML since TipTap setContent expects HTML
   useEffect(() => {
     if (prefilledValue && editor) {
-      editor.commands.setContent(prefilledValue);
+      const html = "<p>" + prefilledValue.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>") + "</p>";
+      editor.commands.setContent(html);
       useRefineStore.getState().setPendingInitialMessage(null);
     }
   }, [prefilledValue, editor]);

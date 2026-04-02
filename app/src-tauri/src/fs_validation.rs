@@ -51,7 +51,7 @@ pub fn detect_furthest_step_with_options(
 
     // Detectable steps: those that write unique output files.
     // Steps 0, 2 write context files to workspace_path/{plugin_slug}/skill_name/context/.
-    // Step 3 writes SKILL.md to skills_path/{plugin_slug}/skills/skill_name/.
+    // Step 3 writes SKILL.md to skills_path/{plugin_slug}/skill_name/.
     // Step 1 edits clarifications.json in-place (no unique artifact) — non-detectable.
     for step_id in [0u32, 2, 3] {
         let files = get_step_output_files(step_id);
@@ -146,9 +146,9 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
     }
 
-    /// Create step output files at skills_path/name/ (legacy flat, used as legacy_root).
+    /// Create step output files at skills_path/{SLUG}/name/ (canonical plugin layout).
     fn create_step_output(skills: &Path, name: &str, step_id: u32) {
-        let skill_dir = skills.join(name);
+        let skill_dir = skills.join(SLUG).join(name);
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
         for file in get_step_output_files(step_id) {
             let path = skill_dir.join(file);
@@ -211,9 +211,10 @@ mod tests {
         create_step_output(&skills, "my-skill", 1);
         create_step_output(&skills, "my-skill", 2);
 
-        // Step 3 output lives in skills_path (flat legacy fallback)
-        std::fs::create_dir_all(skills.join("my-skill")).unwrap();
-        std::fs::write(skills.join("my-skill").join("SKILL.md"), "# Skill").unwrap();
+        // Step 3 output lives in skills_path (canonical plugin layout)
+        let skill_output = skills.join(SLUG).join("my-skill");
+        std::fs::create_dir_all(&skill_output).unwrap();
+        std::fs::write(skill_output.join("SKILL.md"), "# Skill").unwrap();
 
         let step = detect_furthest_step(
             workspace.to_str().unwrap(),
@@ -244,8 +245,9 @@ mod tests {
         let skills = tmp.path().join("skills");
 
         std::fs::create_dir_all(workspace.join(SLUG).join("my-skill")).unwrap();
-        std::fs::create_dir_all(skills.join("my-skill")).unwrap();
-        std::fs::write(skills.join("my-skill").join("SKILL.md"), "# Skill").unwrap();
+        let skill_output = skills.join(SLUG).join("my-skill");
+        std::fs::create_dir_all(&skill_output).unwrap();
+        std::fs::write(skill_output.join("SKILL.md"), "# Skill").unwrap();
 
         let step = detect_furthest_step(
             workspace.to_str().unwrap(),
@@ -278,8 +280,9 @@ mod tests {
 
         std::fs::create_dir_all(workspace.join(SLUG).join("my-skill")).unwrap();
         // Simulate create_skill_inner: empty context/ and references/ dirs
-        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
-        std::fs::create_dir_all(skills.join("my-skill").join("references")).unwrap();
+        let skill_output = skills.join(SLUG).join("my-skill");
+        std::fs::create_dir_all(skill_output.join("context")).unwrap();
+        std::fs::create_dir_all(skill_output.join("references")).unwrap();
 
         // Only step 0 output files exist
         create_step_output(&skills, "my-skill", 0);
@@ -297,8 +300,8 @@ mod tests {
     #[test]
     fn test_has_skill_output_with_skill_md() {
         let tmp = tempfile::tempdir().unwrap();
-        // Legacy flat layout: skills_path/my-skill/SKILL.md
-        let output_dir = tmp.path().join("my-skill");
+        // Canonical plugin layout: skills_path/{SLUG}/my-skill/SKILL.md
+        let output_dir = tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(&output_dir).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
@@ -308,7 +311,7 @@ mod tests {
     #[test]
     fn test_has_skill_output_with_references() {
         let tmp = tempfile::tempdir().unwrap();
-        let output_dir = tmp.path().join("my-skill");
+        let output_dir = tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
 
         assert!(has_skill_output(SLUG, "my-skill", tmp.path().to_str().unwrap()));
@@ -317,7 +320,7 @@ mod tests {
     #[test]
     fn test_has_skill_output_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
+        std::fs::create_dir_all(tmp.path().join(SLUG).join("my-skill")).unwrap();
 
         assert!(!has_skill_output(SLUG, "my-skill", tmp.path().to_str().unwrap()));
     }
@@ -325,7 +328,7 @@ mod tests {
     #[test]
     fn test_has_skill_output_with_context() {
         let tmp = tempfile::tempdir().unwrap();
-        let output_dir = tmp.path().join("my-skill");
+        let output_dir = tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(output_dir.join("context")).unwrap();
 
         assert!(!has_skill_output(SLUG, "my-skill", tmp.path().to_str().unwrap()));

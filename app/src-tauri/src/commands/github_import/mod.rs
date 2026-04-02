@@ -1322,7 +1322,7 @@ mod tests {
             result
         );
         assert_eq!(result.as_ref().unwrap().skill_name, "override-name");
-        let expected_dir = crate::skill_paths::nested_skill_dir(
+        let expected_dir = crate::skill_paths::resolve_skill_dir(
             tmp.path(),
             crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             "override-name",
@@ -1360,7 +1360,7 @@ mod tests {
         .await
         .unwrap();
 
-        let skill_dir = crate::skill_paths::nested_skill_dir(
+        let skill_dir = crate::skill_paths::resolve_skill_dir(
             tmp.path(),
             crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             "my-skill",

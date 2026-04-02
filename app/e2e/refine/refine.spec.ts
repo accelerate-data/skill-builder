@@ -374,7 +374,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
 
     await page.getByRole("tab", { name: "Overview" }).click();
     await expect(page.getByRole("heading", { name: "Agent Running" })).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("A refine agent is still running. Switching tabs will abandon it.")).toBeVisible();
+    await expect(page.getByText("An agent is still running. Switching tabs will abandon the session.")).toBeVisible();
 
     await page.getByRole("button", { name: "Stay" }).click();
     await expect(page.getByRole("heading", { name: "Agent Running" })).not.toBeVisible();

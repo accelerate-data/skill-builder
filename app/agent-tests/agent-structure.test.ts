@@ -228,6 +228,27 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/"per_question"/);
     expect(content).toMatch(/"answered_count"/);
   });
+
+  it("evaluate-skill prompt template matches SDK-enforced schema", () => {
+    const content = fs.readFileSync(
+      path.join(REPO_ROOT, "agent-sources/workspace/prompts/eval-initial.txt"),
+      "utf8",
+    );
+    expect(content).toMatch(/"status":\s*"complete"/);
+    expect(content).toMatch(/"iteration"/);
+    expect(content).toMatch(/"results"/);
+  });
+
+  it("evaluate-skill prompt documents grading.json write paths", () => {
+    const content = fs.readFileSync(
+      path.join(REPO_ROOT, "agent-sources/workspace/prompts/eval-initial.txt"),
+      "utf8",
+    );
+    expect(content).toMatch(/grading\.json/);
+    expect(content).toMatch(/eval_dir/);
+    expect(content).toMatch(/with_skill\/grading\.json/);
+    expect(content).toMatch(/without_skill\/grading\.json/);
+  });
 });
 
 describe("detailed-research output contract", () => {
@@ -268,23 +289,6 @@ describe("skill-content-researcher plugin structure", () => {
     expect(manifest.name).toBe("skill-content-researcher");
     expect(manifest.version).toBeDefined();
     expect(manifest.description).toBeDefined();
-  });
-
-  it("wrapper skill is user-invocable and delegates to plugin agent", () => {
-    const wrapperPath = path.join(
-      pluginRoot,
-      "skills",
-      "skill-content-researcher",
-      "SKILL.md",
-    );
-    const content = fs.readFileSync(wrapperPath, "utf8");
-
-    const fm = frontmatter(wrapperPath);
-    expect(fm.name).toBe("skill-content-researcher");
-    expect(fm.user_invocable).toBe("true");
-
-    expect(content).toMatch(/AskUserQuestion/);
-    expect(content).toMatch(/skill-content-researcher:research-orchestrator/);
   });
 
   it("embedded research skill is internal-only (not user-invocable)", () => {
@@ -354,19 +358,11 @@ describe("skill-creator plugin structure", () => {
       resolveAgentPath("generate-skill"),
       "utf8",
     );
-    const benchmarkContent = fs.readFileSync(
-      path.join(pluginRoot, "skills", "skill-evaluator", "SKILL.md"),
-      "utf8",
-    );
-
     expect(content).toMatch(/Write the quantitative assertions at the same time as the prompts/i);
     expect(content).toMatch(/treat those fields and those assertions as fixed/i);
     expect(content).toMatch(/deterministic `slug`/i);
     expect(content).toMatch(/Do not rewrite `evals\/evals\.json` or `eval_metadata\.json` during the run/i);
     expect(generateSkillContent).toMatch(/must include a human-readable `eval_name`, a deterministic `slug`, and its fixed `expectations` at creation time/i);
-    expect(benchmarkContent).toMatch(/Validate every eval in `\{eval_dir\}\/evals\.json` before continuing/i);
-    expect(benchmarkContent).toMatch(/Treat `eval_name`, `slug`, and `expectations` as frozen benchmark inputs/i);
-    expect(benchmarkContent).toMatch(/If any eval is missing any required field, return immediately/i);
     expect(schemaContent).toMatch(/evals\[\]\.eval_name/);
     expect(schemaContent).toMatch(/evals\[\]\.slug/);
     expect(schemaContent).toMatch(/written at eval creation time and frozen for subsequent benchmark iterations/i);

@@ -1,0 +1,65 @@
+{
+  "skill_name": "mock-skill",
+  "comparison_mode": "with_without_skill",
+  "iteration": 1,
+  "run_count": 1,
+  "eval_ids": [3, 4],
+  "runs": [
+    {
+      "run_index": 0,
+      "evals": [
+        {
+          "eval_id": 3,
+          "eval_name": "dbt snapshot scd2 generation",
+          "slug": "dbt-snapshot-scd2-generation",
+          "grading_path": "evals/workspace/iteration-1/run-0/eval-3-dbt-snapshot-scd2-generation/with_skill/grading.json",
+          "summary": { "passed": 3, "failed": 1, "total": 4, "pass_rate": 0.75 }
+        },
+        {
+          "eval_id": 4,
+          "eval_name": "incremental intermediate layer model",
+          "slug": "incremental-intermediate-layer-model",
+          "grading_path": "evals/workspace/iteration-1/run-0/eval-4-incremental-intermediate-layer-model/with_skill/grading.json",
+          "summary": { "passed": 2, "failed": 2, "total": 4, "pass_rate": 0.5 }
+        }
+      ],
+      "run_summary": { "passed": 5, "failed": 3, "total": 8, "pass_rate": 0.625 }
+    }
+  ],
+  "baseline_runs": [
+    {
+      "run_index": 0,
+      "evals": [
+        {
+          "eval_id": 3,
+          "eval_name": "dbt snapshot scd2 generation",
+          "slug": "dbt-snapshot-scd2-generation",
+          "grading_path": "evals/workspace/iteration-1/run-0/eval-3-dbt-snapshot-scd2-generation/without_skill/grading.json",
+          "summary": { "passed": 2, "failed": 2, "total": 4, "pass_rate": 0.5 }
+        },
+        {
+          "eval_id": 4,
+          "eval_name": "incremental intermediate layer model",
+          "slug": "incremental-intermediate-layer-model",
+          "grading_path": "evals/workspace/iteration-1/run-0/eval-4-incremental-intermediate-layer-model/without_skill/grading.json",
+          "summary": { "passed": 1, "failed": 3, "total": 4, "pass_rate": 0.25 }
+        }
+      ],
+      "run_summary": { "passed": 3, "failed": 5, "total": 8, "pass_rate": 0.375 }
+    }
+  ],
+  "aggregate_summary": {
+    "avg_pass_rate": 0.625,
+    "total_passed": 5,
+    "total_failed": 3,
+    "total_assertions": 8,
+    "has_failures": true
+  },
+  "baseline_aggregate_summary": {
+    "avg_pass_rate": 0.375,
+    "total_passed": 3,
+    "total_failed": 5,
+    "total_assertions": 8,
+    "has_failures": true
+  }
+}

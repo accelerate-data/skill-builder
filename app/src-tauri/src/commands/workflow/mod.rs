@@ -17,7 +17,7 @@ pub(crate) use step_config::{build_betas, resolve_model_id};
 // deploy
 pub(crate) use deploy::{
     ensure_workspace_prompts_sync, invalidate_workspace_cache,
-    redeploy_agents, resolve_bundled_skills_dir,
+    redeploy_agents, resolve_bundled_plugins_dir, resolve_bundled_skills_dir,
     resolve_prompt_source_dirs_public,
 };
 
@@ -29,6 +29,35 @@ pub(crate) use evaluation::get_step_output_files;
 
 // user_context
 pub(crate) use user_context::write_user_context_file;
+
+// ── LLM output coercion helpers ─────────────────────────────────────────────
+// LLMs occasionally drift on JSON types: numbers as strings, strings as numbers,
+// bools as strings, etc. These helpers accept the canonical type first, then
+// fall back to the most common LLM drift.
+
+/// Coerce a JSON value to i64: accepts native integers or string-encoded integers.
+pub(crate) fn coerce_to_i64(v: &serde_json::Value) -> Option<i64> {
+    v.as_i64()
+        .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
+}
+
+/// Coerce a JSON value to String: accepts strings, or stringifies numbers/bools.
+pub(crate) fn coerce_to_string(v: &serde_json::Value) -> Option<String> {
+    v.as_str().map(|s| s.to_string()).or_else(|| match v {
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        serde_json::Value::Bool(b) => Some(b.to_string()),
+        _ => None,
+    })
+}
+
+/// Coerce a JSON value to bool: accepts bools or string "true"/"false".
+pub(crate) fn coerce_to_bool(v: &serde_json::Value) -> Option<bool> {
+    v.as_bool().or_else(|| match v.as_str() {
+        Some("true") => Some(true),
+        Some("false") => Some(false),
+        _ => None,
+    })
+}
 
 #[cfg(test)]
 mod tests;

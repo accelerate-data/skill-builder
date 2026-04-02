@@ -141,6 +141,9 @@ pub struct AppSettings {
     /// Set to true after the one-time marketplace registry migration has run.
     #[serde(default)]
     pub marketplace_initialized: bool,
+    /// Set to true after the one-time legacy tag migration (`{name}/vX.Y.Z` → plugin-scoped) has run.
+    #[serde(default)]
+    pub legacy_tags_migrated: bool,
     #[serde(default = "default_max_dimensions")]
     pub max_dimensions: u32,
     #[serde(default)]
@@ -178,6 +181,7 @@ impl std::fmt::Debug for AppSettings {
             .field("marketplace_url", &self.marketplace_url)
             .field("marketplace_registries", &self.marketplace_registries)
             .field("marketplace_initialized", &self.marketplace_initialized)
+            .field("legacy_tags_migrated", &self.legacy_tags_migrated)
             .field("max_dimensions", &self.max_dimensions)
             .field("industry", &self.industry)
             .field("function_role", &self.function_role)
@@ -210,6 +214,7 @@ impl Default for AppSettings {
             marketplace_url: None,
             marketplace_registries: vec![],
             marketplace_initialized: false,
+            legacy_tags_migrated: false,
             max_dimensions: 5,
             industry: None,
             function_role: None,

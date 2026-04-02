@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VU-718: Eval Tab — Test Case Management UI</title>
+  <style>
+    /* ============================================================
+       Design tokens — dark VS Code style, AD brand palette
+       ============================================================ */
+    :root {
+      /* Backgrounds (dark) */
+      --bg:           #1e1e1e;
+      --bg-sidebar:   #252526;
+      --bg-card:      #2d2d30;
+      --bg-elevated:  #3c3c3c;
+      --bg-input:     #3a3a3a;
+      --bg-modal:     #252526;
+
+      /* Foregrounds */
+      --fg:           #d4d4d4;
+      --fg-muted:     #888888;
+      --fg-subtle:    #5a5a5a;
+      --fg-heading:   #e8e8e8;
+
+      /* Borders */
+      --border:       #3e3e42;
+      --border-focus: #007acc;
+
+      /* AD brand accent colors */
+      --seafoam:      oklch(0.720 0.125 155);   /* success / pass green */
+      --pacific:      oklch(0.680 0.120 210);   /* primary / action blue */
+      --ocean:        oklch(0.530 0.130 230);   /* secondary accent */
+      --amber:        #f59e0b;                  /* warning */
+      --destructive:  oklch(0.570 0.180 25);    /* error / fail red */
+
+      /* Semantic */
+      --pass-color:   oklch(0.720 0.125 155);
+      --fail-color:   oklch(0.570 0.180 25);
+      --warn-color:   #f59e0b;
+
+      --font-sans: "Inter Variable", Inter, system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono Variable", "Courier New", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-sans);
+      background: #111111;
+      color: var(--fg);
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 32px 24px 64px;
+    }
+
+    /* ============================================================
+       Page header
+       ============================================================ */
+    .page-header {
+      margin-bottom: 40px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+    }
+    .page-header h1 {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--fg-heading);
+      margin-bottom: 4px;
+    }
+    .page-header .subtitle {
+      font-size: 13px;
+      color: var(--fg-muted);
+    }
+    .page-header .issue-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      background: color-mix(in oklch, var(--pacific), transparent 85%);
+      color: var(--pacific);
+      border: 1px solid color-mix(in oklch, var(--pacific), transparent 65%);
+      border-radius: 4px;
+      padding: 2px 7px;
+      margin-right: 8px;
+    }
+
+    /* ============================================================
+       Screen wrapper / label
+       ============================================================ */
+    .screen-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--fg-muted);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .screen-label::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .screen-wrapper {
+      margin-bottom: 48px;
+    }
+
+    /* ============================================================
+       App shell (fake Tauri window chrome)
+       ============================================================ */
+    .app-shell {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+
+    /* Titlebar */
+    .titlebar {
+      height: 32px;
+      background: #1a1a1a;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 6px;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    .titlebar-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .titlebar-dot.red   { background: #ff5f57; }
+    .titlebar-dot.amber { background: #febc2e; }
+    .titlebar-dot.green { background: #28c840; }
+    .titlebar-title {
+      margin: 0 auto;
+      font-size: 11px;
+      color: var(--fg-muted);
+      font-family: var(--font-mono);
+    }
+
+    /* Main workspace layout */
+    .workspace-layout {
+      display: flex;
+      height: 580px;
+    }
+
+    /* ============================================================
+       Left sidebar (skill list)
+       ============================================================ */
+    .sidebar {
+      width: 200px;
+      flex-shrink: 0;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-header {
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sidebar-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--fg-muted);
+    }
+    .icon-btn {
+      width: 22px; height: 22px;
+      border-radius: 4px;
+      border: none;
+      background: none;
+      color: var(--fg-muted);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .icon-btn:hover { background: var(--bg-elevated); color: var(--fg); }
+    .icon-btn svg { width: 13px; height: 13px; }
+    .sidebar-items { flex: 1; overflow-y: auto; padding: 4px 0; }
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      cursor: pointer;
+      border-left: 2px solid transparent;
+      font-size: 12px;
+    }
+    .sidebar-item:hover { background: var(--bg-elevated); }
+    .sidebar-item.active {
+      background: color-mix(in oklch, var(--pacific), transparent 88%);
+      border-left-color: var(--pacific);
+      color: var(--fg-heading);
+    }
+    .skill-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ============================================================
+       Main content area
+       ============================================================ */
+    .main-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    /* Workspace header */
+    .ws-header {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .ws-title-row {
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ws-skill-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fg-heading);
+    }
+    .badge {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      padding: 1px 6px;
+      border-radius: 9999px;
+    }
+    .badge-version {
+      background: var(--bg-elevated);
+      color: var(--fg-muted);
+      border: 1px solid var(--border);
+    }
+    .badge-type {
+      background: transparent;
+      color: var(--fg-muted);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 10px;
+      padding: 1px 6px;
+    }
+    .ws-tabs {
+      display: flex;
+      padding: 0 16px;
+    }
+    .ws-tab {
+      font-size: 12px;
+      padding: 8px 12px;
+      color: var(--fg-muted);
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+      font-family: inherit;
+      margin-bottom: -1px;
+      transition: color 120ms;
+    }
+    .ws-tab:hover { color: var(--fg); }
+    .ws-tab.active {
+      color: var(--fg-heading);
+      font-weight: 600;
+      border-bottom-color: var(--pacific);
+    }
+
+    /* ============================================================
+       Tab content area
+       ============================================================ */
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+      position: relative;
+    }
+
+    /* ============================================================
+       Test cases toolbar
+       ============================================================ */
+    .tc-toolbar {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      flex-shrink: 0;
+    }
+    .tc-toolbar-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fg-heading);
+    }
+    .count-badge {
+      font-size: 11px;
+      background: var(--bg-elevated);
+      color: var(--fg-muted);
+      border-radius: 9999px;
+      padding: 1px 7px;
+      font-family: var(--font-mono);
+    }
+    .spacer { flex: 1; }
+    .btn {
+      height: 26px;
+      padding: 0 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: background 120ms;
+    }
+    .btn svg { width: 12px; height: 12px; }
+    .btn-primary {
+      background: var(--pacific);
+      color: #fff;
+      border: none;
+    }
+    .btn-primary:hover { opacity: 0.88; }
+    .btn-ghost {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--fg-muted);
+    }
+    .btn-ghost:hover { background: var(--bg-elevated); color: var(--fg); }
+    .btn-danger {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--fail-color);
+    }
+    .btn-danger:hover { background: color-mix(in oklch, var(--fail-color), transparent 88%); }
+
+    /* ============================================================
+       Test case table
+       ============================================================ */
+    .tc-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .tc-table thead tr {
+      background: var(--bg-sidebar);
+    }
+    .tc-table th {
+      padding: 7px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--fg-muted);
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .tc-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 100ms;
+    }
+    .tc-table tbody tr:hover { background: var(--bg-card); }
+    .tc-table tbody tr.expanded { background: var(--bg-card); }
+    .tc-table td {
+      padding: 9px 12px;
+      vertical-align: middle;
+      font-size: 12px;
+    }
+    .eval-name {
+      font-weight: 500;
+      color: var(--fg-heading);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .expand-btn {
+      width: 16px; height: 16px;
+      background: none; border: none;
+      color: var(--fg-muted);
+      cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 3px;
+      transition: background 100ms, color 100ms;
+      flex-shrink: 0;
+    }
+    .expand-btn:hover { background: var(--bg-elevated); color: var(--fg); }
+    .expand-btn.open { color: var(--pacific); }
+    .expand-btn svg { width: 12px; height: 12px; }
+    .prompt-preview {
+      color: var(--fg-muted);
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .assertion-count-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      background: var(--bg-elevated);
+      color: var(--fg-muted);
+      border-radius: 9999px;
+      padding: 1px 7px;
+    }
+    .action-group { display: flex; align-items: center; gap: 5px; }
+
+    /* Expanded row */
+    .tc-detail-row { background: var(--bg); }
+    .tc-detail-row td { padding: 0; }
+    .tc-detail-panel {
+      padding: 14px 16px 16px 40px;
+      border-bottom: 1px solid var(--border);
+    }
+    .tc-detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+    .detail-field label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--fg-muted);
+      display: block;
+      margin-bottom: 5px;
+    }
+    .detail-value {
+      font-size: 12px;
+      color: var(--fg);
+      line-height: 1.55;
+    }
+    .detail-value.mono {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--fg-muted);
+    }
+    .expectations-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .expectations-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--fg);
+      margin-bottom: 4px;
+    }
+    .expectations-list li::before {
+      content: "•";
+      color: var(--pacific);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .files-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .files-list li {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--fg-muted);
+      padding: 2px 0;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .files-list li svg { width: 11px; height: 11px; flex-shrink: 0; }
+    .files-empty { font-size: 12px; color: var(--fg-subtle); font-style: italic; }
+
+    /* ============================================================
+       Iteration History section
+       ============================================================ */
+    .section-divider {
+      padding: 10px 16px 8px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-sidebar);
+    }
+    .section-divider-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--fg-muted);
+    }
+    .iteration-list { padding: 0; }
+    .iteration-row {
+      display: flex;
+      align-items: center;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      gap: 10px;
+      font-size: 12px;
+    }
+    .iteration-icon {
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      background: var(--bg-elevated);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .iteration-icon svg { width: 14px; height: 14px; color: var(--fg-muted); }
+    .iteration-info { flex: 1; min-width: 0; }
+    .iteration-name {
+      font-weight: 500;
+      color: var(--fg-heading);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    .iteration-date { font-size: 11px; color: var(--fg-muted); }
+    .pass-badge {
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      border-radius: 9999px;
+      padding: 2px 8px;
+    }
+    .pass-badge.low  { background: color-mix(in oklch, var(--fail-color), transparent 82%); color: var(--fail-color); }
+    .pass-badge.mid  { background: color-mix(in oklch, var(--warn-color), transparent 82%); color: var(--warn-color); }
+    .pass-badge.high { background: color-mix(in oklch, var(--seafoam), transparent 82%); color: var(--seafoam); }
+
+    /* ============================================================
+       Screen 2: Add/Edit modal overlay (shown as embedded panel)
+       ============================================================ */
+    .modal-overlay {
+      background: rgba(0,0,0,0.55);
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-end;
+      padding: 0;
+    }
+    .modal-overlay .tab-content { position: relative; }
+    .side-panel {
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: 420px;
+      background: var(--bg-modal);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+      box-shadow: -4px 0 24px rgba(0,0,0,0.5);
+    }
+    .side-panel-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .side-panel-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fg-heading);
+    }
+    .side-panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+    .form-group { margin-bottom: 14px; }
+    .form-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--fg-muted);
+      margin-bottom: 5px;
+    }
+    .form-label .required { color: var(--fail-color); margin-left: 2px; }
+    .form-input, .form-textarea {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-family: inherit;
+      color: var(--fg);
+      outline: none;
+      transition: border-color 150ms;
+    }
+    .form-input:focus, .form-textarea:focus { border-color: var(--border-focus); }
+    .form-input.disabled-input {
+      background: var(--bg-sidebar);
+      color: var(--fg-muted);
+      cursor: not-allowed;
+    }
+    .form-input::placeholder, .form-textarea::placeholder { color: var(--fg-subtle); }
+    .form-textarea { resize: vertical; min-height: 72px; line-height: 1.5; }
+    .form-textarea.tall { min-height: 90px; }
+    .form-hint { font-size: 11px; color: var(--fg-muted); margin-top: 3px; }
+    .editable-list { display: flex; flex-direction: column; gap: 6px; }
+    .editable-list-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .editable-list-item .form-input,
+    .editable-list-item .form-textarea {
+      flex: 1;
+      min-height: 0;
+      font-size: 12px;
+    }
+    .list-action-btn {
+      width: 26px; height: 26px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: none;
+      color: var(--fg-muted);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+      transition: background 120ms, color 120ms;
+    }
+    .list-action-btn:hover { background: var(--bg-elevated); color: var(--fg); }
+    .list-action-btn.add { color: var(--pacific); border-color: color-mix(in oklch, var(--pacific), transparent 60%); }
+    .list-action-btn.add:hover { background: color-mix(in oklch, var(--pacific), transparent 88%); }
+    .list-action-btn.remove:hover { background: color-mix(in oklch, var(--fail-color), transparent 88%); color: var(--fail-color); }
+    .list-action-btn svg { width: 12px; height: 12px; }
+    .add-item-row { display: flex; justify-content: flex-start; margin-top: 4px; }
+    .add-item-link {
+      font-size: 11px;
+      color: var(--pacific);
+      cursor: pointer;
+      background: none;
+      border: none;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0;
+    }
+    .add-item-link:hover { opacity: 0.8; }
+    .add-item-link svg { width: 11px; height: 11px; }
+    .side-panel-footer {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* ============================================================
+       Screen 3: Empty state
+       ============================================================ */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      text-align: center;
+      gap: 16px;
+    }
+    .empty-icon {
+      width: 56px; height: 56px;
+      border-radius: 12px;
+      background: var(--bg-elevated);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 4px;
+    }
+    .empty-icon svg { width: 26px; height: 26px; color: var(--fg-muted); }
+    .empty-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--fg-heading);
+    }
+    .empty-subtitle {
+      font-size: 13px;
+      color: var(--fg-muted);
+      max-width: 300px;
+      line-height: 1.6;
+    }
+    .btn-lg {
+      height: 34px;
+      padding: 0 18px;
+      font-size: 13px;
+    }
+
+    /* ============================================================
+       Dimmed overlay for modal screen
+       ============================================================ */
+    .dimmed-bg {
+      position: relative;
+    }
+    .dimmed-bg::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      pointer-events: none;
+      z-index: 5;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ================================================================
+     PAGE HEADER
+     ================================================================ -->
+<div class="page-header">
+  <h1>
+    <span class="issue-badge">VU-718</span>
+    Eval Tab — Test Case Management UI
+  </h1>
+  <p class="subtitle">Skill Builder · Workspace / Evals · Dark theme mockup · Three screen states</p>
+</div>
+
+
+<!-- ================================================================
+     SCREEN 1: POPULATED STATE
+     ================================================================ -->
+<div class="screen-wrapper">
+  <div class="screen-label">Screen 1 — Populated state: test case list with one row expanded + iteration history</div>
+
+  <div class="app-shell">
+    <!-- Titlebar -->
+    <div class="titlebar">
+      <span class="titlebar-dot red"></span>
+      <span class="titlebar-dot amber"></span>
+      <span class="titlebar-dot green"></span>
+      <span class="titlebar-title">Skill Builder</span>
+    </div>
+
+    <div class="workspace-layout">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <span class="sidebar-title">Skills</span>
+          <button class="icon-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+        <div class="sidebar-items">
+          <div class="sidebar-item">
+            <span class="skill-dot" style="background:#28c840;"></span>
+            code-review-assist
+          </div>
+          <div class="sidebar-item active">
+            <span class="skill-dot" style="background:#28c840;"></span>
+            customer-support-triage
+          </div>
+          <div class="sidebar-item">
+            <span class="skill-dot" style="background:var(--warn-color);"></span>
+            incident-responder
+          </div>
+          <div class="sidebar-item">
+            <span class="skill-dot" style="background:var(--fg-subtle); border: 1.5px solid var(--border);background:transparent;"></span>
+            onboarding-guide
+          </div>
+          <div class="sidebar-item">
+            <span class="skill-dot" style="background:#28c840;"></span>
+            sql-explainer
+          </div>
+        </div>
+      </div>
+
+      <!-- Main area -->
+      <div class="main-area">
+        <!-- Workspace header -->
+        <div class="ws-header">
+          <div class="ws-title-row">
+            <span class="skill-dot" style="background:#28c840;"></span>
+            <span class="ws-skill-name">customer-support-triage</span>
+            <span class="badge badge-version">v4</span>
+            <span class="badge badge-type">domain</span>
+          </div>
+          <div class="ws-tabs">
+            <button class="ws-tab">Overview</button>
+            <button class="ws-tab">Refine</button>
+            <button class="ws-tab active">Evals</button>
+            <button class="ws-tab">Description</button>
+          </div>
+        </div>
+
+        <!-- Tab content -->
+        <div class="tab-content" style="display:flex;flex-direction:column;">
+          <!-- Toolbar -->
+          <div class="tc-toolbar">
+            <span class="tc-toolbar-title">Test Cases</span>
+            <span class="count-badge">5</span>
+            <span class="spacer"></span>
+            <button class="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Test Case
+            </button>
+          </div>
+
+          <!-- Table -->
+          <div style="flex:1;overflow-y:auto;">
+            <table class="tc-table">
+              <thead>
+                <tr>
+                  <th style="width:28px;"></th>
+                  <th>Eval Name</th>
+                  <th>Prompt Preview</th>
+                  <th style="width:90px;">Assertions</th>
+                  <th style="width:90px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Row 1: collapsed -->
+                <tr>
+                  <td>
+                    <button class="expand-btn">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </td>
+                  <td>
+                    <span class="eval-name">Customer returns workflow</span>
+                  </td>
+                  <td><span class="prompt-preview">A customer wants to return a laptop bought 45 days ago. It's past the 30-day window but they claim it arrived damaged…</span></td>
+                  <td><span class="assertion-count-badge">4 checks</span></td>
+                  <td>
+                    <div class="action-group">
+                      <button class="btn btn-ghost" style="height:22px;padding:0 7px;font-size:11px;">Edit</button>
+                      <button class="btn btn-danger" style="height:22px;padding:0 7px;font-size:11px;">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Row 2: EXPANDED -->
+                <tr class="expanded">
+                  <td>
+                    <button class="expand-btn open">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                  </td>
+                  <td>
+                    <span class="eval-name">
+                      Escalation to tier-2 support
+                    </span>
+                  </td>
+                  <td><span class="prompt-preview">User has been transferred three times and is angry about a billing discrepancy on their enterprise account…</span></td>
+                  <td><span class="assertion-count-badge">5 checks</span></td>
+                  <td>
+                    <div class="action-group">
+                      <button class="btn btn-ghost" style="height:22px;padding:0 7px;font-size:11px;">Edit</button>
+                      <button class="btn btn-danger" style="height:22px;padding:0 7px;font-size:11px;">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+                <!-- Detail panel row -->
+                <tr class="tc-detail-row">
+                  <td colspan="5">
+                    <div class="tc-detail-panel">
+                      <div class="tc-detail-grid">
+                        <div class="detail-field">
+                          <label>Prompt</label>
+                          <div class="detail-value">
+                            User has been transferred three times and is angry about a billing discrepancy on their enterprise account for the last two months. They are threatening to cancel. Handle the escalation and offer a resolution path.
+                          </div>
+                        </div>
+                        <div class="detail-field">
+                          <label>Expected Output</label>
+                          <div class="detail-value">
+                            The agent should acknowledge the user's frustration, offer a concrete apology, escalate to billing tier-2, and provide a case reference number. It should not promise unauthorized refunds.
+                          </div>
+                        </div>
+                        <div class="detail-field">
+                          <label>Expectations</label>
+                          <ul class="expectations-list">
+                            <li>Acknowledge frustration and apologize sincerely</li>
+                            <li>Escalate to tier-2 billing team without further transfers</li>
+                            <li>Provide a case reference number or next steps</li>
+                            <li>Do not promise a refund outside policy</li>
+                            <li>Offer a follow-up timeline within 24 hours</li>
+                          </ul>
+                        </div>
+                        <div class="detail-field">
+                          <label>Files</label>
+                          <ul class="files-list">
+                            <li>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                              billing-policy-v3.pdf
+                            </li>
+                            <li>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                              escalation-sop.md
+                            </li>
+                          </ul>
+                          <div class="detail-value mono" style="margin-top:6px;">
+                            Slug: escalation-to-tier-2-support
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Row 3 -->
+                <tr>
+                  <td>
+                    <button class="expand-btn">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </td>
+                  <td><span class="eval-name">Refund outside policy window</span></td>
+                  <td><span class="prompt-preview">Customer is requesting a refund for a SaaS subscription 90 days after purchase, citing non-use due to illness…</span></td>
+                  <td><span class="assertion-count-badge">3 checks</span></td>
+                  <td>
+                    <div class="action-group">
+                      <button class="btn btn-ghost" style="height:22px;padding:0 7px;font-size:11px;">Edit</button>
+                      <button class="btn btn-danger" style="height:22px;padding:0 7px;font-size:11px;">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Row 4 -->
+                <tr>
+                  <td>
+                    <button class="expand-btn">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </td>
+                  <td><span class="eval-name">Account locked after failed logins</span></td>
+                  <td><span class="prompt-preview">User cannot log in after 5 failed attempts. They have an important meeting in 10 minutes and need immediate access…</span></td>
+                  <td><span class="assertion-count-badge">4 checks</span></td>
+                  <td>
+                    <div class="action-group">
+                      <button class="btn btn-ghost" style="height:22px;padding:0 7px;font-size:11px;">Edit</button>
+                      <button class="btn btn-danger" style="height:22px;padding:0 7px;font-size:11px;">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Row 5 -->
+                <tr>
+                  <td>
+                    <button class="expand-btn">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </td>
+                  <td><span class="eval-name">Product defect on first use</span></td>
+                  <td><span class="prompt-preview">New customer reports the device stopped charging after first day of use. They want a replacement, not a repair…</span></td>
+                  <td><span class="assertion-count-badge">3 checks</span></td>
+                  <td>
+                    <div class="action-group">
+                      <button class="btn btn-ghost" style="height:22px;padding:0 7px;font-size:11px;">Edit</button>
+                      <button class="btn btn-danger" style="height:22px;padding:0 7px;font-size:11px;">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Iteration history -->
+            <div class="section-divider">
+              <span class="section-divider-title">Iteration History</span>
+            </div>
+            <div class="iteration-list">
+              <!-- iteration-3 (latest) -->
+              <div class="iteration-row">
+                <div class="iteration-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                </div>
+                <div class="iteration-info">
+                  <div class="iteration-name">iteration-3</div>
+                  <div class="iteration-date">Mar 22, 2026 · 14:31 · 5/5 cases run</div>
+                </div>
+                <span class="pass-badge high">89%</span>
+                <button class="btn btn-ghost" style="height:22px;padding:0 8px;font-size:11px;">View</button>
+              </div>
+              <!-- iteration-2 -->
+              <div class="iteration-row">
+                <div class="iteration-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                </div>
+                <div class="iteration-info">
+                  <div class="iteration-name">iteration-2</div>
+                  <div class="iteration-date">Mar 22, 2026 · 11:08 · 5/5 cases run</div>
+                </div>
+                <span class="pass-badge mid">78%</span>
+                <button class="btn btn-ghost" style="height:22px;padding:0 8px;font-size:11px;">View</button>
+              </div>
+              <!-- iteration-1 -->
+              <div class="iteration-row">
+                <div class="iteration-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                </div>
+                <div class="iteration-info">
+                  <div class="iteration-name">iteration-1</div>
+                  <div class="iteration-date">Mar 21, 2026 · 09:44 · 5/5 cases run</div>
+                </div>
+                <span class="pass-badge low">67%</span>
+                <button class="btn btn-ghost" style="height:22px;padding:0 8px;font-size:11px;">View</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================
+     SCREEN 2: ADD TEST CASE FORM (side panel / modal)
+     ================================================================ -->
+<div class="screen-wrapper">
+  <div class="screen-label">Screen 2 — Add test case form (side panel opens over the populated list)</div>
+
+  <div class="app-shell">
+    <!-- Titlebar -->
+    <div class="titlebar">
+      <span class="titlebar-dot red"></span>
+      <span class="titlebar-dot amber"></span>
+      <span class="titlebar-dot green"></span>
+      <span class="titlebar-title">Skill Builder</span>
+    </div>
+
+    <div class="workspace-layout">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <span class="sidebar-title">Skills</span>
+          <button class="icon-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+        <div class="sidebar-items">
+          <div class="sidebar-item">
+            <span class="skill-dot" style="background:#28c840;"></span>
+            code-review-assist
+          </div>
+          <div class="sidebar-item active">
+            <span class="skill-dot" style="background:#28c840;"></span>
+            customer-support-triage
+          </div>
+          <div class="sidebar-item">
+            <span class="skill-dot" style="background:var(--warn-color);"></span>
+            incident-responder
+          </div>
+          <div class="sidebar-item">
+            <span class="skill-dot" style="background:transparent;border:1.5px solid var(--border);"></span>
+            onboarding-guide
+          </div>
+          <div class="sidebar-item">
+            <span class="skill-dot" style="background:#28c840;"></span>
+            sql-explainer
+          </div>
+        </div>
+      </div>
+
+      <!-- Main area with panel overlay -->
+      <div class="main-area" style="position:relative;">
+        <!-- Workspace header (dimmed) -->
+        <div class="ws-header" style="opacity:0.4;pointer-events:none;">
+          <div class="ws-title-row">
+            <span class="skill-dot" style="background:#28c840;"></span>
+            <span class="ws-skill-name">customer-support-triage</span>
+            <span class="badge badge-version">v4</span>
+            <span class="badge badge-type">domain</span>
+          </div>
+          <div class="ws-tabs">
+            <button class="ws-tab">Overview</button>
+            <button class="ws-tab">Refine</button>
+            <button class="ws-tab active">Evals</button>
+            <button class="ws-tab">Description</button>
+          </div>
+        </div>
+
+        <!-- Tab content (dimmed behind panel) -->
+        <div class="tab-content dimmed-bg" style="position:relative;">
+          <!-- Dimmed list behind -->
+          <div style="opacity:0.3;pointer-events:none;">
+            <div class="tc-toolbar">
+              <span class="tc-toolbar-title">Test Cases</span>
+              <span class="count-badge">5</span>
+              <span class="spacer"></span>
+              <button class="btn btn-primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add Test Case
+              </button>
+            </div>
+            <table class="tc-table">
+              <thead>
+                <tr>
+                  <th style="width:28px;"></th>
+                  <th>Eval Name</th>
+                  <th>Prompt Preview</th>
+                  <th style="width:90px;">Assertions</th>
+                  <th style="width:90px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><button class="expand-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button></td>
+                  <td><span class="eval-name">Customer returns workflow</span></td>
+                  <td><span class="prompt-preview">A customer wants to return a laptop…</span></td>
+                  <td><span class="assertion-count-badge">4 checks</span></td>
+                  <td><div class="action-group"><button class="btn btn-ghost" style="height:22px;padding:0 7px;font-size:11px;">Edit</button></div></td>
+                </tr>
+                <tr>
+                  <td><button class="expand-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button></td>
+                  <td><span class="eval-name">Escalation to tier-2 support</span></td>
+                  <td><span class="prompt-preview">User has been transferred three times…</span></td>
+                  <td><span class="assertion-count-badge">5 checks</span></td>
+                  <td><div class="action-group"><button class="btn btn-ghost" style="height:22px;padding:0 7px;font-size:11px;">Edit</button></div></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Side panel (z-index above dimmed layer) -->
+          <div class="side-panel">
+            <div class="side-panel-header">
+              <span class="side-panel-title">Add Test Case</span>
+              <button class="icon-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            <div class="side-panel-body">
+              <!-- Eval name -->
+              <div class="form-group">
+                <label class="form-label">Eval Name <span class="required">*</span></label>
+                <input class="form-input" type="text" placeholder="e.g. Refund outside policy window" value="">
+              </div>
+
+              <!-- Slug -->
+              <div class="form-group">
+                <label class="form-label">Slug</label>
+                <input class="form-input disabled-input" type="text" value="" placeholder="auto-generated from eval name" readonly>
+                <div class="form-hint">Auto-filled from eval name. Used as the identifier in evals.json.</div>
+              </div>
+
+              <!-- Prompt -->
+              <div class="form-group">
+                <label class="form-label">Prompt <span class="required">*</span></label>
+                <textarea class="form-textarea tall" placeholder="Describe the user's task or message that the skill should respond to…"></textarea>
+              </div>
+
+              <!-- Expected output -->
+              <div class="form-group">
+                <label class="form-label">Expected Output <span class="required">*</span></label>
+                <textarea class="form-textarea tall" placeholder="Describe what a good response looks like — the ideal behaviour or content the skill should produce…"></textarea>
+              </div>
+
+              <!-- Expectations (editable list) -->
+              <div class="form-group">
+                <label class="form-label">Expectations</label>
+                <div class="form-hint" style="margin-bottom:8px;">Verifiable assertions used for grading. Each should be a single, falsifiable statement.</div>
+                <div class="editable-list">
+                  <div class="editable-list-item">
+                    <input class="form-input" type="text" value="Acknowledges the customer's issue before providing a solution" placeholder="Assertion…">
+                    <button class="list-action-btn remove">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                  <div class="editable-list-item">
+                    <input class="form-input" type="text" value="Does not promise a refund beyond the policy window" placeholder="Assertion…">
+                    <button class="list-action-btn remove">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                  <div class="editable-list-item">
+                    <input class="form-input" type="text" value="" placeholder="Add assertion…" style="border-style:dashed;color:var(--fg-muted);">
+                    <button class="list-action-btn add">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Files (editable list) -->
+              <div class="form-group">
+                <label class="form-label">Files</label>
+                <div class="form-hint" style="margin-bottom:8px;">Optional context files available to the agent during this eval. Paths relative to the skill workspace.</div>
+                <div class="editable-list">
+                  <div class="editable-list-item">
+                    <input class="form-input" type="text" value="billing-policy-v3.pdf" placeholder="File path…" style="font-family:var(--font-mono);font-size:11px;">
+                    <button class="list-action-btn remove">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                  <div class="editable-list-item">
+                    <input class="form-input" type="text" value="" placeholder="Add file path…" style="border-style:dashed;color:var(--fg-muted);font-family:var(--font-mono);font-size:11px;">
+                    <button class="list-action-btn add">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="side-panel-footer">
+              <button class="btn btn-ghost">Cancel</button>
+              <button class="btn btn-primary">Save Test Case</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================
+     SCREEN 3: EMPTY STATE
+     ================================================================ -->
+<div class="screen-wrapper">
+  <div class="screen-label">Screen 3 — Empty state: no test cases yet</div>
+
+  <div class="app-shell">
+    <!-- Titlebar -->
+    <div class="titlebar">
+      <span class="titlebar-dot red"></span>
+      <span class="titlebar-dot amber"></span>
+      <span class="titlebar-dot green"></span>
+      <span class="titlebar-title">Skill Builder</span>
+    </div>
+
+    <div class="workspace-layout">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <span class="sidebar-title">Skills</span>
+          <button class="icon-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+        <div class="sidebar-items">
+          <div class="sidebar-item">
+            <span class="skill-dot" style="background:#28c840;"></span>
+            code-review-assist
+          </div>
+          <div class="sidebar-item active">
+            <span class="skill-dot" style="background:transparent;border:1.5px solid var(--border);"></span>
+            customer-support-triage
+          </div>
+          <div class="sidebar-item">
+            <span class="skill-dot" style="background:var(--warn-color);"></span>
+            incident-responder
+          </div>
+          <div class="sidebar-item">
+            <span class="skill-dot" style="background:transparent;border:1.5px solid var(--border);"></span>
+            onboarding-guide
+          </div>
+          <div class="sidebar-item">
+            <span class="skill-dot" style="background:#28c840;"></span>
+            sql-explainer
+          </div>
+        </div>
+      </div>
+
+      <!-- Main area -->
+      <div class="main-area">
+        <!-- Workspace header -->
+        <div class="ws-header">
+          <div class="ws-title-row">
+            <span class="skill-dot" style="background:transparent;border:1.5px solid var(--border);"></span>
+            <span class="ws-skill-name">customer-support-triage</span>
+            <span class="badge badge-version">v1</span>
+            <span class="badge badge-type">domain</span>
+          </div>
+          <div class="ws-tabs">
+            <button class="ws-tab">Overview</button>
+            <button class="ws-tab">Refine</button>
+            <button class="ws-tab active">Evals</button>
+            <button class="ws-tab">Description</button>
+          </div>
+        </div>
+
+        <!-- Empty state -->
+        <div class="tab-content" style="display:flex;">
+          <div class="empty-state">
+            <div class="empty-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+                <rect x="9" y="3" width="6" height="4" rx="1"/>
+                <line x1="9" y1="12" x2="15" y2="12"/>
+                <line x1="9" y1="16" x2="13" y2="16"/>
+              </svg>
+            </div>
+            <div class="empty-title">No test cases yet</div>
+            <div class="empty-subtitle">
+              Test cases define what the skill should do. Add prompts, expected outputs, and assertions to measure quality across eval runs.
+            </div>
+            <button class="btn btn-primary btn-lg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Create your first test case
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

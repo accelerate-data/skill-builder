@@ -13,8 +13,8 @@ fn is_mock_agents_enabled() -> bool {
     matches!(std::env::var("MOCK_AGENTS").as_deref(), Ok("true"))
 }
 
-fn build_mock_refine_patch(skill_name: &str, file: &SkillFileContent) -> String {
-    let repo_relative_path = format!("{}/{}", skill_name, file.path);
+fn build_mock_refine_patch(plugin_slug: &str, skill_name: &str, file: &SkillFileContent) -> String {
+    let repo_relative_path = format!("{}/{}/{}", plugin_slug, skill_name, file.path);
     let line_count = file.content.lines().count();
     let header = format!(
         "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -0,0 +1,{line_count} @@\n",
@@ -28,13 +28,13 @@ fn build_mock_refine_patch(skill_name: &str, file: &SkillFileContent) -> String 
     format!("{}{}", header, body)
 }
 
-fn build_mock_refine_diff(skill_name: &str, files: &[SkillFileContent]) -> RefineDiff {
+fn build_mock_refine_diff(plugin_slug: &str, skill_name: &str, files: &[SkillFileContent]) -> RefineDiff {
     let diff_files = files
         .iter()
         .map(|file| RefineFileDiff {
-            path: format!("{}/{}", skill_name, file.path),
+            path: format!("{}/{}/{}", plugin_slug, skill_name, file.path),
             status: "modified".to_string(),
-            diff: build_mock_refine_patch(skill_name, file),
+            diff: build_mock_refine_patch(plugin_slug, skill_name, file),
         })
         .collect::<Vec<_>>();
 
@@ -103,7 +103,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
     pre_run_sha: Option<&str>,
 ) -> Result<RefineFinalizeResult, String> {
     let skill_root = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
-    let workspace_skill_root = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_skill_root = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     if !skill_root.exists() {
         return Err(format!(
             "Skill '{}' not found at {}",
@@ -155,6 +155,24 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
         );
     }
 
+    // Tag the new commit with the next patch version.
+    {
+        let skills_root = Path::new(skills_path);
+        let current_version = crate::git::latest_skill_semver(skills_root, plugin_slug, skill_name)
+            .unwrap_or_else(|_| "0.0.0".to_string());
+        let new_version = crate::git::bump_patch(&current_version);
+        match crate::git::create_skill_version_tag(skills_root, plugin_slug, skill_name, &new_version) {
+            Ok(tag_name) => log::info!(
+                "[finalize_refine_run] tagged skill={} plugin={} tag={}",
+                skill_name, plugin_slug, tag_name
+            ),
+            Err(e) => log::warn!(
+                "[finalize_refine_run] version tag failed skill={} plugin={} version={} error={}",
+                skill_name, plugin_slug, new_version, e
+            ),
+        }
+    }
+
     let diff = if let Some(sha) = commit_sha.as_ref() {
         let repo = git2::Repository::open(Path::new(skills_path))
             .map_err(|e| format!("Failed to open repo: {}", e))?;
@@ -166,7 +184,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
         let parent_sha = commit.parent(0).ok().map(|parent| parent.id().to_string());
 
         if let Some(parent_sha) = parent_sha {
-            get_refine_diff_for_commit_range_inner(skill_name, skills_path, &parent_sha, sha)?
+            get_refine_diff_for_commit_range_inner(skill_name, skills_path, plugin_slug, &parent_sha, sha)?
         } else {
             RefineDiff {
                 stat: "no changes".to_string(),
@@ -187,7 +205,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
             skill_name,
             files.len()
         );
-        build_mock_refine_diff(skill_name, &files)
+        build_mock_refine_diff(plugin_slug, skill_name, &files)
     } else {
         diff
     };
@@ -204,10 +222,11 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
 #[tauri::command]
 pub fn clean_benchmark_snapshot(
     skill_name: String,
+    plugin_slug: String,
     workspace_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[clean_benchmark_snapshot] skill={}", skill_name);
+    log::info!("[clean_benchmark_snapshot] skill={} plugin={}", skill_name, plugin_slug);
     validate_skill_name(&skill_name)?;
     let plugin_slug = super::resolve_skill_plugin_slug(&db, &skill_name)
         .unwrap_or_else(|_| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
@@ -219,12 +238,13 @@ pub fn clean_benchmark_snapshot(
 #[tauri::command]
 pub fn finalize_refine_run(
     skill_name: String,
+    plugin_slug: String,
     workspace_path: String,
     structured_output: Option<serde_json::Value>,
     db: tauri::State<'_, Db>,
     sessions: tauri::State<'_, super::RefineSessionManager>,
 ) -> Result<RefineFinalizeResult, String> {
-    log::info!("[finalize_refine_run] skill={}", skill_name);
+    log::info!("[finalize_refine_run] skill={} plugin={}", skill_name, plugin_slug);
     validate_skill_name(&skill_name)?;
     let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
         log::error!("[finalize_refine_run] Failed to resolve skills path: {}", e);

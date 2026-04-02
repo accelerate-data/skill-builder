@@ -531,6 +531,32 @@ pub fn reset_workflow_step(
         &skills_path,
     );
 
+    // If the skill is in a non-default plugin, remove the entire workspace skill dir.
+    // save_workflow_run (below) moves the DB record back to the default plugin, so the
+    // old workspace dir at {workspace_path}/{plugin_slug}/{skill_name}/ would become an
+    // orphan. Remove it now while we still know its path.
+    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
+        let old_workspace_dir = crate::skill_paths::workspace_skill_dir(
+            std::path::Path::new(&workspace_path),
+            &plugin_slug,
+            &skill_name,
+        );
+        if old_workspace_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&old_workspace_dir) {
+                log::warn!(
+                    "[reset_workflow_step] failed to remove old workspace dir {}: {}",
+                    old_workspace_dir.display(),
+                    e
+                );
+            } else {
+                log::info!(
+                    "[reset_workflow_step] removed old workspace dir {} (skill moving to default plugin)",
+                    old_workspace_dir.display()
+                );
+            }
+        }
+    }
+
     // Reset steps in SQLite
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     crate::db::reset_workflow_steps_from(&conn, &skill_name, from_step_id as i32)?;
@@ -677,7 +703,7 @@ pub fn preview_step_reset(
 }
 
 /// Remove incomplete iteration directories (those missing `benchmark.json`)
-/// under `{workspace_path}/{skill_name}/evals/workspace/`.
+/// under `{workspace_path}/{skill_name}/evals/iterations/`.
 ///
 /// Returns the number of directories removed. Errors during removal are logged
 /// as warnings and do not propagate — callers should never be blocked by cleanup.
@@ -776,7 +802,7 @@ pub struct LatestBenchmarkResult {
 
 /// Read benchmark.json from the latest iteration directory for a skill.
 ///
-/// Scans `{workspace}/{skill}/evals/workspace/` for `iteration-{N}` dirs,
+/// Scans `{workspace}/{skill}/evals/iterations/` for `iteration-{N}` dirs,
 /// picks the highest N, and reads its `benchmark.json`. Returns `None` when
 /// no benchmark data exists (no evals dir, no iterations, or no JSON file).
 #[tauri::command]

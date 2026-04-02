@@ -193,11 +193,28 @@ This section is one continuous sequence — don't stop partway through. Do NOT u
 
 Put results in `<skill-name>-workspace/` as a sibling to the skill directory. Within the workspace, organize results by iteration (`iteration-1/`, `iteration-2/`, etc.) and within that, each test case gets a directory (`eval-0/`, `eval-1/`, etc.). Don't create all of this upfront — just create directories as you go.
 
-### Step 1: Spawn all runs (with-skill AND baseline) in the same turn
+### Step 1: Spawn runs — mode depends on `comparison_mode`
 
-For each test case, spawn two subagents in the same turn — one with the skill, one without. This is important: don't spawn the with-skill runs first and then come back for baselines later. Launch everything at once so it all finishes around the same time.
+Three modes are supported. If `comparison_mode` is not specified, use `no_comparison`.
 
-**With-skill run:**
+---
+
+**`no_comparison` (default):** Spawn one with-skill executor per eval. Save outputs directly to `outputs/` (no subdirectory).
+
+```text
+Execute this task:
+- Skill path: <path-to-skill>
+- Task: <eval prompt>
+- Input files: <eval files if any, or "none">
+- Save outputs to: <workspace>/iteration-<N>/eval-<ID>/outputs/
+- Outputs to save: <what the user cares about — e.g., "the .docx file", "the final CSV">
+```
+
+---
+
+**`with_without_skill`:** Spawn two subagents in the same turn — one with the skill, one without. This is important: don't spawn the with-skill runs first and then come back for baselines later. Launch everything at once so it all finishes around the same time.
+
+*With-skill run:*
 
 ```text
 Execute this task:
@@ -208,10 +225,16 @@ Execute this task:
 - Outputs to save: <what the user cares about — e.g., "the .docx file", "the final CSV">
 ```
 
+*Without-skill baseline:* same prompt, no skill path, save to `without_skill/outputs/`.
+
+---
+
+**`current_vs_previous`:** Spawn two subagents — one using the current skill version, one using the previous. Before editing, snapshot the skill (`cp -r <skill-path> <workspace>/skill-snapshot/`). Point the baseline subagent at the snapshot. Save current to `current/outputs/` and previous to `previous/outputs/`.
+
 **Baseline run** (same prompt, but the baseline depends on context):
 
-- **Creating a new skill**: no skill at all. Same prompt, no skill path, save to `without_skill/outputs/`.
-- **Improving an existing skill**: the old version. Before editing, snapshot the skill (`cp -r <skill-path> <workspace>/skill-snapshot/`), then point the baseline subagent at the snapshot. Save to `old_skill/outputs/`.
+- **Creating a new skill**: use `with_without_skill` mode — no skill at all for the baseline.
+- **Improving an existing skill**: use `current_vs_previous` — the old version as baseline.
 
 Write an `eval_metadata.json` for each test case using the same frozen `eval_name`, `slug`, and assertions already written to `evals/evals.json`. Directory names **must** start with `eval-<ID>-` followed by that exact slug from `evals.json` (e.g. `eval-0-hybrid-cogs`, `eval-1-returns-treatment`). The `eval-` prefix is required — the aggregator uses `eval-*` to discover directories. Generate the slug once when creating `evals.json`, keep it deterministic, and do not regenerate it differently in later iterations. If this iteration uses new or modified eval prompts, create these files for each new eval directory — don't assume they carry over from previous iterations.
 
@@ -347,7 +370,7 @@ This task is pretty important (we are trying to create billions a year in econom
 After improving the skill:
 
 1. Apply your improvements to the skill
-2. Rerun all test cases into a new `iteration-<N+1>/` directory, including baseline runs. If you're creating a new skill, the baseline is always `without_skill` (no skill) — that stays the same across iterations. If you're improving an existing skill, use your judgment on what makes sense as the baseline: the original version the user came in with, or the previous iteration.
+2. Rerun all test cases into a new `iteration-<N+1>/` directory using the same `comparison_mode` as the previous iteration. If no comparison mode was used before, continue without one. When using `with_without_skill`, the baseline (no skill) stays the same across iterations. When using `current_vs_previous`, snapshot the current skill before editing and use it as the new baseline.
 3. Launch the reviewer with `--previous-workspace` pointing at the previous iteration
 4. Wait for the user to review and tell you they're done
 5. Read the new feedback, improve again, repeat

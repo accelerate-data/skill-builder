@@ -4,7 +4,13 @@
   },
   "permissions": {
     "allow": [
-      "mcp__linear-server__get_issue"
+      "mcp__linear-server__get_issue",
+      "Bash(npx vitest:*)",
+      "Bash(bash tests/run.sh)",
+      "Bash(cargo test:*)",
+      "Bash(grep:*)",
+      "mcp__linear__list_milestones",
+      "Bash(npx markdownlint-cli:*)"
     ]
   }
 }

@@ -16,9 +16,12 @@ import { resolveModelId } from "@/lib/models";
 import { joinPath } from "@/lib/path-utils";
 import { parseClarifications } from "@/lib/clarifications-types";
 import { buildGateFeedbackNotes } from "@/lib/gate-feedback";
+import { workspaceSkillDir } from "@/lib/evals";
+import pluginPaths from "../../plugin-paths.json";
 
 export interface UseWorkflowGateOptions {
   skillName: string;
+  pluginSlug?: string;
   workspacePath: string | null;
   currentStep: number;
   purpose: string | null;
@@ -50,6 +53,7 @@ export interface UseWorkflowGateReturn {
  */
 export function useWorkflowGate({
   skillName,
+  pluginSlug = pluginPaths.default_plugin_slug,
   workspacePath,
   currentStep,
   purpose,
@@ -104,7 +108,7 @@ export function useWorkflowGate({
         await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput as import("@/lib/types").AnswerEvaluationOutput);
       }
 
-      const evalPath = joinPath(workspacePath, skillName, "answer-evaluation.json");
+      const evalPath = joinPath(workspaceSkillDir(workspacePath, pluginSlug, skillName), "answer-evaluation.json");
       const raw = await readFile(evalPath);
       const evaluation: AnswerEvaluation = JSON.parse(raw);
 
@@ -136,7 +140,7 @@ export function useWorkflowGate({
 
       if (workspacePath) {
         const gateLog = JSON.stringify({ ...evaluation, action: gateDecision, timestamp: new Date().toISOString() });
-        writeFile(joinPath(workspacePath, skillName, "gate-result.json"), gateLog).catch((e) => console.warn("[use-workflow-gate] non-fatal: op=writeFile err=%s", e));
+        writeFile(joinPath(workspaceSkillDir(workspacePath, pluginSlug, skillName), "gate-result.json"), gateLog).catch((e) => console.warn("[use-workflow-gate] non-fatal: op=writeFile err=%s", e));
       }
 
       logGateDecision(skillName, evaluation.verdict, gateDecision).catch((e) => console.warn("[use-workflow-gate] non-fatal: op=logGateDecision err=%s", e));

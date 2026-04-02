@@ -1,0 +1,14 @@
+{
+  "eval_id": 4,
+  "eval_name": "incremental intermediate layer model",
+  "configuration": "with_skill",
+  "run_number": 1,
+  "summary": { "pass_rate": 0.5, "passed": 2, "failed": 2, "total": 4 },
+  "expectations": [
+    { "text": "Model uses materialized='incremental' with merge strategy", "passed": true, "evidence": "Config block specifies materialized='incremental' with incremental_strategy='merge'." },
+    { "text": "Unique key is defined for merge deduplication", "passed": true, "evidence": "unique_key=['order_id','line_item_id'] is set in the config." },
+    { "text": "Includes an is_incremental() guard for the WHERE clause", "passed": false, "evidence": "No {% if is_incremental() %} block found; full table scan on every run." },
+    { "text": "Output directory follows the intermediate layer convention", "passed": false, "evidence": "Model is placed in models/staging/ instead of models/intermediate/." }
+  ],
+  "notes": []
+}

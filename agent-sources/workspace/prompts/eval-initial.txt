@@ -1,0 +1,115 @@
+You are evaluating the skill "{{skill_name}}". You handle the full eval loop: executor → grader → aggregate results.
+
+INPUTS:
+- skill_name: {{skill_name}}
+- plugin_slug: {{plugin_slug}}
+- workspace_path: {{workspace_path}}
+- skill_workspace: {{skill_workspace}}
+- skill_path: {{skill_path}}
+- eval_ids: {{eval_ids}}
+- run_count: {{run_count}}
+- iteration: {{iteration}}
+- iter_dir: {{iter_dir}}{{comparison_mode_clause}}
+
+RULES:
+- You MUST use the Agent tool to spawn executor and grader subagents. Do NOT execute or grade inline — each executor and each grader is a separate Agent tool call. Inline execution produces incorrect results.
+- Do NOT read previous iteration directories or past grading/benchmark results. Each iteration is independent.
+- Do NOT explore the workspace to discover project structure. Use only the paths provided.
+- Do NOT search for or invoke workspace-level skills. You may only use skills from the skill-creator or vd-agent plugins.
+- Executors are plan-only: they must NOT use the Write tool or create files. They reason through the task and return their plan as text. The parent agent captures this text and passes it to the grader.
+
+PHASE 0 — SETUP:
+
+Step 0: skill_workspace is provided as an input — use it directly. Do NOT derive it.
+
+Step 1: Read evals.
+1. Read {skill_workspace}/evals/evals.json
+2. Filter to entries whose id appears in eval_ids
+3. If no matches: return { "status": "error", "iteration": {{iteration}}, "results": ["No matching evals found"] }
+
+Step 2: Use iter_dir and iteration directly from the input. The directory already exists — do NOT compute your own.
+
+Step 3: Grader agent.
+Use subagent_type "skill-creator:grader" when spawning grader subagents. Do NOT read grader.md manually.
+
+Step 4 (current_vs_previous only): Snapshot previous skill version.
+Run git log --oneline --follow -- {skill_path}/SKILL.md to find the commit before HEAD.
+Restore into {iter_dir}/prev-skill/ (SKILL.md + references/).
+Set previous_skill_path = {iter_dir}/prev-skill.
+If no previous commit exists, fall back to single with-skill mode.
+
+PHASE 1 — RUN LOOP:
+
+Process evals in ascending eval_id order.
+
+For each run_index from 0 to run_count - 1:
+  run_dir = {iter_dir}/run-{run_index}
+
+For each eval in the sorted list:
+  eval_dir = {run_dir}/eval-{eval.id}-{eval.slug}
+
+MODE: single (no comparison_mode)
+
+Execute — spawn one executor subagent via Agent tool with subagent_type "vd-agent:data-product-builder":
+  "You are a plan-only executor. Do NOT write any files.
+  Read the skill, then reason through the task and return your complete plan as text.
+  Skill location: {skill_path}/SKILL.md
+  Task: {eval.prompt}
+  Input files: {eval.files or "none"}
+  Return your full plan with steps, tools, outputs, and trade-offs."
+
+Capture the executor's returned text as executor_result.
+
+Grade — spawn one grader subagent via Agent tool with subagent_type "skill-creator:grader":
+  "Your inputs:
+  - expectations: {eval.expectations as JSON array}
+  - plan_text: {executor_result}
+  - grading_output_path: {eval_dir}/grading.json
+  Grade whether the plan would satisfy each expectation. Apply strict PASS/FAIL rigor."
+
+The grader writes grading.json to {eval_dir}/grading.json.
+
+MODE: with_without_skill
+
+Execute (parallel) — spawn two executor subagents in the same Agent tool call, both with subagent_type "vd-agent:data-product-builder":
+- with_skill: Same as single mode executor (reads the skill).
+- without_skill: "You are a plan-only executor. Do NOT write any files. No skill is provided — rely on your general knowledge. Task: {eval.prompt}. Return your full plan."
+
+Capture as with_skill_result and without_skill_result.
+
+Grade (parallel) — spawn two grader subagents in the same Agent tool call, each with subagent_type "skill-creator:grader":
+- with_skill grader: grading_output_path = {eval_dir}/with_skill/grading.json, plan_text = {with_skill_result}
+- without_skill grader: grading_output_path = {eval_dir}/without_skill/grading.json, plan_text = {without_skill_result}
+
+MODE: current_vs_previous
+
+Same as with_without_skill (both executors use subagent_type "vd-agent:data-product-builder"), replacing:
+- current executor: reads {skill_path}/SKILL.md, capture as current_result
+- previous executor: reads {previous_skill_path}/SKILL.md, capture as previous_result
+- current grader: writes to {eval_dir}/current/grading.json
+- previous grader: writes to {eval_dir}/previous/grading.json
+
+PHASE 2 — RETURN STRUCTURED OUTPUT:
+
+Benchmark aggregation is handled by the app (Rust) after you complete. Do NOT compute or write benchmark.json.
+
+Collect a results array with one entry per grading.json written. Use eval names (not IDs), one line per entry:
+- Single mode: "{eval.eval_name}: X/Y passed"
+- Comparison mode: "{eval.eval_name} with_skill: X/Y passed", "{eval.eval_name} without_skill: X/Y passed"
+
+Return ONLY this JSON as your final response (the SDK enforces this schema):
+
+{
+  "status": "complete",
+  "iteration": {{iteration}},
+  "results": [
+    "eval-name with_skill: X/Y passed",
+    "eval-name without_skill: X/Y passed"
+  ]
+}
+
+Do NOT output markdown tables, benchmark analysis, or commentary.
+
+ERROR HANDLING:
+- Executor returns empty or fails: continue to grading with empty plan text; the grader will FAIL all expectations.
+- grading.json unreadable: include "eval-name: grading error" in results.

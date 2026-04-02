@@ -10,7 +10,7 @@ use tempfile::tempdir;
 /// Helper: build the nested skill path under a root directory.
 /// Default plugin: root/skills/{name} (no skills/ intermediate)
 fn nested_skill(root: &str, skill_name: &str) -> std::path::PathBuf {
-    crate::skill_paths::nested_skill_dir(Path::new(root), DEFAULT_PLUGIN_SLUG, skill_name)
+    crate::skill_paths::resolve_skill_dir(Path::new(root), DEFAULT_PLUGIN_SLUG, skill_name)
 }
 
 /// Helper: plugin-organised workspace skill path: workspace/{DEFAULT_PLUGIN_SLUG}/{name}/
@@ -94,19 +94,28 @@ fn test_list_skills_db_primary_no_filesystem_access_needed() {
 }
 
 #[test]
-fn test_list_skills_db_primary_sorted_by_last_modified_desc() {
+fn test_list_skills_db_primary_sorted_by_created_at_desc() {
     let conn = create_test_db();
-    // Create skills with different updated_at by updating in sequence
+    // Insert skills with explicit created_at timestamps to guarantee ordering
     crate::db::save_workflow_run(&conn, "oldest", 0, "pending", "domain").unwrap();
+    conn.execute(
+        "UPDATE skills SET created_at = '2024-01-01T00:00:00Z' WHERE name = 'oldest'",
+        [],
+    )
+    .unwrap();
+
     crate::db::save_workflow_run(&conn, "newest", 3, "in_progress", "domain").unwrap();
+    conn.execute(
+        "UPDATE skills SET created_at = '2024-06-01T00:00:00Z' WHERE name = 'newest'",
+        [],
+    )
+    .unwrap();
 
     let skills = list_skills_inner("/unused", None, &conn).unwrap();
     assert_eq!(skills.len(), 2);
-    // The most recently updated should come first
-    // Since they're created nearly simultaneously, just verify both exist
-    let names: Vec<&str> = skills.iter().map(|s| s.name.as_str()).collect();
-    assert!(names.contains(&"oldest"));
-    assert!(names.contains(&"newest"));
+    // Sort is by created_at DESC — newest first
+    assert_eq!(skills[0].name, "newest");
+    assert_eq!(skills[1].name, "oldest");
 }
 
 // ===== create + list integration =====
@@ -462,8 +471,8 @@ fn test_delete_skill_no_workspace_dir_but_has_skills_output() {
     let skills_path = skills_dir.path().to_str().unwrap();
     let conn = create_test_db();
 
-    // Only create skill output, no workspace dir
-    let output_dir = Path::new(skills_path).join("orphan-output");
+    // Only create skill output, no workspace dir (canonical plugin layout)
+    let output_dir = Path::new(skills_path).join(DEFAULT_PLUGIN_SLUG).join("orphan-output");
     fs::create_dir_all(output_dir.join("references")).unwrap();
     fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
@@ -529,9 +538,10 @@ fn test_delete_skill_directory_traversal() {
     )
     .unwrap();
 
-    // Attempt to delete using ".." to escape the workspace
-    // This creates workspace/../outside-target which resolves to outside_dir
-    let result = delete_skill_inner(workspace_str, "../outside-target", DEFAULT_PLUGIN_SLUG, None, None);
+    // Attempt to delete using "../.." to escape the workspace
+    // With plugin-namespaced paths, workspace_skill_dir resolves to
+    // workspace/skills/../../outside-target which is dir/outside-target
+    let result = delete_skill_inner(workspace_str, "../../outside-target", DEFAULT_PLUGIN_SLUG, None, None);
     assert!(result.is_err(), "Directory traversal should be rejected");
 
     // The outside directory should still exist (not deleted)
@@ -545,6 +555,11 @@ fn test_delete_skill_skills_path_directory_traversal() {
     let dir = tempdir().unwrap();
     let skills_base = dir.path().join("skills");
     fs::create_dir_all(&skills_base).unwrap();
+    // Create the plugin slug subdirectory so that path traversal via
+    // "../../outside-target" resolves on all platforms. On Linux/macOS the
+    // kernel traverses directories component-by-component and cannot resolve
+    // ".." through a non-existent intermediate.
+    fs::create_dir_all(skills_base.join(DEFAULT_PLUGIN_SLUG)).unwrap();
     let skills_path = skills_base.to_str().unwrap();
 
     let workspace_dir = tempdir().unwrap();
@@ -554,9 +569,11 @@ fn test_delete_skill_skills_path_directory_traversal() {
     let outside_dir = dir.path().join("outside-target");
     fs::create_dir_all(&outside_dir).unwrap();
 
-    // Attempt to delete using ".." to escape the skills_path
-    // This creates skills/../outside-target which resolves to outside_dir
-    let result = delete_skill_inner(workspace, "../outside-target", DEFAULT_PLUGIN_SLUG, None, Some(skills_path));
+    // Attempt to delete using "../.." to escape the skills_path.
+    // With plugin layout, resolve_skill_dir produces:
+    //   skills_base/{plugin_slug}/../../outside-target → dir.path()/outside-target
+    // which is outside skills_base.
+    let result = delete_skill_inner(workspace, "../../outside-target", DEFAULT_PLUGIN_SLUG, None, Some(skills_path));
     assert!(
         result.is_err(),
         "Directory traversal on skills_path should be rejected"
@@ -1004,9 +1021,9 @@ fn test_list_refinable_skills_returns_only_completed_with_skill_md() {
     let skills_path = dir.path().to_str().unwrap();
     let conn = create_test_db();
 
-    // Create a completed skill with SKILL.md on disk
+    // Create a completed skill with SKILL.md on disk (canonical plugin layout)
     crate::db::save_workflow_run(&conn, "ready-skill", 7, "completed", "domain").unwrap();
-    let skill_dir = dir.path().join("ready-skill");
+    let skill_dir = dir.path().join(DEFAULT_PLUGIN_SLUG).join("ready-skill");
     fs::create_dir_all(&skill_dir).unwrap();
     fs::write(skill_dir.join("SKILL.md"), "# Ready").unwrap();
 

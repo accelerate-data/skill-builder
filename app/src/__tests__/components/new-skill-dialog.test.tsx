@@ -103,7 +103,7 @@ async function fillStep1AndAdvance(
   // Select purpose from dropdown
   const purposeSelect = screen.getByLabelText(/What are you trying to capture/);
   await user.selectOptions(purposeSelect, purposeValue);
-  const descriptionInput = screen.getByLabelText(/^Description/);
+  const descriptionInput = screen.getByLabelText(/^What the skill does/);
   await user.type(descriptionInput, description);
   await user.click(screen.getByRole("button", { name: /Next/i }));
 }
@@ -159,7 +159,7 @@ describe("SkillDialog (create mode)", () => {
 
     expect(screen.getByLabelText(/^Skill Name/)).toBeInTheDocument();
     expect(screen.getByLabelText(/What are you trying to capture/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Description/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^What the skill does/)).toBeInTheDocument();
     expect(screen.getByLabelText("What Claude needs to know")).toBeInTheDocument();
   });
 
@@ -190,7 +190,7 @@ describe("SkillDialog (create mode)", () => {
     await openDialog(user);
 
     await user.type(screen.getByLabelText(/^Skill Name/), "test-skill");
-    await user.type(screen.getByLabelText(/^Description/), "A description");
+    await user.type(screen.getByLabelText(/^What the skill does/), "A description");
 
     const nextButton = screen.getByRole("button", { name: /Next/i });
     expect(nextButton).toBeDisabled();
@@ -215,7 +215,7 @@ describe("SkillDialog (create mode)", () => {
 
     await user.type(screen.getByLabelText(/^Skill Name/), "test-skill");
     await user.selectOptions(screen.getByLabelText(/What are you trying to capture/), "platform");
-    await user.type(screen.getByLabelText(/^Description/), "A test description");
+    await user.type(screen.getByLabelText(/^What the skill does/), "A test description");
 
     const nextButton = screen.getByRole("button", { name: /Next/i });
     expect(nextButton).toBeEnabled();
@@ -228,7 +228,7 @@ describe("SkillDialog (create mode)", () => {
 
     await user.type(screen.getByLabelText(/^Skill Name/), "sales-pipeline");
     await user.selectOptions(screen.getByLabelText(/What are you trying to capture/), "platform");
-    await user.type(screen.getByLabelText(/^Description/), "A description");
+    await user.type(screen.getByLabelText(/^What the skill does/), "A description");
 
     expect(screen.getByRole("button", { name: /Next/i })).toBeDisabled();
     expect(screen.getByText("A skill with this name already exists")).toBeInTheDocument();
@@ -374,7 +374,7 @@ describe("SkillDialog (create mode)", () => {
     // Fill name + purpose + description on step 1
     await user.type(screen.getByLabelText(/^Skill Name/), "test-skill");
     await user.selectOptions(screen.getByLabelText(/What are you trying to capture/), "source");
-    await user.type(screen.getByLabelText(/^Description/), "A source skill");
+    await user.type(screen.getByLabelText(/^What the skill does/), "A source skill");
 
     // Add tags on step 1
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
@@ -469,7 +469,7 @@ describe("SkillDialog (create mode)", () => {
     // Fill name + purpose + description first
     await user.type(screen.getByLabelText(/^Skill Name/), "test");
     await user.selectOptions(screen.getByLabelText(/What are you trying to capture/), "platform");
-    await user.type(screen.getByLabelText(/^Description/), "A platform skill");
+    await user.type(screen.getByLabelText(/^What the skill does/), "A platform skill");
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "sale");

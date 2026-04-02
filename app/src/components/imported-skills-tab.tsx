@@ -178,7 +178,7 @@ export function ImportedSkillsTab() {
                       Upgrades locked
                     </button>
                   ) : (
-                    <span className="text-xs text-muted-foreground">\u2014</span>
+                    <span className="text-xs text-muted-foreground">{"\u2014"}</span>
                   )}
                 </td>
                 <td className="py-2.5">
@@ -224,6 +224,7 @@ export function ImportedSkillsTab() {
         meta={importMeta}
         onImported={fetchPlugins}
       />
+
 
       <CreatePluginDialog
         open={createPluginOpen}

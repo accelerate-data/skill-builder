@@ -18,7 +18,7 @@ use protocol::*;
 
 // ─── Shared helper ───────────────────────────────────────────────────────────
 
-fn resolve_skills_path(db: &Db, workspace_path: &str) -> Result<String, String> {
+pub(crate) fn resolve_skills_path(db: &Db, workspace_path: &str) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = db::read_settings(&conn)?;
     Ok(settings
@@ -35,7 +35,7 @@ pub(super) fn resolve_skill_plugin_slug(db: &Db, skill_name: &str) -> Result<Str
 
 /// Resolve the directory that contains SKILL.md for the given skill.
 /// Uses the correct plugin slug (cross-plugin lookup) so imported skills
-/// resolve to `skills_path/{plugin_slug}/skills/{skill_name}/`.
+/// resolve to `skills_path/{plugin_slug}/{skill_name}/`.
 pub(super) fn resolve_skill_output_dir(
     db: &Db,
     skill_name: &str,
@@ -115,11 +115,12 @@ impl RefineSessionManager {
 #[tauri::command]
 pub async fn start_refine_session(
     skill_name: String,
+    plugin_slug: String,
     workspace_path: String,
     sessions: tauri::State<'_, RefineSessionManager>,
     db: tauri::State<'_, Db>,
 ) -> Result<RefineSessionInfo, String> {
-    log::info!("[start_refine_session] skill={}", skill_name);
+    log::info!("[start_refine_session] skill={} plugin={}", skill_name, plugin_slug);
     validate_skill_name(&skill_name)?;
 
     let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
@@ -214,6 +215,7 @@ pub async fn start_refine_session(
 pub async fn send_refine_message(
     session_id: String,
     user_message: String,
+    plugin_slug: String,
     workspace_path: String,
     target_files: Option<Vec<String>>,
     command: Option<String>,
@@ -261,7 +263,7 @@ pub async fn send_refine_message(
         stream_started
     );
 
-    let runtime = load_refine_runtime_settings(&db, &workspace_path, &skill_name)?;
+    let runtime = load_refine_runtime_settings(&db, &workspace_path, &skill_name, &plugin_slug)?;
     ensure_skill_workspace_dir(&workspace_path, &runtime.plugin_slug, &skill_name);
     let skill_output_dir = resolve_skill_output_dir(&db, &skill_name, &runtime.skills_path)?;
 
@@ -312,9 +314,9 @@ pub async fn send_refine_message(
         }
 
         log::debug!(
-            "[send_refine_message] starting stream agent={} cwd={}",
+            "[send_refine_message] starting stream agent={} workspace_skill_dir={}",
             agent_id,
-            config.cwd,
+            config.workspace_skill_dir,
         );
 
         pool.send_stream_start(&skill_name, &session_id, &agent_id, config, &app)

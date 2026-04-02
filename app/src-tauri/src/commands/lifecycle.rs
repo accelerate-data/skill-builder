@@ -15,3 +15,14 @@ pub fn get_log_file_path(app: tauri::AppHandle) -> Result<String, String> {
     log::info!("[get_log_file_path]");
     crate::logging::get_log_file_path(&app)
 }
+
+/// Log a message from the frontend into the Rust app.log file.
+#[tauri::command]
+pub fn log_frontend(level: String, message: String) {
+    match level.as_str() {
+        "error" => log::error!("[frontend] {}", message),
+        "warn" => log::warn!("[frontend] {}", message),
+        "debug" => log::debug!("[frontend] {}", message),
+        _ => log::info!("[frontend] {}", message),
+    }
+}

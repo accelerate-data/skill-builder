@@ -1,3 +1,32 @@
-The skill name is: {{skill_name}}. The command is: {{command}}. The skill directory is: {{skill_dir}}. The context directory is: {{context_dir}}. The workspace directory is: {{workspace_dir}}. All directories already exist — never create directories with mkdir or any other method. Read user-context.md from the workspace directory for purpose, description, and all user context.{{target_files_clause}}
+The skill name is: {{skill_name}}. The command is: {{command}}. The skill directory is: {{skill_dir}}. The context directory is: {{context_dir}}. The workspace directory is: {{workspace_dir}}. All directories already exist — never create directories with mkdir or any other method. The user context file is at: {{workspace_dir}}/user-context.md — read it for purpose, description, and all user context.{{target_files_clause}}
+
+ROUTING:
+
+- For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.
+
+- EVAL FAILURE FEEDBACK: If the user's message contains lines matching the pattern "eval `{eval_name}`: {/path/to/grading.json}", treat it as eval failure feedback from the Evals tab. Do NOT run a new benchmark. Do NOT launch rewrite-skill immediately. Follow these steps IN ORDER — you MUST complete each step before moving to the next:
+
+  STEP 1 — Read grading files.
+  Read each grading file using the Read tool. Extract failed assertions (expectations where passed=false), including their text and evidence.
+
+  STEP 2 — Triage each failure.
+  Determine whether the assertion is a legitimate skill gap (the skill should be improved) or an impossible/unreasonable assertion (e.g. it checks for behavior the eval environment cannot produce, like directory structure in a flat output folder).
+
+  STEP 3 — MANDATORY: Call AskUserQuestion tool.
+  *** YOU MUST CALL THE AskUserQuestion TOOL. THIS IS NOT OPTIONAL. ***
+  Do NOT respond in plain text. Do NOT skip to Step 5. Do NOT launch rewrite-skill yet.
+  If you have not called AskUserQuestion, STOP and call it now.
+  Structure the call: header="Skill Gaps", multiSelect=true, options array with one option per failing eval that has genuine skill gaps (label=eval name, description=one-sentence summary).
+  If multiple evals qualify, add a final option: label="Address all skill gaps", description="Fix all failing evals in one refine pass".
+  Only exception: if ALL failures are assertion design issues (zero genuine skill gaps), respond in plain text instead.
+
+  STEP 4 — HARD STOP. Wait for the user's selection.
+  Do NOT proceed until you receive the user's response to AskUserQuestion.
+
+  STEP 5 — Launch rewrite-skill with selected gaps only.
+  Only after the user selects which gaps to fix.
+  Launch skill-creator:rewrite-skill with only the selected failures.
+
+- CONSTRAINT: You can only refine or validate the existing skill. Do NOT create new skills or evaluate existing skills.
 
 Current request: {{user_message}}

@@ -6,12 +6,25 @@ function makeConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
   return {
     prompt: "test prompt",
     apiKey: "sk-test",
-    cwd: "/tmp/project",
+    workspaceRootDir: "/tmp/project",
+    workspaceSkillDir: "/tmp/project",
     ...overrides,
   };
 }
 
 describe("buildQueryOptions", () => {
+  it("uses settingSources from config when provided as empty array", () => {
+    // evaluate-skill passes settingSources: [] to block workspace skill loading
+    const config = makeConfig({ agentName: "skill-creator:evaluate-skill", settingSources: [] });
+    const opts = buildQueryOptions(config, new AbortController(), []);
+    expect(opts.settingSources).toEqual([]);
+  });
+
+  it("defaults settingSources to ['project'] when absent from config", () => {
+    const opts = buildQueryOptions(makeConfig(), new AbortController(), []);
+    expect(opts.settingSources).toEqual(["project"]);
+  });
+
   it("uses agent + settingSources when agentName is provided (no model)", () => {
     const config = makeConfig({ agentName: "my-agent" });
     const ac = new AbortController();
@@ -37,7 +50,7 @@ describe("buildQueryOptions", () => {
     expect(opts).toHaveProperty("settingSources", ["project"]);
   });
 
-  it("passes only agent when both agentName and model are present", () => {
+  it("passes both agent and model when both agentName and model are present", () => {
     const config = makeConfig({
       agentName: "my-agent",
       model: "claude-sonnet-4-20250514",
@@ -46,8 +59,8 @@ describe("buildQueryOptions", () => {
     const opts = buildQueryOptions(config, ac, []);
 
     expect(opts).toHaveProperty("agent", "my-agent");
+    expect(opts).toHaveProperty("model", "claude-sonnet-4-20250514");
     expect(opts).toHaveProperty("settingSources", ["project"]);
-    expect(opts).not.toHaveProperty("model");
   });
 
   it("defaults maxTurns to 50 when not specified", () => {
@@ -184,13 +197,13 @@ describe("buildQueryOptions", () => {
     expect(opts.executable).toBe(process.execPath);
   });
 
-  it("always includes cwd from config", () => {
+  it("uses workspaceSkillDir as cwd", () => {
     const opts = buildQueryOptions(
-      makeConfig({ cwd: "/my/project" }),
+      makeConfig({ workspaceSkillDir: "/my/project/skills/test" }),
       new AbortController(),
       []
     );
-    expect(opts.cwd).toBe("/my/project");
+    expect(opts.cwd).toBe("/my/project/skills/test");
   });
 
   it("passes stderr callback when provided", () => {

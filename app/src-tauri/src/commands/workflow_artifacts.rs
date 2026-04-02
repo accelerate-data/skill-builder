@@ -261,13 +261,13 @@ mod tests {
     fn test_benchmark_skill_output_round_trip() {
         let json = serde_json::json!({
             "status": "complete",
-            "benchmark_path": "evals/workspace/iteration-1"
+            "benchmark_path": "evals/iterations/iteration-1"
         });
 
         let parsed: GenerateSkillOutput =
             serde_json::from_value(json).expect("deserialize GenerateSkillOutput");
         assert_eq!(parsed.status, "complete");
-        assert_eq!(parsed.benchmark_path.as_deref(), Some("evals/workspace/iteration-1"));
+        assert_eq!(parsed.benchmark_path.as_deref(), Some("evals/iterations/iteration-1"));
     }
 
     #[test]
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn test_generate_skill_output_rejects_missing_status() {
         let json = serde_json::json!({
-            "benchmark_path": "evals/workspace/iteration-1"
+            "benchmark_path": "evals/iterations/iteration-1"
         });
         let result = serde_json::from_value::<GenerateSkillOutput>(json);
         assert!(result.is_err(), "should reject missing status");

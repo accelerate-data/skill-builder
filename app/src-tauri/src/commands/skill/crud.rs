@@ -282,7 +282,7 @@ pub(crate) fn create_skill_inner(
     // Check for collision in skills_path (skill output directory).
     // Skills library IS organized by plugin (default plugin: skills/{name}).
     if let Some(sp) = skills_path {
-        let skill_output = crate::skill_paths::nested_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name);
+        let skill_output = crate::skill_paths::resolve_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name);
         if skill_output.exists() {
             return Err(format!(
                 "Skill '{}' already exists in skills output directory ({})",

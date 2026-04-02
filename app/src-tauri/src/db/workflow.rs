@@ -25,8 +25,24 @@ pub fn save_workflow_run(
     status: &str,
     purpose: &str,
 ) -> Result<(), String> {
-    // Ensure the skills master row exists (skill-builder source)
+    // Ensure the skills master row exists (skill-builder source) in the default plugin.
+    // Redo resets a skill to the default plugin, so stale rows in non-default plugins
+    // are cleaned up below to prevent sidebar duplicates.
     let skill_id = upsert_skill(conn, skill_name, "skill-builder", purpose)?;
+
+    // Delete any rows for this skill in non-default plugins. This covers the redo case
+    // where the skill was previously in a non-default plugin: upsert_skill above inserted
+    // a new default-plugin row (ON CONFLICT key is (plugin_id, name)), so the old row
+    // remains until explicitly removed here.
+    conn.execute(
+        "DELETE FROM skills
+         WHERE name = ?1
+           AND id != ?2
+           AND plugin_id != (SELECT id FROM plugins WHERE is_default = 1 LIMIT 1)",
+        rusqlite::params![skill_name, skill_id],
+    )
+    .map_err(|e| e.to_string())?;
+
     conn.execute(
         "INSERT INTO workflow_runs (skill_name, current_step, status, purpose, skill_id, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, datetime('now') || 'Z')
