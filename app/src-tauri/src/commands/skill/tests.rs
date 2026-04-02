@@ -555,6 +555,11 @@ fn test_delete_skill_skills_path_directory_traversal() {
     let dir = tempdir().unwrap();
     let skills_base = dir.path().join("skills");
     fs::create_dir_all(&skills_base).unwrap();
+    // Create the plugin slug subdirectory so that path traversal via
+    // "../../outside-target" resolves on all platforms. On Linux/macOS the
+    // kernel traverses directories component-by-component and cannot resolve
+    // ".." through a non-existent intermediate.
+    fs::create_dir_all(skills_base.join(DEFAULT_PLUGIN_SLUG)).unwrap();
     let skills_path = skills_base.to_str().unwrap();
 
     let workspace_dir = tempdir().unwrap();
