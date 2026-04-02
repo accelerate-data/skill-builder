@@ -103,6 +103,32 @@ pub(crate) fn output_format_for_agent(
         }));
     }
 
+    if matches!(_agent_name, Some("skill-creator:generate-skill-description-evals")) {
+        return Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "queries"],
+                "properties": {
+                    "status": { "type": "string", "enum": ["generated"] },
+                    "queries": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["query", "should_trigger"],
+                            "properties": {
+                                "query": { "type": "string" },
+                                "should_trigger": { "type": "boolean" }
+                            },
+                            "additionalProperties": false
+                        }
+                    }
+                },
+                "additionalProperties": false
+            }
+        }));
+    }
+
     None
 }
 
@@ -311,6 +337,15 @@ mod tests {
     #[test]
     fn test_output_format_for_feedback() {
         assert!(output_format_for_agent("_feedback", None).is_some());
+    }
+
+    #[test]
+    fn test_output_format_for_generate_desc_evals() {
+        let fmt = output_format_for_agent("any-skill", Some("skill-creator:generate-skill-description-evals"));
+        assert!(fmt.is_some());
+        let schema = &fmt.unwrap()["schema"];
+        assert_eq!(schema["required"][0], "status");
+        assert_eq!(schema["required"][1], "queries");
     }
 
     #[test]
