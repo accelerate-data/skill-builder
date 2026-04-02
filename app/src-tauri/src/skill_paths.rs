@@ -9,6 +9,7 @@ pub const DEFAULT_PLUGIN_DISPLAY_NAME: &str = "Skills";
 
 #[derive(Debug, serde::Deserialize)]
 pub struct PluginPaths {
+    #[allow(dead_code)]
     pub default_plugin_slug: String,
     pub skill_dir: String,
     pub workspace_skill_dir: String,

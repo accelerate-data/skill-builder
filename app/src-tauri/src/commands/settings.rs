@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::db::Db;
-use crate::skill_paths::{enumerate_skill_locations, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::enumerate_skill_locations;
 use crate::types::AppSettings;
 
 /// Default built-in marketplace registry URL. Used for both the initial migration
@@ -98,6 +98,7 @@ pub(crate) fn run_settings_startup_migrations(conn: &rusqlite::Connection) -> Re
 /// Handles two legacy formats:
 /// - Bare: `{name}/vX.Y.Z` (pre-plugin era)
 /// - Old marketplace: `{slug}/skills/{name}/vX.Y.Z`
+///
 /// Guarded by the `legacy_tags_migrated` flag — runs once, then never again.
 fn migrate_legacy_skill_tags(skills_root: &Path) {
     if !skills_root.join(".git").exists() {

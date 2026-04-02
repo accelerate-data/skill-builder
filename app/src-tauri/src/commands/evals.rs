@@ -418,6 +418,7 @@ pub fn create_next_iteration_dir(
 /// writes `benchmark.json`, and returns `(benchmark, analyst_notes)`.
 /// This is pure math — no LLM involved.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn materialize_eval_benchmark(
     iter_dir: String,
     skill_name: String,
@@ -801,13 +802,6 @@ fn read_grading_summary(path: &Path) -> Result<GradingSummary, String> {
     Ok(grading.summary)
 }
 
-/// Try to read the eval_name from a grading.json file (optional field).
-fn read_eval_name_from_grading(path: &Path) -> Option<String> {
-    let raw = std::fs::read_to_string(path).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    v.get("eval_name").and_then(|n| n.as_str()).map(String::from)
-}
-
 /// Sum passed/failed/total across evals in a run.
 pub(crate) fn compute_run_summary(evals: &[BenchmarkEval]) -> GradingSummary {
     let mut passed = 0u32;
@@ -1109,6 +1103,7 @@ const EVAL_GEN_PROMPT_TEMPLATE: &str = include_str!("../../../../agent-sources/w
 /// Build the evaluate-skill prompt from the embedded template.
 /// Replaces `{{placeholder}}` tokens with actual values.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn build_eval_prompt(
     skill_name: String,
     plugin_slug: String,

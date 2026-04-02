@@ -398,7 +398,7 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
 
     let verdict_str = root
         .get("verdict")
-        .and_then(|v| super::coerce_to_string(v))
+        .and_then(super::coerce_to_string)
         .ok_or_else(|| "answer_evaluation.verdict must be present".to_string())?;
     let verdict = verdict_str.as_str();
     if !["sufficient", "mixed", "insufficient"].contains(&verdict) {
@@ -414,14 +414,14 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
         "contradictory_count",
         "total_count",
     ] {
-        if root.get(field).and_then(|v| super::coerce_to_i64(v)).is_none() {
+        if root.get(field).and_then(super::coerce_to_i64).is_none() {
             return Err(format!("answer_evaluation.{} must be an integer", field));
         }
     }
 
     let reasoning_str = root
         .get("reasoning")
-        .and_then(|v| super::coerce_to_string(v))
+        .and_then(super::coerce_to_string)
         .ok_or_else(|| "answer_evaluation.reasoning must be present".to_string())?;
     let reasoning = reasoning_str.as_str();
     if reasoning.trim().is_empty() {
@@ -436,13 +436,13 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
         let obj = entry
             .as_object()
             .ok_or_else(|| format!("answer_evaluation.per_question[{}] must be an object", idx))?;
-        if obj.get("question_id").and_then(|v| super::coerce_to_string(v)).is_none() {
+        if obj.get("question_id").and_then(super::coerce_to_string).is_none() {
             return Err(format!(
                 "answer_evaluation.per_question[{}].question_id must be a string",
                 idx
             ));
         }
-        let pq_verdict_str = obj.get("verdict").and_then(|v| super::coerce_to_string(v)).ok_or_else(|| {
+        let pq_verdict_str = obj.get("verdict").and_then(super::coerce_to_string).ok_or_else(|| {
             format!(
                 "answer_evaluation.per_question[{}].verdict must be present",
                 idx
@@ -456,7 +456,7 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
             ));
         }
         if pq_verdict == "vague" || pq_verdict == "contradictory" {
-            let reason_str = obj.get("reason").and_then(|v| super::coerce_to_string(v)).ok_or_else(|| {
+            let reason_str = obj.get("reason").and_then(super::coerce_to_string).ok_or_else(|| {
                 format!(
                     "answer_evaluation.per_question[{}].reason is required for {} verdict",
                     idx, pq_verdict
@@ -472,7 +472,7 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
     }
 
     // gate_decision is optional (may be absent in fallback error outputs) but must be valid when present.
-    if let Some(gd_str) = root.get("gate_decision").and_then(|v| super::coerce_to_string(v)) {
+    if let Some(gd_str) = root.get("gate_decision").and_then(super::coerce_to_string) {
         let gd = gd_str.as_str();
         if !["run_research", "revise"].contains(&gd) {
             return Err(format!(

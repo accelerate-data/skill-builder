@@ -57,7 +57,7 @@ pub(super) fn load_refine_runtime_settings(
     db: &Db,
     workspace_path: &str,
     skill_name: &str,
-    plugin_slug: &str,
+    _plugin_slug: &str,
 ) -> Result<RefineRuntimeSettings, String> {
     // Resolve plugin slug before acquiring conn to avoid re-entrant lock deadlock.
     let plugin_slug = super::resolve_skill_plugin_slug(db, skill_name)?;

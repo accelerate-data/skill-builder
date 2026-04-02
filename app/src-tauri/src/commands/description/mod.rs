@@ -152,11 +152,8 @@ pub async fn run_optimization_loop(
                         log::debug!("[run_optimization_loop] emit error: {}", e);
                     }
                 } else if type_field == "result"
-                    || payload.get("ok").and_then(|v| v.as_bool()) == Some(true)
-                {
-                    final_result = Some(payload);
-                } else if type_field == "error"
-                    || payload.get("ok").and_then(|v| v.as_bool()) == Some(false)
+                    || type_field == "error"
+                    || payload.get("ok").and_then(|v| v.as_bool()).is_some()
                 {
                     final_result = Some(payload);
                 }

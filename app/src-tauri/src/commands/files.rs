@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::SkillFileEntry;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
