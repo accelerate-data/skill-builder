@@ -220,6 +220,52 @@ pub async fn run_optimization_loop(
 }
 
 #[tauri::command]
+pub fn save_eval_queries(
+    skill_name: String,
+    workspace_path: String,
+    eval_queries: Vec<EvalQuery>,
+    db: tauri::State<'_, crate::db::Db>,
+) -> Result<(), String> {
+    log::info!(
+        "[save_eval_queries] skill={} count={}",
+        skill_name,
+        eval_queries.len()
+    );
+    let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
+    let path = Path::new(&skills_path)
+        .join(&skill_name)
+        .join("description-evals.json");
+    let json = serde_json::to_string_pretty(&eval_queries)
+        .map_err(|e| format!("Failed to serialize eval queries: {}", e))?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, &json)
+        .map_err(|e| format!("Failed to write description-evals.json: {}", e))?;
+    std::fs::rename(&tmp, &path)
+        .map_err(|e| format!("Failed to finalize description-evals.json: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn load_eval_queries(
+    skill_name: String,
+    workspace_path: String,
+    db: tauri::State<'_, crate::db::Db>,
+) -> Result<Vec<EvalQuery>, String> {
+    log::info!("[load_eval_queries] skill={}", skill_name);
+    let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
+    let path = Path::new(&skills_path)
+        .join(&skill_name)
+        .join("description-evals.json");
+    if !path.is_file() {
+        return Ok(vec![]);
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read description-evals.json: {}", e))?;
+    serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse description-evals.json: {}", e))
+}
+
+#[tauri::command]
 pub async fn apply_description(
     skill_name: String,
     workspace_path: String,

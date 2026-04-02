@@ -14,7 +14,7 @@ import {
   scoreColor,
 } from "@/lib/description-optimization";
 import type { EvalQuery, OptimizationIteration, OptimizationResult } from "@/lib/description-optimization";
-import { generateEvalQueries, runOptimizationLoop, applyDescription } from "@/lib/tauri";
+import { generateEvalQueries, runOptimizationLoop, applyDescription, saveEvalQueries, loadEvalQueries } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/tauri";
 
 interface WorkspaceDescriptionProps {
@@ -35,6 +35,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   const [applied, setApplied] = useState(false);
 
   const unlistenRef = useRef<(() => void) | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -42,6 +43,34 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
       unlistenRef.current = null;
     };
   }, []);
+
+  // Load persisted eval queries on mount / skill change
+  useEffect(() => {
+    if (!workspacePath) return;
+    loadEvalQueries(skill.name, workspacePath)
+      .then((loaded) => {
+        if (loaded.length > 0) {
+          setQueries(loaded.map((q) => ({ ...q, id: crypto.randomUUID() })));
+        }
+      })
+      .catch((err) =>
+        console.warn("[workspace-description] load queries failed:", err),
+      );
+  }, [skill.name, workspacePath]);
+
+  // Auto-save queries (debounced)
+  useEffect(() => {
+    if (!workspacePath || queries.length === 0) return;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      saveEvalQueries(skill.name, workspacePath, queries).catch((err) =>
+        console.warn("[workspace-description] save queries failed:", err),
+      );
+    }, 500);
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [queries, skill.name, workspacePath]);
 
   const model = skill.model ?? preferredModel ?? "sonnet";
 

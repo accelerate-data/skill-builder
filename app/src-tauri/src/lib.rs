@@ -405,6 +405,8 @@ pub fn run() {
             commands::description::generate_eval_queries,
             commands::description::run_optimization_loop,
             commands::description::apply_description,
+            commands::description::save_eval_queries,
+            commands::description::load_eval_queries,
             commands::documents::list_documents,
             commands::documents::list_skills_for_documents,
             commands::documents::add_document_file,

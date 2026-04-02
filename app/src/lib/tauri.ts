@@ -689,6 +689,22 @@ export const applyDescription = (
   description: string,
 ) => invoke<void>("apply_description", { skillName, workspacePath, description });
 
+export const saveEvalQueries = (
+  skillName: string,
+  workspacePath: string,
+  evalQueries: EvalQuery[],
+) =>
+  invoke<void>("save_eval_queries", {
+    skillName,
+    workspacePath,
+    evalQueries: evalQueries.map(({ query, should_trigger }) => ({ query, should_trigger })),
+  });
+
+export const loadEvalQueries = (
+  skillName: string,
+  workspacePath: string,
+) => invoke<EvalQuery[]>("load_eval_queries", { skillName, workspacePath });
+
 // --- Benchmark ---
 
 export interface LatestBenchmarkResult {
