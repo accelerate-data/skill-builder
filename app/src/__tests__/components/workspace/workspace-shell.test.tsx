@@ -151,8 +151,8 @@ describe("WorkspaceShell", () => {
     await user.click(overviewTab!);
 
     // Dialog should appear
-    expect(screen.getByText("Agent Running")).toBeInTheDocument();
-    expect(screen.getByText(/agent is still running/i)).toBeInTheDocument();
+    expect(screen.getByText("Process Running")).toBeInTheDocument();
+    expect(screen.getByText(/process is still running/i)).toBeInTheDocument();
 
     // Refine tab should still be active (check via container, not role query — dialog captures aria)
     const stillActive = container.querySelector('[role="tab"][data-state="active"]');
@@ -171,7 +171,7 @@ describe("WorkspaceShell", () => {
 
     const overviewTab = container.querySelector('[role="tab"]');
     await user.click(overviewTab!);
-    expect(screen.getByText("Agent Running")).toBeInTheDocument();
+    expect(screen.getByText("Process Running")).toBeInTheDocument();
 
     // Click Leave
     await user.click(screen.getByRole("button", { name: "Leave" }));
@@ -193,13 +193,13 @@ describe("WorkspaceShell", () => {
 
     const overviewTab = container.querySelector('[role="tab"]');
     await user.click(overviewTab!);
-    expect(screen.getByText("Agent Running")).toBeInTheDocument();
+    expect(screen.getByText("Process Running")).toBeInTheDocument();
 
     // Click Stay
     await user.click(screen.getByRole("button", { name: "Stay" }));
 
     // Dialog should close, Refine still active
-    expect(screen.queryByText("Agent Running")).not.toBeInTheDocument();
+    expect(screen.queryByText("Process Running")).not.toBeInTheDocument();
     const activeTab = container.querySelector('[role="tab"][data-state="active"]');
     expect(activeTab?.textContent).toBe("Refine");
 

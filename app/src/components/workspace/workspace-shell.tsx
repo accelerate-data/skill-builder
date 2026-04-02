@@ -14,7 +14,7 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
-import { cleanupSkillSidecar, getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
+import { cleanupSkillSidecar, cancelDescriptionOptimization, getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
@@ -33,6 +33,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
   const [activeTab, setActiveTab] = useState(initialTab ?? "overview");
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const evalsRunningRef = useRef(false);
+  const descriptionRunningRef = useRef(false);
   const isSkillStoreLoading = useSkillStore((s) => s.isLoading);
 
   // Sync tab when a navigation sets initialTab (e.g. "Refine" from the More menu)
@@ -54,6 +55,11 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
       setPendingTab(value);
       return;
     }
+    // Guard: block switching away from Description while optimization is running
+    if (activeTab === "description" && value !== "description" && descriptionRunningRef.current) {
+      setPendingTab(value);
+      return;
+    }
     setActiveTab(value);
   }, [activeTab]);
 
@@ -69,6 +75,12 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
       if (activeTab === "evals" && evalsRunningRef.current) {
         cleanupSkillSidecar(skillName).catch((err) =>
           console.error("[workspace-shell] eval sidecar cleanup failed:", err),
+        );
+      }
+      // Kill optimization process when leaving description tab
+      if (activeTab === "description" && descriptionRunningRef.current) {
+        cancelDescriptionOptimization().catch((err) =>
+          console.error("[workspace-shell] description optimization cancel failed:", err),
         );
       }
       setActiveTab(pendingTab);
@@ -182,10 +194,17 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
           </TabsContent>
 
           <TabsContent value="description" className="flex-1 overflow-y-auto p-6">
-            <WorkspaceDescription
-              skill={"name" in skill ? skill as SkillSummary : { ...(skill as ImportedSkill), name: (skill as ImportedSkill).skill_name } as unknown as SkillSummary}
-              workspacePath={workspacePath ?? ""}
-            />
+            {"name" in skill ? (
+              <WorkspaceDescription
+                skill={skill as SkillSummary}
+                workspacePath={workspacePath ?? ""}
+                onRunningChange={(running) => { descriptionRunningRef.current = running; }}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Description optimization is not available for imported skills.
+              </div>
+            )}
           </TabsContent>
         </Tabs>
 
@@ -196,9 +215,9 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
         <Dialog open onOpenChange={(open) => { if (!open) handleTabStay(); }}>
           <DialogContent showCloseButton={false}>
             <DialogHeader>
-              <DialogTitle>Agent Running</DialogTitle>
+              <DialogTitle>Process Running</DialogTitle>
               <DialogDescription>
-                An agent is still running. Switching tabs will abandon the session.
+                A process is still running. Switching tabs will abandon the session.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

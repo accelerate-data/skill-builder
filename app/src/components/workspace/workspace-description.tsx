@@ -37,15 +37,16 @@ import {
   scoreColor,
 } from "@/lib/description-optimization";
 import type { EvalQuery, OptimizationIteration, OptimizationResult } from "@/lib/description-optimization";
-import { startGenerateDescEvalQueries, runOptimizationLoop, applyDescription, saveEvalQueries, loadEvalQueries, cancelAgentRun } from "@/lib/tauri";
+import { startGenerateDescEvalQueries, runOptimizationLoop, applyDescription, saveEvalQueries, loadEvalQueries, cancelAgentRun, cancelDescriptionOptimization } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/tauri";
 
 interface WorkspaceDescriptionProps {
   skill: SkillSummary;
   workspacePath: string;
+  onRunningChange?: (running: boolean) => void;
 }
 
-export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescriptionProps) {
+export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: WorkspaceDescriptionProps) {
   const preferredModel = useSettingsStore((s) => s.preferredModel);
 
   const [queries, setQueries] = useState<EvalQuery[]>([]);
@@ -60,6 +61,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   const [numEvalQueriesInput, setNumEvalQueriesInput] = useState("20");
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const agentHasRun = useAgentStore((s) => activeAgentId ? activeAgentId in s.runs : false);
 
@@ -117,6 +119,11 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
   }, [queries, skill.name, workspacePath]);
+
+  // Notify parent when running state changes
+  useEffect(() => {
+    onRunningChange?.(isRunning);
+  }, [isRunning, onRunningChange]);
 
   const model = skill.model ?? preferredModel ?? "sonnet";
 
@@ -230,18 +237,35 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      console.error(
-        "event=optimization_failed operation=runOptimizationLoop skill=%s error=%s",
-        skill.name,
-        msg,
-      );
+      // Don't show "cancelled" as an error — it's user-initiated
+      if (!msg.toLowerCase().includes("cancelled")) {
+        setError(msg);
+        console.error(
+          "event=optimization_failed operation=runOptimizationLoop skill=%s error=%s",
+          skill.name,
+          msg,
+        );
+      }
     } finally {
       setIsRunning(false);
+      setIsCancelling(false);
       if (unlistenRef.current) {
         unlistenRef.current();
         unlistenRef.current = null;
       }
+    }
+  }
+
+  async function handleCancel() {
+    setIsCancelling(true);
+    try {
+      await cancelDescriptionOptimization();
+      console.log(
+        "event=optimization_cancelled operation=cancelDescriptionOptimization skill=%s",
+        skill.name,
+      );
+    } catch (err) {
+      console.warn("[workspace-description] cancel failed:", err);
     }
   }
 
@@ -419,9 +443,26 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
 
         {isRunning && (
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">
-              Running… (iteration {progress.length})
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-muted-foreground">
+                Running… (iteration {progress.length})
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCancel}
+                disabled={isCancelling}
+              >
+                {isCancelling ? (
+                  <>
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    Cancelling…
+                  </>
+                ) : (
+                  "Cancel"
+                )}
+              </Button>
+            </div>
             {latestProgress && (
               <p className="text-sm">
                 <span className="text-muted-foreground">Train: </span>

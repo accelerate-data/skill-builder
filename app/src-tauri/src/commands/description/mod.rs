@@ -4,6 +4,7 @@ use crate::db::Db;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::Mutex;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
@@ -15,6 +16,16 @@ const DESC_EVALS_PROMPT_TEMPLATE: &str = include_str!(
 pub struct EvalQuery {
     pub query: String,
     pub should_trigger: bool,
+}
+
+/// Tracks the running optimization child process for cancellation.
+/// Only one optimization runs at a time.
+pub struct DescriptionProcessState(pub Mutex<Option<tokio::process::Child>>);
+
+impl DescriptionProcessState {
+    pub fn new() -> Self {
+        Self(Mutex::new(None))
+    }
 }
 
 fn resolve_skill_creator_scripts(app: &tauri::AppHandle) -> std::path::PathBuf {
@@ -101,6 +112,7 @@ pub async fn run_optimization_loop(
     workspace_path: String,
     model: String,
     eval_queries: Vec<EvalQuery>,
+    process_state: tauri::State<'_, DescriptionProcessState>,
     app: tauri::AppHandle,
 ) -> Result<serde_json::Value, String> {
     log::info!(
@@ -153,6 +165,13 @@ pub async fn run_optimization_loop(
 
     let stdout = child.stdout.take().expect("stdout piped");
     let stderr_handle = child.stderr.take().unwrap();
+
+    // Store child in managed state so cancel_description_optimization can kill it.
+    {
+        let mut guard = process_state.0.lock().map_err(|e| e.to_string())?;
+        *guard = Some(child);
+    }
+
     let mut reader = BufReader::new(stdout).lines();
 
     let mut final_result: Option<serde_json::Value> = None;
@@ -178,6 +197,18 @@ pub async fn run_optimization_loop(
             }
         }
     }
+
+    // Take child back from state. If None, it was cancelled.
+    let mut child = {
+        let mut guard = process_state.0.lock().map_err(|e| e.to_string())?;
+        match guard.take() {
+            Some(c) => c,
+            None => {
+                log::info!("[run_optimization_loop] optimization was cancelled");
+                return Err("Optimization cancelled".to_string());
+            }
+        }
+    };
 
     let exit_status = child.wait().await.map_err(|e| {
         log::error!("[run_optimization_loop] wait error: {}", e);
@@ -318,6 +349,30 @@ pub async fn apply_description(
         format!("Failed to write SKILL.md: {}", e)
     })?;
 
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cancel_description_optimization(
+    process_state: tauri::State<'_, DescriptionProcessState>,
+) -> Result<(), String> {
+    log::info!("[cancel_description_optimization] cancelling running optimization");
+    // Take child out of mutex before awaiting async operations
+    let child = {
+        let mut guard = process_state.0.lock().map_err(|e| e.to_string())?;
+        guard.take()
+    };
+    if let Some(mut child) = child {
+        if let Err(e) = child.kill().await {
+            log::warn!("[cancel_description_optimization] kill failed: {}", e);
+        } else {
+            log::info!("[cancel_description_optimization] killed child process");
+        }
+        // Reap the process to avoid zombie
+        let _ = child.wait().await;
+    } else {
+        log::debug!("[cancel_description_optimization] no running process to cancel");
+    }
     Ok(())
 }
 
