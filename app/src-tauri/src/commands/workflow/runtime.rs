@@ -548,8 +548,8 @@ pub async fn run_answer_evaluator(
     let mut config = SidecarConfig {
         prompt,
         system_prompt: None,
-        // Answer evaluator always uses Haiku for cost efficiency.
-        model: Some(resolve_model_id("haiku")),
+        // Answer evaluator uses Sonnet for reliable skill invocation.
+        model: Some(resolve_model_id("sonnet")),
         api_key,
         workspace_root_dir: workspace_path.replace('\\', "/"),
         workspace_skill_dir: resolve_workspace_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name)
