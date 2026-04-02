@@ -182,16 +182,10 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
           </TabsContent>
 
           <TabsContent value="description" className="flex-1 overflow-y-auto p-6">
-            {"name" in skill ? (
-              <WorkspaceDescription
-                skill={skill as SkillSummary}
-                workspacePath={workspacePath ?? ""}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                Description optimization is not available for imported skills.
-              </div>
-            )}
+            <WorkspaceDescription
+              skill={"name" in skill ? skill as SkillSummary : { ...(skill as ImportedSkill), name: (skill as ImportedSkill).skill_name } as unknown as SkillSummary}
+              workspacePath={workspacePath ?? ""}
+            />
           </TabsContent>
         </Tabs>
 

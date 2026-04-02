@@ -1,5 +1,5 @@
 use std::path::Path;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 use super::event_types::SidecarRunSummary;
 use crate::commands::description::{write_eval_queries_to_file, EvalQuery};
