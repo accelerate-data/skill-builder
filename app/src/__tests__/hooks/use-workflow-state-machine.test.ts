@@ -39,6 +39,7 @@ vi.mock("@/lib/tauri", () => ({
   writeFile: vi.fn((...args) => mockWriteFile(...args)),
   logGateDecision: vi.fn((...args) => mockLogGateDecision(...args)),
   getContextFileContent: vi.fn((...args) => mockGetContextFileContent(...args)),
+  logFrontend: vi.fn(),
 }));
 
 vi.mock("@/lib/models", () => ({

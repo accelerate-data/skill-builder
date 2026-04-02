@@ -58,6 +58,7 @@ vi.mock("@/lib/tauri", () => ({
   navigateBackToStepDb: vi.fn(() => Promise.resolve()),
   getContextFileContent: vi.fn(() => Promise.resolve(null)),
   listSkills: vi.fn().mockResolvedValue([]),
+  logFrontend: vi.fn(),
 }));
 
 // Mock ClarificationsEditor — renders a simple div with testid and
@@ -1121,7 +1122,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
@@ -1187,7 +1188,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
@@ -1246,7 +1247,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
@@ -1311,7 +1312,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
@@ -1378,7 +1379,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
@@ -1462,7 +1463,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(sufficientEvaluation));
       }
       return Promise.reject("not found");
@@ -2766,7 +2767,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
@@ -2886,7 +2887,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
@@ -2968,7 +2969,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
@@ -3022,7 +3023,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve("NOT VALID JSON {{{");
       }
       return Promise.reject("not found");
@@ -3075,7 +3076,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
@@ -3171,7 +3172,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
@@ -3242,7 +3243,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
@@ -3308,7 +3309,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+      if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");

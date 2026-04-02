@@ -65,7 +65,7 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
     await page.getByRole("textbox", { name: "Skill Name" }).fill("hr-analytics");
     await page.getByRole("combobox", { name: /what are you trying to capture/i }).click();
     await page.getByRole("option", { name: /business process knowledge/i }).click();
-    await page.getByRole("textbox", { name: "Description" }).fill("HR analytics skill for workforce data.");
+    await page.getByRole("textbox", { name: /what the skill does/i }).fill("HR analytics skill for workforce data.");
 
     // Next button should now be enabled — wait for it, then advance to Step 2
     await expect(page.getByRole("button", { name: "Next" })).toBeEnabled({ timeout: 3_000 });

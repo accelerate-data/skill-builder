@@ -168,7 +168,8 @@ async function sendAgentRequest(
     config: {
       prompt,
       apiKey: "mock-key-integration-test",
-      cwd: skillDir,
+      workspaceRootDir: skillDir,
+      workspaceSkillDir: skillDir,
       agentName,
       skillName,
       stepId,

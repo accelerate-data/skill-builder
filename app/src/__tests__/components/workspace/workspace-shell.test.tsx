@@ -127,7 +127,7 @@ describe("WorkspaceShell", () => {
 
     const overviewTab = screen.getByRole("tab", { name: "Overview" });
     const evalsTab = screen.getByRole("tab", { name: "Evals" });
-    const descriptionTab = screen.getByRole("tab", { name: "Description" });
+    const descriptionTab = screen.getByRole("tab", { name: "Optimize Description" });
 
     expect(overviewTab).toHaveAttribute("data-state", "active");
     expect(evalsTab).not.toBeDisabled();

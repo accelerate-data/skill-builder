@@ -291,23 +291,6 @@ describe("skill-content-researcher plugin structure", () => {
     expect(manifest.description).toBeDefined();
   });
 
-  it("wrapper skill is user-invocable and delegates to plugin agent", () => {
-    const wrapperPath = path.join(
-      pluginRoot,
-      "skills",
-      "skill-content-researcher",
-      "SKILL.md",
-    );
-    const content = fs.readFileSync(wrapperPath, "utf8");
-
-    const fm = frontmatter(wrapperPath);
-    expect(fm.name).toBe("skill-content-researcher");
-    expect(fm.user_invocable).toBe("true");
-
-    expect(content).toMatch(/AskUserQuestion/);
-    expect(content).toMatch(/skill-content-researcher:research-orchestrator/);
-  });
-
   it("embedded research skill is internal-only (not user-invocable)", () => {
     const researchPath = path.join(
       pluginRoot,

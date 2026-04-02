@@ -123,7 +123,7 @@ test.describe("Evals tab — browser mock", { tag: "@evals" }, () => {
     expect(benchCalls.length).toBeGreaterThanOrEqual(1);
 
     // Benchmark card: avg pass rate 50%, 1 passed, 1 failed (from mocked materialize response)
-    await expect(page.getByText("50%")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("50%").first()).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText("avg pass rate")).toBeVisible();
   });
 

@@ -213,7 +213,7 @@ test.describe("Sidecar Integration — Dashboard Create Skill", { tag: "@integra
     await page.getByRole("textbox", { name: "Skill Name" }).fill("integration-test-skill");
     await page.getByRole("combobox", { name: /what are you trying to capture/i }).click();
     await page.getByRole("option", { name: /business process knowledge/i }).click();
-    await page.getByRole("textbox", { name: "Description" }).fill("An integration test skill.");
+    await page.getByRole("textbox", { name: /what the skill does/i }).fill("An integration test skill.");
     await expect(page.getByRole("button", { name: "Next" })).toBeEnabled({ timeout: 3_000 });
     await page.getByRole("button", { name: "Next" }).click();
 
