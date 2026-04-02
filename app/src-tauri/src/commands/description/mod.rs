@@ -18,6 +18,14 @@ fn resolve_skill_creator_scripts(app: &tauri::AppHandle) -> std::path::PathBuf {
         .join("scripts")
 }
 
+fn resolve_description_optimizer_scripts(app: &tauri::AppHandle) -> std::path::PathBuf {
+    super::workflow::resolve_bundled_plugins_dir(app)
+        .join("skill-creator")
+        .join("skills")
+        .join("skill-description-optimizer")
+        .join("scripts")
+}
+
 #[tauri::command]
 pub async fn generate_eval_queries(
     skill_name: String,
@@ -26,7 +34,7 @@ pub async fn generate_eval_queries(
     app: tauri::AppHandle,
 ) -> Result<Vec<EvalQuery>, String> {
     log::info!("[generate_eval_queries] skill={}", skill_name);
-    let scripts_dir = resolve_skill_creator_scripts(&app);
+    let scripts_dir = resolve_description_optimizer_scripts(&app);
     let skill_path = Path::new(&workspace_path).join(&skill_name);
 
     let mut cmd = tokio::process::Command::new("uv");
