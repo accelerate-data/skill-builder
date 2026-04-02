@@ -22,6 +22,7 @@ export interface RequestContext {
   workflowSessionId?: string;
   usageSessionId?: string;
   runSource?: "workflow" | "refine" | "test";
+  workspaceSkillDir?: string;
   /** Whether this processor is being used in a streaming session (refine chat).
    * Controls the `streaming` flag on TurnCompleteEvent — Rust uses it to decide
    * whether turn_complete is a per-turn terminal (streaming) or informational only
@@ -185,6 +186,9 @@ export class RunMetadataAccumulator {
       toolUseCount: this.toolUseCount,
       compactionCount: this.compactionCount,
       status,
+      ...(this.context.workspaceSkillDir
+        ? { workspacePath: this.context.workspaceSkillDir }
+        : {}),
     };
 
     process.stderr.write(

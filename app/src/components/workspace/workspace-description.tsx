@@ -14,7 +14,7 @@ import {
   scoreColor,
 } from "@/lib/description-optimization";
 import type { EvalQuery, OptimizationIteration, OptimizationResult } from "@/lib/description-optimization";
-import { generateEvalQueries, runOptimizationLoop, applyDescription, saveEvalQueries, loadEvalQueries } from "@/lib/tauri";
+import { startGenerateDescEvalQueries, runOptimizationLoop, applyDescription, saveEvalQueries, loadEvalQueries } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/tauri";
 
 interface WorkspaceDescriptionProps {
@@ -35,12 +35,15 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   const [applied, setApplied] = useState(false);
 
   const unlistenRef = useRef<(() => void) | null>(null);
+  const generateUnlistenRef = useRef<(() => void) | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       unlistenRef.current?.();
       unlistenRef.current = null;
+      generateUnlistenRef.current?.();
+      generateUnlistenRef.current = null;
     };
   }, []);
 
@@ -75,26 +78,51 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   const model = skill.model ?? preferredModel ?? "sonnet";
 
   async function handleGenerateQueries() {
+    // Clean up any previous listener
+    generateUnlistenRef.current?.();
+    generateUnlistenRef.current = null;
+
     setIsGeneratingQueries(true);
     setGenerateError(null);
+
+    // Set up listener before kicking off agent to avoid race
+    const unlisten = await listen<{ skillName: string; queries: Array<{ query: string; should_trigger: boolean }> }>(
+      "description:eval-queries-generated",
+      (event) => {
+        if (event.payload.skillName !== skill.name) return;
+        const loaded = event.payload.queries;
+        setQueries(loaded.map((q) => ({ ...q, id: crypto.randomUUID() })));
+        setIsGeneratingQueries(false);
+        generateUnlistenRef.current?.();
+        generateUnlistenRef.current = null;
+        console.log(
+          "event=eval_queries_generated operation=startGenerateDescEvalQueries skill=%s count=%d status=success",
+          skill.name,
+          loaded.length,
+        );
+      },
+    );
+    generateUnlistenRef.current = unlisten;
+
+    const agentId = crypto.randomUUID();
+    const skillPath = `${workspacePath}/${skill.name}`;
     try {
-      const generated = await generateEvalQueries(skill.name, workspacePath, model);
-      setQueries(generated);
+      await startGenerateDescEvalQueries(agentId, skill.name, workspacePath, skillPath, model);
       console.log(
-        "event=eval_queries_generated operation=generateEvalQueries skill=%s count=%d status=success",
+        "event=eval_queries_generation_started operation=startGenerateDescEvalQueries skill=%s status=started",
         skill.name,
-        generated.length,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setGenerateError(msg);
+      setIsGeneratingQueries(false);
+      generateUnlistenRef.current?.();
+      generateUnlistenRef.current = null;
       console.error(
-        "event=eval_queries_generation_failed operation=generateEvalQueries skill=%s error=%s",
+        "event=eval_queries_generation_failed operation=startGenerateDescEvalQueries skill=%s error=%s",
         skill.name,
         msg,
       );
-    } finally {
-      setIsGeneratingQueries(false);
     }
   }
 

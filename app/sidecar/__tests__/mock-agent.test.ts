@@ -190,6 +190,7 @@ describe("parsePromptPaths (inline)", () => {
  * resolveStepTemplate() — don't just add it here.
  */
 const AGENTS_WITHOUT_MOCK = new Set<string>([
+  "skill-creator:generate-skill-description-evals",
   "vd-agent:analyst",
   "vd-agent:design-firmer",
   "vd-agent:dq-test-generator",

@@ -90,6 +90,8 @@ export interface RunResultEvent {
   toolUseCount: number;
   compactionCount: number;
   status: "completed" | "error" | "shutdown";
+  resultText?: string;
+  workspacePath?: string;
 }
 
 export type AgentEvent =
@@ -109,4 +111,4 @@ export interface AgentEventEnvelope {
   timestamp: number;
 }
 
-export const AGENT_EVENTS_VERSION = 2;
+export const AGENT_EVENTS_VERSION = 3;

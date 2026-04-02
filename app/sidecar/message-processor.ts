@@ -695,6 +695,13 @@ export class MessageProcessor {
 
     // Build run_result from accumulated state.
     const runSummary = this.accumulator.buildRunSummary(raw);
+    // Attach the agent's final output text so Rust can parse structured results
+    // (e.g. step_id=-12 generate-skill-description-evals) without a second IPC round-trip.
+    if (structuredOutput != null) {
+      (runSummary as Record<string, unknown>).resultText = JSON.stringify(structuredOutput);
+    } else if (this.lastOutputText) {
+      (runSummary as Record<string, unknown>).resultText = this.lastOutputText;
+    }
     process.stderr.write(
       `[message-processor] event=emit_agent_event subtype=run_result skill=${runSummary.skillName} status=${runSummary.status}\n`,
     );

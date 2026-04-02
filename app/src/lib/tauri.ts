@@ -705,6 +705,36 @@ export const loadEvalQueries = (
   workspacePath: string,
 ) => invoke<EvalQuery[]>("load_eval_queries", { skillName, workspacePath });
 
+/** Start the generate-skill-description-evals agent.
+ * Rust intercepts the run_result (step_id=-12), persists queries to
+ * description_optimization/description-evals.json, then emits
+ * "description:eval-queries-generated" with { skillName, queries }.
+ */
+export const startGenerateDescEvalQueries = (
+  agentId: string,
+  skillName: string,
+  workspaceSkillDir: string,
+  skillPath: string,
+  model: string,
+) => startAgent(
+  agentId,
+  `skill_path: ${skillPath}\nmodel: ${model}`,
+  model,
+  workspaceSkillDir,
+  ["Read", "Skill"],
+  50,
+  undefined,
+  undefined,
+  skillName,
+  "Generate Description Evals",
+  "skill-creator:generate-skill-description-evals",
+  undefined,
+  -12,
+  undefined,
+  undefined,
+  "workflow",
+);
+
 // --- Benchmark ---
 
 export interface LatestBenchmarkResult {

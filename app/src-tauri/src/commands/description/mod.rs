@@ -227,6 +227,26 @@ pub async fn run_optimization_loop(
     })
 }
 
+/// Atomically write eval queries to `path` (tmp + rename).
+/// Pure function — no DB access. Callers resolve the target path.
+pub(crate) fn write_eval_queries_to_file(
+    path: &Path,
+    queries: &[EvalQuery],
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directory for description-evals.json: {}", e))?;
+    }
+    let json = serde_json::to_string_pretty(queries)
+        .map_err(|e| format!("Failed to serialize eval queries: {}", e))?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, &json)
+        .map_err(|e| format!("Failed to write description-evals.json: {}", e))?;
+    std::fs::rename(&tmp, path)
+        .map_err(|e| format!("Failed to finalize description-evals.json: {}", e))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn save_eval_queries(
     skill_name: String,
@@ -243,14 +263,7 @@ pub fn save_eval_queries(
     let path = Path::new(&skills_path)
         .join(&skill_name)
         .join("description-evals.json");
-    let json = serde_json::to_string_pretty(&eval_queries)
-        .map_err(|e| format!("Failed to serialize eval queries: {}", e))?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, &json)
-        .map_err(|e| format!("Failed to write description-evals.json: {}", e))?;
-    std::fs::rename(&tmp, &path)
-        .map_err(|e| format!("Failed to finalize description-evals.json: {}", e))?;
-    Ok(())
+    write_eval_queries_to_file(&path, &eval_queries)
 }
 
 #[tauri::command]

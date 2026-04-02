@@ -10,6 +10,7 @@ pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
         "answer-evaluator" => &["Read", "Skill"],
         "skill-creator:generate-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill", "AskUserQuestion"],
         "skill-creator:rewrite-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill", "AskUserQuestion"],
+        "skill-creator:generate-skill-description-evals" => &["Read", "Skill"],
         _ => &["Read", "Glob", "Grep", "Agent", "Skill"],
     };
     tools.iter().map(|s| s.to_string()).collect()
@@ -167,6 +168,29 @@ pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde
                     "version": { "type": "string" },
                     "metadata": { "type": "object" },
                     "decisions": { "type": "array" }
+                },
+                "additionalProperties": false
+            }
+        })),
+        "skill-creator:generate-skill-description-evals" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "queries"],
+                "properties": {
+                    "status": { "type": "string", "const": "generated" },
+                    "queries": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["query", "should_trigger"],
+                            "properties": {
+                                "query": { "type": "string" },
+                                "should_trigger": { "type": "boolean" }
+                            },
+                            "additionalProperties": false
+                        }
+                    }
                 },
                 "additionalProperties": false
             }

@@ -6,6 +6,7 @@ use super::workflow::get_workflow_run_id;
 
 pub(crate) fn step_name(step_id: i32) -> String {
     match step_id {
+        -12 => "Generate Description Evals".to_string(),
         -11 => "Test".to_string(),
         -10 => "Refine".to_string(),
         0 => "Research".to_string(),

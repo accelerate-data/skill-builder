@@ -1,4 +1,12 @@
+use std::path::Path;
+use tauri::Emitter;
+
 use super::event_types::SidecarRunSummary;
+use crate::commands::description::{write_eval_queries_to_file, EvalQuery};
+use crate::db::Db;
+
+/// step_id assigned to generate-skill-description-evals agent runs.
+const STEP_ID_GENERATE_DESCRIPTION_EVALS: i32 = -12;
 
 fn persist_run_summary_to_conn(
     conn: &rusqlite::Connection,
@@ -127,6 +135,128 @@ pub fn persist_run_summary(
     };
 
     persist_run_summary_to_conn(&conn, agent_id, summary);
+    drop(conn);
+
+    if summary.step_id == STEP_ID_GENERATE_DESCRIPTION_EVALS && summary.status == "completed" {
+        persist_description_evals(app_handle, agent_id, summary);
+    }
+}
+
+/// Parse eval queries from `run_result.resultText`, write to the description_optimization
+/// subfolder, and emit `description:eval-queries-generated` to the frontend.
+fn persist_description_evals(
+    app_handle: &tauri::AppHandle,
+    agent_id: &str,
+    summary: &SidecarRunSummary,
+) {
+    let (result_text, workspace_path) = match (&summary.result_text, &summary.workspace_path) {
+        (Some(rt), Some(wp)) => (rt, wp),
+        _ => {
+            log::error!(
+                "[persist_description_evals] agent={} skill={} missing resultText or workspacePath",
+                agent_id,
+                summary.skill_name,
+            );
+            return;
+        }
+    };
+
+    let parsed: serde_json::Value = match serde_json::from_str(result_text) {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!(
+                "[persist_description_evals] agent={} skill={} failed to parse resultText: {}",
+                agent_id,
+                summary.skill_name,
+                e,
+            );
+            return;
+        }
+    };
+
+    let queries_val = match parsed.get("queries") {
+        Some(v) => v.clone(),
+        None => {
+            log::error!(
+                "[persist_description_evals] agent={} skill={} resultText missing 'queries' field",
+                agent_id,
+                summary.skill_name,
+            );
+            return;
+        }
+    };
+
+    let queries: Vec<EvalQuery> = match serde_json::from_value(queries_val) {
+        Ok(q) => q,
+        Err(e) => {
+            log::error!(
+                "[persist_description_evals] agent={} skill={} failed to deserialize queries: {}",
+                agent_id,
+                summary.skill_name,
+                e,
+            );
+            return;
+        }
+    };
+
+    let db = match app_handle.try_state::<Db>() {
+        Some(db) => db,
+        None => {
+            log::error!(
+                "[persist_description_evals] agent={} skill={} DB state not available",
+                agent_id,
+                summary.skill_name,
+            );
+            return;
+        }
+    };
+    let skills_path = match crate::commands::refine::resolve_skills_path(&db, workspace_path) {
+        Ok(p) => p,
+        Err(e) => {
+            log::error!(
+                "[persist_description_evals] agent={} skill={} failed to resolve skills path: {}",
+                agent_id,
+                summary.skill_name,
+                e,
+            );
+            return;
+        }
+    };
+    let eval_path = Path::new(&skills_path)
+        .join(&summary.skill_name)
+        .join("description-evals.json");
+    if let Err(e) = write_eval_queries_to_file(&eval_path, &queries) {
+        log::error!(
+            "[persist_description_evals] agent={} skill={} failed to write file: {}",
+            agent_id,
+            summary.skill_name,
+            e,
+        );
+        return;
+    }
+
+    log::info!(
+        "[persist_description_evals] agent={} skill={} wrote {} queries to {}",
+        agent_id,
+        summary.skill_name,
+        queries.len(),
+        eval_path.display(),
+    );
+
+    if let Err(e) = app_handle.emit(
+        "description:eval-queries-generated",
+        serde_json::json!({
+            "skillName": summary.skill_name,
+            "queries": queries,
+        }),
+    ) {
+        log::error!(
+            "[persist_description_evals] agent={} skill={} failed to emit event: {}",
+            agent_id,
+            summary.skill_name,
+            e,
+        );
+    }
 }
 
 #[cfg(test)]
@@ -164,6 +294,8 @@ mod tests {
             tool_use_count: 2,
             compaction_count: 1,
             status: "completed".to_string(),
+            result_text: None,
+            workspace_path: None,
         };
 
         persist_run_summary_to_conn(&conn, "agent-aggregate", &summary);
@@ -229,6 +361,8 @@ mod tests {
             tool_use_count: 1,
             compaction_count: 0,
             status: "completed".to_string(),
+            result_text: None,
+            workspace_path: None,
         };
 
         persist_run_summary_to_conn(&conn, "agent-breakdown", &summary);
