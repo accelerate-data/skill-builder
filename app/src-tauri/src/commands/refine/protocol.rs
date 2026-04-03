@@ -84,20 +84,28 @@ pub(super) fn load_refine_runtime_settings(
         .or(settings.github_user_login.clone());
 
     let run_row = db::get_workflow_run(&conn, skill_name).ok().flatten();
-    let purpose = run_row
-        .as_ref()
-        .map(|r| r.purpose.clone())
-        .unwrap_or_else(|| "domain".to_string());
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
     let skill_md_path = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, skill_name).join("SKILL.md");
     let frontmatter = std::fs::read_to_string(&skill_md_path)
         .ok()
         .map(|content| crate::commands::imported_skills::parse_frontmatter_full(&content))
         .unwrap_or_default();
-    let author_for_context = frontmatter
-        .author
-        .or_else(|| run_row.as_ref().and_then(|r| r.author_login.clone()))
-        .or(settings_author);
+
+    let is_imported = run_row.is_none();
+    // Imported/uploaded skills: purpose = SKILL.md description; author = frontmatter only.
+    // Builder skills: purpose = workflow run purpose enum; author = frontmatter → run row → settings.
+    let purpose = if is_imported {
+        frontmatter.description.clone()
+    } else {
+        run_row.as_ref().map(|r| r.purpose.clone())
+    };
+    let author_for_context = if is_imported {
+        frontmatter.author.clone()
+    } else {
+        frontmatter.author
+            .or_else(|| run_row.as_ref().and_then(|r| r.author_login.clone()))
+            .or(settings_author)
+    };
 
     crate::commands::workflow::write_user_context_file(
         workspace_path,
@@ -109,7 +117,7 @@ pub(super) fn load_refine_runtime_settings(
         settings.function_role.as_deref(),
         intake_json.as_deref(),
         None,
-        Some(purpose.as_str()),
+        purpose.as_deref(),
         frontmatter.version.as_deref(),
         None,
         None,

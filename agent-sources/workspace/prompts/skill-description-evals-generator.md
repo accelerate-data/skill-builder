@@ -8,7 +8,7 @@ INPUTS:
 RULES:
 - Read the skill file before generating queries.
 - Attempt to read user-context.md — use it if present.
-- Use the Skill tool to invoke `skill-creator:skill-creator`. Instruct it to follow ONLY the `Description Optimization → Step 1: Generate trigger eval queries` section.
+- Use the Skill tool to invoke `skill-creator:skill-creator`. Instruct it to only return trigger eval queries for description optimization.
 - Do NOT ask it to run any other step.
 - Do NOT write any files.
 
@@ -16,16 +16,16 @@ PHASE 1 — READ SKILL:
 
 Read {{skill_path}}/SKILL.md to understand what the skill does and when it should trigger.
 
-Also attempt to read {{workspace_skill_dir}}/user-context.md. This file is only present for skills built with skill builder — if it does not exist, proceed without it. If it exists, note the industry, function, and notes — use this in Phase 2 to produce more realistic queries.
+Also attempt to read {{workspace_skill_dir}}/user-context.md. This file is present when the skill has been used with the Refine tab — if it does not exist, proceed without it. If it exists, note the industry, function, and notes — use this in Phase 2 to produce more realistic queries.
 
 PHASE 2 — GENERATE QUERIES VIA SKILL:
 
-Use the Skill tool to invoke `skill-creator:skill-creator`. Instruct it to follow ONLY the `Description Optimization → Step 1: Generate trigger eval queries` section. Provide:
+Use the Skill tool to invoke `skill-creator:skill-creator`. Instruct it to ONLY return the `trigger eval queries` for description optimization. Provide:
 - skill_path: {{skill_path}}
 - num_queries: {{num_queries}}
 - Any user context gathered in Phase 1
 
-Do NOT instruct it to run Step 2, improvement steps, evaluation steps, or write any files.
+Do NOT instruct it to run improvement steps, evaluation steps, or write any files.
 
 PHASE 3 — RETURN STRUCTURED OUTPUT:
 
