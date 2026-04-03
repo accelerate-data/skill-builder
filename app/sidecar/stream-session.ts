@@ -4,6 +4,7 @@ import type { SidecarConfig } from "./config.js";
 import { buildQueryOptions } from "./options.js";
 import { createAbortState, linkExternalSignal } from "./shutdown.js";
 import { emitSystemEvent, discoverInstalledPlugins, selectPluginPaths } from "./run-agent.js";
+import { writeMockOutputFiles, buildStructuredMockResult } from "./mock-agent.js";
 import { MessageProcessor } from "./message-processor.js";
 import { ResultGate } from "./result-gate.js";
 
@@ -328,7 +329,12 @@ export class StreamSession {
       emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "init_start");
       emitSystemEvent((msg) => onMessage(this.currentRequestId, msg), "sdk_ready");
       try {
-        await this.emitMockTurn(config.prompt, onMessage);
+        // Workflow steps need proper mock output — use the step-template system.
+        if (config.runSource === "workflow" && typeof config.stepId === "number" && config.stepId >= 0) {
+          await this.emitMockWorkflowStep(config, onMessage);
+        } else {
+          await this.emitMockTurn(config.prompt, onMessage);
+        }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         process.stderr.write(`[stream-session] Mock turn error for session ${this.sessionId}: ${errorMessage}\n`);
@@ -619,6 +625,57 @@ export class StreamSession {
     process.stderr.write(`[stream-session] Session ${this.sessionId} ended\n`);
     this.activeConversation = null;
     this.abortState = null;
+  }
+
+  /**
+   * Handle a mock workflow step (stepId 0-3) by writing the bundled output files
+   * to the skill workspace and emitting a structured result so the Rust backend
+   * can advance the workflow. Called instead of emitMockTurn for workflow steps.
+   */
+  private async emitMockWorkflowStep(
+    config: SidecarConfig,
+    onMessage: (requestId: string, message: Record<string, unknown>) => void,
+  ): Promise<void> {
+    const stepTemplates: Record<number, string> = {
+      0: "step0-research",
+      1: "step1-detailed-research",
+      2: "step2-confirm-decisions",
+      3: "step3-generate-skill",
+    };
+    const stepTemplate = typeof config.stepId === "number" ? stepTemplates[config.stepId] : undefined;
+    if (!stepTemplate) {
+      // Unknown stepId — fall back to generic echo
+      await this.emitMockTurn(config.prompt ?? "", onMessage);
+      return;
+    }
+
+    // Write bundled output files to the skill workspace so verify_step_output finds them.
+    await writeMockOutputFiles(stepTemplate, config);
+
+    // Build the structured output that the Rust backend expects.
+    const structuredOutput = await buildStructuredMockResult(stepTemplate, config);
+
+    const resultMsg: Record<string, unknown> = {
+      type: "result",
+      subtype: "success",
+      result: `Mock: ${stepTemplate} completed`,
+      is_error: false,
+      duration_ms: 500,
+      duration_api_ms: 500,
+      num_turns: 1,
+      total_cost_usd: 0,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    };
+    if (structuredOutput !== null) {
+      resultMsg.structured_output = structuredOutput;
+    }
+
+    if (this.mockProcessor) {
+      const items = this.mockProcessor.process(resultMsg);
+      for (const item of items) {
+        onMessage(this.currentRequestId, item as Record<string, unknown>);
+      }
+    }
   }
 
   private async emitMockTurn(

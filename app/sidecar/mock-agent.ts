@@ -27,7 +27,7 @@ export function resolveStepTemplate(
 ): string | null {
   if (!agentName) {
     // Eval generator: invoked without a plugin agentName; identified by skillName.
-    if (config?.skillName === "skill-evals-generator") return "eval-generator";
+    if (config?.skillName === "skill-evals-generator" || config?.skillName === "eval-generator") return "eval-generator";
     // Test evaluator: invoked without a plugin agentName; identified by runSource="test".
     // The with/without plan agents always have agentName="data-product-builder", so this
     // branch is only reached for the evaluator.
@@ -324,7 +324,7 @@ export async function runMockAgent(
  *
  * Returns the iteration number used for evaluate-skill (or undefined for other steps).
  */
-async function writeMockOutputFiles(
+export async function writeMockOutputFiles(
   stepTemplate: string,
   config: SidecarConfig,
 ): Promise<number | undefined> {
