@@ -16,6 +16,7 @@ Changes to these files affect all test layers — run the full test suite (`./te
 - `e2e/helpers/workflow-helpers.ts` — Shared workflow E2E helpers (navigation, mock overrides)
 - `e2e/helpers/refine-helpers.ts` — Shared refine E2E helpers (navigation, mock overrides)
 - `e2e/helpers/agent-simulator.ts` — Agent lifecycle event simulators
+- `e2e/helpers/settings-helpers.ts` — Shared settings E2E helpers (navigation, mock overrides)
 - `src/test/setup.ts` — Vitest global setup
 - `vite.config.ts` / `vitest.config.ts` / `playwright.config.ts` — Build and test runner config
 
@@ -40,7 +41,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/commands/github_import.rs` (`check_marketplace_updates`) | `commands::github_import` | `@skills` |
 | `src-tauri/src/commands/github_import.rs` (`check_skill_customized`) | `commands::github_import` | `@skills` |
 | `src-tauri/src/commands/github_import/updates.rs` | `commands::github_import` | `@skills` |
-| `src-tauri/src/commands/documents/mod.rs` | `commands::documents` | -- |
+| `src-tauri/src/commands/documents/mod.rs` | `commands::documents` | `@settings` |
 | `src-tauri/src/commands/workflow/packaging.rs` | `commands::workflow` | `@workflow` |
 | `src-tauri/src/commands/usage.rs` | `commands::usage` | `@dashboard` |
 | `src-tauri/src/commands/agent.rs` | -- | `@workflow` |
@@ -73,12 +74,18 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 |---|---|
 | `e2e/dashboard/dashboard-smoke.spec.ts` | `@dashboard` |
 | `e2e/dashboard/reconciliation.spec.ts` | `@dashboard` |
+| `e2e/dashboard/skill-history.spec.ts` | `@dashboard` |
+| `e2e/dashboard/duplicate-skill-name.spec.ts` | `@dashboard` |
 | `e2e/setup/setup-screen.spec.ts` | `@setup` |
 | `e2e/setup/startup-error.spec.ts` | `@setup` |
 | `e2e/settings/settings.spec.ts` | `@settings` |
+| `e2e/settings/github-oauth.spec.ts` | `@settings` |
+| `e2e/settings/workspace-reconfigure.spec.ts` | `@settings` |
+| `e2e/settings/documents.spec.ts` | `@settings` |
 | `e2e/workflow/workflow-smoke.spec.ts` | `@workflow` |
 | `e2e/workflow/workflow-gate.spec.ts` | `@workflow` |
 | `e2e/workflow/display-items.spec.ts` | `@workflow` |
+| `e2e/workflow/file-viewer.spec.ts` | `@workflow` |
 | `e2e/refine/refine.spec.ts` | `@refine` |
 | `e2e/skills-library/skills-library.spec.ts` | `@skills` |
 | `e2e/github-import/github-import.spec.ts` | `@skills` |
