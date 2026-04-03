@@ -4,7 +4,6 @@ import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Trash2, Plus } from "lucide-react";
 import {
@@ -288,10 +287,18 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           </Button>
         </div>
 
-        {queries.length > 0 ? (
-          <div className="space-y-2">
-            {queries.map((q) => (
-              <div key={q.id} className="flex items-start gap-2">
+        {queries.length === 0 && (
+          <p className="text-sm text-muted-foreground mb-2">
+            No queries yet. Generate or add them manually.
+          </p>
+        )}
+
+        <div className="grid grid-cols-2 gap-4">
+          {/* Left column: should trigger */}
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-medium" style={{ color: "var(--color-seafoam)" }}>Should Trigger</p>
+            {queries.filter((q) => q.should_trigger).map((q) => (
+              <div key={q.id} className="flex items-start gap-1.5">
                 <Textarea
                   value={q.query}
                   onChange={(e) =>
@@ -300,16 +307,6 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
                   placeholder="Enter query…"
                   className="flex-1 min-h-[52px] resize-none text-sm py-1.5 leading-snug"
                   disabled={isRunning}
-                />
-                <Switch
-                  checked={q.should_trigger}
-                  onCheckedChange={() =>
-                    setQueries(
-                      updateQuery(queries, q.id, { should_trigger: !q.should_trigger }),
-                    )
-                  }
-                  disabled={isRunning}
-                  aria-label="Should trigger"
                 />
                 <Button
                   variant="ghost"
@@ -323,22 +320,54 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
                 </Button>
               </div>
             ))}
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
+              onClick={() => setQueries(addQuery(queries, true))}
+              disabled={isRunning}
+            >
+              <Plus className="h-3 w-3" />
+              Add query
+            </button>
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground mb-2">
-            No queries yet. Generate or add them manually.
-          </p>
-        )}
 
-        <button
-          type="button"
-          className="mt-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
-          onClick={() => setQueries(addQuery(queries))}
-          disabled={isRunning}
-        >
-          <Plus className="h-3 w-3" />
-          Add query
-        </button>
+          {/* Right column: should not trigger */}
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-medium text-muted-foreground">Should Not Trigger</p>
+            {queries.filter((q) => !q.should_trigger).map((q) => (
+              <div key={q.id} className="flex items-start gap-1.5">
+                <Textarea
+                  value={q.query}
+                  onChange={(e) =>
+                    setQueries(updateQuery(queries, q.id, { query: e.target.value }))
+                  }
+                  placeholder="Enter query…"
+                  className="flex-1 min-h-[52px] resize-none text-sm py-1.5 leading-snug"
+                  disabled={isRunning}
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => setQueries(removeQuery(queries, q.id))}
+                  disabled={isRunning}
+                  aria-label="Delete query"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
+              onClick={() => setQueries(addQuery(queries, false))}
+              disabled={isRunning}
+            >
+              <Plus className="h-3 w-3" />
+              Add query
+            </button>
+          </div>
+        </div>
 
         {generateError && (
           <p className="text-xs text-destructive mt-2">{generateError}</p>
