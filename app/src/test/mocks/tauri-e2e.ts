@@ -29,6 +29,7 @@ const mockResponses: Record<string, unknown> = {
   test_api_key: true,
   set_log_level: undefined,
   get_default_skills_path: E2E_DEFAULT_SKILLS_PATH,
+  get_data_dir: `${E2E_ROOT}/data`,
   check_node: {
     available: true,
     version: "v20.11.0",
@@ -138,6 +139,15 @@ const mockResponses: Record<string, unknown> = {
   // Auth
   github_get_user: null,
   github_logout: undefined,
+  github_start_device_flow: {
+    device_code: "DEVICE-CODE-E2E",
+    user_code: "E2E-CODE",
+    verification_uri: "https://github.com/login/device",
+    expires_in: 900,
+    interval: 5,
+  },
+  github_poll_for_token: { status: "pending" },
+  update_github_identity: undefined,
   // Repos
   list_user_repos: [],
   validate_remote_repo: undefined,
@@ -150,6 +160,7 @@ const mockResponses: Record<string, unknown> = {
   list_workspace_skills: [],
   // Skill history (WorkspaceOverview version history)
   get_skill_history: [],
+  restore_skill_version: "1",
   get_externally_locked_skills: [],
   upload_skill: {
     skill_id: "skill-001",
@@ -200,6 +211,14 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
     disable_model_invocation: false,
   },
   import_skill_from_file: "imported-skill",
+  // Documents
+  list_documents: [],
+  list_skills_for_documents: [],
+  add_document_file: { id: 1, name: "doc", source_type: "file", source_url: null, file_path: "", scope: "all", skill_ids: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  add_document_url: { id: 1, name: "doc", source_type: "url", source_url: "https://example.com", file_path: "", scope: "all", skill_ids: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  add_document_folder: [],
+  update_document: { id: 1, name: "doc", source_type: "url", source_url: "https://example.com", file_path: "", scope: "all", skill_ids: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  delete_document: undefined,
   // Models (available from API key)
   list_models: [],
   // Usage
