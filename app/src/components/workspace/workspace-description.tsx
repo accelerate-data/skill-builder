@@ -1,3 +1,4 @@
+import "@/hooks/use-agent-stream";
 import { useState, useRef, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
@@ -23,8 +24,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
+import { AgentOutputPanel } from "@/components/agent-output-panel";
+import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   parseProgressEvent,
@@ -34,36 +36,12 @@ import {
   scoreColor,
 } from "@/lib/description-optimization";
 import type { EvalQuery, OptimizationIteration, OptimizationResult } from "@/lib/description-optimization";
-import type { DisplayItem } from "@/lib/display-types";
 import { startGenerateDescEvalQueries, runOptimizationLoop, applyDescription, saveEvalQueries, loadEvalQueries, cancelAgentRun } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/tauri";
 
 interface WorkspaceDescriptionProps {
   skill: SkillSummary;
   workspacePath: string;
-}
-
-function AgentStepRow({ step }: { step: DisplayItem }) {
-  if (step.type === "tool_call") {
-    return (
-      <div className="mb-1">
-        <span className="text-muted-foreground">› </span>
-        <span style={{ color: "var(--color-pacific)" }}>{step.toolName}</span>
-        {step.toolSummary && (
-          <span className="text-muted-foreground ml-2">{step.toolSummary}</span>
-        )}
-      </div>
-    );
-  }
-  if (step.type === "output" && step.outputText) {
-    return (
-      <div className="mb-1 text-muted-foreground whitespace-pre-wrap break-words">
-        {step.outputText.slice(0, 300)}
-        {step.outputText.length > 300 ? "…" : ""}
-      </div>
-    );
-  }
-  return null;
 }
 
 export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescriptionProps) {
@@ -81,13 +59,12 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   const [numEvalQueriesInput, setNumEvalQueriesInput] = useState("20");
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [agentSteps, setAgentSteps] = useState<DisplayItem[]>([]);
+
+  const agentHasRun = useAgentStore((s) => activeAgentId ? activeAgentId in s.runs : false);
 
   const unlistenRef = useRef<(() => void) | null>(null);
   const generateUnlistenRef = useRef<(() => void) | null>(null);
-  const agentMsgUnlistenRef = useRef<(() => void) | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const agentStepsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return () => {
@@ -95,8 +72,6 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
       unlistenRef.current = null;
       generateUnlistenRef.current?.();
       generateUnlistenRef.current = null;
-      agentMsgUnlistenRef.current?.();
-      agentMsgUnlistenRef.current = null;
     };
   }, []);
 
@@ -113,11 +88,6 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     document.addEventListener("keydown", handler, true);
     return () => document.removeEventListener("keydown", handler, true);
   }, [isGeneratingQueries]);
-
-  // Auto-scroll agent steps log
-  useEffect(() => {
-    agentStepsEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [agentSteps]);
 
   // Load persisted eval queries on mount / skill change
   useEffect(() => {
@@ -150,15 +120,12 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   const model = skill.model ?? preferredModel ?? "sonnet";
 
   async function handleGenerateQueries(numEvalQueries: number) {
-    // Clean up any previous listeners
+    // Clean up any previous listener
     generateUnlistenRef.current?.();
     generateUnlistenRef.current = null;
-    agentMsgUnlistenRef.current?.();
-    agentMsgUnlistenRef.current = null;
 
     setIsGeneratingQueries(true);
     setGenerateError(null);
-    setAgentSteps([]);
 
     // Set up result listener before kicking off agent to avoid race
     const unlisten = await listen<{ skillName: string; queries: Array<{ query: string; should_trigger: boolean }> }>(
@@ -169,11 +136,8 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
         setQueries(loaded.map((q) => ({ ...q, id: crypto.randomUUID() })));
         setIsGeneratingQueries(false);
         setActiveAgentId(null);
-        setAgentSteps([]);
         generateUnlistenRef.current?.();
         generateUnlistenRef.current = null;
-        agentMsgUnlistenRef.current?.();
-        agentMsgUnlistenRef.current = null;
         console.log(
           "event=eval_queries_generated operation=startGenerateDescEvalQueries skill=%s count=%d status=success",
           skill.name,
@@ -185,19 +149,6 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
 
     const agentId = crypto.randomUUID();
     setActiveAgentId(agentId);
-
-    // Set up live step listener
-    const agentMsgUnlisten = await listen<{ agent_id: string; message: { type: string; item?: DisplayItem } }>(
-      "agent-message",
-      (event) => {
-        if (event.payload.agent_id !== agentId) return;
-        const { message } = event.payload;
-        if (message.type === "display_item" && message.item) {
-          setAgentSteps((prev) => [...prev, message.item!]);
-        }
-      },
-    );
-    agentMsgUnlistenRef.current = agentMsgUnlisten;
 
     const skillPath = `${workspacePath}/${skill.name}`;
     try {
@@ -211,11 +162,8 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
       setGenerateError(msg);
       setIsGeneratingQueries(false);
       setActiveAgentId(null);
-      setAgentSteps([]);
       generateUnlistenRef.current?.();
       generateUnlistenRef.current = null;
-      agentMsgUnlistenRef.current?.();
-      agentMsgUnlistenRef.current = null;
       console.error(
         "event=eval_queries_generation_failed operation=startGenerateDescEvalQueries skill=%s error=%s",
         skill.name,
@@ -231,11 +179,8 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     }
     generateUnlistenRef.current?.();
     generateUnlistenRef.current = null;
-    agentMsgUnlistenRef.current?.();
-    agentMsgUnlistenRef.current = null;
     setActiveAgentId(null);
     setIsGeneratingQueries(false);
-    setAgentSteps([]);
     console.log(
       "event=eval_queries_generation_cancelled operation=handleCancelGenerate skill=%s",
       skill.name,
@@ -529,7 +474,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           <DialogHeader>
             <DialogTitle>Generate Eval Queries</DialogTitle>
             <DialogDescription>
-              How many trigger eval queries should be generated? Minimum 15, recommended 20.
+              How many trigger eval queries should be generated? Minimum 10, recommended 20.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
@@ -537,7 +482,6 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
             <Input
               id="num-eval-queries"
               type="number"
-              min={15}
               autoFocus
               value={numEvalQueriesInput}
               onChange={(e) => setNumEvalQueriesInput(e.target.value)}
@@ -545,7 +489,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
                 if (e.key === "Enter") {
                   e.preventDefault();
                   const n = parseInt(numEvalQueriesInput, 10);
-                  if (!isNaN(n) && n >= 15) {
+                  if (!isNaN(n) && n >= 10) {
                     setShowGenerateDialog(false);
                     void handleGenerateQueries(n);
                   }
@@ -560,12 +504,12 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
             <Button
               onClick={() => {
                 const n = parseInt(numEvalQueriesInput, 10);
-                if (!isNaN(n) && n >= 15) {
+                if (!isNaN(n) && n >= 10) {
                   setShowGenerateDialog(false);
                   void handleGenerateQueries(n);
                 }
               }}
-              disabled={(() => { const n = parseInt(numEvalQueriesInput, 10); return isNaN(n) || n < 15; })()}
+              disabled={(() => { const n = parseInt(numEvalQueriesInput, 10); return isNaN(n) || n < 10; })()}
             >
               Generate
             </Button>
@@ -577,7 +521,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
       <Dialog open={isGeneratingQueries}>
         <DialogContent
           showCloseButton={false}
-          className="sm:max-w-2xl w-full"
+          className="sm:max-w-4xl w-full"
           onInteractOutside={() => setShowCancelConfirm(true)}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
@@ -591,17 +535,16 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
               Click outside or press <kbd className="rounded border px-1 text-xs">ESC</kbd> to cancel.
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="h-72 rounded-md border bg-muted/40 p-3 font-mono text-xs">
-            {agentSteps.length === 0 ? (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" />
+          <div className="h-[420px] flex flex-col min-h-0">
+            {agentHasRun && activeAgentId ? (
+              <AgentOutputPanel agentId={activeAgentId} />
+            ) : (
+              <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-pacific)" }} />
                 <span>Starting agent…</span>
               </div>
-            ) : (
-              agentSteps.map((step) => <AgentStepRow key={step.id} step={step} />)
             )}
-            <div ref={agentStepsEndRef} />
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
 

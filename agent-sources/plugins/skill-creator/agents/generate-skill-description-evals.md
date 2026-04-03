@@ -24,6 +24,7 @@ Generate `{num_queries}` trigger eval queries for description optimization and r
 - `skill_path`: absolute path to the skill directory containing `SKILL.md`
 - `model`: model ID powering this session (from your system prompt)
 - `num_queries`: number of eval queries to generate (from your system prompt)
+- `user-context.md` (optional): user context file at `{skill_path}/user-context.md` — present for workspace skills built with skill-builder
 
 </context>
 
@@ -38,6 +39,8 @@ Before each step, write one short status line (≤ 10 words). Write it before to
 ## Phase 1: Read the skill
 
 Read `{skill_path}/SKILL.md` to understand what the skill does and when it should trigger. This context informs the quality of the eval queries.
+
+Also attempt to read `{skill_path}/user-context.md`. If the file exists, use the user context (industry, function, and notes) to generate more realistic and targeted eval queries that reflect how this skill is actually used. If the file does not exist, proceed without it.
 
 ## Phase 2: Generate eval queries
 

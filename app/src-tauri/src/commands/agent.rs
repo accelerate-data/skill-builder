@@ -14,7 +14,9 @@ use crate::db::Db;
 /// its default of `['project']`.
 fn derive_setting_sources(agent_name: Option<&str>) -> Option<Vec<String>> {
     match agent_name {
-        Some(n) if n == "evaluate-skill" || n.ends_with(":evaluate-skill") => Some(vec![]),
+        Some(n) if n == "evaluate-skill"
+            || n.ends_with(":evaluate-skill")
+            || n.ends_with(":generate-skill-description-evals") => Some(vec![]),
         _ => None,
     }
 }
