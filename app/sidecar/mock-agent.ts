@@ -40,7 +40,7 @@ export function resolveStepTemplate(
   if (agentName === "skill-content-researcher:confirm-decisions") return "step2-confirm-decisions";
   if (agentName === "skill-creator:generate-skill") return "step3-generate-skill";
   if (agentName === "skill-creator:rewrite-skill") return "rewrite-skill";
-  if (agentName === "skill-creator:grader") return "evaluate-skill";
+  if (agentName === "skill-creator:grader" || agentName === "evaluate-skill") return "evaluate-skill";
   if (agentName === "answer-evaluator") return MOCK_SCENARIO === "contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator";
 
   // Research orchestrator (plugin-qualified) and all sub-agents spawned by the research skill
@@ -357,24 +357,22 @@ export async function writeMockOutputFiles(
     const match = config.prompt?.match(/`([^`]+)\/pending-eval\.json`/);
     destRoot = match ? match[1] : config.workspaceSkillDir;
   } else if (stepTemplate === "evaluate-skill") {
-    // Evaluate-skill: grading.json files go under {skill_workspace}/evals/iterations/
-    // The mock template outputs have evals/iterations/... prefix so dest is the skill workspace root.
-    // skill_workspace = {workspace_path}/{skill_name} — extract both from the key-value prompt.
-    const wpMatch = config.prompt?.match(/workspace_path:\s*(.+)/);
-    const snMatch = config.prompt?.match(/skill_name:\s*(.+)/);
-    const wp = wpMatch?.[1]?.trim();
-    const sn = snMatch?.[1]?.trim();
-    const skillWorkspace = wp && sn ? path.join(wp, sn) : config.workspaceSkillDir;
-    destRoot = skillWorkspace;
-
-    // Eval history is immutable — never overwrite a previous iteration.
-    // Determine the next available iteration number and rewrite template
-    // paths (directory names + JSON content) from iteration-1 → iteration-N.
-    const iterNum = await getNextMockIterationNumber(skillWorkspace);
-    const rewriteFrom = iterNum !== 1 ? "iteration-1" : null;
-    const rewriteTo = iterNum !== 1 ? `iteration-${iterNum}` : null;
-    await copyDirRecursive(srcDir, destRoot, rewriteFrom, rewriteTo);
-    return iterNum;
+    // Evaluate-skill: grading files go into the iteration directory created by Rust.
+    // Extract iter_dir from the prompt — it already contains the plugin-aware path.
+    // iter_dir = {skillWorkspace}/evals/iterations/iteration-{N}/
+    // destRoot  = three dirname() calls up → {skillWorkspace}
+    const iterMatch = config.prompt?.match(/iter_dir:\s*(.+)/);
+    const iterDir = iterMatch?.[1]?.trim();
+    if (iterDir) {
+      destRoot = path.dirname(path.dirname(path.dirname(iterDir)));
+      const iterNum = parseInt(path.basename(iterDir).replace("iteration-", ""), 10) || 1;
+      const rewriteFrom = iterNum !== 1 ? "iteration-1" : null;
+      const rewriteTo = iterNum !== 1 ? `iteration-${iterNum}` : null;
+      await copyDirRecursive(srcDir, destRoot, rewriteFrom, rewriteTo);
+      return iterNum;
+    }
+    // Fallback: iter_dir not found in prompt — skip file copy.
+    return 1;
   } else {
     // Steps 0, 1, 2: context files go under the skill directory.
     // The mock template has outputs/{stepN}/context/... so we strip the

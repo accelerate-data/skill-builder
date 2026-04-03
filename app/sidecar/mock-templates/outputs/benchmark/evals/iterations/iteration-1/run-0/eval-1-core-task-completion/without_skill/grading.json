@@ -1,0 +1,13 @@
+{
+  "eval_id": 1,
+  "eval_name": "core task completion",
+  "configuration": "without_skill",
+  "run_number": 1,
+  "summary": { "pass_rate": 0.33, "passed": 1, "failed": 2, "total": 3 },
+  "expectations": [
+    { "text": "Response provides a clear, step-by-step explanation", "passed": true, "evidence": "Steps are listed but lack detail." },
+    { "text": "All required components of the workflow are covered", "passed": false, "evidence": "Output formatting section is missing entirely." },
+    { "text": "Response uses domain-appropriate terminology", "passed": false, "evidence": "No domain-specific language used — response is generic." }
+  ],
+  "notes": []
+}
