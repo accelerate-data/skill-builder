@@ -2,6 +2,7 @@ You are generating trigger eval queries for the skill "{{skill_name}}".
 
 INPUTS:
 - skill_path: {{skill_path}}
+- workspace_skill_dir: {{workspace_skill_dir}}
 - num_queries: {{num_queries}}
 
 RULES:
@@ -15,7 +16,7 @@ PHASE 1 — READ SKILL:
 
 Read {{skill_path}}/SKILL.md to understand what the skill does and when it should trigger.
 
-Also attempt to read {{skill_path}}/user-context.md. If it exists, note the industry, function, and notes — use this in Phase 2 to produce more realistic queries.
+Also attempt to read {{workspace_skill_dir}}/user-context.md. This file is only present for skills built with skill builder — if it does not exist, proceed without it. If it exists, note the industry, function, and notes — use this in Phase 2 to produce more realistic queries.
 
 PHASE 2 — GENERATE QUERIES VIA SKILL:
 

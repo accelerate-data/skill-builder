@@ -429,9 +429,18 @@ pub async fn start_generate_desc_evals(
     )
     .to_string_lossy()
     .replace('\\', "/");
+    // user-context.md lives in the workspace skill dir (AppData), not the skills_path dir
+    let ws_skill_dir_fwd = crate::skill_paths::workspace_skill_dir(
+        std::path::Path::new(&workspace_skill_dir),
+        &plugin_slug,
+        &skill_name,
+    )
+    .to_string_lossy()
+    .replace('\\', "/");
     let system_prompt = DESC_EVALS_PROMPT_TEMPLATE
         .replace("{{skill_name}}", &skill_name)
         .replace("{{skill_path}}", &skill_path_fwd)
+        .replace("{{workspace_skill_dir}}", &ws_skill_dir_fwd)
         .replace("{{num_queries}}", &num_eval_queries.to_string());
     let user_prompt = format!(
         "Generate {} trigger eval queries for skill \"{}\".",
