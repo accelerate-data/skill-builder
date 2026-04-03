@@ -1,9 +1,8 @@
 use std::path::Path;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 use super::event_types::SidecarRunSummary;
 use crate::commands::description::{write_eval_queries_to_file, EvalQuery};
-use crate::db::Db;
 
 /// step_id assigned to generate-skill-description-evals agent runs.
 const STEP_ID_GENERATE_DESCRIPTION_EVALS: i32 = -12;
@@ -199,36 +198,15 @@ fn persist_description_evals(
         }
     };
 
-    let db = match app_handle.try_state::<Db>() {
-        Some(db) => db,
-        None => {
-            log::error!(
-                "[persist_description_evals] agent={} skill={} DB state not available",
-                agent_id,
-                summary.skill_name,
-            );
-            return;
-        }
-    };
-    let skills_path = match crate::commands::refine::resolve_skills_path(&db, workspace_path) {
-        Ok(p) => p,
-        Err(e) => {
-            log::error!(
-                "[persist_description_evals] agent={} skill={} failed to resolve skills path: {}",
-                agent_id,
-                summary.skill_name,
-                e,
-            );
-            return;
-        }
-    };
     let plugin_slug = summary.plugin_slug.as_deref()
         .unwrap_or(crate::skill_paths::DEFAULT_PLUGIN_SLUG);
-    let eval_path = crate::skill_paths::resolve_skill_dir(
-        Path::new(&skills_path),
+    // description-evals.json lives in the workspace skill dir under description-optimization/,
+    // not in the skills source directory.
+    let eval_path = crate::skill_paths::workspace_skill_dir(
+        Path::new(workspace_path),
         plugin_slug,
         &summary.skill_name,
-    ).join("description-evals.json");
+    ).join("description-optimization").join("description-evals.json");
     if let Err(e) = write_eval_queries_to_file(&eval_path, &queries) {
         log::error!(
             "[persist_description_evals] agent={} skill={} failed to write file: {}",

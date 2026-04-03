@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Trash2, Plus } from "lucide-react";
 import {
@@ -296,7 +297,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
         <div className="grid grid-cols-2 gap-4">
           {/* Left column: should trigger */}
           <div className="flex flex-col gap-2">
-            <p className="text-xs font-medium" style={{ color: "var(--color-seafoam)" }}>Should Trigger</p>
+            <p className="text-sm font-semibold tracking-tight" style={{ color: "var(--color-pacific)" }}>Should Trigger</p>
             {queries.filter((q) => q.should_trigger).map((q) => (
               <div key={q.id} className="flex items-start gap-1.5">
                 <Textarea
@@ -307,6 +308,14 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
                   placeholder="Enter query…"
                   className="flex-1 min-h-[52px] resize-none text-sm py-1.5 leading-snug"
                   disabled={isRunning}
+                />
+                <Switch
+                  checked={q.should_trigger}
+                  onCheckedChange={() =>
+                    setQueries(updateQuery(queries, q.id, { should_trigger: !q.should_trigger }))
+                  }
+                  disabled={isRunning}
+                  aria-label="Should trigger"
                 />
                 <Button
                   variant="ghost"
@@ -333,7 +342,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
 
           {/* Right column: should not trigger */}
           <div className="flex flex-col gap-2">
-            <p className="text-xs font-medium text-muted-foreground">Should Not Trigger</p>
+            <p className="text-sm font-medium tracking-tight text-muted-foreground">Should Not Trigger</p>
             {queries.filter((q) => !q.should_trigger).map((q) => (
               <div key={q.id} className="flex items-start gap-1.5">
                 <Textarea
@@ -344,6 +353,14 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
                   placeholder="Enter query…"
                   className="flex-1 min-h-[52px] resize-none text-sm py-1.5 leading-snug"
                   disabled={isRunning}
+                />
+                <Switch
+                  checked={q.should_trigger}
+                  onCheckedChange={() =>
+                    setQueries(updateQuery(queries, q.id, { should_trigger: !q.should_trigger }))
+                  }
+                  disabled={isRunning}
+                  aria-label="Should trigger"
                 />
                 <Button
                   variant="ghost"

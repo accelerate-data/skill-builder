@@ -260,17 +260,15 @@ pub fn save_eval_queries(
     plugin_slug: String,
     workspace_path: String,
     eval_queries: Vec<EvalQuery>,
-    db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
     log::info!(
         "[save_eval_queries] skill={} plugin={} count={}",
         skill_name, plugin_slug,
         eval_queries.len()
     );
-    let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
-    let path = crate::skill_paths::resolve_skill_dir(
-        Path::new(&skills_path), &plugin_slug, &skill_name,
-    ).join("description-evals.json");
+    let path = crate::skill_paths::workspace_skill_dir(
+        Path::new(&workspace_path), &plugin_slug, &skill_name,
+    ).join("description-optimization").join("description-evals.json");
     write_eval_queries_to_file(&path, &eval_queries)
 }
 
@@ -279,13 +277,11 @@ pub fn load_eval_queries(
     skill_name: String,
     plugin_slug: String,
     workspace_path: String,
-    db: tauri::State<'_, crate::db::Db>,
 ) -> Result<Vec<EvalQuery>, String> {
     log::info!("[load_eval_queries] skill={} plugin={}", skill_name, plugin_slug);
-    let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
-    let path = crate::skill_paths::resolve_skill_dir(
-        Path::new(&skills_path), &plugin_slug, &skill_name,
-    ).join("description-evals.json");
+    let path = crate::skill_paths::workspace_skill_dir(
+        Path::new(&workspace_path), &plugin_slug, &skill_name,
+    ).join("description-optimization").join("description-evals.json");
     if !path.is_file() {
         return Ok(vec![]);
     }
