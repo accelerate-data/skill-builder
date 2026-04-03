@@ -5,6 +5,8 @@ import { buildQueryOptions } from "./options.js";
 import { createAbortState, linkExternalSignal } from "./shutdown.js";
 import { emitSystemEvent, discoverInstalledPlugins, selectPluginPaths } from "./run-agent.js";
 import { writeMockOutputFiles, buildStructuredMockResult } from "./mock-agent.js";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { MessageProcessor } from "./message-processor.js";
 import { ResultGate } from "./result-gate.js";
 
@@ -651,6 +653,59 @@ export class StreamSession {
 
     // Write bundled output files to the skill workspace so verify_step_output finds them.
     await writeMockOutputFiles(stepTemplate, config);
+
+    // For the final generation step, also pre-populate evals so the Eval tab has
+    // test cases ready when the user clicks "Eval" after skill creation.
+    if (stepTemplate === "step3-generate-skill") {
+      const evalsDir = path.join(config.workspaceSkillDir, "evals");
+      await fs.mkdir(evalsDir, { recursive: true });
+      const mockEvalsFile = {
+        skill_name: config.skillName ?? "skill",
+        evals: [
+          {
+            id: 1,
+            eval_name: "Core task completion",
+            slug: "core-task-completion",
+            prompt: "Walk me through the standard workflow for this skill from start to finish.",
+            files: [],
+            expectations: [
+              "Response provides a clear, step-by-step explanation",
+              "All required components of the workflow are covered",
+              "Response uses domain-appropriate terminology",
+            ],
+          },
+          {
+            id: 2,
+            eval_name: "Edge case handling",
+            slug: "edge-case-handling",
+            prompt: "What happens when the input data is incomplete or missing required fields?",
+            files: [],
+            expectations: [
+              "Response identifies which fields are required vs optional",
+              "Response describes how to handle missing data gracefully",
+              "Response suggests a validation or fallback approach",
+            ],
+          },
+          {
+            id: 3,
+            eval_name: "Best practices guidance",
+            slug: "best-practices-guidance",
+            prompt: "What are the most common mistakes to avoid when using this skill?",
+            files: [],
+            expectations: [
+              "Response lists at least 3 specific anti-patterns or pitfalls",
+              "Each pitfall includes a recommended alternative",
+              "Guidance is actionable and specific to this domain",
+            ],
+          },
+        ],
+      };
+      await fs.writeFile(
+        path.join(evalsDir, "evals.json"),
+        JSON.stringify(mockEvalsFile, null, 2),
+        "utf-8",
+      );
+    }
 
     // Build the structured output that the Rust backend expects.
     const structuredOutput = await buildStructuredMockResult(stepTemplate, config);
