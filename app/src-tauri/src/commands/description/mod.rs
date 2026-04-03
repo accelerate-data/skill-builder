@@ -426,13 +426,14 @@ pub async fn start_generate_desc_evals(
     .to_string_lossy()
     .replace('\\', "/");
     // user-context.md lives in the workspace skill dir (AppData), not the skills_path dir
-    let ws_skill_dir_fwd = crate::skill_paths::workspace_skill_dir(
+    let ws_skill_dir = crate::skill_paths::workspace_skill_dir(
         std::path::Path::new(&workspace_skill_dir),
         &plugin_slug,
         &skill_name,
-    )
-    .to_string_lossy()
-    .replace('\\', "/");
+    );
+    let ws_skill_dir_fwd = ws_skill_dir.to_string_lossy().replace('\\', "/");
+    // Transcript logs go into description-optimization/logs/ for easy investigation
+    let desc_opt_log_dir = ws_skill_dir.join("description-optimization").join("logs").to_string_lossy().into_owned();
     let system_prompt = DESC_EVALS_PROMPT_TEMPLATE
         .replace("{{skill_name}}", &skill_name)
         .replace("{{skill_path}}", &skill_path_fwd)
@@ -518,7 +519,7 @@ pub async fn start_generate_desc_evals(
         usage_session_id: None,
         run_source: Some("workflow".to_string()),
         plugin_slug: Some(plugin_slug),
-        transcript_log_dir: None,
+        transcript_log_dir: Some(desc_opt_log_dir.clone()),
     };
 
     sidecar::spawn_sidecar(
@@ -527,7 +528,7 @@ pub async fn start_generate_desc_evals(
         pool.inner().clone(),
         app,
         skill_name,
-        None,
+        Some(desc_opt_log_dir),
     )
     .await?;
     Ok(agent_id)

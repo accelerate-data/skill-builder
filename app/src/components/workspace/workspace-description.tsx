@@ -151,6 +151,11 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     const agentId = crypto.randomUUID();
     setActiveAgentId(agentId);
 
+    // Register the run before starting the agent so the agent store has the
+    // correct model. Without this, the phantom reaper marks auto-created runs
+    // as "error" after 30s because model stays "unknown".
+    useAgentStore.getState().registerRun(agentId, model, skill.name);
+
     try {
       await startGenerateDescEvalQueries(agentId, skill.name, skill.plugin_slug, workspacePath, model, numEvalQueries);
       console.log(
@@ -398,7 +403,8 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           <Button
             size="sm"
             onClick={handleRunOptimization}
-            disabled={queries.length === 0 || queries.every(q => !q.should_trigger) || isRunning}
+            disabled
+            title="Coming soon"
           >
             {isRunning ? (
               <>
@@ -581,7 +587,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
               Click outside or press <kbd className="rounded border px-1 text-xs">ESC</kbd> to cancel.
             </DialogDescription>
           </DialogHeader>
-          <div className="h-[420px] flex flex-col min-h-0">
+          <div className="h-[420px] flex flex-col min-h-0 overflow-hidden">
             {agentHasRun && activeAgentId ? (
               <AgentOutputPanel agentId={activeAgentId} />
             ) : (
