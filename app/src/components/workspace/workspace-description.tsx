@@ -5,6 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Trash2, Plus } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   parseProgressEvent,
@@ -33,6 +42,8 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   const [error, setError] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
+  const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+  const [numEvalQueriesInput, setNumEvalQueriesInput] = useState("20");
 
   const unlistenRef = useRef<(() => void) | null>(null);
   const generateUnlistenRef = useRef<(() => void) | null>(null);
@@ -77,7 +88,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
 
   const model = skill.model ?? preferredModel ?? "sonnet";
 
-  async function handleGenerateQueries() {
+  async function handleGenerateQueries(numEvalQueries: number) {
     // Clean up any previous listener
     generateUnlistenRef.current?.();
     generateUnlistenRef.current = null;
@@ -107,7 +118,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     const agentId = crypto.randomUUID();
     const skillPath = `${workspacePath}/${skill.name}`;
     try {
-      await startGenerateDescEvalQueries(agentId, skill.name, workspacePath, skillPath, model, 20);
+      await startGenerateDescEvalQueries(agentId, skill.name, workspacePath, skillPath, model, numEvalQueries);
       console.log(
         "event=eval_queries_generation_started operation=startGenerateDescEvalQueries skill=%s status=started",
         skill.name,
@@ -220,7 +231,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           <Button
             variant="outline"
             size="sm"
-            onClick={handleGenerateQueries}
+            onClick={() => { setNumEvalQueriesInput("20"); setShowGenerateDialog(true); }}
             disabled={isGeneratingQueries || isRunning}
           >
             {isGeneratingQueries ? (
@@ -413,6 +424,55 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           </div>
         </div>
       )}
+
+      <Dialog open={showGenerateDialog} onOpenChange={(open) => { if (!open) setShowGenerateDialog(false); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Generate Eval Queries</DialogTitle>
+            <DialogDescription>
+              How many trigger eval queries should be generated? Minimum 15, recommended 20.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="num-eval-queries">Number of queries</Label>
+            <Input
+              id="num-eval-queries"
+              type="number"
+              min={15}
+              autoFocus
+              value={numEvalQueriesInput}
+              onChange={(e) => setNumEvalQueriesInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const n = parseInt(numEvalQueriesInput, 10);
+                  if (!isNaN(n) && n >= 15) {
+                    setShowGenerateDialog(false);
+                    void handleGenerateQueries(n);
+                  }
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowGenerateDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const n = parseInt(numEvalQueriesInput, 10);
+                if (!isNaN(n) && n >= 15) {
+                  setShowGenerateDialog(false);
+                  void handleGenerateQueries(n);
+                }
+              }}
+              disabled={(() => { const n = parseInt(numEvalQueriesInput, 10); return isNaN(n) || n < 15; })()}
+            >
+              Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
