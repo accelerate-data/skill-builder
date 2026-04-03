@@ -361,7 +361,8 @@ export async function writeMockOutputFiles(
     // Extract iter_dir from the prompt — it already contains the plugin-aware path.
     // iter_dir = {skillWorkspace}/evals/iterations/iteration-{N}/
     // destRoot  = three dirname() calls up → {skillWorkspace}
-    const iterMatch = config.prompt?.match(/iter_dir:\s*(.+)/);
+    // iter_dir lives in the SYSTEM prompt (key-value block), not the user prompt
+    const iterMatch = (config.systemPrompt ?? config.prompt)?.match(/iter_dir:\s*(.+)/);
     const iterDir = iterMatch?.[1]?.trim();
     if (iterDir) {
       destRoot = path.dirname(path.dirname(path.dirname(iterDir)));
@@ -565,7 +566,7 @@ export async function buildStructuredMockResult(
     const iterNum = mockIterationNumber ?? 1;
 
     // Write mock analyst-notes.json to the iteration directory so Rust can read it.
-    const iterMatch = config?.prompt?.match(/iter_dir:\s*(.+)/);
+    const iterMatch = (config?.systemPrompt ?? config?.prompt)?.match(/iter_dir:\s*(.+)/);
     const iterDir = iterMatch?.[1]?.trim();
     if (iterDir) {
       const analystNotes = [
