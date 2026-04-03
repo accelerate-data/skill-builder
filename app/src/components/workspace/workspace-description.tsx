@@ -107,7 +107,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     const agentId = crypto.randomUUID();
     const skillPath = `${workspacePath}/${skill.name}`;
     try {
-      await startGenerateDescEvalQueries(agentId, skill.name, workspacePath, skillPath, model);
+      await startGenerateDescEvalQueries(agentId, skill.name, workspacePath, skillPath, model, 20);
       console.log(
         "event=eval_queries_generation_started operation=startGenerateDescEvalQueries skill=%s status=started",
         skill.name,

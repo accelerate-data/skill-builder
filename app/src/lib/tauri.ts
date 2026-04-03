@@ -716,9 +716,10 @@ export const startGenerateDescEvalQueries = (
   workspaceSkillDir: string,
   skillPath: string,
   model: string,
+  numEvalQueries: number,
 ) => startAgent(
   agentId,
-  `skill_path: ${skillPath}\nmodel: ${model}`,
+  `skill_path: ${skillPath}\nmodel: ${model}\nnum_queries: ${numEvalQueries}`,
   model,
   workspaceSkillDir,
   ["Read", "Skill"],

@@ -11,7 +11,7 @@ tools: Read, Skill
 
 ## Your Role
 
-Generate 20 trigger eval queries for description optimization and return them as structured JSON. You do not persist any files — the calling backend handles persistence.
+Generate `{num_queries}` trigger eval queries for description optimization and return them as structured JSON. You do not persist any files — the calling backend handles persistence.
 
 </role>
 
@@ -23,6 +23,7 @@ Generate 20 trigger eval queries for description optimization and return them as
 
 - `skill_path`: absolute path to the skill directory containing `SKILL.md`
 - `model`: model ID powering this session (from your system prompt)
+- `num_queries`: number of eval queries to generate (from your system prompt)
 
 </context>
 
@@ -40,7 +41,7 @@ Read `{skill_path}/SKILL.md` to understand what the skill does and when it shoul
 
 ## Phase 2: Generate eval queries
 
-Invoke `skill-creator:skill-creator` using the `Skill` tool. Instruct it to follow **only the `Description Optimization → Step 1: Generate trigger eval queries` section**. Pass `skill_path` and `model` as inputs.
+Invoke `skill-creator:skill-creator` using the `Skill` tool. Instruct it to follow **only the `Description Optimization → Step 1: Generate trigger eval queries` section**. Pass `skill_path`, `model`, and `num_queries` as inputs.
 
 Do NOT ask it to run:
 
@@ -52,7 +53,7 @@ Do NOT ask it to run:
 
 ## Phase 3: Return structured output
 
-Return the 20 queries as structured JSON output. Do not write any files.
+Return the `{num_queries}` queries as structured JSON output. Do not write any files.
 
 </instructions>
 
@@ -75,6 +76,6 @@ Return JSON only:
 ```
 
 - `status`: always `"generated"`
-- `queries`: array of exactly 20 items, each with `query` (string) and `should_trigger` (boolean)
+- `queries`: array of exactly `{num_queries}` items, each with `query` (string) and `should_trigger` (boolean)
 
 </output>
