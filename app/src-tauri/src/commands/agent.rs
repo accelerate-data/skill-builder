@@ -14,7 +14,8 @@ use crate::db::Db;
 /// its default of `['project']`.
 fn derive_setting_sources(agent_name: Option<&str>) -> Option<Vec<String>> {
     match agent_name {
-        Some(n) if n == "evaluate-skill" || n.ends_with(":evaluate-skill") => Some(vec![]),
+        Some(n) if n == "evaluate-skill"
+            || n.ends_with(":evaluate-skill") => Some(vec![]),
         _ => None,
     }
 }
@@ -46,7 +47,7 @@ fn derive_required_plugins(agent_name: Option<&str>) -> Vec<String> {
 /// Only applies when an explicit `model` is set (i.e. no `agent_name`).
 /// When `model` is `None` (agent frontmatter is authoritative) we leave
 /// `fallback_model` as-is — the agent's frontmatter model may differ.
-fn suppress_same_fallback_model(
+pub(crate) fn suppress_same_fallback_model(
     model: Option<&str>,
     fallback_model: Option<String>,
 ) -> Option<String> {
@@ -221,6 +222,7 @@ pub async fn start_agent(
         workflow_session_id,
         usage_session_id,
         run_source,
+        plugin_slug: None,
         transcript_log_dir: None,
     };
 
@@ -321,6 +323,7 @@ mod tests {
         assert!(output_format_for_agent("my-skill", Some("test-plan-without")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-evaluator")).is_none());
         assert!(output_format_for_agent("my-skill", Some("skill-creator:generate-skill")).is_none());
+        assert!(output_format_for_agent("my-skill", Some("skill-creator:generate-skill-description-evals")).is_none());
     }
 
     #[test]

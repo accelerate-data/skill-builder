@@ -3,5 +3,11 @@
   "skill_dir": "{root}/{plugin_slug}/{skill_name}",
   "workspace_skill_dir": "{workspace}/{plugin_slug}/{skill_name}",
   "tag_prefix": "{plugin_slug}/{skill_name}/v",
-  "tag_glob": "{plugin_slug}/{skill_name}/*"
+  "tag_glob": "{plugin_slug}/{skill_name}/*",
+  "_note": "plugin_slug is always required in skill paths. Never construct {root}/{skill_name} directly. Use skill_paths::resolve_skill_dir(root, plugin_slug, skill_name) in Rust.",
+  "_examples": {
+    "default_plugin_skill_dir": "C:/users/skill-builder/skills/my-skill",
+    "custom_plugin_skill_dir": "C:/users/skill-builder/my-plugin/my-skill",
+    "workspace_skill_dir_example": "C:/AppData/workspace/skills/my-skill"
+  }
 }

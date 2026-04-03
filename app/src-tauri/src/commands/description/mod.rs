@@ -1,8 +1,15 @@
+use crate::agents::sidecar::{self, SidecarConfig};
+use crate::agents::sidecar_pool::SidecarPool;
+use crate::db::Db;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Stdio;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
+
+const DESC_EVALS_PROMPT_TEMPLATE: &str = include_str!(
+    "../../../../../agent-sources/workspace/prompts/skill-description-evals-generator.md"
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalQuery {
@@ -18,6 +25,14 @@ fn resolve_skill_creator_scripts(app: &tauri::AppHandle) -> std::path::PathBuf {
         .join("scripts")
 }
 
+fn resolve_description_optimizer_scripts(app: &tauri::AppHandle) -> std::path::PathBuf {
+    super::workflow::resolve_bundled_plugins_dir(app)
+        .join("skill-creator")
+        .join("skills")
+        .join("skill-description-optimizer")
+        .join("scripts")
+}
+
 #[tauri::command]
 pub async fn generate_eval_queries(
     skill_name: String,
@@ -26,7 +41,7 @@ pub async fn generate_eval_queries(
     app: tauri::AppHandle,
 ) -> Result<Vec<EvalQuery>, String> {
     log::info!("[generate_eval_queries] skill={}", skill_name);
-    let scripts_dir = resolve_skill_creator_scripts(&app);
+    let scripts_dir = resolve_description_optimizer_scripts(&app);
     let skill_path = Path::new(&workspace_path).join(&skill_name);
 
     let mut cmd = tokio::process::Command::new("uv");
@@ -219,20 +234,77 @@ pub async fn run_optimization_loop(
     })
 }
 
+/// Atomically write eval queries to `path` (tmp + rename).
+/// Pure function — no DB access. Callers resolve the target path.
+pub(crate) fn write_eval_queries_to_file(
+    path: &Path,
+    queries: &[EvalQuery],
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directory for description-evals.json: {}", e))?;
+    }
+    let json = serde_json::to_string_pretty(queries)
+        .map_err(|e| format!("Failed to serialize eval queries: {}", e))?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, &json)
+        .map_err(|e| format!("Failed to write description-evals.json: {}", e))?;
+    std::fs::rename(&tmp, path)
+        .map_err(|e| format!("Failed to finalize description-evals.json: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn save_eval_queries(
+    skill_name: String,
+    plugin_slug: String,
+    workspace_path: String,
+    eval_queries: Vec<EvalQuery>,
+) -> Result<(), String> {
+    log::info!(
+        "[save_eval_queries] skill={} plugin={} count={}",
+        skill_name, plugin_slug,
+        eval_queries.len()
+    );
+    let path = crate::skill_paths::workspace_skill_dir(
+        Path::new(&workspace_path), &plugin_slug, &skill_name,
+    ).join("description-optimization").join("description-evals.json");
+    write_eval_queries_to_file(&path, &eval_queries)
+}
+
+#[tauri::command]
+pub fn load_eval_queries(
+    skill_name: String,
+    plugin_slug: String,
+    workspace_path: String,
+) -> Result<Vec<EvalQuery>, String> {
+    log::info!("[load_eval_queries] skill={} plugin={}", skill_name, plugin_slug);
+    let path = crate::skill_paths::workspace_skill_dir(
+        Path::new(&workspace_path), &plugin_slug, &skill_name,
+    ).join("description-optimization").join("description-evals.json");
+    if !path.is_file() {
+        return Ok(vec![]);
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read description-evals.json: {}", e))?;
+    serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse description-evals.json: {}", e))
+}
+
 #[tauri::command]
 pub async fn apply_description(
     skill_name: String,
+    plugin_slug: String,
     workspace_path: String,
     description: String,
     db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
-    log::info!("[apply_description] skill={}", skill_name);
+    log::info!("[apply_description] skill={} plugin={}", skill_name, plugin_slug);
 
-    // Resolve skills_path from settings (may differ from workspace_path).
     let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
-    let skill_md_path = Path::new(&skills_path)
-        .join(&skill_name)
-        .join("SKILL.md");
+    let skill_md_path = crate::skill_paths::resolve_skill_dir(
+        Path::new(&skills_path), &plugin_slug, &skill_name,
+    ).join("SKILL.md");
 
     let content = std::fs::read_to_string(&skill_md_path).map_err(|e| {
         log::error!("[apply_description] failed to read SKILL.md: {}", e);
@@ -324,6 +396,143 @@ fn update_skill_description(content: &str, description: &str) -> Result<String, 
     }
 
     Ok(format!("---\n{}{}", new_yaml.join("\n"), body_part))
+}
+
+/// Spawn the description-evals generator agent.
+/// Builds the system prompt from the compiled template — system prompt never surfaces to the frontend.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn start_generate_desc_evals(
+    app: tauri::AppHandle,
+    pool: tauri::State<'_, SidecarPool>,
+    db: tauri::State<'_, Db>,
+    agent_id: String,
+    skill_name: String,
+    plugin_slug: String,
+    workspace_skill_dir: String,
+    model: String,
+    num_eval_queries: u32,
+) -> Result<String, String> {
+    log::info!(
+        "[start_generate_desc_evals] agent_id={} skill={} plugin={} num_queries={}",
+        agent_id, skill_name, plugin_slug, num_eval_queries
+    );
+
+    let skills_path = super::refine::resolve_skills_path(&db, &workspace_skill_dir)?;
+    let skill_path_fwd = crate::skill_paths::resolve_skill_dir(
+        std::path::Path::new(&skills_path),
+        &plugin_slug,
+        &skill_name,
+    )
+    .to_string_lossy()
+    .replace('\\', "/");
+    // user-context.md lives in the workspace skill dir (AppData), not the skills_path dir
+    let ws_skill_dir = crate::skill_paths::workspace_skill_dir(
+        std::path::Path::new(&workspace_skill_dir),
+        &plugin_slug,
+        &skill_name,
+    );
+    let ws_skill_dir_fwd = ws_skill_dir.to_string_lossy().replace('\\', "/");
+    // Transcript logs go into description-optimization/logs/ for easy investigation
+    let desc_opt_log_dir = ws_skill_dir.join("description-optimization").join("logs").to_string_lossy().into_owned();
+    let system_prompt = DESC_EVALS_PROMPT_TEMPLATE
+        .replace("{{skill_name}}", &skill_name)
+        .replace("{{skill_path}}", &skill_path_fwd)
+        .replace("{{workspace_skill_dir}}", &ws_skill_dir_fwd)
+        .replace("{{num_queries}}", &num_eval_queries.to_string());
+    let user_prompt = format!(
+        "Generate {} trigger eval queries for skill \"{}\".",
+        num_eval_queries, skill_name
+    );
+
+    let (api_key, extended_thinking, interleaved_thinking_beta, sdk_effort, fallback_model) = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[start_generate_desc_evals] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        let settings = crate::db::read_settings(&conn)?;
+        let key = match settings.anthropic_api_key {
+            Some(k) => crate::types::SecretString::new(k),
+            None => return Err("Anthropic API key not configured".to_string()),
+        };
+        (
+            key,
+            settings.extended_thinking,
+            settings.interleaved_thinking_beta,
+            settings.sdk_effort.clone(),
+            settings.fallback_model.clone(),
+        )
+    };
+
+    let thinking_budget: Option<u32> = if extended_thinking { Some(16_000) } else { None };
+    let thinking = thinking_budget.map(|b| serde_json::json!({ "type": "enabled", "budgetTokens": b }));
+    let fallback_model =
+        crate::commands::agent::suppress_same_fallback_model(Some(&model), fallback_model);
+
+    let output_format = Some(serde_json::json!({
+        "type": "json_schema",
+        "schema": {
+            "type": "object",
+            "required": ["status", "queries"],
+            "properties": {
+                "status": { "type": "string", "enum": ["generated"] },
+                "queries": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["query", "should_trigger"],
+                        "properties": {
+                            "query": { "type": "string" },
+                            "should_trigger": { "type": "boolean" }
+                        },
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "additionalProperties": false
+        }
+    }));
+
+    let config = SidecarConfig {
+        prompt: user_prompt,
+        system_prompt: Some(system_prompt),
+        model: Some(model.clone()),
+        api_key,
+        workspace_root_dir: workspace_skill_dir.clone(),
+        workspace_skill_dir,
+        allowed_tools: Some(vec!["Read".to_string(), "Skill".to_string()]),
+        max_turns: Some(50),
+        permission_mode: None,
+        betas: crate::commands::workflow::build_betas(thinking_budget, &model, interleaved_thinking_beta),
+        thinking,
+        fallback_model,
+        effort: sdk_effort,
+        output_format,
+        prompt_suggestions: None,
+        path_to_claude_code_executable: None,
+        required_plugins: Some(vec!["skill-creator".to_string()]),
+        agent_name: None,
+        setting_sources: Some(vec![]),
+        conversation_history: None,
+        skill_name: Some(skill_name.clone()),
+        step_id: Some(-12),
+        workflow_session_id: None,
+        usage_session_id: None,
+        run_source: Some("workflow".to_string()),
+        plugin_slug: Some(plugin_slug),
+        transcript_log_dir: Some(desc_opt_log_dir.clone()),
+    };
+
+    sidecar::spawn_sidecar(
+        agent_id.clone(),
+        config,
+        pool.inner().clone(),
+        app,
+        skill_name,
+        Some(desc_opt_log_dir),
+    )
+    .await?;
+    Ok(agent_id)
 }
 
 #[cfg(test)]

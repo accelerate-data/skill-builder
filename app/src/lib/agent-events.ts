@@ -88,6 +88,9 @@ export interface RunResultEvent {
   toolUseCount: number;
   compactionCount: number;
   status: "completed" | "error" | "shutdown";
+  resultText?: string;
+  workspacePath?: string;
+  pluginSlug?: string;
 }
 
 export type AgentEvent =
@@ -101,4 +104,4 @@ export type AgentEvent =
   | TurnCompleteEvent
   | RunResultEvent;
 
-export const AGENT_EVENTS_VERSION = 2;
+export const AGENT_EVENTS_VERSION = 3;

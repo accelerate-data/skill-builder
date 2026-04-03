@@ -94,4 +94,10 @@ pub struct SidecarRunSummary {
     #[serde(rename = "compactionCount")]
     pub compaction_count: i32,
     pub status: String,
+    #[serde(rename = "resultText")]
+    pub result_text: Option<String>,
+    #[serde(rename = "workspacePath")]
+    pub workspace_path: Option<String>,
+    #[serde(rename = "pluginSlug")]
+    pub plugin_slug: Option<String>,
 }

@@ -66,7 +66,9 @@ Read these before starting any non-trivial task:
 
 ### Stable Repo Memory
 
-_Add durable, non-obvious, cross-cutting implementation and workflow notes here._
+#### Skill Path Convention
+
+Read `app/plugin-paths.json` — it defines the canonical layout for all skill file paths.
 
 ### Deployment-Specific Operator Values
 
@@ -110,7 +112,7 @@ For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct car
 - **Linear project:** All issues created for this repository must be created under **Skill Builder**.
 - **Worktrees:** `../worktrees/<branchName>` relative to repo root. Full rules: `.claude/rules/git-workflow.md`.
 
-**Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo check --manifest-path app/src-tauri/Cargo.toml` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/`.
+**Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/` · `cd app && npm run test:unit` when changing event types in `app/src/lib/` or `app/sidecar/`.
 
 **Pre-PR `repo-map.json` audit (required):** Before opening or updating a PR, verify `repo-map.json` reflects the current codebase. Check:
 

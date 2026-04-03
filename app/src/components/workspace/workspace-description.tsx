@@ -1,10 +1,33 @@
+import "@/hooks/use-agent-stream";
 import { useState, useRef, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Trash2, Plus } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
+import { AgentOutputPanel } from "@/components/agent-output-panel";
+import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   parseProgressEvent,
@@ -14,7 +37,7 @@ import {
   scoreColor,
 } from "@/lib/description-optimization";
 import type { EvalQuery, OptimizationIteration, OptimizationResult } from "@/lib/description-optimization";
-import { generateEvalQueries, runOptimizationLoop, applyDescription } from "@/lib/tauri";
+import { startGenerateDescEvalQueries, runOptimizationLoop, applyDescription, saveEvalQueries, loadEvalQueries, cancelAgentRun } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/tauri";
 
 interface WorkspaceDescriptionProps {
@@ -33,40 +56,140 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   const [error, setError] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
+  const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+  const [numEvalQueriesInput, setNumEvalQueriesInput] = useState("20");
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  const agentHasRun = useAgentStore((s) => activeAgentId ? activeAgentId in s.runs : false);
 
   const unlistenRef = useRef<(() => void) | null>(null);
+  const generateUnlistenRef = useRef<(() => void) | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       unlistenRef.current?.();
       unlistenRef.current = null;
+      generateUnlistenRef.current?.();
+      generateUnlistenRef.current = null;
     };
   }, []);
 
+  // ESC → cancel confirmation guard (capture phase, fires before Dialog's own handler)
+  useEffect(() => {
+    if (!isGeneratingQueries) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowCancelConfirm(true);
+      }
+    };
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
+  }, [isGeneratingQueries]);
+
+  // Load persisted eval queries on mount / skill change
+  useEffect(() => {
+    if (!workspacePath) return;
+    loadEvalQueries(skill.name, skill.plugin_slug, workspacePath)
+      .then((loaded) => {
+        if (loaded.length > 0) {
+          setQueries(loaded.map((q) => ({ ...q, id: crypto.randomUUID() })));
+        }
+      })
+      .catch((err) =>
+        console.warn("[workspace-description] load queries failed:", err),
+      );
+  }, [skill.name, workspacePath]);
+
+  // Auto-save queries (debounced)
+  useEffect(() => {
+    if (!workspacePath || queries.length === 0) return;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      saveEvalQueries(skill.name, skill.plugin_slug, workspacePath, queries).catch((err) =>
+        console.warn("[workspace-description] save queries failed:", err),
+      );
+    }, 500);
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [queries, skill.name, workspacePath]);
+
   const model = skill.model ?? preferredModel ?? "sonnet";
 
-  async function handleGenerateQueries() {
+  async function handleGenerateQueries(numEvalQueries: number) {
+    // Clean up any previous listener
+    generateUnlistenRef.current?.();
+    generateUnlistenRef.current = null;
+
     setIsGeneratingQueries(true);
     setGenerateError(null);
+
+    // Set up result listener before kicking off agent to avoid race
+    const unlisten = await listen<{ skillName: string; queries: Array<{ query: string; should_trigger: boolean }> }>(
+      "description:eval-queries-generated",
+      (event) => {
+        if (event.payload.skillName !== skill.name) return;
+        const loaded = event.payload.queries;
+        setQueries(loaded.map((q) => ({ ...q, id: crypto.randomUUID() })));
+        setIsGeneratingQueries(false);
+        setActiveAgentId(null);
+        generateUnlistenRef.current?.();
+        generateUnlistenRef.current = null;
+        console.log(
+          "event=eval_queries_generated operation=startGenerateDescEvalQueries skill=%s count=%d status=success",
+          skill.name,
+          loaded.length,
+        );
+      },
+    );
+    generateUnlistenRef.current = unlisten;
+
+    const agentId = crypto.randomUUID();
+    setActiveAgentId(agentId);
+
+    // Register the run before starting the agent so the agent store has the
+    // correct model. Without this, the phantom reaper marks auto-created runs
+    // as "error" after 30s because model stays "unknown".
+    useAgentStore.getState().registerRun(agentId, model, skill.name);
+
     try {
-      const generated = await generateEvalQueries(skill.name, workspacePath, model);
-      setQueries(generated);
+      await startGenerateDescEvalQueries(agentId, skill.name, skill.plugin_slug, workspacePath, model, numEvalQueries);
       console.log(
-        "event=eval_queries_generated operation=generateEvalQueries skill=%s count=%d status=success",
+        "event=eval_queries_generation_started operation=startGenerateDescEvalQueries skill=%s status=started",
         skill.name,
-        generated.length,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setGenerateError(msg);
+      setIsGeneratingQueries(false);
+      setActiveAgentId(null);
+      generateUnlistenRef.current?.();
+      generateUnlistenRef.current = null;
       console.error(
-        "event=eval_queries_generation_failed operation=generateEvalQueries skill=%s error=%s",
+        "event=eval_queries_generation_failed operation=startGenerateDescEvalQueries skill=%s error=%s",
         skill.name,
         msg,
       );
-    } finally {
-      setIsGeneratingQueries(false);
     }
+  }
+
+  async function handleCancelGenerate() {
+    setShowCancelConfirm(false);
+    if (activeAgentId) {
+      await cancelAgentRun(skill.name, activeAgentId).catch(() => {});
+    }
+    generateUnlistenRef.current?.();
+    generateUnlistenRef.current = null;
+    setActiveAgentId(null);
+    setIsGeneratingQueries(false);
+    console.log(
+      "event=eval_queries_generation_cancelled operation=handleCancelGenerate skill=%s",
+      skill.name,
+    );
   }
 
   async function handleRunOptimization() {
@@ -126,7 +249,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     if (!result) return;
     setError(null);
     try {
-      await applyDescription(skill.name, workspacePath, result.best_description);
+      await applyDescription(skill.name, skill.plugin_slug, workspacePath, result.best_description);
       console.log(
         "event=description_applied operation=applyDescription skill=%s status=success",
         skill.name,
@@ -163,39 +286,38 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           <Button
             variant="outline"
             size="sm"
-            onClick={handleGenerateQueries}
+            onClick={() => { setNumEvalQueriesInput("20"); setShowGenerateDialog(true); }}
             disabled={isGeneratingQueries || isRunning}
           >
-            {isGeneratingQueries ? (
-              <>
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                Generating…
-              </>
-            ) : (
-              "Generate"
-            )}
+            Generate
           </Button>
         </div>
 
-        {queries.length > 0 ? (
-          <div className="space-y-2">
-            {queries.map((q) => (
-              <div key={q.id} className="flex items-center gap-2">
-                <Input
+        {queries.length === 0 && (
+          <p className="text-sm text-muted-foreground mb-2">
+            No queries yet. Generate or add them manually.
+          </p>
+        )}
+
+        <div className="grid grid-cols-2 gap-4">
+          {/* Left column: should trigger */}
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-semibold tracking-tight" style={{ color: "var(--color-pacific)" }}>Should Trigger</p>
+            {queries.filter((q) => q.should_trigger).map((q) => (
+              <div key={q.id} className="flex items-start gap-1.5">
+                <Textarea
                   value={q.query}
                   onChange={(e) =>
                     setQueries(updateQuery(queries, q.id, { query: e.target.value }))
                   }
                   placeholder="Enter query…"
-                  className="flex-1 h-8 text-sm"
+                  className="flex-1 min-h-[52px] resize-none text-sm py-1.5 leading-snug"
                   disabled={isRunning}
                 />
                 <Switch
                   checked={q.should_trigger}
                   onCheckedChange={() =>
-                    setQueries(
-                      updateQuery(queries, q.id, { should_trigger: !q.should_trigger }),
-                    )
+                    setQueries(updateQuery(queries, q.id, { should_trigger: !q.should_trigger }))
                   }
                   disabled={isRunning}
                   aria-label="Should trigger"
@@ -212,22 +334,62 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
                 </Button>
               </div>
             ))}
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
+              onClick={() => setQueries(addQuery(queries, true))}
+              disabled={isRunning}
+            >
+              <Plus className="h-3 w-3" />
+              Add query
+            </button>
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground mb-2">
-            No queries yet. Generate or add them manually.
-          </p>
-        )}
 
-        <button
-          type="button"
-          className="mt-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
-          onClick={() => setQueries(addQuery(queries))}
-          disabled={isRunning}
-        >
-          <Plus className="h-3 w-3" />
-          Add query
-        </button>
+          {/* Right column: should not trigger */}
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium tracking-tight text-muted-foreground">Should Not Trigger</p>
+            {queries.filter((q) => !q.should_trigger).map((q) => (
+              <div key={q.id} className="flex items-start gap-1.5">
+                <Textarea
+                  value={q.query}
+                  onChange={(e) =>
+                    setQueries(updateQuery(queries, q.id, { query: e.target.value }))
+                  }
+                  placeholder="Enter query…"
+                  className="flex-1 min-h-[52px] resize-none text-sm py-1.5 leading-snug"
+                  disabled={isRunning}
+                />
+                <Switch
+                  checked={q.should_trigger}
+                  onCheckedChange={() =>
+                    setQueries(updateQuery(queries, q.id, { should_trigger: !q.should_trigger }))
+                  }
+                  disabled={isRunning}
+                  aria-label="Should trigger"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => setQueries(removeQuery(queries, q.id))}
+                  disabled={isRunning}
+                  aria-label="Delete query"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
+              onClick={() => setQueries(addQuery(queries, false))}
+              disabled={isRunning}
+            >
+              <Plus className="h-3 w-3" />
+              Add query
+            </button>
+          </div>
+        </div>
 
         {generateError && (
           <p className="text-xs text-destructive mt-2">{generateError}</p>
@@ -241,7 +403,8 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           <Button
             size="sm"
             onClick={handleRunOptimization}
-            disabled={queries.length === 0 || queries.every(q => !q.should_trigger) || isRunning}
+            disabled
+            title="Coming soon"
           >
             {isRunning ? (
               <>
@@ -356,6 +519,104 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           </div>
         </div>
       )}
+
+      {/* Number of queries dialog */}
+      <Dialog open={showGenerateDialog} onOpenChange={(open) => { if (!open) setShowGenerateDialog(false); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Generate Eval Queries</DialogTitle>
+            <DialogDescription>
+              How many trigger eval queries should be generated? Minimum 10, recommended 20.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="num-eval-queries">Number of queries</Label>
+            <Input
+              id="num-eval-queries"
+              type="number"
+              autoFocus
+              value={numEvalQueriesInput}
+              onChange={(e) => setNumEvalQueriesInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const n = parseInt(numEvalQueriesInput, 10);
+                  if (!isNaN(n) && n >= 10) {
+                    setShowGenerateDialog(false);
+                    void handleGenerateQueries(n);
+                  }
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowGenerateDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const n = parseInt(numEvalQueriesInput, 10);
+                if (!isNaN(n) && n >= 10) {
+                  setShowGenerateDialog(false);
+                  void handleGenerateQueries(n);
+                }
+              }}
+              disabled={(() => { const n = parseInt(numEvalQueriesInput, 10); return isNaN(n) || n < 10; })()}
+            >
+              Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Fullscreen blocking overlay while generating */}
+      <Dialog open={isGeneratingQueries}>
+        <DialogContent
+          showCloseButton={false}
+          className="sm:max-w-4xl w-full"
+          onInteractOutside={() => setShowCancelConfirm(true)}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-pacific)" }} />
+              Generating Eval Queries
+            </DialogTitle>
+            <DialogDescription>
+              Claude is generating eval queries for <strong>{skill.name}</strong>.
+              Click outside or press <kbd className="rounded border px-1 text-xs">ESC</kbd> to cancel.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="h-[420px] flex flex-col min-h-0 overflow-hidden">
+            {agentHasRun && activeAgentId ? (
+              <AgentOutputPanel agentId={activeAgentId} />
+            ) : (
+              <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-pacific)" }} />
+                <span>Starting agent…</span>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel confirmation guard */}
+      <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stop generating?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The eval query generation will be cancelled. No queries will be saved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continue generating</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleCancelGenerate()}>
+              Stop
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -70,11 +70,11 @@ export function parseProgressEvent(raw: unknown): OptimizationIteration | null {
  * Returns new array with a blank query appended (immutable).
  * Generates a unique ID using crypto.randomUUID().
  */
-export function addQuery(queries: EvalQuery[]): EvalQuery[] {
+export function addQuery(queries: EvalQuery[], shouldTrigger = true): EvalQuery[] {
   const newQuery: EvalQuery = {
     id: crypto.randomUUID(),
     query: '',
-    should_trigger: true,
+    should_trigger: shouldTrigger,
   };
   return [...queries, newQuery];
 }
