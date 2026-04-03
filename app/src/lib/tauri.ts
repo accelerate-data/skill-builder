@@ -717,24 +717,14 @@ export const startGenerateDescEvalQueries = (
   skillPath: string,
   model: string,
   numEvalQueries: number,
-) => startAgent(
+) => invoke<string>("start_generate_desc_evals", {
   agentId,
-  `skill_path: ${skillPath}\nmodel: ${model}\nnum_queries: ${numEvalQueries}`,
-  model,
-  workspaceSkillDir,
-  ["Read", "Skill"],
-  50,
-  undefined,
-  undefined,
   skillName,
-  "Generate Description Evals",
-  "skill-creator:generate-skill-description-evals",
-  undefined,
-  -12,
-  undefined,
-  undefined,
-  "workflow",
-);
+  workspaceSkillDir,
+  skillPath,
+  model,
+  numEvalQueries,
+});
 
 // --- Benchmark ---
 

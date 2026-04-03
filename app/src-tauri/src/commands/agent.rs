@@ -15,8 +15,7 @@ use crate::db::Db;
 fn derive_setting_sources(agent_name: Option<&str>) -> Option<Vec<String>> {
     match agent_name {
         Some(n) if n == "evaluate-skill"
-            || n.ends_with(":evaluate-skill")
-            || n.ends_with(":generate-skill-description-evals") => Some(vec![]),
+            || n.ends_with(":evaluate-skill") => Some(vec![]),
         _ => None,
     }
 }
@@ -48,7 +47,7 @@ fn derive_required_plugins(agent_name: Option<&str>) -> Vec<String> {
 /// Only applies when an explicit `model` is set (i.e. no `agent_name`).
 /// When `model` is `None` (agent frontmatter is authoritative) we leave
 /// `fallback_model` as-is — the agent's frontmatter model may differ.
-fn suppress_same_fallback_model(
+pub(crate) fn suppress_same_fallback_model(
     model: Option<&str>,
     fallback_model: Option<String>,
 ) -> Option<String> {
@@ -98,32 +97,6 @@ pub(crate) fn output_format_for_agent(
                     "results": {
                         "type": "array",
                         "items": { "type": "string" }
-                    }
-                },
-                "additionalProperties": false
-            }
-        }));
-    }
-
-    if matches!(_agent_name, Some("skill-creator:generate-skill-description-evals")) {
-        return Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["status", "queries"],
-                "properties": {
-                    "status": { "type": "string", "enum": ["generated"] },
-                    "queries": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "required": ["query", "should_trigger"],
-                            "properties": {
-                                "query": { "type": "string" },
-                                "should_trigger": { "type": "boolean" }
-                            },
-                            "additionalProperties": false
-                        }
                     }
                 },
                 "additionalProperties": false
@@ -342,15 +315,6 @@ mod tests {
     }
 
     #[test]
-    fn test_output_format_for_generate_desc_evals() {
-        let fmt = output_format_for_agent("any-skill", Some("skill-creator:generate-skill-description-evals"));
-        assert!(fmt.is_some());
-        let schema = &fmt.unwrap()["schema"];
-        assert_eq!(schema["required"][0], "status");
-        assert_eq!(schema["required"][1], "queries");
-    }
-
-    #[test]
     fn test_output_format_is_unset_for_non_contract_agent_names() {
         assert!(output_format_for_agent("my-skill", Some("validate-skill")).is_none());
         assert!(output_format_for_agent("my-skill", Some("confirm-decisions")).is_none());
@@ -358,6 +322,7 @@ mod tests {
         assert!(output_format_for_agent("my-skill", Some("test-plan-without")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-evaluator")).is_none());
         assert!(output_format_for_agent("my-skill", Some("skill-creator:generate-skill")).is_none());
+        assert!(output_format_for_agent("my-skill", Some("skill-creator:generate-skill-description-evals")).is_none());
     }
 
     #[test]

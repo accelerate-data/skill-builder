@@ -1,8 +1,15 @@
+use crate::agents::sidecar::{self, SidecarConfig};
+use crate::agents::sidecar_pool::SidecarPool;
+use crate::db::Db;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Stdio;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
+
+const DESC_EVALS_PROMPT_TEMPLATE: &str = include_str!(
+    "../../../../../agent-sources/workspace/prompts/skill-description-evals-generator.md"
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalQuery {
@@ -391,6 +398,124 @@ fn update_skill_description(content: &str, description: &str) -> Result<String, 
     }
 
     Ok(format!("---\n{}{}", new_yaml.join("\n"), body_part))
+}
+
+/// Spawn the description-evals generator agent.
+/// Builds the system prompt from the compiled template — system prompt never surfaces to the frontend.
+#[tauri::command]
+pub async fn start_generate_desc_evals(
+    app: tauri::AppHandle,
+    pool: tauri::State<'_, SidecarPool>,
+    db: tauri::State<'_, Db>,
+    agent_id: String,
+    skill_name: String,
+    workspace_skill_dir: String,
+    skill_path: String,
+    model: String,
+    num_eval_queries: u32,
+) -> Result<String, String> {
+    log::info!(
+        "[start_generate_desc_evals] agent_id={} skill={} num_queries={}",
+        agent_id, skill_name, num_eval_queries
+    );
+
+    let skill_path_fwd = skill_path.replace('\\', "/");
+    let system_prompt = DESC_EVALS_PROMPT_TEMPLATE
+        .replace("{{skill_name}}", &skill_name)
+        .replace("{{skill_path}}", &skill_path_fwd)
+        .replace("{{num_queries}}", &num_eval_queries.to_string());
+    let user_prompt = format!(
+        "Generate {} trigger eval queries for skill \"{}\".",
+        num_eval_queries, skill_name
+    );
+
+    let (api_key, extended_thinking, interleaved_thinking_beta, sdk_effort, fallback_model) = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[start_generate_desc_evals] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        let settings = crate::db::read_settings(&conn)?;
+        let key = match settings.anthropic_api_key {
+            Some(k) => crate::types::SecretString::new(k),
+            None => return Err("Anthropic API key not configured".to_string()),
+        };
+        (
+            key,
+            settings.extended_thinking,
+            settings.interleaved_thinking_beta,
+            settings.sdk_effort.clone(),
+            settings.fallback_model.clone(),
+        )
+    };
+
+    let thinking_budget: Option<u32> = if extended_thinking { Some(16_000) } else { None };
+    let thinking = thinking_budget.map(|b| serde_json::json!({ "type": "enabled", "budgetTokens": b }));
+    let fallback_model =
+        crate::commands::agent::suppress_same_fallback_model(Some(&model), fallback_model);
+
+    let output_format = Some(serde_json::json!({
+        "type": "json_schema",
+        "schema": {
+            "type": "object",
+            "required": ["status", "queries"],
+            "properties": {
+                "status": { "type": "string", "enum": ["generated"] },
+                "queries": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["query", "should_trigger"],
+                        "properties": {
+                            "query": { "type": "string" },
+                            "should_trigger": { "type": "boolean" }
+                        },
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "additionalProperties": false
+        }
+    }));
+
+    let config = SidecarConfig {
+        prompt: user_prompt,
+        system_prompt: Some(system_prompt),
+        model: Some(model.clone()),
+        api_key,
+        workspace_root_dir: workspace_skill_dir.clone(),
+        workspace_skill_dir,
+        allowed_tools: Some(vec!["Read".to_string(), "Skill".to_string()]),
+        max_turns: Some(50),
+        permission_mode: None,
+        betas: crate::commands::workflow::build_betas(thinking_budget, &model, interleaved_thinking_beta),
+        thinking,
+        fallback_model,
+        effort: sdk_effort,
+        output_format,
+        prompt_suggestions: None,
+        path_to_claude_code_executable: None,
+        required_plugins: Some(vec!["skill-creator".to_string()]),
+        agent_name: None,
+        setting_sources: Some(vec![]),
+        conversation_history: None,
+        skill_name: Some(skill_name.clone()),
+        step_id: Some(-12),
+        workflow_session_id: None,
+        usage_session_id: None,
+        run_source: Some("workflow".to_string()),
+        transcript_log_dir: None,
+    };
+
+    sidecar::spawn_sidecar(
+        agent_id.clone(),
+        config,
+        pool.inner().clone(),
+        app,
+        skill_name,
+        None,
+    )
+    .await?;
+    Ok(agent_id)
 }
 
 #[cfg(test)]
