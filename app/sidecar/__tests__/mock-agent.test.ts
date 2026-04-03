@@ -61,6 +61,11 @@ describe("resolveStepTemplate", () => {
     expect(resolveStepTemplate(undefined, { runSource: "test", skillName: "my-skill" })).toBe("test-evaluator");
   });
 
+  it("maps undefined agentName + skillName=eval-generator to eval-generator (not test-evaluator)", () => {
+    expect(resolveStepTemplate(undefined, { skillName: "eval-generator", runSource: "test" })).toBe("eval-generator");
+    expect(resolveStepTemplate(undefined, { skillName: "skill-evals-generator", runSource: "test" })).toBe("eval-generator");
+  });
+
   it("returns null for undefined agentName without runSource=test", () => {
     expect(resolveStepTemplate(undefined, { runSource: "workflow" })).toBeNull();
     expect(resolveStepTemplate(undefined, { runSource: undefined })).toBeNull();

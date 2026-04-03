@@ -1,0 +1,13 @@
+{
+  "eval_id": 2,
+  "eval_name": "edge case handling",
+  "configuration": "with_skill",
+  "run_number": 1,
+  "summary": { "pass_rate": 0.67, "passed": 2, "failed": 1, "total": 3 },
+  "expectations": [
+    { "text": "Response identifies which fields are required vs optional", "passed": true, "evidence": "Required fields are clearly marked with an asterisk and explained in context." },
+    { "text": "Response describes how to handle missing data gracefully", "passed": false, "evidence": "Missing data handling is acknowledged but no concrete fallback strategy is provided." },
+    { "text": "Response suggests a validation or fallback approach", "passed": true, "evidence": "A try/catch pattern with sensible defaults is suggested for null inputs." }
+  ],
+  "notes": []
+}

@@ -122,6 +122,7 @@ export default function WorkflowPage() {
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
   const runs = useAgentStore((s) => s.runs);
   const pluginSlug = useSkillStore((s) => s.skills.find((sk) => sk.name === skillName)?.plugin_slug);
+  const skillLibraryKey = useSkillStore((s) => s.skills.find((sk) => sk.name === skillName)?.library_key);
 
   const stepConfig = STEP_CONFIGS[currentStep];
 
@@ -221,7 +222,8 @@ export default function WorkflowPage() {
     const isLastStep = isTerminalStep || (nextStepBlocked && !showDecisionConflictResolution);
     const handleClose = () => navigate({ to: "/", search: { tab: undefined } });
     const handleEval = () => {
-      useSkillStore.getState().setActiveSkill(skillName);
+      // Use library_key so app-layout can match the skill in the store.
+      useSkillStore.getState().setActiveSkill(skillLibraryKey ?? skillName);
       navigate({ to: "/", search: { tab: "evals" } });
     };
     const nextStepLabel = !isTerminalStep ? steps[nextStep]?.name ?? "Next Step" : undefined;

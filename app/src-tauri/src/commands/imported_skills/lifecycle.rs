@@ -147,9 +147,13 @@ fn resolve_skill_target(
         ));
     }
     // Library key: skill-builder:{plugin_slug}:{skill_name}
+    // Look up actual plugin from DB rather than trusting the key string — the frontend
+    // may hold a stale key encoding the old plugin slug after a failed prior move.
     if let Some(rest) = skill_key.strip_prefix("skill-builder:") {
-        if let Some((plugin_slug, skill_name)) = rest.split_once(':') {
-            return Ok((skill_name.to_string(), plugin_slug.to_string(), None));
+        if let Some((_key_plugin, skill_name)) = rest.split_once(':') {
+            let master = crate::db::get_skill_master_any_plugin(conn, skill_name)?
+                .ok_or_else(|| format!("skill '{}' not found", skill_name))?;
+            return Ok((skill_name.to_string(), master.plugin_slug, None));
         }
     }
     // Legacy: bare skill name
@@ -618,5 +622,55 @@ mod tests {
             "expected 'not found' in error, got: {}",
             msg
         );
+    }
+
+    #[test]
+    fn test_imported_skill_plugin_slug_reflects_new_plugin_after_move() {
+        // Verifies AC1: after move_skill_to_plugin, imported_skills.plugin_slug
+        // (the JOIN-derived value) reflects the destination plugin.
+        let conn = create_test_db_for_tests();
+        crate::db::ensure_default_plugin(&conn).unwrap();
+        let (_, target_slug) = crate::db::create_plugin(&conn, "dest-plugin", "local", None, None).unwrap();
+
+        // Create an imported skill in the default plugin
+        let skill = make_test_skill("imp-skill-id", "imp-skill");
+        crate::db::upsert_skill(&conn, "imp-skill", "imported", "domain").unwrap();
+        crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
+
+        // Move: update skills.plugin_id (DB move)
+        crate::db::move_skill_to_plugin(&conn, "imp-skill", DEFAULT_PLUGIN_SLUG, &target_slug)
+            .expect("move should succeed");
+
+        // Query imported_skills — plugin_slug comes from JOIN to skills.plugin_id
+        let imported = crate::db::get_imported_skill_by_id(&conn, "imp-skill-id")
+            .expect("query ok")
+            .expect("imported skill must exist");
+        assert_eq!(
+            imported.plugin_slug.as_deref(),
+            Some(target_slug.as_str()),
+            "imported_skills.plugin_slug must reflect the new plugin after move"
+        );
+    }
+
+    #[test]
+    fn test_resolve_skill_target_uses_db_plugin_not_stale_key() {
+        // Verifies that for skill-builder keys, resolve_skill_target looks up the actual
+        // plugin from DB rather than trusting the plugin encoded in the key string.
+        let conn = create_test_db_for_tests();
+        crate::db::ensure_default_plugin(&conn).unwrap();
+        let (_, actual_slug) = crate::db::create_plugin(&conn, "actual-plugin", "local", None, None).unwrap();
+
+        // Skill is in "actual-plugin" (DB)
+        crate::db::upsert_skill_in_plugin(&conn, "stale-skill", "skill-builder", "domain", &actual_slug).unwrap();
+
+        // Key encodes the DEFAULT plugin (stale)
+        let stale_key = format!("skill-builder:{}:stale-skill", DEFAULT_PLUGIN_SLUG);
+        let (name, plugin_slug, imported_id) = resolve_skill_target(&conn, &stale_key)
+            .expect("resolve_skill_target must succeed");
+
+        assert_eq!(name, "stale-skill");
+        // Must return the ACTUAL plugin from DB, not the stale one from the key
+        assert_eq!(plugin_slug, actual_slug, "must return actual plugin slug from DB, not stale key");
+        assert!(imported_id.is_none());
     }
 }

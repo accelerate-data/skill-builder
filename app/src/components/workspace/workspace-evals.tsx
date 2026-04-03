@@ -654,7 +654,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
 
         {/* Run controls bar — only when evals exist */}
         {evals.length > 0 && (
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-3 flex items-center gap-2 px-3">
             <Checkbox
               checked={allRunSelected}
               data-state={someRunSelected ? "indeterminate" : undefined}
@@ -785,7 +785,10 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
             {/* Header row */}
             <div className="grid grid-cols-[auto_1fr_2fr_auto_auto] items-center gap-4 px-3 pb-1">
               <span className="size-4 shrink-0" />
-              <span className="text-xs font-medium text-muted-foreground">Name</span>
+              <span className="flex items-center gap-1.5">
+                <span className="size-3.5 shrink-0" />
+                <span className="text-xs font-medium text-muted-foreground">Name</span>
+              </span>
               <span className="text-xs font-medium text-muted-foreground">Prompt</span>
               <span className="rounded-full px-2 py-0.5 text-xs font-medium invisible">0 assertions</span>
               <div className="flex items-center gap-1 invisible"><span className="size-7" /><span className="size-7" /></div>
