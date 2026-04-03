@@ -13,6 +13,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
@@ -23,12 +34,36 @@ import {
   scoreColor,
 } from "@/lib/description-optimization";
 import type { EvalQuery, OptimizationIteration, OptimizationResult } from "@/lib/description-optimization";
-import { startGenerateDescEvalQueries, runOptimizationLoop, applyDescription, saveEvalQueries, loadEvalQueries } from "@/lib/tauri";
+import type { DisplayItem } from "@/lib/display-types";
+import { startGenerateDescEvalQueries, runOptimizationLoop, applyDescription, saveEvalQueries, loadEvalQueries, cancelAgentRun } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/tauri";
 
 interface WorkspaceDescriptionProps {
   skill: SkillSummary;
   workspacePath: string;
+}
+
+function AgentStepRow({ step }: { step: DisplayItem }) {
+  if (step.type === "tool_call") {
+    return (
+      <div className="mb-1">
+        <span className="text-muted-foreground">› </span>
+        <span style={{ color: "var(--color-pacific)" }}>{step.toolName}</span>
+        {step.toolSummary && (
+          <span className="text-muted-foreground ml-2">{step.toolSummary}</span>
+        )}
+      </div>
+    );
+  }
+  if (step.type === "output" && step.outputText) {
+    return (
+      <div className="mb-1 text-muted-foreground whitespace-pre-wrap break-words">
+        {step.outputText.slice(0, 300)}
+        {step.outputText.length > 300 ? "…" : ""}
+      </div>
+    );
+  }
+  return null;
 }
 
 export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescriptionProps) {
@@ -44,10 +79,15 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   const [applied, setApplied] = useState(false);
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [numEvalQueriesInput, setNumEvalQueriesInput] = useState("20");
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [agentSteps, setAgentSteps] = useState<DisplayItem[]>([]);
 
   const unlistenRef = useRef<(() => void) | null>(null);
   const generateUnlistenRef = useRef<(() => void) | null>(null);
+  const agentMsgUnlistenRef = useRef<(() => void) | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const agentStepsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return () => {
@@ -55,8 +95,29 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
       unlistenRef.current = null;
       generateUnlistenRef.current?.();
       generateUnlistenRef.current = null;
+      agentMsgUnlistenRef.current?.();
+      agentMsgUnlistenRef.current = null;
     };
   }, []);
+
+  // ESC → cancel confirmation guard (capture phase, fires before Dialog's own handler)
+  useEffect(() => {
+    if (!isGeneratingQueries) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowCancelConfirm(true);
+      }
+    };
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
+  }, [isGeneratingQueries]);
+
+  // Auto-scroll agent steps log
+  useEffect(() => {
+    agentStepsEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [agentSteps]);
 
   // Load persisted eval queries on mount / skill change
   useEffect(() => {
@@ -89,14 +150,17 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   const model = skill.model ?? preferredModel ?? "sonnet";
 
   async function handleGenerateQueries(numEvalQueries: number) {
-    // Clean up any previous listener
+    // Clean up any previous listeners
     generateUnlistenRef.current?.();
     generateUnlistenRef.current = null;
+    agentMsgUnlistenRef.current?.();
+    agentMsgUnlistenRef.current = null;
 
     setIsGeneratingQueries(true);
     setGenerateError(null);
+    setAgentSteps([]);
 
-    // Set up listener before kicking off agent to avoid race
+    // Set up result listener before kicking off agent to avoid race
     const unlisten = await listen<{ skillName: string; queries: Array<{ query: string; should_trigger: boolean }> }>(
       "description:eval-queries-generated",
       (event) => {
@@ -104,8 +168,12 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
         const loaded = event.payload.queries;
         setQueries(loaded.map((q) => ({ ...q, id: crypto.randomUUID() })));
         setIsGeneratingQueries(false);
+        setActiveAgentId(null);
+        setAgentSteps([]);
         generateUnlistenRef.current?.();
         generateUnlistenRef.current = null;
+        agentMsgUnlistenRef.current?.();
+        agentMsgUnlistenRef.current = null;
         console.log(
           "event=eval_queries_generated operation=startGenerateDescEvalQueries skill=%s count=%d status=success",
           skill.name,
@@ -116,6 +184,21 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     generateUnlistenRef.current = unlisten;
 
     const agentId = crypto.randomUUID();
+    setActiveAgentId(agentId);
+
+    // Set up live step listener
+    const agentMsgUnlisten = await listen<{ agent_id: string; message: { type: string; item?: DisplayItem } }>(
+      "agent-message",
+      (event) => {
+        if (event.payload.agent_id !== agentId) return;
+        const { message } = event.payload;
+        if (message.type === "display_item" && message.item) {
+          setAgentSteps((prev) => [...prev, message.item!]);
+        }
+      },
+    );
+    agentMsgUnlistenRef.current = agentMsgUnlisten;
+
     const skillPath = `${workspacePath}/${skill.name}`;
     try {
       await startGenerateDescEvalQueries(agentId, skill.name, workspacePath, skillPath, model, numEvalQueries);
@@ -127,14 +210,36 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
       const msg = err instanceof Error ? err.message : String(err);
       setGenerateError(msg);
       setIsGeneratingQueries(false);
+      setActiveAgentId(null);
+      setAgentSteps([]);
       generateUnlistenRef.current?.();
       generateUnlistenRef.current = null;
+      agentMsgUnlistenRef.current?.();
+      agentMsgUnlistenRef.current = null;
       console.error(
         "event=eval_queries_generation_failed operation=startGenerateDescEvalQueries skill=%s error=%s",
         skill.name,
         msg,
       );
     }
+  }
+
+  async function handleCancelGenerate() {
+    setShowCancelConfirm(false);
+    if (activeAgentId) {
+      await cancelAgentRun(skill.name, activeAgentId).catch(() => {});
+    }
+    generateUnlistenRef.current?.();
+    generateUnlistenRef.current = null;
+    agentMsgUnlistenRef.current?.();
+    agentMsgUnlistenRef.current = null;
+    setActiveAgentId(null);
+    setIsGeneratingQueries(false);
+    setAgentSteps([]);
+    console.log(
+      "event=eval_queries_generation_cancelled operation=handleCancelGenerate skill=%s",
+      skill.name,
+    );
   }
 
   async function handleRunOptimization() {
@@ -234,14 +339,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
             onClick={() => { setNumEvalQueriesInput("20"); setShowGenerateDialog(true); }}
             disabled={isGeneratingQueries || isRunning}
           >
-            {isGeneratingQueries ? (
-              <>
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                Generating…
-              </>
-            ) : (
-              "Generate"
-            )}
+            Generate
           </Button>
         </div>
 
@@ -425,6 +523,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
         </div>
       )}
 
+      {/* Number of queries dialog */}
       <Dialog open={showGenerateDialog} onOpenChange={(open) => { if (!open) setShowGenerateDialog(false); }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
@@ -473,6 +572,56 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Fullscreen blocking overlay while generating */}
+      <Dialog open={isGeneratingQueries}>
+        <DialogContent
+          showCloseButton={false}
+          className="sm:max-w-2xl w-full"
+          onInteractOutside={() => setShowCancelConfirm(true)}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-pacific)" }} />
+              Generating Eval Queries
+            </DialogTitle>
+            <DialogDescription>
+              Claude is generating eval queries for <strong>{skill.name}</strong>.
+              Click outside or press <kbd className="rounded border px-1 text-xs">ESC</kbd> to cancel.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-72 rounded-md border bg-muted/40 p-3 font-mono text-xs">
+            {agentSteps.length === 0 ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>Starting agent…</span>
+              </div>
+            ) : (
+              agentSteps.map((step) => <AgentStepRow key={step.id} step={step} />)
+            )}
+            <div ref={agentStepsEndRef} />
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel confirmation guard */}
+      <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stop generating?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The eval query generation will be cancelled. No queries will be saved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continue generating</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleCancelGenerate()}>
+              Stop
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
