@@ -128,7 +128,7 @@ export function ChatMessageList({
                     </div>
                   )}
                   {msg.userText && (
-                    <div className="break-words text-sm leading-6 text-foreground">
+                    <div className="break-words whitespace-pre-wrap text-sm leading-6 text-foreground">
                       {msg.userText}
                     </div>
                   )}
