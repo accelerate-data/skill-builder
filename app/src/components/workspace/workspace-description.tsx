@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Trash2, Plus } from "lucide-react";
@@ -150,9 +151,8 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     const agentId = crypto.randomUUID();
     setActiveAgentId(agentId);
 
-    const skillPath = `${workspacePath}/${skill.name}`;
     try {
-      await startGenerateDescEvalQueries(agentId, skill.name, workspacePath, skillPath, model, numEvalQueries);
+      await startGenerateDescEvalQueries(agentId, skill.name, workspacePath, model, numEvalQueries);
       console.log(
         "event=eval_queries_generation_started operation=startGenerateDescEvalQueries skill=%s status=started",
         skill.name,
@@ -291,14 +291,14 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
         {queries.length > 0 ? (
           <div className="space-y-2">
             {queries.map((q) => (
-              <div key={q.id} className="flex items-center gap-2">
-                <Input
+              <div key={q.id} className="flex items-start gap-2">
+                <Textarea
                   value={q.query}
                   onChange={(e) =>
                     setQueries(updateQuery(queries, q.id, { query: e.target.value }))
                   }
                   placeholder="Enter query…"
-                  className="flex-1 h-8 text-sm"
+                  className="flex-1 min-h-[52px] resize-none text-sm py-1.5 leading-snug"
                   disabled={isRunning}
                 />
                 <Switch

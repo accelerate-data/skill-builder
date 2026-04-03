@@ -410,7 +410,6 @@ pub async fn start_generate_desc_evals(
     agent_id: String,
     skill_name: String,
     workspace_skill_dir: String,
-    skill_path: String,
     model: String,
     num_eval_queries: u32,
 ) -> Result<String, String> {
@@ -419,7 +418,13 @@ pub async fn start_generate_desc_evals(
         agent_id, skill_name, num_eval_queries
     );
 
-    let skill_path_fwd = skill_path.replace('\\', "/");
+    // Resolve the actual skill path via the same logic used by save/load_eval_queries.
+    // This handles workspaces where skills live under a custom skills_path from settings.
+    let skills_path = super::refine::resolve_skills_path(&db, &workspace_skill_dir)?;
+    let skill_path_fwd = std::path::Path::new(&skills_path)
+        .join(&skill_name)
+        .to_string_lossy()
+        .replace('\\', "/");
     let system_prompt = DESC_EVALS_PROMPT_TEMPLATE
         .replace("{{skill_name}}", &skill_name)
         .replace("{{skill_path}}", &skill_path_fwd)

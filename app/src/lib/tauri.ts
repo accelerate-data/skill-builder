@@ -714,14 +714,12 @@ export const startGenerateDescEvalQueries = (
   agentId: string,
   skillName: string,
   workspaceSkillDir: string,
-  skillPath: string,
   model: string,
   numEvalQueries: number,
 ) => invoke<string>("start_generate_desc_evals", {
   agentId,
   skillName,
   workspaceSkillDir,
-  skillPath,
   model,
   numEvalQueries,
 });
