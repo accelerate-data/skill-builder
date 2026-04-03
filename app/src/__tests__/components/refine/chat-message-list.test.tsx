@@ -146,6 +146,18 @@ describe("ChatMessageList", () => {
     expect(onQuestionSubmit).toHaveBeenCalled();
   });
 
+  it("preserves line breaks in user messages via whitespace-pre-wrap", () => {
+    const messages: RefineMessage[] = [
+      { id: "m1", role: "user", userText: "line one\nline two\nline three", timestamp: 1 },
+    ];
+
+    render(<ChatMessageList messages={messages} isRunning={false} />);
+
+    const el = screen.getByText(/line one/);
+    expect(el).toHaveClass("whitespace-pre-wrap");
+    expect(el.textContent).toBe("line one\nline two\nline three");
+  });
+
   it("shows helpful hints in the empty state", () => {
     render(<ChatMessageList messages={[]} isRunning={false} />);
 

@@ -299,6 +299,17 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     // transitions when the stream has actually stopped.
   }, []);
 
+  // Escape key → interrupt active run
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && useRefineStore.getState().isRunning) {
+        e.preventDefault();
+        handleCancel();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [handleCancel]);
 
   const handleQuestionSubmit = useCallback(
     async (message: RefineMessage, response: RefineQuestionResponse) => {

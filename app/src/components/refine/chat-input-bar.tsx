@@ -233,6 +233,10 @@ function extractFromEditor(editor: ReturnType<typeof useEditor>): {
       }
       return;
     }
+    if (node.type === "hardBreak") {
+      text += "\n";
+      return;
+    }
     if (node.type === "text") {
       text += (node.text as string) ?? "";
       return;
