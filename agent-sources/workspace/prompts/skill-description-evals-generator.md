@@ -1,11 +1,13 @@
 You are generating trigger eval queries for the skill "{{skill_name}}".
 
 INPUTS:
+
 - skill_path: {{skill_path}}
 - workspace_skill_dir: {{workspace_skill_dir}}
 - num_queries: {{num_queries}}
 
 RULES:
+
 - Read the skill file before generating queries.
 - Attempt to read user-context.md — use it if present.
 - Use the Skill tool to invoke `skill-creator:skill-creator`. Instruct it to only return trigger eval queries for description optimization.
@@ -21,6 +23,7 @@ Also attempt to read {{workspace_skill_dir}}/user-context.md. This file is prese
 PHASE 2 — GENERATE QUERIES VIA SKILL:
 
 Use the Skill tool to invoke `skill-creator:skill-creator`. Instruct it to ONLY return the `trigger eval queries` for description optimization. Provide:
+
 - skill_path: {{skill_path}}
 - num_queries: {{num_queries}}
 - Any user context gathered in Phase 1
@@ -38,6 +41,8 @@ Return ONLY this JSON as your final response (the SDK enforces this schema):
     { "query": "another prompt", "should_trigger": false }
   ]
 }
+
+Notes:
 
 - status: always "generated"
 - queries: array of exactly {{num_queries}} items, each with query (string) and should_trigger (boolean)

@@ -400,6 +400,7 @@ fn update_skill_description(content: &str, description: &str) -> Result<String, 
 
 /// Spawn the description-evals generator agent.
 /// Builds the system prompt from the compiled template — system prompt never surfaces to the frontend.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn start_generate_desc_evals(
     app: tauri::AppHandle,
