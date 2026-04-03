@@ -33,6 +33,9 @@ export interface SidecarConfig {
   usageSessionId?: string;
   /** Run source for persistence attribution. */
   runSource?: "workflow" | "refine" | "test" | "gate-eval";
+  /** Plugin slug for the skill (from plugin-paths.json: {root}/{plugin_slug}/{skill_name}).
+   * Threaded through to run_result so persistence handlers can resolve the correct skill dir. */
+  pluginSlug?: string;
 }
 
 // --- Validation helpers ---------------------------------------------------

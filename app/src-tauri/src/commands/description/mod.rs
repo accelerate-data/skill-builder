@@ -257,33 +257,35 @@ pub(crate) fn write_eval_queries_to_file(
 #[tauri::command]
 pub fn save_eval_queries(
     skill_name: String,
+    plugin_slug: String,
     workspace_path: String,
     eval_queries: Vec<EvalQuery>,
     db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
     log::info!(
-        "[save_eval_queries] skill={} count={}",
-        skill_name,
+        "[save_eval_queries] skill={} plugin={} count={}",
+        skill_name, plugin_slug,
         eval_queries.len()
     );
     let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
-    let path = Path::new(&skills_path)
-        .join(&skill_name)
-        .join("description-evals.json");
+    let path = crate::skill_paths::resolve_skill_dir(
+        Path::new(&skills_path), &plugin_slug, &skill_name,
+    ).join("description-evals.json");
     write_eval_queries_to_file(&path, &eval_queries)
 }
 
 #[tauri::command]
 pub fn load_eval_queries(
     skill_name: String,
+    plugin_slug: String,
     workspace_path: String,
     db: tauri::State<'_, crate::db::Db>,
 ) -> Result<Vec<EvalQuery>, String> {
-    log::info!("[load_eval_queries] skill={}", skill_name);
+    log::info!("[load_eval_queries] skill={} plugin={}", skill_name, plugin_slug);
     let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
-    let path = Path::new(&skills_path)
-        .join(&skill_name)
-        .join("description-evals.json");
+    let path = crate::skill_paths::resolve_skill_dir(
+        Path::new(&skills_path), &plugin_slug, &skill_name,
+    ).join("description-evals.json");
     if !path.is_file() {
         return Ok(vec![]);
     }
@@ -296,17 +298,17 @@ pub fn load_eval_queries(
 #[tauri::command]
 pub async fn apply_description(
     skill_name: String,
+    plugin_slug: String,
     workspace_path: String,
     description: String,
     db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
-    log::info!("[apply_description] skill={}", skill_name);
+    log::info!("[apply_description] skill={} plugin={}", skill_name, plugin_slug);
 
-    // Resolve skills_path from settings (may differ from workspace_path).
     let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
-    let skill_md_path = Path::new(&skills_path)
-        .join(&skill_name)
-        .join("SKILL.md");
+    let skill_md_path = crate::skill_paths::resolve_skill_dir(
+        Path::new(&skills_path), &plugin_slug, &skill_name,
+    ).join("SKILL.md");
 
     let content = std::fs::read_to_string(&skill_md_path).map_err(|e| {
         log::error!("[apply_description] failed to read SKILL.md: {}", e);
@@ -409,22 +411,24 @@ pub async fn start_generate_desc_evals(
     db: tauri::State<'_, Db>,
     agent_id: String,
     skill_name: String,
+    plugin_slug: String,
     workspace_skill_dir: String,
     model: String,
     num_eval_queries: u32,
 ) -> Result<String, String> {
     log::info!(
-        "[start_generate_desc_evals] agent_id={} skill={} num_queries={}",
-        agent_id, skill_name, num_eval_queries
+        "[start_generate_desc_evals] agent_id={} skill={} plugin={} num_queries={}",
+        agent_id, skill_name, plugin_slug, num_eval_queries
     );
 
-    // Resolve the actual skill path via the same logic used by save/load_eval_queries.
-    // This handles workspaces where skills live under a custom skills_path from settings.
     let skills_path = super::refine::resolve_skills_path(&db, &workspace_skill_dir)?;
-    let skill_path_fwd = std::path::Path::new(&skills_path)
-        .join(&skill_name)
-        .to_string_lossy()
-        .replace('\\', "/");
+    let skill_path_fwd = crate::skill_paths::resolve_skill_dir(
+        std::path::Path::new(&skills_path),
+        &plugin_slug,
+        &skill_name,
+    )
+    .to_string_lossy()
+    .replace('\\', "/");
     let system_prompt = DESC_EVALS_PROMPT_TEMPLATE
         .replace("{{skill_name}}", &skill_name)
         .replace("{{skill_path}}", &skill_path_fwd)
@@ -508,6 +512,7 @@ pub async fn start_generate_desc_evals(
         workflow_session_id: None,
         usage_session_id: None,
         run_source: Some("workflow".to_string()),
+        plugin_slug: Some(plugin_slug),
         transcript_log_dir: None,
     };
 

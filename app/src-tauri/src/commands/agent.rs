@@ -222,6 +222,7 @@ pub async fn start_agent(
         workflow_session_id,
         usage_session_id,
         run_source,
+        plugin_slug: None,
         transcript_log_dir: None,
     };
 

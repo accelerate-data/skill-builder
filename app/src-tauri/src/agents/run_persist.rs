@@ -222,9 +222,13 @@ fn persist_description_evals(
             return;
         }
     };
-    let eval_path = Path::new(&skills_path)
-        .join(&summary.skill_name)
-        .join("description-evals.json");
+    let plugin_slug = summary.plugin_slug.as_deref()
+        .unwrap_or(crate::skill_paths::DEFAULT_PLUGIN_SLUG);
+    let eval_path = crate::skill_paths::resolve_skill_dir(
+        Path::new(&skills_path),
+        plugin_slug,
+        &summary.skill_name,
+    ).join("description-evals.json");
     if let Err(e) = write_eval_queries_to_file(&eval_path, &queries) {
         log::error!(
             "[persist_description_evals] agent={} skill={} failed to write file: {}",
@@ -296,6 +300,7 @@ mod tests {
             status: "completed".to_string(),
             result_text: None,
             workspace_path: None,
+            plugin_slug: None,
         };
 
         persist_run_summary_to_conn(&conn, "agent-aggregate", &summary);
@@ -363,6 +368,7 @@ mod tests {
             status: "completed".to_string(),
             result_text: None,
             workspace_path: None,
+            plugin_slug: None,
         };
 
         persist_run_summary_to_conn(&conn, "agent-breakdown", &summary);

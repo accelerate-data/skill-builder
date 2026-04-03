@@ -93,7 +93,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   // Load persisted eval queries on mount / skill change
   useEffect(() => {
     if (!workspacePath) return;
-    loadEvalQueries(skill.name, workspacePath)
+    loadEvalQueries(skill.name, skill.plugin_slug, workspacePath)
       .then((loaded) => {
         if (loaded.length > 0) {
           setQueries(loaded.map((q) => ({ ...q, id: crypto.randomUUID() })));
@@ -109,7 +109,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     if (!workspacePath || queries.length === 0) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
-      saveEvalQueries(skill.name, workspacePath, queries).catch((err) =>
+      saveEvalQueries(skill.name, skill.plugin_slug, workspacePath, queries).catch((err) =>
         console.warn("[workspace-description] save queries failed:", err),
       );
     }, 500);
@@ -152,7 +152,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     setActiveAgentId(agentId);
 
     try {
-      await startGenerateDescEvalQueries(agentId, skill.name, workspacePath, model, numEvalQueries);
+      await startGenerateDescEvalQueries(agentId, skill.name, skill.plugin_slug, workspacePath, model, numEvalQueries);
       console.log(
         "event=eval_queries_generation_started operation=startGenerateDescEvalQueries skill=%s status=started",
         skill.name,
@@ -244,7 +244,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     if (!result) return;
     setError(null);
     try {
-      await applyDescription(skill.name, workspacePath, result.best_description);
+      await applyDescription(skill.name, skill.plugin_slug, workspacePath, result.best_description);
       console.log(
         "event=description_applied operation=applyDescription skill=%s status=success",
         skill.name,

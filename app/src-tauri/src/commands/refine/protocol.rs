@@ -206,6 +206,7 @@ pub(super) fn build_refine_config(
         workflow_session_id: None,
         usage_session_id: Some(usage_session_id.to_string()),
         run_source: Some("refine".to_string()),
+        plugin_slug: None,
         transcript_log_dir: None,
     };
 

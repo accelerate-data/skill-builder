@@ -66,7 +66,9 @@ Read these before starting any non-trivial task:
 
 ### Stable Repo Memory
 
-_Add durable, non-obvious, cross-cutting implementation and workflow notes here._
+#### Skill Path Convention
+
+Read `app/plugin-paths.json` — it defines the canonical layout for all skill file paths.
 
 ### Deployment-Specific Operator Values
 

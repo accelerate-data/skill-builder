@@ -685,40 +685,46 @@ export const runOptimizationLoop = (
 
 export const applyDescription = (
   skillName: string,
+  pluginSlug: string,
   workspacePath: string,
   description: string,
-) => invoke<void>("apply_description", { skillName, workspacePath, description });
+) => invoke<void>("apply_description", { skillName, pluginSlug, workspacePath, description });
 
 export const saveEvalQueries = (
   skillName: string,
+  pluginSlug: string,
   workspacePath: string,
   evalQueries: EvalQuery[],
 ) =>
   invoke<void>("save_eval_queries", {
     skillName,
+    pluginSlug,
     workspacePath,
     evalQueries: evalQueries.map(({ query, should_trigger }) => ({ query, should_trigger })),
   });
 
 export const loadEvalQueries = (
   skillName: string,
+  pluginSlug: string,
   workspacePath: string,
-) => invoke<EvalQuery[]>("load_eval_queries", { skillName, workspacePath });
+) => invoke<EvalQuery[]>("load_eval_queries", { skillName, pluginSlug, workspacePath });
 
 /** Start the generate-skill-description-evals agent.
  * Rust intercepts the run_result (step_id=-12), persists queries to
- * description_optimization/description-evals.json, then emits
+ * {skills_path}/{plugin_slug}/{skill_name}/description-evals.json, then emits
  * "description:eval-queries-generated" with { skillName, queries }.
  */
 export const startGenerateDescEvalQueries = (
   agentId: string,
   skillName: string,
+  pluginSlug: string,
   workspaceSkillDir: string,
   model: string,
   numEvalQueries: number,
 ) => invoke<string>("start_generate_desc_evals", {
   agentId,
   skillName,
+  pluginSlug,
   workspaceSkillDir,
   model,
   numEvalQueries,

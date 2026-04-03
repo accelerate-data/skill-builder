@@ -172,6 +172,7 @@ async fn run_workflow_step_inner(
         workflow_session_id,
         usage_session_id: None,
         run_source: Some("workflow".to_string()),
+        plugin_slug: None,
         transcript_log_dir: Some(
             crate::skill_paths::workspace_skill_dir(
                 Path::new(workspace_path),
@@ -575,6 +576,7 @@ pub async fn run_answer_evaluator(
         workflow_session_id: None,
         usage_session_id: None,
         run_source: Some("gate-eval".to_string()),
+        plugin_slug: None,
         transcript_log_dir: Some(
             crate::skill_paths::workspace_skill_dir(
                 Path::new(&workspace_path),

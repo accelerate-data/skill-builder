@@ -105,6 +105,7 @@ export async function runAgentRequest(
     usageSessionId: config.usageSessionId,
     runSource: config.runSource,
     workspaceSkillDir: config.workspaceSkillDir,
+    pluginSlug: config.pluginSlug,
   });
   processorRef.current = processor;
 
