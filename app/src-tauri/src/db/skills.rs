@@ -458,7 +458,7 @@ pub fn move_skill_to_plugin(
 ) -> Result<(), String> {
     let target_plugin_id = get_plugin_id_by_slug(conn, to_plugin_slug)?
         .ok_or_else(|| format!("Unknown plugin slug '{}'", to_plugin_slug))?;
-    conn.execute(
+    let changed = conn.execute(
         "UPDATE skills
          SET plugin_id = ?3, updated_at = datetime('now') || 'Z'
          WHERE name = ?1
@@ -466,6 +466,12 @@ pub fn move_skill_to_plugin(
         rusqlite::params![skill_name, from_plugin_slug, target_plugin_id],
     )
     .map_err(|e| format!("move_skill_to_plugin: {}", e))?;
+    if changed == 0 {
+        return Err(format!(
+            "move_skill_to_plugin: skill '{}' not found in plugin '{}' (0 rows affected)",
+            skill_name, from_plugin_slug
+        ));
+    }
     Ok(())
 }
 
@@ -679,5 +685,39 @@ mod tests {
         // get_skill_master_id_any_plugin SHOULD find it
         let any_id = get_skill_master_id_any_plugin(&conn, "ext-skill").expect("query ok");
         assert!(any_id.is_some(), "any-plugin lookup must find skills in non-default plugins");
+    }
+
+    #[test]
+    fn move_skill_to_plugin_returns_err_on_wrong_from_plugin() {
+        let conn = create_test_db_for_tests();
+        ensure_default_plugin(&conn).unwrap();
+        let (_, target_slug) = create_plugin(&conn, "target-plugin", "local", None, None).unwrap();
+        upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+
+        // 'my-skill' is in the default plugin, but we claim it's in 'target-plugin'
+        let result = move_skill_to_plugin(&conn, "my-skill", &target_slug, crate::skill_paths::DEFAULT_PLUGIN_SLUG);
+        assert!(result.is_err(), "must return Err when from_plugin_slug is wrong");
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("0 rows affected"),
+            "error should mention 0 rows affected, got: {}", msg
+        );
+    }
+
+    #[test]
+    fn move_skill_to_plugin_succeeds_and_join_reflects_new_plugin() {
+        let conn = create_test_db_for_tests();
+        ensure_default_plugin(&conn).unwrap();
+        let (_, target_slug) = create_plugin(&conn, "target-plugin", "local", None, None).unwrap();
+        upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+
+        move_skill_to_plugin(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &target_slug)
+            .expect("move should succeed");
+
+        // The JOIN-derived plugin_slug in get_skill_master_in_plugin should reflect the new plugin
+        let master = get_skill_master_in_plugin(&conn, "my-skill", &target_slug)
+            .expect("query ok")
+            .expect("skill should exist in target plugin");
+        assert_eq!(master.plugin_slug, target_slug);
     }
 }

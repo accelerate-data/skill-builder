@@ -408,6 +408,106 @@ pub fn reconcile_on_startup(
     }
 
     // ════════════════════════════════════════════════════════════════════════
+    // Phase 1f: Dedup — remove stale skills rows created by a failed move
+    //
+    // A failed move (disk moved, DB update silently returned 0 rows) leaves
+    // one row in the old plugin and a second row added by Phase 1c discovery.
+    // Detect all skill names with more than one active row and keep only the
+    // row whose plugin directory contains SKILL.md on disk.
+    //
+    // Tie-break: when SKILL.md exists in both plugins, prefer the non-default
+    // plugin (the intended destination of the move).
+    // ════════════════════════════════════════════════════════════════════════
+    {
+        // Find skill names that appear in multiple active rows.
+        let mut dup_stmt = conn
+            .prepare(
+                "SELECT s.name
+                 FROM skills s
+                 WHERE COALESCE(s.deleted_at, '') = ''
+                 GROUP BY s.name
+                 HAVING COUNT(*) > 1",
+            )
+            .map_err(|e| e.to_string())?;
+        let dup_names: Vec<String> = dup_stmt
+            .query_map([], |r| r.get(0))
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for name in &dup_names {
+            log::info!(
+                "[reconcile] dedup: '{}' has multiple active rows — resolving using disk state",
+                name
+            );
+            // Collect all (plugin_slug, plugin_id, is_default) rows for this name.
+            let mut rows_stmt = conn
+                .prepare(
+                    "SELECT p.slug, p.id, p.is_default
+                     FROM skills s
+                     JOIN plugins p ON p.id = s.plugin_id
+                     WHERE s.name = ?1 AND COALESCE(s.deleted_at, '') = ''",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows: Vec<(String, i64, bool)> = rows_stmt
+                .query_map(rusqlite::params![name], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, bool>(2)?))
+                })
+                .map_err(|e| e.to_string())?
+                .filter_map(|r| r.ok())
+                .collect();
+
+            // Determine which rows have SKILL.md on disk.
+            let has_skill_md: Vec<bool> = rows
+                .iter()
+                .map(|(plugin_slug, _, _)| {
+                    crate::skill_paths::resolve_skill_dir(skills_dir, plugin_slug, name)
+                        .join("SKILL.md")
+                        .is_file()
+                })
+                .collect();
+
+            // Choose the row to keep:
+            // 1. Any non-default plugin with SKILL.md on disk (preferred destination)
+            // 2. Any plugin with SKILL.md on disk
+            // 3. First row (fallback)
+            let keep_idx = rows
+                .iter()
+                .enumerate()
+                .find(|(i, (_, _, is_default))| has_skill_md[*i] && !is_default)
+                .or_else(|| rows.iter().enumerate().find(|(i, _)| has_skill_md[*i]))
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+
+            for (i, (_slug, plugin_id, _)) in rows.iter().enumerate() {
+                if i == keep_idx {
+                    continue;
+                }
+                log::info!(
+                    "[reconcile] dedup: '{}' removing stale row in plugin '{}' (keeping '{}')",
+                    name,
+                    rows[i].0,
+                    rows[keep_idx].0
+                );
+                if let Err(e) = conn.execute(
+                    "DELETE FROM skills WHERE name = ?1 AND plugin_id = ?2",
+                    rusqlite::params![name, plugin_id],
+                ) {
+                    log::warn!(
+                        "[reconcile] dedup: failed to delete stale row for '{}' in plugin '{}': {}",
+                        name, rows[i].0, e
+                    );
+                } else {
+                    notifications.push(format!(
+                        "'{}': removed stale duplicate row in plugin '{}' (kept in '{}')",
+                        name, rows[i].0, rows[keep_idx].0
+                    ));
+                }
+            }
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
     // Phase 2: Workflow recon (incomplete skills only)
     // ════════════════════════════════════════════════════════════════════════
 

@@ -1761,3 +1761,120 @@ fn test_reconcile_skill_builder_recreates_missing_workspace_dir() {
     assert!(skill_dir.exists(), "workspace dir should be recreated");
     assert!(skill_dir.join("context").exists(), "context subdir should be created");
 }
+
+// ── Phase 1f: Dedup tests ───────────────────────────────────────────────────
+
+/// Simulates the state after a failed move + Phase 1c discovery:
+/// - DB has TWO rows for the same skill (old plugin + new disk location row)
+/// - Disk has SKILL.md only in the non-default plugin
+/// - The non-default row has a completed workflow_run (as Phase 1c would have set it)
+///
+/// After reconciliation, exactly one active row should remain — the one matching disk.
+#[test]
+fn test_reconciliation_dedup_removes_stale_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let skills_dir = skills_tmp.path();
+    let conn = create_test_db();
+
+    crate::db::ensure_default_plugin(&conn).unwrap();
+    let (_, non_default_slug) =
+        crate::db::create_plugin(&conn, "my-plugin", "local", None, None).unwrap();
+
+    // Stale row in the default plugin (the old location before the move)
+    crate::db::upsert_skill(&conn, "moved-skill", "skill-builder", "domain").unwrap();
+
+    // Row in the non-default plugin (the new location, added by Phase 1c discovery)
+    let nd_id = crate::db::upsert_skill_in_plugin(
+        &conn, "moved-skill", "skill-builder", "domain", &non_default_slug,
+    ).unwrap();
+
+    // Phase 1c would have also created a completed workflow_run for the new row.
+    // Insert it directly (mimicking Phase 1c) so Phase 2 sees the skill as completed
+    // and skips the save_workflow_run path that would reset the skill to default.
+    conn.execute(
+        "INSERT INTO workflow_runs (skill_name, current_step, status, purpose, skill_id, updated_at)
+         VALUES ('moved-skill', 3, 'completed', 'domain', ?1, datetime('now') || 'Z')
+         ON CONFLICT(skill_name) DO UPDATE SET current_step=3, status='completed', skill_id=?1",
+        rusqlite::params![nd_id],
+    ).unwrap();
+
+    // Disk: SKILL.md only in the non-default plugin location
+    let skill_md_path = crate::skill_paths::resolve_skill_dir(skills_dir, &non_default_slug, "moved-skill")
+        .join("SKILL.md");
+    std::fs::create_dir_all(skill_md_path.parent().unwrap()).unwrap();
+    std::fs::write(&skill_md_path, "---\ntitle: moved-skill\n---\n").unwrap();
+
+    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    // Exactly one active row should remain
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'moved-skill' AND COALESCE(deleted_at, '') = ''",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 1, "exactly one active row must remain after dedup");
+
+    // The surviving row must be in the non-default plugin
+    let master = crate::db::get_skill_master_in_plugin(&conn, "moved-skill", &non_default_slug)
+        .unwrap();
+    assert!(master.is_some(), "surviving row must be in the non-default plugin");
+}
+
+/// When SKILL.md exists under both plugins (edge case), the non-default plugin
+/// should be preferred (it's the intended destination).
+#[test]
+fn test_reconciliation_dedup_prefers_non_default_when_both_have_skill_md() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let skills_dir = skills_tmp.path();
+    let conn = create_test_db();
+
+    crate::db::ensure_default_plugin(&conn).unwrap();
+    let (_, non_default_slug) =
+        crate::db::create_plugin(&conn, "preferred-plugin", "local", None, None).unwrap();
+
+    // Two rows for the same skill
+    crate::db::upsert_skill(&conn, "ambiguous-skill", "skill-builder", "domain").unwrap();
+    let nd_id = crate::db::upsert_skill_in_plugin(
+        &conn, "ambiguous-skill", "skill-builder", "domain", &non_default_slug,
+    ).unwrap();
+
+    // Completed workflow_run pointing at non-default row so Phase 2 skips it
+    conn.execute(
+        "INSERT INTO workflow_runs (skill_name, current_step, status, purpose, skill_id, updated_at)
+         VALUES ('ambiguous-skill', 3, 'completed', 'domain', ?1, datetime('now') || 'Z')
+         ON CONFLICT(skill_name) DO UPDATE SET current_step=3, status='completed', skill_id=?1",
+        rusqlite::params![nd_id],
+    ).unwrap();
+
+    // Disk: SKILL.md in BOTH plugin locations
+    for plugin in &[DEFAULT_PLUGIN_SLUG, non_default_slug.as_str()] {
+        let skill_md = crate::skill_paths::resolve_skill_dir(skills_dir, plugin, "ambiguous-skill")
+            .join("SKILL.md");
+        std::fs::create_dir_all(skill_md.parent().unwrap()).unwrap();
+        std::fs::write(&skill_md, "---\ntitle: ambiguous-skill\n---\n").unwrap();
+    }
+
+    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'ambiguous-skill' AND COALESCE(deleted_at, '') = ''",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 1, "exactly one active row must remain");
+
+    // Non-default plugin must win the tie-break
+    let master = crate::db::get_skill_master_in_plugin(&conn, "ambiguous-skill", &non_default_slug)
+        .unwrap();
+    assert!(master.is_some(), "non-default plugin must win tie-break");
+}
