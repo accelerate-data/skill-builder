@@ -224,6 +224,7 @@ export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: 
 
       const optimizationResult = await runOptimizationLoop(
         skill.name,
+        skill.plugin_slug,
         workspacePath,
         model,
         queries,
@@ -427,8 +428,7 @@ export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: 
           <Button
             size="sm"
             onClick={handleRunOptimization}
-            disabled
-            title="Coming soon"
+            disabled={isRunning || isGeneratingQueries || queries.length === 0 || queries.every(q => !q.should_trigger)}
           >
             {isRunning ? (
               <>

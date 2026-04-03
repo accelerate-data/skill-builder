@@ -1,12 +1,14 @@
+mod eval;
+mod improve;
+mod loop_runner;
+
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::process::Stdio;
-use std::sync::Mutex;
-use tauri::Emitter;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 const DESC_EVALS_PROMPT_TEMPLATE: &str = include_str!(
     "../../../../../agent-sources/workspace/prompts/skill-description-evals-generator.md"
@@ -18,9 +20,9 @@ pub struct EvalQuery {
     pub should_trigger: bool,
 }
 
-/// Tracks the running optimization child process for cancellation.
+/// Tracks the running optimization cancel flag.
 /// Only one optimization runs at a time.
-pub struct DescriptionProcessState(pub Mutex<Option<tokio::process::Child>>);
+pub struct DescriptionProcessState(pub Mutex<Option<Arc<AtomicBool>>>);
 
 impl DescriptionProcessState {
     pub fn new() -> Self {
@@ -28,241 +30,68 @@ impl DescriptionProcessState {
     }
 }
 
-fn resolve_skill_creator_scripts(app: &tauri::AppHandle) -> std::path::PathBuf {
-    super::workflow::resolve_bundled_plugins_dir(app)
-        .join("skill-creator")
-        .join("skills")
-        .join("skill-creator")
-        .join("scripts")
-}
-
-fn resolve_description_optimizer_scripts(app: &tauri::AppHandle) -> std::path::PathBuf {
-    super::workflow::resolve_bundled_plugins_dir(app)
-        .join("skill-creator")
-        .join("skills")
-        .join("skill-description-optimizer")
-        .join("scripts")
-}
-
-#[tauri::command]
-pub async fn generate_eval_queries(
-    skill_name: String,
-    workspace_path: String,
-    model: Option<String>,
-    app: tauri::AppHandle,
-) -> Result<Vec<EvalQuery>, String> {
-    log::info!("[generate_eval_queries] skill={}", skill_name);
-    let scripts_dir = resolve_description_optimizer_scripts(&app);
-    let skill_path = Path::new(&workspace_path).join(&skill_name);
-
-    let mut cmd = tokio::process::Command::new("uv");
-    cmd.arg("run")
-        .arg("--quiet")
-        .arg(scripts_dir.join("generate_eval_queries.py"))
-        .arg("--skill-path")
-        .arg(&skill_path);
-
-    if let Some(ref m) = model {
-        cmd.arg("--model").arg(m);
-    }
-
-    let output = cmd.output().await.map_err(|e| {
-        log::error!("[generate_eval_queries] failed to spawn uv: {}", e);
-        format!("Failed to run generate_eval_queries.py: {}", e)
-    })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        log::error!("[generate_eval_queries] script failed: {}", stderr);
-        return Err(format!("generate_eval_queries.py failed: {}", stderr));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(&stdout).map_err(|e| {
-        log::error!("[generate_eval_queries] failed to parse output: {}", e);
-        format!("Failed to parse output: {}", e)
-    })?;
-
-    if parsed.get("ok").and_then(|v| v.as_bool()) != Some(true) {
-        let error = parsed
-            .get("error")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown error");
-        log::error!("[generate_eval_queries] script returned ok=false: {}", error);
-        return Err(format!("generate_eval_queries.py error: {}", error));
-    }
-
-    let queries = parsed
-        .get("queries")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "Missing 'queries' array in response".to_string())?;
-
-    let result: Vec<EvalQuery> = serde_json::from_value(serde_json::Value::Array(queries.clone()))
-        .map_err(|e| {
-            log::error!("[generate_eval_queries] failed to deserialize queries: {}", e);
-            format!("Failed to deserialize queries: {}", e)
-        })?;
-
-    Ok(result)
-}
-
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn run_optimization_loop(
     skill_name: String,
+    plugin_slug: String,
     workspace_path: String,
     model: String,
     eval_queries: Vec<EvalQuery>,
     process_state: tauri::State<'_, DescriptionProcessState>,
+    db: tauri::State<'_, crate::db::Db>,
     app: tauri::AppHandle,
 ) -> Result<serde_json::Value, String> {
     log::info!(
-        "[run_optimization_loop] skill={} queries={}",
+        "[run_optimization_loop] skill={} plugin={} queries={}",
         skill_name,
+        plugin_slug,
         eval_queries.len()
     );
 
-    // Write eval_queries to a temp file
-    let queries_json = serde_json::to_vec(&eval_queries).map_err(|e| {
-        log::error!("[run_optimization_loop] failed to serialize queries: {}", e);
-        format!("Failed to serialize eval queries: {}", e)
-    })?;
-
-    let mut tmp = tempfile::NamedTempFile::new().map_err(|e| {
-        log::error!("[run_optimization_loop] failed to create temp file: {}", e);
-        format!("Failed to create temp file: {}", e)
-    })?;
-
-    use std::io::Write;
-    tmp.write_all(&queries_json).map_err(|e| {
-        log::error!("[run_optimization_loop] failed to write temp file: {}", e);
-        format!("Failed to write eval queries to temp file: {}", e)
-    })?;
-    tmp.flush().map_err(|e| format!("Failed to flush temp file: {}", e))?;
-
-    let tmp_path = tmp.path().to_path_buf();
-    let scripts_dir = resolve_skill_creator_scripts(&app);
-    let skill_path = Path::new(&workspace_path).join(&skill_name);
-
-    let mut child = tokio::process::Command::new("uv")
-        .arg("run")
-        .arg("--quiet")
-        .arg(scripts_dir.join("run_loop.py"))
-        .arg("--eval-set")
-        .arg(&tmp_path)
-        .arg("--skill-path")
-        .arg(&skill_path)
-        .arg("--project-root")
-        .arg(&workspace_path)
-        .arg("--model")
-        .arg(&model)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            log::error!("[run_optimization_loop] failed to spawn uv: {}", e);
-            format!("Failed to run run_loop.py: {}", e)
-        })?;
-
-    let stdout = child.stdout.take().expect("stdout piped");
-    let stderr_handle = child.stderr.take().unwrap();
-
-    // Store child in managed state so cancel_description_optimization can kill it.
-    {
-        let mut guard = process_state.0.lock().map_err(|e| e.to_string())?;
-        *guard = Some(child);
-    }
-
-    let mut reader = BufReader::new(stdout).lines();
-
-    let mut final_result: Option<serde_json::Value> = None;
-
-    while let Ok(Some(line)) = reader.next_line().await {
-        log::debug!("[run_optimization_loop] stdout line: {}", line);
-        match serde_json::from_str::<serde_json::Value>(&line) {
-            Ok(payload) => {
-                let type_field = payload.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                if type_field == "progress" {
-                    if let Err(e) = app.emit("description:progress", &payload) {
-                        log::debug!("[run_optimization_loop] emit error: {}", e);
-                    }
-                } else if type_field == "result"
-                    || type_field == "error"
-                    || payload.get("ok").and_then(|v| v.as_bool()).is_some()
-                {
-                    final_result = Some(payload);
-                }
-            }
-            Err(_) => {
-                log::debug!("[run_optimization_loop] non-JSON line (skipped): {}", line);
-            }
-        }
-    }
-
-    // Take child back from state. If None, it was cancelled.
-    let mut child = {
-        let mut guard = process_state.0.lock().map_err(|e| e.to_string())?;
-        match guard.take() {
-            Some(c) => c,
-            None => {
-                log::info!("[run_optimization_loop] optimization was cancelled");
-                return Err("Optimization cancelled".to_string());
-            }
-        }
+    // Read API key from settings
+    let api_key = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = crate::db::read_settings(&conn)?;
+        settings
+            .anthropic_api_key
+            .ok_or_else(|| "Anthropic API key not configured".to_string())?
     };
 
-    let exit_status = child.wait().await.map_err(|e| {
-        log::error!("[run_optimization_loop] wait error: {}", e);
-        format!("Failed to wait for run_loop.py: {}", e)
-    })?;
+    // Resolve skill path
+    let skills_path = super::refine::resolve_skills_path(&db)?;
+    let skill_path = crate::skill_paths::resolve_skill_dir(
+        Path::new(&skills_path),
+        &plugin_slug,
+        &skill_name,
+    );
 
-    if !exit_status.success() || final_result.is_none() {
-        let mut stderr_buf = String::new();
-        tokio::io::AsyncReadExt::read_to_string(
-            &mut tokio::io::BufReader::new(stderr_handle),
-            &mut stderr_buf,
-        )
-        .await
-        .ok();
-
-        if !exit_status.success() {
-            if let Some(result) = final_result {
-                // Return error payload from script
-                let script_err = result
-                    .get("error")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("run_loop.py exited with error")
-                    .to_string();
-                log::error!(
-                    "[run_optimization_loop] run_loop.py error: {} stderr: {}",
-                    script_err,
-                    stderr_buf.trim()
-                );
-                return Err(if stderr_buf.trim().is_empty() {
-                    script_err
-                } else {
-                    format!("{}\nstderr: {}", script_err, stderr_buf.trim())
-                });
-            }
-            log::error!(
-                "[run_optimization_loop] run_loop.py exited with status: {} stderr: {}",
-                exit_status,
-                stderr_buf.trim()
-            );
-            return Err(format!(
-                "run_loop.py exited with non-zero status: {}\nstderr: {}",
-                exit_status,
-                stderr_buf.trim()
-            ));
-        }
+    // Create cancel flag and store in managed state
+    let cancel = Arc::new(AtomicBool::new(false));
+    {
+        let mut guard = process_state.0.lock().map_err(|e| e.to_string())?;
+        *guard = Some(cancel.clone());
     }
 
-    // Keep the temp file alive until after process exits
-    drop(tmp);
+    // Run the optimization loop in Rust (no Python subprocess)
+    let result = loop_runner::run_loop(
+        eval_queries,
+        &skill_path,
+        Path::new(&workspace_path),
+        &model,
+        &api_key,
+        cancel,
+        &app,
+    )
+    .await;
 
-    final_result.ok_or_else(|| {
-        log::error!("[run_optimization_loop] no result received from run_loop.py");
-        "No result received from run_loop.py".to_string()
-    })
+    // Clear state regardless of outcome
+    {
+        let mut guard = process_state.0.lock().map_err(|e| e.to_string())?;
+        *guard = None;
+    }
+
+    result
 }
 
 /// Atomically write eval queries to `path` (tmp + rename).
@@ -326,13 +155,13 @@ pub fn load_eval_queries(
 pub async fn apply_description(
     skill_name: String,
     plugin_slug: String,
-    workspace_path: String,
+    _workspace_path: String,
     description: String,
     db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
     log::info!("[apply_description] skill={} plugin={}", skill_name, plugin_slug);
 
-    let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
+    let skills_path = super::refine::resolve_skills_path(&db)?;
     let skill_md_path = crate::skill_paths::resolve_skill_dir(
         Path::new(&skills_path), &plugin_slug, &skill_name,
     ).join("SKILL.md");
@@ -357,21 +186,12 @@ pub async fn cancel_description_optimization(
     process_state: tauri::State<'_, DescriptionProcessState>,
 ) -> Result<(), String> {
     log::info!("[cancel_description_optimization] cancelling running optimization");
-    // Take child out of mutex before awaiting async operations
-    let child = {
-        let mut guard = process_state.0.lock().map_err(|e| e.to_string())?;
-        guard.take()
-    };
-    if let Some(mut child) = child {
-        if let Err(e) = child.kill().await {
-            log::warn!("[cancel_description_optimization] kill failed: {}", e);
-        } else {
-            log::info!("[cancel_description_optimization] killed child process");
-        }
-        // Reap the process to avoid zombie
-        let _ = child.wait().await;
+    let mut guard = process_state.0.lock().map_err(|e| e.to_string())?;
+    if let Some(flag) = guard.take() {
+        flag.store(true, Ordering::SeqCst);
+        log::info!("[cancel_description_optimization] cancel flag set");
     } else {
-        log::debug!("[cancel_description_optimization] no running process to cancel");
+        log::debug!("[cancel_description_optimization] no running optimization to cancel");
     }
     Ok(())
 }
@@ -473,7 +293,7 @@ pub async fn start_generate_desc_evals(
         agent_id, skill_name, plugin_slug, num_eval_queries
     );
 
-    let skills_path = super::refine::resolve_skills_path(&db, &workspace_skill_dir)?;
+    let skills_path = super::refine::resolve_skills_path(&db)?;
     let skill_path_fwd = crate::skill_paths::resolve_skill_dir(
         std::path::Path::new(&skills_path),
         &plugin_slug,

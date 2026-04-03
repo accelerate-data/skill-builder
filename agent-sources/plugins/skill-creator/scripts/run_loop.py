@@ -11,13 +11,14 @@ import argparse
 import html
 import json
 import os
+import queue
 import random
 import re
-import select
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 import webbrowser
@@ -313,19 +314,43 @@ def run_single_query(
         accumulated_json = ""
 
         try:
+            # Use a background thread to read stdout — select.select()
+            # does not work with pipes on Windows ([WinError 10038]).
+            read_queue: queue.Queue[bytes | None] = queue.Queue()
+
+            def _reader() -> None:
+                try:
+                    while True:
+                        chunk = process.stdout.read(8192)
+                        if not chunk:
+                            break
+                        read_queue.put(chunk)
+                except Exception:
+                    pass
+                finally:
+                    read_queue.put(None)
+
+            reader_thread = threading.Thread(target=_reader, daemon=True)
+            reader_thread.start()
+
             while time.time() - start_time < timeout:
                 if process.poll() is not None:
-                    remaining = process.stdout.read()
-                    if remaining:
-                        buffer += remaining.decode("utf-8", errors="replace")
+                    # Drain remaining chunks from the reader thread
+                    while True:
+                        try:
+                            chunk = read_queue.get_nowait()
+                        except queue.Empty:
+                            break
+                        if chunk is None:
+                            break
+                        buffer += chunk.decode("utf-8", errors="replace")
                     break
 
-                ready, _, _ = select.select([process.stdout], [], [], 1.0)
-                if not ready:
+                try:
+                    chunk = read_queue.get(timeout=1.0)
+                except queue.Empty:
                     continue
-
-                chunk = os.read(process.stdout.fileno(), 8192)
-                if not chunk:
+                if chunk is None:
                     break
                 buffer += chunk.decode("utf-8", errors="replace")
 
@@ -456,36 +481,40 @@ def run_eval(
 def _call_claude(prompt: str, model: str | None, timeout: int = 300) -> str:
     import tempfile
 
-    # Write prompt to a temp file and redirect stdin from it.
-    # Piping via subprocess stdin triggers [WinError 10038] on Windows
-    # because captured pipes interfere with Claude CLI's async networking.
+    # Write prompt to a temp file and feed it via stdin.
+    # On Windows, capture_output=True creates extra pipes that conflict with
+    # Claude CLI's async networking ([WinError 10038]). Match run_eval.py's
+    # working pattern: stdout=PIPE, stderr=DEVNULL, no captured stderr.
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".txt", encoding="utf-8", delete=False
     ) as tmp:
         tmp.write(prompt)
         tmp_path = tmp.name
 
+    stderr_path = tmp_path + ".stderr"
     try:
         cmd = ["claude", "-p", "--output-format", "text"]
         if model:
             cmd.extend(["--model", model])
 
         env = {key: value for key, value in os.environ.items() if key != "CLAUDECODE"}
-        with open(tmp_path, "r", encoding="utf-8") as stdin_file:
-            result = subprocess.run(
+        with open(tmp_path, "r", encoding="utf-8") as stdin_file, \
+             open(stderr_path, "w", encoding="utf-8") as stderr_file:
+            process = subprocess.Popen(
                 cmd,
                 stdin=stdin_file,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
+                stdout=subprocess.PIPE,
+                stderr=stderr_file,
                 env=env,
-                timeout=timeout,
             )
-        if result.returncode != 0:
-            raise RuntimeError(f"claude -p exited {result.returncode}\nstderr: {result.stderr}")
-        return result.stdout
+            stdout, _ = process.communicate(timeout=timeout)
+        if process.returncode != 0:
+            stderr_content = Path(stderr_path).read_text(encoding="utf-8", errors="replace").strip()
+            raise RuntimeError(f"claude -p exited {process.returncode}\nstderr: {stderr_content}")
+        return stdout.decode("utf-8")
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+        Path(stderr_path).unlink(missing_ok=True)
 
 
 def improve_description(
