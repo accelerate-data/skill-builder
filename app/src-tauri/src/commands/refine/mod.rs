@@ -18,12 +18,12 @@ use protocol::*;
 
 // ─── Shared helper ───────────────────────────────────────────────────────────
 
-pub(crate) fn resolve_skills_path(db: &Db, workspace_path: &str) -> Result<String, String> {
+pub(crate) fn resolve_skills_path(db: &Db) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = db::read_settings(&conn)?;
-    Ok(settings
+    settings
         .skills_path
-        .unwrap_or_else(|| workspace_path.to_string()))
+        .ok_or_else(|| "Skills path not configured in settings".to_string())
 }
 
 pub(super) fn resolve_skill_plugin_slug(db: &Db, skill_name: &str) -> Result<String, String> {
@@ -123,7 +123,7 @@ pub async fn start_refine_session(
     log::info!("[start_refine_session] skill={} plugin={}", skill_name, plugin_slug);
     validate_skill_name(&skill_name)?;
 
-    let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
+    let skills_path = resolve_skills_path(&db).map_err(|e| {
         log::error!(
             "[start_refine_session] Failed to resolve skills path: {}",
             e

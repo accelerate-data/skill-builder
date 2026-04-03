@@ -4368,6 +4368,7 @@ dependencies = [
  "mockito",
  "nix",
  "notify",
+ "rand 0.8.5",
  "reqwest",
  "rusqlite",
  "semver",
