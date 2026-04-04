@@ -409,6 +409,7 @@ pub fn run() {
             commands::description::save_eval_queries,
             commands::description::load_eval_queries,
             commands::description::cancel_description_optimization,
+            commands::description::write_desc_opt_log,
             commands::documents::list_documents,
             commands::documents::list_skills_for_documents,
             commands::documents::add_document_file,

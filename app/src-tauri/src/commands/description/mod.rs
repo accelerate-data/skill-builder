@@ -73,15 +73,30 @@ pub async fn run_optimization_loop(
         *guard = Some(cancel.clone());
     }
 
+    // Resolve short model name (e.g. "sonnet") → full API ID (e.g. "claude-sonnet-4-6")
+    // Fall back to sonnet if model is empty (frontend sends "" when skill.model is unset)
+    let effective_model = if model.trim().is_empty() { "sonnet" } else { &model };
+    let resolved_model = crate::commands::workflow::step_config::resolve_model_id(effective_model);
+
+    // Build log directory for file-based logging
+    let log_dir = crate::skill_paths::workspace_skill_dir(
+        Path::new(&workspace_path),
+        &plugin_slug,
+        &skill_name,
+    )
+    .join("description-optimization")
+    .join("logs");
+
     // Run the optimization loop in Rust (no Python subprocess)
     let result = loop_runner::run_loop(
         eval_queries,
         &skill_path,
         Path::new(&workspace_path),
-        &model,
+        &resolved_model,
         &api_key,
         cancel,
         &app,
+        &log_dir,
     )
     .await;
 
@@ -408,6 +423,39 @@ pub async fn start_generate_desc_evals(
     )
     .await?;
     Ok(agent_id)
+}
+
+/// Append a frontend log message to `desc-opt-frontend-{date}.log`.
+/// Called from the frontend to capture UI-side events alongside backend logs.
+#[tauri::command]
+pub fn write_desc_opt_log(
+    skill_name: String,
+    plugin_slug: String,
+    workspace_path: String,
+    message: String,
+) -> Result<(), String> {
+    let log_dir = crate::skill_paths::workspace_skill_dir(
+        Path::new(&workspace_path),
+        &plugin_slug,
+        &skill_name,
+    )
+    .join("description-optimization")
+    .join("logs");
+
+    let _ = std::fs::create_dir_all(&log_dir);
+    let date = chrono::Local::now().format("%Y-%m-%d");
+    let log_file = log_dir.join(format!("desc-opt-frontend-{}.log", date));
+    let timestamp = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f");
+
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_file)
+    {
+        let _ = writeln!(f, "[{}] {}", timestamp, message);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

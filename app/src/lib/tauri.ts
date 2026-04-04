@@ -728,6 +728,13 @@ export const startGenerateDescEvalQueries = (
   numEvalQueries,
 });
 
+export const writeDescOptLog = (
+  skillName: string,
+  pluginSlug: string,
+  workspacePath: string,
+  message: string,
+) => invoke<void>("write_desc_opt_log", { skillName, pluginSlug, workspacePath, message });
+
 // --- Benchmark ---
 
 export interface LatestBenchmarkResult {

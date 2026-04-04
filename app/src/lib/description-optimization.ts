@@ -111,6 +111,62 @@ export function updateQuery(
   return updated;
 }
 
+/** Compute score as a decimal (e.g. 3/8 → 0.38). Returns 0 when total is 0. */
+export function scoreRate(passed: number, total: number): number {
+  return total === 0 ? 0 : passed / total;
+}
+
+/** Format score rate as "0.XX" string. */
+export function formatRate(passed: number, total: number): string {
+  return scoreRate(passed, total).toFixed(2);
+}
+
+/**
+ * Compute the delta between two iterations' test scores (or train if no test).
+ * Returns null for the first iteration.
+ */
+export function scoreDelta(
+  current: OptimizationIteration,
+  previous: OptimizationIteration | null,
+): number | null {
+  if (!previous) return null;
+  const curRate =
+    current.test_passed !== null && current.test_total !== null
+      ? scoreRate(current.test_passed, current.test_total)
+      : scoreRate(current.train_passed, current.train_total);
+  const prevRate =
+    previous.test_passed !== null && previous.test_total !== null
+      ? scoreRate(previous.test_passed, previous.test_total)
+      : scoreRate(previous.train_passed, previous.train_total);
+  return curRate - prevRate;
+}
+
+/** Format delta as "+0.12" or "−0.03". Returns "—" for null. */
+export function formatDelta(delta: number | null): string {
+  if (delta === null) return "—";
+  const sign = delta >= 0 ? "+" : "\u2212";
+  return `${sign}${Math.abs(delta).toFixed(2)}`;
+}
+
+/** Find the index of the best iteration (highest test score, or train if no test). */
+export function findBestIteration(history: OptimizationIteration[]): number {
+  if (history.length === 0) return -1;
+  let bestIdx = 0;
+  let bestRate = -1;
+  for (let i = 0; i < history.length; i++) {
+    const h = history[i];
+    const rate =
+      h.test_passed !== null && h.test_total !== null
+        ? scoreRate(h.test_passed, h.test_total)
+        : scoreRate(h.train_passed, h.train_total);
+    if (rate > bestRate) {
+      bestRate = rate;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
 /**
  * Returns a Tailwind CSS color class for a score (0.0-1.0 or as passed/total).
  * High (>=80%): text-[var(--color-seafoam)] (brand seafoam via CSS variable)

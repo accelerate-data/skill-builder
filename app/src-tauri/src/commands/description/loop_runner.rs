@@ -4,10 +4,33 @@ use super::EvalQuery;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use std::collections::HashSet;
+use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::Emitter;
+
+// ─── File-based logging helper ─────────────────────────────────────────────
+
+/// Append a timestamped line to a log file. Failures are silently ignored
+/// (file logging must never break the optimization loop).
+fn write_log_line(log_file: &Path, msg: &str) {
+    let timestamp = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_file)
+    {
+        let _ = writeln!(f, "[{}] {}", timestamp, msg);
+    }
+}
+
+/// Create the log directory and return a timestamped log file path.
+fn init_log_file(log_dir: &Path, prefix: &str) -> std::path::PathBuf {
+    let _ = std::fs::create_dir_all(log_dir);
+    let ts = chrono::Local::now().format("%Y-%m-%dT%H-%M-%S");
+    log_dir.join(format!("{}-{}.log", prefix, ts))
+}
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -149,6 +172,7 @@ pub fn split_eval_set(
 
 // ─── Main loop ──────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_loop(
     eval_queries: Vec<EvalQuery>,
     skill_path: &Path,
@@ -157,13 +181,22 @@ pub async fn run_loop(
     api_key: &str,
     cancel: Arc<AtomicBool>,
     app: &tauri::AppHandle,
+    log_dir: &Path,
 ) -> Result<serde_json::Value, String> {
+    let loop_log = init_log_file(log_dir, "desc-opt-loop");
+    let eval_log = init_log_file(log_dir, "desc-opt-eval");
+    let improve_log = init_log_file(log_dir, "desc-opt-improve");
+
     log::info!(
         "[run_loop] skill_path={} queries={} model={}",
         skill_path.display(),
         eval_queries.len(),
         model
     );
+    write_log_line(&loop_log, &format!(
+        "RUN_START skill_path={} queries={} model={}",
+        skill_path.display(), eval_queries.len(), model
+    ));
 
     let skill_info = parse_skill_md(skill_path)?;
     let mut current_description = skill_info.description.clone();
@@ -181,6 +214,10 @@ pub async fn run_loop(
         test_set.len(),
         HOLDOUT
     );
+    write_log_line(&loop_log, &format!(
+        "SPLIT train={} test={} holdout={}",
+        train_set.len(), test_set.len(), HOLDOUT
+    ));
 
     let all_queries: Vec<EvalQuery> = train_set
         .iter()
@@ -195,6 +232,7 @@ pub async fn run_loop(
 
     for iteration in 1..=MAX_ITERATIONS {
         if cancel.load(Ordering::SeqCst) {
+            write_log_line(&loop_log, "CANCELLED before iteration start");
             return Err("Optimization cancelled".to_string());
         }
 
@@ -204,6 +242,11 @@ pub async fn run_loop(
             MAX_ITERATIONS,
             &current_description[..current_description.len().min(80)]
         );
+        write_log_line(&loop_log, &format!(
+            "ITERATION_START iteration={}/{} description=\"{}\"",
+            iteration, MAX_ITERATIONS,
+            &current_description[..current_description.len().min(80)]
+        ));
 
         // Run eval on all queries
         let all_results = eval::run_eval(
@@ -276,6 +319,7 @@ pub async fn run_loop(
         let progress_payload = serde_json::json!({
             "type": "progress",
             "iteration": iteration,
+            "description": current_description,
             "train_passed": train_passed,
             "train_total": train_total,
             "test_passed": if !test_set.is_empty() { Some(test_passed) } else { None },
@@ -293,21 +337,28 @@ pub async fn run_loop(
             test_passed,
             test_total
         );
+        write_log_line(&eval_log, &format!(
+            "EVAL_COMPLETE iteration={} train={}/{} test={}/{}",
+            iteration, train_passed, train_total, test_passed, test_total
+        ));
 
         // Early exit if all train pass
         if train_total > 0 && train_passed == train_total {
             exit_reason = format!("all_passed (iteration {})", iteration);
+            write_log_line(&loop_log, &format!("EARLY_EXIT reason={}", exit_reason));
             break;
         }
 
         // Last iteration
         if iteration == MAX_ITERATIONS {
             exit_reason = format!("max_iterations ({})", MAX_ITERATIONS);
+            write_log_line(&loop_log, &format!("MAX_ITERATIONS_REACHED reason={}", exit_reason));
             break;
         }
 
         // Improve description
         if cancel.load(Ordering::SeqCst) {
+            write_log_line(&loop_log, "CANCELLED before improve step");
             return Err("Optimization cancelled".to_string());
         }
 
@@ -323,7 +374,12 @@ pub async fn run_loop(
             })
             .collect();
 
-        current_description = improve::improve_description(
+        write_log_line(&improve_log, &format!(
+            "IMPROVE_START iteration={} model={} skill={}",
+            iteration, model, skill_info.name
+        ));
+
+        match improve::improve_description(
             &skill_info.name,
             &skill_info.content,
             &current_description,
@@ -333,7 +389,23 @@ pub async fn run_loop(
             api_key,
             test_eval.as_ref(),
         )
-        .await?;
+        .await
+        {
+            Ok(new_desc) => {
+                write_log_line(&improve_log, &format!(
+                    "IMPROVE_OK iteration={} chars={} description=\"{}\"",
+                    iteration, new_desc.len(),
+                    &new_desc[..new_desc.len().min(80)]
+                ));
+                current_description = new_desc;
+            }
+            Err(e) => {
+                write_log_line(&improve_log, &format!(
+                    "IMPROVE_FAIL iteration={} error={}", iteration, e
+                ));
+                return Err(e);
+            }
+        }
 
         log::info!(
             "[run_loop] new description ({} chars): \"{}\"",
@@ -376,6 +448,11 @@ pub async fn run_loop(
             })
         })
         .collect();
+
+    write_log_line(&loop_log, &format!(
+        "RUN_COMPLETE exit_reason={} iterations={} best_score={} best_train={}/{}",
+        exit_reason, history.len(), best_score, best.train_passed, best.train_total
+    ));
 
     Ok(serde_json::json!({
         "ok": true,
