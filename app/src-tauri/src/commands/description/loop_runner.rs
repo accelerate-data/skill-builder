@@ -579,14 +579,27 @@ pub async fn run_loop(
         }
     }
 
-    // Select best
+    // Select best: highest test score, with earlier iteration winning ties so D0
+    // is preferred over rejected candidates that merely tied the baseline.
     let best = if !test_set.is_empty() {
         history
             .iter()
-            .max_by_key(|h| h.test_passed.unwrap_or(0))
+            .max_by(|a, b| {
+                a.test_passed
+                    .unwrap_or(0)
+                    .cmp(&b.test_passed.unwrap_or(0))
+                    .then(b.iteration.cmp(&a.iteration)) // lower iteration wins on tie
+            })
             .unwrap()
     } else {
-        history.iter().max_by_key(|h| h.train_passed).unwrap()
+        history
+            .iter()
+            .max_by(|a, b| {
+                a.train_passed
+                    .cmp(&b.train_passed)
+                    .then(b.iteration.cmp(&a.iteration))
+            })
+            .unwrap()
     };
 
     let best_score = if !test_set.is_empty() {
