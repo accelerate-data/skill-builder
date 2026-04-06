@@ -37,6 +37,7 @@ hex = "0.4"
 tempfile = "3"
 htmd = "0.2"
 walkdir = "2"
+rand = { version = "0.8", features = ["small_rng"] }
 
 
 [target.'cfg(unix)'.dependencies]

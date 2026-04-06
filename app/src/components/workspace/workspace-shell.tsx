@@ -14,7 +14,8 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
-import { cleanupSkillSidecar, getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
+import { cleanupSkillSidecar, cancelDescriptionOptimization, getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
+import type { SkillSummary as TauriSkillSummary } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
@@ -33,6 +34,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
   const [activeTab, setActiveTab] = useState(initialTab ?? "overview");
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const evalsRunningRef = useRef(false);
+  const descriptionRunningRef = useRef(false);
   const isSkillStoreLoading = useSkillStore((s) => s.isLoading);
 
   // Sync tab when a navigation sets initialTab (e.g. "Refine" from the More menu)
@@ -54,10 +56,23 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
       setPendingTab(value);
       return;
     }
+    // Guard: block switching away from Description while optimization is running
+    if (activeTab === "description" && value !== "description" && descriptionRunningRef.current) {
+      setPendingTab(value);
+      return;
+    }
     setActiveTab(value);
   }, [activeTab]);
 
   const skillName = "name" in skill ? skill.name : skill.skill_name;
+
+  // Reset file viewer state whenever the active skill changes so the file viewer
+  // re-reads from disk rather than showing the previous skill's content.
+  useEffect(() => {
+    const store = useRefineStore.getState();
+    store.setSkillFiles([]);
+    store.setSelectedModifiedFile(null);
+  }, [skillName]);
 
   const handleTabStay = useCallback(() => {
     setPendingTab(null);
@@ -69,6 +84,12 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
       if (activeTab === "evals" && evalsRunningRef.current) {
         cleanupSkillSidecar(skillName).catch((err) =>
           console.error("[workspace-shell] eval sidecar cleanup failed:", err),
+        );
+      }
+      // Kill optimization process when leaving description tab
+      if (activeTab === "description" && descriptionRunningRef.current) {
+        cancelDescriptionOptimization().catch((err) =>
+          console.error("[workspace-shell] description optimization cancel failed:", err),
         );
       }
       setActiveTab(pendingTab);
@@ -119,6 +140,46 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
     store.setActiveFileTab(tab);
     store.setDiffMode(false);
     store.setSelectedModifiedFile(tab);
+  }, [isBuilderSkill, workspacePath, skill]);
+
+  // Called by WorkspaceDescription after a description is applied to disk.
+  // Updates the skill store with the new description so Overview reflects it immediately,
+  // and reloads the skill files cache so the file viewer shows the updated SKILL.md.
+  const handleDescriptionApply = useCallback(async (newDescription: string, newVersion: string) => {
+    // 1. Patch the description in the skill store directly (apply_description only writes to disk,
+    //    not the DB, so listSkills would return the stale value).
+    //    Use the real semver returned by apply_description so Overview shows the new tag.
+    useSkillStore.getState().setLatestVersion(newVersion);
+    const skills = useSkillStore.getState().skills;
+    const updatedSkills = skills.map((s) =>
+      s.name === (skill as TauriSkillSummary).name && s.plugin_slug === (skill as TauriSkillSummary).plugin_slug
+        ? { ...s, description: newDescription }
+        : s
+    );
+    useSkillStore.getState().setSkills(updatedSkills);
+
+    // 2. Reload skill files so the file viewer (and any open panel) shows updated SKILL.md content.
+    if (!isBuilderSkill || !workspacePath) return;
+    try {
+      const contents = await getSkillContentForRefine(
+        (skill as TauriSkillSummary).name,
+        workspacePath,
+        (skill as TauriSkillSummary).plugin_slug,
+      );
+      const files: SkillFile[] = contents
+        .map((c) => ({ filename: c.path, content: c.content }))
+        .sort((a, b) => {
+          if (a.filename === "SKILL.md") return -1;
+          if (b.filename === "SKILL.md") return 1;
+          return a.filename.localeCompare(b.filename);
+        });
+      const refineStore = useRefineStore.getState();
+      refineStore.setSkillFiles(files);
+      if (files.length > 0) refineStore.setActiveFileTab(files[0].filename);
+    } catch {
+      // Non-fatal: file viewer will reload on next open
+      useRefineStore.getState().setSkillFiles([]);
+    }
   }, [isBuilderSkill, workspacePath, skill]);
 
   return (
@@ -185,6 +246,8 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
             <WorkspaceDescription
               skill={"name" in skill ? skill as SkillSummary : { ...(skill as ImportedSkill), name: (skill as ImportedSkill).skill_name } as unknown as SkillSummary}
               workspacePath={workspacePath ?? ""}
+              onRunningChange={(running) => { descriptionRunningRef.current = running; }}
+              onApply={(desc, ver) => void handleDescriptionApply(desc, ver)}
             />
           </TabsContent>
         </Tabs>
@@ -196,9 +259,9 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
         <Dialog open onOpenChange={(open) => { if (!open) handleTabStay(); }}>
           <DialogContent showCloseButton={false}>
             <DialogHeader>
-              <DialogTitle>Agent Running</DialogTitle>
+              <DialogTitle>Process Running</DialogTitle>
               <DialogDescription>
-                An agent is still running. Switching tabs will abandon the session.
+                A process is still running. Switching tabs will abandon the session.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

@@ -5,7 +5,10 @@ import {
   removeQuery,
   updateQuery,
   scoreColor,
+  scoreDelta,
+  findBestIteration,
   type EvalQuery,
+  type OptimizationIteration,
 } from '@/lib/description-optimization';
 
 describe('parseProgressEvent', () => {
@@ -95,6 +98,53 @@ describe('parseProgressEvent', () => {
 
     const result = parseProgressEvent(payload);
     expect(result).toBeNull();
+  });
+
+  it('accepts iteration 0 baseline with null train fields', () => {
+    // Iteration 0 (baseline) runs test-set-only eval — train fields are null
+    const payload = {
+      iteration: 0,
+      description: 'Baseline description',
+      train_passed: null,
+      train_total: null,
+      test_passed: 7,
+      test_total: 11,
+    };
+
+    const result = parseProgressEvent(payload);
+
+    expect(result).not.toBeNull();
+    expect(result?.iteration).toBe(0);
+    expect(result?.train_passed).toBeNull();
+    expect(result?.train_total).toBeNull();
+    expect(result?.test_passed).toBe(7);
+    expect(result?.test_total).toBe(11);
+  });
+
+  it('returns null when train_passed is non-numeric non-null', () => {
+    const payload = {
+      iteration: 1,
+      description: 'Test',
+      train_passed: 'bad',
+      train_total: 10,
+      test_passed: 5,
+      test_total: 10,
+    };
+
+    expect(parseProgressEvent(payload)).toBeNull();
+  });
+
+  it('returns null when train_total is non-numeric non-null', () => {
+    const payload = {
+      iteration: 1,
+      description: 'Test',
+      train_passed: 8,
+      train_total: 'bad',
+      test_passed: 5,
+      test_total: 10,
+    };
+
+    expect(parseProgressEvent(payload)).toBeNull();
   });
 });
 
@@ -291,5 +341,61 @@ describe('scoreColor', () => {
     expect(scoreColor(0.8, 1)).toBe('text-[var(--color-seafoam)]');
     expect(scoreColor(0.6, 1)).toBe('text-amber-600 dark:text-amber-400');
     expect(scoreColor(0.5, 1)).toBe('text-destructive');
+  });
+});
+
+const iter0: OptimizationIteration = {
+  iteration: 0, description: 'baseline', train_passed: null, train_total: null, test_passed: 5, test_total: 11,
+};
+const iter1: OptimizationIteration = {
+  iteration: 1, description: 'v1', train_passed: 8, train_total: 13, test_passed: 7, test_total: 11,
+};
+const iter2: OptimizationIteration = {
+  iteration: 2, description: 'v2', train_passed: 6, train_total: 13, test_passed: 6, test_total: 11,
+};
+
+describe('scoreDelta', () => {
+  it('returns null for the first item (no previous)', () => {
+    expect(scoreDelta(iter0, null)).toBeNull();
+  });
+
+  it('uses test score when both iterations have test scores', () => {
+    // iter1 test=7/11≈0.636, iter0 test=5/11≈0.455 → delta≈0.182
+    const delta = scoreDelta(iter1, iter0);
+    expect(delta).toBeCloseTo(7 / 11 - 5 / 11, 5);
+  });
+
+  it('falls back to train score when iteration 0 has null train but next has test', () => {
+    // iter0 has test score so it uses test; iter1 also has test score
+    const delta = scoreDelta(iter2, iter1);
+    expect(delta).toBeCloseTo(6 / 11 - 7 / 11, 5);
+  });
+
+  it('treats null train as 0 when test is also null', () => {
+    const noScores: OptimizationIteration = {
+      iteration: 3, description: 'x', train_passed: null, train_total: null, test_passed: null, test_total: null,
+    };
+    // Falls back to scoreRate(null??0, null??0) = 0
+    const delta = scoreDelta(noScores, iter1);
+    expect(delta).toBeCloseTo(0 - 7 / 11, 5);
+  });
+});
+
+describe('findBestIteration', () => {
+  it('returns -1 for empty history', () => {
+    expect(findBestIteration([])).toBe(-1);
+  });
+
+  it('picks highest test score across iterations including iteration 0', () => {
+    const history = [iter0, iter1, iter2];
+    // iter0=5/11≈0.45, iter1=7/11≈0.636, iter2=6/11≈0.545 → best is index 1
+    expect(findBestIteration(history)).toBe(1);
+  });
+
+  it('iteration 0 is best when no later candidate improves', () => {
+    const lowIter: OptimizationIteration = {
+      iteration: 1, description: 'worse', train_passed: 5, train_total: 13, test_passed: 3, test_total: 11,
+    };
+    expect(findBestIteration([iter0, lowIter])).toBe(0);
   });
 });

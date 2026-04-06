@@ -1,5 +1,7 @@
 import "@/hooks/use-agent-stream";
 import { useState, useRef, useEffect } from "react";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { setDescriptionOptRunning } from "@/lib/description-opt-running-state";
 import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,17 +37,25 @@ import {
   removeQuery,
   updateQuery,
   scoreColor,
+  scoreRate,
+  formatRate,
+  scoreDelta,
+  formatDelta,
+  findBestIteration,
 } from "@/lib/description-optimization";
+import { Progress } from "@/components/ui/progress";
 import type { EvalQuery, OptimizationIteration, OptimizationResult } from "@/lib/description-optimization";
-import { startGenerateDescEvalQueries, runOptimizationLoop, applyDescription, saveEvalQueries, loadEvalQueries, cancelAgentRun } from "@/lib/tauri";
+import { startGenerateDescEvalQueries, runOptimizationLoop, applyDescription, saveEvalQueries, loadEvalQueries, cancelAgentRun, cancelDescriptionOptimization, writeDescOptLog } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/tauri";
 
 interface WorkspaceDescriptionProps {
   skill: SkillSummary;
   workspacePath: string;
+  onRunningChange?: (running: boolean) => void;
+  onApply?: (newDescription: string, newVersion: string) => void;
 }
 
-export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescriptionProps) {
+export function WorkspaceDescription({ skill, workspacePath, onRunningChange, onApply }: WorkspaceDescriptionProps) {
   const preferredModel = useSettingsStore((s) => s.preferredModel);
 
   const [queries, setQueries] = useState<EvalQuery[]>([]);
@@ -60,6 +70,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
   const [numEvalQueriesInput, setNumEvalQueriesInput] = useState("20");
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const agentHasRun = useAgentStore((s) => activeAgentId ? activeAgentId in s.runs : false);
 
@@ -118,7 +129,30 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     };
   }, [queries, skill.name, workspacePath]);
 
+  // Notify parent + module-level state when running state changes
+  useEffect(() => {
+    onRunningChange?.(isRunning);
+    setDescriptionOptRunning(isRunning);
+    return () => setDescriptionOptRunning(false);
+  }, [isRunning, onRunningChange]);
+
+  // Route-level leave guard: block navigation (skill switch) while optimization is running
+  const isRunningRef = useRef(false);
+  useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
+  const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
+    shouldBlock: () => isRunningRef.current,
+    onLeave: (proceed) => {
+      cancelDescriptionOptimization().catch(() => {});
+      proceed();
+    },
+  });
+
   const model = skill.model ?? preferredModel ?? "sonnet";
+
+  /** Fire-and-forget file log for description optimization events */
+  const logToFile = (message: string) => {
+    writeDescOptLog(skill.name, skill.plugin_slug, workspacePath, message).catch(() => {});
+  };
 
   async function handleGenerateQueries(numEvalQueries: number) {
     // Clean up any previous listener
@@ -144,6 +178,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           skill.name,
           loaded.length,
         );
+        logToFile(`EVAL_QUERIES_GENERATED count=${loaded.length}`);
       },
     );
     generateUnlistenRef.current = unlisten;
@@ -205,18 +240,21 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
       model,
       queries.length,
     );
+    logToFile(`OPTIMIZATION_START model=${model} query_count=${queries.length}`);
 
     try {
       const unlisten = await listen<unknown>("description:progress", (event) => {
         const iteration = parseProgressEvent(event.payload);
         if (iteration) {
           setProgress((prev) => [...prev, iteration]);
+          logToFile(`PROGRESS iteration=${iteration.iteration} train=${iteration.train_passed ?? "N/A"}/${iteration.train_total ?? "N/A"} test=${iteration.test_passed ?? "-"}/${iteration.test_total ?? "-"}`);
         }
       });
       unlistenRef.current = unlisten;
 
       const optimizationResult = await runOptimizationLoop(
         skill.name,
+        skill.plugin_slug,
         workspacePath,
         model,
         queries,
@@ -228,16 +266,22 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
         skill.name,
         optimizationResult.iterations_run,
       );
+      logToFile(`OPTIMIZATION_COMPLETE iterations=${optimizationResult.iterations_run}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      console.error(
-        "event=optimization_failed operation=runOptimizationLoop skill=%s error=%s",
-        skill.name,
-        msg,
-      );
+      // Don't show "cancelled" as an error — it's user-initiated
+      if (!msg.toLowerCase().includes("cancelled")) {
+        setError(msg);
+        console.error(
+          "event=optimization_failed operation=runOptimizationLoop skill=%s error=%s",
+          skill.name,
+          msg,
+        );
+        logToFile(`OPTIMIZATION_FAILED error=${msg}`);
+      }
     } finally {
       setIsRunning(false);
+      setIsCancelling(false);
       if (unlistenRef.current) {
         unlistenRef.current();
         unlistenRef.current = null;
@@ -245,18 +289,35 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
     }
   }
 
+  async function handleCancel() {
+    setIsCancelling(true);
+    try {
+      await cancelDescriptionOptimization();
+      console.log(
+        "event=optimization_cancelled operation=cancelDescriptionOptimization skill=%s",
+        skill.name,
+      );
+      logToFile("OPTIMIZATION_CANCELLED");
+    } catch (err) {
+      console.warn("[workspace-description] cancel failed:", err);
+    }
+  }
+
   async function handleApply() {
     if (!result) return;
     setError(null);
     try {
-      await applyDescription(skill.name, skill.plugin_slug, workspacePath, result.best_description);
+      const newVersion = await applyDescription(skill.name, skill.plugin_slug, workspacePath, result.best_description);
       console.log(
-        "event=description_applied operation=applyDescription skill=%s status=success",
+        "event=description_applied operation=applyDescription skill=%s version=%s status=success",
         skill.name,
+        newVersion,
       );
+      logToFile("DESCRIPTION_APPLIED");
       setResult(null);
       setApplied(true);
       setTimeout(() => setApplied(false), 3000);
+      onApply?.(result.best_description, newVersion);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -265,6 +326,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
         skill.name,
         msg,
       );
+      logToFile(`DESCRIPTION_APPLY_FAILED error=${msg}`);
     }
   }
 
@@ -403,8 +465,7 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           <Button
             size="sm"
             onClick={handleRunOptimization}
-            disabled
-            title="Coming soon"
+            disabled={isRunning || isGeneratingQueries || queries.length === 0 || queries.every(q => !q.should_trigger)}
           >
             {isRunning ? (
               <>
@@ -417,30 +478,136 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           </Button>
         </div>
 
-        {isRunning && (
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">
-              Running… (iteration {progress.length})
-            </p>
-            {latestProgress && (
-              <p className="text-sm">
-                <span className="text-muted-foreground">Train: </span>
-                <span className={scoreColor(latestProgress.train_passed, latestProgress.train_total)}>
-                  {latestProgress.train_passed}/{latestProgress.train_total}
-                </span>
-                {latestProgress.test_passed !== null && latestProgress.test_total !== null && (
-                  <>
-                    <span className="text-muted-foreground mx-2">|</span>
-                    <span className="text-muted-foreground">Test: </span>
-                    <span className={scoreColor(latestProgress.test_passed, latestProgress.test_total)}>
-                      {latestProgress.test_passed}/{latestProgress.test_total}
-                    </span>
-                  </>
+        {isRunning && (() => {
+          const maxIter = 5;
+          // Iteration 0 is the baseline — don't count it toward the 1–5 optimization progress.
+          const completedOptIters = progress.filter(p => p.iteration > 0).length;
+          const currentIter = completedOptIters + 1;
+          const progressPct = (completedOptIters / maxIter) * 100;
+          const bestSoFar = progress.length > 0
+            ? Math.max(...progress.map(p =>
+                p.test_passed !== null && p.test_total !== null
+                  ? scoreRate(p.test_passed, p.test_total)
+                  : scoreRate(p.train_passed ?? 0, p.train_total ?? 0)
+              ))
+            : 0;
+
+          return (
+            <div className="space-y-3">
+              {/* Progress card */}
+              <div className="rounded-md border p-3 space-y-3" style={{ background: "color-mix(in oklch, var(--color-pacific), transparent 96%)" }}>
+                <div>
+                  <p className="text-sm font-semibold">Iteration {Math.min(currentIter, maxIter)} / {maxIter}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {latestProgress ? "Improving description based on eval failures…" : "Evaluating current description…"}
+                  </p>
+                </div>
+
+                <Progress value={progressPct} className="h-1.5" />
+
+                {/* Score cards */}
+                {latestProgress && (
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-md border bg-card p-2.5">
+                      <p className="text-[11px] text-muted-foreground font-medium">Train score</p>
+                      <p className="text-lg font-mono font-semibold" style={{ color: "var(--color-pacific)" }}>
+                        {latestProgress.train_passed !== null && latestProgress.train_total !== null
+                          ? formatRate(latestProgress.train_passed, latestProgress.train_total)
+                          : "N/A"}
+                      </p>
+                    </div>
+                    <div className="rounded-md border bg-card p-2.5">
+                      <p className="text-[11px] text-muted-foreground font-medium">Test score</p>
+                      <p className="text-lg font-mono font-semibold" style={{ color: "var(--color-pacific)" }}>
+                        {latestProgress.test_passed !== null && latestProgress.test_total !== null
+                          ? formatRate(latestProgress.test_passed, latestProgress.test_total)
+                          : "—"}
+                      </p>
+                    </div>
+                    <div className="rounded-md border bg-card p-2.5">
+                      <p className="text-[11px] text-muted-foreground font-medium">Best so far</p>
+                      <p className="text-lg font-mono font-semibold">
+                        {bestSoFar.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
                 )}
-              </p>
-            )}
-          </div>
-        )}
+
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" style={{ color: "var(--color-pacific)" }} />
+                  Running 3x eval queries on iteration {Math.min(currentIter, maxIter)} description…
+                </div>
+              </div>
+
+              {/* Completed iterations table */}
+              {progress.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-medium tracking-wide uppercase text-muted-foreground mb-1.5">Completed Iterations</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="text-xs text-muted-foreground border-b border-border">
+                          <th className="text-left pb-1.5 pr-4 font-medium">Iteration</th>
+                          <th className="text-left pb-1.5 pr-4 font-medium">Train</th>
+                          <th className="text-left pb-1.5 pr-4 font-medium">Test</th>
+                          <th className="text-left pb-1.5 font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {progress.map((iter) => (
+                          <tr key={iter.iteration}>
+                            <td className="pr-4 py-1 font-mono text-xs">{iter.iteration}</td>
+                            <td className={`pr-4 py-1 font-mono text-xs ${iter.train_passed !== null && iter.train_total !== null ? scoreColor(iter.train_passed, iter.train_total) : "text-muted-foreground"}`}>
+                              {iter.train_passed !== null && iter.train_total !== null
+                                ? formatRate(iter.train_passed, iter.train_total)
+                                : "N/A"}
+                            </td>
+                            <td className={`pr-4 py-1 font-mono text-xs ${
+                              iter.test_passed !== null && iter.test_total !== null
+                                ? scoreColor(iter.test_passed, iter.test_total)
+                                : "text-muted-foreground"
+                            }`}>
+                              {iter.test_passed !== null && iter.test_total !== null
+                                ? formatRate(iter.test_passed, iter.test_total)
+                                : "—"}
+                            </td>
+                            <td className="py-1 text-xs text-muted-foreground">done</td>
+                          </tr>
+                        ))}
+                        {/* Current running row */}
+                        <tr>
+                          <td className="pr-4 py-1 font-mono text-xs">
+                            {Math.min(currentIter, maxIter)} <span className="text-[10px] font-medium" style={{ color: "var(--color-pacific)" }}>(running)</span>
+                          </td>
+                          <td className="pr-4 py-1 font-mono text-xs" style={{ color: "var(--color-pacific)" }}>…</td>
+                          <td className="pr-4 py-1 font-mono text-xs" style={{ color: "var(--color-pacific)" }}>…</td>
+                          <td className="py-1 text-xs" style={{ color: "var(--color-pacific)" }}>…</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Cancel button */}
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleCancel}
+                disabled={isCancelling}
+              >
+                {isCancelling ? (
+                  <>
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    Cancelling…
+                  </>
+                ) : (
+                  "Cancel"
+                )}
+              </Button>
+            </div>
+          );
+        })()}
 
         {queries.length > 0 && queries.every(q => !q.should_trigger) && (
           <p className="text-xs text-muted-foreground mt-2">Enable at least one query to run optimization.</p>
@@ -458,67 +625,113 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
       )}
 
       {/* Section C: Optimization Results */}
-      {result !== null && (
-        <div className="rounded-lg border bg-card p-4">
-          <h3 className="text-sm font-semibold mb-3">Results</h3>
+      {result !== null && (() => {
+        const bestIdx = findBestIteration(result.history);
+        const bestIter = bestIdx >= 0 ? result.history[bestIdx] : null;
+        const bestTestScore = bestIter && bestIter.test_passed !== null && bestIter.test_total !== null
+          ? formatRate(bestIter.test_passed, bestIter.test_total)
+          : bestIter && bestIter.train_passed !== null && bestIter.train_total !== null ? formatRate(bestIter.train_passed, bestIter.train_total) : "—";
 
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Before (Original)</p>
-              <p className="text-sm">{result.original_description}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium" style={{ color: "var(--color-seafoam)" }}>
-                After (Best)
-              </p>
-              <p className="text-sm">{result.best_description}</p>
-            </div>
-          </div>
+        return (
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="text-sm font-semibold">Results</h3>
+            <p className="text-xs text-muted-foreground mt-0.5 mb-3">
+              {result.iterations_run} iterations complete
+              {bestIter && (
+                <> · best score <strong style={{ color: "var(--color-seafoam)" }}>{bestTestScore}</strong> at iteration {bestIter.iteration}</>
+              )}
+            </p>
 
-          {result.history.length > 0 && (
-            <div className="mb-4">
-              <p className="text-xs text-muted-foreground mb-2">Score Progression</p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs text-muted-foreground">
-                      <th className="text-left pb-1 pr-3 font-medium">Iter</th>
-                      <th className="text-left pb-1 pr-3 font-medium">Train</th>
-                      <th className="text-left pb-1 font-medium">Test</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.history.map((iter) => (
-                      <tr key={iter.iteration}>
-                        <td className="pr-3 py-0.5 text-muted-foreground font-mono text-xs">
-                          v{iter.iteration}
-                        </td>
-                        <td className={`pr-3 py-0.5 font-mono text-xs ${scoreColor(iter.train_passed, iter.train_total)}`}>
-                          {iter.train_passed}/{iter.train_total}
-                        </td>
-                        <td className={`py-0.5 font-mono text-xs ${iter.test_passed !== null && iter.test_total !== null ? scoreColor(iter.test_passed, iter.test_total) : "text-muted-foreground"}`}>
-                          {iter.test_passed !== null && iter.test_total !== null
-                            ? `${iter.test_passed}/${iter.test_total}`
-                            : "—"}
-                        </td>
+            {/* Score progression table */}
+            {result.history.length > 0 && (
+              <div className="mb-4">
+                <p className="text-[11px] font-medium tracking-wide uppercase text-muted-foreground mb-1.5">Score Progression</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="text-xs text-muted-foreground border-b border-border">
+                        <th className="text-left pb-1.5 pr-4 font-medium">Iteration</th>
+                        <th className="text-left pb-1.5 pr-4 font-medium">Train</th>
+                        <th className="text-left pb-1.5 pr-4 font-medium">Test</th>
+                        <th className="text-left pb-1.5 font-medium">Delta</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {result.history.map((iter, i) => {
+                        const prev = i > 0 ? result.history[i - 1] : null;
+                        const delta = scoreDelta(iter, prev);
+                        const isBest = i === bestIdx;
+                        return (
+                          <tr
+                            key={iter.iteration}
+                            className={isBest ? "bg-[color-mix(in_oklch,var(--color-seafoam),transparent_90%)]" : ""}
+                          >
+                            <td className="pr-4 py-1 font-mono text-xs">
+                              {iter.iteration}
+                              {isBest && (
+                                <span className="ml-1.5 text-[10px] font-medium rounded-full px-1.5 py-0.5" style={{ color: "var(--color-seafoam)", background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)" }}>
+                                  best
+                                </span>
+                              )}
+                            </td>
+                            <td className={`pr-4 py-1 font-mono text-xs ${isBest ? "font-semibold text-[var(--color-seafoam)]" : (iter.train_passed !== null && iter.train_total !== null ? scoreColor(iter.train_passed, iter.train_total) : "text-muted-foreground")}`}>
+                              {iter.train_passed !== null && iter.train_total !== null
+                                ? <>{formatRate(iter.train_passed, iter.train_total)} <span className="text-muted-foreground font-normal">({iter.train_passed}/{iter.train_total})</span></>
+                                : "N/A"}
+                            </td>
+                            <td className={`pr-4 py-1 font-mono text-xs ${
+                              iter.test_passed !== null && iter.test_total !== null
+                                ? (isBest ? "font-semibold text-[var(--color-seafoam)]" : scoreColor(iter.test_passed, iter.test_total))
+                                : "text-muted-foreground"
+                            }`}>
+                              {iter.test_passed !== null && iter.test_total !== null
+                                ? <>{formatRate(iter.test_passed, iter.test_total)} <span className="text-muted-foreground font-normal">({iter.test_passed}/{iter.test_total})</span></>
+                                : "—"}
+                            </td>
+                            <td className={`py-1 font-mono text-xs ${
+                              delta === null ? "text-muted-foreground" : delta >= 0 ? "text-[var(--color-seafoam)]" : "text-destructive"
+                            }`}>
+                              {formatDelta(delta)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Before / After diff */}
+            <p className="text-[11px] font-medium tracking-wide uppercase text-muted-foreground mb-1.5">
+              Description diff — original vs best{bestIter ? ` (iteration ${bestIter.iteration})` : ""}
+            </p>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="rounded-md border p-3 space-y-1" style={{ borderColor: "color-mix(in oklch, var(--color-destructive, #ef4444), transparent 70%)", background: "color-mix(in oklch, var(--color-destructive, #ef4444), transparent 95%)" }}>
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                  Before (Original)
+                </p>
+                <p className="text-sm">{result.original_description}</p>
+              </div>
+              <div className="rounded-md border p-3 space-y-1" style={{ borderColor: "color-mix(in oklch, var(--color-seafoam), transparent 70%)", background: "color-mix(in oklch, var(--color-seafoam), transparent 95%)" }}>
+                <p className="text-xs font-medium flex items-center gap-1" style={{ color: "var(--color-seafoam)" }}>
+                  After (Best)
+                </p>
+                <p className="text-sm">{result.best_description}</p>
               </div>
             </div>
-          )}
 
-          <div className="flex gap-2">
-            <Button size="sm" onClick={handleApply}>
-              Apply best description
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setResult(null)}>
-              Discard
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleApply}>
+                Apply best description
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setResult(null)}>
+                Discard
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Number of queries dialog */}
       <Dialog open={showGenerateDialog} onOpenChange={(open) => { if (!open) setShowGenerateDialog(false); }}>
@@ -617,6 +830,27 @@ export function WorkspaceDescription({ skill, workspacePath }: WorkspaceDescript
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {blockerStatus === "blocked" && (
+        <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Optimization In Progress</DialogTitle>
+              <DialogDescription>
+                A description optimization run is still in progress. Leaving will cancel it.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleNavStay}>
+                Stay
+              </Button>
+              <Button variant="destructive" onClick={handleNavLeave}>
+                Leave
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

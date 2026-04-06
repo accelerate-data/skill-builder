@@ -17,7 +17,7 @@ pub(crate) use step_config::{build_betas, resolve_model_id};
 // deploy
 pub(crate) use deploy::{
     ensure_workspace_prompts_sync, invalidate_workspace_cache,
-    redeploy_agents, resolve_bundled_plugins_dir, resolve_bundled_skills_dir,
+    redeploy_agents, resolve_bundled_skills_dir,
     resolve_prompt_source_dirs_public,
 };
 

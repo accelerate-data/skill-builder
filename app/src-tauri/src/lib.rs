@@ -284,6 +284,7 @@ pub fn run() {
         .manage(CloseGuardState::default())
         .manage(commands::refine::RefineSessionManager::new())
         .manage(commands::workflow::runtime::WorkflowStepSessionManager::new())
+        .manage(commands::description::DescriptionProcessState::new())
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,
             commands::node::check_node,
@@ -403,11 +404,12 @@ pub fn run() {
             commands::evals::build_eval_prompt,
             commands::evals::build_eval_gen_prompt,
             commands::description::start_generate_desc_evals,
-            commands::description::generate_eval_queries,
             commands::description::run_optimization_loop,
             commands::description::apply_description,
             commands::description::save_eval_queries,
             commands::description::load_eval_queries,
+            commands::description::cancel_description_optimization,
+            commands::description::write_desc_opt_log,
             commands::documents::list_documents,
             commands::documents::list_skills_for_documents,
             commands::documents::add_document_file,

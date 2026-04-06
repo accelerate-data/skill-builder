@@ -7,8 +7,8 @@ export interface EvalQuery {
 export interface OptimizationIteration {
   iteration: number;
   description: string;
-  train_passed: number;
-  train_total: number;
+  train_passed: number | null;
+  train_total: number | null;
   test_passed: number | null;
   test_total: number | null;
 }
@@ -38,9 +38,18 @@ export function parseProgressEvent(raw: unknown): OptimizationIteration | null {
   // Validate required fields
   if (
     typeof obj.iteration !== 'number' ||
-    typeof obj.description !== 'string' ||
-    typeof obj.train_passed !== 'number' ||
-    typeof obj.train_total !== 'number'
+    typeof obj.description !== 'string'
+  ) {
+    return null;
+  }
+
+  // Validate train_passed and train_total (must be number or null; null for iteration 0 baseline)
+  const trainPassed = obj.train_passed;
+  const trainTotal = obj.train_total;
+
+  if (
+    (trainPassed !== null && typeof trainPassed !== 'number') ||
+    (trainTotal !== null && typeof trainTotal !== 'number')
   ) {
     return null;
   }
@@ -59,8 +68,8 @@ export function parseProgressEvent(raw: unknown): OptimizationIteration | null {
   return {
     iteration: obj.iteration,
     description: obj.description,
-    train_passed: obj.train_passed,
-    train_total: obj.train_total,
+    train_passed: (trainPassed as number | null) ?? null,
+    train_total: (trainTotal as number | null) ?? null,
     test_passed: (testPassed as number | null) ?? null,
     test_total: (testTotal as number | null) ?? null,
   };
@@ -109,6 +118,62 @@ export function updateQuery(
     ...patch,
   };
   return updated;
+}
+
+/** Compute score as a decimal (e.g. 3/8 → 0.38). Returns 0 when total is 0. */
+export function scoreRate(passed: number, total: number): number {
+  return total === 0 ? 0 : passed / total;
+}
+
+/** Format score rate as "0.XX" string. */
+export function formatRate(passed: number, total: number): string {
+  return scoreRate(passed, total).toFixed(2);
+}
+
+/**
+ * Compute the delta between two iterations' test scores (or train if no test).
+ * Returns null for the first iteration.
+ */
+export function scoreDelta(
+  current: OptimizationIteration,
+  previous: OptimizationIteration | null,
+): number | null {
+  if (!previous) return null;
+  const curRate =
+    current.test_passed !== null && current.test_total !== null
+      ? scoreRate(current.test_passed, current.test_total)
+      : scoreRate(current.train_passed ?? 0, current.train_total ?? 0);
+  const prevRate =
+    previous.test_passed !== null && previous.test_total !== null
+      ? scoreRate(previous.test_passed, previous.test_total)
+      : scoreRate(previous.train_passed ?? 0, previous.train_total ?? 0);
+  return curRate - prevRate;
+}
+
+/** Format delta as "+0.12" or "−0.03". Returns "—" for null. */
+export function formatDelta(delta: number | null): string {
+  if (delta === null) return "—";
+  const sign = delta >= 0 ? "+" : "\u2212";
+  return `${sign}${Math.abs(delta).toFixed(2)}`;
+}
+
+/** Find the index of the best iteration (highest test score, or train if no test). */
+export function findBestIteration(history: OptimizationIteration[]): number {
+  if (history.length === 0) return -1;
+  let bestIdx = 0;
+  let bestRate = -1;
+  for (let i = 0; i < history.length; i++) {
+    const h = history[i];
+    const rate =
+      h.test_passed !== null && h.test_total !== null
+        ? scoreRate(h.test_passed, h.test_total)
+        : scoreRate(h.train_passed ?? 0, h.train_total ?? 0);
+    if (rate > bestRate) {
+      bestRate = rate;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
 }
 
 /**

@@ -246,7 +246,7 @@ pub fn finalize_refine_run(
 ) -> Result<RefineFinalizeResult, String> {
     log::info!("[finalize_refine_run] skill={} plugin={}", skill_name, plugin_slug);
     validate_skill_name(&skill_name)?;
-    let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
+    let skills_path = resolve_skills_path(&db).map_err(|e| {
         log::error!("[finalize_refine_run] Failed to resolve skills path: {}", e);
         e
     })?;

@@ -670,25 +670,23 @@ export const getAllTags = () =>
 
 // --- Description Optimization ---
 
-export const generateEvalQueries = (
-  skillName: string,
-  workspacePath: string,
-  model: string | null,
-) => invoke<EvalQuery[]>("generate_eval_queries", { skillName, workspacePath, model });
-
 export const runOptimizationLoop = (
   skillName: string,
+  pluginSlug: string,
   workspacePath: string,
   model: string,
   evalQueries: EvalQuery[],
-) => invoke<OptimizationResult>("run_optimization_loop", { skillName, workspacePath, model, evalQueries });
+) => invoke<OptimizationResult>("run_optimization_loop", { skillName, pluginSlug, workspacePath, model, evalQueries });
+
+export const cancelDescriptionOptimization = () =>
+  invoke<void>("cancel_description_optimization");
 
 export const applyDescription = (
   skillName: string,
   pluginSlug: string,
   workspacePath: string,
   description: string,
-) => invoke<void>("apply_description", { skillName, pluginSlug, workspacePath, description });
+) => invoke<string>("apply_description", { skillName, pluginSlug, workspacePath, description });
 
 export const saveEvalQueries = (
   skillName: string,
@@ -729,6 +727,13 @@ export const startGenerateDescEvalQueries = (
   model,
   numEvalQueries,
 });
+
+export const writeDescOptLog = (
+  skillName: string,
+  pluginSlug: string,
+  workspacePath: string,
+  message: string,
+) => invoke<void>("write_desc_opt_log", { skillName, pluginSlug, workspacePath, message });
 
 // --- Benchmark ---
 

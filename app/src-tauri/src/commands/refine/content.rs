@@ -30,12 +30,12 @@ pub fn get_skill_content_at_path(path: String) -> Result<Vec<SkillFileContent>, 
 pub fn get_skill_content_for_refine(
     skill_name: String,
     plugin_slug: String,
-    workspace_path: String,
+    _workspace_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillFileContent>, String> {
     log::info!("[get_skill_content_for_refine] skill={} plugin={}", skill_name, plugin_slug);
     validate_skill_name(&skill_name)?;
-    let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
+    let skills_path = resolve_skills_path(&db).map_err(|e| {
         log::error!(
             "[get_skill_content_for_refine] Failed to resolve skills path: {}",
             e

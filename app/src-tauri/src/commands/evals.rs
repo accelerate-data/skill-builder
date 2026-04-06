@@ -907,7 +907,7 @@ pub fn read_skill_context_for_eval_gen(
     validate_skill_name(&skill_name)?;
 
     // Resolve skills_path from settings (may differ from workspace_path).
-    let skills_path = super::refine::resolve_skills_path(&db, &workspace_path)?;
+    let skills_path = super::refine::resolve_skills_path(&db)?;
     let skill_root = skill_root_from_plugin(&workspace_path, &plugin_slug, &skill_name);
     read_skill_context_inner(&skill_name, &skill_root, &skills_path, &plugin_slug)
 }
