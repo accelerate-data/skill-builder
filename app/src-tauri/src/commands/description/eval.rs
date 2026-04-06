@@ -250,9 +250,10 @@ async fn run_single_eval_query(
         path_to_claude_code_executable: sdk_cli_path,
         agent_name: None,
         required_plugins: None,
-        // Empty settingSources: suppress workspace project skills so only the
-        // temp command file is loaded.
-        setting_sources: Some(vec![]),
+        // Use 'project' setting source so the SDK reads .claude/commands/ from
+        // the eval-commands cwd. That dir is isolated — only our temp command
+        // file lives there, so no production skills are accidentally loaded.
+        setting_sources: Some(vec!["project".to_string()]),
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
         step_id: Some(-20),
