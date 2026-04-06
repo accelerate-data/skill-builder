@@ -201,6 +201,10 @@ async fn run_single_eval_query(
     // Forward-slash paths required by the Node.js sidecar on Windows
     let sandbox_root_str = sandbox_root.to_string_lossy().replace('\\', "/");
 
+    // Resolve SDK cli.js so the sidecar can spawn Claude Code agents.
+    // Must be done here (not in spawn_sidecar) because we call pool.send_request directly.
+    let sdk_cli_path = crate::agents::sidecar::resolve_sdk_cli_path_public(app).ok();
+
     // SDK cwd: use a stable eval-workspace subdirectory (not the sandbox itself)
     let eval_ws_dir = workspace_path
         .join("description-optimization")
@@ -226,7 +230,7 @@ async fn run_single_eval_query(
         effort: None,
         output_format: None,
         prompt_suggestions: None,
-        path_to_claude_code_executable: None,
+        path_to_claude_code_executable: sdk_cli_path,
         agent_name: None,
         required_plugins: Some(vec![plugin_slug.to_string()]),
         // Empty settingSources: suppress workspace project skills so only the
