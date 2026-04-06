@@ -1,5 +1,7 @@
 import "@/hooks/use-agent-stream";
 import { useState, useRef, useEffect } from "react";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { setDescriptionOptRunning } from "@/lib/description-opt-running-state";
 import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,9 +52,10 @@ interface WorkspaceDescriptionProps {
   skill: SkillSummary;
   workspacePath: string;
   onRunningChange?: (running: boolean) => void;
+  onApply?: (newDescription: string, newVersion: string) => void;
 }
 
-export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: WorkspaceDescriptionProps) {
+export function WorkspaceDescription({ skill, workspacePath, onRunningChange, onApply }: WorkspaceDescriptionProps) {
   const preferredModel = useSettingsStore((s) => s.preferredModel);
 
   const [queries, setQueries] = useState<EvalQuery[]>([]);
@@ -126,10 +129,23 @@ export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: 
     };
   }, [queries, skill.name, workspacePath]);
 
-  // Notify parent when running state changes
+  // Notify parent + module-level state when running state changes
   useEffect(() => {
     onRunningChange?.(isRunning);
+    setDescriptionOptRunning(isRunning);
+    return () => setDescriptionOptRunning(false);
   }, [isRunning, onRunningChange]);
+
+  // Route-level leave guard: block navigation (skill switch) while optimization is running
+  const isRunningRef = useRef(false);
+  useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
+  const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
+    shouldBlock: () => isRunningRef.current,
+    onLeave: (proceed) => {
+      cancelDescriptionOptimization().catch(() => {});
+      proceed();
+    },
+  });
 
   const model = skill.model ?? preferredModel ?? "sonnet";
 
@@ -231,7 +247,7 @@ export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: 
         const iteration = parseProgressEvent(event.payload);
         if (iteration) {
           setProgress((prev) => [...prev, iteration]);
-          logToFile(`PROGRESS iteration=${iteration.iteration} train=${iteration.train_passed}/${iteration.train_total} test=${iteration.test_passed ?? "-"}/${iteration.test_total ?? "-"}`);
+          logToFile(`PROGRESS iteration=${iteration.iteration} train=${iteration.train_passed ?? "N/A"}/${iteration.train_total ?? "N/A"} test=${iteration.test_passed ?? "-"}/${iteration.test_total ?? "-"}`);
         }
       });
       unlistenRef.current = unlisten;
@@ -291,15 +307,17 @@ export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: 
     if (!result) return;
     setError(null);
     try {
-      await applyDescription(skill.name, skill.plugin_slug, workspacePath, result.best_description);
+      const newVersion = await applyDescription(skill.name, skill.plugin_slug, workspacePath, result.best_description);
       console.log(
-        "event=description_applied operation=applyDescription skill=%s status=success",
+        "event=description_applied operation=applyDescription skill=%s version=%s status=success",
         skill.name,
+        newVersion,
       );
       logToFile("DESCRIPTION_APPLIED");
       setResult(null);
       setApplied(true);
       setTimeout(() => setApplied(false), 3000);
+      onApply?.(result.best_description, newVersion);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -461,14 +479,16 @@ export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: 
         </div>
 
         {isRunning && (() => {
-          const currentIter = progress.length + 1;
           const maxIter = 5;
-          const progressPct = (progress.length / maxIter) * 100;
+          // Iteration 0 is the baseline — don't count it toward the 1–5 optimization progress.
+          const completedOptIters = progress.filter(p => p.iteration > 0).length;
+          const currentIter = completedOptIters + 1;
+          const progressPct = (completedOptIters / maxIter) * 100;
           const bestSoFar = progress.length > 0
             ? Math.max(...progress.map(p =>
                 p.test_passed !== null && p.test_total !== null
                   ? scoreRate(p.test_passed, p.test_total)
-                  : scoreRate(p.train_passed, p.train_total)
+                  : scoreRate(p.train_passed ?? 0, p.train_total ?? 0)
               ))
             : 0;
 
@@ -491,7 +511,9 @@ export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: 
                     <div className="rounded-md border bg-card p-2.5">
                       <p className="text-[11px] text-muted-foreground font-medium">Train score</p>
                       <p className="text-lg font-mono font-semibold" style={{ color: "var(--color-pacific)" }}>
-                        {formatRate(latestProgress.train_passed, latestProgress.train_total)}
+                        {latestProgress.train_passed !== null && latestProgress.train_total !== null
+                          ? formatRate(latestProgress.train_passed, latestProgress.train_total)
+                          : "N/A"}
                       </p>
                     </div>
                     <div className="rounded-md border bg-card p-2.5">
@@ -535,8 +557,10 @@ export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: 
                         {progress.map((iter) => (
                           <tr key={iter.iteration}>
                             <td className="pr-4 py-1 font-mono text-xs">{iter.iteration}</td>
-                            <td className={`pr-4 py-1 font-mono text-xs ${scoreColor(iter.train_passed, iter.train_total)}`}>
-                              {formatRate(iter.train_passed, iter.train_total)}
+                            <td className={`pr-4 py-1 font-mono text-xs ${iter.train_passed !== null && iter.train_total !== null ? scoreColor(iter.train_passed, iter.train_total) : "text-muted-foreground"}`}>
+                              {iter.train_passed !== null && iter.train_total !== null
+                                ? formatRate(iter.train_passed, iter.train_total)
+                                : "N/A"}
                             </td>
                             <td className={`pr-4 py-1 font-mono text-xs ${
                               iter.test_passed !== null && iter.test_total !== null
@@ -606,7 +630,7 @@ export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: 
         const bestIter = bestIdx >= 0 ? result.history[bestIdx] : null;
         const bestTestScore = bestIter && bestIter.test_passed !== null && bestIter.test_total !== null
           ? formatRate(bestIter.test_passed, bestIter.test_total)
-          : bestIter ? formatRate(bestIter.train_passed, bestIter.train_total) : "—";
+          : bestIter && bestIter.train_passed !== null && bestIter.train_total !== null ? formatRate(bestIter.train_passed, bestIter.train_total) : "—";
 
         return (
           <div className="rounded-lg border bg-card p-4">
@@ -650,8 +674,10 @@ export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: 
                                 </span>
                               )}
                             </td>
-                            <td className={`pr-4 py-1 font-mono text-xs ${isBest ? "font-semibold text-[var(--color-seafoam)]" : scoreColor(iter.train_passed, iter.train_total)}`}>
-                              {formatRate(iter.train_passed, iter.train_total)} <span className="text-muted-foreground font-normal">({iter.train_passed}/{iter.train_total})</span>
+                            <td className={`pr-4 py-1 font-mono text-xs ${isBest ? "font-semibold text-[var(--color-seafoam)]" : (iter.train_passed !== null && iter.train_total !== null ? scoreColor(iter.train_passed, iter.train_total) : "text-muted-foreground")}`}>
+                              {iter.train_passed !== null && iter.train_total !== null
+                                ? <>{formatRate(iter.train_passed, iter.train_total)} <span className="text-muted-foreground font-normal">({iter.train_passed}/{iter.train_total})</span></>
+                                : "N/A"}
                             </td>
                             <td className={`pr-4 py-1 font-mono text-xs ${
                               iter.test_passed !== null && iter.test_total !== null
@@ -804,6 +830,27 @@ export function WorkspaceDescription({ skill, workspacePath, onRunningChange }: 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {blockerStatus === "blocked" && (
+        <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Optimization In Progress</DialogTitle>
+              <DialogDescription>
+                A description optimization run is still in progress. Leaving will cancel it.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleNavStay}>
+                Stay
+              </Button>
+              <Button variant="destructive" onClick={handleNavLeave}>
+                Leave
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

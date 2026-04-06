@@ -38,9 +38,9 @@ pub struct EvalResults {
 // ─── Eval sandbox helpers ───────────────────────────────────────────────────
 
 /// Root for eval command files:
-/// `{workspace}/description-optimization/eval-commands/`
-pub(super) fn eval_commands_root(workspace_path: &Path) -> PathBuf {
-    workspace_path
+/// `{workspace}/skills/{plugin_slug}/{skill_name}/description-optimization/eval-commands/`
+pub(super) fn eval_commands_root(workspace_path: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
+    crate::skill_paths::workspace_skill_dir(workspace_path, plugin_slug, skill_name)
         .join("description-optimization")
         .join("eval-commands")
 }
@@ -48,7 +48,7 @@ pub(super) fn eval_commands_root(workspace_path: &Path) -> PathBuf {
 /// Create an isolated per-run eval workspace and write the command file into it.
 ///
 /// Each run gets its own subdirectory:
-///   `{eval_commands_root}/{run_uuid}/.claude/commands/{skill_name}.md`
+///   `{workspace}/skills/{plugin_slug}/{skill_name}/description-optimization/eval-commands/{run_uuid}/.claude/commands/{skill_name}.md`
 ///
 /// This ensures each agent sees exactly one `.claude/` project with exactly
 /// one command file — no bleed from concurrent runs. Returns the run directory
@@ -163,7 +163,7 @@ async fn run_single_eval_query(
 
     // Create an isolated per-run workspace: eval-commands/{uuid}/.claude/commands/{skill}.md
     // Each agent sees exactly one .claude/ project with exactly one command file.
-    let eval_cmds_root = eval_commands_root(workspace_path);
+    let eval_cmds_root = eval_commands_root(workspace_path, plugin_slug, skill_name);
     let run_dir = match create_eval_run_workspace(&eval_cmds_root, skill_name, description) {
         Ok(d) => d,
         Err(e) => {
@@ -237,7 +237,10 @@ async fn run_single_eval_query(
         workspace_root_dir: workspace_root_str,
         // Per-run isolated dir: SDK reads .claude/commands/ from here (one file only)
         workspace_skill_dir: run_dir_str,
-        allowed_tools: None,
+        // Only allow Skill tool: forces an immediate routing decision rather than
+        // letting the agent use Read/Write/etc. This makes eval fast and focused —
+        // we're testing the description's routing signal, not general agent capability.
+        allowed_tools: Some(vec!["Skill".to_string()]),
         max_turns: Some(3),
         permission_mode: Some("bypassPermissions".to_string()),
         betas: None,
@@ -634,5 +637,43 @@ mod tests {
         triggers_below.insert("q".to_string(), vec![false, false, true]); // rate=0.333
         let results2 = aggregate_trigger_results(&triggers_below, &eval_set, 0.5);
         assert!(!results2[0].pass, "rate < threshold should fail");
+    }
+
+    #[test]
+    fn test_eval_commands_root_includes_skill_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let root = eval_commands_root(workspace, "my-plugin", "my-skill");
+        // Must be under workspace/my-plugin/my-skill/description-optimization/eval-commands/
+        // (via workspace_skill_dir which joins plugin_slug/skill_name)
+        assert!(
+            root.starts_with(workspace),
+            "root must be under workspace"
+        );
+        let rel = root.strip_prefix(workspace).unwrap();
+        let components: Vec<_> = rel.components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            components.contains(&"my-plugin".to_string()),
+            "path must include plugin slug: {:?}", components
+        );
+        assert!(
+            components.contains(&"my-skill".to_string()),
+            "path must include skill name: {:?}", components
+        );
+        assert!(
+            components.contains(&"eval-commands".to_string()),
+            "path must end at eval-commands: {:?}", components
+        );
+    }
+
+    #[test]
+    fn test_eval_commands_root_different_skills_dont_collide() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let root_a = eval_commands_root(workspace, "plugin", "skill-a");
+        let root_b = eval_commands_root(workspace, "plugin", "skill-b");
+        assert_ne!(root_a, root_b, "different skills must get different eval-commands roots");
     }
 }

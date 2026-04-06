@@ -171,6 +171,8 @@ pub fn load_eval_queries(
         .map_err(|e| format!("Failed to parse description-evals.json: {}", e))
 }
 
+/// Returns the new semver tag (e.g. "1.0.3") so the frontend can update
+/// the skill store and trigger a git history refresh in the Overview tab.
 #[tauri::command]
 pub async fn apply_description(
     skill_name: String,
@@ -178,12 +180,13 @@ pub async fn apply_description(
     _workspace_path: String,
     description: String,
     db: tauri::State<'_, crate::db::Db>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     log::info!("[apply_description] skill={} plugin={}", skill_name, plugin_slug);
 
     let skills_path = super::refine::resolve_skills_path(&db)?;
+    let skills_root = Path::new(&skills_path);
     let skill_md_path = crate::skill_paths::resolve_skill_dir(
-        Path::new(&skills_path), &plugin_slug, &skill_name,
+        skills_root, &plugin_slug, &skill_name,
     ).join("SKILL.md");
 
     let content = std::fs::read_to_string(&skill_md_path).map_err(|e| {
@@ -198,7 +201,30 @@ pub async fn apply_description(
         format!("Failed to write SKILL.md: {}", e)
     })?;
 
-    Ok(())
+    // Commit the description change so it appears in the git version history.
+    let commit_msg = format!("Update {} description via optimization", skill_name);
+    match crate::git::commit_all(skills_root, &commit_msg) {
+        Ok(Some(sha)) => {
+            log::info!("[apply_description] committed skill={} sha={}", skill_name, &sha[..8.min(sha.len())]);
+        }
+        Ok(None) => {
+            log::info!("[apply_description] nothing to commit for skill={}", skill_name);
+        }
+        Err(e) => {
+            log::warn!("[apply_description] commit failed skill={} error={}", skill_name, e);
+        }
+    }
+
+    // Tag the new commit with the next patch version.
+    let current_version = crate::git::latest_skill_semver(skills_root, &plugin_slug, &skill_name)
+        .unwrap_or_else(|_| "0.0.0".to_string());
+    let new_version = crate::git::bump_patch(&current_version);
+    match crate::git::create_skill_version_tag(skills_root, &plugin_slug, &skill_name, &new_version) {
+        Ok(tag) => log::info!("[apply_description] tagged skill={} tag={}", skill_name, tag),
+        Err(e) => log::warn!("[apply_description] tag failed skill={} error={}", skill_name, e),
+    }
+
+    Ok(new_version)
 }
 
 #[tauri::command]

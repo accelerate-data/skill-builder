@@ -686,7 +686,7 @@ export const applyDescription = (
   pluginSlug: string,
   workspacePath: string,
   description: string,
-) => invoke<void>("apply_description", { skillName, pluginSlug, workspacePath, description });
+) => invoke<string>("apply_description", { skillName, pluginSlug, workspacePath, description });
 
 export const saveEvalQueries = (
   skillName: string,

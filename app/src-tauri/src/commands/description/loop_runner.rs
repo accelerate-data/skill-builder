@@ -40,7 +40,7 @@ const HOLDOUT: f64 = 0.4;
 const RUNS_PER_QUERY: u32 = 3;
 const TRIGGER_THRESHOLD: f64 = 0.5;
 const NUM_WORKERS: usize = 10;
-const TIMEOUT_SECS: u64 = 60;
+const TIMEOUT_SECS: u64 = 30;
 
 // ─── SKILL.md parsing ───────────────────────────────────────────────────────
 

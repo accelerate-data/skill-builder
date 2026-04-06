@@ -24,11 +24,17 @@ const refineState = vi.hoisted(() => ({
   selectedSkill: null,
   refinableSkills: [],
   isLoadingSkills: false,
-  skillFiles: [],
+  skillFiles: [] as { filename: string; content: string }[],
   previewRevision: 0,
   isRunning: false,
   activeAgentId: null,
   sessionId: null,
+  selectedModifiedFile: null as string | null,
+  activeFileTab: null as string | null,
+  setSkillFiles: vi.fn(),
+  setSelectedModifiedFile: vi.fn(),
+  setActiveFileTab: vi.fn(),
+  setDiffMode: vi.fn(),
 }));
 
 vi.mock("@/stores/refine-store", () => ({
@@ -58,11 +64,19 @@ vi.mock("@/lib/tauri", () => ({
   startRefineSession: vi.fn().mockResolvedValue({ session_id: "test-session" }),
   closeRefineSession: vi.fn().mockResolvedValue(undefined),
   cleanupSkillSidecar: vi.fn().mockResolvedValue(undefined),
+  cancelDescriptionOptimization: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
   sendRefineMessage: vi.fn().mockResolvedValue("agent-1"),
   finalizeRefineRun: vi.fn().mockResolvedValue({ files: [], diff: null }),
   getSkillHistory: vi.fn().mockResolvedValue([]),
   readLatestBenchmark: vi.fn().mockResolvedValue(null),
+  listSkills: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/description-opt-running-state", () => ({
+  setDescriptionOptRunning: vi.fn(),
+  getDescriptionOptRunning: vi.fn().mockReturnValue(false),
+  subscribeDescriptionOptRunning: vi.fn().mockReturnValue(() => {}),
 }));
 
 vi.mock("@/lib/agent-results", () => ({
@@ -71,6 +85,22 @@ vi.mock("@/lib/agent-results", () => ({
 
 vi.mock("@/components/workspace/workspace-refine", () => ({
   WorkspaceRefine: () => <div data-testid="workspace-refine" />,
+}));
+
+vi.mock("@/components/workspace/workspace-evals", () => ({
+  WorkspaceEvals: ({ onRunningChange }: { onRunningChange?: (v: boolean) => void }) => (
+    <div data-testid="workspace-evals" onClick={() => onRunningChange?.(true)} />
+  ),
+}));
+
+vi.mock("@/components/workspace/workspace-description", () => ({
+  WorkspaceDescription: ({ onRunningChange }: { onRunningChange?: (v: boolean) => void }) => (
+    <div data-testid="workspace-description" onClick={() => onRunningChange?.(true)} />
+  ),
+}));
+
+vi.mock("@/components/workspace/workspace-overview", () => ({
+  WorkspaceOverview: () => <div data-testid="workspace-overview" />,
 }));
 
 vi.mock("@/components/refine/chat-panel", () => ({
@@ -204,5 +234,51 @@ describe("WorkspaceShell", () => {
     expect(activeTab?.textContent).toBe("Refine");
 
     refineState.isRunning = false;
+  });
+
+  it("shows guard dialog when switching away from Description while optimization is running", async () => {
+    const user = userEvent.setup();
+
+    const { container } = render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="description" />,
+    );
+
+    // Simulate optimization starting by clicking the mocked WorkspaceDescription
+    // (mock calls onRunningChange(true) on click)
+    const descComponent = screen.getByTestId("workspace-description");
+    await user.click(descComponent);
+
+    // Try switching to Overview
+    const overviewTab = Array.from(container.querySelectorAll('[role="tab"]')).find(
+      (t) => t.textContent === "Overview",
+    );
+    await user.click(overviewTab!);
+
+    // Guard dialog should appear
+    expect(screen.getByText("Process Running")).toBeInTheDocument();
+
+    // Description tab should still be active
+    const activeTab = container.querySelector('[role="tab"][data-state="active"]');
+    expect(activeTab?.textContent).toBe("Optimize Description");
+  });
+
+  it("clears skillFiles cache when skill name changes", async () => {
+    refineState.setSkillFiles.mockClear();
+
+    const { rerender } = render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" />,
+    );
+
+    // Initial mount calls setSkillFiles([]) once for the initial skillName
+    const callsAfterMount = refineState.setSkillFiles.mock.calls.length;
+
+    // Switch to a different skill
+    const newSkill = { ...baseBuilderSkill, name: "new-skill" };
+    rerender(<WorkspaceShell skill={newSkill} skillType="builder" />);
+
+    // Should have called setSkillFiles([]) again after the skill name changed
+    expect(refineState.setSkillFiles.mock.calls.length).toBeGreaterThan(callsAfterMount);
+    const lastCall = refineState.setSkillFiles.mock.calls.at(-1);
+    expect(lastCall?.[0]).toEqual([]);
   });
 });

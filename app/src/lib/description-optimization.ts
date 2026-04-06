@@ -7,8 +7,8 @@ export interface EvalQuery {
 export interface OptimizationIteration {
   iteration: number;
   description: string;
-  train_passed: number;
-  train_total: number;
+  train_passed: number | null;
+  train_total: number | null;
   test_passed: number | null;
   test_total: number | null;
 }
@@ -38,9 +38,18 @@ export function parseProgressEvent(raw: unknown): OptimizationIteration | null {
   // Validate required fields
   if (
     typeof obj.iteration !== 'number' ||
-    typeof obj.description !== 'string' ||
-    typeof obj.train_passed !== 'number' ||
-    typeof obj.train_total !== 'number'
+    typeof obj.description !== 'string'
+  ) {
+    return null;
+  }
+
+  // Validate train_passed and train_total (must be number or null; null for iteration 0 baseline)
+  const trainPassed = obj.train_passed;
+  const trainTotal = obj.train_total;
+
+  if (
+    (trainPassed !== null && typeof trainPassed !== 'number') ||
+    (trainTotal !== null && typeof trainTotal !== 'number')
   ) {
     return null;
   }
@@ -59,8 +68,8 @@ export function parseProgressEvent(raw: unknown): OptimizationIteration | null {
   return {
     iteration: obj.iteration,
     description: obj.description,
-    train_passed: obj.train_passed,
-    train_total: obj.train_total,
+    train_passed: (trainPassed as number | null) ?? null,
+    train_total: (trainTotal as number | null) ?? null,
     test_passed: (testPassed as number | null) ?? null,
     test_total: (testTotal as number | null) ?? null,
   };
@@ -133,11 +142,11 @@ export function scoreDelta(
   const curRate =
     current.test_passed !== null && current.test_total !== null
       ? scoreRate(current.test_passed, current.test_total)
-      : scoreRate(current.train_passed, current.train_total);
+      : scoreRate(current.train_passed ?? 0, current.train_total ?? 0);
   const prevRate =
     previous.test_passed !== null && previous.test_total !== null
       ? scoreRate(previous.test_passed, previous.test_total)
-      : scoreRate(previous.train_passed, previous.train_total);
+      : scoreRate(previous.train_passed ?? 0, previous.train_total ?? 0);
   return curRate - prevRate;
 }
 
@@ -158,7 +167,7 @@ export function findBestIteration(history: OptimizationIteration[]): number {
     const rate =
       h.test_passed !== null && h.test_total !== null
         ? scoreRate(h.test_passed, h.test_total)
-        : scoreRate(h.train_passed, h.train_total);
+        : scoreRate(h.train_passed ?? 0, h.train_total ?? 0);
     if (rate > bestRate) {
       bestRate = rate;
       bestIdx = i;
