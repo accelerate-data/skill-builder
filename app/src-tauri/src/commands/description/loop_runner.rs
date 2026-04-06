@@ -41,7 +41,7 @@ const HOLDOUT: f64 = 0.4;
 const RUNS_PER_QUERY: u32 = 3;
 const TRIGGER_THRESHOLD: f64 = 0.5;
 const NUM_WORKERS: usize = 10;
-const TIMEOUT_SECS: u64 = 30;
+const TIMEOUT_SECS: u64 = 60;
 
 // ─── SKILL.md parsing ───────────────────────────────────────────────────────
 
@@ -236,6 +236,7 @@ pub async fn run_loop(
 
     let mut history: Vec<IterationRecord> = Vec::new();
     let mut exit_reason = String::new();
+    let mut best_train_passed: usize = 0;
 
     for iteration in 1..=MAX_ITERATIONS {
         if cancel.load(Ordering::SeqCst) {
@@ -384,10 +385,28 @@ pub async fn run_loop(
             break;
         }
 
-        // Improve description
+        // Only improve if score got strictly better — prevents regressing to a worse description
+        // when the eval signal is flat or negative.
+        let did_improve = train_passed > best_train_passed;
+        if did_improve {
+            best_train_passed = train_passed;
+        }
+
         if cancel.load(Ordering::SeqCst) {
             write_log_line(&loop_log, "CANCELLED before improve step");
             return Err("Optimization cancelled".to_string());
+        }
+
+        if !did_improve {
+            write_log_line(&improve_log, &format!(
+                "SKIP_IMPROVE iteration={} no score delta train={}/{}",
+                iteration, train_passed, train_total
+            ));
+            log::info!(
+                "[run_loop] iteration {} no score delta (train={}/{}) — skipping improve",
+                iteration, train_passed, train_total
+            );
+            continue;
         }
 
         // Build blinded history (no test keys)
