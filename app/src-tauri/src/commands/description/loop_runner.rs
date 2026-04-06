@@ -172,6 +172,14 @@ pub fn split_eval_set(
     (train_set, test_set)
 }
 
+// ─── Pure gate calculation ──────────────────────────────────────────────────
+
+/// Returns true if the candidate's test score strictly exceeds the current best.
+/// Extracted as a pure function so it can be unit-tested without a live sidecar.
+pub(super) fn should_accept_candidate(test_passed: usize, best_test_passed: usize) -> bool {
+    test_passed > best_test_passed
+}
+
 // ─── Main loop ──────────────────────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
@@ -431,7 +439,7 @@ pub async fn run_loop(
 
             // ── Step 4: Gate ───────────────────────────────────────────────────
             let prev_best = best_test_passed;
-            if test_passed > best_test_passed {
+            if should_accept_candidate(test_passed, best_test_passed) {
                 best_test_passed = test_passed;
                 current_description = candidate.clone();
                 write_log_line(&improve_log, &format!(
@@ -602,6 +610,14 @@ mod tests {
         let s1: Vec<String> = test1.iter().map(|q| q.query.clone()).collect();
         let s2: Vec<String> = test2.iter().map(|q| q.query.clone()).collect();
         assert_eq!(s1, s2);
+    }
+
+    #[test]
+    fn test_should_accept_candidate() {
+        assert!(should_accept_candidate(4, 3), "strict improvement should accept");
+        assert!(!should_accept_candidate(3, 3), "tie should reject");
+        assert!(!should_accept_candidate(2, 3), "regression should reject");
+        assert!(should_accept_candidate(1, 0), "any improvement from 0 should accept");
     }
 
     #[test]

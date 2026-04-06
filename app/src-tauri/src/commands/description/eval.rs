@@ -247,11 +247,11 @@ async fn run_single_eval_query(
         output_format: None,
         prompt_suggestions: None,
         path_to_claude_code_executable: sdk_cli_path,
-        agent_name: None,
-        required_plugins: None,
-        // Use 'project' setting source so the SDK reads .claude/commands/ from
-        // the eval-commands cwd. That dir is isolated — only our temp command
-        // file lives there, so no production skills are accidentally loaded.
+        // Use the production agent so eval reflects real routing behaviour.
+        // required_plugins loads the vd-agent plugin (agent spec + sibling agents).
+        agent_name: Some("vd-agent:data-product-builder".to_string()),
+        required_plugins: Some(vec!["vd-agent".to_string()]),
+        // 'project' reads .claude/commands/ from the per-run cwd (one file only).
         setting_sources: Some(vec!["project".to_string()]),
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
@@ -411,15 +411,45 @@ pub async fn run_eval(
         }
     }
 
-    // Build lookup for should_trigger
+    let results = aggregate_trigger_results(&query_triggers, eval_set, trigger_threshold);
+    let passed = results.iter().filter(|r| r.pass).count();
+    let total = results.len();
+
+    log::info!(
+        "[run_eval] done: total={} passed={} failed={}",
+        total,
+        passed,
+        total - passed
+    );
+
+    Ok(EvalResults {
+        results,
+        summary: EvalSummary {
+            total,
+            passed,
+            failed: total - passed,
+        },
+    })
+}
+
+// ─── Pure calculation helpers ───────────────────────────────────────────────
+
+/// Aggregate raw per-run trigger booleans into per-query EvalResults.
+///
+/// Pure function — no I/O, no sidecar. Extracted so it can be unit-tested
+/// without a live AppHandle or SidecarPool.
+pub fn aggregate_trigger_results(
+    query_triggers: &HashMap<String, Vec<bool>>,
+    eval_set: &[super::EvalQuery],
+    trigger_threshold: f64,
+) -> Vec<EvalResult> {
     let should_trigger_map: HashMap<&str, bool> = eval_set
         .iter()
         .map(|item| (item.query.as_str(), item.should_trigger))
         .collect();
 
-    // Aggregate per-query results
     let mut results = Vec::new();
-    for (query, triggers) in &query_triggers {
+    for (query, triggers) in query_triggers {
         let should_trigger = *should_trigger_map.get(query.as_str()).unwrap_or(&true);
         let trigger_count = triggers.iter().filter(|&&t| t).count() as u32;
         let total_runs = triggers.len() as u32;
@@ -442,25 +472,7 @@ pub async fn run_eval(
             pass,
         });
     }
-
-    let passed = results.iter().filter(|r| r.pass).count();
-    let total = results.len();
-
-    log::info!(
-        "[run_eval] done: total={} passed={} failed={}",
-        total,
-        passed,
-        total - passed
-    );
-
-    Ok(EvalResults {
-        results,
-        summary: EvalSummary {
-            total,
-            passed,
-            failed: total - passed,
-        },
-    })
+    results
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -571,5 +583,56 @@ mod tests {
     fn test_eval_worker_key_format() {
         let key = eval_worker_key("vd-agent", 3);
         assert_eq!(key, "eval-vd-agent-worker-3");
+    }
+
+    #[test]
+    fn test_aggregate_trigger_results_should_trigger_pass() {
+        use super::super::EvalQuery;
+        let eval_set = vec![
+            EvalQuery { query: "q1".to_string(), should_trigger: true },
+            EvalQuery { query: "q2".to_string(), should_trigger: false },
+        ];
+        let mut query_triggers = HashMap::new();
+        query_triggers.insert("q1".to_string(), vec![true, true, true]); // 3/3 → rate=1.0
+        query_triggers.insert("q2".to_string(), vec![false, false, false]); // 0/3 → rate=0.0
+
+        let results = aggregate_trigger_results(&query_triggers, &eval_set, 0.5);
+        let q1 = results.iter().find(|r| r.query == "q1").unwrap();
+        let q2 = results.iter().find(|r| r.query == "q2").unwrap();
+        assert!(q1.pass, "should_trigger=true with rate=1.0 should pass");
+        assert!(q2.pass, "should_trigger=false with rate=0.0 should pass");
+    }
+
+    #[test]
+    fn test_aggregate_trigger_results_should_trigger_fail() {
+        use super::super::EvalQuery;
+        let eval_set = vec![
+            EvalQuery { query: "q1".to_string(), should_trigger: true },
+            EvalQuery { query: "q2".to_string(), should_trigger: false },
+        ];
+        let mut query_triggers = HashMap::new();
+        query_triggers.insert("q1".to_string(), vec![false, false, false]); // 0/3 → fail
+        query_triggers.insert("q2".to_string(), vec![true, true, true]);  // 3/3 → fail
+
+        let results = aggregate_trigger_results(&query_triggers, &eval_set, 0.5);
+        let q1 = results.iter().find(|r| r.query == "q1").unwrap();
+        let q2 = results.iter().find(|r| r.query == "q2").unwrap();
+        assert!(!q1.pass, "should_trigger=true with rate=0.0 should fail");
+        assert!(!q2.pass, "should_trigger=false with rate=1.0 should fail");
+    }
+
+    #[test]
+    fn test_aggregate_trigger_results_threshold_boundary() {
+        use super::super::EvalQuery;
+        let eval_set = vec![EvalQuery { query: "q".to_string(), should_trigger: true }];
+        let mut triggers_exactly_at = HashMap::new();
+        triggers_exactly_at.insert("q".to_string(), vec![true, false]); // rate=0.5
+        let results = aggregate_trigger_results(&triggers_exactly_at, &eval_set, 0.5);
+        assert!(results[0].pass, "rate == threshold should pass (>=)");
+
+        let mut triggers_below = HashMap::new();
+        triggers_below.insert("q".to_string(), vec![false, false, true]); // rate=0.333
+        let results2 = aggregate_trigger_results(&triggers_below, &eval_set, 0.5);
+        assert!(!results2[0].pass, "rate < threshold should fail");
     }
 }
