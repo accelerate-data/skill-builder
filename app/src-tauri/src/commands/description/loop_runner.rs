@@ -1,11 +1,10 @@
-use super::eval::{self, EvalResults};
+use super::eval;
 use super::improve::{self, HistoryEntry};
 use super::EvalQuery;
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::types::SecretString;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
-use std::collections::HashSet;
 use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
