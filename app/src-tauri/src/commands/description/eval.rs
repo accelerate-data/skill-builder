@@ -45,20 +45,24 @@ pub(super) fn eval_commands_root(workspace_path: &Path) -> PathBuf {
         .join("eval-commands")
 }
 
-/// Write a temporary slash command file for a single eval run.
+/// Create an isolated per-run eval workspace and write the command file into it.
 ///
-/// Creates `{eval_commands_root}/.claude/commands/{temp_cmd_name}.md` with the
-/// candidate description in the YAML frontmatter. Returns the path so the
-/// caller can delete it after the run completes.
-fn write_eval_command_file(
+/// Each run gets its own subdirectory:
+///   `{eval_commands_root}/{run_uuid}/.claude/commands/{skill_name}.md`
+///
+/// This ensures each agent sees exactly one `.claude/` project with exactly
+/// one command file — no bleed from concurrent runs. Returns the run directory
+/// so the caller can delete the entire tree after the run completes.
+fn create_eval_run_workspace(
     eval_cmds_root: &Path,
-    temp_cmd_name: &str,
     skill_name: &str,
     description: &str,
 ) -> Result<PathBuf, String> {
-    let cmd_dir = eval_cmds_root.join(".claude").join("commands");
+    let run_uuid = uuid::Uuid::new_v4().to_string();
+    let run_dir = eval_cmds_root.join(&run_uuid);
+    let cmd_dir = run_dir.join(".claude").join("commands");
     std::fs::create_dir_all(&cmd_dir)
-        .map_err(|e| format!("Failed to create eval commands dir: {}", e))?;
+        .map_err(|e| format!("Failed to create eval run dir: {}", e))?;
 
     // Indent each line for YAML block scalar
     let indented = description
@@ -69,16 +73,16 @@ fn write_eval_command_file(
 
     let content = format!("---\ndescription: |\n{}\n---\n\n# {}\n", indented, skill_name);
 
-    let cmd_file = cmd_dir.join(format!("{}.md", temp_cmd_name));
+    let cmd_file = cmd_dir.join(format!("{}.md", skill_name));
     std::fs::write(&cmd_file, &content)
         .map_err(|e| format!("Failed to write eval command file: {}", e))?;
 
     log::debug!(
-        "[eval] Wrote eval command file: {} desc_len={}",
-        cmd_file.display(),
+        "[eval] Created eval run workspace: {} desc_len={}",
+        run_dir.display(),
         description.len()
     );
-    Ok(cmd_file)
+    Ok(run_dir)
 }
 
 // ─── Trigger detection ───────────────────────────────────────────────────────
@@ -157,20 +161,13 @@ async fn run_single_eval_query(
 ) -> bool {
     let agent_id = format!("eval-{}-{}", plugin_slug, uuid::Uuid::new_v4());
 
-    // Write a unique temp command file so the CLI routing engine presents the
-    // candidate description to Claude exactly as production routing does.
+    // Create an isolated per-run workspace: eval-commands/{uuid}/.claude/commands/{skill}.md
+    // Each agent sees exactly one .claude/ project with exactly one command file.
     let eval_cmds_root = eval_commands_root(workspace_path);
-    let short_id = &uuid::Uuid::new_v4().to_string().replace('-', "")[..8];
-    let temp_cmd_name = format!("{}-{}", skill_name, short_id);
-    let cmd_file_path = match write_eval_command_file(
-        &eval_cmds_root,
-        &temp_cmd_name,
-        skill_name,
-        description,
-    ) {
-        Ok(p) => p,
+    let run_dir = match create_eval_run_workspace(&eval_cmds_root, skill_name, description) {
+        Ok(d) => d,
         Err(e) => {
-            log::warn!("[eval] failed to write command file: {}", e);
+            log::warn!("[eval] failed to create eval run workspace: {}", e);
             return false;
         }
     };
@@ -217,11 +214,13 @@ async fn run_single_eval_query(
 
     // ── Build sidecar config ─────────────────────────────────────────────
     // Forward-slash paths required by the Node.js sidecar on Windows.
-    // The SDK uses workspaceSkillDir as the cwd — it auto-discovers .claude/commands/
-    // from there. Both workspace_root_dir and workspace_skill_dir must point to
-    // eval_commands_root so the SDK finds the temp command file.
-    let eval_cmds_root_str = eval_cmds_root.to_string_lossy().replace('\\', "/");
-    let _ = std::fs::create_dir_all(&eval_cmds_root);
+    //
+    // workspace_root_dir  = base workspace (sidecar scans .claude/plugins/ here
+    //                       for plugin discovery — filtered by required_plugins)
+    // workspace_skill_dir = per-run isolated dir (SDK cwd; reads .claude/commands/
+    //                       from here — only the one command file for this run)
+    let workspace_root_str = workspace_path.to_string_lossy().replace('\\', "/");
+    let run_dir_str = run_dir.to_string_lossy().replace('\\', "/");
 
     // Resolve SDK cli.js so the sidecar can spawn Claude Code agents.
     // Must be done here (not in spawn_sidecar) because we call pool.send_request directly.
@@ -234,10 +233,10 @@ async fn run_single_eval_query(
         system_prompt: None,
         model: Some(model.to_string()),
         api_key,
-        workspace_root_dir: eval_cmds_root_str.clone(),
-        // workspace_skill_dir is the cwd the SDK passes to the Claude Code CLI.
-        // The CLI reads .claude/commands/ from this directory.
-        workspace_skill_dir: eval_cmds_root_str,
+        // Base workspace: sidecar finds .claude/plugins/vd-agent/ here
+        workspace_root_dir: workspace_root_str,
+        // Per-run isolated dir: SDK reads .claude/commands/ from here (one file only)
+        workspace_skill_dir: run_dir_str,
         allowed_tools: None,
         max_turns: Some(3),
         permission_mode: Some("bypassPermissions".to_string()),
@@ -279,7 +278,7 @@ async fn run_single_eval_query(
         log::warn!("[eval] send_request failed for '{}': {}", agent_id, e);
         app.unlisten(message_listener);
         app.unlisten(exit_listener);
-        let _ = std::fs::remove_file(&cmd_file_path);
+        let _ = std::fs::remove_dir_all(&run_dir);
         return false;
     }
 
@@ -289,8 +288,8 @@ async fn run_single_eval_query(
     app.unlisten(message_listener);
     app.unlisten(exit_listener);
 
-    // Always clean up the temp command file regardless of outcome
-    let _ = std::fs::remove_file(&cmd_file_path);
+    // Always clean up the entire per-run workspace regardless of outcome
+    let _ = std::fs::remove_dir_all(&run_dir);
 
     match result {
         Ok(Ok(triggered)) => triggered,
@@ -530,30 +529,42 @@ mod tests {
     }
 
     #[test]
-    fn test_write_eval_command_file_creates_file() {
+    fn test_create_eval_run_workspace() {
         let tmp = tempfile::tempdir().unwrap();
         let eval_cmds_root = tmp.path();
-        let cmd_file = write_eval_command_file(
+        let run_dir = create_eval_run_workspace(
             eval_cmds_root,
-            "my-skill-abc12345",
-            "My Skill",
+            "my-skill",
             "Use when working on my skill tasks",
         )
         .unwrap();
+        // run_dir is a UUID subdirectory of eval_cmds_root
+        assert!(run_dir.starts_with(eval_cmds_root));
+        assert_ne!(run_dir, eval_cmds_root);
+        // command file is at run_dir/.claude/commands/my-skill.md
+        let cmd_file = run_dir.join(".claude").join("commands").join("my-skill.md");
         assert!(cmd_file.exists(), "Command file should be created");
         let content = std::fs::read_to_string(&cmd_file).unwrap();
-        assert!(
-            content.contains("Use when working on my skill tasks"),
-            "Command file should contain description"
-        );
-        assert!(
-            content.contains("description: |"),
-            "Description should use block scalar"
-        );
-        assert!(
-            content.contains("# My Skill"),
-            "Command file should contain skill name heading"
-        );
+        assert!(content.contains("Use when working on my skill tasks"));
+        assert!(content.contains("description: |"));
+        assert!(content.contains("# my-skill"));
+        // cleanup removes the entire run dir
+        std::fs::remove_dir_all(&run_dir).unwrap();
+        assert!(!run_dir.exists());
+    }
+
+    #[test]
+    fn test_concurrent_runs_are_isolated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let eval_cmds_root = tmp.path();
+        let dir1 = create_eval_run_workspace(eval_cmds_root, "my-skill", "desc A").unwrap();
+        let dir2 = create_eval_run_workspace(eval_cmds_root, "my-skill", "desc B").unwrap();
+        assert_ne!(dir1, dir2, "each run gets a unique subdirectory");
+        // Each dir has exactly one command file
+        let cmds1: Vec<_> = std::fs::read_dir(dir1.join(".claude").join("commands")).unwrap().collect();
+        let cmds2: Vec<_> = std::fs::read_dir(dir2.join(".claude").join("commands")).unwrap().collect();
+        assert_eq!(cmds1.len(), 1);
+        assert_eq!(cmds2.len(), 1);
     }
 
     #[test]
