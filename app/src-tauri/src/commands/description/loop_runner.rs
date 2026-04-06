@@ -1,6 +1,8 @@
 use super::eval::{self, EvalResults};
 use super::improve::{self, HistoryEntry};
 use super::EvalQuery;
+use crate::agents::sidecar_pool::SidecarPool;
+use crate::types::SecretString;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use std::collections::HashSet;
@@ -176,11 +178,15 @@ pub fn split_eval_set(
 pub async fn run_loop(
     eval_queries: Vec<EvalQuery>,
     skill_path: &Path,
-    project_root: &Path,
+    workspace_path: &Path,
+    plugin_slug: &str,
+    // skill_slug is the filesystem directory name, distinct from skill_info.name (YAML display name)
+    skill_slug: &str,
     model: &str,
-    api_key: &str,
+    api_key: &SecretString,
     cancel: Arc<AtomicBool>,
     app: &tauri::AppHandle,
+    pool: SidecarPool,
     log_dir: &Path,
 ) -> Result<serde_json::Value, String> {
     let loop_log = init_log_file(log_dir, "desc-opt-loop");
@@ -188,14 +194,15 @@ pub async fn run_loop(
     let improve_log = init_log_file(log_dir, "desc-opt-improve");
 
     log::info!(
-        "[run_loop] skill_path={} queries={} model={}",
+        "[run_loop] skill_path={} plugin={} queries={} model={}",
         skill_path.display(),
+        plugin_slug,
         eval_queries.len(),
         model
     );
     write_log_line(&loop_log, &format!(
-        "RUN_START skill_path={} queries={} model={}",
-        skill_path.display(), eval_queries.len(), model
+        "RUN_START skill_path={} plugin={} queries={} model={}",
+        skill_path.display(), plugin_slug, eval_queries.len(), model
     ));
 
     let skill_info = parse_skill_md(skill_path)?;
@@ -248,18 +255,39 @@ pub async fn run_loop(
             &current_description[..current_description.len().min(80)]
         ));
 
-        // Run eval on all queries
+        // Write candidate description to eval sandbox before running eval.
+        // Use `skill_slug` (the filesystem directory name) — not `skill_info.name`
+        // (the YAML display name) — so the sandbox path matches what the sidecar resolves.
+        let sandbox_root = eval::eval_sandbox_root(workspace_path);
+        if let Err(e) = eval::write_sandbox_skill_md(
+            &sandbox_root,
+            plugin_slug,
+            skill_slug,
+            &skill_info.content,
+            &current_description,
+        ) {
+            write_log_line(&eval_log, &format!("SANDBOX_WRITE_FAIL iteration={} error={}", iteration, e));
+            return Err(e);
+        }
+        write_log_line(&eval_log, &format!("SANDBOX_WRITE_OK iteration={}", iteration));
+
+        // Run eval on all queries via sidecar pool
         let all_results = eval::run_eval(
             &all_queries,
-            &skill_info.name,
+            skill_slug,
+            plugin_slug,
             &current_description,
-            project_root,
-            Some(model),
+            workspace_path,
+            model,
+            api_key,
+            app,
+            &pool,
             NUM_WORKERS,
             TIMEOUT_SECS,
             RUNS_PER_QUERY,
             TRIGGER_THRESHOLD,
             &cancel,
+            log_dir,
         )
         .await?;
 
@@ -386,7 +414,7 @@ pub async fn run_loop(
             &train_eval,
             &blinded_history,
             model,
-            api_key,
+            api_key.expose(),
             test_eval.as_ref(),
         )
         .await

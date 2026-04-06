@@ -1,10 +1,12 @@
+use crate::agents::sidecar::SidecarConfig;
+use crate::agents::sidecar_pool::SidecarPool;
+use crate::types::SecretString;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use tokio::io::AsyncBufReadExt;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use tauri::Listener;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -33,251 +35,246 @@ pub struct EvalResults {
     pub summary: EvalSummary,
 }
 
-// ─── Command file RAII guard ────────────────────────────────────────────────
+// ─── Eval sandbox helpers ───────────────────────────────────────────────────
 
-struct CommandFileGuard {
-    path: PathBuf,
+/// Root of the eval sandbox:
+/// `{workspace}/description-optimization/eval-sandbox/`
+pub(super) fn eval_sandbox_root(workspace_path: &Path) -> PathBuf {
+    workspace_path
+        .join("description-optimization")
+        .join("eval-sandbox")
 }
 
-impl Drop for CommandFileGuard {
-    fn drop(&mut self) {
-        if self.path.exists() {
-            let _ = std::fs::remove_file(&self.path);
-        }
-    }
+/// Plugin directory inside the eval sandbox (sidecar discovers here):
+/// `{sandbox}/.claude/plugins/{plugin_slug}/`
+fn sandbox_plugin_dir(sandbox_root: &Path, plugin_slug: &str) -> PathBuf {
+    sandbox_root
+        .join(".claude")
+        .join("plugins")
+        .join(plugin_slug)
 }
 
-// ─── Streaming JSON trigger detection ───────────────────────────────────────
-
-/// Parse streaming JSON lines from `claude -p --output-format stream-json`
-/// and detect whether Claude triggers the skill (uses the Skill or Read tool
-/// with the command file name).
-fn process_stream_line(
-    line: &str,
-    clean_name: &str,
-    pending_tool_name: &mut Option<String>,
-    accumulated_json: &mut String,
-    triggered: &mut bool,
-) -> Option<bool> {
-    let event: serde_json::Value = match serde_json::from_str(line) {
-        Ok(v) => v,
-        Err(_) => return None, // skip non-JSON lines
-    };
-
-    if event.get("type").and_then(|v| v.as_str()) == Some("stream_event") {
-        let stream_event = event.get("event").unwrap_or(&serde_json::Value::Null);
-        let stream_type = stream_event
-            .get("type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-
-        match stream_type {
-            "content_block_start" => {
-                let content_block = stream_event
-                    .get("content_block")
-                    .unwrap_or(&serde_json::Value::Null);
-                if content_block.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
-                    let tool_name = content_block
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    if tool_name == "Skill" || tool_name == "Read" {
-                        *pending_tool_name = Some(tool_name.to_string());
-                        *accumulated_json = String::new();
-                    } else {
-                        return Some(false); // wrong tool = no trigger
-                    }
-                }
-            }
-            "content_block_delta" => {
-                if pending_tool_name.is_some() {
-                    let delta = stream_event
-                        .get("delta")
-                        .unwrap_or(&serde_json::Value::Null);
-                    if delta.get("type").and_then(|v| v.as_str()) == Some("input_json_delta") {
-                        if let Some(partial) = delta.get("partial_json").and_then(|v| v.as_str()) {
-                            accumulated_json.push_str(partial);
-                            if accumulated_json.contains(clean_name) {
-                                return Some(true); // early trigger detection
-                            }
-                        }
-                    }
-                }
-            }
-            "content_block_stop" => {
-                if pending_tool_name.is_some() {
-                    let result = accumulated_json.contains(clean_name);
-                    *pending_tool_name = None;
-                    return Some(result);
-                }
-            }
-            "message_stop" => {
-                if pending_tool_name.is_some() {
-                    let result = accumulated_json.contains(clean_name);
-                    *pending_tool_name = None;
-                    return Some(result);
-                }
-                return Some(false);
-            }
-            _ => {}
-        }
-    } else if event.get("type").and_then(|v| v.as_str()) == Some("assistant") {
-        // Fallback: full assistant message
-        if let Some(content) = event
-            .get("message")
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_array())
-        {
-            for item in content {
-                if item.get("type").and_then(|v| v.as_str()) != Some("tool_use") {
-                    continue;
-                }
-                let tool_name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                let input = item.get("input").unwrap_or(&serde_json::Value::Null);
-                if tool_name == "Skill" {
-                    if let Some(skill) = input.get("skill").and_then(|v| v.as_str()) {
-                        if skill.contains(clean_name) {
-                            *triggered = true;
-                        }
-                    }
-                } else if tool_name == "Read" {
-                    if let Some(fp) = input.get("file_path").and_then(|v| v.as_str()) {
-                        if fp.contains(clean_name) {
-                            *triggered = true;
-                        }
-                    }
-                }
-                return Some(*triggered);
-            }
-        }
-    } else if event.get("type").and_then(|v| v.as_str()) == Some("result") {
-        return Some(*triggered);
-    }
-
-    None // continue reading
+/// Write the candidate description into the sandboxed SKILL.md for a skill.
+///
+/// `original_content` is the full SKILL.md content; only the `description:`
+/// frontmatter field is replaced. Directory is created if absent.
+pub fn write_sandbox_skill_md(
+    sandbox_root: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+    original_content: &str,
+    description: &str,
+) -> Result<(), String> {
+    let skill_dir = sandbox_plugin_dir(sandbox_root, plugin_slug).join(skill_name);
+    std::fs::create_dir_all(&skill_dir)
+        .map_err(|e| format!("Failed to create eval sandbox dir: {}", e))?;
+    let updated =
+        crate::commands::description::update_skill_description(original_content, description)?;
+    std::fs::write(skill_dir.join("SKILL.md"), &updated)
+        .map_err(|e| format!("Failed to write sandboxed SKILL.md: {}", e))?;
+    log::debug!(
+        "[eval] Wrote sandbox SKILL.md: plugin={} skill={} desc_len={}",
+        plugin_slug,
+        skill_name,
+        description.len()
+    );
+    Ok(())
 }
 
-// ─── Single query execution ─────────────────────────────────────────────────
+// ─── Trigger detection ───────────────────────────────────────────────────────
 
-/// Run a single eval query against `claude -p` and detect whether the skill is triggered.
-async fn run_single_query(
-    query: String,
-    skill_name: String,
-    description: String,
-    project_root: PathBuf,
-    model: Option<String>,
-    timeout_secs: u64,
-) -> bool {
-    let unique_id = &uuid::Uuid::new_v4().to_string()[..8];
-    let clean_name = format!("{}-skill-{}", skill_name, unique_id);
-
-    let commands_dir = project_root.join(".claude").join("commands");
-    if let Err(e) = std::fs::create_dir_all(&commands_dir) {
-        log::warn!("[run_single_query] failed to create commands dir: {}", e);
+/// Detect whether an `agent-message` event payload contains a `Skill` tool_use
+/// from the given `agent_id`.
+///
+/// Expected payload shape:
+/// ```json
+/// {
+///   "agent_id": "eval-...",
+///   "message": {
+///     "type": "display_item",
+///     "item": { "type": "tool_call", "toolName": "Skill", ... }
+///   }
+/// }
+/// ```
+fn is_skill_triggered_for_agent(payload: &str, agent_id: &str) -> bool {
+    // Fast-path: skip JSON parse if agent_id not in payload at all
+    if !payload.contains(agent_id) {
         return false;
     }
+    let Ok(outer) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return false;
+    };
+    if outer.get("agent_id").and_then(|v| v.as_str()) != Some(agent_id) {
+        return false;
+    }
+    let Some(msg) = outer.get("message") else {
+        return false;
+    };
+    if msg.get("type").and_then(|t| t.as_str()) != Some("display_item") {
+        return false;
+    }
+    let Some(item) = msg.get("item") else {
+        return false;
+    };
+    if item.get("type").and_then(|t| t.as_str()) != Some("tool_call") {
+        return false;
+    }
+    item.get("toolName").and_then(|t| t.as_str()) == Some("Skill")
+}
 
-    let command_file = commands_dir.join(format!("{}.md", clean_name));
+// ─── Worker key ─────────────────────────────────────────────────────────────
 
-    // Build the command file content with YAML frontmatter
-    let indented_desc = description
-        .lines()
-        .collect::<Vec<_>>()
-        .join("\n  ");
-    let command_content = format!(
-        "---\ndescription: |\n  {}\n---\n\n# {}\n\nThis skill handles: {}\n",
-        indented_desc, skill_name, description
+/// Persistent sidecar key for eval worker `i`.
+/// Each key maps to one Node.js process in the sidecar pool.
+fn eval_worker_key(plugin_slug: &str, worker_idx: usize) -> String {
+    format!("eval-{}-worker-{}", plugin_slug, worker_idx)
+}
+
+/// Global counter for round-robin worker assignment across concurrent tasks.
+static EVAL_WORKER_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+// ─── Single query via sidecar pool ─────────────────────────────────────────
+
+/// Run a single eval query using the sidecar pool.
+/// Returns `true` if the Skill tool was invoked (i.e., the skill was triggered).
+///
+/// Uses Tauri event listeners to detect trigger (`agent-message`) and
+/// completion (`agent-exit`) without blocking the sidecar pool.
+#[allow(clippy::too_many_arguments)]
+async fn run_single_eval_query(
+    query: String,
+    plugin_slug: &str,
+    skill_name: &str,
+    workspace_path: &Path,
+    model: &str,
+    api_key: SecretString,
+    app: &tauri::AppHandle,
+    pool: &SidecarPool,
+    worker_idx: usize,
+    timeout_secs: u64,
+    transcript_log_dir: &Path,
+) -> bool {
+    let agent_id = format!("eval-{}-{}", plugin_slug, uuid::Uuid::new_v4());
+
+    // One-shot channel: delivers `true` on Skill trigger or `false` on exit/timeout.
+    let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+    let tx = Arc::new(Mutex::new(Some(tx)));
+
+    // ── agent-message listener ───────────────────────────────────────────
+    let target_id_msg = agent_id.clone();
+    let tx_msg = tx.clone();
+    let message_listener = app.listen("agent-message", move |event| {
+        let payload = event.payload();
+        if is_skill_triggered_for_agent(payload, &target_id_msg) {
+            if let Ok(mut guard) = tx_msg.lock() {
+                if let Some(sender) = guard.take() {
+                    let _ = sender.send(true);
+                }
+            }
+        }
+    });
+
+    // ── agent-exit listener ──────────────────────────────────────────────
+    let target_id_exit = agent_id.clone();
+    let tx_exit = tx.clone();
+    let exit_listener = app.listen("agent-exit", move |event| {
+        let payload = event.payload();
+        // Fast-path before JSON parse
+        if !payload.contains(target_id_exit.as_str()) {
+            return;
+        }
+        let Ok(exit_val) = serde_json::from_str::<serde_json::Value>(payload) else {
+            return;
+        };
+        if exit_val.get("agent_id").and_then(|v| v.as_str()) != Some(target_id_exit.as_str()) {
+            return;
+        }
+        if let Ok(mut guard) = tx_exit.lock() {
+            if let Some(sender) = guard.take() {
+                let _ = sender.send(false); // exited without triggering the skill
+            }
+        }
+    });
+
+    // ── Build sidecar config ─────────────────────────────────────────────
+    let sandbox_root = eval_sandbox_root(workspace_path);
+    // Forward-slash paths required by the Node.js sidecar on Windows
+    let sandbox_root_str = sandbox_root.to_string_lossy().replace('\\', "/");
+
+    // SDK cwd: use a stable eval-workspace subdirectory (not the sandbox itself)
+    let eval_ws_dir = workspace_path
+        .join("description-optimization")
+        .join("eval-workspace");
+    let _ = std::fs::create_dir_all(&eval_ws_dir);
+    let eval_ws_dir_str = eval_ws_dir.to_string_lossy().replace('\\', "/");
+
+    let transcript_dir_str = transcript_log_dir.to_string_lossy().into_owned();
+
+    let config = SidecarConfig {
+        prompt: query.clone(),
+        system_prompt: None,
+        model: Some(model.to_string()),
+        api_key,
+        workspace_root_dir: sandbox_root_str,
+        workspace_skill_dir: eval_ws_dir_str,
+        allowed_tools: None,
+        max_turns: Some(3),
+        permission_mode: Some("bypassPermissions".to_string()),
+        betas: None,
+        thinking: None,
+        fallback_model: None,
+        effort: None,
+        output_format: None,
+        prompt_suggestions: None,
+        path_to_claude_code_executable: None,
+        agent_name: None,
+        required_plugins: Some(vec![plugin_slug.to_string()]),
+        // Empty settingSources: suppress workspace project skills so only the
+        // sandboxed plugin is loaded.
+        setting_sources: Some(vec![]),
+        conversation_history: None,
+        skill_name: Some(skill_name.to_string()),
+        step_id: Some(-20),
+        workflow_session_id: None,
+        usage_session_id: None,
+        run_source: Some("gate-eval".to_string()),
+        plugin_slug: Some(plugin_slug.to_string()),
+        transcript_log_dir: Some(transcript_dir_str.clone()),
+    };
+
+    let worker_key = eval_worker_key(plugin_slug, worker_idx);
+    log::debug!(
+        "[eval] query='{}' agent_id={} worker={}",
+        &query[..query.len().min(60)],
+        agent_id,
+        worker_key
     );
 
-    if let Err(e) = std::fs::write(&command_file, &command_content) {
-        log::warn!("[run_single_query] failed to write command file: {}", e);
+    if let Err(e) = pool
+        .send_request(&worker_key, &agent_id, config, app, Some(&transcript_dir_str))
+        .await
+    {
+        log::warn!("[eval] send_request failed for '{}': {}", agent_id, e);
+        app.unlisten(message_listener);
+        app.unlisten(exit_listener);
         return false;
     }
 
-    let _guard = CommandFileGuard {
-        path: command_file.clone(),
-    };
+    // ── Wait for trigger or completion, with timeout ─────────────────────
+    let result = tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), rx).await;
 
-    // Build claude command
-    #[cfg(windows)]
-    let mut cmd = {
-        let mut c = tokio::process::Command::new("cmd");
-        c.arg("/C").arg("claude");
-        c
-    };
-    #[cfg(not(windows))]
-    let mut cmd = tokio::process::Command::new("claude");
-
-    cmd.arg("-p")
-        .arg(&query)
-        .arg("--output-format")
-        .arg("stream-json")
-        .arg("--verbose")
-        .arg("--include-partial-messages")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .current_dir(&project_root)
-        .env_remove("CLAUDECODE");
-
-    if let Some(ref m) = model {
-        cmd.arg("--model").arg(m);
-    }
-
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => {
-            log::warn!("[run_single_query] failed to spawn claude: {}", e);
-            return false;
-        }
-    };
-
-    let stdout = match child.stdout.take() {
-        Some(s) => s,
-        None => return false,
-    };
-
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(timeout_secs),
-        async {
-            let mut reader = tokio::io::BufReader::new(stdout).lines();
-            let mut pending_tool_name: Option<String> = None;
-            let mut accumulated_json = String::new();
-            let mut triggered = false;
-
-            while let Ok(Some(line)) = reader.next_line().await {
-                let line = line.trim().to_string();
-                if line.is_empty() {
-                    continue;
-                }
-                if let Some(result) = process_stream_line(
-                    &line,
-                    &clean_name,
-                    &mut pending_tool_name,
-                    &mut accumulated_json,
-                    &mut triggered,
-                ) {
-                    // Kill child early on detection
-                    let _ = child.kill().await;
-                    let _ = child.wait().await;
-                    return result;
-                }
-            }
-
-            triggered
-        },
-    )
-    .await;
-
-    // Ensure child is cleaned up
-    if child.id().is_some() {
-        let _ = child.kill().await;
-    }
-    let _ = child.wait().await;
+    app.unlisten(message_listener);
+    app.unlisten(exit_listener);
 
     match result {
-        Ok(triggered) => triggered,
+        Ok(Ok(triggered)) => triggered,
+        Ok(Err(_)) => false, // channel dropped unexpectedly
         Err(_) => {
-            log::debug!("[run_single_query] query timed out: {}", query);
+            log::debug!(
+                "[eval] query timed out after {}s: '{}'",
+                timeout_secs,
+                &query[..query.len().min(60)]
+            );
             false
         }
     }
@@ -289,29 +286,60 @@ async fn run_single_query(
 pub async fn run_eval(
     eval_set: &[super::EvalQuery],
     skill_name: &str,
+    plugin_slug: &str,
     description: &str,
-    project_root: &Path,
-    model: Option<&str>,
+    workspace_path: &Path,
+    model: &str,
+    api_key: &SecretString,
+    app: &tauri::AppHandle,
+    pool: &SidecarPool,
     num_workers: usize,
     timeout_secs: u64,
     runs_per_query: u32,
     trigger_threshold: f64,
     cancel: &Arc<AtomicBool>,
+    transcript_log_dir: &Path,
 ) -> Result<EvalResults, String> {
-    let semaphore = Arc::new(Semaphore::new(num_workers));
-    let mut set = JoinSet::new();
+    if num_workers == 0 {
+        return Err("num_workers must be > 0".to_string());
+    }
 
-    // Submit all tasks
+    log::info!(
+        "[run_eval] skill={} plugin={} queries={} workers={} runs={} desc_len={}",
+        skill_name,
+        plugin_slug,
+        eval_set.len(),
+        num_workers,
+        runs_per_query,
+        description.len()
+    );
+
+    let semaphore = Arc::new(Semaphore::new(num_workers));
+    let mut set: JoinSet<(String, bool)> = JoinSet::new();
+
     for item in eval_set {
         for _run_idx in 0..runs_per_query {
-            let permit = semaphore.clone().acquire_owned().await.map_err(|e| {
-                format!("Semaphore error: {}", e)
-            })?;
+            if cancel.load(Ordering::SeqCst) {
+                set.abort_all();
+                return Err("Optimization cancelled".to_string());
+            }
+
+            let permit = semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|e| format!("Semaphore error: {}", e))?;
+
+            let worker_idx = EVAL_WORKER_COUNTER.fetch_add(1, Ordering::Relaxed) % num_workers;
             let query = item.query.clone();
             let sn = skill_name.to_string();
-            let desc = description.to_string();
-            let pr = project_root.to_path_buf();
-            let m = model.map(|s| s.to_string());
+            let ps = plugin_slug.to_string();
+            let wp = workspace_path.to_path_buf();
+            let m = model.to_string();
+            let key = api_key.clone();
+            let app_clone = app.clone();
+            let pool_clone = pool.clone();
+            let tld = transcript_log_dir.to_path_buf();
             let cancel_flag = cancel.clone();
 
             set.spawn(async move {
@@ -319,8 +347,21 @@ pub async fn run_eval(
                 if cancel_flag.load(Ordering::SeqCst) {
                     return (query, false);
                 }
-                let result = run_single_query(query.clone(), sn, desc, pr, m, timeout_secs).await;
-                (query, result)
+                let triggered = run_single_eval_query(
+                    query.clone(),
+                    &ps,
+                    &sn,
+                    &wp,
+                    &m,
+                    key,
+                    &app_clone,
+                    &pool_clone,
+                    worker_idx,
+                    timeout_secs,
+                    &tld,
+                )
+                .await;
+                (query, triggered)
             });
         }
     }
@@ -333,13 +374,9 @@ pub async fn run_eval(
             set.abort_all();
             return Err("Optimization cancelled".to_string());
         }
-
         match join_result {
             Ok((query, triggered)) => {
-                query_triggers
-                    .entry(query)
-                    .or_default()
-                    .push(triggered);
+                query_triggers.entry(query).or_default().push(triggered);
             }
             Err(e) => {
                 log::warn!("[run_eval] task join error: {}", e);
@@ -353,7 +390,7 @@ pub async fn run_eval(
         .map(|item| (item.query.as_str(), item.should_trigger))
         .collect();
 
-    // Aggregate results
+    // Aggregate per-query results
     let mut results = Vec::new();
     for (query, triggers) in &query_triggers {
         let should_trigger = *should_trigger_map.get(query.as_str()).unwrap_or(&true);
@@ -364,13 +401,11 @@ pub async fn run_eval(
         } else {
             0.0
         };
-
         let pass = if should_trigger {
             trigger_rate >= trigger_threshold
         } else {
             trigger_rate < trigger_threshold
         };
-
         results.push(EvalResult {
             query: query.clone(),
             should_trigger,
@@ -384,6 +419,13 @@ pub async fn run_eval(
     let passed = results.iter().filter(|r| r.pass).count();
     let total = results.len();
 
+    log::info!(
+        "[run_eval] done: total={} passed={} failed={}",
+        total,
+        passed,
+        total - passed
+    );
+
     Ok(EvalResults {
         results,
         summary: EvalSummary {
@@ -394,68 +436,99 @@ pub async fn run_eval(
     })
 }
 
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_process_stream_line_tool_use_skill_trigger() {
-        let clean_name = "my-skill-skill-abc12345";
-        let mut pending = None;
-        let mut acc = String::new();
-        let mut triggered = false;
-
-        // content_block_start with Skill tool
-        let start = r#"{"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"tool_use","name":"Skill"}}}"#;
-        assert!(process_stream_line(start, clean_name, &mut pending, &mut acc, &mut triggered).is_none());
-        assert_eq!(pending, Some("Skill".to_string()));
-
-        // content_block_delta with partial JSON containing the clean_name
-        let delta = [
-            r#"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{\"skill\": \""#,
-            clean_name,
-            r#"\"}"}}}"#,
-        ].join("");
-        let result = process_stream_line(&delta, clean_name, &mut pending, &mut acc, &mut triggered);
-        assert_eq!(result, Some(true));
+    fn test_is_skill_triggered_for_agent_match() {
+        let agent_id = "eval-vd-agent-abc12345";
+        let payload = serde_json::json!({
+            "agent_id": agent_id,
+            "message": {
+                "type": "display_item",
+                "item": {
+                    "type": "tool_call",
+                    "toolName": "Skill",
+                    "toolSummary": "Skill: data-product-builder"
+                }
+            }
+        })
+        .to_string();
+        assert!(is_skill_triggered_for_agent(&payload, agent_id));
     }
 
     #[test]
-    fn test_process_stream_line_wrong_tool() {
-        let clean_name = "my-skill-skill-abc12345";
-        let mut pending = None;
-        let mut acc = String::new();
-        let mut triggered = false;
-
-        let start = r#"{"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"tool_use","name":"Write"}}}"#;
-        let result = process_stream_line(start, clean_name, &mut pending, &mut acc, &mut triggered);
-        assert_eq!(result, Some(false));
+    fn test_is_skill_triggered_for_agent_wrong_agent() {
+        let payload = serde_json::json!({
+            "agent_id": "eval-other-agent",
+            "message": {
+                "type": "display_item",
+                "item": { "type": "tool_call", "toolName": "Skill" }
+            }
+        })
+        .to_string();
+        assert!(!is_skill_triggered_for_agent(&payload, "eval-my-agent"));
     }
 
     #[test]
-    fn test_process_stream_line_message_stop_no_trigger() {
-        let clean_name = "my-skill-skill-abc12345";
-        let mut pending = None;
-        let mut acc = String::new();
-        let mut triggered = false;
-
-        let stop = r#"{"type":"stream_event","event":{"type":"message_stop"}}"#;
-        let result = process_stream_line(stop, clean_name, &mut pending, &mut acc, &mut triggered);
-        assert_eq!(result, Some(false));
+    fn test_is_skill_triggered_for_agent_wrong_tool() {
+        let agent_id = "eval-vd-agent-abc12345";
+        let payload = serde_json::json!({
+            "agent_id": agent_id,
+            "message": {
+                "type": "display_item",
+                "item": { "type": "tool_call", "toolName": "Read" }
+            }
+        })
+        .to_string();
+        assert!(!is_skill_triggered_for_agent(&payload, agent_id));
     }
 
     #[test]
-    fn test_process_stream_line_assistant_fallback_trigger() {
-        let clean_name = "my-skill-skill-abc12345";
-        let mut pending = None;
-        let mut acc = String::new();
-        let mut triggered = false;
+    fn test_is_skill_triggered_for_agent_non_display_item() {
+        let agent_id = "eval-vd-agent-abc12345";
+        let payload = serde_json::json!({
+            "agent_id": agent_id,
+            "message": {
+                "type": "agent_event",
+                "event": { "type": "turn_complete" }
+            }
+        })
+        .to_string();
+        assert!(!is_skill_triggered_for_agent(&payload, agent_id));
+    }
 
-        let msg = format!(
-            r#"{{"type":"assistant","message":{{"content":[{{"type":"tool_use","name":"Skill","input":{{"skill":"{}"}}}}]}}}}"#,
-            clean_name
+    #[test]
+    fn test_write_sandbox_skill_md_creates_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sandbox = tmp.path();
+        let original = "---\nname: My Skill\ndescription: old\nauthor: dev\n---\n# Body\n";
+        write_sandbox_skill_md(sandbox, "my-plugin", "my-skill", original, "new description")
+            .unwrap();
+        let skill_md = sandbox
+            .join(".claude")
+            .join("plugins")
+            .join("my-plugin")
+            .join("my-skill")
+            .join("SKILL.md");
+        assert!(skill_md.exists(), "SKILL.md should be created in sandbox");
+        let content = std::fs::read_to_string(&skill_md).unwrap();
+        assert!(
+            content.contains("new description"),
+            "Sandbox SKILL.md should contain new description"
         );
-        let result = process_stream_line(&msg, clean_name, &mut pending, &mut acc, &mut triggered);
-        assert_eq!(result, Some(true));
+        assert!(
+            !content.contains("description: old"),
+            "Old description should be replaced"
+        );
+    }
+
+    #[test]
+    fn test_eval_worker_key_format() {
+        let key = eval_worker_key("vd-agent", 3);
+        assert_eq!(key, "eval-vd-agent-worker-3");
     }
 }

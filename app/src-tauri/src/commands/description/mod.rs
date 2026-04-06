@@ -40,6 +40,7 @@ pub async fn run_optimization_loop(
     eval_queries: Vec<EvalQuery>,
     process_state: tauri::State<'_, DescriptionProcessState>,
     db: tauri::State<'_, crate::db::Db>,
+    pool: tauri::State<'_, SidecarPool>,
     app: tauri::AppHandle,
 ) -> Result<serde_json::Value, String> {
     log::info!(
@@ -53,9 +54,10 @@ pub async fn run_optimization_loop(
     let api_key = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings(&conn)?;
-        settings
+        let raw_key = settings
             .anthropic_api_key
-            .ok_or_else(|| "Anthropic API key not configured".to_string())?
+            .ok_or_else(|| "Anthropic API key not configured".to_string())?;
+        crate::types::SecretString::new(raw_key)
     };
 
     // Resolve skill path
@@ -87,15 +89,18 @@ pub async fn run_optimization_loop(
     .join("description-optimization")
     .join("logs");
 
-    // Run the optimization loop in Rust (no Python subprocess)
+    // Run the optimization loop in Rust (sidecar-based eval)
     let result = loop_runner::run_loop(
         eval_queries,
         &skill_path,
         Path::new(&workspace_path),
+        &plugin_slug,
+        &skill_name,
         &resolved_model,
         &api_key,
         cancel,
         &app,
+        pool.inner().clone(),
         &log_dir,
     )
     .await;
@@ -212,7 +217,7 @@ pub async fn cancel_description_optimization(
 }
 
 /// Replace or insert the `description:` field in SKILL.md YAML frontmatter.
-fn update_skill_description(content: &str, description: &str) -> Result<String, String> {
+pub(crate) fn update_skill_description(content: &str, description: &str) -> Result<String, String> {
     // Normalize CRLF
     let content = content.replace("\r\n", "\n");
 
