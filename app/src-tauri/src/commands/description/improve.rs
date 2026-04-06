@@ -72,35 +72,37 @@ fn extract_new_description(text: &str) -> String {
 
 // ─── Prompt construction ────────────────────────────────────────────────────
 
-/// History entry passed to improve_description (blinded — no test keys).
+/// History entry passed to improve_description.
+/// Records a previous candidate and its test score so the model can see the
+/// trajectory of attempts and avoid repeating descriptions.
 pub struct HistoryEntry {
     pub iteration: u32,
     pub description: String,
-    pub train_passed: usize,
-    pub train_total: usize,
-    pub train_results: Vec<EvalResult>,
+    pub test_passed: usize,
+    pub test_total: usize,
 }
 
 /// Build the improvement prompt and call the Anthropic API.
 /// Returns the new description (guaranteed ≤ 1024 characters).
-#[allow(clippy::too_many_arguments)]
+///
+/// `train_eval` contains the fresh train-set results for `current_description` —
+/// these drive the prompt (what failed, what passed).
+/// `history` records previous candidates and their test scores for context.
 pub async fn improve_description(
     skill_name: &str,
     skill_content: &str,
     current_description: &str,
-    eval_results: &EvalResults,
+    train_eval: &EvalResults,
     history: &[HistoryEntry],
     model: &str,
     api_key: &str,
-    test_results: Option<&EvalResults>,
 ) -> Result<String, String> {
     let prompt = build_improve_prompt(
         skill_name,
         skill_content,
         current_description,
-        eval_results,
+        train_eval,
         history,
-        test_results,
     );
 
     log::info!(
@@ -137,9 +139,8 @@ fn build_improve_prompt(
     skill_name: &str,
     skill_content: &str,
     current_description: &str,
-    eval_results: &EvalResults,
+    train_eval: &EvalResults,
     history: &[HistoryEntry],
-    test_results: Option<&EvalResults>,
 ) -> String {
     let mut prompt = String::with_capacity(8192);
 
@@ -155,27 +156,18 @@ fn build_improve_prompt(
         current_description
     ));
 
-    // Scores
-    let train_score = format!(
-        "{}/{}",
-        eval_results.summary.passed, eval_results.summary.total
-    );
-    let mut scores = format!("Train: {}", train_score);
-    if let Some(test) = test_results {
-        scores.push_str(&format!(
-            ", Test: {}/{}",
-            test.summary.passed, test.summary.total
-        ));
-    }
-    prompt.push_str(&format!("Current scores: {}\n\n", scores));
+    // Train scores and failures
+    prompt.push_str(&format!(
+        "Train score: {}/{}\n\n",
+        train_eval.summary.passed, train_eval.summary.total
+    ));
 
-    // Failed triggers and false triggers
-    let failed_triggers: Vec<&EvalResult> = eval_results
+    let failed_triggers: Vec<&EvalResult> = train_eval
         .results
         .iter()
         .filter(|r| r.should_trigger && !r.pass)
         .collect();
-    let false_triggers: Vec<&EvalResult> = eval_results
+    let false_triggers: Vec<&EvalResult> = train_eval
         .results
         .iter()
         .filter(|r| !r.should_trigger && !r.pass)
@@ -203,23 +195,14 @@ fn build_improve_prompt(
         }
     }
 
-    // Previous attempts
+    // Previous candidates and their test scores
     if !history.is_empty() {
-        prompt.push_str("\nPrevious attempts:\n");
+        prompt.push_str("\nPrevious candidates:\n");
         for entry in history {
             prompt.push_str(&format!(
-                "<attempt iteration={} train={}/{}>\n",
-                entry.iteration, entry.train_passed, entry.train_total
+                "<attempt iteration={} test={}/{}>\n{}\n</attempt>\n",
+                entry.iteration, entry.test_passed, entry.test_total, entry.description
             ));
-            prompt.push_str(&format!("Description: {}\n", entry.description));
-            for r in &entry.train_results {
-                let status = if r.pass { "PASS" } else { "FAIL" };
-                prompt.push_str(&format!(
-                    "  [{}] \"{}\" (should_trigger={}, rate={:.1})\n",
-                    status, r.query, r.should_trigger, r.trigger_rate
-                ));
-            }
-            prompt.push_str("</attempt>\n");
         }
     }
 
@@ -289,13 +272,12 @@ mod tests {
             "old description",
             &eval_results,
             &[],
-            None,
         );
 
         assert!(prompt.contains("my-skill"));
         assert!(prompt.contains("<current_description>"));
         assert!(prompt.contains("old description"));
-        assert!(prompt.contains("Train: 0/1"));
+        assert!(prompt.contains("Train score: 0/1"));
         assert!(prompt.contains("test query"));
         assert!(prompt.contains("<skill_content>"));
         assert!(prompt.contains("<new_description>"));
