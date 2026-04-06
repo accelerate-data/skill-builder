@@ -48,6 +48,10 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow`, `@setup` |
 | `src-tauri/src/commands/workflow_lifecycle.rs` | `commands::workflow_lifecycle` | `@workflow` |
 | `src-tauri/src/commands/refine.rs` | `commands::refine` | `@refine` |
+| `src-tauri/src/commands/description/mod.rs` | `commands::description` | -- |
+| `src-tauri/src/commands/description/eval.rs` | `commands::description::eval` | -- |
+| `src-tauri/src/commands/description/loop_runner.rs` | `commands::description::loop_runner` | -- |
+| `src-tauri/src/commands/description/improve.rs` | `commands::description::improve` | -- |
 | `src-tauri/src/commands/git.rs` | -- | `@dashboard` |
 | `src-tauri/src/commands/lifecycle.rs` | -- | -- |
 | `src-tauri/src/commands/feedback.rs` | -- | -- |
