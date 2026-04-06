@@ -236,229 +236,357 @@ pub async fn run_loop(
 
     let mut history: Vec<IterationRecord> = Vec::new();
     let mut exit_reason = String::new();
-    let mut best_train_passed: usize = 0;
 
-    for iteration in 1..=MAX_ITERATIONS {
-        if cancel.load(Ordering::SeqCst) {
-            write_log_line(&loop_log, "CANCELLED before iteration start");
-            return Err("Optimization cancelled".to_string());
-        }
+    // ─── Baseline eval (iteration 0) ─────────────────────────────────────────
+    // Eval the original description first so improve() has real failures to act
+    // on before generating any candidate.
+    log::info!(
+        "[run_loop] baseline iteration 0 description=\"{}\"",
+        &current_description[..current_description.len().min(80)]
+    );
+    write_log_line(&loop_log, &format!(
+        "ITERATION_START iteration=0/{} description=\"{}\"",
+        MAX_ITERATIONS,
+        &current_description[..current_description.len().min(80)]
+    ));
 
-        log::info!(
-            "[run_loop] iteration {}/{} description=\"{}\"",
-            iteration,
-            MAX_ITERATIONS,
-            &current_description[..current_description.len().min(80)]
-        );
-        write_log_line(&loop_log, &format!(
-            "ITERATION_START iteration={}/{} description=\"{}\"",
-            iteration, MAX_ITERATIONS,
-            &current_description[..current_description.len().min(80)]
-        ));
+    // Use `skill_slug` (the filesystem directory name) — not `skill_info.name`
+    // (the YAML display name) — so the sandbox path matches what the sidecar resolves.
+    let sandbox_root = eval::eval_sandbox_root(workspace_path);
+    if let Err(e) = eval::write_sandbox_skill_md(
+        &sandbox_root,
+        plugin_slug,
+        skill_slug,
+        &skill_info.content,
+        &current_description,
+    ) {
+        write_log_line(&eval_log, &format!("SANDBOX_WRITE_FAIL iteration=0 error={}", e));
+        return Err(e);
+    }
+    write_log_line(&eval_log, "SANDBOX_WRITE_OK iteration=0");
 
-        // Write candidate description to eval sandbox before running eval.
-        // Use `skill_slug` (the filesystem directory name) — not `skill_info.name`
-        // (the YAML display name) — so the sandbox path matches what the sidecar resolves.
-        let sandbox_root = eval::eval_sandbox_root(workspace_path);
-        if let Err(e) = eval::write_sandbox_skill_md(
-            &sandbox_root,
-            plugin_slug,
-            skill_slug,
-            &skill_info.content,
-            &current_description,
-        ) {
-            write_log_line(&eval_log, &format!("SANDBOX_WRITE_FAIL iteration={} error={}", iteration, e));
-            return Err(e);
-        }
-        write_log_line(&eval_log, &format!("SANDBOX_WRITE_OK iteration={}", iteration));
+    let baseline_all = eval::run_eval(
+        &all_queries,
+        skill_slug,
+        plugin_slug,
+        &current_description,
+        workspace_path,
+        model,
+        api_key,
+        app,
+        &pool,
+        NUM_WORKERS,
+        TIMEOUT_SECS,
+        RUNS_PER_QUERY,
+        TRIGGER_THRESHOLD,
+        &cancel,
+        log_dir,
+    )
+    .await?;
 
-        // Run eval on all queries via sidecar pool
-        let all_results = eval::run_eval(
-            &all_queries,
-            skill_slug,
-            plugin_slug,
-            &current_description,
-            workspace_path,
-            model,
-            api_key,
-            app,
-            &pool,
-            NUM_WORKERS,
-            TIMEOUT_SECS,
-            RUNS_PER_QUERY,
-            TRIGGER_THRESHOLD,
-            &cancel,
-            log_dir,
-        )
-        .await?;
+    let baseline_train: Vec<_> = baseline_all
+        .results
+        .iter()
+        .filter(|r| train_query_set.contains(&r.query))
+        .cloned()
+        .collect();
+    let baseline_test: Vec<_> = baseline_all
+        .results
+        .iter()
+        .filter(|r| !train_query_set.contains(&r.query))
+        .cloned()
+        .collect();
+    let baseline_train_passed = baseline_train.iter().filter(|r| r.pass).count();
+    let baseline_train_total = baseline_train.len();
+    let baseline_test_passed = baseline_test.iter().filter(|r| r.pass).count();
+    let baseline_test_total = baseline_test.len();
 
-        // Split results by train/test
-        let train_results: Vec<_> = all_results
-            .results
-            .iter()
-            .filter(|r| train_query_set.contains(&r.query))
-            .cloned()
-            .collect();
-        let test_results: Vec<_> = all_results
-            .results
-            .iter()
-            .filter(|r| !train_query_set.contains(&r.query))
-            .cloned()
-            .collect();
+    history.push(IterationRecord {
+        iteration: 0,
+        description: current_description.clone(),
+        train_passed: baseline_train_passed,
+        train_total: baseline_train_total,
+        train_results: baseline_train.clone(),
+        test_passed: if !test_set.is_empty() { Some(baseline_test_passed) } else { None },
+        test_total: if !test_set.is_empty() { Some(baseline_test_total) } else { None },
+    });
 
-        let train_passed = train_results.iter().filter(|r| r.pass).count();
-        let train_total = train_results.len();
-        let test_passed = test_results.iter().filter(|r| r.pass).count();
-        let test_total = test_results.len();
+    if let Err(e) = app.emit("description:progress", &serde_json::json!({
+        "type": "progress",
+        "iteration": 0,
+        "description": current_description,
+        "train_passed": baseline_train_passed,
+        "train_total": baseline_train_total,
+        "test_passed": if !test_set.is_empty() { Some(baseline_test_passed) } else { None },
+        "test_total": if !test_set.is_empty() { Some(baseline_test_total) } else { None },
+    })) {
+        log::debug!("[run_loop] emit error: {}", e);
+    }
 
-        let train_eval = EvalResults {
-            results: train_results.clone(),
+    log::info!(
+        "[run_loop] baseline scores: train={}/{} test={}/{}",
+        baseline_train_passed,
+        baseline_train_total,
+        baseline_test_passed,
+        baseline_test_total
+    );
+    write_log_line(&eval_log, &format!(
+        "EVAL_COMPLETE iteration=0 train={}/{} test={}/{}",
+        baseline_train_passed, baseline_train_total, baseline_test_passed, baseline_test_total
+    ));
+
+    // Track the accepted description's eval results for the improve step.
+    let mut accepted_train_eval = EvalResults {
+        results: baseline_train,
+        summary: eval::EvalSummary {
+            total: baseline_train_total,
+            passed: baseline_train_passed,
+            failed: baseline_train_total - baseline_train_passed,
+        },
+    };
+    let mut accepted_test_eval: Option<EvalResults> = if !test_set.is_empty() {
+        Some(EvalResults {
+            results: baseline_test,
             summary: eval::EvalSummary {
-                total: train_total,
-                passed: train_passed,
-                failed: train_total - train_passed,
+                total: baseline_test_total,
+                passed: baseline_test_passed,
+                failed: baseline_test_total - baseline_test_passed,
             },
-        };
+        })
+    } else {
+        None
+    };
+    let mut best_train_passed: usize = baseline_train_passed;
 
-        let test_eval = if !test_set.is_empty() {
-            Some(EvalResults {
-                results: test_results.clone(),
-                summary: eval::EvalSummary {
-                    total: test_total,
-                    passed: test_passed,
-                    failed: test_total - test_passed,
-                },
-            })
-        } else {
-            None
-        };
+    // Early exit if baseline is already perfect
+    if baseline_train_total > 0 && baseline_train_passed == baseline_train_total {
+        exit_reason = "all_passed_baseline".to_string();
+        write_log_line(&loop_log, &format!("EARLY_EXIT reason={}", exit_reason));
+    }
 
-        // Record iteration
-        history.push(IterationRecord {
-            iteration,
-            description: current_description.clone(),
-            train_passed,
-            train_total,
-            train_results: train_results.clone(),
-            test_passed: if !test_set.is_empty() { Some(test_passed) } else { None },
-            test_total: if !test_set.is_empty() { Some(test_total) } else { None },
-        });
-
-        // Emit progress event
-        let progress_payload = serde_json::json!({
-            "type": "progress",
-            "iteration": iteration,
-            "description": current_description,
-            "train_passed": train_passed,
-            "train_total": train_total,
-            "test_passed": if !test_set.is_empty() { Some(test_passed) } else { None },
-            "test_total": if !test_set.is_empty() { Some(test_total) } else { None },
-        });
-        if let Err(e) = app.emit("description:progress", &progress_payload) {
-            log::debug!("[run_loop] emit error: {}", e);
-        }
-
-        log::info!(
-            "[run_loop] iteration {} scores: train={}/{} test={}/{}",
-            iteration,
-            train_passed,
-            train_total,
-            test_passed,
-            test_total
-        );
-        write_log_line(&eval_log, &format!(
-            "EVAL_COMPLETE iteration={} train={}/{} test={}/{}",
-            iteration, train_passed, train_total, test_passed, test_total
-        ));
-
-        // Early exit if all train pass
-        if train_total > 0 && train_passed == train_total {
-            exit_reason = format!("all_passed (iteration {})", iteration);
-            write_log_line(&loop_log, &format!("EARLY_EXIT reason={}", exit_reason));
-            break;
-        }
-
-        // Last iteration
-        if iteration == MAX_ITERATIONS {
-            exit_reason = format!("max_iterations ({})", MAX_ITERATIONS);
-            write_log_line(&loop_log, &format!("MAX_ITERATIONS_REACHED reason={}", exit_reason));
-            break;
-        }
-
-        // Only improve if score got strictly better — prevents regressing to a worse description
-        // when the eval signal is flat or negative.
-        let did_improve = train_passed > best_train_passed;
-        if did_improve {
-            best_train_passed = train_passed;
-        }
-
-        if cancel.load(Ordering::SeqCst) {
-            write_log_line(&loop_log, "CANCELLED before improve step");
-            return Err("Optimization cancelled".to_string());
-        }
-
-        if !did_improve {
-            write_log_line(&improve_log, &format!(
-                "SKIP_IMPROVE iteration={} no score delta train={}/{}",
-                iteration, train_passed, train_total
-            ));
-            log::info!(
-                "[run_loop] iteration {} no score delta (train={}/{}) — skipping improve",
-                iteration, train_passed, train_total
-            );
-            continue;
-        }
-
-        // Build blinded history (no test keys)
-        let blinded_history: Vec<HistoryEntry> = history
-            .iter()
-            .map(|h| HistoryEntry {
-                iteration: h.iteration,
-                description: h.description.clone(),
-                train_passed: h.train_passed,
-                train_total: h.train_total,
-                train_results: h.train_results.clone(),
-            })
-            .collect();
-
-        write_log_line(&improve_log, &format!(
-            "IMPROVE_START iteration={} model={} skill={}",
-            iteration, model, skill_info.name
-        ));
-
-        match improve::improve_description(
-            &skill_info.name,
-            &skill_info.content,
-            &current_description,
-            &train_eval,
-            &blinded_history,
-            model,
-            api_key.expose(),
-            test_eval.as_ref(),
-        )
-        .await
-        {
-            Ok(new_desc) => {
-                write_log_line(&improve_log, &format!(
-                    "IMPROVE_OK iteration={} chars={} description=\"{}\"",
-                    iteration, new_desc.len(),
-                    &new_desc[..new_desc.len().min(80)]
-                ));
-                current_description = new_desc;
+    if exit_reason.is_empty() {
+        for iteration in 1..=MAX_ITERATIONS {
+            if cancel.load(Ordering::SeqCst) {
+                write_log_line(&loop_log, "CANCELLED before iteration start");
+                return Err("Optimization cancelled".to_string());
             }
-            Err(e) => {
-                write_log_line(&improve_log, &format!(
-                    "IMPROVE_FAIL iteration={} error={}", iteration, e
-                ));
+
+            log::info!(
+                "[run_loop] iteration {}/{} improving from description=\"{}\"",
+                iteration,
+                MAX_ITERATIONS,
+                &current_description[..current_description.len().min(80)]
+            );
+            write_log_line(&loop_log, &format!(
+                "ITERATION_START iteration={}/{} description=\"{}\"",
+                iteration, MAX_ITERATIONS,
+                &current_description[..current_description.len().min(80)]
+            ));
+
+            // ── Improve: generate a candidate from the previous eval's failures ──
+            let blinded_history: Vec<HistoryEntry> = history
+                .iter()
+                .map(|h| HistoryEntry {
+                    iteration: h.iteration,
+                    description: h.description.clone(),
+                    train_passed: h.train_passed,
+                    train_total: h.train_total,
+                    train_results: h.train_results.clone(),
+                })
+                .collect();
+
+            write_log_line(&improve_log, &format!(
+                "IMPROVE_START iteration={} model={} skill={}",
+                iteration, model, skill_info.name
+            ));
+
+            let candidate = match improve::improve_description(
+                &skill_info.name,
+                &skill_info.content,
+                &current_description,
+                &accepted_train_eval,
+                &blinded_history,
+                model,
+                api_key.expose(),
+                accepted_test_eval.as_ref(),
+            )
+            .await
+            {
+                Ok(d) => {
+                    write_log_line(&improve_log, &format!(
+                        "IMPROVE_OK iteration={} chars={} description=\"{}\"",
+                        iteration, d.len(),
+                        &d[..d.len().min(80)]
+                    ));
+                    d
+                }
+                Err(e) => {
+                    write_log_line(&improve_log, &format!(
+                        "IMPROVE_FAIL iteration={} error={}", iteration, e
+                    ));
+                    return Err(e);
+                }
+            };
+            log::info!(
+                "[run_loop] iteration {} candidate ({} chars): \"{}\"",
+                iteration,
+                candidate.len(),
+                &candidate[..candidate.len().min(80)]
+            );
+
+            // ── Write candidate to sandbox and eval to verify ─────────────────
+            let sandbox_root = eval::eval_sandbox_root(workspace_path);
+            if let Err(e) = eval::write_sandbox_skill_md(
+                &sandbox_root,
+                plugin_slug,
+                skill_slug,
+                &skill_info.content,
+                &candidate,
+            ) {
+                write_log_line(&eval_log, &format!("SANDBOX_WRITE_FAIL iteration={} error={}", iteration, e));
                 return Err(e);
             }
-        }
+            write_log_line(&eval_log, &format!("SANDBOX_WRITE_OK iteration={}", iteration));
 
-        log::info!(
-            "[run_loop] new description ({} chars): \"{}\"",
-            current_description.len(),
-            &current_description[..current_description.len().min(80)]
-        );
+            let all_results = eval::run_eval(
+                &all_queries,
+                skill_slug,
+                plugin_slug,
+                &candidate,
+                workspace_path,
+                model,
+                api_key,
+                app,
+                &pool,
+                NUM_WORKERS,
+                TIMEOUT_SECS,
+                RUNS_PER_QUERY,
+                TRIGGER_THRESHOLD,
+                &cancel,
+                log_dir,
+            )
+            .await?;
+
+            // Split results by train/test
+            let train_results: Vec<_> = all_results
+                .results
+                .iter()
+                .filter(|r| train_query_set.contains(&r.query))
+                .cloned()
+                .collect();
+            let test_results: Vec<_> = all_results
+                .results
+                .iter()
+                .filter(|r| !train_query_set.contains(&r.query))
+                .cloned()
+                .collect();
+
+            let train_passed = train_results.iter().filter(|r| r.pass).count();
+            let train_total = train_results.len();
+            let test_passed = test_results.iter().filter(|r| r.pass).count();
+            let test_total = test_results.len();
+
+            // ── Gate: accept candidate only if train score strictly improved ──
+            let prev_best = best_train_passed;
+            if train_passed > best_train_passed {
+                best_train_passed = train_passed;
+                current_description = candidate.clone();
+                accepted_train_eval = EvalResults {
+                    results: train_results.clone(),
+                    summary: eval::EvalSummary {
+                        total: train_total,
+                        passed: train_passed,
+                        failed: train_total - train_passed,
+                    },
+                };
+                accepted_test_eval = if !test_set.is_empty() {
+                    Some(EvalResults {
+                        results: test_results.clone(),
+                        summary: eval::EvalSummary {
+                            total: test_total,
+                            passed: test_passed,
+                            failed: test_total - test_passed,
+                        },
+                    })
+                } else {
+                    None
+                };
+                write_log_line(&improve_log, &format!(
+                    "CANDIDATE_ACCEPTED iteration={} train={}/{} prev_best={}",
+                    iteration, train_passed, train_total, prev_best
+                ));
+                log::info!(
+                    "[run_loop] candidate accepted: train={}/{} (prev best={})",
+                    train_passed, train_total, prev_best
+                );
+            } else {
+                write_log_line(&improve_log, &format!(
+                    "CANDIDATE_REJECTED iteration={} train={}/{} best={}",
+                    iteration, train_passed, train_total, best_train_passed
+                ));
+                log::info!(
+                    "[run_loop] candidate rejected: train={}/{} did not exceed best={}",
+                    train_passed, train_total, best_train_passed
+                );
+            }
+
+            // Record candidate (with its scores) regardless of acceptance
+            history.push(IterationRecord {
+                iteration,
+                description: candidate.clone(),
+                train_passed,
+                train_total,
+                train_results: train_results.clone(),
+                test_passed: if !test_set.is_empty() { Some(test_passed) } else { None },
+                test_total: if !test_set.is_empty() { Some(test_total) } else { None },
+            });
+
+            // Emit progress
+            let progress_payload = serde_json::json!({
+                "type": "progress",
+                "iteration": iteration,
+                "description": candidate,
+                "train_passed": train_passed,
+                "train_total": train_total,
+                "test_passed": if !test_set.is_empty() { Some(test_passed) } else { None },
+                "test_total": if !test_set.is_empty() { Some(test_total) } else { None },
+            });
+            if let Err(e) = app.emit("description:progress", &progress_payload) {
+                log::debug!("[run_loop] emit error: {}", e);
+            }
+
+            log::info!(
+                "[run_loop] iteration {} scores: train={}/{} test={}/{}",
+                iteration,
+                train_passed,
+                train_total,
+                test_passed,
+                test_total
+            );
+            write_log_line(&eval_log, &format!(
+                "EVAL_COMPLETE iteration={} train={}/{} test={}/{}",
+                iteration, train_passed, train_total, test_passed, test_total
+            ));
+
+            // Early exit if all train pass
+            if train_total > 0 && train_passed == train_total {
+                exit_reason = format!("all_passed (iteration {})", iteration);
+                write_log_line(&loop_log, &format!("EARLY_EXIT reason={}", exit_reason));
+                break;
+            }
+
+            // Last iteration
+            if iteration == MAX_ITERATIONS {
+                exit_reason = format!("max_iterations ({})", MAX_ITERATIONS);
+                write_log_line(&loop_log, &format!("MAX_ITERATIONS_REACHED reason={}", exit_reason));
+                break;
+            }
+
+            if cancel.load(Ordering::SeqCst) {
+                write_log_line(&loop_log, "CANCELLED end of iteration");
+                return Err("Optimization cancelled".to_string());
+            }
+        }
     }
 
     // Select best
