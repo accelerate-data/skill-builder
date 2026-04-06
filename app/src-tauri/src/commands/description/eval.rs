@@ -37,48 +37,48 @@ pub struct EvalResults {
 
 // ─── Eval sandbox helpers ───────────────────────────────────────────────────
 
-/// Root of the eval sandbox:
-/// `{workspace}/description-optimization/eval-sandbox/`
-pub(super) fn eval_sandbox_root(workspace_path: &Path) -> PathBuf {
+/// Root for eval command files:
+/// `{workspace}/description-optimization/eval-commands/`
+pub(super) fn eval_commands_root(workspace_path: &Path) -> PathBuf {
     workspace_path
         .join("description-optimization")
-        .join("eval-sandbox")
+        .join("eval-commands")
 }
 
-/// Plugin directory inside the eval sandbox (sidecar discovers here):
-/// `{sandbox}/.claude/plugins/{plugin_slug}/`
-fn sandbox_plugin_dir(sandbox_root: &Path, plugin_slug: &str) -> PathBuf {
-    sandbox_root
-        .join(".claude")
-        .join("plugins")
-        .join(plugin_slug)
-}
-
-/// Write the candidate description into the sandboxed SKILL.md for a skill.
+/// Write a temporary slash command file for a single eval run.
 ///
-/// `original_content` is the full SKILL.md content; only the `description:`
-/// frontmatter field is replaced. Directory is created if absent.
-pub fn write_sandbox_skill_md(
-    sandbox_root: &Path,
-    plugin_slug: &str,
+/// Creates `{eval_commands_root}/.claude/commands/{temp_cmd_name}.md` with the
+/// candidate description in the YAML frontmatter. Returns the path so the
+/// caller can delete it after the run completes.
+fn write_eval_command_file(
+    eval_cmds_root: &Path,
+    temp_cmd_name: &str,
     skill_name: &str,
-    original_content: &str,
     description: &str,
-) -> Result<(), String> {
-    let skill_dir = sandbox_plugin_dir(sandbox_root, plugin_slug).join(skill_name);
-    std::fs::create_dir_all(&skill_dir)
-        .map_err(|e| format!("Failed to create eval sandbox dir: {}", e))?;
-    let updated =
-        crate::commands::description::update_skill_description(original_content, description)?;
-    std::fs::write(skill_dir.join("SKILL.md"), &updated)
-        .map_err(|e| format!("Failed to write sandboxed SKILL.md: {}", e))?;
+) -> Result<PathBuf, String> {
+    let cmd_dir = eval_cmds_root.join(".claude").join("commands");
+    std::fs::create_dir_all(&cmd_dir)
+        .map_err(|e| format!("Failed to create eval commands dir: {}", e))?;
+
+    // Indent each line for YAML block scalar
+    let indented = description
+        .lines()
+        .map(|line| format!("  {}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let content = format!("---\ndescription: |\n{}\n---\n\n# {}\n", indented, skill_name);
+
+    let cmd_file = cmd_dir.join(format!("{}.md", temp_cmd_name));
+    std::fs::write(&cmd_file, &content)
+        .map_err(|e| format!("Failed to write eval command file: {}", e))?;
+
     log::debug!(
-        "[eval] Wrote sandbox SKILL.md: plugin={} skill={} desc_len={}",
-        plugin_slug,
-        skill_name,
+        "[eval] Wrote eval command file: {} desc_len={}",
+        cmd_file.display(),
         description.len()
     );
-    Ok(())
+    Ok(cmd_file)
 }
 
 // ─── Trigger detection ───────────────────────────────────────────────────────
@@ -153,8 +153,27 @@ async fn run_single_eval_query(
     worker_idx: usize,
     timeout_secs: u64,
     transcript_log_dir: &Path,
+    description: &str,
 ) -> bool {
     let agent_id = format!("eval-{}-{}", plugin_slug, uuid::Uuid::new_v4());
+
+    // Write a unique temp command file so the CLI routing engine presents the
+    // candidate description to Claude exactly as production routing does.
+    let eval_cmds_root = eval_commands_root(workspace_path);
+    let short_id = &uuid::Uuid::new_v4().to_string().replace('-', "")[..8];
+    let temp_cmd_name = format!("{}-{}", skill_name, short_id);
+    let cmd_file_path = match write_eval_command_file(
+        &eval_cmds_root,
+        &temp_cmd_name,
+        skill_name,
+        description,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            log::warn!("[eval] failed to write command file: {}", e);
+            return false;
+        }
+    };
 
     // One-shot channel: delivers `true` on Skill trigger or `false` on exit/timeout.
     let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
@@ -197,15 +216,15 @@ async fn run_single_eval_query(
     });
 
     // ── Build sidecar config ─────────────────────────────────────────────
-    let sandbox_root = eval_sandbox_root(workspace_path);
-    // Forward-slash paths required by the Node.js sidecar on Windows
-    let sandbox_root_str = sandbox_root.to_string_lossy().replace('\\', "/");
+    // Forward-slash paths required by the Node.js sidecar on Windows.
+    // workspace_root_dir points at eval-commands/ so the CLI finds .claude/commands/.
+    let eval_cmds_root_str = eval_cmds_root.to_string_lossy().replace('\\', "/");
 
     // Resolve SDK cli.js so the sidecar can spawn Claude Code agents.
     // Must be done here (not in spawn_sidecar) because we call pool.send_request directly.
     let sdk_cli_path = crate::agents::sidecar::resolve_sdk_cli_path_public(app).ok();
 
-    // SDK cwd: use a stable eval-workspace subdirectory (not the sandbox itself)
+    // SDK cwd: use a stable eval-workspace subdirectory
     let eval_ws_dir = workspace_path
         .join("description-optimization")
         .join("eval-workspace");
@@ -219,7 +238,7 @@ async fn run_single_eval_query(
         system_prompt: None,
         model: Some(model.to_string()),
         api_key,
-        workspace_root_dir: sandbox_root_str,
+        workspace_root_dir: eval_cmds_root_str,
         workspace_skill_dir: eval_ws_dir_str,
         allowed_tools: None,
         max_turns: Some(3),
@@ -232,9 +251,9 @@ async fn run_single_eval_query(
         prompt_suggestions: None,
         path_to_claude_code_executable: sdk_cli_path,
         agent_name: None,
-        required_plugins: Some(vec![plugin_slug.to_string()]),
+        required_plugins: None,
         // Empty settingSources: suppress workspace project skills so only the
-        // sandboxed plugin is loaded.
+        // temp command file is loaded.
         setting_sources: Some(vec![]),
         conversation_history: None,
         skill_name: Some(skill_name.to_string()),
@@ -261,6 +280,7 @@ async fn run_single_eval_query(
         log::warn!("[eval] send_request failed for '{}': {}", agent_id, e);
         app.unlisten(message_listener);
         app.unlisten(exit_listener);
+        let _ = std::fs::remove_file(&cmd_file_path);
         return false;
     }
 
@@ -269,6 +289,9 @@ async fn run_single_eval_query(
 
     app.unlisten(message_listener);
     app.unlisten(exit_listener);
+
+    // Always clean up the temp command file regardless of outcome
+    let _ = std::fs::remove_file(&cmd_file_path);
 
     match result {
         Ok(Ok(triggered)) => triggered,
@@ -345,6 +368,7 @@ pub async fn run_eval(
             let pool_clone = pool.clone();
             let tld = transcript_log_dir.to_path_buf();
             let cancel_flag = cancel.clone();
+            let desc = description.to_string();
 
             set.spawn(async move {
                 let _permit = permit;
@@ -363,6 +387,7 @@ pub async fn run_eval(
                     worker_idx,
                     timeout_secs,
                     &tld,
+                    &desc,
                 )
                 .await;
                 (query, triggered)
@@ -506,27 +531,29 @@ mod tests {
     }
 
     #[test]
-    fn test_write_sandbox_skill_md_creates_file() {
+    fn test_write_eval_command_file_creates_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let sandbox = tmp.path();
-        let original = "---\nname: My Skill\ndescription: old\nauthor: dev\n---\n# Body\n";
-        write_sandbox_skill_md(sandbox, "my-plugin", "my-skill", original, "new description")
-            .unwrap();
-        let skill_md = sandbox
-            .join(".claude")
-            .join("plugins")
-            .join("my-plugin")
-            .join("my-skill")
-            .join("SKILL.md");
-        assert!(skill_md.exists(), "SKILL.md should be created in sandbox");
-        let content = std::fs::read_to_string(&skill_md).unwrap();
+        let eval_cmds_root = tmp.path();
+        let cmd_file = write_eval_command_file(
+            eval_cmds_root,
+            "my-skill-abc12345",
+            "My Skill",
+            "Use when working on my skill tasks",
+        )
+        .unwrap();
+        assert!(cmd_file.exists(), "Command file should be created");
+        let content = std::fs::read_to_string(&cmd_file).unwrap();
         assert!(
-            content.contains("new description"),
-            "Sandbox SKILL.md should contain new description"
+            content.contains("Use when working on my skill tasks"),
+            "Command file should contain description"
         );
         assert!(
-            !content.contains("description: old"),
-            "Old description should be replaced"
+            content.contains("description: |"),
+            "Description should use block scalar"
+        );
+        assert!(
+            content.contains("# My Skill"),
+            "Command file should contain skill name heading"
         );
     }
 

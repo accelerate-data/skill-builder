@@ -250,21 +250,6 @@ pub async fn run_loop(
         &current_description[..current_description.len().min(80)]
     ));
 
-    // Use `skill_slug` (the filesystem directory name) — not `skill_info.name`
-    // (the YAML display name) — so the sandbox path matches what the sidecar resolves.
-    let sandbox_root = eval::eval_sandbox_root(workspace_path);
-    if let Err(e) = eval::write_sandbox_skill_md(
-        &sandbox_root,
-        plugin_slug,
-        skill_slug,
-        &skill_info.content,
-        &current_description,
-    ) {
-        write_log_line(&eval_log, &format!("SANDBOX_WRITE_FAIL iteration=0 error={}", e));
-        return Err(e);
-    }
-    write_log_line(&eval_log, "SANDBOX_WRITE_OK iteration=0");
-
     let baseline_all = eval::run_eval(
         &all_queries,
         skill_slug,
@@ -356,10 +341,14 @@ pub async fn run_loop(
     } else {
         None
     };
+    let mut best_test_passed: usize = baseline_test_passed;
+    // Fallback for when there is no test set (should not happen with enforced minimum)
     let mut best_train_passed: usize = baseline_train_passed;
 
-    // Early exit if baseline is already perfect
-    if baseline_train_total > 0 && baseline_train_passed == baseline_train_total {
+    // Early exit if baseline is already perfect on test set
+    let early_exit_total = if !test_set.is_empty() { baseline_test_total } else { baseline_train_total };
+    let early_exit_passed = if !test_set.is_empty() { baseline_test_passed } else { baseline_train_passed };
+    if early_exit_total > 0 && early_exit_passed == early_exit_total {
         exit_reason = "all_passed_baseline".to_string();
         write_log_line(&loop_log, &format!("EARLY_EXIT reason={}", exit_reason));
     }
@@ -434,20 +423,7 @@ pub async fn run_loop(
                 &candidate[..candidate.len().min(80)]
             );
 
-            // ── Write candidate to sandbox and eval to verify ─────────────────
-            let sandbox_root = eval::eval_sandbox_root(workspace_path);
-            if let Err(e) = eval::write_sandbox_skill_md(
-                &sandbox_root,
-                plugin_slug,
-                skill_slug,
-                &skill_info.content,
-                &candidate,
-            ) {
-                write_log_line(&eval_log, &format!("SANDBOX_WRITE_FAIL iteration={} error={}", iteration, e));
-                return Err(e);
-            }
-            write_log_line(&eval_log, &format!("SANDBOX_WRITE_OK iteration={}", iteration));
-
+            // ── Eval candidate ─────────────────────────────────────────────────
             let all_results = eval::run_eval(
                 &all_queries,
                 skill_slug,
@@ -486,10 +462,21 @@ pub async fn run_loop(
             let test_passed = test_results.iter().filter(|r| r.pass).count();
             let test_total = test_results.len();
 
-            // ── Gate: accept candidate only if train score strictly improved ──
-            let prev_best = best_train_passed;
-            if train_passed > best_train_passed {
-                best_train_passed = train_passed;
+            // ── Gate: accept candidate only if test score strictly improved ──
+            // When no test set is present, fall back to train score.
+            let gate_passed = if !test_set.is_empty() {
+                test_passed > best_test_passed
+            } else {
+                train_passed > best_train_passed
+            };
+            let prev_best_test = best_test_passed;
+            let prev_best_train = best_train_passed;
+            if gate_passed {
+                if !test_set.is_empty() {
+                    best_test_passed = test_passed;
+                } else {
+                    best_train_passed = train_passed;
+                }
                 current_description = candidate.clone();
                 accepted_train_eval = EvalResults {
                     results: train_results.clone(),
@@ -512,21 +499,22 @@ pub async fn run_loop(
                     None
                 };
                 write_log_line(&improve_log, &format!(
-                    "CANDIDATE_ACCEPTED iteration={} train={}/{} prev_best={}",
-                    iteration, train_passed, train_total, prev_best
+                    "CANDIDATE_ACCEPTED iteration={} train={}/{} test={}/{} prev_best_test={}",
+                    iteration, train_passed, train_total, test_passed, test_total, prev_best_test
                 ));
                 log::info!(
-                    "[run_loop] candidate accepted: train={}/{} (prev best={})",
-                    train_passed, train_total, prev_best
+                    "[run_loop] candidate accepted: test={}/{} (prev best={})",
+                    test_passed, test_total, prev_best_test
                 );
             } else {
                 write_log_line(&improve_log, &format!(
-                    "CANDIDATE_REJECTED iteration={} train={}/{} best={}",
-                    iteration, train_passed, train_total, best_train_passed
+                    "CANDIDATE_REJECTED iteration={} train={}/{} test={}/{} best_test={} best_train={}",
+                    iteration, train_passed, train_total, test_passed, test_total,
+                    best_test_passed, prev_best_train
                 ));
                 log::info!(
-                    "[run_loop] candidate rejected: train={}/{} did not exceed best={}",
-                    train_passed, train_total, best_train_passed
+                    "[run_loop] candidate rejected: test={}/{} did not exceed best={}",
+                    test_passed, test_total, best_test_passed
                 );
             }
 
@@ -568,8 +556,10 @@ pub async fn run_loop(
                 iteration, train_passed, train_total, test_passed, test_total
             ));
 
-            // Early exit if all train pass
-            if train_total > 0 && train_passed == train_total {
+            // Early exit if all test queries pass (or all train if no test set)
+            let exit_total = if !test_set.is_empty() { test_total } else { train_total };
+            let exit_passed = if !test_set.is_empty() { test_passed } else { train_passed };
+            if exit_total > 0 && exit_passed == exit_total {
                 exit_reason = format!("all_passed (iteration {})", iteration);
                 write_log_line(&loop_log, &format!("EARLY_EXIT reason={}", exit_reason));
                 break;
