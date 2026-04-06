@@ -217,19 +217,15 @@ async fn run_single_eval_query(
 
     // ── Build sidecar config ─────────────────────────────────────────────
     // Forward-slash paths required by the Node.js sidecar on Windows.
-    // workspace_root_dir points at eval-commands/ so the CLI finds .claude/commands/.
+    // The SDK uses workspaceSkillDir as the cwd — it auto-discovers .claude/commands/
+    // from there. Both workspace_root_dir and workspace_skill_dir must point to
+    // eval_commands_root so the SDK finds the temp command file.
     let eval_cmds_root_str = eval_cmds_root.to_string_lossy().replace('\\', "/");
+    let _ = std::fs::create_dir_all(&eval_cmds_root);
 
     // Resolve SDK cli.js so the sidecar can spawn Claude Code agents.
     // Must be done here (not in spawn_sidecar) because we call pool.send_request directly.
     let sdk_cli_path = crate::agents::sidecar::resolve_sdk_cli_path_public(app).ok();
-
-    // SDK cwd: use a stable eval-workspace subdirectory
-    let eval_ws_dir = workspace_path
-        .join("description-optimization")
-        .join("eval-workspace");
-    let _ = std::fs::create_dir_all(&eval_ws_dir);
-    let eval_ws_dir_str = eval_ws_dir.to_string_lossy().replace('\\', "/");
 
     let transcript_dir_str = transcript_log_dir.to_string_lossy().into_owned();
 
@@ -238,8 +234,10 @@ async fn run_single_eval_query(
         system_prompt: None,
         model: Some(model.to_string()),
         api_key,
-        workspace_root_dir: eval_cmds_root_str,
-        workspace_skill_dir: eval_ws_dir_str,
+        workspace_root_dir: eval_cmds_root_str.clone(),
+        // workspace_skill_dir is the cwd the SDK passes to the Claude Code CLI.
+        // The CLI reads .claude/commands/ from this directory.
+        workspace_skill_dir: eval_cmds_root_str,
         allowed_tools: None,
         max_turns: Some(3),
         permission_mode: Some("bypassPermissions".to_string()),
