@@ -28,7 +28,7 @@ Adapter files must not duplicate canonical policy unless they are adding agent-s
 | Database | SQLite (`rusqlite` bundled) |
 | Rust errors | `thiserror` |
 
-**Agent runtime:** No hot-reload — restart `npm run dev` after editing `app/sidecar/`. Requires Node.js 18+. See `.claude/rules/agent-sidecar.md` when working in `app/sidecar/`.
+**Agent runtime:** No hot-reload — restart `npm run dev` after editing `app/sidecar/`. Requires Node.js 18+.
 
 **Key directories and paths:** See `repo-map.json` → `key_directories` and `notes_for_agents` (workspace path, DB location, module layout). Full storage layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md).
 
@@ -70,10 +70,6 @@ Read these before starting any non-trivial task:
 
 Read `app/plugin-paths.json` — it defines the canonical layout for all skill file paths.
 
-### Deployment-Specific Operator Values
-
-_Add deployment- or operator-specific facts here (e.g. environment variables, infra config, service URLs)._
-
 ## Testing
 
 ### When to write tests
@@ -93,7 +89,7 @@ Run these automatically before reporting completion when files match:
 
 | Changed files | Run |
 |---|---|
-| `agent-sources/agents/*.md` | `cd app && npm run test:agents:structural` |
+| `agent-sources/plugins/**/agents/*.md` | `cd app && npm run test:agents:structural` |
 | `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
 | `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` |
 | `app/sidecar/mock-templates/**` | `cd app && npm run test:unit` |
@@ -110,7 +106,12 @@ For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct car
 - **PR title format:** `VU-XXX: short description`
 - **PR body link:** `Fixes VU-XXX`
 - **Linear project:** All issues created for this repository must be created under **Skill Builder**.
-- **Worktrees:** `../worktrees/<branchName>` relative to repo root. Full rules: `.claude/rules/git-workflow.md`.
+- **Worktrees:** `../worktrees/<branchName>` relative to repo root, preserving the full branch name including the `feature/` prefix. Pre-create the parent directory before adding:
+
+  ```bash
+  mkdir -p ../worktrees/feature
+  git worktree add ../worktrees/feature/<branch-name> <branch-name>
+  ```
 
 **Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/` · `cd app && npm run test:unit` when changing event types in `app/src/lib/` or `app/sidecar/`.
 
@@ -134,8 +135,8 @@ Use these repo-local skills when requests match:
 - `.claude/skills/implement-linear-issue/SKILL.md` — implement/fix/work on a Linear issue (e.g. `VU-123`)
 - `.claude/skills/close-linear-issue/SKILL.md` — close/complete/ship/merge a Linear issue
 - `.claude/skills/tauri/SKILL.md` — Tauri-specific implementation or debugging
-- `.claude/skills/shadcn-ui/SKILL.md` — shadcn/ui component work
-- `.claude/skills/front-end-design/SKILL.md` — design-first UI workflow for screens and components
+- `.claude/skills/shadcn-ui/SKILL.md` — shadcn/ui component work (see also `front-end-design` for design-first flows)
+- `.claude/skills/front-end-design/SKILL.md` — design-first UI workflow for screens and components (see also `shadcn-ui` for component implementation)
 - `.claude/skills/explaining-code/SKILL.md` — explain code with diagrams and analogies
 - `.claude/skills/playwright/SKILL.md` — browser automation via playwright-cli (navigation, forms, screenshots, data extraction)
 
@@ -150,4 +151,4 @@ Every new feature must include logging. Canonical logging conventions and log-le
 - **Windows compatibility:** Path separators, CRLF line endings, env-var prefix syntax, and Rust toolchain selection are recurring sources of Windows CI failures. Follow `.claude/rules/windows-compat.md` before writing path assertions, regex, `package.json` scripts, or Rust CI config.
 - **Linear Markdown — no double-escaping:** The `description` and `body` fields in `save_issue`/`save_comment` accept raw Markdown. Write literal newlines, `*`, `-`, `[ ]` etc. directly. Never escape them (`\\n`, `\\*`, `\\[X\\]`) — double-escaped descriptions render as garbled text in Linear.
 - **Business logic:** Use the data/calculation/action split across all layers (frontend, Rust, sidecar) — calculations must be pure functions, actions own all side effects. Full rules: `.claude/rules/coding-conventions.md`.
-- **State:** Component-local UI state must stay in `useState`, not Zustand. Use Zustand only for shared, cross-component, or navigation-persistent state. Full rules: `.claude/rules/state-management.md`.
+- **State:** Component-local UI state must stay in `useState`, not Zustand. Use Zustand only for shared, cross-component, or navigation-persistent state. Full rules: `.claude/rules/coding-conventions.md`.

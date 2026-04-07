@@ -9,15 +9,11 @@ description: |
 
 Merge a PR, move related Linear issues to Done, and clean up branches/worktrees safely.
 
-## Codex Execution Mode
-
-See `../../rules/codex-execution-policy.md`.
-
 ## Tool Contract
 
 Use these exact tools/commands:
 
-- Linear: `mcp__linear__get_issue`, `mcp__linear__list_issues`, `mcp__linear__save_issue`, `mcp__linear__create_comment`
+- Linear: `mcp__linear__get_issue`, `mcp__linear__list_issues`, `mcp__linear__save_issue`, `mcp__linear__save_comment`
 - GitHub CLI: `gh pr list`, `gh pr view`, `gh pr checks`, `gh pr merge`, `gh pr edit`
 - Git: `git worktree remove`, `git branch -D`, `git push origin --delete`, `git pull`
 
@@ -50,7 +46,6 @@ Before merge:
 
 - Use temp markdown files with `gh pr edit --body-file` for long PR updates.
 - Never paste long command output into PR/Linear comments.
-- **No double-escaping** (see AGENTS.md Gotchas): `description`/`body` fields accept raw Markdown — write literal newlines and markdown syntax directly.
 
 ## Identify
 

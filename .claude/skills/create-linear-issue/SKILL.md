@@ -9,10 +9,6 @@ description: |
 
 Turn a short product thought into a clear, product-level Linear issue.
 
-## Codex Execution Mode
-
-See `../../rules/codex-execution-policy.md`.
-
 ## Tool Contract
 
 Use these exact tools:
@@ -25,7 +21,7 @@ Use these exact tools:
 - `mcp__linear__list_cycles`: cycle discovery for the team
 - `mcp__linear__list_issue_labels`: label selection
 - `mcp__linear__save_issue`: create/update issue(s)
-- `mcp__linear__create_comment`: optional rationale notes on parent
+- `mcp__linear__save_comment`: optional rationale notes on parent
 
 Required fields:
 
@@ -139,4 +135,3 @@ Before drafting or creating an issue:
 
 - Never inline long command/test output into Linear issue fields.
 - Keep Linear description concise and product-facing.
-- **No double-escaping** (see AGENTS.md Gotchas): `description`/`body` fields accept raw Markdown — write literal newlines and markdown syntax directly.
