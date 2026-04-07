@@ -16,6 +16,7 @@ import { resolveModelId } from "@/lib/models";
 import { joinPath } from "@/lib/path-utils";
 import { parseClarifications } from "@/lib/clarifications-types";
 import { buildGateFeedbackNotes } from "@/lib/gate-feedback";
+import { toast } from "@/lib/toast";
 import { workspaceSkillDir } from "@/lib/evals";
 import pluginPaths from "../../plugin-paths.json";
 
@@ -84,6 +85,7 @@ export function useWorkflowGate({
     } catch (err) {
       console.error("[workflow] Gate evaluation failed to start:", err);
       setGateLoading(false);
+      toast.warning("Answer evaluation skipped — proceeding to next step", { duration: Infinity });
       updateStepStatus(currentStep, "completed");
       advanceToNextStep();
     }
@@ -149,6 +151,7 @@ export function useWorkflowGate({
 
       if (gateDecision === "revise") {
         // Contradictions found or answers insufficient — stay on step 0 so the user can revise.
+        toast.info("Please review the feedback and revise your answers before continuing");
         updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
         // Refresh clarifications so the feedback notes are visible to the user.
         if (workspacePath) {

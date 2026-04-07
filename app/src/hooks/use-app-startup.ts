@@ -176,7 +176,6 @@ export function useAppStartup(): UseAppStartupReturn {
       if (applied.auto_cleaned > 0) {
         toast.info(
           `Cleaned up ${applied.auto_cleaned} incomplete skill${applied.auto_cleaned !== 1 ? "s" : ""}`,
-          { duration: Infinity },
         );
       }
       if (applied.orphans.length > 0) {
