@@ -9,7 +9,7 @@ Execute Linear operations directly by default using MCP tools. Use sub-agents on
 - `mcp__linear__list_projects`
 - `mcp__linear__list_issue_labels`
 - `mcp__linear__save_issue`
-- `mcp__linear__create_comment`
+- `mcp__linear__save_comment`
 
 If any required tool fails after one retry, stop and report the exact failing step.
 

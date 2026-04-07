@@ -2,7 +2,7 @@
 
 ## PR Body Template
 
-Title: `<issue-id>: short description`
+Title: `VU-XXX: short description`
 
 ```markdown
 Fixes <issue-id>
@@ -39,7 +39,7 @@ The test plan section is **checked during `/close-issue`** — unchecked items b
 - Write manual test items as concrete steps the user can follow (action → expected result).
 - Cover every user-visible behavior change — not internals.
 
-After creating the PR, update the Linear issue via `mcp__linear__save_issue` and/or `mcp__linear__create_comment` with the PR URL.
+After creating the PR, update the Linear issue via `mcp__linear__save_issue` and/or `mcp__linear__save_comment` with the PR URL.
 
 ## Worktree Preservation
 
