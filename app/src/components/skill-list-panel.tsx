@@ -31,9 +31,10 @@ import {
 } from "@/hooks/use-unified-skills";
 import type { UnifiedSkill } from "@/hooks/use-unified-skills";
 import type { SkillSummary } from "@/lib/types";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   deletePlugin,
+  exportSkillAsFile,
   getExternallyLockedSkills,
   listSkills,
   parseSkillFile,
@@ -295,6 +296,23 @@ export function SkillListPanel({
     }
   }
 
+  async function handleExportAsSkill(skill: UnifiedSkill) {
+    const destPath = await save({
+      title: "Export Skill",
+      defaultPath: `${skill.name}.skill`,
+      filters: [{ name: "Skill Package", extensions: ["skill"] }],
+    });
+    if (!destPath) return;
+    try {
+      await exportSkillAsFile(skill.name, skill.pluginSlug, destPath);
+      toast.success(`Exported "${skill.name}"`);
+    } catch (err) {
+      toast.error(`Export failed: ${err instanceof Error ? err.message : String(err)}`, {
+        duration: Infinity,
+      });
+    }
+  }
+
   return (
     <div
       className={cn(
@@ -380,6 +398,7 @@ export function SkillListPanel({
               onCreatePlugin={handleCreatePlugin}
               onMoveToPlugin={handleMoveToPlugin}
               onRemoveFromPlugin={handleRemoveFromPlugin}
+              onExport={handleExportAsSkill}
               onDeletePlugin={handleDeletePlugin}
               pluginOptions={pluginOptions}
             />

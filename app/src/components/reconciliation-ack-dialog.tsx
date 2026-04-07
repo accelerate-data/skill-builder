@@ -114,12 +114,13 @@ export default function ReconciliationAckDialog({
         </AlertDialogHeader>
 
         <ScrollArea className="max-h-[400px]">
+          <div className="w-full min-w-0">
           {notifications.length > 0 && (
             <ul className="flex flex-col gap-2 py-2">
               {notifications.map((notification, i) => (
                 <li
                   key={i}
-                  className="rounded-md border px-3 py-2 text-sm text-foreground"
+                  className="break-words rounded-md border px-3 py-2 text-sm text-foreground"
                 >
                   {notification}
                 </li>
@@ -193,6 +194,7 @@ export default function ReconciliationAckDialog({
               </ul>
             </div>
           )}
+          </div>
         </ScrollArea>
 
         <AlertDialogFooter>

@@ -310,6 +310,7 @@ pub fn run() {
             commands::skill::acquire_lock,
             commands::skill::release_lock,
             commands::skill::get_externally_locked_skills,
+            commands::skill::export_skill_as_file,
             commands::files::list_skill_files,
             commands::files::read_file,
             commands::files::write_file,
