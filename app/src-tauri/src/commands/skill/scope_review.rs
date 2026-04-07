@@ -46,7 +46,7 @@ pub async fn review_skill_scope(
             }
         };
         let model = crate::commands::workflow::resolve_model_id(
-            settings.preferred_model.as_deref().unwrap_or("sonnet"),
+            settings.preferred_model.as_deref().filter(|s| !s.is_empty()).unwrap_or("sonnet"),
         );
         let docs = crate::db::db_list_documents(&conn)
             .unwrap_or_default()
