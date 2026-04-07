@@ -114,6 +114,24 @@ export const generateSuggestions = (
   fields: opts?.fields ?? null,
 });
 
+export interface ScopeReviewSuggestion {
+  name: string
+  description: string
+}
+
+export interface ScopeReviewResult {
+  is_too_broad: boolean
+  reason: string
+  suggested_skills: ScopeReviewSuggestion[]
+}
+
+export const reviewSkillScope = (
+  skillName: string,
+  description: string,
+  purpose: string,
+  industry: string | null,
+) => invoke<ScopeReviewResult>("review_skill_scope", { skillName, description, purpose, industry })
+
 // --- Agent ---
 
 export const startAgent = (

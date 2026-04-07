@@ -20,6 +20,8 @@ import { Switch } from "@/components/ui/switch"
 import TagInput from "@/components/tag-input"
 import { GhostTextarea } from "@/components/ghost-input"
 import { Textarea } from "@/components/ui/textarea"
+import ScopeAdvisor from "@/components/scope-advisor"
+import { useScopeAdvisor } from "@/hooks/use-scope-advisor"
 import { useSettingsStore } from "@/stores/settings-store"
 import { renameSkill, updateSkillMetadata, generateSuggestions, createSkill, type FieldSuggestions } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
@@ -159,6 +161,14 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showStartWarning, setShowStartWarning] = useState(false)
+
+  const advisorState = useScopeAdvisor({
+    mode: props.mode,
+    skillName,
+    description,
+    purpose,
+  })
 
   // Ghost suggestion state
   const [descriptionSuggestion, setDescriptionSuggestion] = useState<string | null>(null)
@@ -192,6 +202,7 @@ export default function SkillDialog(props: SkillDialogProps) {
     setDescriptionSuggestion(null)
     setError(null)
     setSubmitting(false)
+    setShowStartWarning(false)
     group0VersionRef.current++
     suggestionCache.current.clear()
     if (group0DebounceRef.current) clearTimeout(group0DebounceRef.current)
@@ -356,6 +367,7 @@ export default function SkillDialog(props: SkillDialogProps) {
   const handleNameChange = (value: string) => {
     setSkillName(toKebabChars(value))
     setError(null)
+    advisorState.onFieldEdit()
   }
 
   function stepDotColor(s: number): string {
@@ -451,7 +463,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     id="description"
                     placeholder="Brief description of what this skill does (1-2 sentences)"
                     value={description}
-                    onChange={(val) => setDescription(val.slice(0, 1024))}
+                    onChange={(val) => { setDescription(val.slice(0, 1024)); advisorState.onFieldEdit() }}
                     suggestion={descriptionSuggestion}
                     onAccept={(val) => setDescription(val.slice(0, 1024))}
                     disabled={submitting}
@@ -459,6 +471,13 @@ export default function SkillDialog(props: SkillDialogProps) {
                   <p className="text-xs text-muted-foreground">
                     How Claude Code decides when to activate this skill ({description.length}/1024)
                   </p>
+                  <ScopeAdvisor
+                    advisorState={advisorState}
+                    onChipSelect={(name, desc) => {
+                      setSkillName(name)
+                      setDescription(desc)
+                    }}
+                  />
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="purpose-select">
@@ -467,7 +486,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   </Label>
                   <Select
                     value={purpose}
-                    onValueChange={(isBuilt || isImported) ? undefined : setPurpose}
+                    onValueChange={(isBuilt || isImported) ? undefined : (v) => { setPurpose(v); advisorState.onFieldEdit() }}
                     disabled={submitting || isBuilt || isImported}
                   >
                     <SelectTrigger id="purpose-select" className="w-full">
@@ -588,7 +607,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 </Button>
               </>
             )}
-            {step === 2 && (
+            {step === 2 && !showStartWarning && (
               <>
                 <Button
                   type="button"
@@ -600,11 +619,44 @@ export default function SkillDialog(props: SkillDialogProps) {
                   Back
                 </Button>
                 <Button
-                  type="submit"
+                  type="button"
                   disabled={submitting || isLocked || !canAdvanceStep1}
+                  onClick={() => {
+                    if (!isEdit && advisorState.hasPendingUncopied) {
+                      setShowStartWarning(true)
+                    } else {
+                      doSubmit()
+                    }
+                  }}
                 >
                   {submitting && <Loader2 className="size-4 animate-spin" />}
                   {submitLabel}
+                </Button>
+              </>
+            )}
+            {step === 2 && showStartWarning && (
+              <>
+                <span className="text-sm text-amber-700 dark:text-amber-400">
+                  {advisorState.suggestions.filter((_, i) => !advisorState.copiedIndices.has(i)).length} suggestion{advisorState.suggestions.filter((_, i) => !advisorState.copiedIndices.has(i)).length !== 1 ? "s" : ""} not saved.
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    advisorState.onCopyAll()
+                    doSubmit()
+                  }}
+                  disabled={submitting}
+                >
+                  Copy remaining
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => doSubmit()}
+                  disabled={submitting}
+                >
+                  {submitting && <Loader2 className="size-4 animate-spin" />}
+                  Start anyway
                 </Button>
               </>
             )}
