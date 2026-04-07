@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useRef, useCallback } from "react"
 import { useSettingsStore } from "@/stores/settings-store"
 import { reviewSkillScope } from "@/lib/tauri"
 import {
-  isShortDescription,
   formatAllSuggestionsForClipboard,
   formatSuggestionForClipboard,
   type ScopeAdvisorSuggestion,
@@ -14,6 +13,7 @@ interface UseScopeAdvisorOptions {
   skillName: string
   description: string
   purpose: string
+  contextQuestions: string
 }
 
 export interface UseScopeAdvisorReturn {
@@ -23,6 +23,7 @@ export interface UseScopeAdvisorReturn {
   copiedIndices: Set<number>
   hasPendingUncopied: boolean
   panelExpanded: boolean
+  triggerCheck: () => void
   onChipClick: (index: number) => { name: string; description: string }
   onCopyOne: (index: number) => void
   onCopyAll: () => void
@@ -35,6 +36,7 @@ export function useScopeAdvisor({
   skillName,
   description,
   purpose,
+  contextQuestions,
 }: UseScopeAdvisorOptions): UseScopeAdvisorReturn {
   const { industry } = useSettingsStore()
 
@@ -44,68 +46,35 @@ export function useScopeAdvisor({
   const [copiedIndices, setCopiedIndices] = useState<Set<number>>(new Set())
   const [panelExpanded, setPanelExpanded] = useState(false)
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const chipClickSuppressed = useRef(false)
-  const prevStatusRef = useRef<ScopeAdvisorStatus>("idle")
 
   const hasPendingUncopied =
     panelExpanded &&
     status === "too-broad" &&
     suggestions.some((_, i) => !copiedIndices.has(i))
 
-  const armDebounce = useCallback(
-    (name: string, desc: string, purp: string, ind: string | null) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(async () => {
-        if (!name || !desc || !purp) return
-        if (isShortDescription(desc)) return
-
-        setStatus("loading")
-        try {
-          const result = await reviewSkillScope(name, desc, purp, ind)
-          if (result.is_too_broad) {
-            setSuggestions(result.suggested_skills)
-            setStatus("too-broad")
-          } else {
-            setSuggestions([])
-            setStatus("focused")
-          }
-        } catch (err) {
-          console.error("[scope-advisor]", err)
-          setStatus(prevStatusRef.current)
-        }
-      }, 1500)
-    },
-    [],
-  )
-
-  useEffect(() => {
-    prevStatusRef.current = status
-  }, [status])
-
-  useEffect(() => {
+  const triggerCheck = useCallback(() => {
     if (mode === "edit") return
-    if (chipClickSuppressed.current) return
 
-    if (!skillName && !purpose) {
-      setStatus("idle")
-      return
-    }
+    console.log("[scope-advisor] triggerCheck called", { skillName, description, purpose, contextQuestions })
 
-    if (isShortDescription(description) && (skillName || purpose)) {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      setStatus("hint")
-      return
-    }
-
-    if (skillName && description && purpose) {
-      armDebounce(skillName, description, purpose, industry)
-    }
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [mode, skillName, description, purpose, industry, armDebounce])
+    setStatus("loading")
+    reviewSkillScope(skillName, description, purpose, contextQuestions || null, industry || null)
+      .then((result) => {
+        console.log("[scope-advisor] result", result)
+        if (result.is_too_broad) {
+          setSuggestions(result.suggested_skills)
+          setStatus("too-broad")
+        } else {
+          setSuggestions([])
+          setStatus("focused")
+        }
+      })
+      .catch((err) => {
+        console.error("[scope-advisor] failed", err)
+        setStatus("idle")
+      })
+  }, [mode, skillName, description, purpose, contextQuestions, industry])
 
   const onChipClick = useCallback(
     (index: number): { name: string; description: string } => {
@@ -154,6 +123,7 @@ export function useScopeAdvisor({
       copiedIndices: new Set(),
       hasPendingUncopied: false,
       panelExpanded: false,
+      triggerCheck: () => {},
       onChipClick: () => ({ name: "", description: "" }),
       onCopyOne: () => {},
       onCopyAll: () => {},
@@ -169,6 +139,7 @@ export function useScopeAdvisor({
     copiedIndices,
     hasPendingUncopied,
     panelExpanded,
+    triggerCheck,
     onChipClick,
     onCopyOne,
     onCopyAll,

@@ -36,7 +36,6 @@ const broadResult = {
 
 describe("useScopeAdvisor", () => {
   beforeEach(() => {
-    vi.useFakeTimers()
     vi.clearAllMocks()
   })
 
@@ -44,67 +43,66 @@ describe("useScopeAdvisor", () => {
     vi.useRealTimers()
   })
 
-  it("edit mode returns idle, LLM never called", () => {
+  it("edit mode returns idle, triggerCheck is a no-op", async () => {
     const { result } = renderHook(() =>
       useScopeAdvisor({
         mode: "edit",
         skillName: "sales-analysis",
         description: "First sentence. Second sentence.",
         purpose: "domain",
+        contextQuestions: "",
       }),
     )
     expect(result.current.status).toBe("idle")
-    act(() => { vi.runAllTimers() })
+    await act(async () => {
+      result.current.triggerCheck()
+      await Promise.resolve()
+    })
     expect(reviewSkillScopeMock).not.toHaveBeenCalled()
   })
 
-  it("short description with name and purpose returns hint, no LLM call", () => {
-    const { result } = renderHook(() =>
-      useScopeAdvisor({
-        mode: "create",
-        skillName: "my-skill",
-        description: "Only one sentence.",
-        purpose: "domain",
-      }),
-    )
-    act(() => { vi.runAllTimers() })
-    expect(result.current.status).toBe("hint")
-    expect(reviewSkillScopeMock).not.toHaveBeenCalled()
-  })
-
-  it("two-sentence description with all fields fires LLM after 1500ms", async () => {
+  it("triggerCheck calls reviewSkillScope with correct args including contextQuestions", async () => {
     reviewSkillScopeMock.mockResolvedValue(focusedResult)
     const { result } = renderHook(() =>
       useScopeAdvisor({
         mode: "create",
         skillName: "my-skill",
-        description: "First sentence. Second sentence.",
+        description: "Forecasts churned customers.",
         purpose: "domain",
+        contextQuestions: "What CRM is being used?",
       }),
     )
-    expect(result.current.status).toBe("idle")
 
     await act(async () => {
-      vi.advanceTimersByTime(1500)
+      result.current.triggerCheck()
       await Promise.resolve()
     })
 
-    expect(reviewSkillScopeMock).toHaveBeenCalledOnce()
+    expect(reviewSkillScopeMock).toHaveBeenCalledWith(
+      "my-skill",
+      "Forecasts churned customers.",
+      "domain",
+      "What CRM is being used?",
+      "SaaS",
+    )
   })
 
-  it("is_too_broad false sets status to focused", async () => {
+  it("triggerCheck sets status to loading then focused when is_too_broad false", async () => {
     reviewSkillScopeMock.mockResolvedValue(focusedResult)
     const { result } = renderHook(() =>
       useScopeAdvisor({
         mode: "create",
         skillName: "my-skill",
-        description: "First sentence. Second sentence.",
+        description: "Forecasts churned customers.",
         purpose: "domain",
+        contextQuestions: "",
       }),
     )
 
+    expect(result.current.status).toBe("idle")
+
     await act(async () => {
-      vi.advanceTimersByTime(1500)
+      result.current.triggerCheck()
       await Promise.resolve()
     })
 
@@ -112,19 +110,20 @@ describe("useScopeAdvisor", () => {
     expect(result.current.suggestions).toHaveLength(0)
   })
 
-  it("is_too_broad true sets status to too-broad with suggestions", async () => {
+  it("triggerCheck sets status to too-broad with suggestions when is_too_broad true", async () => {
     reviewSkillScopeMock.mockResolvedValue(broadResult)
     const { result } = renderHook(() =>
       useScopeAdvisor({
         mode: "create",
         skillName: "sales-analysis",
-        description: "First sentence. Second sentence.",
+        description: "Analyzes everything.",
         purpose: "domain",
+        contextQuestions: "",
       }),
     )
 
     await act(async () => {
-      vi.advanceTimersByTime(1500)
+      result.current.triggerCheck()
       await Promise.resolve()
     })
 
@@ -132,23 +131,51 @@ describe("useScopeAdvisor", () => {
     expect(result.current.suggestions).toHaveLength(3)
   })
 
-  it("LLM throws keeps status at idle (silent fail)", async () => {
+  it("triggerCheck on error sets status back to idle", async () => {
     reviewSkillScopeMock.mockRejectedValue(new Error("network error"))
     const { result } = renderHook(() =>
       useScopeAdvisor({
         mode: "create",
         skillName: "my-skill",
-        description: "First sentence. Second sentence.",
+        description: "Forecasts churned customers.",
         purpose: "domain",
+        contextQuestions: "",
       }),
     )
 
     await act(async () => {
-      vi.advanceTimersByTime(1500)
+      result.current.triggerCheck()
       await Promise.resolve()
     })
 
     expect(result.current.status).toBe("idle")
+  })
+
+  it("onFieldEdit after check resets state to idle", async () => {
+    reviewSkillScopeMock.mockResolvedValue(broadResult)
+    const { result } = renderHook(() =>
+      useScopeAdvisor({
+        mode: "create",
+        skillName: "sales-analysis",
+        description: "Analyzes everything.",
+        purpose: "domain",
+        contextQuestions: "",
+      }),
+    )
+
+    await act(async () => {
+      result.current.triggerCheck()
+      await Promise.resolve()
+    })
+
+    expect(result.current.status).toBe("too-broad")
+
+    act(() => { result.current.onFieldEdit() })
+
+    expect(result.current.status).toBe("idle")
+    expect(result.current.suggestions).toHaveLength(0)
+    expect(result.current.currentChipIndex).toBeNull()
+    expect(result.current.copiedIndices.size).toBe(0)
   })
 
   it("onChipClick returns correct suggestion and sets currentChipIndex", async () => {
@@ -157,13 +184,14 @@ describe("useScopeAdvisor", () => {
       useScopeAdvisor({
         mode: "create",
         skillName: "sales-analysis",
-        description: "First sentence. Second sentence.",
+        description: "Analyzes everything.",
         purpose: "domain",
+        contextQuestions: "",
       }),
     )
 
     await act(async () => {
-      vi.advanceTimersByTime(1500)
+      result.current.triggerCheck()
       await Promise.resolve()
     })
 
@@ -177,43 +205,20 @@ describe("useScopeAdvisor", () => {
     expect(reviewSkillScopeMock).toHaveBeenCalledOnce()
   })
 
-  it("after chip click, field edit re-arms debounce", async () => {
-    reviewSkillScopeMock.mockResolvedValue(broadResult)
-    const { result } = renderHook(() =>
-      useScopeAdvisor({
-        mode: "create",
-        skillName: "sales-analysis",
-        description: "First sentence. Second sentence.",
-        purpose: "domain",
-      }),
-    )
-
-    await act(async () => {
-      vi.advanceTimersByTime(1500)
-      await Promise.resolve()
-    })
-
-    act(() => { result.current.onChipClick(0) })
-
-    reviewSkillScopeMock.mockResolvedValue(focusedResult)
-    act(() => { result.current.onFieldEdit() })
-
-    expect(result.current.status).toBe("idle")
-  })
-
   it("hasPendingUncopied is true when too-broad + panelExpanded + some not copied", async () => {
     reviewSkillScopeMock.mockResolvedValue(broadResult)
     const { result } = renderHook(() =>
       useScopeAdvisor({
         mode: "create",
         skillName: "sales-analysis",
-        description: "First sentence. Second sentence.",
+        description: "Analyzes everything.",
         purpose: "domain",
+        contextQuestions: "",
       }),
     )
 
     await act(async () => {
-      vi.advanceTimersByTime(1500)
+      result.current.triggerCheck()
       await Promise.resolve()
     })
 
@@ -228,13 +233,14 @@ describe("useScopeAdvisor", () => {
       useScopeAdvisor({
         mode: "create",
         skillName: "sales-analysis",
-        description: "First sentence. Second sentence.",
+        description: "Analyzes everything.",
         purpose: "domain",
+        contextQuestions: "",
       }),
     )
 
     await act(async () => {
-      vi.advanceTimersByTime(1500)
+      result.current.triggerCheck()
       await Promise.resolve()
     })
 
@@ -250,13 +256,14 @@ describe("useScopeAdvisor", () => {
       useScopeAdvisor({
         mode: "create",
         skillName: "sales-analysis",
-        description: "First sentence. Second sentence.",
+        description: "Analyzes everything.",
         purpose: "domain",
+        contextQuestions: "",
       }),
     )
 
     await act(async () => {
-      vi.advanceTimersByTime(1500)
+      result.current.triggerCheck()
       await Promise.resolve()
     })
 
@@ -272,13 +279,14 @@ describe("useScopeAdvisor", () => {
       useScopeAdvisor({
         mode: "create",
         skillName: "sales-analysis",
-        description: "First sentence. Second sentence.",
+        description: "Analyzes everything.",
         purpose: "domain",
+        contextQuestions: "",
       }),
     )
 
     await act(async () => {
-      vi.advanceTimersByTime(1500)
+      result.current.triggerCheck()
       await Promise.resolve()
     })
 
@@ -288,5 +296,31 @@ describe("useScopeAdvisor", () => {
     for (let i = 0; i < 3; i++) {
       expect(result.current.copiedIndices.has(i)).toBe(true)
     }
+  })
+
+  it("empty contextQuestions passes null to reviewSkillScope", async () => {
+    reviewSkillScopeMock.mockResolvedValue(focusedResult)
+    const { result } = renderHook(() =>
+      useScopeAdvisor({
+        mode: "create",
+        skillName: "my-skill",
+        description: "Forecasts churned customers.",
+        purpose: "domain",
+        contextQuestions: "",
+      }),
+    )
+
+    await act(async () => {
+      result.current.triggerCheck()
+      await Promise.resolve()
+    })
+
+    expect(reviewSkillScopeMock).toHaveBeenCalledWith(
+      "my-skill",
+      "Forecasts churned customers.",
+      "domain",
+      null,
+      "SaaS",
+    )
   })
 })

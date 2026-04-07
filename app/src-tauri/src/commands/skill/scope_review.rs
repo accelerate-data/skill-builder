@@ -19,6 +19,7 @@ pub async fn review_skill_scope(
     skill_name: String,
     description: String,
     purpose: String,
+    context_questions: Option<String>,
     industry: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<ScopeReviewResult, String> {
@@ -80,6 +81,12 @@ pub async fn review_skill_scope(
         .map(|s| format!("\nIndustry context: {}", s))
         .unwrap_or_default();
 
+    let context_questions_line = context_questions
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("\n- What Claude needs to know: {}", s))
+        .unwrap_or_default();
+
     let prompt = format!(
         "You are evaluating whether a Claude skill is too broad.\n\n\
          A skill is too broad when its description touches more than one distinct domain object.\n\n\
@@ -91,7 +98,7 @@ pub async fn review_skill_scope(
          Skill to evaluate:\n\
          - Name: {skill_name}\n\
          - Description: {description}\n\
-         - Purpose: {purpose}{industry_context}{doc_context}\n\n\
+         - Purpose: {purpose}{context_questions_line}{industry_context}{doc_context}\n\n\
          When is_too_broad is true, suggest 3-5 focused replacements. All suggested names MUST use \
          the gerund pattern: verb-ing + object (kebab-case).\n\n\
          Gerund naming examples (correct vs incorrect):\n\
@@ -110,6 +117,7 @@ pub async fn review_skill_scope(
         skill_name = skill_name,
         description = description,
         purpose = purpose,
+        context_questions_line = context_questions_line,
         industry_context = industry_context,
         doc_context = doc_context,
     );

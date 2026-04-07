@@ -129,8 +129,9 @@ export const reviewSkillScope = (
   skillName: string,
   description: string,
   purpose: string,
+  contextQuestions: string | null,
   industry: string | null,
-) => invoke<ScopeReviewResult>("review_skill_scope", { skillName, description, purpose, industry })
+) => invoke<ScopeReviewResult>("review_skill_scope", { skillName, description, purpose, contextQuestions, industry })
 
 // --- Agent ---
 

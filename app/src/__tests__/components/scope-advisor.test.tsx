@@ -20,6 +20,7 @@ function makeAdvisorState(overrides: Partial<UseScopeAdvisorReturn> = {}): UseSc
     copiedIndices: new Set(),
     hasPendingUncopied: false,
     panelExpanded: false,
+    triggerCheck: vi.fn(),
     onChipClick: vi.fn().mockReturnValue({ name: "", description: "" }),
     onCopyOne: vi.fn(),
     onCopyAll: vi.fn(),
@@ -35,13 +36,6 @@ describe("ScopeAdvisor", () => {
       <ScopeAdvisor advisorState={makeAdvisorState({ status: "idle" })} onChipSelect={vi.fn()} />,
     )
     expect(container.firstChild).toBeNull()
-  })
-
-  it("hint: shows hint text", () => {
-    render(
-      <ScopeAdvisor advisorState={makeAdvisorState({ status: "hint" })} onChipSelect={vi.fn()} />,
-    )
-    expect(screen.getByText("Add more detail to your description to get scope feedback.")).toBeInTheDocument()
   })
 
   it("loading: shows checking scope text", () => {

@@ -11,19 +11,9 @@ export interface ScopeAdvisorResult {
 
 export type ScopeAdvisorStatus =
   | "idle"
-  | "hint"
   | "loading"
   | "focused"
   | "too-broad"
-
-/** Returns true if text has fewer than 2 sentences. */
-export function isShortDescription(text: string): boolean {
-  const trimmed = text.trim()
-  if (!trimmed) return true
-  const matches = trimmed.match(/[.!?](\s|$)/g)
-  const count = matches ? matches.length : 0
-  return count < 2
-}
 
 /** Format one suggestion for clipboard: "name: description" */
 export function formatSuggestionForClipboard(s: ScopeAdvisorSuggestion): string {

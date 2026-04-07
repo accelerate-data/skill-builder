@@ -22,14 +22,6 @@ export default function ScopeAdvisor({ advisorState, onChipSelect }: ScopeAdviso
 
   if (status === "idle") return null
 
-  if (status === "hint") {
-    return (
-      <p className="text-xs text-muted-foreground">
-        Add more detail to your description to get scope feedback.
-      </p>
-    )
-  }
-
   if (status === "loading") {
     return (
       <div className="flex items-center gap-2 text-xs text-muted-foreground">

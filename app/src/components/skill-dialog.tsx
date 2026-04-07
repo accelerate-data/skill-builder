@@ -168,6 +168,7 @@ export default function SkillDialog(props: SkillDialogProps) {
     skillName,
     description,
     purpose,
+    contextQuestions,
   })
 
   // Stable ref so resetForm doesn't take advisorState.onFieldEdit as a dep
@@ -373,7 +374,6 @@ export default function SkillDialog(props: SkillDialogProps) {
   const handleNameChange = (value: string) => {
     setSkillName(toKebabChars(value))
     setError(null)
-    advisorState.onFieldEdit()
   }
 
   function stepDotColor(s: number): string {
@@ -392,7 +392,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           </Button>
         </DialogTrigger>
       )}
-      <DialogContent className="sm:max-w-3xl transition-all duration-200">
+      <DialogContent className="sm:max-w-3xl transition-all duration-1024">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 max-h-[80vh]">
           <DialogHeader>
             <DialogTitle>{isEdit ? "Edit Skill" : "Create New Skill"}</DialogTitle>
@@ -403,7 +403,7 @@ export default function SkillDialog(props: SkillDialogProps) {
 
           {/* Locked banner -- shown when skill is being edited in another window */}
           {isLocked && (
-            <div className="flex items-center gap-2 rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
+            <div className="flex items-center gap-2 rounded-md border border-amber-10240/1024 bg-amber-1024 px-3 py-2 text-sm text-amber-800 dark:bg-amber-91024/20 dark:text-amber-300">
               <Lock className="size-4 shrink-0" />
               This skill is being edited in another window
             </div>
@@ -469,7 +469,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     id="description"
                     placeholder="Brief description of what this skill does (1-2 sentences)"
                     value={description}
-                    onChange={(val) => { setDescription(val.slice(0, 1024)); advisorState.onFieldEdit() }}
+                    onChange={(val) => { setDescription(val.slice(0, 1024)) }}
                     suggestion={descriptionSuggestion}
                     onAccept={(val) => setDescription(val.slice(0, 1024))}
                     disabled={submitting}
@@ -492,7 +492,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   </Label>
                   <Select
                     value={purpose}
-                    onValueChange={(isBuilt || isImported) ? undefined : (v) => { setPurpose(v); advisorState.onFieldEdit() }}
+                    onValueChange={(isBuilt || isImported) ? undefined : (v) => { setPurpose(v) }}
                     disabled={submitting || isBuilt || isImported}
                   >
                     <SelectTrigger id="purpose-select" className="w-full">
@@ -605,8 +605,14 @@ export default function SkillDialog(props: SkillDialogProps) {
                 </Button>
                 <Button
                   type="button"
-                  disabled={!canAdvanceStep1 || isLocked}
-                  onClick={() => setStep(2)}
+                  disabled={!canAdvanceStep1 || isLocked || advisorState.status === "loading"}
+                  onClick={() => {
+                    if (!isEdit && advisorState.status === "idle") {
+                      advisorState.triggerCheck()
+                    } else {
+                      setStep(2)
+                    }
+                  }}
                 >
                   Next
                   <ChevronRight className="size-4" />
