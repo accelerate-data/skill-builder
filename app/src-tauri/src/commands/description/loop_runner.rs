@@ -171,12 +171,33 @@ pub fn split_eval_set(
     (train_set, test_set)
 }
 
-// ─── Pure gate calculation ──────────────────────────────────────────────────
+// ─── Pure gate / exit / validation ─────────────────────────────────────────
 
 /// Returns true if the candidate's test score strictly exceeds the current best.
 /// Extracted as a pure function so it can be unit-tested without a live sidecar.
 pub(super) fn should_accept_candidate(test_passed: usize, best_test_passed: usize) -> bool {
     test_passed > best_test_passed
+}
+
+/// Returns true when all queries in a non-empty test set have passed.
+/// Used for early-exit detection; never triggers on an empty test set.
+pub(super) fn should_exit_early(test_passed: usize, test_total: usize) -> bool {
+    test_total > 0 && test_passed == test_total
+}
+
+const MIN_TEST_QUERIES: usize = 2;
+
+/// Validate that the test set has enough queries for the gate to be meaningful.
+/// Returns Err with a user-facing message when the constraint is not met.
+pub(super) fn validate_test_set_size(test_set: &[EvalQuery]) -> Result<(), String> {
+    if test_set.len() < MIN_TEST_QUERIES {
+        return Err(format!(
+            "Not enough queries for optimization: test set has {} (minimum {}). Add more eval queries.",
+            test_set.len(),
+            MIN_TEST_QUERIES
+        ));
+    }
+    Ok(())
 }
 
 // ─── Main loop ──────────────────────────────────────────────────────────────
@@ -221,6 +242,8 @@ pub async fn run_loop(
     } else {
         (eval_queries, vec![])
     };
+
+    validate_test_set_size(&test_set)?;
 
     log::info!(
         "[run_loop] split: {} train, {} test (holdout={})",
@@ -302,7 +325,7 @@ pub async fn run_loop(
         baseline_test_passed, baseline_test_total
     ));
 
-    if baseline_test_total > 0 && baseline_test_passed == baseline_test_total {
+    if should_exit_early(baseline_test_passed, baseline_test_total) {
         exit_reason = "all_passed_baseline".to_string();
         write_log_line(&loop_log, &format!("EARLY_EXIT reason={}", exit_reason));
     }
@@ -488,7 +511,7 @@ pub async fn run_loop(
             );
 
             // Early exit if all test queries pass
-            if test_total > 0 && test_passed == test_total {
+            if should_exit_early(test_passed, test_total) {
                 exit_reason = format!("all_passed (iteration {})", iteration);
                 write_log_line(&loop_log, &format!("EARLY_EXIT reason={}", exit_reason));
                 break;
@@ -617,6 +640,61 @@ mod tests {
         assert!(!should_accept_candidate(3, 3), "tie should reject");
         assert!(!should_accept_candidate(2, 3), "regression should reject");
         assert!(should_accept_candidate(1, 0), "any improvement from 0 should accept");
+    }
+
+    // ── AC 4: minimum test-set size guard ────────────────────────────────────
+
+    #[test]
+    fn validate_test_set_rejects_empty() {
+        assert!(validate_test_set_size(&[]).is_err());
+    }
+
+    #[test]
+    fn validate_test_set_rejects_one_query() {
+        let one = vec![EvalQuery { query: "q".to_string(), should_trigger: true }];
+        assert!(validate_test_set_size(&one).is_err());
+    }
+
+    #[test]
+    fn validate_test_set_accepts_minimum_size() {
+        let two = vec![
+            EvalQuery { query: "q1".to_string(), should_trigger: true },
+            EvalQuery { query: "q2".to_string(), should_trigger: false },
+        ];
+        assert!(validate_test_set_size(&two).is_ok());
+    }
+
+    // ── AC 5: early-exit condition ────────────────────────────────────────────
+
+    #[test]
+    fn early_exit_triggers_when_all_pass() {
+        assert!(should_exit_early(5, 5));
+        assert!(should_exit_early(1, 1));
+    }
+
+    #[test]
+    fn early_exit_does_not_trigger_when_partial_or_none() {
+        assert!(!should_exit_early(4, 5), "partial pass should not exit early");
+        assert!(!should_exit_early(0, 5), "all fail should not exit early");
+    }
+
+    #[test]
+    fn early_exit_does_not_trigger_on_empty_test_set() {
+        assert!(!should_exit_early(0, 0), "0/0 must not be treated as all-pass");
+    }
+
+    // ── AC 6: score calculation edge cases ────────────────────────────────────
+
+    #[test]
+    fn score_handling_all_pass_all_fail_partial() {
+        // all pass — gate accepts strict improvement
+        assert!(should_accept_candidate(5, 4), "all-pass scenario: 5/5 > 4/5 accepts");
+        // all fail — gate rejects (0 not > 0)
+        assert!(!should_accept_candidate(0, 0), "all-fail from baseline: 0 not > 0");
+        // partial — improvement accepted
+        assert!(should_accept_candidate(3, 2), "partial improvement accepted");
+        // partial — no improvement
+        assert!(!should_accept_candidate(2, 3), "partial regression rejected");
     }
 
     #[test]
