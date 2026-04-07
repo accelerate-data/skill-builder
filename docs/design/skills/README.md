@@ -1,6 +1,6 @@
 # Bundled Skills
 
-Three bundled skills are seeded into the workspace on startup by `seed_bundled_skills`. The orchestrating skills (`validate-skill`, `skill-creator`) follow the same pattern: receive inputs inline, spawn parallel sub-agents in one turn, return delimited sections. The calling orchestrator extracts each section and writes the files to disk.
+Two bundled skills are seeded into the workspace on startup by `seed_bundled_skills`. The orchestrating skill (`skill-creator`) follows the standard pattern: receive inputs inline, spawn parallel sub-agents in one turn, return delimited sections. The calling orchestrator extracts each section and writes the files to disk.
 
 Output file formats: [`../agent-specs/canonical-format.md`](../agent-specs/canonical-format.md).
 
@@ -15,7 +15,6 @@ Each bundled skill has a **purpose** — a slot identifier that controls which s
 | `research` (plugin-owned) | `research` |
 | `skill-creator` | `skill-building` |
 | `skill-test` | `test-context` |
-| `validate-skill` | `validate` |
 
 **Settings→Skills import**: the marketplace listing shows all skills with a `SKILL.md` regardless of `purpose` — `purpose` is not filtered here. After selecting a skill to import, the user is prompted to optionally assign a purpose.
 
@@ -49,20 +48,6 @@ agent-sources/plugins/skill-content-researcher/
           … (18 dimension specs)
     skill-content-researcher/   ← user-invocable wrapper skill
       SKILL.md                  ← uses AskUserQuestion to collect inputs
-```
-
-The `skill-content-researcher` plugin mirrors this schema and reference set under:
-
-```text
-agent-sources/plugins/skill-content-researcher/
-  skills/
-    research/                   ← embedded research skill (internal-only)
-      SKILL.md
-      references/
-        schemas.md              ← plugin-local copy; kept in sync by tests
-    skill-content-researcher/   ← user-invocable wrapper skill
-      SKILL.md                  ← uses AskUserQuestion to collect inputs
-      …
 ```
 
 ### How It Works
@@ -106,61 +91,9 @@ The app‑level contract is the JSON envelope (`status`, `dimensions_selected`, 
 
 ---
 
-## Validate Skill
-
-`validate-skill` is not a numbered workflow step in the desktop app. Invoked by:
-
-- **Plugin workflow** — coordinator spawns it via `Task(subagent_type: "skill-builder:validate-skill")` after the Generation phase
-- **Refine workflow** — `rewrite-skill.md` spawns it on `/validate` or a full `/rewrite` cycle
-
-### Structure
-
-```text
-agent-sources/skills/validate-skill/
-  SKILL.md
-  references/
-    validate-quality-spec.md      ← quality checker: 4-pass assessment
-    test-skill-spec.md            ← test evaluator: 5 test prompts + scoring
-```
-
-### How It Works
-
-**Step 1 — File inventory.** Glob `references/` in the skill output directory to collect all reference file paths.
-
-**Step 2 — Parallel evaluation.** Spawn one sub-agent per spec, passing spec content as instructions plus paths to skill files. Both launch in the same turn:
-
-- **Quality checker** (`validate-quality-spec.md`) — 4-pass assessment: coverage & structure, content quality, boundary check, prescriptiveness check. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, all reference files, and `user-context.md`.
-- **Test evaluator** (`test-skill-spec.md`) — generates 5 realistic test prompts across 6 categories, evaluates each against skill content (PASS/PARTIAL/FAIL). Reads the same files.
-
-**Step 3 — Consolidate.** Synthesize all sub-agent findings into two output sections.
-
-### Return Format
-
-```text
-=== VALIDATION LOG ===
-[full agent-validation-log.md content]
-=== TEST RESULTS ===
-[full test-skill.md content]
-```
-
-Orchestrator writes:
-
-- `=== VALIDATION LOG ===` → `{context_dir}/agent-validation-log.md`
-- `=== TEST RESULTS ===` → `{context_dir}/test-skill.md`
-
-### Scope Recommendation Guard
-
-The orchestrator checks for `scope_recommendation: true` in both `decisions.md` and `clarifications.md` before invoking the skill. If detected, it writes two stub files with `scope_recommendation: true` frontmatter and returns immediately — no skill invocation, no sub-agents.
-
-### Customization
-
-Replace by importing a custom skill into Settings→Skills and assigning purpose `validate`. Teams can customise: quality check criteria and test prompt categories and scoring rubric. Output file names and YAML frontmatter schemas are app-controlled contracts.
-
----
-
 ## Skill-Test Skill
 
-`skill-test` provides the test context and evaluation rubric for skill test runs. It contains no sub-agents and no references directory — it is a context-only skill deployed as a `.claude/skills/` directory in both temp workspaces.
+`skill-test` provides the test context and evaluation rubric for skill test runs. Deployed as a `.claude/skills/` directory in both temp workspaces.
 
 Used by:
 
@@ -172,7 +105,9 @@ Purpose slot: `test-context`. Replace by importing a custom skill into Settings�
 
 ```text
 agent-sources/skills/skill-test/
-  SKILL.md     ← two sections: Test Context + Evaluation Rubric
+  SKILL.md                             ← two sections: Test Context + Evaluation Rubric
+  references/
+    agentskills-spec.md                ← Agent SDK tool-use spec for the test environment
 ```
 
 ### Sections

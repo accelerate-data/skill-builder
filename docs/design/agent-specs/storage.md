@@ -29,15 +29,17 @@ The skills path defaults to `~/skill-builder/` but is set by the user on first l
 └── workspace/
     ├── .claude/
     │   ├── CLAUDE.md                 # Rebuilt on startup: base + active skills + user customization
-    │   ├── agents/                   # Bundled top-level agent prompts, copied from agents/ on startup
-    │   │   └── ...
     │   ├── plugins/                  # Bundled managed plugins, copied from plugins/ on startup
-    │   │   └── skill-content-researcher/
+    │   │   ├── skill-content-researcher/
+    │   │   │   └── agents/
+    │   │   │       ├── confirm-decisions.md
+    │   │   │       └── detailed-research.md
+    │   │   └── skill-creator/
     │   │       └── agents/
-    │   │           └── confirm-decisions.md
+    │   │           └── generate-skill.md
     │   └── skills/                   # Bundled and imported skills (seeded on startup)
     │       ├── research/
-    │       ├── validate-skill/
+    │       ├── skill-test/
     │       └── ...
     └── {skill-name}/                 # One directory per skill (marker + scratch)
         ├── user-context.md           # Written by Rust before each step (see below)

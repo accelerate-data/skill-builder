@@ -32,7 +32,7 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 | `acquire_lock` | Lock a skill to this instance |
 | `release_lock` | Release a skill lock |
 | `check_lock` | Check whether a skill is locked and by whom |
-| `get_locked_skills` | All currently held locks |
+| `get_externally_locked_skills` | Locks held by other app instances |
 
 ## Workflow Execution
 
@@ -146,6 +146,43 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 |---|---|
 | `check_node` | Verify Node.js availability (bundled or system) |
 | `check_startup_deps` | Check all startup dependencies |
+
+## Documents
+
+| Command | Description |
+|---|---|
+| `add_document_file` | Attach a file as a document |
+| `add_document_url` | Attach a URL as a document |
+| `add_document_folder` | Attach a folder as a document |
+| `update_document` | Update document metadata |
+| `delete_document` | Remove a document attachment |
+| `list_documents` | All document attachments with scope info |
+| `list_skills_for_documents` | Skills eligible for skill-scoped document attachment |
+
+## Plugins
+
+| Command | Description |
+|---|---|
+| `list_plugins` | All registered plugins with metadata |
+| `list_github_plugins` | Available plugins from marketplace registries |
+| `create_plugin_from_skills` | Create a plugin grouping from selected skills |
+| `delete_plugin` | Remove a plugin and its skills |
+| `move_skill_to_plugin` | Reassign a skill to a different plugin |
+| `remove_skill_from_plugin` | Remove a skill from its plugin |
+| `set_plugin_upgrade_lock` | Lock/unlock a plugin from marketplace upgrades |
+| `import_marketplace_plugin_to_library` | Import an entire marketplace plugin into the Skills Library |
+| `check_marketplace_updates` | Check for available updates to installed marketplace plugins |
+
+## Description Optimization
+
+| Command | Description |
+|---|---|
+| `start_generate_desc_evals` | Generate trigger eval queries for a skill description |
+| `load_eval_queries` | Load persisted eval queries for a skill |
+| `save_eval_queries` | Persist eval queries to disk |
+| `run_optimization_loop` | Run the Rust-native description optimization loop |
+| `cancel_description_optimization` | Stop a running optimization loop |
+| `apply_description` | Write the best candidate description to SKILL.md frontmatter |
 
 ## Feedback & Testing
 
