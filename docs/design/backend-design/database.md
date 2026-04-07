@@ -2,7 +2,7 @@
 
 SQLite database at `{app_data_dir}/skill-builder.db` (macOS: `~/Library/Application Support/com.vibedata.skill-builder/`). Single `Mutex<Connection>`, WAL mode, 5-second busy timeout.
 
-28 sequential migrations run at startup, tracked in `schema_migrations`. A startup repair pass also runs unconditionally to guard against dev builds with partially-applied migrations.
+41 sequential migrations run at startup, tracked in `schema_migrations`. A startup repair pass also runs unconditionally to guard against dev builds with partially-applied migrations.
 
 ---
 
@@ -11,20 +11,22 @@ SQLite database at `{app_data_dir}/skill-builder.db` (macOS: `~/Library/Applicat
 ```text
 Skills Library                          Settings → Skills
 ──────────────────────────────────────  ─────────────────────────
-skills  (master catalog)                workspace_skills
- ├── workflow_runs                           (standalone — no FK to skills)
- │    ├── workflow_steps
- │    └── workflow_artifacts
- ├── imported_skills
- ├── workflow_sessions
- │    └── agent_runs
- ├── skill_tags
- └── skill_locks
+plugins  (plugin registry)              workspace_skills
+ └── skills  (master catalog)               (standalone — no FK to skills)
+      ├── workflow_runs
+      │    ├── workflow_steps
+      │    └── workflow_artifacts
+      ├── imported_skills
+      ├── workflow_sessions
+      │    └── agent_runs
+      ├── skill_tags
+      └── skill_locks
 
-Supporting
-──────────
-settings
-schema_migrations
+Documents                               Supporting
+──────────────────────                  ──────────
+documents                               settings
+ └── document_skills                    schema_migrations
+                                        reconciliation_events
 ```
 
 ---
@@ -43,5 +45,9 @@ schema_migrations
 | `skill_tags` | `(skill_name, tag)` | `skill_id → skills(id)` | Many-to-many skill→tag associations, normalized to lowercase |
 | `skill_locks` | `skill_name` TEXT | `skill_id → skills(id)` | Prevents two app instances from editing the same skill simultaneously; stale locks (dead PID) are reclaimed on acquire |
 | `workspace_skills` | `skill_id` TEXT (UUID) | — | Skills deployed to `.claude/skills/` in the agent workspace. Populated via GitHub import or ZIP upload. Entirely independent of the Skills Library — no FK to `skills` |
+| `plugins` | `id` INTEGER | — | Plugin registry; one row per managed plugin (bundled or marketplace). Skills are owned by a plugin via `plugin_id → plugins(id)` |
+| `documents` | `id` INTEGER | — | Documents attached to agents (file, URL, or folder). Scope `all` applies globally; scope `skill` links via `document_skills` |
+| `document_skills` | `(document_id, skill_id)` | `document_id → documents(id)`, `skill_id → skills(id)` | Many-to-many join for skill-scoped document attachments |
+| `reconciliation_events` | `id` INTEGER | — | Audit log of startup reconciliation actions (type + details). Append-only |
 | `settings` | `key` TEXT | — | KV store; single row with key `app_settings` holds the full `AppSettings` JSON blob |
 | `schema_migrations` | `version` INTEGER | — | Migration version tracker; one row per applied migration |

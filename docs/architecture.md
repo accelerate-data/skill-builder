@@ -40,16 +40,17 @@ The engineer (frontend) never picks up a guitar. The musician (sidecar) never to
 │  │  └──────────────┘  └──────────────────┘                          │    │
 │  │                                                                   │    │
 │  │  Zustand Stores: workflow · agent · skill · refine · settings    │    │
-│  │                  imported-skills · usage                          │    │
+│  │    imported-skills · usage · agent-display-buffer · auth         │    │
+│  │    document · plugin · test                                       │    │
 │  └──────────────────────────────┬────────────────────────────────────┘    │
 │                                 │ Tauri IPC (invoke/emit)                  │
 │  ┌──────────────────────────────▼────────────────────────────────────┐    │
 │  │                 RUST BACKEND (Tauri v2)                            │    │
 │  │                                                                    │    │
 │  │  commands/        agents/              db/          reconciliation/│    │
-│  │  ├─ workflow/     ├─ sidecar_pool.rs   ├─ db.rs     └─ startup    │    │
+│  │  ├─ workflow/     ├─ sidecar_pool/     ├─ mod.rs    └─ startup    │    │
 │  │  ├─ skill/        ├─ events.rs         ├─ locks.rs    state machine│    │
-│  │  ├─ refine/       └─ sidecar.rs        └─ migrations/             │    │
+│  │  ├─ refine/       └─ sidecar.rs        └─ migrations.rs           │    │
 │  │  ├─ settings/                                                      │    │
 │  │  ├─ workspace/    SQLite (rusqlite)                                │    │
 │  │  └─ usage/        skills · workflow_runs · workflow_steps          │    │
@@ -553,12 +554,13 @@ app/src-tauri/src/
 │   │   ├── runtime.rs      Step execution engine (run_workflow_step)
 │   │   ├── evaluation.rs   State persistence (get/save/reset workflow state)
 │   │   ├── output_format.rs Deserialize agent output
-│   │   ├── packaging.rs    .zip export
 │   │   ├── step_config.rs  Per-step config (model, tools, thinking budget)
 │   │   ├── prompt.rs       Prompt construction
 │   │   ├── guards.rs       Scope + decision guards
 │   │   └── deploy.rs       Deploy bundled prompts to workspace
 │   ├── refine/             Multi-turn refine session management
+│   ├── description/        Description optimization loop (Rust-native)
+│   ├── documents/          Document attachment management
 │   ├── workspace.rs        Workspace init, reconciliation commands
 │   ├── settings.rs         App configuration
 │   ├── usage.rs            Analytics queries
@@ -572,13 +574,13 @@ app/src-tauri/src/
 │   ├── feedback.rs         GitHub issue creation
 │   └── sidecar_lifecycle.rs Graceful shutdown
 ├── agents/
-│   ├── sidecar_pool.rs     Persistent sidecar lifecycle
+│   ├── sidecar_pool/       Persistent sidecar lifecycle (pool, process, dispatch)
 │   ├── events.rs           Sidecar event routing → frontend
 │   └── sidecar.rs          SidecarConfig + spawn_sidecar()
 ├── db/
-│   ├── db.rs               Connection pool, migration runner
+│   ├── mod.rs              Connection pool, migration runner
 │   ├── locks.rs            Skill lock acquire/release/reclaim
-│   └── migrations/         Numbered SQL migrations (37+)
+│   └── migrations.rs       Numbered SQL migrations (41)
 ├── reconciliation/         Startup DB-vs-disk sync
 └── types/                  Shared Rust structs
 ```
@@ -965,8 +967,7 @@ The `PreviewPanel` in WorkspaceRefine doesn't watch `skillFiles` directly. It wa
 | `app/src-tauri/src/lib.rs` | Tauri app entry, startup sequence |
 | `app/src-tauri/src/commands/workflow/runtime.rs` | Step execution engine |
 | `app/src-tauri/src/commands/workflow/evaluation.rs` | State persistence |
-| `app/src-tauri/src/agents/sidecar_pool.rs` | Persistent sidecar pool |
-| `app/src-tauri/src/db/locks.rs` | Skill lock acquire/release |
+| `app/src-tauri/src/agents/sidecar_pool/` | Persistent sidecar pool |
 | `app/sidecar/src/persistent-mode.ts` | JSONL protocol handler |
 | `app/sidecar/src/message-processor.ts` | SDK → display items pipeline |
 | `app/sidecar/src/stream-session.ts` | Multi-turn refine session |
