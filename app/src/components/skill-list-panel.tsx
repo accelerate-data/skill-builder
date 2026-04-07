@@ -31,7 +31,7 @@ import {
 } from "@/hooks/use-unified-skills";
 import type { UnifiedSkill } from "@/hooks/use-unified-skills";
 import type { SkillSummary } from "@/lib/types";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   deletePlugin,
   exportSkillAsFile,
@@ -297,7 +297,6 @@ export function SkillListPanel({
   }
 
   async function handleExportAsSkill(skill: UnifiedSkill) {
-    const { save } = await import("@tauri-apps/plugin-dialog");
     const destPath = await save({
       title: "Export Skill",
       defaultPath: `${skill.name}.skill`,

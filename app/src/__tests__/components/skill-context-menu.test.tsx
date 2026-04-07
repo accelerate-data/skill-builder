@@ -71,6 +71,16 @@ describe("SkillContextMenu", () => {
     expect(screen.getByText("Export as .skill")).toBeInTheDocument();
   });
 
+  it("does not show Export as .skill for a marketplace skill", async () => {
+    const user = userEvent.setup();
+    renderMenu(
+      makeSkill({ source: "marketplace", isDefaultPlugin: false }),
+      makeMenuState({ isBuilder: false, showsLifecycleActions: false }),
+    );
+    await user.click(screen.getByRole("button", { name: /more actions/i }));
+    expect(screen.queryByText("Export as .skill")).not.toBeInTheDocument();
+  });
+
   it("does not show Export as .skill for an incomplete skill", async () => {
     const user = userEvent.setup();
     renderMenu(makeSkill(), makeMenuState({ isComplete: false }));

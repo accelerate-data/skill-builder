@@ -69,7 +69,11 @@ pub fn export_skill_as_file(
         .ok_or_else(|| "Skills path not configured. Set it in Settings.".to_string())?;
     let skill_dir =
         crate::skill_paths::resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
-    export_skill_as_file_inner(&skill_dir, &dest_path).map_err(|e| {
+    let result = export_skill_as_file_inner(&skill_dir, &dest_path);
+    if result.is_err() {
+        let _ = std::fs::remove_file(&dest_path);
+    }
+    result.map_err(|e| {
         log::error!("[export_skill_as_file] export failed: {}", e);
         e
     })?;

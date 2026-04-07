@@ -97,9 +97,11 @@ export function SkillContextMenu({
                 Restore version
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onSelect={() => onExport(skill)}>
-              Export as .skill
-            </DropdownMenuItem>
+            {skill.source !== "marketplace" && (
+              <DropdownMenuItem onSelect={() => onExport(skill)}>
+                Export as .skill
+              </DropdownMenuItem>
+            )}
             {skill.source !== "marketplace" && (
               <>
                 <DropdownMenuSeparator />
