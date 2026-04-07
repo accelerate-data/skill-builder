@@ -62,7 +62,7 @@ export function MoveToPluginDialog({
       onOpenChange(false)
       onMoved()
     } catch (err) {
-      toast.error(`Move failed: ${err instanceof Error ? err.message : String(err)}`)
+      toast.error(`Move failed: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
     } finally {
       setSubmitting(false)
     }

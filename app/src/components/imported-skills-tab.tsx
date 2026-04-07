@@ -73,6 +73,7 @@ export function ImportedSkillsTab() {
     } catch (err) {
       toast.error(
         `Failed to ${newLocked ? "lock" : "unlock"} plugin: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
       )
     }
   }, [fetchPlugins])
@@ -86,7 +87,7 @@ export function ImportedSkillsTab() {
     } catch (err) {
       toast.error(
         `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
-        { id: toastId },
+        { id: toastId, duration: Infinity },
       )
     }
   }, [fetchPlugins])
