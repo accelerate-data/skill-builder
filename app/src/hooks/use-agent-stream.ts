@@ -107,7 +107,6 @@ export async function initAgentStream() {
       useRefineStore.getState().setSessionExhausted(true);
       toast.info(
         "This refine session has reached its limit. Please start a new session to continue.",
-        { duration: Infinity },
       );
     }),
     reg<AgentInitErrorPayload>("agent-init-error", (event) => {

@@ -47,7 +47,7 @@ export function CreatePluginDialog({
     } catch (err) {
       toast.error(
         `Failed to create plugin: ${err instanceof Error ? err.message : String(err)}`,
-        { id: toastId },
+        { id: toastId, duration: Infinity },
       )
     } finally {
       setSubmitting(false)

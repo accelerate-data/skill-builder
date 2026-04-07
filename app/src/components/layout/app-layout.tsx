@@ -11,6 +11,7 @@ import { SetupScreen } from "@/components/setup-screen";
 import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
+import { toast } from "@/lib/toast";
 import { useSkillStore } from "@/stores/skill-store";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
@@ -88,6 +89,7 @@ export function AppLayout() {
         if (refineStore.isRunning && refineStore.sessionId) {
           cancelRefineTurn(refineStore.sessionId).catch((err) => {
             console.error("[app-layout] escape: cancel refine failed", err);
+            toast.error(`Failed to cancel agent: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
           });
           return;
         }
@@ -148,6 +150,7 @@ export function AppLayout() {
     cancelDescriptionOptimization().catch(() => {});
     useRefineStore.getState().clearSession();
     useAgentStore.getState().clearRuns();
+    toast.info("Agent cancelled — skill switched");
     setSelectedWorkspaceSkillName(pendingSkillSwitch);
     const tab = pendingSkillSwitchTabRef.current;
     setPendingSkillSwitch(null);

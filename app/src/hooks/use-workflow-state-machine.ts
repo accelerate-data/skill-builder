@@ -371,6 +371,7 @@ export function useWorkflowStateMachine({
       setActiveAgent(null);
       setRunning(false);
       updateStepStatus(step, "pending");
+      toast.info("Step cancelled");
     }
   }, [activeRunStatus, activeAgentId, extractStructuredResultPayload, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, clearInitializing]);
 

@@ -116,7 +116,6 @@ export async function showManualUpdateToasts(
     toast.info(
       `Dashboard: update available for ${upgradeableLibrary.length} skill${upgradeableLibrary.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
-        duration: Infinity,
         action: {
           label: "Upgrade",
           onClick: () => {

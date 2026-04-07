@@ -206,6 +206,10 @@ jobs:
         working-directory: app
         run: npm run test:unit
 
+      - name: Guard tests
+        working-directory: app
+        run: npm run test:guard
+
   frontend-integration:
     name: frontend-integration
     runs-on: ubuntu-latest
