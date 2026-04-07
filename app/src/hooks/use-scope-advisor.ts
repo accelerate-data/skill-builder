@@ -111,6 +111,7 @@ export function useScopeAdvisor({
     (index: number): { name: string; description: string } => {
       chipClickSuppressed.current = true
       setCurrentChipIndex(index)
+      setCopiedIndices((prev) => new Set([...prev, index]))
       const s = suggestions[index]
       return { name: s.name, description: s.description }
     },

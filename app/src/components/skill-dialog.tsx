@@ -170,6 +170,11 @@ export default function SkillDialog(props: SkillDialogProps) {
     purpose,
   })
 
+  // Stable ref so resetForm doesn't take advisorState.onFieldEdit as a dep
+  // (the edit-mode no-op is a new arrow fn each render and would cause infinite loops)
+  const advisorResetRef = useRef(advisorState.onFieldEdit)
+  advisorResetRef.current = advisorState.onFieldEdit
+
   // Ghost suggestion state
   const [descriptionSuggestion, setDescriptionSuggestion] = useState<string | null>(null)
 
@@ -203,6 +208,7 @@ export default function SkillDialog(props: SkillDialogProps) {
     setError(null)
     setSubmitting(false)
     setShowStartWarning(false)
+    advisorResetRef.current()
     group0VersionRef.current++
     suggestionCache.current.clear()
     if (group0DebounceRef.current) clearTimeout(group0DebounceRef.current)

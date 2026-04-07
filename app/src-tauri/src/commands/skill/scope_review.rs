@@ -63,11 +63,8 @@ pub async fn review_skill_scope(
         let parts: Vec<String> = documents
             .iter()
             .map(|(name, content)| {
-                let snippet = if content.len() > 2000 {
-                    &content[..2000]
-                } else {
-                    content.as_str()
-                };
+                let end = content.floor_char_boundary(2000);
+                let snippet = &content[..end];
                 format!("### {}\n{}", name, snippet)
             })
             .collect();
