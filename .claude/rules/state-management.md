@@ -1,20 +1,8 @@
-# Coding Conventions
-
-## Business Logic Split
-
-Apply the data/calculation/action split across all layers (frontend, React, Rust, sidecar):
-
-- **Data** — plain types and structs; no side effects, no computation
-- **Calculations** — pure functions; transform data without touching the outside world
-- **Actions** — own all side effects (I/O, DB writes, API calls, state mutations)
-
-Never mix calculations and actions. A function that both computes a value and writes to the DB violates this rule.
-
-## State Management
+# State Management Conventions
 
 Applies to: frontend (React + Zustand).
 
-### Component-Local State Rule
+## Component-Local State Rule
 
 Use React `useState` / `useReducer` for state that is:
 
