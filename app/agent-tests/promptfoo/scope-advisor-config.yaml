@@ -1,0 +1,99 @@
+description: Scope advisor prompt quality — LLM behavior tests for review_skill_scope.
+
+# These tests call Sonnet directly with the exact prompt the Rust command builds.
+# They verify what unit/component tests cannot: actual LLM reasoning quality.
+# Run manually: npm run test:scope-advisor:smoke
+
+prompts:
+  - "{{scenario}}"
+
+providers:
+  - file://./scope-advisor-provider.mjs
+
+tests:
+  - description: scope-advisor-too-broad
+    vars:
+      scenario: scope-advisor-too-broad
+    assert:
+      - type: contains
+        value: '"parseSuccess":true'
+      - type: contains
+        value: '"isTooBooadBoolean":true'
+      - type: contains
+        value: '"isToooBroad":true'
+      - type: contains
+        value: '"reasonNonEmpty":true'
+      - type: contains
+        value: '"suggestedSkillsArray":true'
+      - type: contains
+        value: '"suggestionCountAtLeastThree":true'
+      - type: contains
+        value: '"failures":[]'
+
+  - description: scope-advisor-focused
+    vars:
+      scenario: scope-advisor-focused
+    assert:
+      - type: contains
+        value: '"parseSuccess":true'
+      - type: contains
+        value: '"isTooBooadBoolean":true'
+      - type: contains
+        value: '"isFocused":true'
+      - type: contains
+        value: '"reasonNonEmpty":true'
+      - type: contains
+        value: '"emptyArray":true'
+      - type: contains
+        value: '"failures":[]'
+
+  - description: scope-advisor-context-override
+    vars:
+      scenario: scope-advisor-context-override
+    assert:
+      - type: contains
+        value: '"parseSuccess":true'
+      - type: contains
+        value: '"isTooBooadBoolean":true'
+      - type: contains
+        value: '"contextOverrideWorks":true'
+      - type: contains
+        value: '"reasonNonEmpty":true'
+      - type: contains
+        value: '"failures":[]'
+
+  - description: scope-advisor-gerund-names
+    vars:
+      scenario: scope-advisor-gerund-names
+    assert:
+      - type: contains
+        value: '"parseSuccess":true'
+      - type: contains
+        value: '"isToooBroad":true'
+      - type: contains
+        value: '"hasSuggestions":true'
+      - type: contains
+        value: '"allNamesGerund":true'
+      - type: contains
+        value: '"allNamesKebab":true'
+      - type: contains
+        value: '"failures":[]'
+
+  - description: scope-advisor-non-english
+    vars:
+      scenario: scope-advisor-non-english
+    assert:
+      - type: contains
+        value: '"parseSuccess":true'
+      - type: contains
+        value: '"isTooBooadBoolean":true'
+      - type: contains
+        value: '"isToooBroad":true'
+      - type: contains
+        value: '"hasSuggestions":true'
+      - type: contains
+        value: '"allNamesEnglish":true'
+      - type: contains
+        value: '"allNamesGerund":true'
+      - type: contains
+        value: '"failures":[]'
