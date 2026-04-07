@@ -152,6 +152,18 @@ pub fn save_eval_queries(
     write_eval_queries_to_file(&path, &eval_queries)
 }
 
+/// Read eval queries from `path`. Returns an empty list if the file does not exist.
+/// Pure function — no DB access. Callers resolve the target path.
+pub(crate) fn read_eval_queries_from_file(path: &Path) -> Result<Vec<EvalQuery>, String> {
+    if !path.is_file() {
+        return Ok(vec![]);
+    }
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read description-evals.json: {}", e))?;
+    serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse description-evals.json: {}", e))
+}
+
 #[tauri::command]
 pub fn load_eval_queries(
     skill_name: String,
@@ -162,13 +174,7 @@ pub fn load_eval_queries(
     let path = crate::skill_paths::workspace_skill_dir(
         Path::new(&workspace_path), &plugin_slug, &skill_name,
     ).join("description-optimization").join("description-evals.json");
-    if !path.is_file() {
-        return Ok(vec![]);
-    }
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read description-evals.json: {}", e))?;
-    serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse description-evals.json: {}", e))
+    read_eval_queries_from_file(&path)
 }
 
 /// Returns the new semver tag (e.g. "1.0.3") so the frontend can update
@@ -492,6 +498,80 @@ pub fn write_desc_opt_log(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    // ── eval query persistence (VU-924) ──────────────────────────────────
+
+    #[test]
+    fn eval_queries_round_trip() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("description-evals.json");
+        let queries = vec![
+            EvalQuery { query: "help me with X".to_string(), should_trigger: true },
+            EvalQuery { query: "do something unrelated".to_string(), should_trigger: false },
+        ];
+        write_eval_queries_to_file(&path, &queries).unwrap();
+        let loaded = read_eval_queries_from_file(&path).unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].query, "help me with X");
+        assert!(loaded[0].should_trigger);
+        assert_eq!(loaded[1].query, "do something unrelated");
+        assert!(!loaded[1].should_trigger);
+    }
+
+    #[test]
+    fn load_returns_empty_when_file_missing() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("nonexistent.json");
+        let result = read_eval_queries_from_file(&path).unwrap();
+        assert!(result.is_empty(), "Expected empty vec for missing file, got {:?}", result);
+    }
+
+    #[test]
+    fn save_overwrites_previous_queries() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("description-evals.json");
+        let first = vec![EvalQuery { query: "first".to_string(), should_trigger: true }];
+        let second = vec![
+            EvalQuery { query: "second-a".to_string(), should_trigger: false },
+            EvalQuery { query: "second-b".to_string(), should_trigger: true },
+        ];
+        write_eval_queries_to_file(&path, &first).unwrap();
+        write_eval_queries_to_file(&path, &second).unwrap();
+        let loaded = read_eval_queries_from_file(&path).unwrap();
+        assert_eq!(loaded.len(), 2, "Expected exactly 2 queries after overwrite");
+        assert_eq!(loaded[0].query, "second-a");
+        assert!(
+            !loaded.iter().any(|q| q.query == "first"),
+            "Original query should not appear after overwrite"
+        );
+    }
+
+    #[test]
+    fn atomic_write_preserves_original_on_failure() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("description-evals.json");
+
+        // Write initial valid data
+        let original = vec![EvalQuery { query: "original".to_string(), should_trigger: true }];
+        write_eval_queries_to_file(&path, &original).unwrap();
+
+        // Block the .tmp path by creating a directory with that name so the write fails
+        let tmp_path = path.with_extension("json.tmp");
+        std::fs::create_dir(&tmp_path).unwrap();
+
+        // Attempt a new write — must fail because .tmp is a directory
+        let replacement = vec![EvalQuery { query: "replacement".to_string(), should_trigger: false }];
+        let result = write_eval_queries_to_file(&path, &replacement);
+        assert!(result.is_err(), "Expected write to fail when .tmp path is a directory");
+
+        // Original file must be intact
+        let loaded = read_eval_queries_from_file(&path).unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].query, "original");
+    }
+
+    // ── update_skill_description (existing) ──────────────────────────────
 
     #[test]
     fn update_skill_description_replaces_existing() {
