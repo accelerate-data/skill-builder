@@ -11,8 +11,6 @@ on:
         description: Run sync without committing or pushing changes
         required: false
         default: "false"
-  schedule:
-    - cron: "0 6 * * *"
 
 # Deny all permissions by default; job-level blocks grant only what is needed.
 permissions: {}
