@@ -28,7 +28,7 @@ pub async fn review_skill_scope(
         purpose
     );
 
-    let (api_key, documents) = {
+    let (api_key, model, documents) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[review_skill_scope] Failed to acquire DB lock: {}", e);
             e.to_string()
@@ -44,6 +44,9 @@ pub async fn review_skill_scope(
                 return Err("API key not configured".to_string());
             }
         };
+        let model = crate::commands::workflow::resolve_model_id(
+            settings.preferred_model.as_deref().unwrap_or("sonnet"),
+        );
         let docs = crate::db::db_list_documents(&conn)
             .unwrap_or_default()
             .into_iter()
@@ -54,7 +57,7 @@ pub async fn review_skill_scope(
                     .map(|content| (d.name, content))
             })
             .collect::<Vec<_>>();
-        (key, docs)
+        (key, model, docs)
     };
 
     let doc_context = if documents.is_empty() {
@@ -125,7 +128,7 @@ pub async fn review_skill_scope(
         .header("content-type", "application/json")
         .body(
             serde_json::json!({
-                "model": "claude-sonnet-4-5",
+                "model": model,
                 "max_tokens": 1024,
                 "messages": [{"role": "user", "content": prompt}]
             })

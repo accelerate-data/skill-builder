@@ -31,7 +31,7 @@
     "test:agents": "npm run test:agents:structural && npm run test:agents:smoke",
     "test:agents:structural": "vitest run --config vitest.config.agent.ts agent-tests/agent-structure.test.ts",
     "test:agents:smoke": "mkdir -p test-results && promptfoo eval -c agent-tests/promptfoo/promptfooconfig.yaml -o test-results/promptfoo-results.json -o test-results/promptfoo-results.html",
-    "test:scope-advisor:smoke": "mkdir -p test-results && promptfoo eval -c agent-tests/promptfoo/scope-advisor-config.yaml -o test-results/scope-advisor-results.json -o test-results/scope-advisor-results.html",
+    "test:scope-advisor:smoke": "node -e \"require('fs').mkdirSync('test-results', {recursive:true})\" && promptfoo eval -c agent-tests/promptfoo/scope-advisor-config.yaml -o test-results/scope-advisor-results.json -o test-results/scope-advisor-results.html",
     "test:all": "npm run test:unit && npm run test:guard && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {

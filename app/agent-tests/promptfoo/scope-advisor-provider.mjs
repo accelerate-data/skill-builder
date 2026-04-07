@@ -1,15 +1,17 @@
 /**
  * Promptfoo provider for scope advisor smoke tests.
  *
- * Tests the prompt quality of the review_skill_scope Tauri command by calling
- * the Anthropic API directly with the exact same prompt the Rust command builds.
- * Each scenario is a single-turn API call — no agent loop, no Claude CLI.
+ * Tests the prompt quality of the review_skill_scope Tauri command by sending
+ * the exact same prompt the Rust command builds to Sonnet via `claude -p`.
+ * Uses Claude Code's existing session auth — no ANTHROPIC_API_KEY required.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import { spawnSync } from "node:child_process";
+
+const CLAUDE_BIN = process.env.CLAUDE_BIN ?? "claude";
 
 function hasApiAccess() {
-  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.FORCE_PLUGIN_TESTS);
+  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.FORCE_PLUGIN_TESTS || CLAUDE_BIN);
 }
 
 /**
@@ -59,14 +61,26 @@ Respond with JSON only (no markdown fences, no extra text):
 {"is_too_broad": boolean, "reason": string, "suggested_skills": [{"name": string, "description": string}]}`;
 }
 
-async function callSonnet(promptText) {
-  const client = new Anthropic();
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-5",
-    max_tokens: 1024,
-    messages: [{ role: "user", content: promptText }],
-  });
-  const text = (message.content[0].text ?? "").trim();
+function callSonnet(promptText) {
+  const env = { ...process.env, CLAUDECODE: undefined, ANTHROPIC_API_KEY: undefined };
+  const result = spawnSync(
+    CLAUDE_BIN,
+    ["-p", "--model", process.env.SCOPE_ADVISOR_MODEL ?? "claude-sonnet-4-6"],
+    {
+      input: promptText,
+      encoding: "utf8",
+      env,
+      timeout: 60_000,
+      stdio: ["pipe", "pipe", "pipe"],
+    },
+  );
+  if (result.error) throw new Error(`claude process error: ${result.error.message}`);
+  if (result.status !== 0) {
+    const stderr = (result.stderr ?? "").trim();
+    const stdout = (result.stdout ?? "").trim();
+    throw new Error(`claude exited ${result.status}: ${stderr || stdout || "(no output)"}`);
+  }
+  const text = (result.stdout ?? "").trim();
   // Strip markdown fences if the model wrapped its response
   return text
     .replace(/^```json\n?/, "")
@@ -75,9 +89,10 @@ async function callSonnet(promptText) {
     .trim();
 }
 
-/** Returns true if name matches the gerund kebab-case pattern: verb-ing + at-least-one-segment */
+/** Returns true if name starts with a gerund word (ends in -ing) followed by at least one kebab segment */
 function isGerundName(name) {
-  return /^[a-z]+-ing(-[a-z0-9]+)+$/.test(name);
+  // e.g. forecasting-churned-customers, analyzing-rep-performance
+  return /^[a-z]+ing(-[a-z0-9]+)+$/.test(name);
 }
 
 /** Returns true if name is ASCII lowercase + hyphens only (no non-English characters) */
@@ -100,7 +115,7 @@ function finalizeScenario(scenario, contracts) {
  * Clearly broad skill: covers revenue, pipeline health, rep performance, churn.
  * Expected: is_too_broad true, 3–5 suggestions, all contracts pass.
  */
-async function runTooBroad() {
+function runTooBroad() {
   const prompt = buildScopeReviewPrompt({
     skillName: "sales-analysis",
     description:
@@ -110,7 +125,7 @@ async function runTooBroad() {
     industry: null,
     documentContext: null,
   });
-  const raw = await callSonnet(prompt);
+  const raw = callSonnet(prompt);
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -132,7 +147,7 @@ async function runTooBroad() {
  * Clearly focused skill: single domain object, single data source.
  * Expected: is_too_broad false, empty suggested_skills array.
  */
-async function runFocused() {
+function runFocused() {
   const prompt = buildScopeReviewPrompt({
     skillName: "forecasting-churned-customers",
     description:
@@ -142,7 +157,7 @@ async function runFocused() {
     industry: "SaaS",
     documentContext: null,
   });
-  const raw = await callSonnet(prompt);
+  const raw = callSonnet(prompt);
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -165,7 +180,7 @@ async function runFocused() {
  * establishes it as one tightly scoped workflow in this company (ARR waterfall only).
  * Expected: business context overrides generic signal → is_too_broad false.
  */
-async function runContextOverride() {
+function runContextOverride() {
   const prompt = buildScopeReviewPrompt({
     skillName: "reporting-arr-waterfall",
     description:
@@ -179,7 +194,7 @@ async function runContextOverride() {
       "produced from Salesforce Opportunities data. No other revenue concepts (headcount costs, " +
       "marketing spend, gross margin) are in scope for this report.",
   });
-  const raw = await callSonnet(prompt);
+  const raw = callSonnet(prompt);
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -198,7 +213,7 @@ async function runContextOverride() {
  * Broad skill: asserts every suggested name uses the gerund verb-ing + object pattern.
  * Separates naming-convention compliance from the too-broad judgment itself.
  */
-async function runGerundNames() {
+function runGerundNames() {
   const prompt = buildScopeReviewPrompt({
     skillName: "sales-analysis",
     description:
@@ -208,7 +223,7 @@ async function runGerundNames() {
     industry: null,
     documentContext: null,
   });
-  const raw = await callSonnet(prompt);
+  const raw = callSonnet(prompt);
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -232,7 +247,7 @@ async function runGerundNames() {
  * Expected: prompt instructs English-only response; all suggested names must be
  * English gerund kebab-case slugs (no French characters, no non-ASCII).
  */
-async function runNonEnglish() {
+function runNonEnglish() {
   const prompt = buildScopeReviewPrompt({
     skillName: "analyse-des-ventes",
     description:
@@ -243,7 +258,7 @@ async function runNonEnglish() {
     industry: null,
     documentContext: null,
   });
-  const raw = await callSonnet(prompt);
+  const raw = callSonnet(prompt);
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -297,7 +312,7 @@ export default class ScopeAdvisorProvider {
     }
 
     try {
-      const result = await handler();
+      const result = handler();
       return { output: JSON.stringify(result) };
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
