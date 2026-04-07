@@ -10,15 +10,11 @@ description: |
 
 Implement a Linear issue end-to-end and produce a review-ready PR.
 
-## Codex Execution Mode
-
-See `../../rules/codex-execution-policy.md`.
-
 ## Tool Contract
 
 Use these exact tools/commands:
 
-- Linear: `mcp__linear__get_issue`, `mcp__linear__list_issues`, `mcp__linear__save_issue`, `mcp__linear__create_comment`
+- Linear: `mcp__linear__get_issue`, `mcp__linear__list_issues`, `mcp__linear__save_issue`, `mcp__linear__save_comment`
 - GitHub CLI: `gh pr create`, `gh pr edit`, `gh pr view`, `gh pr checks`
 - Git: `git worktree`, `git status`, `git add`, `git commit`, `git push`
 
@@ -50,7 +46,6 @@ Before moving issue to `In Review`, inspect required checks for the base branch.
 
 - Always write PR bodies/long comments to temp markdown files and use `--body-file`.
 - Never inline long command outputs into PR body, Linear description, or comments.
-- **No double-escaping** (see AGENTS.md Gotchas): `description`/`body` fields accept raw Markdown — write literal newlines and markdown syntax directly.
 
 ## Autonomy
 
@@ -96,6 +91,7 @@ Quality Gates:
 - [ ] Tests passing
 - [ ] Logging compliant
 - [ ] Brand compliant
+- [ ] Architecture compliant
 - [ ] Code simplified (optional for large diffs)
 - [ ] Code reviewed
 - [ ] Docs updated
@@ -120,6 +116,10 @@ Confirm changed code follows repo logging rules.
 ### Brand compliant
 
 Run the repo's off-brand color grep check for changed frontend files.
+
+### Architecture compliant
+
+Verify changed code follows the data/calculation/action split and state management rules in `.claude/rules/coding-conventions.md`. Check business logic is not mixed with side effects and component-local state is not hoisted to global store.
 
 ### Code simplified (optional)
 
