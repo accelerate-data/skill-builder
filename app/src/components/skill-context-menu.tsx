@@ -25,6 +25,7 @@ export interface SkillContextMenuProps {
   onCreatePlugin: (skill: UnifiedSkill) => void;
   onMoveToPlugin: (skill: UnifiedSkill) => void;
   onRemoveFromPlugin: (skill: UnifiedSkill) => void;
+  onExport: (skill: UnifiedSkill) => void;
   pluginOptions: [string, string][];
 }
 
@@ -42,6 +43,7 @@ export function SkillContextMenu({
   onCreatePlugin,
   onMoveToPlugin,
   onRemoveFromPlugin,
+  onExport,
   pluginOptions,
 }: SkillContextMenuProps) {
   return (
@@ -95,6 +97,9 @@ export function SkillContextMenu({
                 Restore version
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem onSelect={() => onExport(skill)}>
+              Export as .skill
+            </DropdownMenuItem>
             {skill.source !== "marketplace" && (
               <>
                 <DropdownMenuSeparator />

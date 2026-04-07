@@ -73,6 +73,12 @@ export const renameSkill = (
   workspacePath: string,
 ) => invoke("rename_skill", { oldName, newName, workspacePath });
 
+export const exportSkillAsFile = (
+  skillName: string,
+  pluginSlug: string,
+  destPath: string,
+) => invoke<void>("export_skill_as_file", { skillName, pluginSlug, destPath });
+
 export interface FieldSuggestions {
   description: string;
   domain: string;

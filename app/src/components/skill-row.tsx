@@ -28,6 +28,7 @@ export interface SkillRowProps {
   onCreatePlugin: (skill: UnifiedSkill) => void;
   onMoveToPlugin: (skill: UnifiedSkill) => void;
   onRemoveFromPlugin: (skill: UnifiedSkill) => void;
+  onExport: (skill: UnifiedSkill) => void;
   onDeletePlugin: (pluginSlug: string, pluginDisplayName: string) => void;
   pluginOptions: [string, string][];
 }
@@ -63,6 +64,7 @@ export function SkillRow({
   onCreatePlugin,
   onMoveToPlugin,
   onRemoveFromPlugin,
+  onExport,
   onDeletePlugin,
   pluginOptions,
 }: SkillRowProps) {
@@ -157,6 +159,7 @@ export function SkillRow({
             onCreatePlugin={onCreatePlugin}
             onMoveToPlugin={onMoveToPlugin}
             onRemoveFromPlugin={onRemoveFromPlugin}
+            onExport={onExport}
             pluginOptions={pluginOptions}
           />
         )}
