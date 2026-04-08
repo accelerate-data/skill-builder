@@ -89,6 +89,10 @@ pub async fn review_skill_scope(
 
     let prompt = format!(
         "You are evaluating whether a Claude skill is well-defined. \
+         These skills are used to build data warehouses and lakehouses — OLAP systems, not OLTP. \
+         The data source (e.g. Salesforce, Snowflake, S3) is valuable context when present, \
+         but is not compulsory for a skill to pass. A skill with no named source can still be \
+         focused if it acts on one specific noun.\n\n\
          Evaluate BOTH the name and the description independently.\n\n\
          ## Name rules\n\
          A good name uses the gerund pattern: verb-ing + specific object (kebab-case).\n\
