@@ -190,10 +190,10 @@ Each suggestion is a clickable chip. Clicking a chip:
 
 1. Replaces the current form's **name** and **description** fields with that suggestion's values
 2. Marks the chip as "current" (highlighted, with a "current" badge)
-3. **Does not** trigger a new scope check
+3. **Automatically sets advisor status to `focused`** — the LLM already judged this suggestion as a focused alternative; re-validating it is circular and unnecessary
 4. Keeps the suggestions panel open so the user can see all suggestions and swap to another
 
-The user can cycle through suggestions by clicking different chips. The scope check re-arms only when Validate is clicked again.
+The user can cycle through suggestions by clicking different chips. If the user manually edits name, description, or purpose after a chip selection, the advisor resets to `idle` and Validate can be clicked again for a fresh check.
 
 ### No "copy remaining" warning
 
@@ -209,7 +209,8 @@ The "copy remaining" warning on step 2 (previously shown when uncopied suggestio
 | Non-English input | Prompt instructs the LLM to respond in English only; suggested names must be English gerund-named slugs |
 | LLM call fails / timeout | Overlay is removed, no banner shown, no error surfaced to user; form returns to normal enabled state |
 | User clicks Next without validating | Advances normally — Validate is advisory, never blocking |
-| Chip clicked then user edits fields | Fields updated by chip; scope check re-arms on next Validate click |
+| Chip clicked | Advisor auto-sets to `focused`; no LLM call needed |
+| Chip clicked then user manually edits fields | Advisor resets to `idle`; Validate re-arms for a fresh check |
 
 ---
 
