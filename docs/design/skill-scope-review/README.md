@@ -22,6 +22,7 @@ The feature is **advisory only** — it never blocks submission. The user makes 
 - **Validate button behavior:** Validate is enabled only when all required fields (name, description, purpose) are non-empty **and** the advisor status is `idle`. It is disabled when status is `loading` (call in flight) or `focused` (skill already confirmed as focused — no need to re-run).
 - **Re-fires:** Editing any required field resets status to `idle`, which re-enables Validate for a fresh check.
 - **Fields required:** Name, description, and purpose must all be non-empty (same guard as the Next button).
+- **Description is user-written** — the description field has no auto-generated ghost text. The user writes it first; the advisor evaluates it.
 
 ---
 
@@ -57,12 +58,13 @@ A good name uses the gerund pattern: `verb-ing + specific object` (kebab-case).
 
 ### Description rules
 
-A good description acts on **exactly one specific noun**.
+A good description acts on nouns within **a single domain or sub-domain**.
 
-- The noun must identify **what** it is (the entity): `churned customers`, `purchase orders` — not `sales data`, `customers`
-- The data source is **optional** — it adds clarity but is not required to pass
+- Nouns must be specific — `churned customers`, `purchase orders` not `sales data`, `customers`
+- The data source is **optional** — adds clarity but is not required to pass
 - **Multiple actions on one noun are fine** — fetch + validate + update = still focused
-- **Multiple nouns always fail**, even if related or from the same system (e.g. `accounts and contacts` → fail)
+- **Multiple nouns within the same domain are fine** — e.g. `vendor qualifications and supplier contracts` within procurement
+- **Multiple nouns from clearly separate domains always fail** — e.g. `vendor qualifications` (procurement) + `churn rates` (customer success) → split
 
 ### Passing examples
 

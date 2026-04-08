@@ -18,7 +18,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Switch } from "@/components/ui/switch"
 import TagInput from "@/components/tag-input"
-import { GhostTextarea } from "@/components/ghost-input"
 import { Textarea } from "@/components/ui/textarea"
 import ScopeAdvisor from "@/components/scope-advisor"
 import { useScopeAdvisor } from "@/hooks/use-scope-advisor"
@@ -176,8 +175,6 @@ export default function SkillDialog(props: SkillDialogProps) {
   advisorResetRef.current = advisorState.onFieldEdit
 
   // Ghost suggestion state
-  const [descriptionSuggestion, setDescriptionSuggestion] = useState<string | null>(null)
-
   // Version refs and debounce timers
   const group0VersionRef = useRef(0)
   const group0DebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -204,7 +201,6 @@ export default function SkillDialog(props: SkillDialogProps) {
     setArgumentHint("")
     setUserInvocable(true)
     setDisableModelInvocation(false)
-    setDescriptionSuggestion(null)
     setError(null)
     setSubmitting(false)
     advisorResetRef.current()
@@ -282,20 +278,6 @@ export default function SkillDialog(props: SkillDialogProps) {
     },
     [skillName, purpose],
   )
-
-  // Group 0: fetch description when name + purpose are set (skip in edit mode)
-  useEffect(() => {
-    if (!dialogOpen || !skillName || !purpose || isEdit) { setDescriptionSuggestion(null); return }
-    const params = { name: skillName, purpose, industry, functionRole }
-    fetchGroup({
-      group: "description", fields: ["description"], params,
-      apiOpts: { industry, functionRole },
-      versionRef: group0VersionRef, debounceRef: group0DebounceRef,
-      debounceMs: 800,
-      onResult: (r) => setDescriptionSuggestion(r.description || null),
-    })
-    return () => { if (group0DebounceRef.current) clearTimeout(group0DebounceRef.current) }
-  }, [dialogOpen, isEdit, skillName, purpose, industry, functionRole, fetchGroup])
 
   // --- Submit ---
 
@@ -470,14 +452,13 @@ export default function SkillDialog(props: SkillDialogProps) {
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="description">What the skill does <span className="text-destructive">*</span></Label>
-                  <GhostTextarea
+                  <Textarea
                     id="description"
-                    placeholder="Brief description of what this skill does (1-2 sentences)"
+                    placeholder="Describe what this skill does and when to use it"
                     value={description}
-                    onChange={(val) => { setDescription(val.slice(0, 1024)); if (!isEdit) advisorState.onManualFieldEdit() }}
-                    suggestion={descriptionSuggestion}
-                    onAccept={(val) => setDescription(val.slice(0, 1024))}
+                    onChange={(e) => { setDescription(e.target.value.slice(0, 1024)); if (!isEdit) advisorState.onManualFieldEdit() }}
                     disabled={submitting}
+                    className="min-h-[4.5rem] resize-none"
                   />
                   <p className="text-xs text-muted-foreground">
                     How Claude Code decides when to activate this skill ({description.length}/1024)
