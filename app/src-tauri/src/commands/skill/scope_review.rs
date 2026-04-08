@@ -138,12 +138,18 @@ pub async fn review_skill_scope(
          - No acronyms unless industry-standard (e.g. mrr, arr, crm)\n\n\
          Rules for suggested descriptions:\n\
          - Write in third person (\"Extracts...\", \"Forecasts...\" — never \"I can\" or \"You can\")\n\
-         - State what the skill does AND when to use it (triggers/contexts)\n\
+         - State what the skill does AND when to use it (one trigger, not a list)\n\
          - Be specific — include key terms that appear in real user requests\n\
          - Avoid vague nouns: data, metrics, analysis, stuff, things\n\
-         Good: \"Forecasts which customers are at risk of churning based on CRM activity signals. \
+         - CRITICAL: each suggested description must itself pass the same evaluation criteria — \
+one specific noun, no listing of multiple contexts or scenarios with \"or\". \
+If the \"Use when...\" clause would list multiple scenarios, split them into separate suggestions instead.\n\
+         Good: \"Forecasts which customers are at risk of churning based on health scores. \
 Use when the customer success team needs a prioritized list of at-risk accounts.\"\n\
-         Avoid: \"Helps with customer data\"\n\n\
+         Bad: \"Forecasts churn risk using health scores or activity signals or NPS data.\" \
+(multiple sources listed with or)\n\
+         Bad: \"Use when sourcing grain vendors or pricing trends or quality specs.\" \
+(multiple contexts listed with or — split into separate suggestions)\n\n\
          Respond in English only.\n\n\
          Respond with JSON only (no markdown fences, no extra text):\n\
          {{\"status\": string, \"reason\": string, \"suggested_skills\": [{{\"name\": string, \"description\": string}}]}}",

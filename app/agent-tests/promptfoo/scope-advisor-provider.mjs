@@ -59,11 +59,13 @@ Rules for names:
 
 Rules for suggested descriptions:
 - Write in third person ("Extracts...", "Forecasts..." — never "I can" or "You can")
-- State what the skill does AND when to use it (triggers/contexts)
+- State what the skill does AND when to use it (one trigger, not a list)
 - Be specific — include key terms that appear in real user requests
 - Avoid vague nouns: data, metrics, analysis, stuff, things
-Good: "Forecasts which customers are at risk of churning based on CRM activity signals. Use when the customer success team needs a prioritized list of at-risk accounts."
-Avoid: "Helps with customer data"
+- CRITICAL: each suggested description must itself pass the same evaluation criteria — one specific noun, no listing of multiple contexts or scenarios with "or". If the "Use when..." clause would list multiple scenarios, split them into separate suggestions instead.
+Good: "Forecasts which customers are at risk of churning based on health scores. Use when the customer success team needs a prioritized list of at-risk accounts."
+Bad: "Forecasts churn risk using health scores or activity signals or NPS data." (multiple sources listed with or)
+Bad: "Use when sourcing grain vendors or pricing trends or quality specs." (multiple contexts listed with or — split into separate suggestions)
 
 Respond in English only.
 
