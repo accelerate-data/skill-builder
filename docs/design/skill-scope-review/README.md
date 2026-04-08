@@ -45,7 +45,12 @@ The "What Claude needs to know" field (context questions) is included as additio
 
 ## Evaluation Criteria
 
-The advisor evaluates **both the name and the description** independently against the following rules.
+The core test: **does the description describe exactly the process named by the skill?**
+
+- If yes → pass
+- If the description wanders into a second process → fail
+
+The skill name (gerund) names the overarching process. The description explains what that process does and when to invoke it. They must align.
 
 ### Name rules
 
@@ -58,36 +63,69 @@ A good name uses the gerund pattern: `verb-ing + specific object` (kebab-case).
 
 ### Description rules
 
-A good description serves **one overarching process or purpose** — the same process named by the skill itself.
+A good description serves **one overarching process** — the same process named by the skill.
 
 - Nouns must be specific — `churned customers`, `purchase orders` not `sales data`, `customers`
 - The data source is **optional** — adds clarity but is not required to pass
-- **Number of nouns does not matter** — a skill may reference many nouns as long as they all fall under one overarching process
-- **Pass:** everything in the description serves one named process — e.g. `validating-grain-feed-compliance` covers quality testing, traceability documentation, and supplier audits → all serve "validating grain feed compliance" → pass
-- **Fail:** the description spans two distinct overarching processes — e.g. `grain sourcing` + `grain pricing` are two separate processes (vendor selection and cost analysis) → split
-- **Always fail:** nouns from different business functions — e.g. `vendor qualifications` (procurement) + `churn rates` (customer success) → split
-
-The skill name (gerund) should name the overarching process. If you can't summarise the description in the skill name, the description is too broad.
+- **Number of nouns does not matter** — many nouns are fine as long as they all fall under the one process named by the skill
+- **Pass:** `validating-grain-feed-compliance` covers quality testing, traceability docs, and supplier audits → all serve one process → pass
+- **Fail:** description spans two distinct processes → split
+- **Always fail:** nouns from different business functions → split
 
 **How process boundaries are determined:**
 - The LLM uses general business knowledge by default
 - Uploaded documents from user settings can override — if documents establish that certain activities form one unified process in this company, that takes precedence
 
-### Passing examples
+---
 
-| Name | Description | Verdict |
-|---|---|---|
-| `forecasting-churned-customers` | Forecasts which customers are at risk of churning based on health scores | ✓ Pass |
-| `processing-purchase-orders` | Fetches, validates, and updates purchase orders from Salesforce | ✓ Pass |
-| `analyzing-salesforce-opportunities` | Analyzes open opportunities by stage and close date | ✓ Pass |
+## Four Evaluation Cases
 
-### Failing examples
+### Case 1 — Name too broad/vague, description fits one process → `name-needs-improvement`
 
-| Name | Description | Failure |
-|---|---|---|
-| `sales-analysis` | Analyzes revenue, pipeline health, and rep performance | Too broad — three nouns |
-| `analyzing-data` | Analyzes Salesforce opportunities | Name object too vague |
-| `forecasting-churned-customers` | Analyzes sales metrics and churn | Description too broad — two nouns |
+Example: name = `sales-analysis`, description = `Forecasts which customers are at risk of churning.`
+
+The description already names the process. The LLM derives the correct gerund name directly from the description.
+
+- **Chips:** 1 — correct name derived from description, paired with the existing description
+- **Reason example:** *"Your description is focused on forecasting churn, but the name doesn't reflect that. We derived a better name from your description."*
+
+### Case 2 — Both name and description span multiple processes → `too-broad`
+
+Example: name = `sales-analysis`, description = `Analyzes revenue trends, pipeline health, and rep performance.`
+
+Both are too broad. Split into focused skills.
+
+- **Chips:** 3–5 split suggestions, names anchored to the original name
+- **Reason example:** *"This skill covers three separate processes. Consider splitting into focused skills."*
+
+### Case 3 — Both name and description are too vague → `both-need-improvement`
+
+Example: name = `analyzing-data`, description = `Analyzes sales metrics for the team.`
+
+Not enough signal to derive a precise suggestion. The LLM makes its best guess and flags the uncertainty.
+
+- **Chips:** 3–5 best-guess alternatives
+- **Reason example:** *"Both the name and description are too vague to be certain — these suggestions are our best guess. Add more detail for a more accurate recommendation."*
+
+### Case 4 — Name focused, description wanders into a second process → `description-needs-improvement`
+
+Example: name = `forecasting-churned-customers`, description = `Forecasts churn risk and tracks renewal pipeline health.`
+
+The name is correct. The description has one valid process + one stray. Split into two skills.
+
+- **Chips:** 1 per process found — original name + trimmed description, then one additional chip per stray process (new gerund name + description for each). Total chips = 1 + number of stray processes.
+- **Reason example:** *"Your skill name is focused, but the description covers additional processes — renewal pipeline tracking. We've split these into focused skills."*
+
+### Examples by case
+
+| Case | Name | Description | Verdict |
+|---|---|---|---|
+| Pass | `forecasting-churned-customers` | Forecasts which customers are at risk of churning | ✓ Focused |
+| Pass | `validating-grain-feed-compliance` | Validates quality testing, traceability docs, and supplier audits for grain ingredients | ✓ Focused (many nouns, one process) |
+| Case 1 | `sales-analysis` | Forecasts which customers are at risk of churning | `name-needs-improvement` — derive name from description |
+| Case 2 | `sales-analysis` | Analyzes revenue, pipeline health, and rep performance | `too-broad` — split into focused skills |
+| Case 3 | `analyzing-data` | Analyzes sales metrics for the team | `both-need-improvement` — best-guess with caveat |
+| Case 4 | `forecasting-churned-customers` | Forecasts churn risk and tracks renewal pipeline health | `description-needs-improvement` — 1 chip per process found |
 
 **Domain context:** These skills are used to build data warehouses and lakehouses — OLAP systems, not OLTP. The data source (e.g. Salesforce, Snowflake, S3) is valuable context when present, but is not compulsory. A skill with no named source can still pass if it acts on one specific noun.
 

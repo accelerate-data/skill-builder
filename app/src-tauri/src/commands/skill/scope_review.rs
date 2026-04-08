@@ -90,47 +90,42 @@ pub async fn review_skill_scope(
     let prompt = format!(
         "You are evaluating whether a Claude skill is well-defined. \
          These skills are used to build data warehouses and lakehouses — OLAP systems, not OLTP. \
-         The data source (e.g. Salesforce, Snowflake, S3) is valuable context when present, \
-         but is not compulsory for a skill to pass. A skill with no named source can still be \
-         focused if it acts on one specific noun.\n\n\
-         Evaluate BOTH the name and the description independently.\n\n\
-         ## Name rules\n\
+         The data source is valuable context but not compulsory.\n\n\
+         CORE TEST: Does the description describe exactly the process named by the skill? \
+         If yes → focused. If the description wanders into a second process → fail.\n\n\
+         ## Name rule\n\
          A good name uses the gerund pattern: verb-ing + specific object (kebab-case).\n\
-         - Pass: forecasting-churned-customers, processing-purchase-orders, analyzing-salesforce-opportunities\n\
-         - Fail: sales-analysis (not gerund), analyzing-data (object too vague)\n\n\
-         ## Description rules\n\
-         A good description serves ONE overarching process or purpose — the same process named by the skill itself.\n\
-         - Nouns must be specific (\"churned customers\", \"purchase orders\") — not generic (\"sales data\", \"customers\")\n\
-         - The data source is optional — adds clarity but not required to pass\n\
-         - Number of nouns does not matter — many nouns are fine as long as they all fall under one overarching process\n\
-         - PASS: everything serves one named process — e.g. \"validating-grain-feed-compliance\" covers quality testing, traceability docs, and supplier audits → all serve \"validating grain feed compliance\" → pass\n\
-         - FAIL: the description spans two distinct overarching processes — e.g. grain sourcing (vendor selection) + grain pricing (cost analysis) are two separate processes → split\n\
-         - ALWAYS FAIL: nouns from different business functions — e.g. vendor qualifications (procurement) + churn rates (customer success) → split\n\
-         The skill name (gerund) should name the overarching process. If the description cannot be summarised by the skill name, it is too broad.\n\
-         Use general business knowledge to judge process boundaries. Uploaded reference documents can override.\n\n\
-         ## Passing examples\n\
-         - Name: forecasting-churned-customers | Description: \"Forecasts which customers are at risk of churning\" → focused\n\
-         - Name: validating-grain-feed-compliance | Description: \"Validates quality testing, traceability documentation, and supplier audits for grain feed ingredients\" → focused (all serve one process: compliance validation)\n\n\
-         ## Failing examples\n\
-         - Description: \"Analyzes revenue, pipeline health, and rep performance\" → too-broad (three distinct processes across functions)\n\
-         - Description: \"Manages grain sourcing and commodity pricing\" → too-broad (vendor selection and cost analysis are separate processes)\n\
-         - Name: analyzing-data | Description: \"Analyzes Salesforce opportunities\" → name-needs-improvement\n\
-         - Description: \"Analyzes sales metrics\" → description-needs-improvement (noun too vague)\n\n\
-         Use industry and document context to override a generic breadth signal. If documents show \
-         that a topic in this company is one tightly scoped workflow, it may be focused — not broad.\n\n\
+         Pass: forecasting-churned-customers, validating-grain-feed-compliance\n\
+         Fail: sales-analysis (not gerund), analyzing-data (object too vague)\n\n\
+         ## Description rule\n\
+         A good description serves ONE overarching process — the same process named by the skill.\n\
+         Number of nouns does not matter — many nouns are fine if they all fall under one process.\n\
+         Pass: validating-grain-feed-compliance covers quality testing + traceability docs + supplier audits → all serve one process → pass\n\
+         Fail: description spans two distinct processes (e.g. vendor selection + cost analysis) → split\n\
+         Always fail: nouns from different business functions → split\n\
+         Use general business knowledge for process boundaries. Uploaded documents can override.\n\n\
+         ## Four cases — pick exactly one status and follow its action\n\n\
+         CASE 1 — name too broad/vague, description fits one process → status: \"name-needs-improvement\"\n\
+         Example: name=sales-analysis, description=\"Forecasts which customers are at risk of churning\"\n\
+         Action: derive the correct gerund name DIRECTLY from the description. Return exactly 1 suggestion (correct name + existing description).\n\
+         Reason: explain the name does not reflect the process already in the description.\n\n\
+         CASE 2 — both name and description span multiple distinct processes → status: \"too-broad\"\n\
+         Example: name=sales-analysis, description=\"Analyzes revenue, pipeline health, and rep performance\"\n\
+         Action: split into 3-5 focused skills. Anchor suggested names to the original name where possible.\n\
+         Reason: name the distinct processes found.\n\n\
+         CASE 3 — both name and description too vague to identify a clear process → status: \"both-need-improvement\"\n\
+         Example: name=analyzing-data, description=\"Analyzes sales metrics for the team\"\n\
+         Action: make 3-5 best-guess suggestions.\n\
+         Reason: be transparent — state that both are too vague and suggestions may not match intent.\n\n\
+         CASE 4 — name is focused, description wanders into one or more extra processes → status: \"description-needs-improvement\"\n\
+         Example: name=forecasting-churned-customers, description=\"Forecasts churn risk and tracks renewal pipeline health\"\n\
+         Action: produce 1 suggestion per process found — (1) original name + description trimmed to match, then one additional suggestion per stray process (new gerund name + description for each).\n\
+         Reason: name each stray process found.\n\n\
+         Use industry and document context to override a generic breadth signal.\n\n\
          Skill to evaluate:\n\
          - Name: {skill_name}\n\
          - Description: {description}\n\
          - Purpose: {purpose}{context_questions_line}{industry_context}{doc_context}\n\n\
-         ## Status values\n\
-         Return exactly one of:\n\
-         - \"focused\": both name and description pass\n\
-         - \"too-broad\": description covers multiple distinct nouns → suggest 3-5 decomposed skills\n\
-         - \"name-needs-improvement\": description is focused, name fails gerund/specificity rules\n\
-         - \"description-needs-improvement\": name is fine, description noun is too vague or generic\n\
-         - \"both-need-improvement\": both name and description have issues (but not too-broad)\n\n\
-         For all non-focused statuses, suggest 3-5 alternatives. All suggested names MUST use \
-         the gerund pattern: verb-ing + specific object (kebab-case).\n\n\
          Gerund naming examples (correct vs incorrect):\n\
          - forecasting-churned-customers ✓ vs churn-forecast ✗\n\
          - calculating-opportunity-mrr ✓ vs opportunity-mrr-calculation ✗\n\
