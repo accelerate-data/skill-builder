@@ -15,6 +15,7 @@ const defaultSuggestions: ScopeAdvisorSuggestion[] = [
 function makeAdvisorState(overrides: Partial<UseScopeAdvisorReturn> = {}): UseScopeAdvisorReturn {
   return {
     status: "idle",
+    reason: "",
     suggestions: [],
     currentChipIndex: null,
     copiedIndices: new Set(),
@@ -26,6 +27,7 @@ function makeAdvisorState(overrides: Partial<UseScopeAdvisorReturn> = {}): UseSc
     onCopyAll: vi.fn(),
     onTogglePanel: vi.fn(),
     onFieldEdit: vi.fn(),
+    onManualFieldEdit: vi.fn(),
     ...overrides,
   }
 }
@@ -38,21 +40,21 @@ describe("ScopeAdvisor", () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it("loading: shows checking scope text", () => {
-    render(
+  it("loading: renders nothing (null)", () => {
+    const { container } = render(
       <ScopeAdvisor advisorState={makeAdvisorState({ status: "loading" })} onChipSelect={vi.fn()} />,
     )
-    expect(screen.getByText("Checking scope...")).toBeInTheDocument()
+    expect(container.firstChild).toBeNull()
   })
 
-  it("focused: shows focused message", () => {
+  it("focused: shows green focused message", () => {
     render(
       <ScopeAdvisor advisorState={makeAdvisorState({ status: "focused" })} onChipSelect={vi.fn()} />,
     )
-    expect(screen.getByText("✓ This skill looks focused.")).toBeInTheDocument()
+    expect(screen.getByText(/This skill looks focused\./)).toBeInTheDocument()
   })
 
-  it("too-broad collapsed: shows advisory banner, no suggestion chips", () => {
+  it("too-broad collapsed: shows amber banner, no suggestion chips", () => {
     render(
       <ScopeAdvisor
         advisorState={makeAdvisorState({
@@ -84,9 +86,107 @@ describe("ScopeAdvisor", () => {
     expect(screen.getByText("Forecasts churn rates")).toBeInTheDocument()
   })
 
-  it("chip click calls onChipClick and onChipSelect prop", async () => {
+  it("name-needs-improvement: shows amber banner with correct message", () => {
+    render(
+      <ScopeAdvisor
+        advisorState={makeAdvisorState({ status: "name-needs-improvement", suggestions: defaultSuggestions })}
+        onChipSelect={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(/We found better names for this skill\./)).toBeInTheDocument()
+  })
+
+  it("description-needs-improvement: shows amber banner with correct message", () => {
+    render(
+      <ScopeAdvisor
+        advisorState={makeAdvisorState({ status: "description-needs-improvement", suggestions: defaultSuggestions })}
+        onChipSelect={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(/We found a clearer description for this skill\./)).toBeInTheDocument()
+  })
+
+  it("both-need-improvement: shows amber banner with correct message", () => {
+    render(
+      <ScopeAdvisor
+        advisorState={makeAdvisorState({ status: "both-need-improvement", suggestions: defaultSuggestions })}
+        onChipSelect={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(/We found better names and descriptions for this skill\./)).toBeInTheDocument()
+  })
+
+  it("reason text is shown below banner message when non-empty", () => {
+    render(
+      <ScopeAdvisor
+        advisorState={makeAdvisorState({
+          status: "too-broad",
+          reason: "This skill spans multiple unrelated domains.",
+          suggestions: defaultSuggestions,
+        })}
+        onChipSelect={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("This skill spans multiple unrelated domains.")).toBeInTheDocument()
+  })
+
+  it("reason text is not rendered when empty", () => {
+    render(
+      <ScopeAdvisor
+        advisorState={makeAdvisorState({
+          status: "too-broad",
+          reason: "",
+          suggestions: defaultSuggestions,
+        })}
+        onChipSelect={vi.fn()}
+      />,
+    )
+    // Only the banner message (which contains the warning symbol) should be present
+    const bannerEl = screen.getByText(/This skill might be too broad/)
+    expect(bannerEl).toBeInTheDocument()
+  })
+
+  it("panel expand/collapse: toggle button changes aria-label", async () => {
     const user = userEvent.setup()
-    const onChipClickMock = vi.fn().mockReturnValue({ name: "forecasting-churned-customers", description: "Forecasts churn rates" })
+    const onTogglePanel = vi.fn()
+
+    render(
+      <ScopeAdvisor
+        advisorState={makeAdvisorState({
+          status: "too-broad",
+          suggestions: defaultSuggestions,
+          panelExpanded: false,
+          onTogglePanel,
+        })}
+        onChipSelect={vi.fn()}
+      />,
+    )
+
+    const expandBtn = screen.getByRole("button", { name: "Expand suggestions" })
+    await user.click(expandBtn)
+    expect(onTogglePanel).toHaveBeenCalledOnce()
+  })
+
+  it("collapse button shown when panel is expanded", () => {
+    render(
+      <ScopeAdvisor
+        advisorState={makeAdvisorState({
+          status: "too-broad",
+          suggestions: defaultSuggestions,
+          panelExpanded: true,
+        })}
+        onChipSelect={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "Collapse suggestions" })).toBeInTheDocument()
+  })
+
+  it("chip click calls onChipClick and onChipSelect prop with correct values", async () => {
+    const user = userEvent.setup()
+    const onChipClickMock = vi.fn().mockReturnValue({
+      name: "forecasting-churned-customers",
+      description: "Forecasts churn rates",
+    })
     const onChipSelect = vi.fn()
 
     render(
@@ -147,7 +247,7 @@ describe("ScopeAdvisor", () => {
     expect(onCopyAll).toHaveBeenCalledOnce()
   })
 
-  it("gerund tip is shown in footer when expanded", () => {
+  it("gerund tip shown in footer when panel expanded", () => {
     render(
       <ScopeAdvisor
         advisorState={makeAdvisorState({
@@ -162,7 +262,7 @@ describe("ScopeAdvisor", () => {
     expect(screen.getByText("verb-ing + object")).toBeInTheDocument()
   })
 
-  it("currentChipIndex chip has current badge", () => {
+  it("current chip shows 'current' badge", () => {
     render(
       <ScopeAdvisor
         advisorState={makeAdvisorState({
@@ -177,17 +277,7 @@ describe("ScopeAdvisor", () => {
     expect(screen.getByText("current")).toBeInTheDocument()
   })
 
-  it("edit mode (status=idle) renders nothing", () => {
-    const { container } = render(
-      <ScopeAdvisor
-        advisorState={makeAdvisorState({ status: "idle" })}
-        onChipSelect={vi.fn()}
-      />,
-    )
-    expect(container.firstChild).toBeNull()
-  })
-
-  it("copied button shows Copied text when index is in copiedIndices", () => {
+  it("copied button shows 'Copied' text when index is in copiedIndices", () => {
     render(
       <ScopeAdvisor
         advisorState={makeAdvisorState({
