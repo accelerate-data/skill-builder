@@ -1407,4 +1407,5 @@ mod tests {
         let result = extract_skill_at_tag(dir.path(), plugin, "my-skill", "skills/my-skill/v99.0.0", &dest);
         assert!(result.is_err());
     }
+
 }

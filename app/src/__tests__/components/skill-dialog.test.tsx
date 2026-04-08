@@ -211,7 +211,7 @@ describe("SkillDialog (edit mode)", () => {
     expect(screen.getByText("Use the Optimize Description tab to update this")).toBeInTheDocument();
   });
 
-  it("renames the skill before saving updated metadata", async () => {
+  it("saves metadata without renaming since name field is locked", async () => {
     const user = userEvent.setup({ delay: null });
     const onOpenChange = vi.fn();
     const onSaved = vi.fn();
@@ -223,37 +223,33 @@ describe("SkillDialog (edit mode)", () => {
         open={true}
         onOpenChange={onOpenChange}
         onSaved={onSaved}
-        existingNames={["other-skill"]}
       />,
     );
 
-    const nameInput = screen.getByLabelText(/^Skill Name/);
-    await user.clear(nameInput);
-    await user.type(nameInput, "sales-pipeline-renamed");
+    // Name field is disabled in edit mode
+    expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+
     await user.click(screen.getByRole("button", { name: /Next/i }));
     await user.click(screen.getByRole("button", { name: /^Save$/i }));
 
     await waitFor(() => {
-      expect(renameSkillMock).toHaveBeenCalledWith(
+      expect(updateSkillMetadataMock).toHaveBeenCalledWith(
         "sales-pipeline",
-        "sales-pipeline-renamed",
-        "/workspace",
+        "platform",
+        ["analytics"],
+        JSON.stringify({ context: "Original context" }),
+        "Original description",
+        null,
+        null,
+        "[org-url]",
+        true,
+        false,
       );
     }, { timeout: 10000 });
 
-    expect(updateSkillMetadataMock).toHaveBeenCalledWith(
-      "sales-pipeline-renamed",
-      "platform",
-      ["analytics"],
-      JSON.stringify({ context: "Original context" }),
-      "Original description",
-      null,
-      null,
-      "[org-url]",
-      true,
-      false,
-    );
-    expect(toast.success).toHaveBeenCalledWith('Skill "sales-pipeline-renamed" updated');
+    // renameSkill should never be called
+    expect(renameSkillMock).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith('Skill "sales-pipeline" updated');
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onSaved).toHaveBeenCalledTimes(1);
   }, 15000);
@@ -296,5 +292,93 @@ describe("SkillDialog (edit mode)", () => {
         duration: Infinity,
       });
     });
+  });
+
+  it("disables name field for built skills with universal hint", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ status: "completed", current_step: "step 5 completed" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+    expect(screen.getByText("Skill names cannot be changed after creation")).toBeInTheDocument();
+  });
+
+  it("disables name field for marketplace skills", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ skill_source: "marketplace" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+    expect(screen.getByText("Skill names cannot be changed after creation")).toBeInTheDocument();
+  });
+
+  it("disables name field for uploaded (imported) skills", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ skill_source: "imported" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+    expect(screen.getByText("Skill names cannot be changed after creation")).toBeInTheDocument();
+  });
+
+  it("disables name field for in-progress builder skills", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ status: "in_progress", current_step: "step 2" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+    expect(screen.getByText("Skill names cannot be changed after creation")).toBeInTheDocument();
+  });
+
+  it("does not call renameSkill on save since name is always locked", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ skill_source: "imported" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    // Name field is disabled — cannot change it
+    expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+
+    // Save without name change
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+    await user.click(screen.getByRole("button", { name: /^Save$/i }));
+
+    await waitFor(() => {
+      expect(updateSkillMetadataMock).toHaveBeenCalled();
+    });
+
+    // renameSkill should never be called
+    expect(renameSkillMock).not.toHaveBeenCalled();
   });
 });

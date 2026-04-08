@@ -233,6 +233,7 @@ pub(crate) fn sync_user_context_file(conn: &rusqlite::Connection, skill_name: &s
 }
 
 /// Validate kebab-case: lowercase alphanumeric segments separated by single hyphens.
+#[allow(dead_code)]
 pub(crate) fn is_valid_kebab(name: &str) -> bool {
     !name.is_empty()
         && !name.starts_with('-')
@@ -252,49 +253,19 @@ pub fn rename_skill(
 ) -> Result<(), String> {
     log::info!("[rename_skill] old={} new={}", old_name, new_name);
 
-    if !is_valid_kebab(&new_name) {
-        log::error!("[rename_skill] Invalid kebab-case name: {}", new_name);
-        return Err(
-            "Skill name must be kebab-case (lowercase letters, numbers, hyphens)".to_string(),
-        );
+    // Skill renaming is disabled — names are immutable after creation.
+    if old_name != new_name {
+        log::warn!("[rename_skill] Rejected: skill renaming is disabled");
+        return Err("Skill names cannot be changed after creation".to_string());
     }
 
-    if old_name == new_name {
-        return Ok(());
-    }
-
-    let mut conn = db.0.lock().map_err(|e| {
-        log::error!("[rename_skill] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-
-    // Read settings for skills_path
-    let settings = crate::db::read_settings(&conn).ok();
-    let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
-
-    rename_skill_inner(
-        &old_name,
-        &new_name,
-        &workspace_path,
-        &mut conn,
-        skills_path.as_deref(),
-    )?;
-
-    // Auto-commit: skill renamed
-    if let Some(ref sp) = skills_path {
-        // Regenerate marketplace manifests
-        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
-            log::warn!("Manifest regeneration failed after rename: {}", e);
-        }
-        let msg = format!("{}: renamed from {}", new_name, old_name);
-        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
-            log::warn!("Git auto-commit failed ({}): {}", msg, e);
-        }
-    }
-
+    // No-op if same name
+    let _ = (new_name, workspace_path, db);
     Ok(())
 }
 
+// Retained for tests and future reactivation (VU-986).
+#[allow(dead_code)]
 pub(crate) fn rename_skill_inner(
     old_name: &str,
     new_name: &str,

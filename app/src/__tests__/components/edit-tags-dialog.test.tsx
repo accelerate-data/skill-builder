@@ -423,7 +423,7 @@ describe("SkillDialog (edit mode)", () => {
   });
 
   describe("rename flow", () => {
-    it("calls rename_skill before update_skill_metadata when name changes", async () => {
+    it("name field is disabled so rename_skill is never called", async () => {
       const user = userEvent.setup();
       const onSaved = vi.fn();
       mockInvoke.mockResolvedValue(undefined);
@@ -439,50 +439,8 @@ describe("SkillDialog (edit mode)", () => {
         />
       );
 
-      const nameInput = screen.getByLabelText(/^Skill Name/);
-      await user.clear(nameInput);
-      await user.type(nameInput, "revenue-tracker");
-
-      // Navigate to step 2 to access Save
-      await goToStep2(user);
-      await user.click(screen.getByRole("button", { name: /Save/i }));
-
-      await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith("rename_skill", {
-          oldName: "sales-pipeline",
-          newName: "revenue-tracker",
-          workspacePath: "/test/workspace",
-        });
-      });
-
-      await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", expect.objectContaining({
-          skillName: "revenue-tracker",
-        }));
-      });
-
-      // Verify rename_skill was called before update_skill_metadata
-      const calls = mockInvoke.mock.calls.map((c) => c[0]);
-      const renameIndex = calls.indexOf("rename_skill");
-      const updateIndex = calls.indexOf("update_skill_metadata");
-      expect(renameIndex).toBeLessThan(updateIndex);
-    });
-
-    it("does not call rename_skill when name is unchanged", async () => {
-      const user = userEvent.setup();
-      const onSaved = vi.fn();
-      mockInvoke.mockResolvedValue(undefined);
-
-      render(
-        <SkillDialog
-        mode="edit"
-          skill={sampleSkill}
-          open={true}
-          onOpenChange={vi.fn()}
-          onSaved={onSaved}
-          tagSuggestions={[]}
-        />
-      );
+      // Name field is disabled in edit mode
+      expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
 
       await goToStep2(user);
       await user.click(screen.getByRole("button", { name: /Save/i }));
