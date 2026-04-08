@@ -409,17 +409,22 @@ export default function SkillDialog(props: SkillDialogProps) {
                   )}
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="description">What the skill does <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="description">
+                    What the skill does <span className="text-destructive">*</span>
+                    {isEdit && <LockedIcon message="Use the Optimize Description tab to update this" />}
+                  </Label>
                   <Textarea
                     id="description"
                     placeholder="Describe what this skill does and when to use it"
                     value={description}
                     onChange={(e) => { setDescription(e.target.value.slice(0, 1024)); if (!isEdit) advisorState.onManualFieldEdit() }}
-                    disabled={submitting}
+                    disabled={submitting || isEdit}
                     className="min-h-[4.5rem] resize-none"
                   />
                   <p className="text-xs text-muted-foreground">
-                    How the AI agent decides when to activate this skill ({description.length}/1024)
+                    {isEdit
+                      ? "Use the Optimize Description tab to update this"
+                      : `How the AI agent decides when to activate this skill (${description.length}/1024)`}
                   </p>
                   <ScopeAdvisor
                     advisorState={advisorState}

@@ -152,9 +152,11 @@ describe("SkillDialog (edit mode)", () => {
     expect(screen.getByText("Edit Skill")).toBeInTheDocument();
     expect(screen.getByLabelText(/^Skill Name/)).toHaveValue("sales-pipeline");
     expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+    expect(screen.getByLabelText(/^What the skill does/)).toBeDisabled();
     expect(screen.getByLabelText(/What are you trying to capture/)).toBeDisabled();
     expect(screen.getByLabelText("Tag input")).toBeDisabled();
     expect(screen.getByLabelText("What Claude needs to know")).toHaveValue("Original context");
+    expect(screen.getByText("Use the Optimize Description tab to update this")).toBeInTheDocument();
   });
 
   it("locks imported skill fields that should not be edited", async () => {
@@ -170,11 +172,43 @@ describe("SkillDialog (edit mode)", () => {
       />,
     );
 
+    expect(screen.getByLabelText(/^What the skill does/)).toBeDisabled();
     expect(screen.getByLabelText(/What are you trying to capture/)).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: /Next/i }));
 
     expect(screen.getByLabelText(/^Argument Hint/)).toBeEnabled();
+  });
+
+  it("disables description for marketplace skills with hint text", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ skill_source: "marketplace" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^What the skill does/)).toBeDisabled();
+    expect(screen.getByLabelText(/^What the skill does/)).toHaveValue("Original description");
+    expect(screen.getByText("Use the Optimize Description tab to update this")).toBeInTheDocument();
+  });
+
+  it("disables description for skills with no source (uploaded)", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ skill_source: null })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^What the skill does/)).toBeDisabled();
+    expect(screen.getByText("Use the Optimize Description tab to update this")).toBeInTheDocument();
   });
 
   it("renames the skill before saving updated metadata", async () => {
@@ -196,8 +230,6 @@ describe("SkillDialog (edit mode)", () => {
     const nameInput = screen.getByLabelText(/^Skill Name/);
     await user.clear(nameInput);
     await user.type(nameInput, "sales-pipeline-renamed");
-    await user.clear(screen.getByLabelText(/^What the skill does/));
-    await user.type(screen.getByLabelText(/^What the skill does/), "Updated description");
     await user.click(screen.getByRole("button", { name: /Next/i }));
     await user.click(screen.getByRole("button", { name: /^Save$/i }));
 
@@ -214,7 +246,7 @@ describe("SkillDialog (edit mode)", () => {
       "platform",
       ["analytics"],
       JSON.stringify({ context: "Original context" }),
-      "Updated description",
+      "Original description",
       null,
       null,
       "[org-url]",
