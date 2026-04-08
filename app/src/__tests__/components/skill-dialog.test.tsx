@@ -156,7 +156,7 @@ describe("SkillDialog (edit mode)", () => {
     expect(screen.getByLabelText(/What are you trying to capture/)).toBeDisabled();
     expect(screen.getByLabelText("Tag input")).toBeDisabled();
     expect(screen.getByLabelText("What Claude needs to know")).toHaveValue("Original context");
-    expect(screen.getByText("Use the Refine or Description Optimization tab to update this")).toBeInTheDocument();
+    expect(screen.getByText("Use the Optimize Description tab to update this")).toBeInTheDocument();
   });
 
   it("locks imported skill fields that should not be edited", async () => {
@@ -193,7 +193,7 @@ describe("SkillDialog (edit mode)", () => {
 
     expect(screen.getByLabelText(/^What the skill does/)).toBeDisabled();
     expect(screen.getByLabelText(/^What the skill does/)).toHaveValue("Original description");
-    expect(screen.getByText("Use the Refine or Description Optimization tab to update this")).toBeInTheDocument();
+    expect(screen.getByText("Use the Optimize Description tab to update this")).toBeInTheDocument();
   });
 
   it("disables description for skills with no source (uploaded)", () => {
@@ -208,7 +208,7 @@ describe("SkillDialog (edit mode)", () => {
     );
 
     expect(screen.getByLabelText(/^What the skill does/)).toBeDisabled();
-    expect(screen.getByText("Use the Refine or Description Optimization tab to update this")).toBeInTheDocument();
+    expect(screen.getByText("Use the Optimize Description tab to update this")).toBeInTheDocument();
   });
 
   it("renames the skill before saving updated metadata", async () => {
