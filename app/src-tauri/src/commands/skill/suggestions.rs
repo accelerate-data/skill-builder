@@ -141,7 +141,10 @@ pub async fn generate_suggestions(
     let field_schemas: Vec<String> = requested.iter().filter_map(|f| {
         match *f {
             "description" => Some(format!(
-                "\"description\": \"<1-2 sentence description of what this skill does for {}>\"",
+                "\"description\": \"<Third person. Exactly ONE specific noun (e.g. 'churned customers', 'purchase orders' — not 'data' or 'metrics'). \
+Format: '[Verb]s [specific noun] [context]. Use when [one trigger — no OR listing].' \
+Example: 'Forecasts which customers are at risk of churning based on health scores. Use when the CS team needs a prioritised list of at-risk accounts.' \
+Do NOT list multiple nouns or multiple use-cases with 'or'. If the skill covers multiple nouns, pick the most important one. Max 2 sentences. Topic: {}.>\"",
                 readable_name
             )),
             "domain" => Some("\"domain\": \"<2-5 word domain name, e.g. Sales operations or Revenue recognition>\"".to_string()),
@@ -174,7 +177,7 @@ pub async fn generate_suggestions(
     }).collect();
 
     let prompt = format!(
-        "{framing}\n\n\
+        "{framing} These skills target OLAP systems (data warehouses and lakehouses), not OLTP.\n\n\
          Given a Claude skill named \"{readable_name}\" of type \"{purpose}\".{context}{detail_context}\n\n\
          Suggest brief values for these fields. Be specific and practical, not generic.\n\n\
          Respond in exactly this JSON format (no markdown, no extra text):\n\
