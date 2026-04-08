@@ -2,7 +2,7 @@
 
 **Status:** Design complete (VU-805). Implementation pending.
 
-Advisory feature that evaluates whether a skill is too broad during creation and suggests focused alternatives using gerund-naming conventions.
+Advisory feature that evaluates whether a skill is too broad during creation and suggests focused alternatives using gerund-naming conventions. Also generates recommended skill descriptions following effective description guidelines.
 
 ---
 
@@ -17,11 +17,11 @@ The feature is **advisory only** — it never blocks submission. The user makes 
 ## Trigger Conditions
 
 - **When:** Create mode only (not edit mode)
-- **Fields required:** All three fields must have content — name, description, purpose
-- **Debounce:** 1–2 seconds after the user stops typing in any of the three fields
-- **Re-fires:** Yes — any change to name, description, or purpose re-triggers the check
-- **Short description guard:** If the description is fewer than 2 sentences, skip the LLM call and show a hint instead:
-  > *"Add more detail to your description to get scope feedback."*
+- **Trigger:** A dedicated **"Validate"** button placed in the dialog footer, next to the "Next" button. The advisor fires when the user clicks Validate.
+- **Next button behavior:** "Next" only advances the user to step 2. It does not trigger the LLM. The Next button remains enabled as long as all required fields are filled — the advisor result is independent.
+- **Validate button behavior:** Validate is enabled only when all required fields (name, description, purpose) are non-empty. Clicking Validate fires the LLM call.
+- **Re-fires:** Clicking Validate again after editing any field re-triggers the check and replaces the previous result.
+- **Fields required:** Name, description, and purpose must all be non-empty (same guard as the Next button).
 
 ---
 
@@ -32,10 +32,13 @@ The feature is **advisory only** — it never blocks submission. The user makes 
 | Skill name | Create form |
 | Skill description | Create form |
 | Skill purpose | Create form |
+| What Claude needs to know | Create form (context questions field) |
 | Industry | User settings |
 | Uploaded documents | User settings |
 
 Business context (industry + documents) can override a generic breadth signal. If the documents show that "revenue metrics" in this company is one tightly scoped workflow, the LLM should say it's focused — not broad.
+
+The "What Claude needs to know" field (context questions) is included as additional signal — it often contains domain-specific constraints that help the LLM determine whether an apparently broad skill is actually scoped to a single workflow in practice.
 
 ---
 
@@ -76,6 +79,7 @@ The LLM uses industry and uploaded documents as context. A description that soun
 - `suggested_skills` contains 3–5 items when `is_too_broad` is `true`, empty array otherwise
 - `reason` is always populated — used for the banner message and "looks good" confirmation
 - All suggested `name` values must use gerund-naming (see below)
+- All suggested `description` values must follow the effective description guidelines (see below)
 
 ---
 
@@ -101,27 +105,66 @@ The prompt must include these examples and the rule explicitly. The LLM must not
 
 ---
 
+## Effective Description Guidelines
+
+The description field enables skill discovery. Claude uses it to choose the right skill from potentially 100+ available skills. The description must provide enough detail for Claude to know when to select this skill.
+
+**Writing rules:**
+
+- Always write in third person. The description is injected into the system prompt, and inconsistent point-of-view causes discovery problems.
+- Include both what the skill does **and** when to use it (specific triggers/contexts).
+- Be specific — include key terms that appear in real user requests.
+
+**Good examples:**
+
+| Skill | Effective description |
+|---|---|
+| PDF Processing | `Extract text and tables from PDF files, fill forms, merge documents. Use when working with PDF files or when the user mentions PDFs, forms, or document extraction.` |
+| Excel Analysis | `Analyze Excel spreadsheets, create pivot tables, generate charts. Use when analyzing Excel files, spreadsheets, tabular data, or .xlsx files.` |
+| Git Commit Helper | `Generate descriptive commit messages by analyzing git diffs. Use when the user asks for help writing commit messages or reviewing staged changes.` |
+
+**Avoid:**
+
+- `Helps with documents` — vague, no triggers
+- `Processes data` — no specificity
+- First-person phrasing: `I can help you process Excel files`
+- Second-person phrasing: `You can use this to process Excel files`
+
+**LLM prompt for generating recommended descriptions:**
+
+The scope advisor LLM is instructed to generate suggested `description` values using this guidance: write in third person, state what the skill does and when to use it, include specific triggers and key terms, avoid vague nouns like `data`/`metrics`/`analysis`. Suggested descriptions follow the gerund name's implied action (e.g. for `forecasting-churned-customers`, the description states what the forecast does and when to invoke it).
+
+---
+
 ## UX Flow
 
-### State 1 — Short description (guard)
+### Loading state — full-form overlay
 
-Below description field:
+When the user clicks **Validate**, a **medium-size loading indicator is centered over the form**. All form fields and buttons are disabled until the LLM call completes. The overlay prevents input changes mid-flight.
 
-> *"Add more detail to your description to get scope feedback."*
+> Centered spinner with label: *"Analyzing skill details…"*
 
-No LLM call made.
+This replaces the previous small inline spinner, which was not visible enough.
 
-### State 2 — Focused skill (`is_too_broad: false`)
+### State 1 — Idle (before Validate is clicked)
 
-Subtle confirmation banner below description field:
+No advisor UI is shown. The Validate button is visible in the footer, enabled when required fields are filled.
+
+### State 2 — Loading (Validate clicked, call in flight)
+
+Full-form overlay with centered spinner. All fields and the Next/Validate/Cancel buttons are disabled.
+
+### State 3 — Focused skill (`is_too_broad: false`)
+
+Overlay is removed. Subtle confirmation banner below description field:
 
 > ✓ *"This skill looks focused."*
 
-Encourages the user that their scoping is good.
+The Next button and all form fields return to their normal enabled state.
 
-### State 3 — Too broad (`is_too_broad: true`)
+### State 4 — Too broad (`is_too_broad: true`)
 
-Inline advisory banner below description field:
+Overlay is removed. Inline advisory banner below description field:
 
 > ⚠ *"This skill might be too broad. Consider splitting into more focused skills."*
 
@@ -132,14 +175,14 @@ User can **expand** the banner to see the suggestions.
 Shows each suggested skill with:
 
 - Gerund-named slug (e.g. `forecasting-churned-customers`)
-- One-line description
+- One-line description following effective description guidelines
 - **Copy** button per suggestion (copies `name: description` to clipboard)
 
 A **Copy all** button copies all suggestions as a formatted list.
 
 A gerund-naming tip is shown in the footer: *"Gerund names: `verb-ing + object`"*
 
-**Persistence:** Suggestions stay visible in the UI state after the panel is collapsed and re-expanded — they are not re-fetched until one of the three trigger fields changes.
+**Persistence:** Suggestions stay visible in the UI state after the panel is collapsed and re-expanded — they are not re-fetched until Validate is clicked again.
 
 ### Chip interaction
 
@@ -147,24 +190,14 @@ Each suggestion is a clickable chip. Clicking a chip:
 
 1. Replaces the current form's **name** and **description** fields with that suggestion's values
 2. Marks the chip as "current" (highlighted, with a "current" badge)
-3. **Does not** trigger a new debounced scope check — the debounce is suppressed when the form update originates from a chip click, not user typing
+3. **Does not** trigger a new scope check
 4. Keeps the suggestions panel open so the user can see all suggestions and swap to another
 
-The user can cycle through suggestions by clicking different chips. The scope check re-arms only when the user manually edits the name, description, or purpose fields after a chip selection.
+The user can cycle through suggestions by clicking different chips. The scope check re-arms only when Validate is clicked again.
 
-### Start workflow warning
+### No "copy remaining" warning
 
-When the user clicks "Start workflow" and the suggestions panel is visible:
-
-- If **all suggestions have been copied or the panel was dismissed** — proceed normally
-- If **uncopied suggestions remain** — show an inline warning in the dialog footer:
-
-  > *"2 suggestions not saved."* **[Copy remaining]** **[Start anyway]**
-
-  - "Copy remaining" copies all unselected suggestions as a formatted list to clipboard and proceeds
-  - "Start anyway" proceeds without copying
-
-**Persistent suggestions panel** (follow-up): saving remaining suggestions to the skills list screen for reference after the dialog closes is tracked in [VU-933](https://linear.app/acceleratedata/issue/VU-933).
+The "copy remaining" warning on step 2 (previously shown when uncopied suggestions existed) is **removed**. The **Copy all** button in the suggestions panel is sufficient. The Next button advances to step 2 without any scope-advisor gate.
 
 ---
 
@@ -172,12 +205,11 @@ When the user clicks "Start workflow" and the suggestions panel is visible:
 
 | Scenario | Behaviour |
 |---|---|
-| Description < 2 sentences | Show hint, skip LLM call |
 | Already narrow skill | Show "looks focused" confirmation |
 | Non-English input | Prompt instructs the LLM to respond in English only; suggested names must be English gerund-named slugs |
-| LLM call fails / timeout | Fail silently — no banner shown, no error surfaced to user |
-| User dismisses banner then edits a field | Banner re-evaluates on next debounce |
-| Chip clicked then user edits fields | Debounce re-arms; new scope check fires after 1–2s |
+| LLM call fails / timeout | Overlay is removed, no banner shown, no error surfaced to user; form returns to normal enabled state |
+| User clicks Next without validating | Advances normally — Validate is advisory, never blocking |
+| Chip clicked then user edits fields | Fields updated by chip; scope check re-arms on next Validate click |
 
 ---
 
