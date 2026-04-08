@@ -58,14 +58,17 @@ A good name uses the gerund pattern: `verb-ing + specific object` (kebab-case).
 
 ### Description rules
 
-A good description acts on nouns that serve **the same business decision within the same sub-domain**.
+A good description acts on nouns that share **the same process type within the same business function**.
 
 - Nouns must be specific — `churned customers`, `purchase orders` not `sales data`, `customers`
 - The data source is **optional** — adds clarity but is not required to pass
 - **Multiple actions on one noun are fine** — fetch + validate + update = still focused
-- **Multiple nouns are fine if they serve the same decision** — e.g. `grain quality testing` + `grain traceability documentation` both serve "is this grain safe and compliant?" → pass
-- **Multiple nouns that serve different decisions fail** — e.g. `grain sourcing` ("which vendor?") + `grain pricing` ("what budget?") → split
+- **Multiple nouns of the same process type are fine** — e.g. `quality testing` + `traceability documentation` are both validation processes within procurement → pass
+- **Nouns of different process types fail** — e.g. `grain sourcing` (vendor selection) + `grain pricing` (cost analysis) are different process types → split, even if they serve the same business outcome
 - **Nouns from different business functions always fail** — e.g. `vendor qualifications` (procurement) + `churn rates` (customer success) → split
+
+**Why process-driven, not outcome-driven:**
+In a data warehouse, process maps directly to pipelines and tables. Different process types need separate pipelines regardless of whether they serve the same decision. Outcome-based grouping is too loose — almost any two processes can be argued to share an outcome at a high enough level, making the boundary inconsistent.
 
 **How sub-domain boundaries are determined:**
 - The LLM uses general business knowledge by default

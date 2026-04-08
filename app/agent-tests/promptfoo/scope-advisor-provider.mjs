@@ -30,14 +30,14 @@ function buildScopeReviewPrompt({ skillName, description, purpose, industry, doc
 
 You are evaluating whether a Claude skill is too broad.
 
-A good description acts on nouns that serve the SAME business decision within the same sub-domain.
-- Multiple nouns are fine if they serve the same decision (e.g. quality testing + traceability documentation both serve a compliance decision → pass)
-- Multiple nouns that serve different decisions fail (e.g. grain sourcing vs grain pricing → split)
+A good description acts on nouns that share the SAME PROCESS TYPE within the same business function.
+- Multiple nouns of the same process type are fine (e.g. quality testing + traceability documentation are both validation processes → pass)
+- Nouns of different process types fail even if they serve the same outcome (e.g. grain sourcing vs grain pricing → split)
 - Nouns from different business functions always fail
 
 Examples:
-- "analyzes revenue, pipeline health, and rep performance" → three different decisions → too broad
-- "validates grain quality testing and traceability documentation for compliance" → same compliance decision → focused
+- "analyzes revenue, pipeline health, and rep performance" → different process types across functions → too broad
+- "validates grain quality testing and traceability documentation for compliance" → both validation processes → focused
 - "forecasts churned customers using CRM data" → one noun → focused
 
 Use industry and document context to override a generic breadth signal. If the documents show that a topic in this company is one tightly scoped workflow, it may be focused — not broad.

@@ -99,21 +99,22 @@ pub async fn review_skill_scope(
          - Pass: forecasting-churned-customers, processing-purchase-orders, analyzing-salesforce-opportunities\n\
          - Fail: sales-analysis (not gerund), analyzing-data (object too vague)\n\n\
          ## Description rules\n\
-         A good description acts on nouns that serve the SAME business decision within the same sub-domain.\n\
+         A good description acts on nouns that share the SAME PROCESS TYPE within the same business function.\n\
          - Nouns must be specific (\"churned customers\", \"purchase orders\") — not generic (\"sales data\", \"customers\")\n\
          - The data source is optional — adds clarity but not required to pass\n\
          - Multiple actions on one noun are fine (fetch + validate + update = still focused)\n\
-         - Multiple nouns are fine if they serve the same business decision — e.g. \"grain quality testing\" + \"grain traceability documentation\" both serve \"is this grain safe and compliant?\" → pass\n\
-         - Multiple nouns that serve different decisions fail — e.g. \"grain sourcing\" (which vendor?) + \"grain pricing\" (what budget?) → split\n\
+         - Multiple nouns of the same process type are fine — e.g. \"grain quality testing\" + \"grain traceability documentation\" are both validation processes → pass\n\
+         - Nouns of different process types fail — e.g. \"grain sourcing\" (vendor selection process) + \"grain pricing\" (cost analysis process) → split, even if they serve the same outcome\n\
          - Nouns from different business functions always fail — e.g. \"vendor qualifications\" (procurement) + \"churn rates\" (customer success) → split\n\
-         Use general business knowledge to judge sub-domain boundaries. Uploaded reference documents can override — if they define a tighter or broader sub-domain for this company, follow that.\n\n\
+         Use general business knowledge to judge process type and business function. \
+Uploaded reference documents can override — if they define a tighter or broader sub-domain for this company, follow that.\n\n\
          ## Passing examples\n\
          - Name: forecasting-churned-customers | Description: \"Forecasts which customers are at risk of churning\" → focused\n\
          - Name: processing-purchase-orders | Description: \"Fetches, validates, and updates purchase orders\" → focused\n\
-         - Name: qualifying-grain-suppliers | Description: \"Validates grain quality testing and traceability documentation for feed ingredient sourcing compliance\" → focused (both serve the same compliance decision)\n\n\
+         - Name: validating-grain-feed-compliance | Description: \"Validates grain quality testing and traceability documentation for feed ingredient compliance\" → focused (both are validation processes)\n\n\
          ## Failing examples\n\
-         - Description: \"Analyzes revenue, pipeline health, and rep performance\" → too-broad (three nouns, three different decisions)\n\
-         - Description: \"Manages grain sourcing and commodity pricing\" → too-broad (different decisions: vendor selection vs budget)\n\
+         - Description: \"Analyzes revenue, pipeline health, and rep performance\" → too-broad (three different process types across different functions)\n\
+         - Description: \"Manages grain sourcing and commodity pricing\" → too-broad (vendor selection and cost analysis are different process types)\n\
          - Name: analyzing-data | Description: \"Analyzes Salesforce opportunities\" → name-needs-improvement\n\
          - Description: \"Analyzes sales metrics\" → description-needs-improvement (noun too vague)\n\n\
          Use industry and document context to override a generic breadth signal. If documents show \
