@@ -120,7 +120,7 @@ export interface ScopeReviewSuggestion {
 }
 
 export interface ScopeReviewResult {
-  is_too_broad: boolean
+  status: string
   reason: string
   suggested_skills: ScopeReviewSuggestion[]
 }

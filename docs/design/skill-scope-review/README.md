@@ -44,12 +44,41 @@ The "What Claude needs to know" field (context questions) is included as additio
 
 ## Evaluation Criteria
 
-A skill is **too broad** when its description touches more than one distinct domain object.
+The advisor evaluates **both the name and the description** independently against the following rules.
 
-Examples:
+### Name rules
 
-- `"analyzes revenue, headcount, and marketing spend"` → three unrelated domain objects → too broad
-- `"forecasts churned customers using CRM data"` → one domain object → focused
+A good name uses the gerund pattern: `verb-ing + specific object` (kebab-case).
+
+| Pass | Fail |
+|---|---|
+| `forecasting-churned-customers` | `sales-analysis` (not gerund) |
+| `processing-purchase-orders` | `analyzing-data` (object too vague) |
+
+### Description rules
+
+A good description acts on **exactly one specific noun**.
+
+- The noun must identify **what** it is (the entity): `churned customers`, `purchase orders` — not `sales data`, `customers`
+- The data source is **optional** — it adds clarity but is not required to pass
+- **Multiple actions on one noun are fine** — fetch + validate + update = still focused
+- **Multiple nouns always fail**, even if related or from the same system (e.g. `accounts and contacts` → fail)
+
+### Passing examples
+
+| Name | Description | Verdict |
+|---|---|---|
+| `forecasting-churned-customers` | Forecasts which customers are at risk of churning based on health scores | ✓ Pass |
+| `processing-purchase-orders` | Fetches, validates, and updates purchase orders from Salesforce | ✓ Pass |
+| `analyzing-salesforce-opportunities` | Analyzes open opportunities by stage and close date | ✓ Pass |
+
+### Failing examples
+
+| Name | Description | Failure |
+|---|---|---|
+| `sales-analysis` | Analyzes revenue, pipeline health, and rep performance | Too broad — three nouns |
+| `analyzing-data` | Analyzes Salesforce opportunities | Name object too vague |
+| `forecasting-churned-customers` | Analyzes sales metrics and churn | Description too broad — two nouns |
 
 The LLM uses industry and uploaded documents as context. A description that sounds multi-domain generically may resolve to a single workflow in the user's specific business context — that is a valid pass.
 
@@ -65,7 +94,7 @@ The LLM uses industry and uploaded documents as context. A description that soun
 
 ```json
 {
-  "is_too_broad": boolean,
+  "status": "focused" | "too-broad" | "name-needs-improvement" | "description-needs-improvement" | "both-need-improvement",
   "reason": string,
   "suggested_skills": [
     {
@@ -76,10 +105,11 @@ The LLM uses industry and uploaded documents as context. A description that soun
 }
 ```
 
-- `suggested_skills` contains 3–5 items when `is_too_broad` is `true`, empty array otherwise
-- `reason` is always populated — used for the banner message and "looks good" confirmation
-- All suggested `name` values must use gerund-naming (see below)
-- All suggested `description` values must follow the effective description guidelines (see below)
+- `status` is one of five values (see States below)
+- `reason` is always populated — a short diagnostic sentence shown below the banner
+- `suggested_skills` contains 3–5 items for all non-focused statuses, empty array when `focused`
+- All suggested `name` values must use gerund-naming
+- All suggested `description` values must follow the effective description guidelines
 
 ---
 
@@ -154,21 +184,39 @@ No advisor UI is shown. The Validate button is enabled when required fields are 
 
 Full-form overlay with centered spinner. All fields and the Next/Validate/Cancel buttons are disabled.
 
-### State 3 — Focused skill (`is_too_broad: false`)
+### State 3 — Focused (`status: focused`)
 
-Overlay is removed. Subtle confirmation banner below description field:
+Overlay removed. Green confirmation banner:
 
 > ✓ *"This skill looks focused."*
 
-The Next button and all form fields return to their normal enabled state.
+Validate button disabled. Next and all fields return to normal.
 
-### State 4 — Too broad (`is_too_broad: true`)
-
-Overlay is removed. Inline advisory banner below description field:
+### State 4 — Too broad (`status: too-broad`)
 
 > ⚠ *"This skill might be too broad. Consider splitting into more focused skills."*
 
-User can **expand** the banner to see the suggestions.
+3–5 decomposition chips in the expanded panel.
+
+### State 5 — Name needs improvement (`status: name-needs-improvement`)
+
+> ⚠ *"We found better names for this skill."*
+
+3–5 alternative gerund name chips, each with an improved description.
+
+### State 6 — Description needs improvement (`status: description-needs-improvement`)
+
+> ⚠ *"We found a clearer description for this skill."*
+
+3–5 alternative description chips paired with a corrected name.
+
+### State 7 — Both need improvement (`status: both-need-improvement`)
+
+> ⚠ *"We found better names and descriptions for this skill."*
+
+3–5 chips with both name and description improved.
+
+The `reason` field is shown as a small diagnostic line below the banner message in states 4–7, e.g. *"The description covers two nouns: churned customers and pipeline health."*
 
 ### Expanded suggestions panel
 

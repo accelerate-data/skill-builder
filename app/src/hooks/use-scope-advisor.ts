@@ -8,6 +8,10 @@ import {
   type ScopeAdvisorStatus,
 } from "@/lib/scope-advisor"
 
+const VALID_STATUSES: ScopeAdvisorStatus[] = [
+  "focused", "too-broad", "name-needs-improvement", "description-needs-improvement", "both-need-improvement",
+]
+
 interface UseScopeAdvisorOptions {
   mode: "create" | "edit"
   skillName: string
@@ -18,6 +22,7 @@ interface UseScopeAdvisorOptions {
 
 export interface UseScopeAdvisorReturn {
   status: ScopeAdvisorStatus
+  reason: string
   suggestions: ScopeAdvisorSuggestion[]
   currentChipIndex: number | null
   copiedIndices: Set<number>
@@ -42,6 +47,7 @@ export function useScopeAdvisor({
   const { industry } = useSettingsStore()
 
   const [status, setStatus] = useState<ScopeAdvisorStatus>("idle")
+  const [reason, setReason] = useState("")
   const [suggestions, setSuggestions] = useState<ScopeAdvisorSuggestion[]>([])
   const [currentChipIndex, setCurrentChipIndex] = useState<number | null>(null)
   const [copiedIndices, setCopiedIndices] = useState<Set<number>>(new Set())
@@ -63,13 +69,16 @@ export function useScopeAdvisor({
     reviewSkillScope(skillName, description, purpose, contextQuestions || null, industry || null)
       .then((result) => {
         console.log("[scope-advisor] result", result)
-        if (result.is_too_broad) {
-          setSuggestions(result.suggested_skills)
-          setStatus("too-broad")
-        } else {
+        const resolvedStatus = VALID_STATUSES.includes(result.status as ScopeAdvisorStatus)
+          ? (result.status as ScopeAdvisorStatus)
+          : "focused"
+        setReason(result.reason ?? "")
+        if (resolvedStatus === "focused") {
           setSuggestions([])
-          setStatus("focused")
+        } else {
+          setSuggestions(result.suggested_skills)
         }
+        setStatus(resolvedStatus)
       })
       .catch((err) => {
         console.error("[scope-advisor] failed", err)
@@ -114,6 +123,7 @@ export function useScopeAdvisor({
   const onFieldEdit = useCallback(() => {
     chipClickSuppressed.current = false
     setStatus("idle")
+    setReason("")
     setSuggestions([])
     setCurrentChipIndex(null)
     setCopiedIndices(new Set())
@@ -127,6 +137,7 @@ export function useScopeAdvisor({
       return
     }
     setStatus("idle")
+    setReason("")
     setSuggestions([])
     setCurrentChipIndex(null)
     setCopiedIndices(new Set())
@@ -134,7 +145,8 @@ export function useScopeAdvisor({
 
   if (mode === "edit") {
     return {
-      status: "idle",
+      status: "idle" as ScopeAdvisorStatus,
+      reason: "",
       suggestions: [],
       currentChipIndex: null,
       copiedIndices: new Set(),
@@ -152,6 +164,7 @@ export function useScopeAdvisor({
 
   return {
     status,
+    reason,
     suggestions,
     currentChipIndex,
     copiedIndices,

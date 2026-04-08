@@ -9,7 +9,7 @@ pub struct ScopeReviewSuggestion {
 
 #[derive(Serialize)]
 pub struct ScopeReviewResult {
-    pub is_too_broad: bool,
+    pub status: String, // "focused" | "too-broad" | "name-needs-improvement" | "description-needs-improvement" | "both-need-improvement"
     pub reason: String,
     pub suggested_skills: Vec<ScopeReviewSuggestion>,
 }
@@ -88,19 +88,40 @@ pub async fn review_skill_scope(
         .unwrap_or_default();
 
     let prompt = format!(
-        "You are evaluating whether a Claude skill is too broad.\n\n\
-         A skill is too broad when its description touches more than one distinct domain object.\n\n\
-         Examples:\n\
-         - \"analyzes revenue, headcount, and marketing spend\" → three unrelated domain objects → too broad\n\
-         - \"forecasts churned customers using CRM data\" → one domain object → focused\n\n\
-         Use industry and document context to override a generic breadth signal. If the documents show \
+        "You are evaluating whether a Claude skill is well-defined. \
+         Evaluate BOTH the name and the description independently.\n\n\
+         ## Name rules\n\
+         A good name uses the gerund pattern: verb-ing + specific object (kebab-case).\n\
+         - Pass: forecasting-churned-customers, processing-purchase-orders, analyzing-salesforce-opportunities\n\
+         - Fail: sales-analysis (not gerund), analyzing-data (object too vague)\n\n\
+         ## Description rules\n\
+         A good description acts on exactly ONE specific noun.\n\
+         - The noun must be specific (\"churned customers\", \"purchase orders\") — not generic (\"sales data\", \"customers\")\n\
+         - The data source is optional — adds clarity but not required to pass\n\
+         - Multiple actions on one noun are fine (fetch + validate + update = still focused)\n\
+         - Multiple nouns always fail, even if related or from the same system\n\n\
+         ## Passing examples\n\
+         - Name: forecasting-churned-customers | Description: \"Forecasts which customers are at risk of churning\" → focused\n\
+         - Name: processing-purchase-orders | Description: \"Fetches, validates, and updates purchase orders\" → focused\n\n\
+         ## Failing examples\n\
+         - Description: \"Analyzes revenue, pipeline health, and rep performance\" → too-broad (three nouns)\n\
+         - Name: analyzing-data | Description: \"Analyzes Salesforce opportunities\" → name-needs-improvement\n\
+         - Description: \"Analyzes sales metrics\" → description-needs-improvement (noun too vague)\n\n\
+         Use industry and document context to override a generic breadth signal. If documents show \
          that a topic in this company is one tightly scoped workflow, it may be focused — not broad.\n\n\
          Skill to evaluate:\n\
          - Name: {skill_name}\n\
          - Description: {description}\n\
          - Purpose: {purpose}{context_questions_line}{industry_context}{doc_context}\n\n\
-         When is_too_broad is true, suggest 3-5 focused replacements. All suggested names MUST use \
-         the gerund pattern: verb-ing + object (kebab-case).\n\n\
+         ## Status values\n\
+         Return exactly one of:\n\
+         - \"focused\": both name and description pass\n\
+         - \"too-broad\": description covers multiple distinct nouns → suggest 3-5 decomposed skills\n\
+         - \"name-needs-improvement\": description is focused, name fails gerund/specificity rules\n\
+         - \"description-needs-improvement\": name is fine, description noun is too vague or generic\n\
+         - \"both-need-improvement\": both name and description have issues (but not too-broad)\n\n\
+         For all non-focused statuses, suggest 3-5 alternatives. All suggested names MUST use \
+         the gerund pattern: verb-ing + specific object (kebab-case).\n\n\
          Gerund naming examples (correct vs incorrect):\n\
          - forecasting-churned-customers ✓ vs churn-forecast ✗\n\
          - calculating-opportunity-mrr ✓ vs opportunity-mrr-calculation ✗\n\
@@ -121,7 +142,7 @@ Use when the customer success team needs a prioritized list of at-risk accounts.
          Avoid: \"Helps with customer data\"\n\n\
          Respond in English only.\n\n\
          Respond with JSON only (no markdown fences, no extra text):\n\
-         {{\"is_too_broad\": boolean, \"reason\": string, \"suggested_skills\": [{{\"name\": string, \"description\": string}}]}}",
+         {{\"status\": string, \"reason\": string, \"suggested_skills\": [{{\"name\": string, \"description\": string}}]}}",
         skill_name = skill_name,
         description = description,
         purpose = purpose,
@@ -194,7 +215,12 @@ Use when the customer success team needs a prioritized list of at-risk accounts.
         format!("Failed to parse result: {}", e)
     })?;
 
-    let is_too_broad = parsed["is_too_broad"].as_bool().unwrap_or(false);
+    let valid_statuses = ["focused", "too-broad", "name-needs-improvement", "description-needs-improvement", "both-need-improvement"];
+    let status = parsed["status"]
+        .as_str()
+        .filter(|s| valid_statuses.contains(s))
+        .unwrap_or("focused")
+        .to_string();
     let reason = parsed["reason"].as_str().unwrap_or("").to_string();
     let suggested_skills: Vec<ScopeReviewSuggestion> = parsed["suggested_skills"]
         .as_array()
@@ -210,13 +236,13 @@ Use when the customer success team needs a prioritized list of at-risk accounts.
         .unwrap_or_default();
 
     log::info!(
-        "[review_skill_scope] result: is_too_broad={} suggestions={}",
-        is_too_broad,
+        "[review_skill_scope] result: status={} suggestions={}",
+        status,
         suggested_skills.len()
     );
 
     Ok(ScopeReviewResult {
-        is_too_broad,
+        status,
         reason,
         suggested_skills,
     })
