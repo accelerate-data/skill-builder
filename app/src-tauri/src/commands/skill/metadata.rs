@@ -146,7 +146,90 @@ pub fn update_skill_metadata(
     if let Err(e) = crate::db::lock_plugin_for_skill(&conn, &skill_name) {
         log::warn!("[update_skill_metadata] lock_plugin_for_skill failed (non-fatal): {}", e);
     }
+
+    // Regenerate user-context.md so agents see up-to-date metadata without a workflow run.
+    // Non-fatal: mirrors how workflow runtime calls write_user_context_file.
+    sync_user_context_file(&conn, &skill_name);
+
     Ok(())
+}
+
+/// Read the full skill state from the DB and regenerate `user-context.md`.
+/// Non-fatal: logs warnings on failure rather than propagating errors.
+pub(crate) fn sync_user_context_file(conn: &rusqlite::Connection, skill_name: &str) {
+    let settings = match crate::db::read_settings(conn) {
+        Ok(s) => s,
+        Err(e) => {
+            log::warn!("[sync_user_context_file] Failed to read settings: {}", e);
+            return;
+        }
+    };
+    let workspace_path = match &settings.workspace_path {
+        Some(wp) => wp.clone(),
+        None => {
+            log::warn!("[sync_user_context_file] No workspace_path configured, skipping");
+            return;
+        }
+    };
+
+    let master_row = match crate::db::get_skill_master_any_plugin(conn, skill_name) {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            log::warn!("[sync_user_context_file] Skill '{}' not found in master table", skill_name);
+            return;
+        }
+        Err(e) => {
+            log::warn!("[sync_user_context_file] Failed to read skill master: {}", e);
+            return;
+        }
+    };
+
+    let tags = crate::db::get_tags_for_skills(conn, &[skill_name.to_string()])
+        .unwrap_or_default()
+        .remove(skill_name)
+        .unwrap_or_default();
+
+    let author = settings
+        .github_user_email
+        .clone()
+        .or(settings.github_user_login.clone())
+        .or_else(|| {
+            crate::db::get_workflow_run(conn, skill_name)
+                .ok()
+                .flatten()
+                .and_then(|r| r.author_login)
+        });
+
+    let intake_json = crate::db::get_workflow_run(conn, skill_name)
+        .ok()
+        .flatten()
+        .and_then(|r| r.intake_json);
+
+    let documents = crate::db::db_documents_for_skill(conn, master_row.id)
+        .unwrap_or_else(|e| {
+            log::warn!("[sync_user_context_file] Failed to load documents: {}", e);
+            vec![]
+        });
+
+    crate::commands::workflow::user_context::write_user_context_file(
+        &workspace_path,
+        &master_row.plugin_slug,
+        skill_name,
+        &tags,
+        author.as_deref(),
+        settings.industry.as_deref(),
+        settings.function_role.as_deref(),
+        intake_json.as_deref(),
+        master_row.description.as_deref(),
+        master_row.purpose.as_deref(),
+        master_row.version.as_deref(),
+        master_row.model.as_deref(),
+        master_row.argument_hint.as_deref(),
+        master_row.user_invocable,
+        master_row.disable_model_invocation,
+        &documents,
+    );
+    log::info!("[sync_user_context_file] Regenerated user-context.md for '{}'", skill_name);
 }
 
 /// Validate kebab-case: lowercase alphanumeric segments separated by single hyphens.
