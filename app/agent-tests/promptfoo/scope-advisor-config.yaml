@@ -11,6 +11,7 @@ providers:
   - file://./scope-advisor-provider.mjs
 
 tests:
+  # Case 2: both name and description span multiple distinct processes
   - description: scope-advisor-too-broad
     vars:
       scenario: scope-advisor-too-broad
@@ -18,9 +19,9 @@ tests:
       - type: contains
         value: '"parseSuccess":true'
       - type: contains
-        value: '"isTooBooadBoolean":true'
+        value: '"statusIsString":true'
       - type: contains
-        value: '"isToooBroad":true'
+        value: '"statusIsTooBoard":true'
       - type: contains
         value: '"reasonNonEmpty":true'
       - type: contains
@@ -28,8 +29,67 @@ tests:
       - type: contains
         value: '"suggestionCountAtLeastThree":true'
       - type: contains
+        value: '"allNamesGerund":true'
+      - type: contains
         value: '"failures":[]'
 
+  # Case 1: name not gerund, description already focused → 1 chip, description preserved
+  - description: scope-advisor-name-needs-improvement
+    vars:
+      scenario: scope-advisor-name-needs-improvement
+    assert:
+      - type: contains
+        value: '"parseSuccess":true'
+      - type: contains
+        value: '"statusIsNameNeedsImprovement":true'
+      - type: contains
+        value: '"reasonNonEmpty":true'
+      - type: contains
+        value: '"exactlyOneSuggestion":true'
+      - type: contains
+        value: '"suggestionNameIsGerund":true'
+      - type: contains
+        value: '"originalDescriptionPreserved":true'
+      - type: contains
+        value: '"failures":[]'
+
+  # Case 4: name focused, description wanders into a second process → 2+ chips
+  - description: scope-advisor-description-needs-improvement
+    vars:
+      scenario: scope-advisor-description-needs-improvement
+    assert:
+      - type: contains
+        value: '"parseSuccess":true'
+      - type: contains
+        value: '"statusIsDescriptionNeedsImprovement":true'
+      - type: contains
+        value: '"reasonNonEmpty":true'
+      - type: contains
+        value: '"atLeastTwoSuggestions":true'
+      - type: contains
+        value: '"allNamesGerund":true'
+      - type: contains
+        value: '"failures":[]'
+
+  # Case 3: both name and description too vague → 3-5 best-guess chips with caveat
+  - description: scope-advisor-both-need-improvement
+    vars:
+      scenario: scope-advisor-both-need-improvement
+    assert:
+      - type: contains
+        value: '"parseSuccess":true'
+      - type: contains
+        value: '"statusIsBothNeedImprovement":true'
+      - type: contains
+        value: '"reasonNonEmpty":true'
+      - type: contains
+        value: '"suggestionCountAtLeastThree":true'
+      - type: contains
+        value: '"allNamesGerund":true'
+      - type: contains
+        value: '"failures":[]'
+
+  # Focused: both name and description pass all rules
   - description: scope-advisor-focused
     vars:
       scenario: scope-advisor-focused
@@ -37,16 +97,15 @@ tests:
       - type: contains
         value: '"parseSuccess":true'
       - type: contains
-        value: '"isTooBooadBoolean":true'
-      - type: contains
-        value: '"isFocused":true'
+        value: '"statusIsFocused":true'
       - type: contains
         value: '"reasonNonEmpty":true'
       - type: contains
-        value: '"emptyArray":true'
+        value: '"emptySuggestions":true'
       - type: contains
         value: '"failures":[]'
 
+  # Context override: document narrows a broad-looking skill → focused
   - description: scope-advisor-context-override
     vars:
       scenario: scope-advisor-context-override
@@ -54,31 +113,13 @@ tests:
       - type: contains
         value: '"parseSuccess":true'
       - type: contains
-        value: '"isTooBooadBoolean":true'
-      - type: contains
         value: '"contextOverrideWorks":true'
       - type: contains
         value: '"reasonNonEmpty":true'
       - type: contains
         value: '"failures":[]'
 
-  - description: scope-advisor-gerund-names
-    vars:
-      scenario: scope-advisor-gerund-names
-    assert:
-      - type: contains
-        value: '"parseSuccess":true'
-      - type: contains
-        value: '"isToooBroad":true'
-      - type: contains
-        value: '"hasSuggestions":true'
-      - type: contains
-        value: '"allNamesGerund":true'
-      - type: contains
-        value: '"allNamesKebab":true'
-      - type: contains
-        value: '"failures":[]'
-
+  # Non-English input: all suggested names must be English gerund kebab-case
   - description: scope-advisor-non-english
     vars:
       scenario: scope-advisor-non-english
@@ -86,9 +127,7 @@ tests:
       - type: contains
         value: '"parseSuccess":true'
       - type: contains
-        value: '"isTooBooadBoolean":true'
-      - type: contains
-        value: '"isToooBroad":true'
+        value: '"statusNotFocused":true'
       - type: contains
         value: '"hasSuggestions":true'
       - type: contains

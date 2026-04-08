@@ -88,8 +88,9 @@ The name fails if it is:
 
 The description is already focused on one process. The LLM derives the correct gerund name directly from the description.
 
-- **Chips:** 1 — correct gerund name derived from description, paired with the existing description
-- **Reason example:** *"Your description is focused on forecasting churn, but the name doesn't follow the gerund pattern. We derived a better name from your description."*
+- **Chips:** 1 — correct gerund name derived from the description, with the **original description unchanged**. The description is already good; only the name needs fixing.
+- **Reason example:** *"Your name doesn't follow the gerund pattern. We derived a focused gerund name from your description, which was kept as-is."*
+- **Note:** if the description is also vague or imprecise, use Case 3 (`both-need-improvement`) instead.
 
 ### Case 2 — Both name and description span multiple processes → `too-broad`
 

@@ -105,12 +105,13 @@ pub async fn review_skill_scope(
          Always fail: nouns from different business functions → split\n\
          Use general business knowledge for process boundaries. Uploaded documents can override.\n\n\
          ## Four cases — pick exactly one status and follow its action\n\n\
-         CASE 1 — name fails (too broad/vague OR not in gerund form), description fits one process → status: \"name-needs-improvement\"\n\
-         Name fails when: not gerund (e.g. sales-analysis, procurement-process, sales-report), or gerund but object too vague (e.g. analyzing-data, managing-things)\n\
-         Example A: name=sales-analysis, description=\"Forecasts which customers are at risk of churning\" → name not gerund\n\
-         Example B: name=procurement-process, description=\"Validates grain quality testing and traceability docs for compliance\" → name is a noun, not gerund\n\
-         Action: derive the correct gerund name DIRECTLY from the description. Return exactly 1 suggestion (correct gerund name + existing description).\n\
-         Reason: state whether the name is not gerund or too vague, and explain it was derived from the description.\n\n\
+         CASE 1 — name fails (not gerund OR too vague), description is already specific and focused → status: \"name-needs-improvement\"\n\
+         Name fails when: not gerund (e.g. sales-analysis, procurement-process), or gerund but object too vague (e.g. analyzing-data)\n\
+         Description is good: specific nouns, one process, clear trigger\n\
+         Example: name=sales-analysis, description=\"Forecasts which customers are at risk of churning based on CRM health scores\" → name not gerund, but description is already focused\n\
+         Action: derive the correct gerund name from the description. Return exactly 1 suggestion with the new name and the ORIGINAL description unchanged.\n\
+         Reason: state why the name fails and that the description was kept as-is.\n\
+         NOTE: if the description is also vague or imprecise, use CASE 3 instead — not Case 1.\n\n\
          CASE 2 — both name and description span multiple distinct processes → status: \"too-broad\"\n\
          Example: name=sales-analysis, description=\"Analyzes revenue, pipeline health, and rep performance\"\n\
          Action: split into 3-5 focused skills. Anchor suggested names to the original name where possible.\n\

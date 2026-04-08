@@ -45,12 +45,13 @@ Use general business knowledge for process boundaries. Uploaded documents can ov
 
 ## Four cases — pick exactly one status and follow its action
 
-CASE 1 — name fails (too broad/vague OR not in gerund form), description fits one process → status: "name-needs-improvement"
-Name fails when: not gerund (e.g. sales-analysis, procurement-process, sales-report), or gerund but object too vague (e.g. analyzing-data)
-Example A: name=sales-analysis, desc="Forecasts which customers are at risk of churning" → name not gerund
-Example B: name=procurement-process, desc="Validates grain quality testing and traceability docs for compliance" → noun not gerund
-Action: derive the correct gerund name DIRECTLY from the description. Return exactly 1 suggestion (correct gerund name + existing description).
-Reason: state whether name is not gerund or too vague, and that it was derived from the description.
+CASE 1 — name fails (not gerund OR too vague), description is already specific and focused → status: "name-needs-improvement"
+Name fails when: not gerund (e.g. sales-analysis, procurement-process), or gerund but object too vague (e.g. analyzing-data)
+Description must be good: specific nouns, one process, clear trigger
+Example: name=sales-analysis, desc="Forecasts which customers are at risk of churning based on CRM health scores" → name not gerund, description already focused
+Action: derive the correct gerund name from the description. Return exactly 1 suggestion with new name + ORIGINAL description unchanged.
+Reason: state why name fails and that description was kept as-is.
+NOTE: if description is also vague, use CASE 3 instead.
 
 CASE 2 — both name and description span multiple distinct processes → status: "too-broad"
 Example: name=sales-analysis, description="Analyzes revenue, pipeline health, and rep performance"
@@ -134,12 +135,24 @@ function finalizeScenario(scenario, contracts) {
 }
 
 // ---------------------------------------------------------------------------
-// Scenario handlers
+// Helpers
+// ---------------------------------------------------------------------------
+
+function parseResult(raw, scenario) {
+  try {
+    return { parsed: JSON.parse(raw), parseSuccess: true };
+  } catch {
+    return { parsed: null, parseSuccess: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scenario handlers — four evaluation cases + focused + context-override + non-english
 // ---------------------------------------------------------------------------
 
 /**
- * Clearly broad skill: covers revenue, pipeline health, rep performance, churn.
- * Expected: is_too_broad true, 3–5 suggestions, all contracts pass.
+ * Case 2: both name and description span multiple distinct processes.
+ * Expected: status="too-broad", 3–5 split suggestions, all gerund-named.
  */
 function runTooBroad() {
   const prompt = buildScopeReviewPrompt({
@@ -152,152 +165,181 @@ function runTooBroad() {
     documentContext: null,
   });
   const raw = callSonnet(prompt);
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return finalizeScenario("scope-advisor-too-broad", { parseSuccess: false });
-  }
+  const { parsed, parseSuccess } = parseResult(raw, "scope-advisor-too-broad");
+  if (!parseSuccess) return finalizeScenario("scope-advisor-too-broad", { parseSuccess: false });
   const suggestions = Array.isArray(parsed.suggested_skills) ? parsed.suggested_skills : [];
+  const allGerund = suggestions.length > 0 && suggestions.every((s) => isGerundName(s.name));
   return finalizeScenario("scope-advisor-too-broad", {
     parseSuccess: true,
-    isTooBooadBoolean: typeof parsed.is_too_broad === "boolean",
-    isToooBroad: parsed.is_too_broad === true,
+    statusIsString: typeof parsed.status === "string",
+    statusIsTooBoard: parsed.status === "too-broad",
     reasonNonEmpty: typeof parsed.reason === "string" && parsed.reason.trim().length > 0,
     suggestedSkillsArray: Array.isArray(parsed.suggested_skills),
     suggestionCountAtLeastThree: suggestions.length >= 3,
+    allNamesGerund: allGerund,
   });
 }
 
 /**
- * Clearly focused skill: single domain object, single data source.
- * Expected: is_too_broad false, empty suggested_skills array.
+ * Case 1: name not gerund, description already focused.
+ * Expected: status="name-needs-improvement", exactly 1 suggestion, original description preserved.
+ */
+function runNameNeedsImprovement() {
+  const originalDescription =
+    "Forecasts which customers are at risk of churning based on Salesforce health scores. " +
+    "Use when the customer success team needs a prioritised list of at-risk accounts.";
+  const prompt = buildScopeReviewPrompt({
+    skillName: "sales-analysis",
+    description: originalDescription,
+    purpose: "domain",
+    industry: "SaaS",
+    documentContext: null,
+  });
+  const raw = callSonnet(prompt);
+  const { parsed, parseSuccess } = parseResult(raw, "scope-advisor-name-needs-improvement");
+  if (!parseSuccess) return finalizeScenario("scope-advisor-name-needs-improvement", { parseSuccess: false });
+  const suggestions = Array.isArray(parsed.suggested_skills) ? parsed.suggested_skills : [];
+  const oneSuggestion = suggestions.length === 1;
+  const suggestionGerund = oneSuggestion && isGerundName(suggestions[0].name);
+  const descriptionPreserved = oneSuggestion && suggestions[0].description === originalDescription;
+  return finalizeScenario("scope-advisor-name-needs-improvement", {
+    parseSuccess: true,
+    statusIsNameNeedsImprovement: parsed.status === "name-needs-improvement",
+    reasonNonEmpty: typeof parsed.reason === "string" && parsed.reason.trim().length > 0,
+    exactlyOneSuggestion: oneSuggestion,
+    suggestionNameIsGerund: suggestionGerund,
+    originalDescriptionPreserved: descriptionPreserved,
+  });
+}
+
+/**
+ * Case 4: name focused and gerund, description wanders into a second process.
+ * Expected: status="description-needs-improvement", 2+ suggestions (one per process).
+ */
+function runDescriptionNeedsImprovement() {
+  const prompt = buildScopeReviewPrompt({
+    skillName: "forecasting-churned-customers",
+    description:
+      "Forecasts which customers are at risk of churning based on health scores " +
+      "and tracks renewal pipeline health across enterprise accounts.",
+    purpose: "domain",
+    industry: "SaaS",
+    documentContext: null,
+  });
+  const raw = callSonnet(prompt);
+  const { parsed, parseSuccess } = parseResult(raw, "scope-advisor-description-needs-improvement");
+  if (!parseSuccess) return finalizeScenario("scope-advisor-description-needs-improvement", { parseSuccess: false });
+  const suggestions = Array.isArray(parsed.suggested_skills) ? parsed.suggested_skills : [];
+  const allGerund = suggestions.length > 0 && suggestions.every((s) => isGerundName(s.name));
+  return finalizeScenario("scope-advisor-description-needs-improvement", {
+    parseSuccess: true,
+    statusIsDescriptionNeedsImprovement: parsed.status === "description-needs-improvement",
+    reasonNonEmpty: typeof parsed.reason === "string" && parsed.reason.trim().length > 0,
+    atLeastTwoSuggestions: suggestions.length >= 2,
+    allNamesGerund: allGerund,
+  });
+}
+
+/**
+ * Case 3: both name and description too vague to identify a clear process.
+ * Expected: status="both-need-improvement", 3–5 suggestions, caveat in reason.
+ */
+function runBothNeedImprovement() {
+  const prompt = buildScopeReviewPrompt({
+    skillName: "understand-procurement-processes",
+    description: "Help the AI agent understand the procurement processes of the company.",
+    purpose: "domain",
+    industry: null,
+    documentContext: null,
+  });
+  const raw = callSonnet(prompt);
+  const { parsed, parseSuccess } = parseResult(raw, "scope-advisor-both-need-improvement");
+  if (!parseSuccess) return finalizeScenario("scope-advisor-both-need-improvement", { parseSuccess: false });
+  const suggestions = Array.isArray(parsed.suggested_skills) ? parsed.suggested_skills : [];
+  const allGerund = suggestions.length > 0 && suggestions.every((s) => isGerundName(s.name));
+  return finalizeScenario("scope-advisor-both-need-improvement", {
+    parseSuccess: true,
+    statusIsBothNeedImprovement: parsed.status === "both-need-improvement",
+    reasonNonEmpty: typeof parsed.reason === "string" && parsed.reason.trim().length > 0,
+    suggestionCountAtLeastThree: suggestions.length >= 3,
+    allNamesGerund: allGerund,
+  });
+}
+
+/**
+ * Focused: both name and description pass all rules.
+ * Expected: status="focused", empty suggested_skills.
  */
 function runFocused() {
   const prompt = buildScopeReviewPrompt({
     skillName: "forecasting-churned-customers",
     description:
       "Forecasts which customers are at risk of churning based on Salesforce activity signals " +
-      "and health scores. Outputs a ranked list of at-risk accounts for the customer success team to action.",
+      "and health scores. Use when the customer success team needs a prioritised list of at-risk accounts.",
     purpose: "domain",
     industry: "SaaS",
     documentContext: null,
   });
   const raw = callSonnet(prompt);
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return finalizeScenario("scope-advisor-focused", { parseSuccess: false });
-  }
+  const { parsed, parseSuccess } = parseResult(raw, "scope-advisor-focused");
+  if (!parseSuccess) return finalizeScenario("scope-advisor-focused", { parseSuccess: false });
   const suggestions = Array.isArray(parsed.suggested_skills) ? parsed.suggested_skills : [];
   return finalizeScenario("scope-advisor-focused", {
     parseSuccess: true,
-    isTooBooadBoolean: typeof parsed.is_too_broad === "boolean",
-    isFocused: parsed.is_too_broad === false,
+    statusIsFocused: parsed.status === "focused",
     reasonNonEmpty: typeof parsed.reason === "string" && parsed.reason.trim().length > 0,
-    suggestedSkillsArray: Array.isArray(parsed.suggested_skills),
-    emptyArray: suggestions.length === 0,
+    emptySuggestions: suggestions.length === 0,
   });
 }
 
 /**
- * Skill that looks broad generically ("revenue metrics") but a reference document
- * establishes it as one tightly scoped workflow in this company (ARR waterfall only).
- * Expected: business context overrides generic signal → is_too_broad false.
+ * Context override: description looks broad generically but a reference document
+ * establishes it as one tightly scoped workflow. Expected: status="focused".
  */
 function runContextOverride() {
   const prompt = buildScopeReviewPrompt({
     skillName: "reporting-arr-waterfall",
-    description:
-      "Reports on revenue metrics and growth for the finance team.",
+    description: "Reports on revenue metrics and growth for the finance team.",
     purpose: "domain",
     industry: "SaaS",
     documentContext:
       "### ARR Reporting Standards\n" +
       "In this company, revenue metrics refers exclusively to the ARR waterfall report: " +
       "new ARR, expansion ARR, contraction ARR, and churned ARR. This is a single weekly report " +
-      "produced from Salesforce Opportunities data. No other revenue concepts (headcount costs, " +
-      "marketing spend, gross margin) are in scope for this report.",
+      "produced from Salesforce Opportunities data. No other revenue concepts are in scope.",
   });
   const raw = callSonnet(prompt);
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return finalizeScenario("scope-advisor-context-override", { parseSuccess: false });
-  }
+  const { parsed, parseSuccess } = parseResult(raw, "scope-advisor-context-override");
+  if (!parseSuccess) return finalizeScenario("scope-advisor-context-override", { parseSuccess: false });
   return finalizeScenario("scope-advisor-context-override", {
     parseSuccess: true,
-    isTooBooadBoolean: typeof parsed.is_too_broad === "boolean",
-    contextOverrideWorks: parsed.is_too_broad === false,
+    contextOverrideWorks: parsed.status === "focused",
     reasonNonEmpty: typeof parsed.reason === "string" && parsed.reason.trim().length > 0,
   });
 }
 
 /**
- * Broad skill: asserts every suggested name uses the gerund verb-ing + object pattern.
- * Separates naming-convention compliance from the too-broad judgment itself.
- */
-function runGerundNames() {
-  const prompt = buildScopeReviewPrompt({
-    skillName: "sales-analysis",
-    description:
-      "Analyzes revenue, headcount changes, marketing spend effectiveness, and customer " +
-      "churn rates across all business units.",
-    purpose: "domain",
-    industry: null,
-    documentContext: null,
-  });
-  const raw = callSonnet(prompt);
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return finalizeScenario("scope-advisor-gerund-names", { parseSuccess: false });
-  }
-  const suggestions = Array.isArray(parsed.suggested_skills) ? parsed.suggested_skills : [];
-  const allGerund = suggestions.length > 0 && suggestions.every((s) => isGerundName(s.name));
-  const allKebab = suggestions.every((s) => isEnglishKebab(s.name));
-  return finalizeScenario("scope-advisor-gerund-names", {
-    parseSuccess: true,
-    isToooBroad: parsed.is_too_broad === true,
-    hasSuggestions: suggestions.length >= 3,
-    allNamesGerund: allGerund,
-    allNamesKebab: allKebab,
-  });
-}
-
-/**
- * Non-English input (French): name and description in French.
- * Expected: prompt instructs English-only response; all suggested names must be
- * English gerund kebab-case slugs (no French characters, no non-ASCII).
+ * Non-English input (French): all suggested names must be English gerund kebab-case.
  */
 function runNonEnglish() {
   const prompt = buildScopeReviewPrompt({
     skillName: "analyse-des-ventes",
     description:
       "Analyse les tendances de revenus, les performances des représentants commerciaux, " +
-      "la santé du pipeline et le taux de désabonnement des clients. " +
-      "Couvre l'ensemble des fonctions commerciales avec des données Salesforce et Marketo.",
+      "la santé du pipeline et le taux de désabonnement des clients.",
     purpose: "domain",
     industry: null,
     documentContext: null,
   });
   const raw = callSonnet(prompt);
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return finalizeScenario("scope-advisor-non-english", { parseSuccess: false });
-  }
+  const { parsed, parseSuccess } = parseResult(raw, "scope-advisor-non-english");
+  if (!parseSuccess) return finalizeScenario("scope-advisor-non-english", { parseSuccess: false });
   const suggestions = Array.isArray(parsed.suggested_skills) ? parsed.suggested_skills : [];
   const allEnglish = suggestions.every((s) => isEnglishKebab(s.name));
   const allGerund = suggestions.length > 0 && suggestions.every((s) => isGerundName(s.name));
   return finalizeScenario("scope-advisor-non-english", {
     parseSuccess: true,
-    isTooBooadBoolean: typeof parsed.is_too_broad === "boolean",
-    isToooBroad: parsed.is_too_broad === true,
+    statusNotFocused: parsed.status !== "focused",
     hasSuggestions: suggestions.length >= 3,
     allNamesEnglish: allEnglish,
     allNamesGerund: allGerund,
@@ -310,9 +352,11 @@ function runNonEnglish() {
 
 const scenarioHandlers = {
   "scope-advisor-too-broad": runTooBroad,
+  "scope-advisor-name-needs-improvement": runNameNeedsImprovement,
+  "scope-advisor-description-needs-improvement": runDescriptionNeedsImprovement,
+  "scope-advisor-both-need-improvement": runBothNeedImprovement,
   "scope-advisor-focused": runFocused,
   "scope-advisor-context-override": runContextOverride,
-  "scope-advisor-gerund-names": runGerundNames,
   "scope-advisor-non-english": runNonEnglish,
 };
 
