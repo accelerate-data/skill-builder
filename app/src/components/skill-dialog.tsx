@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { toast } from "@/lib/toast"
-import { Plus, Loader2, ChevronLeft, ChevronRight, Lock } from "lucide-react"
+import { Plus, Loader2, ChevronLeft, ChevronRight, Lock, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -18,10 +18,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Switch } from "@/components/ui/switch"
 import TagInput from "@/components/tag-input"
-import { GhostTextarea } from "@/components/ghost-input"
 import { Textarea } from "@/components/ui/textarea"
+import ScopeAdvisor from "@/components/scope-advisor"
+import { useScopeAdvisor } from "@/hooks/use-scope-advisor"
 import { useSettingsStore } from "@/stores/settings-store"
-import { renameSkill, updateSkillMetadata, generateSuggestions, createSkill, type FieldSuggestions } from "@/lib/tauri"
+import { useDocumentStore } from "@/stores/document-store"
+import { renameSkill, updateSkillMetadata, createSkill } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { EditableSkill } from "@/lib/types"
 import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
@@ -40,12 +42,6 @@ function isSkillBuilt(skill: EditableSkill | null): boolean {
   const match = skill.current_step.match(/step\s*(\d+)/i)
   if (match) return Number(match[1]) >= 5
   return false
-}
-
-// --- Cache key helper ---
-
-function makeCacheKey(group: string, params: Record<string, string | null | undefined>): string {
-  return JSON.stringify({ group, ...params })
 }
 
 // --- Intake JSON parsing ---
@@ -118,7 +114,9 @@ function LockedIcon({ message = "Locked — skill has been built" }: { message?:
 export default function SkillDialog(props: SkillDialogProps) {
   const isEdit = props.mode === "edit"
   const navigate = useNavigate()
-  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole } = useSettingsStore()
+  const { workspacePath: storeWorkspacePath, skillsPath } = useSettingsStore()
+  const documents = useDocumentStore((s) => s.documents)
+  const allScopeDocuments = useMemo(() => documents.filter((d) => d.scope === "all"), [documents])
 
   // Extract mode-specific props
   const editSkill = isEdit ? (props as SkillDialogEditProps).skill : null
@@ -160,13 +158,18 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Ghost suggestion state
-  const [descriptionSuggestion, setDescriptionSuggestion] = useState<string | null>(null)
+  const advisorState = useScopeAdvisor({
+    mode: props.mode,
+    skillName,
+    description,
+    purpose,
+    contextQuestions,
+  })
 
-  // Version refs and debounce timers
-  const group0VersionRef = useRef(0)
-  const group0DebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const suggestionCache = useRef<Map<string, FieldSuggestions>>(new Map())
+  // Stable ref so resetForm doesn't take advisorState.onFieldEdit as a dep
+  // (the edit-mode no-op is a new arrow fn each render and would cause infinite loops)
+  const advisorResetRef = useRef(advisorState.onFieldEdit)
+  advisorResetRef.current = advisorState.onFieldEdit
 
   // Derived state
   const originalName = editSkill?.name ?? ""
@@ -189,12 +192,9 @@ export default function SkillDialog(props: SkillDialogProps) {
     setArgumentHint("")
     setUserInvocable(true)
     setDisableModelInvocation(false)
-    setDescriptionSuggestion(null)
     setError(null)
     setSubmitting(false)
-    group0VersionRef.current++
-    suggestionCache.current.clear()
-    if (group0DebounceRef.current) clearTimeout(group0DebounceRef.current)
+    advisorResetRef.current()
   }, [])
 
   // Populate form in edit mode when dialog opens; reset on close for both modes
@@ -222,64 +222,6 @@ export default function SkillDialog(props: SkillDialogProps) {
       setInternalOpen(open)
     }
   }, [editOnOpenChange, createOnOpenChange])
-
-  // --- Cascading ghost suggestions ---
-  // Group 0: description <- name + purpose (skip in edit mode)
-  // Context questions: fires when name + description + purpose are all set
-
-  // Generic fetch helper: debounce -> cache check -> API call -> set state
-  const fetchGroup = useCallback(
-    (opts: {
-      group: string
-      fields: string[]
-      params: Record<string, string | null | undefined>
-      apiOpts: Parameters<typeof generateSuggestions>[2]
-      versionRef: React.MutableRefObject<number>
-      debounceRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
-      debounceMs: number
-      onResult: (result: FieldSuggestions) => void
-    }) => {
-      if (opts.debounceRef.current) clearTimeout(opts.debounceRef.current)
-      if (!skillName || !purpose) return
-
-      const version = ++opts.versionRef.current
-      opts.debounceRef.current = setTimeout(async () => {
-        try {
-          const key = makeCacheKey(opts.group, opts.params)
-          const cached = suggestionCache.current.get(key)
-          if (cached) {
-            if (version === opts.versionRef.current) opts.onResult(cached)
-            return
-          }
-          const result = await generateSuggestions(skillName, purpose, {
-            ...opts.apiOpts,
-            fields: opts.fields,
-          })
-          if (version === opts.versionRef.current) {
-            suggestionCache.current.set(key, result)
-            opts.onResult(result)
-          }
-        } catch (err) {
-          console.error(`[skill-dialog] ${opts.group} suggestion fetch failed:`, err)
-        }
-      }, opts.debounceMs)
-    },
-    [skillName, purpose],
-  )
-
-  // Group 0: fetch description when name + purpose are set (skip in edit mode)
-  useEffect(() => {
-    if (!dialogOpen || !skillName || !purpose || isEdit) { setDescriptionSuggestion(null); return }
-    const params = { name: skillName, purpose, industry, functionRole }
-    fetchGroup({
-      group: "description", fields: ["description"], params,
-      apiOpts: { industry, functionRole },
-      versionRef: group0VersionRef, debounceRef: group0DebounceRef,
-      debounceMs: 800,
-      onResult: (r) => setDescriptionSuggestion(r.description || null),
-    })
-    return () => { if (group0DebounceRef.current) clearTimeout(group0DebounceRef.current) }
-  }, [dialogOpen, isEdit, skillName, purpose, industry, functionRole, fetchGroup])
 
   // --- Submit ---
 
@@ -356,6 +298,7 @@ export default function SkillDialog(props: SkillDialogProps) {
   const handleNameChange = (value: string) => {
     setSkillName(toKebabChars(value))
     setError(null)
+    if (!isEdit) advisorState.onManualFieldEdit()
   }
 
   function stepDotColor(s: number): string {
@@ -374,7 +317,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           </Button>
         </DialogTrigger>
       )}
-      <DialogContent className="sm:max-w-3xl transition-all duration-200">
+      <DialogContent className="sm:max-w-3xl transition-all duration-1024">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 max-h-[80vh]">
           <DialogHeader>
             <DialogTitle>{isEdit ? "Edit Skill" : "Create New Skill"}</DialogTitle>
@@ -385,7 +328,7 @@ export default function SkillDialog(props: SkillDialogProps) {
 
           {/* Locked banner -- shown when skill is being edited in another window */}
           {isLocked && (
-            <div className="flex items-center gap-2 rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
+            <div className="flex items-center gap-2 rounded-md border border-amber-10240/1024 bg-amber-1024 px-3 py-2 text-sm text-amber-800 dark:bg-amber-91024/20 dark:text-amber-300">
               <Lock className="size-4 shrink-0" />
               This skill is being edited in another window
             </div>
@@ -404,10 +347,30 @@ export default function SkillDialog(props: SkillDialogProps) {
             </span>
           </div>
 
-          <div className="flex-1 min-h-0 flex flex-col gap-4 py-2 overflow-y-auto pr-1">
+          <div className="relative flex-1 min-h-0 flex flex-col gap-4 py-2 overflow-y-auto pr-1">
+            {step === 1 && advisorState.status === "loading" && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-md bg-background/80 backdrop-blur-sm">
+                <Loader2 className="size-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Analyzing skill details…</span>
+              </div>
+            )}
             {/* Step 1: Name + Purpose + Description + Tags + Context Questions */}
             {step === 1 && (
               <>
+                {!isEdit && allScopeDocuments.length > 0 && (
+                  <div className="flex flex-col gap-1.5 rounded-md border border-muted bg-muted/30 px-3 py-2">
+                    <span className="text-xs font-medium text-muted-foreground">Business context documents</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {allScopeDocuments.map((doc) => (
+                        <span key={doc.id} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                          <FileText className="size-3" />
+                          {doc.name}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-[11px] text-muted-foreground/70">These documents inform the scope advisor. Manage in Settings.</span>
+                  </div>
+                )}
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="skill-name">
                     Skill Name <span className="text-destructive">*</span>
@@ -447,18 +410,24 @@ export default function SkillDialog(props: SkillDialogProps) {
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="description">What the skill does <span className="text-destructive">*</span></Label>
-                  <GhostTextarea
+                  <Textarea
                     id="description"
-                    placeholder="Brief description of what this skill does (1-2 sentences)"
+                    placeholder="Describe what this skill does and when to use it"
                     value={description}
-                    onChange={(val) => setDescription(val.slice(0, 1024))}
-                    suggestion={descriptionSuggestion}
-                    onAccept={(val) => setDescription(val.slice(0, 1024))}
+                    onChange={(e) => { setDescription(e.target.value.slice(0, 1024)); if (!isEdit) advisorState.onManualFieldEdit() }}
                     disabled={submitting}
+                    className="min-h-[4.5rem] resize-none"
                   />
                   <p className="text-xs text-muted-foreground">
-                    How Claude Code decides when to activate this skill ({description.length}/1024)
+                    How the AI agent decides when to activate this skill ({description.length}/1024)
                   </p>
+                  <ScopeAdvisor
+                    advisorState={advisorState}
+                    onChipSelect={(name, desc) => {
+                      setSkillName(name)
+                      setDescription(desc)
+                    }}
+                  />
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="purpose-select">
@@ -467,7 +436,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   </Label>
                   <Select
                     value={purpose}
-                    onValueChange={(isBuilt || isImported) ? undefined : setPurpose}
+                    onValueChange={(isBuilt || isImported) ? undefined : (v) => { setPurpose(v); if (!isEdit) advisorState.onManualFieldEdit() }}
                     disabled={submitting || isBuilt || isImported}
                   >
                     <SelectTrigger id="purpose-select" className="w-full">
@@ -578,9 +547,19 @@ export default function SkillDialog(props: SkillDialogProps) {
                 >
                   Cancel
                 </Button>
+                {!isEdit && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!canAdvanceStep1 || advisorState.status === "loading" || advisorState.status === "focused"}
+                    onClick={() => advisorState.triggerCheck()}
+                  >
+                    Validate
+                  </Button>
+                )}
                 <Button
                   type="button"
-                  disabled={!canAdvanceStep1 || isLocked}
+                  disabled={!canAdvanceStep1 || isLocked || advisorState.status === "loading"}
                   onClick={() => setStep(2)}
                 >
                   Next
@@ -600,8 +579,9 @@ export default function SkillDialog(props: SkillDialogProps) {
                   Back
                 </Button>
                 <Button
-                  type="submit"
+                  type="button"
                   disabled={submitting || isLocked || !canAdvanceStep1}
+                  onClick={() => doSubmit()}
                 >
                   {submitting && <Loader2 className="size-4 animate-spin" />}
                   {submitLabel}

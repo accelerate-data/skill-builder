@@ -306,6 +306,7 @@ pub fn run() {
             commands::skill::update_skill_metadata,
             commands::skill::rename_skill,
             commands::skill::generate_suggestions,
+            commands::skill::review_skill_scope,
             commands::skill::get_all_tags,
             commands::skill::acquire_lock,
             commands::skill::release_lock,
