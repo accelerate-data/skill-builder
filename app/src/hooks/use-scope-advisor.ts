@@ -29,6 +29,7 @@ export interface UseScopeAdvisorReturn {
   onCopyAll: () => void
   onTogglePanel: () => void
   onFieldEdit: () => void
+  onManualFieldEdit: () => void
 }
 
 export function useScopeAdvisor({
@@ -81,6 +82,9 @@ export function useScopeAdvisor({
       chipClickSuppressed.current = true
       setCurrentChipIndex(index)
       setCopiedIndices((prev) => new Set([...prev, index]))
+      // The LLM already judged this suggestion as focused — auto-pass it
+      // so clicking Validate again doesn't re-run a redundant check.
+      setStatus("focused")
       const s = suggestions[index]
       return { name: s.name, description: s.description }
     },
@@ -115,6 +119,19 @@ export function useScopeAdvisor({
     setCopiedIndices(new Set())
   }, [])
 
+  // Called by individual field onChange handlers. Ignores the edit if it
+  // originated from a chip click (chip fills name+description programmatically).
+  const onManualFieldEdit = useCallback(() => {
+    if (chipClickSuppressed.current) {
+      chipClickSuppressed.current = false
+      return
+    }
+    setStatus("idle")
+    setSuggestions([])
+    setCurrentChipIndex(null)
+    setCopiedIndices(new Set())
+  }, [])
+
   if (mode === "edit") {
     return {
       status: "idle",
@@ -129,6 +146,7 @@ export function useScopeAdvisor({
       onCopyAll: () => {},
       onTogglePanel: () => {},
       onFieldEdit: () => {},
+      onManualFieldEdit: () => {},
     }
   }
 
@@ -145,5 +163,6 @@ export function useScopeAdvisor({
     onCopyAll,
     onTogglePanel,
     onFieldEdit,
+    onManualFieldEdit,
   }
 }

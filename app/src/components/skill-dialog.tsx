@@ -372,6 +372,7 @@ export default function SkillDialog(props: SkillDialogProps) {
   const handleNameChange = (value: string) => {
     setSkillName(toKebabChars(value))
     setError(null)
+    if (!isEdit) advisorState.onManualFieldEdit()
   }
 
   function stepDotColor(s: number): string {
@@ -473,7 +474,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     id="description"
                     placeholder="Brief description of what this skill does (1-2 sentences)"
                     value={description}
-                    onChange={(val) => { setDescription(val.slice(0, 1024)) }}
+                    onChange={(val) => { setDescription(val.slice(0, 1024)); if (!isEdit) advisorState.onManualFieldEdit() }}
                     suggestion={descriptionSuggestion}
                     onAccept={(val) => setDescription(val.slice(0, 1024))}
                     disabled={submitting}
@@ -496,7 +497,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   </Label>
                   <Select
                     value={purpose}
-                    onValueChange={(isBuilt || isImported) ? undefined : (v) => { setPurpose(v) }}
+                    onValueChange={(isBuilt || isImported) ? undefined : (v) => { setPurpose(v); if (!isEdit) advisorState.onManualFieldEdit() }}
                     disabled={submitting || isBuilt || isImported}
                   >
                     <SelectTrigger id="purpose-select" className="w-full">
