@@ -55,6 +55,14 @@ Rules for names:
 - Kebab-case throughout
 - No acronyms unless industry-standard (e.g. mrr, arr, crm)
 
+Rules for suggested descriptions:
+- Write in third person ("Extracts...", "Forecasts..." — never "I can" or "You can")
+- State what the skill does AND when to use it (triggers/contexts)
+- Be specific — include key terms that appear in real user requests
+- Avoid vague nouns: data, metrics, analysis, stuff, things
+Good: "Forecasts which customers are at risk of churning based on CRM activity signals. Use when the customer success team needs a prioritized list of at-risk accounts."
+Avoid: "Helps with customer data"
+
 Respond in English only.
 
 Respond with JSON only (no markdown fences, no extra text):

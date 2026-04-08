@@ -111,6 +111,14 @@ pub async fn review_skill_scope(
          - Follow with a specific object — not a generic noun like data, metrics, analysis\n\
          - Kebab-case throughout\n\
          - No acronyms unless industry-standard (e.g. mrr, arr, crm)\n\n\
+         Rules for suggested descriptions:\n\
+         - Write in third person (\"Extracts...\", \"Forecasts...\" — never \"I can\" or \"You can\")\n\
+         - State what the skill does AND when to use it (triggers/contexts)\n\
+         - Be specific — include key terms that appear in real user requests\n\
+         - Avoid vague nouns: data, metrics, analysis, stuff, things\n\
+         Good: \"Forecasts which customers are at risk of churning based on CRM activity signals. \
+Use when the customer success team needs a prioritized list of at-risk accounts.\"\n\
+         Avoid: \"Helps with customer data\"\n\n\
          Respond in English only.\n\n\
          Respond with JSON only (no markdown fences, no extra text):\n\
          {{\"is_too_broad\": boolean, \"reason\": string, \"suggested_skills\": [{{\"name\": string, \"description\": string}}]}}",
