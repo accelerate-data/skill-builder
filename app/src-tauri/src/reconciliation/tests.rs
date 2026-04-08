@@ -1878,3 +1878,67 @@ fn test_reconciliation_dedup_prefers_non_default_when_both_have_skill_md() {
         .unwrap();
     assert!(master.is_some(), "non-default plugin must win tie-break");
 }
+
+// --- VU-967: skill in DB under one plugin, also on disk under another plugin ---
+
+#[test]
+fn test_cross_plugin_skill_not_rediscovered_every_startup() {
+    // Regression: if a skill exists in DB under plugin A but also on disk under plugin B,
+    // Phase 1c must not create a second DB row (which Phase 1f would then delete every startup,
+    // causing the reconciliation dialog to reappear indefinitely).
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    // Skill lives in DB under the non-default "other-plugin"
+    let (_, other_slug) =
+        crate::db::create_plugin(&conn, "other-plugin", "local", None, None).unwrap();
+    crate::db::upsert_skill_in_plugin(
+        &conn, "cross-plugin-skill", "skill-builder", "domain", &other_slug,
+    ).unwrap();
+
+    // Phase 1b deletes plugins whose folder is missing on disk — ensure the folder exists
+    // so Phase 1b doesn't wipe the plugin row before Phase 1c runs.
+    let other_plugin_dir = skills_tmp.path().join(&other_slug);
+    std::fs::create_dir_all(&other_plugin_dir).unwrap();
+
+    // Disk: SKILL.md exists under the default "skills" plugin (different from DB location)
+    let skill_md = crate::skill_paths::resolve_skill_dir(
+        skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "cross-plugin-skill",
+    ).join("SKILL.md");
+    std::fs::create_dir_all(skill_md.parent().unwrap()).unwrap();
+    std::fs::write(&skill_md, "---\ntitle: cross-plugin-skill\n---\n").unwrap();
+
+    // First startup: should NOT add to discovered_skills or create a duplicate DB row
+    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    assert!(
+        result.discovered_skills.is_empty(),
+        "cross-plugin skill must not appear in discovered_skills: {:?}",
+        result.discovered_skills
+    );
+    assert!(
+        !result.notifications.iter().any(|n| n.contains("cross-plugin-skill") && n.contains("discovered")),
+        "must not emit a 'discovered' notification for a cross-plugin skill: {:?}",
+        result.notifications
+    );
+
+    // No duplicate row must have been created
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'cross-plugin-skill' AND COALESCE(deleted_at, '') = ''",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 1, "exactly one active row must exist after reconciliation");
+
+    // Second startup: same result — dialog must not reappear
+    let result2 = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    assert!(
+        result2.discovered_skills.is_empty(),
+        "cross-plugin skill must not reappear on second startup: {:?}",
+        result2.discovered_skills
+    );
+}

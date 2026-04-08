@@ -135,14 +135,31 @@ pub fn reconcile_on_startup(
         }
 
         // Discover skills inside plugins
-        let all_skills_in_db: HashSet<String> = crate::db::list_all_skills(conn)?
+        let all_skills_in_db_list = crate::db::list_all_skills(conn)?;
+        let all_skills_in_db: HashSet<String> = all_skills_in_db_list
             .iter()
             .map(|s| format!("{}:{}", s.plugin_slug, s.name))
+            .collect();
+        // Name-only set: used to detect skills already tracked under a different plugin.
+        // If a skill name exists in the DB under any plugin, it is already known — Phase 1c
+        // must not create a second row, which would trigger Phase 1f dedup every startup.
+        let all_skill_names_in_db: HashSet<String> = all_skills_in_db_list
+            .iter()
+            .map(|s| s.name.clone())
             .collect();
 
         for loc in enumerate_skill_locations(skills_dir)? {
             let key = format!("{}:{}", loc.plugin_slug, loc.skill_name);
             if all_skills_in_db.contains(&key) {
+                continue;
+            }
+            // Skill exists in DB under a different plugin — already tracked, nothing to discover.
+            // Creating a second DB row here would trigger Phase 1f dedup on every startup.
+            if all_skill_names_in_db.contains(&loc.skill_name) {
+                log::debug!(
+                    "[reconcile] skipping '{}' in plugin '{}' — already tracked in DB under another plugin",
+                    loc.skill_name, loc.plugin_slug
+                );
                 continue;
             }
 
