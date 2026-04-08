@@ -142,9 +142,8 @@ pub async fn generate_suggestions(
         match *f {
             "description" => Some(format!(
                 "\"description\": \"<Third person. Nouns must be specific (e.g. 'churned customers', 'purchase orders' — not 'data' or 'metrics'). \
-Multiple nouns are allowed only if they share the SAME PROCESS TYPE within the same business function \
-(e.g. quality testing + traceability documentation are both validation processes → allowed). \
-Do NOT combine nouns from different process types or different business functions — those belong in separate skills. \
+Any number of nouns is fine as long as they all serve ONE overarching process (the process named by the skill). \
+Do NOT combine nouns from two distinct processes or different business functions — those belong in separate skills. \
 Format: '[Verb]s [specific noun(s)] [context]. Use when [one trigger].' \
 Example: 'Forecasts which customers are at risk of churning based on health scores. Use when the CS team needs a prioritised list of at-risk accounts.' \
 Max 2 sentences. Topic: {}.>\"",

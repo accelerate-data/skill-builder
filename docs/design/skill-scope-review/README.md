@@ -58,21 +58,20 @@ A good name uses the gerund pattern: `verb-ing + specific object` (kebab-case).
 
 ### Description rules
 
-A good description acts on nouns that share **the same process type within the same business function**.
+A good description serves **one overarching process or purpose** — the same process named by the skill itself.
 
 - Nouns must be specific — `churned customers`, `purchase orders` not `sales data`, `customers`
 - The data source is **optional** — adds clarity but is not required to pass
-- **Multiple actions on one noun are fine** — fetch + validate + update = still focused
-- **Multiple nouns of the same process type are fine** — e.g. `quality testing` + `traceability documentation` are both validation processes within procurement → pass
-- **Nouns of different process types fail** — e.g. `grain sourcing` (vendor selection) + `grain pricing` (cost analysis) are different process types → split, even if they serve the same business outcome
-- **Nouns from different business functions always fail** — e.g. `vendor qualifications` (procurement) + `churn rates` (customer success) → split
+- **Number of nouns does not matter** — a skill may reference many nouns as long as they all fall under one overarching process
+- **Pass:** everything in the description serves one named process — e.g. `validating-grain-feed-compliance` covers quality testing, traceability documentation, and supplier audits → all serve "validating grain feed compliance" → pass
+- **Fail:** the description spans two distinct overarching processes — e.g. `grain sourcing` + `grain pricing` are two separate processes (vendor selection and cost analysis) → split
+- **Always fail:** nouns from different business functions — e.g. `vendor qualifications` (procurement) + `churn rates` (customer success) → split
 
-**Why process-driven, not outcome-driven:**
-In a data warehouse, process maps directly to pipelines and tables. Different process types need separate pipelines regardless of whether they serve the same decision. Outcome-based grouping is too loose — almost any two processes can be argued to share an outcome at a high enough level, making the boundary inconsistent.
+The skill name (gerund) should name the overarching process. If you can't summarise the description in the skill name, the description is too broad.
 
-**How sub-domain boundaries are determined:**
+**How process boundaries are determined:**
 - The LLM uses general business knowledge by default
-- Uploaded documents from user settings can override — if documents define a tighter or broader sub-domain for this company, that takes precedence
+- Uploaded documents from user settings can override — if documents establish that certain activities form one unified process in this company, that takes precedence
 
 ### Passing examples
 

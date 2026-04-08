@@ -99,22 +99,21 @@ pub async fn review_skill_scope(
          - Pass: forecasting-churned-customers, processing-purchase-orders, analyzing-salesforce-opportunities\n\
          - Fail: sales-analysis (not gerund), analyzing-data (object too vague)\n\n\
          ## Description rules\n\
-         A good description acts on nouns that share the SAME PROCESS TYPE within the same business function.\n\
+         A good description serves ONE overarching process or purpose — the same process named by the skill itself.\n\
          - Nouns must be specific (\"churned customers\", \"purchase orders\") — not generic (\"sales data\", \"customers\")\n\
          - The data source is optional — adds clarity but not required to pass\n\
-         - Multiple actions on one noun are fine (fetch + validate + update = still focused)\n\
-         - Multiple nouns of the same process type are fine — e.g. \"grain quality testing\" + \"grain traceability documentation\" are both validation processes → pass\n\
-         - Nouns of different process types fail — e.g. \"grain sourcing\" (vendor selection process) + \"grain pricing\" (cost analysis process) → split, even if they serve the same outcome\n\
-         - Nouns from different business functions always fail — e.g. \"vendor qualifications\" (procurement) + \"churn rates\" (customer success) → split\n\
-         Use general business knowledge to judge process type and business function. \
-Uploaded reference documents can override — if they define a tighter or broader sub-domain for this company, follow that.\n\n\
+         - Number of nouns does not matter — many nouns are fine as long as they all fall under one overarching process\n\
+         - PASS: everything serves one named process — e.g. \"validating-grain-feed-compliance\" covers quality testing, traceability docs, and supplier audits → all serve \"validating grain feed compliance\" → pass\n\
+         - FAIL: the description spans two distinct overarching processes — e.g. grain sourcing (vendor selection) + grain pricing (cost analysis) are two separate processes → split\n\
+         - ALWAYS FAIL: nouns from different business functions — e.g. vendor qualifications (procurement) + churn rates (customer success) → split\n\
+         The skill name (gerund) should name the overarching process. If the description cannot be summarised by the skill name, it is too broad.\n\
+         Use general business knowledge to judge process boundaries. Uploaded reference documents can override.\n\n\
          ## Passing examples\n\
          - Name: forecasting-churned-customers | Description: \"Forecasts which customers are at risk of churning\" → focused\n\
-         - Name: processing-purchase-orders | Description: \"Fetches, validates, and updates purchase orders\" → focused\n\
-         - Name: validating-grain-feed-compliance | Description: \"Validates grain quality testing and traceability documentation for feed ingredient compliance\" → focused (both are validation processes)\n\n\
+         - Name: validating-grain-feed-compliance | Description: \"Validates quality testing, traceability documentation, and supplier audits for grain feed ingredients\" → focused (all serve one process: compliance validation)\n\n\
          ## Failing examples\n\
-         - Description: \"Analyzes revenue, pipeline health, and rep performance\" → too-broad (three different process types across different functions)\n\
-         - Description: \"Manages grain sourcing and commodity pricing\" → too-broad (vendor selection and cost analysis are different process types)\n\
+         - Description: \"Analyzes revenue, pipeline health, and rep performance\" → too-broad (three distinct processes across functions)\n\
+         - Description: \"Manages grain sourcing and commodity pricing\" → too-broad (vendor selection and cost analysis are separate processes)\n\
          - Name: analyzing-data | Description: \"Analyzes Salesforce opportunities\" → name-needs-improvement\n\
          - Description: \"Analyzes sales metrics\" → description-needs-improvement (noun too vague)\n\n\
          Use industry and document context to override a generic breadth signal. If documents show \
