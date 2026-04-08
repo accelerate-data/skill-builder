@@ -135,9 +135,8 @@ export default function SkillDialog(props: SkillDialogProps) {
   // Imported/marketplace skills: skip intake, lock purpose
   const isImported = isEdit && (editSkill?.skill_source === 'marketplace' || editSkill?.skill_source === 'imported')
 
-  // Only uploaded (imported) skills can be renamed; built and marketplace cannot
-  const isMarketplace = isEdit && editSkill?.skill_source === 'marketplace'
-  const isNameLocked = isBuilt || isMarketplace
+  // Skill names are immutable after creation — disabled for all edit modes
+  const isNameLocked = isEdit
 
   // Total wizard steps: always 2
   const totalSteps = 2
@@ -378,7 +377,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="skill-name">
                     Skill Name <span className="text-destructive">*</span>
-                    {isNameLocked && <LockedIcon message={isMarketplace ? "Marketplace skills cannot be renamed" : "Built skills cannot be renamed"} />}
+                    {isNameLocked && <LockedIcon message="Skill names cannot be changed after creation" />}
                   </Label>
                   <Input
                     id="skill-name"
@@ -390,7 +389,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   />
                   {isNameLocked && (
                     <p className="text-xs text-muted-foreground">
-                      {isMarketplace ? "Marketplace skills cannot be renamed" : "Built skills cannot be renamed"}
+                      Skill names cannot be changed after creation
                     </p>
                   )}
                   {!isEdit && (
@@ -401,19 +400,9 @@ export default function SkillDialog(props: SkillDialogProps) {
                       )}
                     </p>
                   )}
-                  {isEdit && skillName && !nameValid && !isNameLocked && (
-                    <p className="text-xs text-destructive">
-                      Must be kebab-case (e.g., sales-pipeline)
-                    </p>
-                  )}
                   {nameExists && (
                     <p className="text-xs text-destructive">
                       A skill with this name already exists
-                    </p>
-                  )}
-                  {nameChanged && nameValid && !nameExists && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400">
-                      Renaming will update all relevant skill artifacts
                     </p>
                   )}
                 </div>

@@ -211,7 +211,7 @@ describe("SkillDialog (edit mode)", () => {
     expect(screen.getByText("Use the Optimize Description tab to update this")).toBeInTheDocument();
   });
 
-  it("renames the skill before saving updated metadata", async () => {
+  it("saves metadata without renaming since name field is locked", async () => {
     const user = userEvent.setup({ delay: null });
     const onOpenChange = vi.fn();
     const onSaved = vi.fn();
@@ -223,37 +223,33 @@ describe("SkillDialog (edit mode)", () => {
         open={true}
         onOpenChange={onOpenChange}
         onSaved={onSaved}
-        existingNames={["other-skill"]}
       />,
     );
 
-    const nameInput = screen.getByLabelText(/^Skill Name/);
-    await user.clear(nameInput);
-    await user.type(nameInput, "sales-pipeline-renamed");
+    // Name field is disabled in edit mode
+    expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+
     await user.click(screen.getByRole("button", { name: /Next/i }));
     await user.click(screen.getByRole("button", { name: /^Save$/i }));
 
     await waitFor(() => {
-      expect(renameSkillMock).toHaveBeenCalledWith(
+      expect(updateSkillMetadataMock).toHaveBeenCalledWith(
         "sales-pipeline",
-        "sales-pipeline-renamed",
-        "/workspace",
+        "platform",
+        ["analytics"],
+        JSON.stringify({ context: "Original context" }),
+        "Original description",
+        null,
+        null,
+        "[org-url]",
+        true,
+        false,
       );
     }, { timeout: 10000 });
 
-    expect(updateSkillMetadataMock).toHaveBeenCalledWith(
-      "sales-pipeline-renamed",
-      "platform",
-      ["analytics"],
-      JSON.stringify({ context: "Original context" }),
-      "Original description",
-      null,
-      null,
-      "[org-url]",
-      true,
-      false,
-    );
-    expect(toast.success).toHaveBeenCalledWith('Skill "sales-pipeline-renamed" updated');
+    // renameSkill should never be called
+    expect(renameSkillMock).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith('Skill "sales-pipeline" updated');
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onSaved).toHaveBeenCalledTimes(1);
   }, 15000);
@@ -298,7 +294,7 @@ describe("SkillDialog (edit mode)", () => {
     });
   });
 
-  it("disables name field for built skills with hint text", () => {
+  it("disables name field for built skills with universal hint", () => {
     render(
       <SkillDialog
         mode="edit"
@@ -310,10 +306,10 @@ describe("SkillDialog (edit mode)", () => {
     );
 
     expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
-    expect(screen.getByText("Built skills cannot be renamed")).toBeInTheDocument();
+    expect(screen.getByText("Skill names cannot be changed after creation")).toBeInTheDocument();
   });
 
-  it("disables name field for marketplace skills with hint text", () => {
+  it("disables name field for marketplace skills", () => {
     render(
       <SkillDialog
         mode="edit"
@@ -325,10 +321,10 @@ describe("SkillDialog (edit mode)", () => {
     );
 
     expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
-    expect(screen.getByText("Marketplace skills cannot be renamed")).toBeInTheDocument();
+    expect(screen.getByText("Skill names cannot be changed after creation")).toBeInTheDocument();
   });
 
-  it("enables name field for uploaded (imported) skills", () => {
+  it("disables name field for uploaded (imported) skills", () => {
     render(
       <SkillDialog
         mode="edit"
@@ -339,12 +335,11 @@ describe("SkillDialog (edit mode)", () => {
       />,
     );
 
-    expect(screen.getByLabelText(/^Skill Name/)).toBeEnabled();
-    expect(screen.queryByText("Built skills cannot be renamed")).not.toBeInTheDocument();
-    expect(screen.queryByText("Marketplace skills cannot be renamed")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+    expect(screen.getByText("Skill names cannot be changed after creation")).toBeInTheDocument();
   });
 
-  it("enables name field for in-progress builder skills (not yet built)", () => {
+  it("disables name field for in-progress builder skills", () => {
     render(
       <SkillDialog
         mode="edit"
@@ -355,10 +350,11 @@ describe("SkillDialog (edit mode)", () => {
       />,
     );
 
-    expect(screen.getByLabelText(/^Skill Name/)).toBeEnabled();
+    expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+    expect(screen.getByText("Skill names cannot be changed after creation")).toBeInTheDocument();
   });
 
-  it("calls renameSkill when an imported skill is renamed", async () => {
+  it("does not call renameSkill on save since name is always locked", async () => {
     const user = userEvent.setup({ delay: null });
 
     render(
@@ -371,37 +367,18 @@ describe("SkillDialog (edit mode)", () => {
       />,
     );
 
-    const nameInput = screen.getByLabelText(/^Skill Name/);
-    await user.clear(nameInput);
-    await user.type(nameInput, "imported-renamed");
+    // Name field is disabled — cannot change it
+    expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+
+    // Save without name change
     await user.click(screen.getByRole("button", { name: /Next/i }));
     await user.click(screen.getByRole("button", { name: /^Save$/i }));
 
     await waitFor(() => {
-      expect(renameSkillMock).toHaveBeenCalledWith(
-        "sales-pipeline",
-        "imported-renamed",
-        "/workspace",
-      );
-    }, { timeout: 10000 });
-  }, 15000);
+      expect(updateSkillMetadataMock).toHaveBeenCalled();
+    });
 
-  it("does not call renameSkill for marketplace skills because name is locked", () => {
-    render(
-      <SkillDialog
-        mode="edit"
-        skill={makeSkill({ skill_source: "marketplace" })}
-        open={true}
-        onOpenChange={vi.fn()}
-        onSaved={vi.fn()}
-      />,
-    );
-
-    // Name input is disabled — user cannot type into it
-    const nameInput = screen.getByLabelText(/^Skill Name/);
-    expect(nameInput).toBeDisabled();
-
-    // No rename should ever be triggered
+    // renameSkill should never be called
     expect(renameSkillMock).not.toHaveBeenCalled();
   });
 });

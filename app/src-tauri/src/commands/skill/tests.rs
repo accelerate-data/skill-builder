@@ -1529,42 +1529,6 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
     );
 }
 
-// ===== validate_rename_source tests =====
-
-#[test]
-fn test_validate_rename_source_allows_imported() {
-    let conn = create_test_db();
-    crate::db::upsert_skill(&conn, "uploaded-skill", "imported", "domain").unwrap();
-    let result = validate_rename_source(&conn, "uploaded-skill");
-    assert!(result.is_ok());
-}
-
-#[test]
-fn test_validate_rename_source_rejects_skill_builder() {
-    let conn = create_test_db();
-    crate::db::upsert_skill(&conn, "built-skill", "skill-builder", "domain").unwrap();
-    let result = validate_rename_source(&conn, "built-skill");
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Built skills cannot be renamed");
-}
-
-#[test]
-fn test_validate_rename_source_rejects_marketplace() {
-    let conn = create_test_db();
-    crate::db::upsert_skill(&conn, "market-skill", "marketplace", "domain").unwrap();
-    let result = validate_rename_source(&conn, "market-skill");
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Marketplace skills cannot be renamed");
-}
-
-#[test]
-fn test_validate_rename_source_not_found() {
-    let conn = create_test_db();
-    let result = validate_rename_source(&conn, "nonexistent-skill");
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("not found"));
-}
-
 // TC-09: `graceful_shutdown` non-timeout path cannot be tested directly because
 // it requires `tauri::State<SidecarPool>`, `tauri::State<Db>`, `tauri::State<InstanceInfo>`,
 // and a `tauri::AppHandle` — none of which are constructible in unit tests. The timeout

@@ -233,6 +233,7 @@ pub(crate) fn sync_user_context_file(conn: &rusqlite::Connection, skill_name: &s
 }
 
 /// Validate kebab-case: lowercase alphanumeric segments separated by single hyphens.
+#[allow(dead_code)]
 pub(crate) fn is_valid_kebab(name: &str) -> bool {
     !name.is_empty()
         && !name.starts_with('-')
@@ -241,30 +242,6 @@ pub(crate) fn is_valid_kebab(name: &str) -> bool {
         && name
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-}
-
-/// Verify the skill source allows renaming. Only `imported` skills can be renamed.
-pub(crate) fn validate_rename_source(conn: &rusqlite::Connection, skill_name: &str) -> Result<(), String> {
-    let skill_source: String = conn
-        .query_row(
-            "SELECT skill_source FROM skills WHERE name = ?1",
-            rusqlite::params![skill_name],
-            |row| row.get(0),
-        )
-        .map_err(|e| {
-            log::error!("[validate_rename_source] Failed to query skill source: {}", e);
-            format!("Skill '{}' not found", skill_name)
-        })?;
-    if skill_source != "imported" {
-        let reason = match skill_source.as_str() {
-            "skill-builder" => "Built skills cannot be renamed",
-            "marketplace" => "Marketplace skills cannot be renamed",
-            _ => "Only uploaded skills can be renamed",
-        };
-        log::warn!("[validate_rename_source] Rejected: {} (source={})", reason, skill_source);
-        return Err(reason.to_string());
-    }
-    Ok(())
 }
 
 #[tauri::command]
@@ -276,52 +253,19 @@ pub fn rename_skill(
 ) -> Result<(), String> {
     log::info!("[rename_skill] old={} new={}", old_name, new_name);
 
-    if !is_valid_kebab(&new_name) {
-        log::error!("[rename_skill] Invalid kebab-case name: {}", new_name);
-        return Err(
-            "Skill name must be kebab-case (lowercase letters, numbers, hyphens)".to_string(),
-        );
+    // Skill renaming is disabled — names are immutable after creation.
+    if old_name != new_name {
+        log::warn!("[rename_skill] Rejected: skill renaming is disabled");
+        return Err("Skill names cannot be changed after creation".to_string());
     }
 
-    if old_name == new_name {
-        return Ok(());
-    }
-
-    let mut conn = db.0.lock().map_err(|e| {
-        log::error!("[rename_skill] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-
-    // Only uploaded (imported) skills can be renamed
-    validate_rename_source(&conn, &old_name)?;
-
-    // Read settings for skills_path
-    let settings = crate::db::read_settings(&conn).ok();
-    let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
-
-    rename_skill_inner(
-        &old_name,
-        &new_name,
-        &workspace_path,
-        &mut conn,
-        skills_path.as_deref(),
-    )?;
-
-    // Auto-commit: skill renamed
-    if let Some(ref sp) = skills_path {
-        // Regenerate marketplace manifests
-        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
-            log::warn!("Manifest regeneration failed after rename: {}", e);
-        }
-        let msg = format!("{}: renamed from {}", new_name, old_name);
-        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
-            log::warn!("Git auto-commit failed ({}): {}", msg, e);
-        }
-    }
-
+    // No-op if same name
+    let _ = (new_name, workspace_path, db);
     Ok(())
 }
 
+// Retained for tests and future reactivation (VU-986).
+#[allow(dead_code)]
 pub(crate) fn rename_skill_inner(
     old_name: &str,
     new_name: &str,
