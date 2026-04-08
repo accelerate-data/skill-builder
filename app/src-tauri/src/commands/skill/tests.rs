@@ -1681,3 +1681,92 @@ fn test_sync_user_context_skips_when_no_workspace() {
     // Should not panic or error
     sync_user_context_file(&conn, "no-workspace");
 }
+
+#[test]
+fn test_sync_user_context_reflects_updated_fields_after_edit() {
+    let conn = create_test_db();
+    let workspace = tempdir().unwrap();
+    let workspace_path = workspace.path().to_str().unwrap();
+
+    let mut settings = crate::db::read_settings(&conn).unwrap_or_default();
+    settings.workspace_path = Some(workspace_path.to_string());
+    settings.industry = Some("Healthcare".to_string());
+    crate::db::write_settings(&conn, &settings).unwrap();
+
+    // Create skill with initial values
+    crate::db::save_workflow_run(&conn, "edit-flow-skill", 0, "pending", "domain").unwrap();
+    crate::db::set_skill_tags(&conn, "edit-flow-skill", &["old-tag".to_string()]).unwrap();
+    crate::db::set_skill_behaviour(&conn, "edit-flow-skill", Some("Old description"), None, None, None, Some(false), None).unwrap();
+
+    // First sync — initial state
+    sync_user_context_file(&conn, "edit-flow-skill");
+    let uc_path = crate::skill_paths::workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "edit-flow-skill").join("user-context.md");
+    let initial = fs::read_to_string(&uc_path).unwrap();
+    assert!(initial.contains("Old description"), "initial file should have old description");
+    assert!(initial.contains("old-tag"), "initial file should have old tag");
+
+    // Simulate editing: update tags, description, and purpose (what the Edit dialog does)
+    conn.execute(
+        "UPDATE skills SET purpose = 'platform', updated_at = datetime('now') WHERE name = 'edit-flow-skill'",
+        [],
+    ).unwrap();
+    crate::db::set_skill_tags(&conn, "edit-flow-skill", &["new-tag-a".to_string(), "new-tag-b".to_string()]).unwrap();
+    crate::db::set_skill_behaviour(&conn, "edit-flow-skill", Some("Updated description"), None, None, Some("provide a URL"), Some(true), None).unwrap();
+    crate::db::set_skill_intake(&conn, "edit-flow-skill", Some(r#"{"context":"New custom context"}"#)).unwrap();
+
+    // Second sync — after edit
+    sync_user_context_file(&conn, "edit-flow-skill");
+    let updated = fs::read_to_string(&uc_path).unwrap();
+
+    // Updated fields should reflect new values
+    assert!(updated.contains("Updated description"), "should have updated description");
+    assert!(updated.contains("new-tag-a"), "should have new tag a");
+    assert!(updated.contains("new-tag-b"), "should have new tag b");
+    assert!(!updated.contains("old-tag"), "old tag should be gone");
+    assert!(updated.contains("provide a URL"), "should have updated argument hint");
+    assert!(updated.contains("New custom context"), "should have updated intake context");
+
+    // Non-edit fields should still be preserved
+    assert!(updated.contains("Healthcare"), "industry should be preserved");
+}
+
+#[test]
+fn test_sync_user_context_includes_reference_documents() {
+    let conn = create_test_db();
+    let workspace = tempdir().unwrap();
+    let workspace_path = workspace.path().to_str().unwrap();
+
+    let mut settings = crate::db::read_settings(&conn).unwrap_or_default();
+    settings.workspace_path = Some(workspace_path.to_string());
+    crate::db::write_settings(&conn, &settings).unwrap();
+
+    // Create skill
+    crate::db::save_workflow_run(&conn, "doc-test-skill", 0, "pending", "domain").unwrap();
+
+    // Look up the skill ID from the master table
+    let skill_id = crate::db::get_skill_master_id_any_plugin(&conn, "doc-test-skill").unwrap().unwrap();
+
+    // Create a document file on disk for the content reader
+    let doc_dir = tempdir().unwrap();
+    let doc_path = doc_dir.path().join("spec.md");
+    fs::write(&doc_path, "# API Spec\nThis is the spec content.").unwrap();
+
+    // Insert a document scoped to this skill
+    let doc_id = crate::db::db_insert_document(
+        &conn,
+        "API Specification",
+        "file",
+        None,
+        doc_path.to_str().unwrap(),
+        "skill",
+    ).unwrap();
+    crate::db::db_set_document_skills(&conn, doc_id, &[skill_id]).unwrap();
+
+    sync_user_context_file(&conn, "doc-test-skill");
+
+    let uc_path = crate::skill_paths::workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "doc-test-skill").join("user-context.md");
+    let content = fs::read_to_string(&uc_path).unwrap();
+
+    assert!(content.contains("API Specification"), "should include document name");
+    assert!(content.contains("Reference Documents"), "should have reference documents section");
+}
