@@ -80,6 +80,8 @@ A good description acts on **exactly one specific noun**.
 | `analyzing-data` | Analyzes Salesforce opportunities | Name object too vague |
 | `forecasting-churned-customers` | Analyzes sales metrics and churn | Description too broad — two nouns |
 
+**Domain context:** These skills are used to build data warehouses and lakehouses — OLAP systems, not OLTP. The data source (e.g. Salesforce, Snowflake, S3) is valuable context when present, but is not compulsory. A skill with no named source can still pass if it acts on one specific noun.
+
 The LLM uses industry and uploaded documents as context. A description that sounds multi-domain generically may resolve to a single workflow in the user's specific business context — that is a valid pass.
 
 ---
