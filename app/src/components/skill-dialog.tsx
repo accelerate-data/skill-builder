@@ -413,7 +413,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   )}
                   {nameChanged && nameValid && !nameExists && (
                     <p className="text-xs text-amber-600 dark:text-amber-400">
-                      Renaming will move the skill directory
+                      Renaming will update all relevant skill artifacts
                     </p>
                   )}
                 </div>

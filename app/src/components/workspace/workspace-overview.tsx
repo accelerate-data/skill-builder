@@ -299,6 +299,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
               listSkills(workspacePath).then(useSkillStore.getState().setSkills).catch(() => {});
             }
           }}
+          existingNames={useSkillStore.getState().skills.map((s) => s.name)}
         />
       )}
 
