@@ -612,7 +612,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={!canAdvanceStep1 || advisorState.status === "loading"}
+                    disabled={!canAdvanceStep1 || advisorState.status === "loading" || advisorState.status === "focused"}
                     onClick={() => advisorState.triggerCheck()}
                   >
                     Validate

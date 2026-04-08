@@ -19,8 +19,8 @@ The feature is **advisory only** — it never blocks submission. The user makes 
 - **When:** Create mode only (not edit mode)
 - **Trigger:** A dedicated **"Validate"** button placed in the dialog footer, next to the "Next" button. The advisor fires when the user clicks Validate.
 - **Next button behavior:** "Next" only advances the user to step 2. It does not trigger the LLM. The Next button remains enabled as long as all required fields are filled — the advisor result is independent.
-- **Validate button behavior:** Validate is enabled only when all required fields (name, description, purpose) are non-empty. Clicking Validate fires the LLM call.
-- **Re-fires:** Clicking Validate again after editing any field re-triggers the check and replaces the previous result.
+- **Validate button behavior:** Validate is enabled only when all required fields (name, description, purpose) are non-empty **and** the advisor status is `idle`. It is disabled when status is `loading` (call in flight) or `focused` (skill already confirmed as focused — no need to re-run).
+- **Re-fires:** Editing any required field resets status to `idle`, which re-enables Validate for a fresh check.
 - **Fields required:** Name, description, and purpose must all be non-empty (same guard as the Next button).
 
 ---
@@ -148,7 +148,7 @@ This replaces the previous small inline spinner, which was not visible enough.
 
 ### State 1 — Idle (before Validate is clicked)
 
-No advisor UI is shown. The Validate button is visible in the footer, enabled when required fields are filled.
+No advisor UI is shown. The Validate button is enabled when required fields are filled.
 
 ### State 2 — Loading (Validate clicked, call in flight)
 
