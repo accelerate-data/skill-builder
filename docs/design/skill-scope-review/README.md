@@ -58,13 +58,18 @@ A good name uses the gerund pattern: `verb-ing + specific object` (kebab-case).
 
 ### Description rules
 
-A good description acts on nouns within **a single domain or sub-domain**.
+A good description acts on nouns that serve **the same business decision within the same sub-domain**.
 
 - Nouns must be specific — `churned customers`, `purchase orders` not `sales data`, `customers`
 - The data source is **optional** — adds clarity but is not required to pass
 - **Multiple actions on one noun are fine** — fetch + validate + update = still focused
-- **Multiple nouns within the same domain are fine** — e.g. `vendor qualifications and supplier contracts` within procurement
-- **Multiple nouns from clearly separate domains always fail** — e.g. `vendor qualifications` (procurement) + `churn rates` (customer success) → split
+- **Multiple nouns are fine if they serve the same decision** — e.g. `grain quality testing` + `grain traceability documentation` both serve "is this grain safe and compliant?" → pass
+- **Multiple nouns that serve different decisions fail** — e.g. `grain sourcing` ("which vendor?") + `grain pricing` ("what budget?") → split
+- **Nouns from different business functions always fail** — e.g. `vendor qualifications` (procurement) + `churn rates` (customer success) → split
+
+**How sub-domain boundaries are determined:**
+- The LLM uses general business knowledge by default
+- Uploaded documents from user settings can override — if documents define a tighter or broader sub-domain for this company, that takes precedence
 
 ### Passing examples
 

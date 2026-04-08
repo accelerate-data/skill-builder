@@ -141,10 +141,12 @@ pub async fn generate_suggestions(
     let field_schemas: Vec<String> = requested.iter().filter_map(|f| {
         match *f {
             "description" => Some(format!(
-                "\"description\": \"<Third person. Exactly ONE specific noun (e.g. 'churned customers', 'purchase orders' — not 'data' or 'metrics'). \
-Format: '[Verb]s [specific noun] [context]. Use when [one trigger — no OR listing].' \
+                "\"description\": \"<Third person. Nouns must be specific (e.g. 'churned customers', 'purchase orders' — not 'data' or 'metrics'). \
+Multiple nouns are allowed only if they serve the SAME business decision (e.g. quality testing + traceability documentation both serve a compliance decision). \
+Do NOT list nouns that serve different decisions or different business functions — those belong in separate skills. \
+Format: '[Verb]s [specific noun(s)] [context]. Use when [one trigger].' \
 Example: 'Forecasts which customers are at risk of churning based on health scores. Use when the CS team needs a prioritised list of at-risk accounts.' \
-Do NOT list multiple nouns or multiple use-cases with 'or'. If the skill covers multiple nouns, pick the most important one. Max 2 sentences. Topic: {}.>\"",
+Max 2 sentences. Topic: {}.>\"",
                 readable_name
             )),
             "domain" => Some("\"domain\": \"<2-5 word domain name, e.g. Sales operations or Revenue recognition>\"".to_string()),
