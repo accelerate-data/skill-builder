@@ -80,14 +80,16 @@ A good description serves **one overarching process** — the same process named
 
 ## Four Evaluation Cases
 
-### Case 1 — Name too broad/vague, description fits one process → `name-needs-improvement`
+### Case 1 — Name fails (too broad/vague or not gerund), description fits one process → `name-needs-improvement`
 
-Example: name = `sales-analysis`, description = `Forecasts which customers are at risk of churning.`
+The name fails if it is:
+- Too broad or vague — e.g. `sales-analysis`, `understand-procurement-processes`
+- Not in gerund form — e.g. `procurement-process` (noun, not gerund), `sales-report` (noun)
 
-The description already names the process. The LLM derives the correct gerund name directly from the description.
+The description is already focused on one process. The LLM derives the correct gerund name directly from the description.
 
-- **Chips:** 1 — correct name derived from description, paired with the existing description
-- **Reason example:** *"Your description is focused on forecasting churn, but the name doesn't reflect that. We derived a better name from your description."*
+- **Chips:** 1 — correct gerund name derived from description, paired with the existing description
+- **Reason example:** *"Your description is focused on forecasting churn, but the name doesn't follow the gerund pattern. We derived a better name from your description."*
 
 ### Case 2 — Both name and description span multiple processes → `too-broad`
 
@@ -122,7 +124,8 @@ The name is correct. The description has one valid process + one stray. Split in
 |---|---|---|---|
 | Pass | `forecasting-churned-customers` | Forecasts which customers are at risk of churning | ✓ Focused |
 | Pass | `validating-grain-feed-compliance` | Validates quality testing, traceability docs, and supplier audits for grain ingredients | ✓ Focused (many nouns, one process) |
-| Case 1 | `sales-analysis` | Forecasts which customers are at risk of churning | `name-needs-improvement` — derive name from description |
+| Case 1a | `sales-analysis` | Forecasts which customers are at risk of churning | `name-needs-improvement` — not gerund, derive from description |
+| Case 1b | `procurement-process` | Validates grain quality testing and traceability docs for compliance | `name-needs-improvement` — noun not gerund, derive from description |
 | Case 2 | `sales-analysis` | Analyzes revenue, pipeline health, and rep performance | `too-broad` — split into focused skills |
 | Case 3 | `analyzing-data` | Analyzes sales metrics for the team | `both-need-improvement` — best-guess with caveat |
 | Case 4 | `forecasting-churned-customers` | Forecasts churn risk and tracks renewal pipeline health | `description-needs-improvement` — 1 chip per process found |

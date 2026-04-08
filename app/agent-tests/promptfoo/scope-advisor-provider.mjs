@@ -45,10 +45,12 @@ Use general business knowledge for process boundaries. Uploaded documents can ov
 
 ## Four cases — pick exactly one status and follow its action
 
-CASE 1 — name too broad/vague, description fits one process → status: "name-needs-improvement"
-Example: name=sales-analysis, description="Forecasts which customers are at risk of churning"
-Action: derive the correct gerund name DIRECTLY from the description. Return exactly 1 suggestion.
-Reason: explain the name does not reflect the process already in the description.
+CASE 1 — name fails (too broad/vague OR not in gerund form), description fits one process → status: "name-needs-improvement"
+Name fails when: not gerund (e.g. sales-analysis, procurement-process, sales-report), or gerund but object too vague (e.g. analyzing-data)
+Example A: name=sales-analysis, desc="Forecasts which customers are at risk of churning" → name not gerund
+Example B: name=procurement-process, desc="Validates grain quality testing and traceability docs for compliance" → noun not gerund
+Action: derive the correct gerund name DIRECTLY from the description. Return exactly 1 suggestion (correct gerund name + existing description).
+Reason: state whether name is not gerund or too vague, and that it was derived from the description.
 
 CASE 2 — both name and description span multiple distinct processes → status: "too-broad"
 Example: name=sales-analysis, description="Analyzes revenue, pipeline health, and rep performance"
