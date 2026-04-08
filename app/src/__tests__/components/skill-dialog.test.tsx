@@ -357,4 +357,51 @@ describe("SkillDialog (edit mode)", () => {
 
     expect(screen.getByLabelText(/^Skill Name/)).toBeEnabled();
   });
+
+  it("calls renameSkill when an imported skill is renamed", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ skill_source: "imported" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    const nameInput = screen.getByLabelText(/^Skill Name/);
+    await user.clear(nameInput);
+    await user.type(nameInput, "imported-renamed");
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+    await user.click(screen.getByRole("button", { name: /^Save$/i }));
+
+    await waitFor(() => {
+      expect(renameSkillMock).toHaveBeenCalledWith(
+        "sales-pipeline",
+        "imported-renamed",
+        "/workspace",
+      );
+    }, { timeout: 10000 });
+  }, 15000);
+
+  it("does not call renameSkill for marketplace skills because name is locked", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ skill_source: "marketplace" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    // Name input is disabled — user cannot type into it
+    const nameInput = screen.getByLabelText(/^Skill Name/);
+    expect(nameInput).toBeDisabled();
+
+    // No rename should ever be triggered
+    expect(renameSkillMock).not.toHaveBeenCalled();
+  });
 });
