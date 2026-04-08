@@ -297,4 +297,64 @@ describe("SkillDialog (edit mode)", () => {
       });
     });
   });
+
+  it("disables name field for built skills with hint text", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ status: "completed", current_step: "step 5 completed" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+    expect(screen.getByText("Built skills cannot be renamed")).toBeInTheDocument();
+  });
+
+  it("disables name field for marketplace skills with hint text", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ skill_source: "marketplace" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^Skill Name/)).toBeDisabled();
+    expect(screen.getByText("Marketplace skills cannot be renamed")).toBeInTheDocument();
+  });
+
+  it("enables name field for uploaded (imported) skills", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ skill_source: "imported" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^Skill Name/)).toBeEnabled();
+    expect(screen.queryByText("Built skills cannot be renamed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Marketplace skills cannot be renamed")).not.toBeInTheDocument();
+  });
+
+  it("enables name field for in-progress builder skills (not yet built)", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ status: "in_progress", current_step: "step 2" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^Skill Name/)).toBeEnabled();
+  });
 });

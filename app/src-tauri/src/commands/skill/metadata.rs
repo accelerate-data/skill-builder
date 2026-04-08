@@ -243,6 +243,30 @@ pub(crate) fn is_valid_kebab(name: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
+/// Verify the skill source allows renaming. Only `imported` skills can be renamed.
+pub(crate) fn validate_rename_source(conn: &rusqlite::Connection, skill_name: &str) -> Result<(), String> {
+    let skill_source: String = conn
+        .query_row(
+            "SELECT skill_source FROM skills WHERE name = ?1",
+            rusqlite::params![skill_name],
+            |row| row.get(0),
+        )
+        .map_err(|e| {
+            log::error!("[validate_rename_source] Failed to query skill source: {}", e);
+            format!("Skill '{}' not found", skill_name)
+        })?;
+    if skill_source != "imported" {
+        let reason = match skill_source.as_str() {
+            "skill-builder" => "Built skills cannot be renamed",
+            "marketplace" => "Marketplace skills cannot be renamed",
+            _ => "Only uploaded skills can be renamed",
+        };
+        log::warn!("[validate_rename_source] Rejected: {} (source={})", reason, skill_source);
+        return Err(reason.to_string());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn rename_skill(
     old_name: String,
@@ -268,9 +292,21 @@ pub fn rename_skill(
         e.to_string()
     })?;
 
+    // Only uploaded (imported) skills can be renamed
+    validate_rename_source(&conn, &old_name)?;
+
     // Read settings for skills_path
     let settings = crate::db::read_settings(&conn).ok();
     let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
+
+    // Look up plugin slug before rename (needed for tag migration + frontmatter)
+    let plugin_slug: String = conn
+        .query_row(
+            "SELECT p.slug FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE s.name = ?1",
+            rusqlite::params![old_name],
+            |row| row.get(0),
+        )
+        .unwrap_or_else(|_| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
 
     rename_skill_inner(
         &old_name,
@@ -280,14 +316,30 @@ pub fn rename_skill(
         skills_path.as_deref(),
     )?;
 
-    // Auto-commit: skill renamed
+    // Post-rename: update SKILL.md frontmatter name and rewrite git tags
     if let Some(ref sp) = skills_path {
+        let skills_root = Path::new(sp);
+        let skill_dir = crate::skill_paths::resolve_skill_dir(skills_root, &plugin_slug, &new_name);
+        let skill_md = skill_dir.join("SKILL.md");
+        if skill_md.exists() {
+            if let Err(e) = crate::commands::imported_skills::frontmatter::update_skill_frontmatter_name(&skill_md, &new_name) {
+                log::warn!("[rename_skill] Failed to update SKILL.md name: {}", e);
+            }
+        }
+
+        // Rewrite git version tags from old name to new name
+        match crate::git::rename_skill_tags(skills_root, &plugin_slug, &old_name, &new_name) {
+            Ok(count) if count > 0 => log::info!("[rename_skill] Migrated {} git tags", count),
+            Err(e) => log::warn!("[rename_skill] Tag migration failed: {}", e),
+            _ => {}
+        }
+
         // Regenerate marketplace manifests
-        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
+        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(skills_root) {
             log::warn!("Manifest regeneration failed after rename: {}", e);
         }
         let msg = format!("{}: renamed from {}", new_name, old_name);
-        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
+        if let Err(e) = crate::git::commit_all(skills_root, &msg) {
             log::warn!("Git auto-commit failed ({}): {}", msg, e);
         }
     }

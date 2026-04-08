@@ -291,6 +291,64 @@ pub(crate) fn ensure_skill_frontmatter_metadata(
     })
 }
 
+/// Update the `name:` field in SKILL.md frontmatter to `new_name`.
+/// If no `name:` field exists, inserts one after the opening `---`.
+pub(crate) fn update_skill_frontmatter_name(
+    skill_md_path: &Path,
+    new_name: &str,
+) -> Result<bool, String> {
+    let content = std::fs::read_to_string(skill_md_path)
+        .map_err(|e| format!("Failed to read '{}': {}", skill_md_path.display(), e))?;
+    let normalized = content.replace("\r\n", "\n");
+
+    if !normalized.starts_with("---") {
+        return Err(format!(
+            "SKILL.md at '{}' is missing YAML frontmatter",
+            skill_md_path.display()
+        ));
+    }
+
+    let lines: Vec<&str> = normalized.split('\n').collect();
+    let closing_idx = lines
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(idx, line)| (line.trim() == "---").then_some(idx))
+        .ok_or_else(|| {
+            format!(
+                "SKILL.md at '{}' has an unclosed YAML frontmatter block",
+                skill_md_path.display()
+            )
+        })?;
+
+    let quoted_name = yaml_quote_scalar(new_name);
+    let mut rewritten: Vec<String> = Vec::with_capacity(lines.len());
+    let mut found_name = false;
+
+    for (idx, line) in lines.iter().enumerate() {
+        if idx > 0 && idx < closing_idx && line.trim().starts_with("name:") {
+            rewritten.push(format!("name: {}", quoted_name));
+            found_name = true;
+        } else {
+            rewritten.push(line.to_string());
+        }
+    }
+
+    // Insert name field after opening --- if not found
+    if !found_name {
+        rewritten.insert(1, format!("name: {}", quoted_name));
+    }
+
+    let result = rewritten.join("\n");
+    let modified = result != normalized;
+    if modified {
+        std::fs::write(skill_md_path, result)
+            .map_err(|e| format!("Failed to write '{}': {}", skill_md_path.display(), e))?;
+    }
+
+    Ok(modified)
+}
+
 #[cfg(test)]
 pub(crate) fn ensure_skill_frontmatter_version(
     skill_md_path: &Path,
@@ -494,5 +552,92 @@ mod tests {
 
         assert!(yaml.contains("name: \"test-skill\""));
         assert!(yaml.contains("metadata:\n  version: \"1.0.0\"\n  author: \"hb\""));
+    }
+
+    #[test]
+    fn update_frontmatter_name_replaces_existing() {
+        let dir = tempdir().unwrap();
+        let skill_md = dir.path().join("SKILL.md");
+        std::fs::write(
+            &skill_md,
+            "---\nname: old-name\ndescription: A test skill\nmetadata:\n  version: 1.0.0\n---\n# Body\n",
+        )
+        .unwrap();
+
+        let modified = update_skill_frontmatter_name(&skill_md, "new-name").unwrap();
+        let updated = std::fs::read_to_string(&skill_md).unwrap();
+
+        assert!(modified);
+        assert!(updated.contains("name: \"new-name\""));
+        assert!(!updated.contains("old-name"));
+        assert!(updated.contains("description: A test skill"));
+        assert!(updated.contains("# Body"));
+    }
+
+    #[test]
+    fn update_frontmatter_name_inserts_when_missing() {
+        let dir = tempdir().unwrap();
+        let skill_md = dir.path().join("SKILL.md");
+        std::fs::write(
+            &skill_md,
+            "---\ndescription: A test skill\nmetadata:\n  version: 1.0.0\n---\n# Body\n",
+        )
+        .unwrap();
+
+        let modified = update_skill_frontmatter_name(&skill_md, "inserted-name").unwrap();
+        let updated = std::fs::read_to_string(&skill_md).unwrap();
+
+        assert!(modified);
+        assert!(updated.contains("name: \"inserted-name\""));
+        assert!(updated.contains("description: A test skill"));
+    }
+
+    #[test]
+    fn update_frontmatter_name_noop_when_unchanged() {
+        let dir = tempdir().unwrap();
+        let skill_md = dir.path().join("SKILL.md");
+        // yaml_quote_scalar wraps in double quotes, so the stored form is: name: "same-name"
+        std::fs::write(
+            &skill_md,
+            "---\nname: \"same-name\"\ndescription: A test\n---\n# Body\n",
+        )
+        .unwrap();
+
+        let modified = update_skill_frontmatter_name(&skill_md, "same-name").unwrap();
+        assert!(!modified);
+    }
+
+    #[test]
+    fn update_frontmatter_name_rejects_missing_frontmatter() {
+        let dir = tempdir().unwrap();
+        let skill_md = dir.path().join("SKILL.md");
+        std::fs::write(&skill_md, "No frontmatter here.\n").unwrap();
+
+        let result = update_skill_frontmatter_name(&skill_md, "new-name");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("missing YAML frontmatter"));
+    }
+
+    #[test]
+    fn update_frontmatter_name_preserves_body_and_other_fields() {
+        let dir = tempdir().unwrap();
+        let skill_md = dir.path().join("SKILL.md");
+        std::fs::write(
+            &skill_md,
+            "---\nname: old-skill\ndescription: Does things\ntrigger: when asked\nmetadata:\n  version: 2.0.0\n  author: hb\n---\n# My Skill\n\nDetailed body content.\n",
+        )
+        .unwrap();
+
+        let modified = update_skill_frontmatter_name(&skill_md, "renamed-skill").unwrap();
+        let updated = std::fs::read_to_string(&skill_md).unwrap();
+
+        assert!(modified);
+        assert!(updated.contains("name: \"renamed-skill\""));
+        assert!(updated.contains("description: Does things"));
+        assert!(updated.contains("trigger: when asked"));
+        assert!(updated.contains("version: 2.0.0"));
+        assert!(updated.contains("author: hb"));
+        assert!(updated.contains("# My Skill"));
+        assert!(updated.contains("Detailed body content."));
     }
 }

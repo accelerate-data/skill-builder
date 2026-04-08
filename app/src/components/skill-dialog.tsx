@@ -135,6 +135,10 @@ export default function SkillDialog(props: SkillDialogProps) {
   // Imported/marketplace skills: skip intake, lock purpose
   const isImported = isEdit && (editSkill?.skill_source === 'marketplace' || editSkill?.skill_source === 'imported')
 
+  // Only uploaded (imported) skills can be renamed; built and marketplace cannot
+  const isMarketplace = isEdit && editSkill?.skill_source === 'marketplace'
+  const isNameLocked = isBuilt || isMarketplace
+
   // Total wizard steps: always 2
   const totalSteps = 2
 
@@ -374,16 +378,21 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="skill-name">
                     Skill Name <span className="text-destructive">*</span>
-                    {isBuilt && <LockedIcon />}
+                    {isNameLocked && <LockedIcon message={isMarketplace ? "Marketplace skills cannot be renamed" : "Built skills cannot be renamed"} />}
                   </Label>
                   <Input
                     id="skill-name"
                     placeholder={isEdit ? "kebab-case-name" : "e.g., sales-pipeline"}
                     value={skillName}
                     onChange={(e) => handleNameChange(e.target.value)}
-                    disabled={submitting || isBuilt}
+                    disabled={submitting || isNameLocked}
                     autoFocus={!isEdit}
                   />
+                  {isNameLocked && (
+                    <p className="text-xs text-muted-foreground">
+                      {isMarketplace ? "Marketplace skills cannot be renamed" : "Built skills cannot be renamed"}
+                    </p>
+                  )}
                   {!isEdit && (
                     <p className="text-xs text-muted-foreground">
                       Kebab-case identifier (lowercase, hyphens)
@@ -392,7 +401,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                       )}
                     </p>
                   )}
-                  {isEdit && skillName && !nameValid && !isBuilt && (
+                  {isEdit && skillName && !nameValid && !isNameLocked && (
                     <p className="text-xs text-destructive">
                       Must be kebab-case (e.g., sales-pipeline)
                     </p>
