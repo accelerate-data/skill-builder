@@ -26,7 +26,6 @@ export interface UseScopeAdvisorReturn {
   suggestions: ScopeAdvisorSuggestion[]
   currentChipIndex: number | null
   copiedIndices: Set<number>
-  hasPendingUncopied: boolean
   panelExpanded: boolean
   triggerCheck: () => void
   onChipClick: (index: number) => { name: string; description: string }
@@ -53,12 +52,10 @@ export function useScopeAdvisor({
   const [copiedIndices, setCopiedIndices] = useState<Set<number>>(new Set())
   const [panelExpanded, setPanelExpanded] = useState(false)
 
-  const chipClickSuppressed = useRef(false)
-
-  const hasPendingUncopied =
-    panelExpanded &&
-    status === "too-broad" &&
-    suggestions.some((_, i) => !copiedIndices.has(i))
+  // When true, the next onManualFieldEdit call is suppressed (keeps status
+  // as "focused" instead of resetting to "idle"). Set by onChipClick so that
+  // the user's first real edit after selecting a chip doesn't flash the status.
+  const chipClickedRef = useRef(false)
 
   const triggerCheck = useCallback(() => {
     if (mode === "edit") return
@@ -88,7 +85,7 @@ export function useScopeAdvisor({
 
   const onChipClick = useCallback(
     (index: number): { name: string; description: string } => {
-      chipClickSuppressed.current = true
+      chipClickedRef.current = true
       setCurrentChipIndex(index)
       setCopiedIndices((prev) => new Set([...prev, index]))
       // The LLM already judged this suggestion as focused — auto-pass it
@@ -121,7 +118,7 @@ export function useScopeAdvisor({
   }, [])
 
   const onFieldEdit = useCallback(() => {
-    chipClickSuppressed.current = false
+    chipClickedRef.current = false
     setStatus("idle")
     setReason("")
     setSuggestions([])
@@ -132,8 +129,8 @@ export function useScopeAdvisor({
   // Called by individual field onChange handlers. Ignores the edit if it
   // originated from a chip click (chip fills name+description programmatically).
   const onManualFieldEdit = useCallback(() => {
-    if (chipClickSuppressed.current) {
-      chipClickSuppressed.current = false
+    if (chipClickedRef.current) {
+      chipClickedRef.current = false
       return
     }
     setStatus("idle")
@@ -150,7 +147,6 @@ export function useScopeAdvisor({
       suggestions: [],
       currentChipIndex: null,
       copiedIndices: new Set(),
-      hasPendingUncopied: false,
       panelExpanded: false,
       triggerCheck: () => {},
       onChipClick: () => ({ name: "", description: "" }),
@@ -168,7 +164,6 @@ export function useScopeAdvisor({
     suggestions,
     currentChipIndex,
     copiedIndices,
-    hasPendingUncopied,
     panelExpanded,
     triggerCheck,
     onChipClick,

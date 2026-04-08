@@ -19,7 +19,6 @@ function makeAdvisorState(overrides: Partial<UseScopeAdvisorReturn> = {}): UseSc
     suggestions: [],
     currentChipIndex: null,
     copiedIndices: new Set(),
-    hasPendingUncopied: false,
     panelExpanded: false,
     triggerCheck: vi.fn(),
     onChipClick: vi.fn().mockReturnValue({ name: "", description: "" }),
@@ -247,7 +246,7 @@ describe("ScopeAdvisor", () => {
     expect(onCopyAll).toHaveBeenCalledOnce()
   })
 
-  it("gerund tip shown in footer when panel expanded", () => {
+  it("copy guidance shown in footer when panel expanded", () => {
     render(
       <ScopeAdvisor
         advisorState={makeAdvisorState({
@@ -258,8 +257,7 @@ describe("ScopeAdvisor", () => {
         onChipSelect={vi.fn()}
       />,
     )
-    expect(screen.getByText("Gerund names:")).toBeInTheDocument()
-    expect(screen.getByText("verb-ing + object")).toBeInTheDocument()
+    expect(screen.getByText(/Copy any suggestions/)).toBeInTheDocument()
   })
 
   it("current chip shows 'current' badge", () => {

@@ -53,15 +53,19 @@ Action: derive the correct gerund name from the description. Return exactly 1 su
 Reason: state why name fails and that description was kept as-is.
 NOTE: if description is also vague, use CASE 3 instead.
 
-CASE 2 — both name and description span multiple distinct processes → status: "too-broad"
-Example: name=sales-analysis, description="Analyzes revenue, pipeline health, and rep performance"
+CASE 2 — the skill covers a recognizable business domain that spans multiple distinct processes → status: "too-broad"
+This applies even if the description does not explicitly list the sub-processes. If the name or description references a broad business function (e.g. recruitment, sales, procurement, supply chain) and you can infer from business knowledge what distinct processes it covers, it is too-broad — not vague.
+Example A: name=sales-analysis, description="Analyzes revenue, pipeline health, and rep performance" (explicitly lists processes)
+Example B: name=understand-recruitment-processes, description="understand recruitment processes of the company" (umbrella term — you can infer hiring, onboarding, interview scheduling, etc.)
 Action: split into 3-5 focused skills. Anchor suggested names to the original name where possible.
-Reason: name the distinct processes found.
+Reason: name the distinct processes found (whether explicitly listed or inferred).
 
-CASE 3 — both name and description too vague to identify a clear process → status: "both-need-improvement"
-Example: name=analyzing-data, description="Analyzes sales metrics for the team"
+CASE 3 — both name and description are so vague that you cannot identify even the business domain → status: "both-need-improvement"
+The name and description give no signal about what area of the business is involved. You cannot infer sub-processes because there is no domain anchor.
+Example: name=analyzing-data, description="Analyzes data for the team" — data about what? Which team? No domain signal at all.
 Action: make 3-5 best-guess suggestions.
-Reason: state that both are too vague and suggestions may not match intent.
+Reason: be transparent — state that both are too vague and suggestions may not match intent.
+KEY DISTINCTION: if you can name the business domain (recruitment, sales, procurement, etc.) → use CASE 2 (too-broad). Only use CASE 3 when the domain itself is unclear.
 
 CASE 4 — name is focused, description wanders into one or more extra processes → status: "description-needs-improvement"
 Example: name=forecasting-churned-customers, description="Forecasts churn risk and tracks renewal pipeline health"
@@ -97,7 +101,7 @@ function callSonnet(promptText) {
       input: promptText,
       encoding: "utf8",
       env,
-      timeout: 60_000,
+      timeout: 120_000,
       stdio: ["pipe", "pipe", "pipe"],
     },
   );
@@ -241,13 +245,13 @@ function runDescriptionNeedsImprovement() {
 }
 
 /**
- * Case 3: both name and description too vague to identify a clear process.
+ * Case 3: both name and description so vague that the business domain itself is unclear.
  * Expected: status="both-need-improvement", 3–5 suggestions, caveat in reason.
  */
 function runBothNeedImprovement() {
   const prompt = buildScopeReviewPrompt({
-    skillName: "understand-procurement-processes",
-    description: "Help the AI agent understand the procurement processes of the company.",
+    skillName: "analyzing-data",
+    description: "Analyzes data for the team.",
     purpose: "domain",
     industry: null,
     documentContext: null,

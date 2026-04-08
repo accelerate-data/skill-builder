@@ -78,7 +78,6 @@ describe("useScopeAdvisor", () => {
     expect(result.current.suggestions).toHaveLength(0)
     expect(result.current.currentChipIndex).toBeNull()
     expect(result.current.copiedIndices.size).toBe(0)
-    expect(result.current.hasPendingUncopied).toBe(false)
     expect(result.current.panelExpanded).toBe(false)
 
     await act(async () => {
@@ -290,7 +289,7 @@ describe("useScopeAdvisor", () => {
     expect(result.current.copiedIndices.size).toBe(0)
   })
 
-  it("onManualFieldEdit does NOT reset when called immediately after onChipClick (chipClickSuppressed=true)", async () => {
+  it("onManualFieldEdit suppresses once after onChipClick then resets on next edit", async () => {
     reviewSkillScopeMock.mockResolvedValue(broadResult)
     const { result } = renderHook(() => useScopeAdvisor(defaultCreateOpts))
 
@@ -299,15 +298,15 @@ describe("useScopeAdvisor", () => {
       await Promise.resolve()
     })
 
-    // Chip click sets chipClickSuppressed = true and status = "focused"
+    // Chip click sets suppression flag and status = "focused"
     act(() => { result.current.onChipClick(0) })
     expect(result.current.status).toBe("focused")
 
-    // First onManualFieldEdit should be suppressed (clears suppression, stays focused)
+    // First onManualFieldEdit — suppressed (clears flag), stays focused
     act(() => { result.current.onManualFieldEdit() })
     expect(result.current.status).toBe("focused")
 
-    // Second onManualFieldEdit (suppression cleared) should now reset
+    // Second onManualFieldEdit (real user edit) — resets to idle
     act(() => { result.current.onManualFieldEdit() })
     expect(result.current.status).toBe("idle")
   })
@@ -332,7 +331,7 @@ describe("useScopeAdvisor", () => {
     expect(result.current.copiedIndices.size).toBe(0)
   })
 
-  it("onFieldEdit also resets chipClickSuppressed so subsequent onManualFieldEdit resets", async () => {
+  it("onFieldEdit clears chip suppression so subsequent onManualFieldEdit resets", async () => {
     reviewSkillScopeMock.mockResolvedValue(broadResult)
     const { result } = renderHook(() => useScopeAdvisor(defaultCreateOpts))
 
@@ -342,7 +341,7 @@ describe("useScopeAdvisor", () => {
     })
 
     act(() => { result.current.onChipClick(0) })
-    // onFieldEdit clears chipClickSuppressed
+    // onFieldEdit clears chip suppression flag
     act(() => { result.current.onFieldEdit() })
     // Now onManualFieldEdit should reset (not suppressed)
     act(() => { result.current.onManualFieldEdit() })
@@ -392,59 +391,4 @@ describe("useScopeAdvisor", () => {
     expect(result.current.panelExpanded).toBe(false)
   })
 
-  it("hasPendingUncopied is true when panelExpanded + too-broad + some not copied", async () => {
-    reviewSkillScopeMock.mockResolvedValue(broadResult)
-    const { result } = renderHook(() => useScopeAdvisor(defaultCreateOpts))
-
-    await act(async () => {
-      result.current.triggerCheck()
-      await Promise.resolve()
-    })
-
-    act(() => { result.current.onTogglePanel() })
-
-    expect(result.current.hasPendingUncopied).toBe(true)
-  })
-
-  it("hasPendingUncopied is false when all suggestions copied", async () => {
-    reviewSkillScopeMock.mockResolvedValue(broadResult)
-    const { result } = renderHook(() => useScopeAdvisor(defaultCreateOpts))
-
-    await act(async () => {
-      result.current.triggerCheck()
-      await Promise.resolve()
-    })
-
-    act(() => { result.current.onTogglePanel() })
-    act(() => { result.current.onCopyAll() })
-
-    expect(result.current.hasPendingUncopied).toBe(false)
-  })
-
-  it("hasPendingUncopied is false when panel is not expanded", async () => {
-    reviewSkillScopeMock.mockResolvedValue(broadResult)
-    const { result } = renderHook(() => useScopeAdvisor(defaultCreateOpts))
-
-    await act(async () => {
-      result.current.triggerCheck()
-      await Promise.resolve()
-    })
-
-    // panelExpanded is false by default
-    expect(result.current.hasPendingUncopied).toBe(false)
-  })
-
-  it("hasPendingUncopied is false when status is focused (not too-broad)", async () => {
-    reviewSkillScopeMock.mockResolvedValue(focusedResult)
-    const { result } = renderHook(() => useScopeAdvisor(defaultCreateOpts))
-
-    await act(async () => {
-      result.current.triggerCheck()
-      await Promise.resolve()
-    })
-
-    act(() => { result.current.onTogglePanel() })
-
-    expect(result.current.hasPendingUncopied).toBe(false)
-  })
 })

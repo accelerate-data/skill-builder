@@ -112,14 +112,23 @@ pub async fn review_skill_scope(
          Action: derive the correct gerund name from the description. Return exactly 1 suggestion with the new name and the ORIGINAL description unchanged.\n\
          Reason: state why the name fails and that the description was kept as-is.\n\
          NOTE: if the description is also vague or imprecise, use CASE 3 instead — not Case 1.\n\n\
-         CASE 2 — both name and description span multiple distinct processes → status: \"too-broad\"\n\
-         Example: name=sales-analysis, description=\"Analyzes revenue, pipeline health, and rep performance\"\n\
+         CASE 2 — the skill covers a recognizable business domain that spans multiple distinct processes → status: \"too-broad\"\n\
+         This applies even if the description does not explicitly list the sub-processes. If the name or description \
+references a broad business function (e.g. recruitment, sales, procurement, supply chain) and you can infer \
+from business knowledge what distinct processes it covers, it is too-broad — not vague.\n\
+         Example A: name=sales-analysis, description=\"Analyzes revenue, pipeline health, and rep performance\" (explicitly lists processes)\n\
+         Example B: name=understand-recruitment-processes, description=\"understand recruitment processes of the company\" \
+(umbrella term — you can infer hiring, onboarding, interview scheduling, etc.)\n\
          Action: split into 3-5 focused skills. Anchor suggested names to the original name where possible.\n\
-         Reason: name the distinct processes found.\n\n\
-         CASE 3 — both name and description too vague to identify a clear process → status: \"both-need-improvement\"\n\
-         Example: name=analyzing-data, description=\"Analyzes sales metrics for the team\"\n\
+         Reason: name the distinct processes found (whether explicitly listed or inferred).\n\n\
+         CASE 3 — both name and description are so vague that you cannot identify even the business domain → status: \"both-need-improvement\"\n\
+         The name and description give no signal about what area of the business is involved. \
+You cannot infer sub-processes because there is no domain anchor.\n\
+         Example: name=analyzing-data, description=\"Analyzes data for the team\" — data about what? Which team? No domain signal at all.\n\
          Action: make 3-5 best-guess suggestions.\n\
-         Reason: be transparent — state that both are too vague and suggestions may not match intent.\n\n\
+         Reason: be transparent — state that both are too vague and suggestions may not match intent.\n\
+         KEY DISTINCTION: if you can name the business domain (recruitment, sales, procurement, etc.) → use CASE 2 (too-broad). \
+Only use CASE 3 when the domain itself is unclear.\n\n\
          CASE 4 — name is focused, description wanders into one or more extra processes → status: \"description-needs-improvement\"\n\
          Example: name=forecasting-churned-customers, description=\"Forecasts churn risk and tracks renewal pipeline health\"\n\
          Action: produce 1 suggestion per process found — (1) original name + description trimmed to match, then one additional suggestion per stray process (new gerund name + description for each).\n\

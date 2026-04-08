@@ -35,11 +35,15 @@ The feature is **advisory only** — it never blocks submission. The user makes 
 | Skill purpose | Create form |
 | What Claude needs to know | Create form (context questions field) |
 | Industry | User settings |
-| Uploaded documents | User settings |
+| Uploaded documents | User settings (only "All Skills" scope — see below) |
 
 Business context (industry + documents) can override a generic breadth signal. If the documents show that "revenue metrics" in this company is one tightly scoped workflow, the LLM should say it's focused — not broad.
 
 The "What Claude needs to know" field (context questions) is included as additional signal — it often contains domain-specific constraints that help the LLM determine whether an apparently broad skill is actually scoped to a single workflow in practice.
+
+### Document visibility in the create form
+
+The create form shows a read-only list of documents above the Skill Name field so the user knows what business context the advisor will use. Only documents with scope `"all"` (i.e. assigned to "All Skills") are shown — skill-specific documents are not displayed because no skill exists yet at creation time. The list is display-only; to add or remove documents the user must go to Settings.
 
 ---
 
@@ -92,20 +96,24 @@ The description is already focused on one process. The LLM derives the correct g
 - **Reason example:** *"Your name doesn't follow the gerund pattern. We derived a focused gerund name from your description, which was kept as-is."*
 - **Note:** if the description is also vague or imprecise, use Case 3 (`both-need-improvement`) instead.
 
-### Case 2 — Both name and description span multiple processes → `too-broad`
+### Case 2 — Skill covers a recognizable business domain spanning multiple processes → `too-broad`
 
-Example: name = `sales-analysis`, description = `Analyzes revenue trends, pipeline health, and rep performance.`
+The skill references a broad business function and the LLM can infer (from business knowledge or documents) what distinct sub-processes it covers. This applies **even if the description does not explicitly list the sub-processes** — umbrella business terms like "recruitment", "sales", "procurement" inherently span multiple workflows.
 
-Both are too broad. Split into focused skills.
+Example A: name = `sales-analysis`, description = `Analyzes revenue trends, pipeline health, and rep performance.` (explicitly lists processes)
+
+Example B: name = `understand-recruitment-processes`, description = `Understand recruitment processes of the company.` (umbrella term — hiring, onboarding, interview scheduling, etc. can be inferred)
 
 - **Chips:** 3–5 split suggestions, names anchored to the original name
 - **Reason example:** *"This skill covers three separate processes. Consider splitting into focused skills."*
 
-### Case 3 — Both name and description are too vague → `both-need-improvement`
+### Case 3 — Both name and description so vague the business domain is unclear → `both-need-improvement`
 
-Example: name = `analyzing-data`, description = `Analyzes sales metrics for the team.`
+The name and description give no signal about what area of the business is involved. The LLM cannot infer sub-processes because there is no domain anchor.
 
-Not enough signal to derive a precise suggestion. The LLM makes its best guess and flags the uncertainty.
+Example: name = `analyzing-data`, description = `Analyzes data for the team.` — data about what? Which team? No domain signal at all.
+
+**Key distinction:** if the LLM can name the business domain (recruitment, sales, procurement, etc.) → use Case 2 (`too-broad`). Only use Case 3 when the domain itself is unclear.
 
 - **Chips:** 3–5 best-guess alternatives
 - **Reason example:** *"Both the name and description are too vague to be certain — these suggestions are our best guess. Add more detail for a more accurate recommendation."*
@@ -127,8 +135,9 @@ The name is correct. The description has one valid process + one stray. Split in
 | Pass | `validating-grain-feed-compliance` | Validates quality testing, traceability docs, and supplier audits for grain ingredients | ✓ Focused (many nouns, one process) |
 | Case 1a | `sales-analysis` | Forecasts which customers are at risk of churning | `name-needs-improvement` — not gerund, derive from description |
 | Case 1b | `procurement-process` | Validates grain quality testing and traceability docs for compliance | `name-needs-improvement` — noun not gerund, derive from description |
-| Case 2 | `sales-analysis` | Analyzes revenue, pipeline health, and rep performance | `too-broad` — split into focused skills |
-| Case 3 | `analyzing-data` | Analyzes sales metrics for the team | `both-need-improvement` — best-guess with caveat |
+| Case 2a | `sales-analysis` | Analyzes revenue, pipeline health, and rep performance | `too-broad` — explicitly lists multiple processes |
+| Case 2b | `understand-recruitment-processes` | Understand recruitment processes of the company | `too-broad` — umbrella business term, sub-processes inferred |
+| Case 3 | `analyzing-data` | Analyzes data for the team | `both-need-improvement` — no identifiable business domain |
 | Case 4 | `forecasting-churned-customers` | Forecasts churn risk and tracks renewal pipeline health | `description-needs-improvement` — 1 chip per process found |
 
 **Domain context:** These skills are used to build data warehouses and lakehouses — OLAP systems, not OLTP. The data source (e.g. Salesforce, Snowflake, S3) is valuable context when present, but is not compulsory. A skill with no named source can still pass if it acts on one specific noun.

@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { toast } from "@/lib/toast"
-import { Plus, Loader2, ChevronLeft, ChevronRight, Lock } from "lucide-react"
+import { Plus, Loader2, ChevronLeft, ChevronRight, Lock, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -22,7 +22,8 @@ import { Textarea } from "@/components/ui/textarea"
 import ScopeAdvisor from "@/components/scope-advisor"
 import { useScopeAdvisor } from "@/hooks/use-scope-advisor"
 import { useSettingsStore } from "@/stores/settings-store"
-import { renameSkill, updateSkillMetadata, generateSuggestions, createSkill, type FieldSuggestions } from "@/lib/tauri"
+import { useDocumentStore } from "@/stores/document-store"
+import { renameSkill, updateSkillMetadata, createSkill } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { EditableSkill } from "@/lib/types"
 import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
@@ -41,12 +42,6 @@ function isSkillBuilt(skill: EditableSkill | null): boolean {
   const match = skill.current_step.match(/step\s*(\d+)/i)
   if (match) return Number(match[1]) >= 5
   return false
-}
-
-// --- Cache key helper ---
-
-function makeCacheKey(group: string, params: Record<string, string | null | undefined>): string {
-  return JSON.stringify({ group, ...params })
 }
 
 // --- Intake JSON parsing ---
@@ -119,7 +114,9 @@ function LockedIcon({ message = "Locked — skill has been built" }: { message?:
 export default function SkillDialog(props: SkillDialogProps) {
   const isEdit = props.mode === "edit"
   const navigate = useNavigate()
-  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole } = useSettingsStore()
+  const { workspacePath: storeWorkspacePath, skillsPath } = useSettingsStore()
+  const documents = useDocumentStore((s) => s.documents)
+  const allScopeDocuments = useMemo(() => documents.filter((d) => d.scope === "all"), [documents])
 
   // Extract mode-specific props
   const editSkill = isEdit ? (props as SkillDialogEditProps).skill : null
@@ -174,12 +171,6 @@ export default function SkillDialog(props: SkillDialogProps) {
   const advisorResetRef = useRef(advisorState.onFieldEdit)
   advisorResetRef.current = advisorState.onFieldEdit
 
-  // Ghost suggestion state
-  // Version refs and debounce timers
-  const group0VersionRef = useRef(0)
-  const group0DebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const suggestionCache = useRef<Map<string, FieldSuggestions>>(new Map())
-
   // Derived state
   const originalName = editSkill?.name ?? ""
   const nameChanged = isEdit && skillName !== originalName
@@ -204,9 +195,6 @@ export default function SkillDialog(props: SkillDialogProps) {
     setError(null)
     setSubmitting(false)
     advisorResetRef.current()
-    group0VersionRef.current++
-    suggestionCache.current.clear()
-    if (group0DebounceRef.current) clearTimeout(group0DebounceRef.current)
   }, [])
 
   // Populate form in edit mode when dialog opens; reset on close for both modes
@@ -234,50 +222,6 @@ export default function SkillDialog(props: SkillDialogProps) {
       setInternalOpen(open)
     }
   }, [editOnOpenChange, createOnOpenChange])
-
-  // --- Cascading ghost suggestions ---
-  // Group 0: description <- name + purpose (skip in edit mode)
-  // Context questions: fires when name + description + purpose are all set
-
-  // Generic fetch helper: debounce -> cache check -> API call -> set state
-  const fetchGroup = useCallback(
-    (opts: {
-      group: string
-      fields: string[]
-      params: Record<string, string | null | undefined>
-      apiOpts: Parameters<typeof generateSuggestions>[2]
-      versionRef: React.MutableRefObject<number>
-      debounceRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
-      debounceMs: number
-      onResult: (result: FieldSuggestions) => void
-    }) => {
-      if (opts.debounceRef.current) clearTimeout(opts.debounceRef.current)
-      if (!skillName || !purpose) return
-
-      const version = ++opts.versionRef.current
-      opts.debounceRef.current = setTimeout(async () => {
-        try {
-          const key = makeCacheKey(opts.group, opts.params)
-          const cached = suggestionCache.current.get(key)
-          if (cached) {
-            if (version === opts.versionRef.current) opts.onResult(cached)
-            return
-          }
-          const result = await generateSuggestions(skillName, purpose, {
-            ...opts.apiOpts,
-            fields: opts.fields,
-          })
-          if (version === opts.versionRef.current) {
-            suggestionCache.current.set(key, result)
-            opts.onResult(result)
-          }
-        } catch (err) {
-          console.error(`[skill-dialog] ${opts.group} suggestion fetch failed:`, err)
-        }
-      }, opts.debounceMs)
-    },
-    [skillName, purpose],
-  )
 
   // --- Submit ---
 
@@ -413,6 +357,20 @@ export default function SkillDialog(props: SkillDialogProps) {
             {/* Step 1: Name + Purpose + Description + Tags + Context Questions */}
             {step === 1 && (
               <>
+                {!isEdit && allScopeDocuments.length > 0 && (
+                  <div className="flex flex-col gap-1.5 rounded-md border border-muted bg-muted/30 px-3 py-2">
+                    <span className="text-xs font-medium text-muted-foreground">Business context documents</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {allScopeDocuments.map((doc) => (
+                        <span key={doc.id} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                          <FileText className="size-3" />
+                          {doc.name}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-[11px] text-muted-foreground/70">These documents inform the scope advisor. Manage in Settings.</span>
+                  </div>
+                )}
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="skill-name">
                     Skill Name <span className="text-destructive">*</span>
@@ -461,7 +419,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     className="min-h-[4.5rem] resize-none"
                   />
                   <p className="text-xs text-muted-foreground">
-                    How Claude Code decides when to activate this skill ({description.length}/1024)
+                    How the AI agent decides when to activate this skill ({description.length}/1024)
                   </p>
                   <ScopeAdvisor
                     advisorState={advisorState}

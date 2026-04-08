@@ -99,7 +99,7 @@ export default function ScopeAdvisor({ advisorState, onChipSelect }: ScopeAdviso
           </div>
           <div className="flex items-center justify-between border-t pt-2">
             <span className="text-xs text-muted-foreground">
-              Gerund names: <code className="font-mono">verb-ing + object</code>
+              Copy any suggestions you'd like to create as separate skills later.
             </span>
             <Button
               type="button"
