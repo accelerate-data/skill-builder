@@ -299,15 +299,6 @@ pub fn rename_skill(
     let settings = crate::db::read_settings(&conn).ok();
     let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
 
-    // Look up plugin slug before rename (needed for tag migration + frontmatter)
-    let plugin_slug: String = conn
-        .query_row(
-            "SELECT p.slug FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE s.name = ?1",
-            rusqlite::params![old_name],
-            |row| row.get(0),
-        )
-        .unwrap_or_else(|_| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-
     rename_skill_inner(
         &old_name,
         &new_name,
@@ -316,30 +307,14 @@ pub fn rename_skill(
         skills_path.as_deref(),
     )?;
 
-    // Post-rename: update SKILL.md frontmatter name and rewrite git tags
+    // Auto-commit: skill renamed
     if let Some(ref sp) = skills_path {
-        let skills_root = Path::new(sp);
-        let skill_dir = crate::skill_paths::resolve_skill_dir(skills_root, &plugin_slug, &new_name);
-        let skill_md = skill_dir.join("SKILL.md");
-        if skill_md.exists() {
-            if let Err(e) = crate::commands::imported_skills::frontmatter::update_skill_frontmatter_name(&skill_md, &new_name) {
-                log::warn!("[rename_skill] Failed to update SKILL.md name: {}", e);
-            }
-        }
-
-        // Rewrite git version tags from old name to new name
-        match crate::git::rename_skill_tags(skills_root, &plugin_slug, &old_name, &new_name) {
-            Ok(count) if count > 0 => log::info!("[rename_skill] Migrated {} git tags", count),
-            Err(e) => log::warn!("[rename_skill] Tag migration failed: {}", e),
-            _ => {}
-        }
-
         // Regenerate marketplace manifests
-        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(skills_root) {
+        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
             log::warn!("Manifest regeneration failed after rename: {}", e);
         }
         let msg = format!("{}: renamed from {}", new_name, old_name);
-        if let Err(e) = crate::git::commit_all(skills_root, &msg) {
+        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
             log::warn!("Git auto-commit failed ({}): {}", msg, e);
         }
     }
