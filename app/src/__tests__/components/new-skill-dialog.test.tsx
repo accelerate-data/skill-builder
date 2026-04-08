@@ -163,6 +163,19 @@ describe("SkillDialog (create mode)", () => {
     expect(screen.getByLabelText("What Claude needs to know")).toBeInTheDocument();
   });
 
+  it("keeps description field enabled in create mode with character count", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderDialog();
+    await openDialog(user);
+
+    const descField = screen.getByLabelText(/^What the skill does/);
+    expect(descField).toBeEnabled();
+    await user.type(descField, "Test description");
+    expect(descField).toHaveValue("Test description");
+    expect(screen.getByText(/16\/1024/)).toBeInTheDocument();
+    expect(screen.queryByText("Use the Refine or Description Optimization tab to update this")).not.toBeInTheDocument();
+  });
+
   it("enforces kebab-case on skill name input", async () => {
     const user = userEvent.setup({ delay: null });
     renderDialog();

@@ -180,6 +180,37 @@ describe("SkillDialog (edit mode)", () => {
     expect(screen.getByLabelText(/^Argument Hint/)).toBeEnabled();
   });
 
+  it("disables description for marketplace skills with hint text", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ skill_source: "marketplace" })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^What the skill does/)).toBeDisabled();
+    expect(screen.getByLabelText(/^What the skill does/)).toHaveValue("Original description");
+    expect(screen.getByText("Use the Refine or Description Optimization tab to update this")).toBeInTheDocument();
+  });
+
+  it("disables description for skills with no source (uploaded)", () => {
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={makeSkill({ skill_source: null })}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^What the skill does/)).toBeDisabled();
+    expect(screen.getByText("Use the Refine or Description Optimization tab to update this")).toBeInTheDocument();
+  });
+
   it("renames the skill before saving updated metadata", async () => {
     const user = userEvent.setup({ delay: null });
     const onOpenChange = vi.fn();
