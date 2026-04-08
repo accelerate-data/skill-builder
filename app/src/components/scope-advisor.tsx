@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Loader2 } from "lucide-react"
+import { ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { UseScopeAdvisorReturn } from "@/hooks/use-scope-advisor"
 
@@ -22,14 +22,7 @@ export default function ScopeAdvisor({ advisorState, onChipSelect }: ScopeAdviso
 
   if (status === "idle") return null
 
-  if (status === "loading") {
-    return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="size-3 animate-spin" />
-        Checking scope...
-      </div>
-    )
-  }
+  if (status === "loading") return null
 
   if (status === "focused") {
     return (

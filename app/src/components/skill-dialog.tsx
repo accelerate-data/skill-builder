@@ -161,7 +161,6 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showStartWarning, setShowStartWarning] = useState(false)
 
   const advisorState = useScopeAdvisor({
     mode: props.mode,
@@ -208,7 +207,6 @@ export default function SkillDialog(props: SkillDialogProps) {
     setDescriptionSuggestion(null)
     setError(null)
     setSubmitting(false)
-    setShowStartWarning(false)
     advisorResetRef.current()
     group0VersionRef.current++
     suggestionCache.current.clear()
@@ -422,7 +420,13 @@ export default function SkillDialog(props: SkillDialogProps) {
             </span>
           </div>
 
-          <div className="flex-1 min-h-0 flex flex-col gap-4 py-2 overflow-y-auto pr-1">
+          <div className="relative flex-1 min-h-0 flex flex-col gap-4 py-2 overflow-y-auto pr-1">
+            {step === 1 && advisorState.status === "loading" && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-md bg-background/80 backdrop-blur-sm">
+                <Loader2 className="size-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Analyzing skill details…</span>
+              </div>
+            )}
             {/* Step 1: Name + Purpose + Description + Tags + Context Questions */}
             {step === 1 && (
               <>
@@ -603,23 +607,27 @@ export default function SkillDialog(props: SkillDialogProps) {
                 >
                   Cancel
                 </Button>
+                {!isEdit && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!canAdvanceStep1 || advisorState.status === "loading"}
+                    onClick={() => advisorState.triggerCheck()}
+                  >
+                    Validate
+                  </Button>
+                )}
                 <Button
                   type="button"
                   disabled={!canAdvanceStep1 || isLocked || advisorState.status === "loading"}
-                  onClick={() => {
-                    if (!isEdit && advisorState.status === "idle") {
-                      advisorState.triggerCheck()
-                    } else {
-                      setStep(2)
-                    }
-                  }}
+                  onClick={() => setStep(2)}
                 >
                   Next
                   <ChevronRight className="size-4" />
                 </Button>
               </>
             )}
-            {step === 2 && !showStartWarning && (
+            {step === 2 && (
               <>
                 <Button
                   type="button"
@@ -633,42 +641,10 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <Button
                   type="button"
                   disabled={submitting || isLocked || !canAdvanceStep1}
-                  onClick={() => {
-                    if (!isEdit && advisorState.hasPendingUncopied) {
-                      setShowStartWarning(true)
-                    } else {
-                      doSubmit()
-                    }
-                  }}
+                  onClick={() => doSubmit()}
                 >
                   {submitting && <Loader2 className="size-4 animate-spin" />}
                   {submitLabel}
-                </Button>
-              </>
-            )}
-            {step === 2 && showStartWarning && (
-              <>
-                <span className="text-sm text-amber-700 dark:text-amber-400">
-                  {advisorState.suggestions.filter((_, i) => !advisorState.copiedIndices.has(i)).length} suggestion{advisorState.suggestions.filter((_, i) => !advisorState.copiedIndices.has(i)).length !== 1 ? "s" : ""} not saved.
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    advisorState.onCopyAll()
-                    doSubmit()
-                  }}
-                  disabled={submitting}
-                >
-                  Copy remaining
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => doSubmit()}
-                  disabled={submitting}
-                >
-                  {submitting && <Loader2 className="size-4 animate-spin" />}
-                  Start anyway
                 </Button>
               </>
             )}
