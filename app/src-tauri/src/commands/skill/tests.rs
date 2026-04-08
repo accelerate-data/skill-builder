@@ -1,5 +1,5 @@
 use super::crud::{create_skill_inner, delete_skill_inner, list_refinable_skills_inner, list_skills_inner};
-use super::metadata::{is_valid_kebab, rename_skill_inner};
+use super::metadata::{is_valid_kebab, rename_skill_inner, sync_user_context_file};
 use crate::commands::test_utils::create_test_db;
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use rusqlite::Connection;
@@ -1534,3 +1534,150 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
 // and a `tauri::AppHandle` — none of which are constructible in unit tests. The timeout
 // path calls `process::exit` which is also impractical to test. This limitation is documented.
 // The sidecar shutdown logic is covered by persistent-mode.test.ts integration tests instead.
+
+// ===== sync_user_context_file tests =====
+
+#[test]
+fn test_sync_user_context_writes_file_after_metadata_update() {
+    let conn = create_test_db();
+    let workspace = tempdir().unwrap();
+    let workspace_path = workspace.path().to_str().unwrap();
+
+    // Set up settings with workspace_path and industry/function
+    let mut settings = crate::db::read_settings(&conn).unwrap_or_default();
+    settings.workspace_path = Some(workspace_path.to_string());
+    settings.industry = Some("Healthcare".to_string());
+    settings.function_role = Some("Data Engineer".to_string());
+    crate::db::write_settings(&conn, &settings).unwrap();
+
+    // Create a skill via workflow run (sets up skills master row)
+    crate::db::save_workflow_run(&conn, "test-sync-skill", 0, "pending", "domain").unwrap();
+
+    // Set tags and behaviour fields
+    crate::db::set_skill_tags(&conn, "test-sync-skill", &["tag-a".to_string(), "tag-b".to_string()]).unwrap();
+    crate::db::set_skill_behaviour(
+        &conn,
+        "test-sync-skill",
+        Some("A test skill description"),
+        None,
+        None,
+        Some("provide a file path"),
+        Some(true),
+        Some(false),
+    )
+    .unwrap();
+
+    // Set intake JSON with context
+    crate::db::set_skill_intake(
+        &conn,
+        "test-sync-skill",
+        Some(r#"{"context":"This skill needs specific domain knowledge"}"#),
+    )
+    .unwrap();
+
+    // Call sync_user_context_file
+    sync_user_context_file(&conn, "test-sync-skill");
+
+    // Verify user-context.md was created
+    let uc_path = crate::skill_paths::workspace_skill_dir(
+        workspace.path(),
+        DEFAULT_PLUGIN_SLUG,
+        "test-sync-skill",
+    )
+    .join("user-context.md");
+    assert!(uc_path.exists(), "user-context.md should be created");
+
+    let content = fs::read_to_string(&uc_path).unwrap();
+
+    // Verify synced fields are present
+    assert!(content.contains("test-sync-skill"), "should contain skill name");
+    assert!(content.contains("A test skill description"), "should contain description");
+    assert!(content.contains("tag-a"), "should contain tag-a");
+    assert!(content.contains("tag-b"), "should contain tag-b");
+    assert!(content.contains("provide a file path"), "should contain argument hint");
+    assert!(content.contains("User Invocable"), "should contain user invocable");
+    assert!(content.contains("This skill needs specific domain knowledge"), "should contain intake context");
+
+    // Verify preserved fields (industry, function from settings)
+    assert!(content.contains("Healthcare"), "should contain industry from settings");
+    assert!(content.contains("Data Engineer"), "should contain function from settings");
+}
+
+#[test]
+fn test_sync_user_context_creates_file_when_none_exists() {
+    let conn = create_test_db();
+    let workspace = tempdir().unwrap();
+    let workspace_path = workspace.path().to_str().unwrap();
+
+    let mut settings = crate::db::read_settings(&conn).unwrap_or_default();
+    settings.workspace_path = Some(workspace_path.to_string());
+    crate::db::write_settings(&conn, &settings).unwrap();
+
+    crate::db::save_workflow_run(&conn, "brand-new-skill", 0, "pending", "domain").unwrap();
+
+    // Verify no file exists yet
+    let uc_path = crate::skill_paths::workspace_skill_dir(
+        workspace.path(),
+        DEFAULT_PLUGIN_SLUG,
+        "brand-new-skill",
+    )
+    .join("user-context.md");
+    assert!(!uc_path.exists(), "user-context.md should not exist yet");
+
+    sync_user_context_file(&conn, "brand-new-skill");
+
+    assert!(uc_path.exists(), "user-context.md should be created on first sync");
+}
+
+#[test]
+fn test_sync_user_context_preserves_non_edit_fields() {
+    let conn = create_test_db();
+    let workspace = tempdir().unwrap();
+    let workspace_path = workspace.path().to_str().unwrap();
+
+    let mut settings = crate::db::read_settings(&conn).unwrap_or_default();
+    settings.workspace_path = Some(workspace_path.to_string());
+    settings.industry = Some("Finance".to_string());
+    settings.function_role = Some("Analyst".to_string());
+    settings.github_user_email = Some("author@example.com".to_string());
+    crate::db::write_settings(&conn, &settings).unwrap();
+
+    crate::db::save_workflow_run(&conn, "preserve-test", 0, "pending", "platform").unwrap();
+    crate::db::set_skill_behaviour(
+        &conn,
+        "preserve-test",
+        Some("Original description"),
+        Some("1.0.0"),
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    sync_user_context_file(&conn, "preserve-test");
+
+    let uc_path = crate::skill_paths::workspace_skill_dir(
+        workspace.path(),
+        DEFAULT_PLUGIN_SLUG,
+        "preserve-test",
+    )
+    .join("user-context.md");
+    let content = fs::read_to_string(&uc_path).unwrap();
+
+    // Non-edit fields should be preserved
+    assert!(content.contains("author@example.com"), "should contain author from settings");
+    assert!(content.contains("Finance"), "should contain industry");
+    assert!(content.contains("Analyst"), "should contain function");
+    assert!(content.contains("1.0.0"), "should contain version");
+    assert!(content.contains("Original description"), "should contain description");
+}
+
+#[test]
+fn test_sync_user_context_skips_when_no_workspace() {
+    let conn = create_test_db();
+    // No workspace_path set in settings — sync should be a no-op
+    crate::db::save_workflow_run(&conn, "no-workspace", 0, "pending", "domain").unwrap();
+    // Should not panic or error
+    sync_user_context_file(&conn, "no-workspace");
+}
