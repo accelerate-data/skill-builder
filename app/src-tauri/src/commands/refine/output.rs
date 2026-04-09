@@ -74,6 +74,157 @@ pub(crate) fn cleanup_skill_snapshot(workspace_skill_root: &Path) {
     }
 }
 
+// ─── Protected frontmatter fields ───────────────────────────────────────────
+
+/// Replace the `name:` field in SKILL.md YAML frontmatter.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn update_skill_name(content: &str, name: &str) -> Result<String, String> {
+    let content = content.replace("\r\n", "\n");
+
+    if !content.starts_with("---") {
+        return Err("SKILL.md is missing YAML frontmatter (does not start with ---)".to_string());
+    }
+
+    let after_first = &content[3..];
+    let end_pos = after_first
+        .find("\n---")
+        .ok_or_else(|| "SKILL.md has an unclosed YAML frontmatter block".to_string())?;
+
+    let yaml_block = &after_first[..end_pos];
+    let body_part = &after_first[end_pos..];
+
+    let quoted = crate::commands::imported_skills::frontmatter::yaml_quote_scalar(name);
+    let new_name_line = format!("name: {}", quoted);
+
+    let mut new_yaml: Vec<String> = Vec::new();
+    let mut found_name = false;
+
+    for line in yaml_block.lines() {
+        let trimmed = line.trim();
+        let is_indented = line.starts_with(' ') || line.starts_with('\t');
+
+        if !is_indented && trimmed.starts_with("name:") {
+            new_yaml.push(new_name_line.clone());
+            found_name = true;
+            continue;
+        }
+
+        new_yaml.push(line.to_string());
+    }
+
+    if !found_name {
+        new_yaml.insert(0, new_name_line);
+    }
+
+    Ok(format!("---\n{}{}", new_yaml.join("\n"), body_part))
+}
+
+/// Read a file's content from a specific git commit via its tree.
+fn read_file_at_commit(
+    repo: &git2::Repository,
+    commit_sha: &str,
+    file_path: &str,
+) -> Result<String, String> {
+    let oid = git2::Oid::from_str(commit_sha)
+        .map_err(|e| format!("Invalid SHA '{}': {}", commit_sha, e))?;
+    let commit = repo
+        .find_commit(oid)
+        .map_err(|e| format!("Commit '{}' not found: {}", commit_sha, e))?;
+    let tree = commit
+        .tree()
+        .map_err(|e| format!("Failed to get tree for '{}': {}", commit_sha, e))?;
+    let entry = tree
+        .get_path(Path::new(file_path))
+        .map_err(|e| format!("File '{}' not in commit '{}': {}", file_path, &commit_sha[..8.min(commit_sha.len())], e))?;
+    let blob = entry
+        .to_object(repo)
+        .and_then(|o| o.peel_to_blob())
+        .map_err(|e| format!("Failed to read blob for '{}': {}", file_path, e))?;
+    String::from_utf8(blob.content().to_vec())
+        .map_err(|e| format!("File '{}' is not valid UTF-8: {}", file_path, e))
+}
+
+/// Restore `name` and `description` frontmatter fields if the refine agent changed them.
+///
+/// Reads the pre-run SKILL.md from git history, compares with the current on-disk
+/// version, and rewrites + commits if either protected field was modified.
+/// Returns `true` if a fixup commit was created.
+fn restore_protected_frontmatter(
+    skill_md_path: &Path,
+    skills_path: &str,
+    plugin_slug: &str,
+    skill_name: &str,
+    pre_run_sha: &str,
+) -> Result<bool, String> {
+    let repo = git2::Repository::open(Path::new(skills_path))
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+
+    let relative_path = format!("{}/{}/SKILL.md", plugin_slug, skill_name);
+    let original_content = match read_file_at_commit(&repo, pre_run_sha, &relative_path) {
+        Ok(content) => content,
+        Err(e) => {
+            log::warn!(
+                "[restore_protected_frontmatter] could not read pre-run SKILL.md: {}",
+                e
+            );
+            return Ok(false);
+        }
+    };
+
+    let original_fm =
+        crate::commands::imported_skills::frontmatter::parse_frontmatter_full(&original_content);
+
+    let current_content = std::fs::read_to_string(skill_md_path)
+        .map_err(|e| format!("Failed to read current SKILL.md: {}", e))?;
+    let current_fm =
+        crate::commands::imported_skills::frontmatter::parse_frontmatter_full(&current_content);
+
+    let name_changed = original_fm.name != current_fm.name;
+    let desc_changed = original_fm.description != current_fm.description;
+
+    if !name_changed && !desc_changed {
+        return Ok(false);
+    }
+
+    let mut content = current_content;
+
+    if desc_changed {
+        if let Some(ref original_desc) = original_fm.description {
+            content =
+                crate::commands::description::update_skill_description(&content, original_desc)?;
+        }
+    }
+
+    if name_changed {
+        if let Some(ref original_name) = original_fm.name {
+            content = update_skill_name(&content, original_name)?;
+        }
+    }
+
+    std::fs::write(skill_md_path, &content)
+        .map_err(|e| format!("Failed to write SKILL.md: {}", e))?;
+
+    crate::git::commit_all(
+        Path::new(skills_path),
+        &format!("{}: restore protected frontmatter fields", skill_name),
+    )?;
+
+    let mut restored = Vec::new();
+    if name_changed {
+        restored.push("name");
+    }
+    if desc_changed {
+        restored.push("description");
+    }
+    log::info!(
+        "[restore_protected_frontmatter] restored {} for skill={}",
+        restored.join(", "),
+        skill_name
+    );
+
+    Ok(true)
+}
+
 // ─── Output finalization ────────────────────────────────────────────────────
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -154,6 +305,48 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
             &sha[..8.min(sha.len())]
         );
     }
+
+    // Protect name & description frontmatter from agent modifications.
+    // If the agent changed these fields, restore them and create a fixup commit
+    // so downstream tagging/diffing sees the corrected content.
+    let commit_sha = if let Some(pre_sha) = pre_run_sha {
+        let skill_md_path = skill_root.join("SKILL.md");
+        if skill_md_path.exists() {
+            match restore_protected_frontmatter(
+                &skill_md_path,
+                skills_path,
+                plugin_slug,
+                skill_name,
+                pre_sha,
+            ) {
+                Ok(true) => {
+                    // Re-read HEAD after fixup commit
+                    git2::Repository::open(Path::new(skills_path))
+                        .ok()
+                        .and_then(|repo| {
+                            repo.head()
+                                .ok()?
+                                .peel_to_commit()
+                                .ok()
+                                .map(|c| c.id().to_string())
+                        })
+                }
+                Ok(false) => commit_sha,
+                Err(e) => {
+                    log::warn!(
+                        "[finalize_refine_run] frontmatter protection failed skill={}: {}",
+                        skill_name,
+                        e
+                    );
+                    commit_sha
+                }
+            }
+        } else {
+            commit_sha
+        }
+    } else {
+        commit_sha
+    };
 
     // Tag the new commit with the next patch version.
     {
