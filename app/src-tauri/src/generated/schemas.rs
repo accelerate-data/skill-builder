@@ -9,10 +9,12 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
   "additionalProperties": false,
   "properties": {
     "dimensions_selected": {
+      "default": 0,
       "format": "int64",
       "type": "integer"
     },
     "question_count": {
+      "default": 0,
       "format": "int64",
       "type": "integer"
     },
@@ -24,10 +26,7 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
     }
   },
   "required": [
-    "status",
-    "dimensions_selected",
-    "question_count",
-    "research_output"
+    "status"
   ],
   "title": "ResearchStepOutput",
   "type": "object"
@@ -41,10 +40,12 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
       "type": "object"
     },
     "refinement_count": {
+      "default": 0,
       "format": "int64",
       "type": "integer"
     },
     "section_count": {
+      "default": 0,
       "format": "int64",
       "type": "integer"
     },
@@ -53,10 +54,7 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
     }
   },
   "required": [
-    "status",
-    "refinement_count",
-    "section_count",
-    "clarifications_json"
+    "status"
   ],
   "title": "DetailedResearchOutput",
   "type": "object"
@@ -73,14 +71,10 @@ pub const DECISIONS_SCHEMA: &str = r###"{
       "type": "object"
     },
     "version": {
+      "default": "",
       "type": "string"
     }
   },
-  "required": [
-    "version",
-    "metadata",
-    "decisions"
-  ],
   "title": "DecisionsOutput",
   "type": "object"
 }"###;
@@ -129,14 +123,17 @@ pub const ANSWER_EVALUATION_SCHEMA: &str = r###"{
   "additionalProperties": false,
   "properties": {
     "answered_count": {
+      "default": 0,
       "format": "int64",
       "type": "integer"
     },
     "contradictory_count": {
+      "default": 0,
       "format": "int64",
       "type": "integer"
     },
     "empty_count": {
+      "default": 0,
       "format": "int64",
       "type": "integer"
     },
@@ -150,13 +147,16 @@ pub const ANSWER_EVALUATION_SCHEMA: &str = r###"{
       "type": "array"
     },
     "reasoning": {
+      "default": "",
       "type": "string"
     },
     "total_count": {
+      "default": 0,
       "format": "int64",
       "type": "integer"
     },
     "vague_count": {
+      "default": 0,
       "format": "int64",
       "type": "integer"
     },
@@ -165,14 +165,7 @@ pub const ANSWER_EVALUATION_SCHEMA: &str = r###"{
     }
   },
   "required": [
-    "verdict",
-    "answered_count",
-    "empty_count",
-    "vague_count",
-    "contradictory_count",
-    "total_count",
-    "reasoning",
-    "per_question"
+    "verdict"
   ],
   "title": "AnswerEvaluationOutput",
   "type": "object"
@@ -198,13 +191,10 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
       "type": "array"
     },
     "version": {
+      "default": "",
       "type": "string"
     }
   },
-  "required": [
-    "version",
-    "metadata"
-  ],
   "title": "ClarificationsFile",
   "type": "object"
 }"###;

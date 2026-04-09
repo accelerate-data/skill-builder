@@ -76,6 +76,13 @@ fn flatten_property(prop: &serde_json::Value) -> serde_json::Value {
         return serde_json::json!({ "type": "object" });
     }
 
+    // allOf with $ref (schemars wraps required nested types) → { "type": "object" }
+    if let Some(all_of) = obj.get("allOf").and_then(|a| a.as_array()) {
+        if all_of.iter().any(|v| v.get("$ref").is_some()) {
+            return serde_json::json!({ "type": "object" });
+        }
+    }
+
     // anyOf (nullable $ref) → { "type": ["object", "null"] }
     if let Some(any_of) = obj.get("anyOf").and_then(|a| a.as_array()) {
         let has_ref = any_of.iter().any(|v| v.get("$ref").is_some());

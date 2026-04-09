@@ -133,23 +133,25 @@ fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
 }
 
 #[test]
-fn test_research_output_format_requires_artifact_fields() {
+fn test_research_output_format_requires_status() {
     let format = workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").unwrap();
     let required = format["schema"]["required"]
         .as_array()
         .expect("required array");
-    assert!(required.iter().any(|v| v == "research_output"));
-    assert!(!required.iter().any(|v| v == "research_plan_markdown"));
-    assert!(!required.iter().any(|v| v == "clarifications_json"));
+    assert!(required.iter().any(|v| v == "status"));
+    // Other fields have serde(default) so they're not in schema required,
+    // but they're still in properties (agent should produce them, Rust defaults if missing)
+    let props = format["schema"]["properties"].as_object().expect("properties");
+    assert!(props.contains_key("research_output"));
+    assert!(props.contains_key("dimensions_selected"));
 }
 
 #[test]
-fn test_detailed_research_output_format_requires_clarifications_payload() {
+fn test_detailed_research_output_format_has_clarifications_property() {
     let format = workflow_output_format_for_agent("skill-content-researcher:detailed-research").unwrap();
-    let required = format["schema"]["required"]
-        .as_array()
-        .expect("required array");
-    assert!(required.iter().any(|v| v == "clarifications_json"));
+    let props = format["schema"]["properties"].as_object().expect("properties");
+    assert!(props.contains_key("clarifications_json"));
+    assert!(props.contains_key("refinement_count"));
 }
 
 /// Verify all generated schemas are flat and Anthropic API-compatible:
@@ -216,10 +218,12 @@ fn test_answer_evaluator_output_format_has_required_contract_keys() {
     let format = answer_evaluator_output_format();
     let schema = &format["schema"];
     let required = schema["required"].as_array().expect("required array");
-    assert!(required.iter().any(|v| v == "per_question"));
+    // verdict is the only truly required field (others have serde(default))
     assert!(required.iter().any(|v| v == "verdict"));
-    // Generated schema uses plain "string" type (enum constraints are enforced by
-    // semantic validation in validate_answer_evaluation_json, not by JSON Schema).
+    // per_question and other fields are in properties (with defaults if missing)
+    let props = schema["properties"].as_object().expect("properties");
+    assert!(props.contains_key("per_question"));
+    assert!(props.contains_key("verdict"));
     assert_eq!(schema["properties"]["verdict"]["type"], "string");
 }
 
