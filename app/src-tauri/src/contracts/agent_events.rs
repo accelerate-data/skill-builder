@@ -147,8 +147,7 @@ pub struct RunResultEvent {
     pub result_text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub plugin_slug: Option<String>,
+    pub plugin_slug: String,
 }
 
 /// Tagged union of all agent event types.
@@ -400,7 +399,8 @@ mod tests {
             "durationMs": 5000,
             "toolUseCount": 2,
             "compactionCount": 0,
-            "status": "completed"
+            "status": "completed",
+            "pluginSlug": "my-plugin"
         });
 
         let event: AgentEvent = serde_json::from_value(json).expect("deserialize");
@@ -409,6 +409,7 @@ mod tests {
                 assert_eq!(e.skill_name, "my-skill");
                 assert_eq!(e.step_id, 0);
                 assert_eq!(e.num_turns, 3);
+                assert_eq!(e.plugin_slug, "my-plugin");
                 assert!(e.workflow_session_id.is_none());
                 assert!(e.result_text.is_none());
                 match e.status {
@@ -469,7 +470,7 @@ mod tests {
                 assert_eq!(e.duration_api_ms, Some(25000));
                 assert_eq!(e.model_usage_breakdown.len(), 1);
                 assert_eq!(e.result_errors.as_ref().unwrap().len(), 1);
-                assert_eq!(e.plugin_slug.as_deref(), Some("my-plugin"));
+                assert_eq!(e.plugin_slug, "my-plugin");
                 match e.run_source {
                     Some(RunSource::Workflow) => {}
                     other => panic!("expected Some(Workflow), got {:?}", other),
