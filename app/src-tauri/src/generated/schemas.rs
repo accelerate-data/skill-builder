@@ -26,6 +26,9 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
     }
   },
   "required": [
+    "dimensions_selected",
+    "question_count",
+    "research_output",
     "status"
   ],
   "title": "ResearchStepOutput",
@@ -54,6 +57,9 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
     }
   },
   "required": [
+    "clarifications_json",
+    "refinement_count",
+    "section_count",
     "status"
   ],
   "title": "DetailedResearchOutput",
@@ -75,6 +81,11 @@ pub const DECISIONS_SCHEMA: &str = r###"{
       "type": "string"
     }
   },
+  "required": [
+    "decisions",
+    "metadata",
+    "version"
+  ],
   "title": "DecisionsOutput",
   "type": "object"
 }"###;
@@ -112,7 +123,11 @@ pub const GENERATE_SKILL_SCHEMA: &str = r###"{
     }
   },
   "required": [
-    "status"
+    "benchmark_path",
+    "commit_summary",
+    "skipped",
+    "status",
+    "version_bump"
   ],
   "title": "GenerateSkillOutput",
   "type": "object"
@@ -165,6 +180,14 @@ pub const ANSWER_EVALUATION_SCHEMA: &str = r###"{
     }
   },
   "required": [
+    "answered_count",
+    "contradictory_count",
+    "empty_count",
+    "gate_decision",
+    "per_question",
+    "reasoning",
+    "total_count",
+    "vague_count",
     "verdict"
   ],
   "title": "AnswerEvaluationOutput",
@@ -195,6 +218,13 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
       "type": "string"
     }
   },
+  "required": [
+    "answer_evaluator_notes",
+    "metadata",
+    "notes",
+    "sections",
+    "version"
+  ],
   "title": "ClarificationsFile",
   "type": "object"
 }"###;

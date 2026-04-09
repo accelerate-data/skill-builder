@@ -56,9 +56,14 @@ fn flatten_schema(schema: &serde_json::Value) -> serde_json::Value {
         result.insert("properties".to_string(), serde_json::Value::Object(flat_props));
     }
 
-    // Keep required array as-is
-    if let Some(req) = schema.get("required") {
-        result.insert("required".to_string(), req.clone());
+    // All properties are required in the SDK schema — the agent should produce
+    // every field. Rust serde(default) provides tolerance if fields are missing,
+    // but the SDK schema tells the agent they're mandatory.
+    if let Some(props) = schema.get("properties").and_then(|p| p.as_object()) {
+        let all_keys: Vec<serde_json::Value> = props.keys()
+            .map(|k| serde_json::Value::String(k.clone()))
+            .collect();
+        result.insert("required".to_string(), serde_json::Value::Array(all_keys));
     }
 
     serde_json::Value::Object(result)
