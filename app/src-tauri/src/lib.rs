@@ -3,6 +3,7 @@ mod cleanup;
 mod commands;
 pub mod contracts;
 mod db;
+pub mod generated;
 mod fs_utils;
 mod fs_validation;
 pub mod git;
