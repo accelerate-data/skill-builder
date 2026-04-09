@@ -235,6 +235,7 @@ describe("SkillDialog (edit mode)", () => {
     await waitFor(() => {
       expect(updateSkillMetadataMock).toHaveBeenCalledWith(
         "sales-pipeline",
+        "skills",
         "platform",
         ["analytics"],
         JSON.stringify({ context: "Original context" }),
@@ -252,6 +253,30 @@ describe("SkillDialog (edit mode)", () => {
     expect(toast.success).toHaveBeenCalledWith('Skill "sales-pipeline" updated');
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onSaved).toHaveBeenCalledTimes(1);
+  }, 15000);
+
+  it("passes plugin_slug from marketplace skill to updateSkillMetadata", async () => {
+    const user = userEvent.setup({ delay: null });
+    const onOpenChange = vi.fn();
+    const mktSkill = makeSkill({ plugin_slug: "mkt-plugin" });
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={mktSkill}
+        open={true}
+        onOpenChange={onOpenChange}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+    await user.click(screen.getByRole("button", { name: /^Save$/i }));
+
+    await waitFor(() => {
+      expect(updateSkillMetadataMock).toHaveBeenCalled();
+      // Second argument should be the marketplace plugin slug, not "skills"
+      expect(updateSkillMetadataMock.mock.calls[0][1]).toBe("mkt-plugin");
+    }, { timeout: 10000 });
   }, 15000);
 
   it("shows the locked banner and prevents advancing when externally locked", () => {

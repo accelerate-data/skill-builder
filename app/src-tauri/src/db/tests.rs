@@ -2223,6 +2223,75 @@ fn test_reconcile_orphaned_sessions_dead_pid() {
 }
 
 #[test]
+fn test_delete_workflow_run_non_default_plugin() {
+    let conn = create_test_db();
+    // Create a non-default plugin and a skill in it.
+    ensure_plugin(&conn, "mkt-del", "Mkt Del", "marketplace", Some("https://example.com"), None, false)
+        .expect("ensure_plugin");
+    upsert_skill_in_plugin(&conn, "mkt-skill-del", "marketplace", "domain", "mkt-del")
+        .expect("upsert skill in non-default plugin");
+    // Insert workflow_run directly — save_workflow_run would create a duplicate skill in the
+    // default plugin via upsert_skill, which is not the scenario we're testing.
+    conn.execute(
+        "INSERT INTO workflow_runs (skill_name, current_step, status, purpose) VALUES (?1, 0, 'pending', 'domain')",
+        rusqlite::params!["mkt-skill-del"],
+    ).unwrap();
+    set_skill_tags(&conn, "mkt-skill-del", "mkt-del", &["mkt-tag".into()]).unwrap();
+
+    // delete_workflow_run with the correct plugin_slug should succeed
+    delete_workflow_run(&conn, "mkt-skill-del", "mkt-del").unwrap();
+
+    // Workflow run should be gone
+    assert!(get_workflow_run(&conn, "mkt-skill-del").unwrap().is_none());
+    // Skill master row should be soft-deleted
+    let row_exists: bool = conn
+        .query_row("SELECT COUNT(*) > 0 FROM skills WHERE name = 'mkt-skill-del'", [], |r| r.get(0))
+        .unwrap();
+    assert!(row_exists, "soft-deleted row should still exist in the table");
+    let listed = list_all_skills(&conn).unwrap();
+    assert!(!listed.iter().any(|s| s.name == "mkt-skill-del"), "soft-deleted skill should not appear in active list");
+}
+
+#[test]
+fn test_delete_imported_skill_by_name_non_default_plugin() {
+    let conn = create_test_db();
+    ensure_plugin(&conn, "mkt-imp", "Mkt Imp", "marketplace", Some("https://example.com"), None, false)
+        .expect("ensure_plugin");
+    upsert_skill_in_plugin(&conn, "mkt-imp-skill", "marketplace", "domain", "mkt-imp")
+        .expect("upsert skill");
+    let skill = ImportedSkill {
+        skill_id: "id-mkt-imp".to_string(),
+        skill_name: "mkt-imp-skill".to_string(),
+        library_key: Some("imported:id-mkt-imp".to_string()),
+        is_active: true,
+        disk_path: "/tmp/mkt-imp-skill".to_string(),
+        imported_at: "2024-01-01".to_string(),
+        is_bundled: false,
+        description: None,
+        purpose: Some("domain".to_string()),
+        version: None,
+        model: None,
+        argument_hint: None,
+        user_invocable: None,
+        disable_model_invocation: None,
+        marketplace_source_url: None,
+        plugin_slug: Some("mkt-imp".to_string()),
+        plugin_display_name: Some("Mkt Imp".to_string()),
+        is_default_plugin: Some(false),
+    };
+    test_insert_imported_skill(&conn, &skill).unwrap();
+
+    // Verify it exists
+    assert!(get_imported_skill(&conn, "mkt-imp-skill", "mkt-imp").unwrap().is_some());
+
+    // Delete by name with correct plugin_slug
+    delete_imported_skill_by_name(&conn, "mkt-imp-skill", "mkt-imp").unwrap();
+
+    // Verify it's gone
+    assert!(get_imported_skill(&conn, "mkt-imp-skill", "mkt-imp").unwrap().is_none());
+}
+
+#[test]
 fn test_reconcile_orphaned_sessions_live_pid() {
     let conn = create_test_db();
     let pid = std::process::id();
