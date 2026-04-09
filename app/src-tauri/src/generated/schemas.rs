@@ -2,7 +2,7 @@
 // Run `cd app/src-tauri && cargo run --bin codegen` to regenerate
 
 pub const RESEARCH_STEP_SCHEMA: &str = r###"{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "ResearchStepOutput",
   "description": "Structured output produced by the `research-orchestrator` agent (workflow step 0).\n\nRequired fields: `status` (const `\"research_complete\"`), `dimensions_selected`,\n`question_count`, `research_output`.",
   "type": "object",
@@ -16,7 +16,7 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
       "format": "int64"
     },
     "research_output": {
-      "$ref": "#/$defs/ClarificationsFile"
+      "$ref": "#/definitions/ClarificationsFile"
     },
     "status": {
       "type": "string"
@@ -28,7 +28,7 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
     "question_count",
     "research_output"
   ],
-  "$defs": {
+  "definitions": {
     "Choice": {
       "description": "A multiple-choice option.",
       "type": "object",
@@ -75,24 +75,24 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
             "null"
           ],
           "items": {
-            "$ref": "#/$defs/Note"
+            "$ref": "#/definitions/Note"
           }
         },
         "metadata": {
-          "$ref": "#/$defs/ClarificationsMetadata"
+          "$ref": "#/definitions/ClarificationsMetadata"
         },
         "notes": {
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Note"
+            "$ref": "#/definitions/Note"
           }
         },
         "sections": {
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Section"
+            "$ref": "#/definitions/Section"
           }
         },
         "version": {
@@ -118,7 +118,7 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
         "error": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ClarificationsError"
+              "$ref": "#/definitions/ClarificationsError"
             },
             {
               "type": "null"
@@ -147,7 +147,7 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
         "research_plan": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ClarificationsResearchPlan"
+              "$ref": "#/definitions/ClarificationsResearchPlan"
             },
             {
               "type": "null"
@@ -182,7 +182,7 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
         "warning": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ClarificationsWarning"
+              "$ref": "#/definitions/ClarificationsWarning"
             },
             {
               "type": "null"
@@ -206,7 +206,7 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/DimensionScore"
+            "$ref": "#/definitions/DimensionScore"
           }
         },
         "dimensions_evaluated": {
@@ -229,7 +229,7 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/SelectedDimension"
+            "$ref": "#/definitions/SelectedDimension"
           }
         },
         "topic_relevance": {
@@ -323,7 +323,7 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Choice"
+            "$ref": "#/definitions/Choice"
           }
         },
         "consolidated_from": {
@@ -351,7 +351,7 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Question"
+            "$ref": "#/definitions/Question"
           }
         },
         "text": {
@@ -386,7 +386,7 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Question"
+            "$ref": "#/definitions/Question"
           }
         },
         "title": {
@@ -418,13 +418,13 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
 }"###;
 
 pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "DetailedResearchOutput",
   "description": "Structured output produced by the `detailed-research` agent (workflow step 1).\n\nRequired fields: `status` (const `\"detailed_research_complete\"`), `refinement_count`,\n`section_count`, `clarifications_json`.",
   "type": "object",
   "properties": {
     "clarifications_json": {
-      "$ref": "#/$defs/ClarificationsFile"
+      "$ref": "#/definitions/ClarificationsFile"
     },
     "refinement_count": {
       "type": "integer",
@@ -444,7 +444,7 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
     "section_count",
     "clarifications_json"
   ],
-  "$defs": {
+  "definitions": {
     "Choice": {
       "description": "A multiple-choice option.",
       "type": "object",
@@ -491,24 +491,24 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
             "null"
           ],
           "items": {
-            "$ref": "#/$defs/Note"
+            "$ref": "#/definitions/Note"
           }
         },
         "metadata": {
-          "$ref": "#/$defs/ClarificationsMetadata"
+          "$ref": "#/definitions/ClarificationsMetadata"
         },
         "notes": {
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Note"
+            "$ref": "#/definitions/Note"
           }
         },
         "sections": {
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Section"
+            "$ref": "#/definitions/Section"
           }
         },
         "version": {
@@ -534,7 +534,7 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
         "error": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ClarificationsError"
+              "$ref": "#/definitions/ClarificationsError"
             },
             {
               "type": "null"
@@ -563,7 +563,7 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
         "research_plan": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ClarificationsResearchPlan"
+              "$ref": "#/definitions/ClarificationsResearchPlan"
             },
             {
               "type": "null"
@@ -598,7 +598,7 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
         "warning": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ClarificationsWarning"
+              "$ref": "#/definitions/ClarificationsWarning"
             },
             {
               "type": "null"
@@ -622,7 +622,7 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/DimensionScore"
+            "$ref": "#/definitions/DimensionScore"
           }
         },
         "dimensions_evaluated": {
@@ -645,7 +645,7 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/SelectedDimension"
+            "$ref": "#/definitions/SelectedDimension"
           }
         },
         "topic_relevance": {
@@ -739,7 +739,7 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Choice"
+            "$ref": "#/definitions/Choice"
           }
         },
         "consolidated_from": {
@@ -767,7 +767,7 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Question"
+            "$ref": "#/definitions/Question"
           }
         },
         "text": {
@@ -802,7 +802,7 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Question"
+            "$ref": "#/definitions/Question"
           }
         },
         "title": {
@@ -834,7 +834,7 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
 }"###;
 
 pub const DECISIONS_SCHEMA: &str = r###"{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "DecisionsOutput",
   "description": "Structured output produced by the `confirm-decisions` agent (workflow step 2).\n\nRequired fields: `version`, `metadata`, `decisions`.",
   "type": "object",
@@ -842,11 +842,11 @@ pub const DECISIONS_SCHEMA: &str = r###"{
     "decisions": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/Decision"
+        "$ref": "#/definitions/Decision"
       }
     },
     "metadata": {
-      "$ref": "#/$defs/DecisionsMetadata"
+      "$ref": "#/definitions/DecisionsMetadata"
     },
     "version": {
       "type": "string"
@@ -857,7 +857,7 @@ pub const DECISIONS_SCHEMA: &str = r###"{
     "metadata",
     "decisions"
   ],
-  "$defs": {
+  "definitions": {
     "ContradictoryInputs": {
       "description": "Union type for contradictory inputs: `true` (active) or `\"revised\"` (string).",
       "anyOf": [
@@ -886,7 +886,7 @@ pub const DECISIONS_SCHEMA: &str = r###"{
           "type": "string"
         },
         "status": {
-          "$ref": "#/$defs/DecisionStatus"
+          "$ref": "#/definitions/DecisionStatus"
         },
         "title": {
           "type": "string"
@@ -922,7 +922,7 @@ pub const DECISIONS_SCHEMA: &str = r###"{
         "contradictory_inputs": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ContradictoryInputs"
+              "$ref": "#/definitions/ContradictoryInputs"
             },
             {
               "type": "null"
@@ -954,7 +954,7 @@ pub const DECISIONS_SCHEMA: &str = r###"{
 }"###;
 
 pub const GENERATE_SKILL_SCHEMA: &str = r###"{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "GenerateSkillOutput",
   "description": "Structured output produced by the `generate-skill` agent (workflow step 3,\nwriting phase) or the `benchmark-skill` agent (benchmark phase).\n\ngenerate-skill:  `{ status: \"generated\", skipped?: true, commit_summary?, version_bump?, call_trace }`\nrewrite-skill:   `{ status: \"rewritten\", skipped?: true, commit_summary?, version_bump?, call_trace }`\nbenchmark-skill:  `{ status: \"complete\"|\"partial\"|\"skipped\", benchmark_path?, call_trace }`",
   "type": "object",
@@ -993,7 +993,7 @@ pub const GENERATE_SKILL_SCHEMA: &str = r###"{
 }"###;
 
 pub const ANSWER_EVALUATION_SCHEMA: &str = r###"{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "AnswerEvaluationOutput",
   "description": "Structured output produced by the answer-evaluator agent (transition gate between\nsteps 1 and 2).\n\nRequired fields: `verdict`, `answered_count`, `empty_count`, `vague_count`,\n`contradictory_count`, `total_count`, `reasoning`, `gate_decision`, `per_question`.\n\n`gate_decision` is one of `\"run_research\"`, `\"revise\"` — set automatically by the agent\nbased on verdict and contradictory_count (no user interaction required).",
   "type": "object",
@@ -1019,7 +1019,7 @@ pub const ANSWER_EVALUATION_SCHEMA: &str = r###"{
     "per_question": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/PerQuestionEntry"
+        "$ref": "#/definitions/PerQuestionEntry"
       }
     },
     "reasoning": {
@@ -1047,7 +1047,7 @@ pub const ANSWER_EVALUATION_SCHEMA: &str = r###"{
     "reasoning",
     "per_question"
   ],
-  "$defs": {
+  "definitions": {
     "PerQuestionEntry": {
       "description": "Per-question verdict entry within an [`AnswerEvaluationOutput`].",
       "type": "object",
@@ -1074,7 +1074,7 @@ pub const ANSWER_EVALUATION_SCHEMA: &str = r###"{
 }"###;
 
 pub const CLARIFICATIONS_SCHEMA: &str = r###"{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "ClarificationsFile",
   "description": "Root type for a clarifications file.",
   "type": "object",
@@ -1085,24 +1085,24 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
         "null"
       ],
       "items": {
-        "$ref": "#/$defs/Note"
+        "$ref": "#/definitions/Note"
       }
     },
     "metadata": {
-      "$ref": "#/$defs/ClarificationsMetadata"
+      "$ref": "#/definitions/ClarificationsMetadata"
     },
     "notes": {
       "type": "array",
       "default": [],
       "items": {
-        "$ref": "#/$defs/Note"
+        "$ref": "#/definitions/Note"
       }
     },
     "sections": {
       "type": "array",
       "default": [],
       "items": {
-        "$ref": "#/$defs/Section"
+        "$ref": "#/definitions/Section"
       }
     },
     "version": {
@@ -1113,7 +1113,7 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
     "version",
     "metadata"
   ],
-  "$defs": {
+  "definitions": {
     "Choice": {
       "description": "A multiple-choice option.",
       "type": "object",
@@ -1164,7 +1164,7 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
         "error": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ClarificationsError"
+              "$ref": "#/definitions/ClarificationsError"
             },
             {
               "type": "null"
@@ -1193,7 +1193,7 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
         "research_plan": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ClarificationsResearchPlan"
+              "$ref": "#/definitions/ClarificationsResearchPlan"
             },
             {
               "type": "null"
@@ -1228,7 +1228,7 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
         "warning": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ClarificationsWarning"
+              "$ref": "#/definitions/ClarificationsWarning"
             },
             {
               "type": "null"
@@ -1252,7 +1252,7 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/DimensionScore"
+            "$ref": "#/definitions/DimensionScore"
           }
         },
         "dimensions_evaluated": {
@@ -1275,7 +1275,7 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/SelectedDimension"
+            "$ref": "#/definitions/SelectedDimension"
           }
         },
         "topic_relevance": {
@@ -1369,7 +1369,7 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Choice"
+            "$ref": "#/definitions/Choice"
           }
         },
         "consolidated_from": {
@@ -1397,7 +1397,7 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Question"
+            "$ref": "#/definitions/Question"
           }
         },
         "text": {
@@ -1432,7 +1432,7 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/Question"
+            "$ref": "#/definitions/Question"
           }
         },
         "title": {
