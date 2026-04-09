@@ -331,7 +331,9 @@ pub fn reconcile_on_startup(
             let new_path = crate::skill_paths::resolve_skill_dir(skills_dir_1e, plugin_slug, name);
             let legacy_exists =
                 name != DEFAULT_PLUGIN_SLUG && skills_dir_1e.join(name).exists();
-            new_path.exists() || legacy_exists
+            // Marketplace plugins store skills under {plugin_slug}/skills/{skill_name}/
+            let marketplace_nested = skills_dir_1e.join(plugin_slug).join("skills").join(name).exists();
+            new_path.exists() || legacy_exists || marketplace_nested
         };
 
         // Pass A: restore incorrectly soft-deleted skills that have a dir
@@ -340,8 +342,7 @@ pub fn reconcile_on_startup(
                 .prepare(
                     "SELECT s.name, p.slug \
                      FROM skills s JOIN plugins p ON s.plugin_id = p.id \
-                     WHERE s.skill_source = 'skill-builder' \
-                       AND COALESCE(s.deleted_at, '') != ''",
+                     WHERE COALESCE(s.deleted_at, '') != ''",
                 )
                 .map_err(|e| e.to_string())?;
             let soft_deleted: Vec<(String, String)> = stmt

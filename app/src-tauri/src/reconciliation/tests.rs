@@ -1942,3 +1942,88 @@ fn test_cross_plugin_skill_not_rediscovered_every_startup() {
         result2.discovered_skills
     );
 }
+
+/// VU-984: Phase 1e Pass A must restore marketplace skills whose directory exists,
+/// not just skill-builder skills.
+#[test]
+fn test_phase1e_restores_marketplace_skills() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    // Create a marketplace plugin with a skill
+    crate::db::ensure_plugin(&conn, "mkt-restore", "Marketplace Restore", "marketplace", None, None, false).unwrap();
+    crate::db::upsert_skill_in_plugin(&conn, "mkt-skill", "marketplace", "domain", "mkt-restore").unwrap();
+
+    // Create the skill directory on disk (standard layout: {plugin_slug}/{skill_name}/SKILL.md)
+    let skill_dir = skills_tmp.path().join("mkt-restore").join("mkt-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "---\nname: mkt-skill\n---\n").unwrap();
+
+    // Soft-delete the skill (simulating an incorrect Phase 1e Pass B from a prior version)
+    conn.execute(
+        "UPDATE skills SET deleted_at = datetime('now') || 'Z' WHERE name = 'mkt-skill'",
+        [],
+    ).unwrap();
+
+    // Verify the skill is soft-deleted
+    let deleted_at: Option<String> = conn
+        .query_row(
+            "SELECT deleted_at FROM skills WHERE name = 'mkt-skill'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(deleted_at.is_some(), "precondition: skill should be soft-deleted");
+
+    // Run reconciliation — Phase 1e Pass A should restore it
+    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    // Skill should be restored (deleted_at = NULL)
+    let after: Option<String> = conn
+        .query_row(
+            "SELECT deleted_at FROM skills WHERE name = 'mkt-skill'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(after.is_none(), "Phase 1e Pass A should restore marketplace skill with directory on disk");
+}
+
+/// VU-984: Phase 1e Pass B must not soft-delete marketplace skills stored
+/// in the nested {plugin_slug}/skills/{skill_name}/ layout.
+#[test]
+fn test_phase1e_does_not_soft_delete_marketplace_nested_layout() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    // Create a plugin with a skill stored in the nested marketplace layout.
+    // Use source_type "local" to avoid Phase 1c-ii marketplace integrity checks
+    // (which is a separate concern from Phase 1e).
+    crate::db::ensure_plugin(&conn, "mkt-nested", "Marketplace Nested", "local", None, None, false).unwrap();
+    crate::db::upsert_skill_in_plugin(&conn, "nested-skill", "marketplace", "domain", "mkt-nested").unwrap();
+
+    // Create the skill directory in the marketplace nested layout:
+    // {plugin_slug}/skills/{skill_name}/SKILL.md
+    let nested_skill_dir = skills_tmp.path().join("mkt-nested").join("skills").join("nested-skill");
+    std::fs::create_dir_all(&nested_skill_dir).unwrap();
+    std::fs::write(nested_skill_dir.join("SKILL.md"), "---\nname: nested-skill\n---\n").unwrap();
+
+    // Run reconciliation
+    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    // Skill must remain active (not soft-deleted)
+    let deleted_at: Option<String> = conn
+        .query_row(
+            "SELECT deleted_at FROM skills WHERE name = 'nested-skill'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(deleted_at.is_none(), "Phase 1e must not soft-delete marketplace skills in nested plugin/skills/skill/ layout");
+}
