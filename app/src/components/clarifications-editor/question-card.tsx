@@ -53,9 +53,10 @@ export function QuestionCard({
   const cardAccentColor = reviewFeedback
     ? accentColorByStatus[reviewFeedback.status]
     : (answered ? "var(--color-pacific)" : "var(--border)");
-  const refCount = question.refinements.length;
+  const refinements = question.refinements ?? [];
+  const refCount = refinements.length;
   const refUnanswered = refCount > 0
-    ? question.refinements.filter((r) => !isQuestionAnswered(r)).length
+    ? refinements.filter((r) => !isQuestionAnswered(r)).length
     : 0;
 
   return (
@@ -119,10 +120,10 @@ export function QuestionCard({
             <RelatedConflictCallout relatedQuestionIds={relatedConflictQuestionIds} />
           )}
 
-          {question.choices.length > 0 && (
+          {(question.choices ?? []).length > 0 && (
             <ChoiceList
-              choices={question.choices}
-              selectedId={question.answer_choice}
+              choices={question.choices ?? []}
+              selectedId={question.answer_choice ?? null}
               recommendedId={parseRecommendedChoiceId(question.recommendation)}
               onSelect={(choiceId, choiceText) => {
                 if (readOnly) return;
@@ -141,7 +142,7 @@ export function QuestionCard({
             </p>
           )}
 
-          {(question.answer_choice !== null || question.choices.length === 0) && (
+          {(question.answer_choice != null || (question.choices ?? []).length === 0) && (
             <AnswerField
               value={question.answer_text ?? ""}
               onChange={(text) => {
@@ -152,8 +153,8 @@ export function QuestionCard({
             />
           )}
 
-          {question.refinements.length > 0 && renderRefinements({
-            refinements: question.refinements,
+          {refinements.length > 0 && renderRefinements({
+            refinements,
             updateQuestion,
             readOnly,
             reviewFeedbackByQuestion,
