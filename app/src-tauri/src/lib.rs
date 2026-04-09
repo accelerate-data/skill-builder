@@ -1,6 +1,7 @@
 mod agents;
 mod cleanup;
 mod commands;
+pub mod contracts;
 mod db;
 mod fs_utils;
 mod fs_validation;

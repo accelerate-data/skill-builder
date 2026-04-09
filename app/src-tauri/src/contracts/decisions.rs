@@ -1,0 +1,1 @@
+//! Canonical decisions contract types.
