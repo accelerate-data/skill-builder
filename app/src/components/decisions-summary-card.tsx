@@ -248,6 +248,12 @@ function StatusChip({ label, className, style }: { label: string; className?: st
 
 // ─── Decision Card ────────────────────────────────────────────────────────────
 
+const UNKNOWN_STATUS_COLORS = {
+  border: "var(--muted-foreground)",
+  badge: "var(--muted-foreground)",
+  badgeBg: "color-mix(in oklch, var(--muted-foreground), transparent 85%)",
+} as const;
+
 const statusColors: Record<Decision["status"], { border: string; badge: string; badgeBg: string }> = {
   resolved: {
     border: "var(--color-seafoam)",
@@ -354,7 +360,7 @@ function DecisionCard({
   const [draft, setDraft] = useState(decision);
   useEffect(() => { setDraft(decision); }, [decision]);
 
-  const colors = statusColors[decision.status];
+  const colors = statusColors[decision.status] ?? UNKNOWN_STATUS_COLORS;
 
   function handleDraftChange(field: "decision" | "implication", value: string) {
     const updated = { ...draft, [field]: value };
