@@ -367,17 +367,24 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
     }
 
     let diff = if let Some(sha) = commit_sha.as_ref() {
-        let repo = git2::Repository::open(Path::new(skills_path))
-            .map_err(|e| format!("Failed to open repo: {}", e))?;
-        let commit = repo
-            .find_commit(
-                git2::Oid::from_str(sha).map_err(|e| format!("Invalid SHA {}: {}", sha, e))?,
-            )
-            .map_err(|e| format!("Commit {} not found: {}", sha, e))?;
-        let parent_sha = commit.parent(0).ok().map(|parent| parent.id().to_string());
+        // Use pre_run_sha as diff base when available — this is correct even when
+        // a frontmatter fixup commit was created (otherwise commit.parent(0) would
+        // point to the agent commit, showing only the fixup diff, not the full changes).
+        let base_sha = if let Some(pre) = pre_run_sha {
+            Some(pre.to_string())
+        } else {
+            let repo = git2::Repository::open(Path::new(skills_path))
+                .map_err(|e| format!("Failed to open repo: {}", e))?;
+            let commit = repo
+                .find_commit(
+                    git2::Oid::from_str(sha).map_err(|e| format!("Invalid SHA {}: {}", sha, e))?,
+                )
+                .map_err(|e| format!("Commit {} not found: {}", sha, e))?;
+            commit.parent(0).ok().map(|parent| parent.id().to_string())
+        };
 
-        if let Some(parent_sha) = parent_sha {
-            get_refine_diff_for_commit_range_inner(skill_name, skills_path, plugin_slug, &parent_sha, sha)?
+        if let Some(base_sha) = base_sha {
+            get_refine_diff_for_commit_range_inner(skill_name, skills_path, plugin_slug, &base_sha, sha)?
         } else {
             RefineDiff {
                 stat: "no changes".to_string(),

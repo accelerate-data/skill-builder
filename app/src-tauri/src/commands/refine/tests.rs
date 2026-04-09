@@ -1374,3 +1374,62 @@ fn test_finalize_no_fixup_when_frontmatter_unchanged() {
     assert_eq!(final_sha, agent_sha, "no fixup commit should be created when frontmatter unchanged");
     assert!(result.commit_sha.is_some());
 }
+
+#[test]
+fn test_finalize_diff_shows_full_changes_when_fixup_created() {
+    let dir = tempdir().unwrap();
+    let workspace_dir = tempdir().unwrap();
+    crate::git::ensure_repo(dir.path()).unwrap();
+
+    let skill_dir = dir.path().join("skills").join("diff-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: diff-skill\ndescription: Original desc\n---\n# Old Content\n",
+    )
+    .unwrap();
+    crate::git::commit_all(dir.path(), "initial").unwrap();
+
+    let pre_sha = {
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        sha
+    };
+
+    // Simulate agent changing name AND body content in a single commit
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: agent-renamed\ndescription: Original desc\n---\n# New Content from agent\n",
+    )
+    .unwrap();
+    crate::git::commit_all(dir.path(), "agent refine").unwrap();
+
+    let result = finalize_refine_run_inner(
+        "diff-skill",
+        dir.path().to_str().unwrap(),
+        workspace_dir.path().to_str().unwrap(),
+        None,
+        Some(&pre_sha),
+    )
+    .unwrap();
+
+    // Diff should show the full change (pre-run → final), not just the fixup
+    assert!(
+        !result.diff.files.is_empty(),
+        "diff should not be empty — agent made real content changes"
+    );
+    let skill_diff = result.diff.files.iter().find(|f| f.path.ends_with("SKILL.md"));
+    assert!(skill_diff.is_some(), "SKILL.md should appear in diff");
+    let patch = &skill_diff.unwrap().diff;
+    // Body change should be visible (the actual refine work)
+    assert!(
+        patch.contains("New Content from agent"),
+        "diff should include the agent's body changes, got: {}",
+        patch
+    );
+    // Name should show as restored (original, not agent-renamed)
+    assert!(
+        !patch.contains("agent-renamed"),
+        "diff should not show the agent's renamed name"
+    );
+}
