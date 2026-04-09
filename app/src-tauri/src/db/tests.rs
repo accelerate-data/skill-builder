@@ -3791,3 +3791,60 @@ fn test_workflow_runs_has_no_metadata_columns() {
         );
     }
 }
+
+/// VU-984: soft-deleted skills must not appear in imported skills listing.
+#[test]
+fn test_list_imported_skills_excludes_soft_deleted() {
+    let conn = create_test_db();
+    ensure_plugin(&conn, "mkt-plugin", "Marketplace Plugin", "marketplace", None, None, false).unwrap();
+    let skill = ImportedSkill {
+        skill_id: "mkt-soft-del".to_string(),
+        skill_name: "soft-del-skill".to_string(),
+        library_key: Some("imported:mkt-soft-del".to_string()),
+        is_active: true,
+        disk_path: std::env::temp_dir().join("soft-del-skill").to_string_lossy().to_string(),
+        imported_at: "2025-01-01T00:00:00Z".to_string(),
+        is_bundled: false,
+        description: None,
+        purpose: Some("domain".to_string()),
+        version: Some("1.0.0".to_string()),
+        model: None,
+        argument_hint: None,
+        user_invocable: None,
+        disable_model_invocation: None,
+        marketplace_source_url: Some("https://github.com/acme/skills".to_string()),
+        plugin_slug: Some("mkt-plugin".to_string()),
+        plugin_display_name: Some("Marketplace Plugin".to_string()),
+        is_default_plugin: Some(false),
+    };
+    test_insert_imported_skill(&conn, &skill).unwrap();
+
+    // Before soft-delete: skill appears in listing
+    let before = list_imported_skills_filtered(&conn, None).unwrap();
+    assert_eq!(before.len(), 1, "skill should appear before soft-delete");
+
+    // Soft-delete the skills master row
+    delete_skill_in_plugin(&conn, "soft-del-skill", "mkt-plugin").unwrap();
+
+    // After soft-delete: skill must NOT appear in listing
+    let after = list_imported_skills_filtered(&conn, None).unwrap();
+    assert!(after.is_empty(), "soft-deleted skill must not appear in imported skills listing");
+
+    // Also verify get_imported_skill_by_id excludes it
+    let by_id = get_imported_skill_by_id(&conn, "mkt-soft-del").unwrap();
+    assert!(by_id.is_none(), "soft-deleted skill must not be returned by get_imported_skill_by_id");
+}
+
+/// VU-984: lock acquisition must succeed for skills whose master row is active.
+/// Regression test: marketplace/imported skills should be lockable.
+#[test]
+fn test_acquire_lock_works_for_marketplace_skill() {
+    let conn = create_test_db();
+    ensure_plugin(&conn, "mkt-lock", "Marketplace Lock Test", "marketplace", None, None, false).unwrap();
+    upsert_skill_in_plugin(&conn, "mkt-lockable", "marketplace", "domain", "mkt-lock").unwrap();
+
+    let result = acquire_skill_lock(&conn, "mkt-lockable", "inst-1", std::process::id());
+    assert!(result.is_ok(), "acquire_skill_lock should succeed for marketplace skill with active master row");
+
+    release_skill_lock(&conn, "mkt-lockable", "inst-1").unwrap();
+}

@@ -11,7 +11,7 @@ fn imported_skill_select(prefix: &str) -> String {
                 {p}.disable_model_invocation, {p}.marketplace_source_url,
                 pl.slug, pl.display_name, pl.is_default
          FROM imported_skills {p}
-         JOIN skills s ON s.id = {p}.skill_master_id
+         JOIN skills s ON s.id = {p}.skill_master_id AND COALESCE(s.deleted_at, '') = ''
          JOIN plugins pl ON pl.id = s.plugin_id",
         p = prefix
     )
