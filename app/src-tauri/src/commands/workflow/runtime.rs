@@ -86,10 +86,12 @@ async fn run_workflow_step_inner(
         &settings.documents,
     );
 
-    let subagent_directive: Option<&str> = match step_id {
-        1 => Some("Launch the `skill-content-researcher:detailed-research` subagent to do detailed research."),
-        2 => Some("Launch the `skill-content-researcher:confirm-decisions` subagent to confirm decisions used for building skills."),
-        3 => Some("Launch the `skill-creator:generate-skill` subagent to generate the skill."),
+    const STRUCTURED_OUTPUT_SUFFIX: &str = " Your final response MUST be a single JSON object matching the outputFormat schema — no markdown, no explanation, no wrapping. Output ONLY the raw JSON.";
+
+    let subagent_directive: Option<String> = match step_id {
+        1 => Some(format!("Launch the `skill-content-researcher:detailed-research` subagent to do detailed research.{}", STRUCTURED_OUTPUT_SUFFIX)),
+        2 => Some(format!("Launch the `skill-content-researcher:confirm-decisions` subagent to confirm decisions used for building skills.{}", STRUCTURED_OUTPUT_SUFFIX)),
+        3 => Some(format!("Launch the `skill-creator:generate-skill` subagent to generate the skill.{}", STRUCTURED_OUTPUT_SUFFIX)),
         _ => None,
     };
 
@@ -109,7 +111,7 @@ async fn run_workflow_step_inner(
             &settings.skills_path,
             settings.author_login.as_deref(),
             settings.created_at.as_deref(),
-            subagent_directive,
+            subagent_directive.as_deref(),
         )
     };
     log::debug!(
