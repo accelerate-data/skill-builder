@@ -92,111 +92,51 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
 }
 
 pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Value> {
-    match agent_name {
-        "skill-creator:generate-skill" => Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["status"],
-                "properties": {
-                    "status": { "type": "string", "const": "generated" },
-                    "skipped": { "type": "boolean" },
-                    "commit_summary": { "type": "string" },
-                    "version_bump": { "type": "string", "enum": ["major", "minor", "patch"] }
-                },
-                "additionalProperties": true
-            }
-        })),
-        "skill-creator:rewrite-skill" => Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["status"],
-                "properties": {
-                    "status": { "type": "string", "const": "rewritten" },
-                    "skipped": { "type": "boolean" },
-                    "commit_summary": { "type": "string" },
-                    "version_bump": { "type": "string", "enum": ["major", "minor", "patch"] }
-                },
-                "additionalProperties": true
-            }
-        })),
-        "skill-content-researcher:research-orchestrator" => Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": [
-                    "status",
-                    "dimensions_selected",
-                    "question_count",
-                    "research_output"
-                ],
-                "properties": {
-                    "status": { "type": "string", "const": "research_complete" },
-                    "dimensions_selected": { "type": "integer", "minimum": 0 },
-                    "question_count": { "type": "integer", "minimum": 0 },
-                    "research_output": { "type": "object" }
-                },
-                "additionalProperties": true
-            }
-        })),
-        "skill-content-researcher:detailed-research" => Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": [
-                    "status",
-                    "refinement_count",
-                    "section_count",
-                    "clarifications_json"
-                ],
-                "properties": {
-                    "status": { "type": "string", "const": "detailed_research_complete" },
-                    "refinement_count": { "type": "integer", "minimum": 0 },
-                    "section_count": { "type": "integer", "minimum": 0 },
-                    "clarifications_json": { "type": "object" }
-                },
-                "additionalProperties": true
-            }
-        })),
-        "skill-content-researcher:confirm-decisions" => Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["version", "metadata", "decisions"],
-                "properties": {
-                    "version": { "type": "string" },
-                    "metadata": { "type": "object" },
-                    "decisions": { "type": "array" }
-                },
-                "additionalProperties": false
-            }
-        })),
-        "skill-creator:generate-skill-description-evals" => Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["status", "queries"],
-                "properties": {
-                    "status": { "type": "string", "const": "generated" },
-                    "queries": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "required": ["query", "should_trigger"],
-                            "properties": {
-                                "query": { "type": "string" },
-                                "should_trigger": { "type": "boolean" }
-                            },
-                            "additionalProperties": false
+    use crate::generated::schemas;
+
+    let schema_str = match agent_name {
+        "skill-content-researcher:research-orchestrator" => Some(schemas::RESEARCH_STEP_SCHEMA),
+        "skill-content-researcher:detailed-research" => Some(schemas::DETAILED_RESEARCH_SCHEMA),
+        "skill-content-researcher:confirm-decisions" => Some(schemas::DECISIONS_SCHEMA),
+        "skill-creator:generate-skill" | "skill-creator:rewrite-skill" => {
+            Some(schemas::GENERATE_SKILL_SCHEMA)
+        }
+        // No generated contract type — keep hand-crafted schema
+        "skill-creator:generate-skill-description-evals" => {
+            return Some(serde_json::json!({
+                "type": "json_schema",
+                "schema": {
+                    "type": "object",
+                    "required": ["status", "queries"],
+                    "properties": {
+                        "status": { "type": "string", "const": "generated" },
+                        "queries": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["query", "should_trigger"],
+                                "properties": {
+                                    "query": { "type": "string" },
+                                    "should_trigger": { "type": "boolean" }
+                                },
+                                "additionalProperties": false
+                            }
                         }
-                    }
-                },
-                "additionalProperties": false
-            }
-        })),
+                    },
+                    "additionalProperties": false
+                }
+            }));
+        }
         _ => None,
-    }
+    };
+    schema_str.map(|s| {
+        let schema: serde_json::Value =
+            serde_json::from_str(s).expect("generated schema must be valid JSON");
+        serde_json::json!({
+            "type": "json_schema",
+            "schema": schema
+        })
+    })
 }
 
 pub(crate) fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
@@ -225,163 +165,23 @@ pub fn build_betas(
     }
 }
 
+/// Validate a clarifications JSON payload by deserializing into the typed contract.
+///
+/// This replaces the old imperative field-by-field validator with typed serde
+/// deserialization via `ClarificationsFile`. The typed struct enforces all required
+/// fields, correct types, and nested structure at deserialization time.
 pub(crate) fn validate_clarifications_json(
     clarifications: &serde_json::Value,
 ) -> Result<(), String> {
     log::debug!(
         "[validate_clarifications_json] input keys: {:?}",
-        clarifications.as_object().map(|o| o.keys().collect::<Vec<_>>())
+        clarifications
+            .as_object()
+            .map(|o| o.keys().collect::<Vec<_>>())
     );
-    let root = clarifications
-        .as_object()
-        .ok_or_else(|| "clarifications_json must be a JSON object".to_string())?;
-
-    let version = root
-        .get("version")
-        .and_then(super::coerce_to_string)
-        .ok_or_else(|| "clarifications_json.version must be present".to_string())?;
-    if version.trim().is_empty() {
-        return Err("clarifications_json.version must not be empty".to_string());
-    }
-
-    let metadata = root
-        .get("metadata")
-        .and_then(|v| v.as_object())
-        .ok_or_else(|| "clarifications_json.metadata must be an object".to_string())?;
-    for field in [
-        "question_count",
-        "section_count",
-        "refinement_count",
-        "must_answer_count",
-    ] {
-        if metadata.get(field).and_then(super::coerce_to_i64).is_none() {
-            return Err(format!(
-                "clarifications_json.metadata.{} must be an integer",
-                field
-            ));
-        }
-    }
-    if metadata
-        .get("priority_questions")
-        .and_then(|v| v.as_array())
-        .is_none()
-    {
-        return Err("clarifications_json.metadata.priority_questions must be an array".to_string());
-    }
-
-    let sections = root
-        .get("sections")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "clarifications_json.sections must be an array".to_string())?;
-    for (section_idx, section) in sections.iter().enumerate() {
-        let section_obj = section.as_object().ok_or_else(|| {
-            format!(
-                "clarifications_json.sections[{}] must be an object",
-                section_idx
-            )
-        })?;
-        if section_obj.get("id").and_then(super::coerce_to_i64).is_none() {
-            return Err(format!(
-                "clarifications_json.sections[{}].id must be a number",
-                section_idx
-            ));
-        }
-        if section_obj.get("title").and_then(super::coerce_to_string).is_none() {
-            return Err(format!(
-                "clarifications_json.sections[{}].title must be a string",
-                section_idx
-            ));
-        }
-        let default_questions = Vec::new();
-        let questions = section_obj
-            .get("questions")
-            .and_then(|v| v.as_array())
-            .unwrap_or(&default_questions);
-
-        for (question_idx, question) in questions.iter().enumerate() {
-            let question_obj = question.as_object().ok_or_else(|| {
-                format!(
-                    "clarifications_json.sections[{}].questions[{}] must be an object",
-                    section_idx, question_idx
-                )
-            })?;
-            for field in ["id", "title", "text"] {
-                if question_obj.get(field).and_then(super::coerce_to_string).is_none() {
-                    return Err(format!(
-                        "clarifications_json.sections[{}].questions[{}].{} must be a string",
-                        section_idx, question_idx, field
-                    ));
-                }
-            }
-            if question_obj
-                .get("must_answer")
-                .and_then(super::coerce_to_bool)
-                .is_none()
-            {
-                return Err(format!(
-                    "clarifications_json.sections[{}].questions[{}].must_answer must be a boolean",
-                    section_idx, question_idx
-                ));
-            }
-            let choices = question_obj
-                .get("choices")
-                .and_then(|v| v.as_array())
-                .ok_or_else(|| {
-                    format!(
-                        "clarifications_json.sections[{}].questions[{}].choices must be an array",
-                        section_idx, question_idx
-                    )
-                })?;
-            for (choice_idx, choice) in choices.iter().enumerate() {
-                let choice_obj = choice.as_object().ok_or_else(|| {
-                    format!(
-                        "clarifications_json.sections[{}].questions[{}].choices[{}] must be an object",
-                        section_idx, question_idx, choice_idx
-                    )
-                })?;
-                for field in ["id", "text"] {
-                    if choice_obj.get(field).and_then(super::coerce_to_string).is_none() {
-                        return Err(format!(
-                            "clarifications_json.sections[{}].questions[{}].choices[{}].{} must be a string",
-                            section_idx, question_idx, choice_idx, field
-                        ));
-                    }
-                }
-                if choice_obj
-                    .get("is_other")
-                    .and_then(super::coerce_to_bool)
-                    .is_none()
-                {
-                    return Err(format!(
-                        "clarifications_json.sections[{}].questions[{}].choices[{}].is_other must be a boolean",
-                        section_idx, question_idx, choice_idx
-                    ));
-                }
-            }
-            if question_obj
-                .get("refinements")
-                .and_then(|v| v.as_array())
-                .is_none()
-            {
-                return Err(format!(
-                    "clarifications_json.sections[{}].questions[{}].refinements must be an array",
-                    section_idx, question_idx
-                ));
-            }
-        }
-    }
-
-    if root.get("notes").and_then(|v| v.as_array()).is_none() {
-        return Err("clarifications_json.notes must be an array".to_string());
-    }
-    if let Some(value) = root.get("answer_evaluator_notes") {
-        if value.as_array().is_none() {
-            return Err(
-                "clarifications_json.answer_evaluator_notes must be an array when present"
-                    .to_string(),
-            );
-        }
-    }
-
+    serde_json::from_value::<crate::contracts::clarifications::ClarificationsFile>(
+        clarifications.clone(),
+    )
+    .map_err(|e| format!("{}", e))?;
     Ok(())
 }

@@ -166,7 +166,7 @@ pub enum AgentEvent {
     SessionExhausted(SessionExhaustedEvent),
     InitProgress(InitProgressEvent),
     TurnComplete(TurnCompleteEvent),
-    RunResult(RunResultEvent),
+    RunResult(Box<RunResultEvent>),
 }
 
 /// Wrapper envelope for agent events, matching the sidecar `AgentEventEnvelope`.

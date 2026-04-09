@@ -24,6 +24,7 @@ fn valid_clarifications_value() -> serde_json::Value {
     serde_json::json!({
         "version": "1",
         "metadata": {
+            "title": "Test",
             "question_count": 1,
             "section_count": 1,
             "refinement_count": 0,
@@ -163,10 +164,9 @@ fn test_answer_evaluator_output_format_has_required_contract_keys() {
     let required = schema["required"].as_array().expect("required array");
     assert!(required.iter().any(|v| v == "per_question"));
     assert!(required.iter().any(|v| v == "verdict"));
-    assert_eq!(
-        schema["properties"]["verdict"]["enum"],
-        serde_json::json!(["sufficient", "mixed", "insufficient"])
-    );
+    // Generated schema uses plain "string" type (enum constraints are enforced by
+    // semantic validation in validate_answer_evaluation_json, not by JSON Schema).
+    assert_eq!(schema["properties"]["verdict"]["type"], "string");
 }
 
 #[test]
@@ -266,6 +266,7 @@ fn test_materialize_step0_writes_research_and_clarifications() {
         "research_output": {
             "version": "1",
             "metadata": {
+                "title": "Test",
                 "question_count": 0,
                 "section_count": 0,
                 "refinement_count": 0,
@@ -290,6 +291,7 @@ fn test_materialize_step0_validation_failure_keeps_existing_files() {
     std::fs::create_dir_all(&context_dir).unwrap();
     std::fs::write(context_dir.join("clarifications.json"), "{\"old\":true}").unwrap();
 
+    // metadata is missing required fields (title, question_count, etc.)
     let invalid_payload = serde_json::json!({
         "status": "research_complete",
         "dimensions_selected": 2,
@@ -304,7 +306,8 @@ fn test_materialize_step0_validation_failure_keeps_existing_files() {
 
     let err = materialize_workflow_step_output_value(&skill_root, 0, &invalid_payload)
         .unwrap_err();
-    assert!(err.contains("Invalid research_output"));
+    // Typed deserialization rejects the invalid metadata
+    assert!(err.contains("invalid research step output"), "unexpected error: {err}");
     assert_eq!(
         std::fs::read_to_string(context_dir.join("clarifications.json")).unwrap(),
         "{\"old\":true}"
@@ -322,6 +325,7 @@ fn test_materialize_step1_writes_clarifications_only() {
         "clarifications_json": {
             "version": "1",
             "metadata": {
+                "title": "Step 1",
                 "question_count": 1,
                 "section_count": 1,
                 "refinement_count": 1,
@@ -425,6 +429,7 @@ fn test_materialize_step0_rejects_missing_or_invalid_research_output() {
     assert!(err_missing.contains("invalid research step output"));
     assert!(err_missing.contains("research_output"));
 
+    // Choice is missing required `is_other` field — typed deserialization rejects it
     let invalid_nested = serde_json::json!({
         "status": "research_complete",
         "dimensions_selected": 1,
@@ -432,6 +437,7 @@ fn test_materialize_step0_rejects_missing_or_invalid_research_output() {
         "research_output": {
             "version": "1",
             "metadata": {
+                "title": "Test",
                 "question_count": 1,
                 "section_count": 1,
                 "refinement_count": 0,
@@ -460,8 +466,9 @@ fn test_materialize_step0_rejects_missing_or_invalid_research_output() {
     let err_invalid_nested =
         materialize_workflow_step_output_value(&skill_root, 0, &invalid_nested)
             .unwrap_err();
-    assert!(err_invalid_nested.contains("Invalid research_output"));
-    assert!(err_invalid_nested.contains("is_other must be a boolean"));
+    // Typed deserialization rejects Choice missing `is_other`
+    assert!(err_invalid_nested.contains("invalid research step output"), "unexpected error: {err_invalid_nested}");
+    assert!(err_invalid_nested.contains("is_other"), "should mention is_other: {err_invalid_nested}");
 }
 
 #[test]
@@ -536,6 +543,7 @@ fn test_materialize_step1_validation_failure_keeps_existing_clarifications() {
     std::fs::create_dir_all(&context_dir).unwrap();
     std::fs::write(context_dir.join("clarifications.json"), "{\"old\":true}").unwrap();
 
+    // notes is a string instead of an array — typed deserialization rejects it
     let invalid_payload = serde_json::json!({
         "status": "detailed_research_complete",
         "refinement_count": 1,
@@ -543,6 +551,7 @@ fn test_materialize_step1_validation_failure_keeps_existing_clarifications() {
         "clarifications_json": {
             "version": "1",
             "metadata": {
+                "title": "Bad",
                 "question_count": 1,
                 "section_count": 1,
                 "refinement_count": 0,
@@ -555,7 +564,8 @@ fn test_materialize_step1_validation_failure_keeps_existing_clarifications() {
     });
     let err = materialize_workflow_step_output_value(&skill_root, 1, &invalid_payload)
         .unwrap_err();
-    assert!(err.contains("Invalid clarifications_json"));
+    // Typed deserialization catches notes type mismatch
+    assert!(err.contains("invalid detailed research output"), "unexpected error: {err}");
     assert_eq!(
         std::fs::read_to_string(context_dir.join("clarifications.json")).unwrap(),
         "{\"old\":true}"
@@ -573,6 +583,7 @@ fn test_materialize_step1_rejects_invalid_answer_evaluator_notes_shape() {
         "clarifications_json": {
             "version": "1",
             "metadata": {
+                "title": "Bad Notes",
                 "question_count": 1,
                 "section_count": 1,
                 "refinement_count": 0,
@@ -587,7 +598,8 @@ fn test_materialize_step1_rejects_invalid_answer_evaluator_notes_shape() {
 
     let err =
         materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
-    assert!(err.contains("answer_evaluator_notes must be an array when present"));
+    // Typed deserialization rejects non-array answer_evaluator_notes
+    assert!(err.contains("invalid detailed research output"), "unexpected error: {err}");
 }
 
 #[test]
@@ -605,8 +617,9 @@ fn test_validate_clarifications_rejects_string_section_id() {
     let mut v = valid_clarifications_value();
     v["sections"][0]["id"] = serde_json::json!("S1");
     let err = super::step_config::validate_clarifications_json(&v).unwrap_err();
+    // Typed deserialization rejects string where i64 is expected
     assert!(
-        err.contains("sections[0].id must be a number"),
+        err.contains("invalid type"),
         "unexpected error: {err}"
     );
 }
@@ -616,8 +629,9 @@ fn test_validate_clarifications_rejects_null_section_id() {
     let mut v = valid_clarifications_value();
     v["sections"][0]["id"] = serde_json::json!(null);
     let err = super::step_config::validate_clarifications_json(&v).unwrap_err();
+    // Typed deserialization rejects null where i64 is expected
     assert!(
-        err.contains("sections[0].id must be a number"),
+        err.contains("invalid type"),
         "unexpected error: {err}"
     );
 }
@@ -633,6 +647,7 @@ fn test_materialize_step0_scope_recommendation_triggers_scope_guard_parser() {
         "research_output": {
             "version": "1",
             "metadata": {
+                "title": "Scoped",
                 "question_count": 0,
                 "section_count": 0,
                 "refinement_count": 0,
@@ -658,7 +673,14 @@ fn test_materialize_step2_writes_decisions() {
     let payload = serde_json::json!({
         "version": "1",
         "metadata": { "decision_count": 1, "conflicts_resolved": 0, "round": 1 },
-        "decisions": [{ "id": "D1", "title": "Capability", "decision": "A" }]
+        "decisions": [{
+            "id": "D1",
+            "title": "Capability",
+            "original_question": "Which capability?",
+            "decision": "A",
+            "implication": "None",
+            "status": "resolved"
+        }]
     });
     materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
     assert!(skill_root.join("context/decisions.json").exists());
@@ -670,7 +692,7 @@ fn test_materialize_step2_writes_scope_guard_stub_decisions() {
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "version": "1",
-        "metadata": { "scope_recommendation": true, "decision_count": 0 },
+        "metadata": { "scope_recommendation": true, "decision_count": 0, "conflicts_resolved": 0, "round": 1 },
         "decisions": []
     });
     materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
@@ -686,7 +708,7 @@ fn test_materialize_step2_conflict_decisions_trigger_conflict_guard() {
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "version": "1",
-        "metadata": { "decision_count": 2, "contradictory_inputs": true },
+        "metadata": { "decision_count": 2, "conflicts_resolved": 0, "round": 1, "contradictory_inputs": true },
         "decisions": []
     });
     materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
@@ -701,7 +723,7 @@ fn test_materialize_step2_revised_conflict_decisions_do_not_trigger_guard() {
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "version": "1",
-        "metadata": { "decision_count": 2, "contradictory_inputs": false },
+        "metadata": { "decision_count": 2, "conflicts_resolved": 0, "round": 1, "contradictory_inputs": false },
         "decisions": []
     });
     materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
@@ -1956,9 +1978,11 @@ fn test_save_clarifications_content_rejects_invalid_schema() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace_path = tmp.path().join("workspace");
     let workspace_str = workspace_path.to_string_lossy().to_string();
+    // priority_questions is a string instead of an array — typed deserialization rejects it
     let invalid = serde_json::json!({
         "version": "1",
         "metadata": {
+            "title": "Bad",
             "question_count": 1,
             "section_count": 1,
             "refinement_count": 0,
@@ -1972,7 +1996,8 @@ fn test_save_clarifications_content_rejects_invalid_schema() {
     let err =
         super::evaluation::save_clarifications_content_inner("my-skill", &workspace_str, invalid.to_string(), crate::skill_paths::DEFAULT_PLUGIN_SLUG)
             .unwrap_err();
-    assert!(err.contains("priority_questions must be an array"));
+    // Typed deserialization rejects non-array priority_questions
+    assert!(err.contains("Invalid clarifications JSON"), "unexpected error: {err}");
 }
 
 // =============================================================================
