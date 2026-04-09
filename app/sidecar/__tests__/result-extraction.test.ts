@@ -103,4 +103,38 @@ describe("tryParseJsonFromText", () => {
     expect(tryParseJsonFromText("true")).toBe(true);
     expect(tryParseJsonFromText("null")).toBeNull();
   });
+
+  it("extracts JSON from text with preamble before code fence", () => {
+    const text = 'Here is the result:\n\n```json\n{"status": "research_complete", "count": 3}\n```';
+    expect(tryParseJsonFromText(text)).toEqual({ status: "research_complete", count: 3 });
+  });
+
+  it("extracts JSON from text with preamble and postamble around code fence", () => {
+    const text = 'I completed the research.\n\n```json\n{"status": "done"}\n```\n\nLet me know if you need more.';
+    expect(tryParseJsonFromText(text)).toEqual({ status: "done" });
+  });
+
+  it("extracts JSON object from plain text without code fences", () => {
+    const text = 'Now I have all the outputs. Let me consolidate:\n\n{"status": "research_complete", "dimensions_selected": 3}';
+    expect(tryParseJsonFromText(text)).toEqual({ status: "research_complete", dimensions_selected: 3 });
+  });
+
+  it("handles nested braces in brace-matching extraction", () => {
+    const text = 'Result:\n{"outer": {"inner": "value"}, "count": 1}';
+    expect(tryParseJsonFromText(text)).toEqual({ outer: { inner: "value" }, count: 1 });
+  });
+
+  it("handles strings with braces in brace-matching extraction", () => {
+    const text = 'Output:\n{"message": "use {name} placeholder", "ok": true}';
+    expect(tryParseJsonFromText(text)).toEqual({ message: "use {name} placeholder", ok: true });
+  });
+
+  it("returns undefined when no valid JSON exists anywhere", () => {
+    expect(tryParseJsonFromText("Just some text with no JSON at all")).toBeUndefined();
+  });
+
+  it("returns undefined for malformed JSON in code fence", () => {
+    const text = '```json\n{invalid json}\n```';
+    expect(tryParseJsonFromText(text)).toBeUndefined();
+  });
 });
