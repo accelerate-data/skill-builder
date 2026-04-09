@@ -23,10 +23,13 @@ pub enum DecisionStatus {
 }
 
 /// Top-level metadata block for a decisions file.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
 pub struct DecisionsMetadata {
+    #[serde(default)]
     pub decision_count: i64,
+    #[serde(default)]
     pub conflicts_resolved: i64,
+    #[serde(default)]
     pub round: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contradictory_inputs: Option<ContradictoryInputs>,

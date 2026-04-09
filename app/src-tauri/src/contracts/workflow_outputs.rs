@@ -16,8 +16,11 @@ use crate::contracts::decisions::{Decision, DecisionsMetadata};
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
 pub struct ResearchStepOutput {
     pub status: String,
+    #[serde(default)]
     pub dimensions_selected: i64,
+    #[serde(default)]
     pub question_count: i64,
+    #[serde(default)]
     pub research_output: ClarificationsFile,
 }
 
@@ -30,8 +33,11 @@ pub struct ResearchStepOutput {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
 pub struct DetailedResearchOutput {
     pub status: String,
+    #[serde(default)]
     pub refinement_count: i64,
+    #[serde(default)]
     pub section_count: i64,
+    #[serde(default)]
     pub clarifications_json: ClarificationsFile,
 }
 
@@ -42,8 +48,11 @@ pub struct DetailedResearchOutput {
 /// Required fields: `version`, `metadata`, `decisions`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
 pub struct DecisionsOutput {
+    #[serde(default)]
     pub version: String,
+    #[serde(default)]
     pub metadata: DecisionsMetadata,
+    #[serde(default)]
     pub decisions: Vec<Decision>,
 }
 
@@ -89,13 +98,21 @@ pub struct PerQuestionEntry {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
 pub struct AnswerEvaluationOutput {
     pub verdict: String,
+    #[serde(default)]
     pub answered_count: i64,
+    #[serde(default)]
     pub empty_count: i64,
+    #[serde(default)]
     pub vague_count: i64,
+    #[serde(default)]
     pub contradictory_count: i64,
+    #[serde(default)]
     pub total_count: i64,
+    #[serde(default)]
     pub reasoning: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gate_decision: Option<String>,
+    #[serde(default)]
     pub per_question: Vec<PerQuestionEntry>,
 }
 

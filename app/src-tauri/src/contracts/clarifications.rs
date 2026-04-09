@@ -4,9 +4,11 @@
 //! and serve as the single source of truth for the clarifications JSON schema.
 
 /// Root type for a clarifications file.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
 pub struct ClarificationsFile {
+    #[serde(default)]
     pub version: String,
+    #[serde(default)]
     pub metadata: ClarificationsMetadata,
     #[serde(default)]
     pub sections: Vec<Section>,
@@ -17,12 +19,17 @@ pub struct ClarificationsFile {
 }
 
 /// Metadata block with counts, priority questions, and optional scope/research info.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
 pub struct ClarificationsMetadata {
+    #[serde(default)]
     pub title: String,
+    #[serde(default)]
     pub question_count: i64,
+    #[serde(default)]
     pub section_count: i64,
+    #[serde(default)]
     pub refinement_count: i64,
+    #[serde(default)]
     pub must_answer_count: i64,
     #[serde(default)]
     pub priority_questions: Vec<String>,
