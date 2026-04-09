@@ -74,10 +74,13 @@ pub(crate) fn build_step0_prompt(
 ) -> String {
     let workspace_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let schemas_path = format!(
-        "{}/.claude/plugins/skill-content-researcher/skills/shared/schemas.md",
-        workspace_path.replace('\\', "/"),
+    let ws = workspace_path.replace('\\', "/");
+    let plugin_refs = format!(
+        "{}/.claude/plugins/skill-content-researcher/skills",
+        ws,
     );
+    let schemas_path = format!("{}/shared/schemas.md", plugin_refs);
+    let dimensions_dir = format!("{}/research/references/dimensions", plugin_refs);
     format!(
         "The skill name is: {}. The workspace directory is: {}. \
          The user context file is at: {}/user-context.md. \
@@ -85,6 +88,7 @@ pub(crate) fn build_step0_prompt(
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. \
          Read only the specific files named in your instructions and write files directly. \
          The clarifications schema reference is at: {}. \
+         The dimension reference files are in: {} (read individual .md files, not the directory itself). \
          The maximum research dimensions before scope warning is: {}. \
          Use the skill-content-researcher:research to produce clarification questions which will be used to write the skill. \
          Your final response MUST be a single JSON object matching the outputFormat schema — no markdown, no explanation, no wrapping. Output ONLY the raw JSON.",
@@ -93,6 +97,7 @@ pub(crate) fn build_step0_prompt(
         workspace_str,
         workspace_str,
         schemas_path,
+        dimensions_dir,
         max_dimensions,
     )
 }
