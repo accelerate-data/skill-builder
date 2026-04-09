@@ -46,7 +46,7 @@ pub(crate) fn build_prompt(
     // Inject the clarifications schema path so agents (e.g. detailed-research)
     // can read the data contract before constructing clarifications_json output.
     let schemas_path = format!(
-        "{}/.claude/plugins/skill-content-researcher/skills/research/references/schemas.md",
+        "{}/.claude/plugins/skill-content-researcher/skills/shared/schemas.md",
         workspace_path.replace('\\', "/"),
     );
     prompt.push_str(&format!(

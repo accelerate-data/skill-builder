@@ -70,10 +70,10 @@ Produce the complete JSON content in a single pass as inline text.
 
 ## Canonical `clarifications.json` Schema Source
 
-Use `../../../shared/schemas.md` as the only canonical schema source for `clarifications.json`.
+Use `../../shared/schemas.md` as the only canonical schema source for `clarifications.json`.
 
 - Do not redefine or extend field shapes in this file.
-- If any schema details conflict, follow `../../../shared/schemas.md` and update this handoff doc to match.
+- If any schema details conflict, follow `../../shared/schemas.md` and update this handoff doc to match.
 
 ### Field Reference
 
