@@ -1144,3 +1144,233 @@ fn test_finalize_refine_no_tag_when_head_unchanged() {
     let version = crate::git::latest_skill_semver(dir.path(), plugin, "noop-skill").unwrap();
     assert_eq!(version, "1.0.0", "no-op refine should not create a new tag");
 }
+
+// ===== Protected frontmatter field tests =====
+
+use super::output::update_skill_name;
+
+#[test]
+fn test_update_skill_name_replaces_existing() {
+    let content = "---\nname: old-name\ndescription: A skill\n---\n# Body\n";
+    let result = update_skill_name(content, "new-name").unwrap();
+    assert!(result.contains("name: \"new-name\""), "got: {}", result);
+    assert!(!result.contains("name: old-name"));
+    assert!(result.contains("description: A skill"));
+    assert!(result.contains("# Body"));
+}
+
+#[test]
+fn test_update_skill_name_inserts_when_missing() {
+    let content = "---\ndescription: A skill\n---\n# Body\n";
+    let result = update_skill_name(content, "inserted-name").unwrap();
+    assert!(result.contains("name: \"inserted-name\""), "got: {}", result);
+    assert!(result.contains("description: A skill"));
+}
+
+#[test]
+fn test_finalize_restores_name_changed_by_agent() {
+    let dir = tempdir().unwrap();
+    let workspace_dir = tempdir().unwrap();
+    crate::git::ensure_repo(dir.path()).unwrap();
+
+    let skill_dir = dir.path().join("skills").join("guard-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: guard-skill\ndescription: Original description\n---\n# Content\n",
+    )
+    .unwrap();
+    crate::git::commit_all(dir.path(), "initial").unwrap();
+
+    // Capture pre-run SHA
+    let pre_sha = {
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        sha
+    };
+
+    // Simulate agent changing the name
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: renamed-skill\ndescription: Original description\n---\n# Content\n",
+    )
+    .unwrap();
+    crate::git::commit_all(dir.path(), "agent rename").unwrap();
+
+    let result = finalize_refine_run_inner(
+        "guard-skill",
+        dir.path().to_str().unwrap(),
+        workspace_dir.path().to_str().unwrap(),
+        None,
+        Some(&pre_sha),
+    )
+    .unwrap();
+
+    // Name should be restored in the file on disk (yaml_quote_scalar wraps in double quotes)
+    let final_content = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+    assert!(
+        final_content.contains("name: \"guard-skill\""),
+        "name should be restored to original, got: {}",
+        final_content
+    );
+    assert!(!final_content.contains("renamed-skill"));
+    assert!(result.commit_sha.is_some());
+}
+
+#[test]
+fn test_finalize_restores_description_changed_by_agent() {
+    let dir = tempdir().unwrap();
+    let workspace_dir = tempdir().unwrap();
+    crate::git::ensure_repo(dir.path()).unwrap();
+
+    let skill_dir = dir.path().join("skills").join("desc-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: desc-skill\ndescription: Original description\n---\n# Content\n",
+    )
+    .unwrap();
+    crate::git::commit_all(dir.path(), "initial").unwrap();
+
+    let pre_sha = {
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        sha
+    };
+
+    // Simulate agent changing the description
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: desc-skill\ndescription: Agent rewrote this\n---\n# Content\n",
+    )
+    .unwrap();
+    crate::git::commit_all(dir.path(), "agent rewrite desc").unwrap();
+
+    let result = finalize_refine_run_inner(
+        "desc-skill",
+        dir.path().to_str().unwrap(),
+        workspace_dir.path().to_str().unwrap(),
+        None,
+        Some(&pre_sha),
+    )
+    .unwrap();
+
+    let final_content = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+    assert!(
+        final_content.contains("description: \"Original description\""),
+        "description should be restored to original, got: {}",
+        final_content
+    );
+    assert!(!final_content.contains("Agent rewrote this"));
+    assert!(result.commit_sha.is_some());
+}
+
+#[test]
+fn test_finalize_restores_both_name_and_description_changed_by_agent() {
+    let dir = tempdir().unwrap();
+    let workspace_dir = tempdir().unwrap();
+    crate::git::ensure_repo(dir.path()).unwrap();
+
+    let skill_dir = dir.path().join("skills").join("both-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: both-skill\ndescription: Keep me\n---\n# Content\n",
+    )
+    .unwrap();
+    crate::git::commit_all(dir.path(), "initial").unwrap();
+
+    let pre_sha = {
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        sha
+    };
+
+    // Simulate agent changing both fields
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: changed-name\ndescription: Changed desc\n---\n# Content\n",
+    )
+    .unwrap();
+    crate::git::commit_all(dir.path(), "agent changes both").unwrap();
+
+    let result = finalize_refine_run_inner(
+        "both-skill",
+        dir.path().to_str().unwrap(),
+        workspace_dir.path().to_str().unwrap(),
+        None,
+        Some(&pre_sha),
+    )
+    .unwrap();
+
+    let final_content = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+    assert!(
+        final_content.contains("name: \"both-skill\""),
+        "name should be restored, got: {}",
+        final_content
+    );
+    assert!(
+        final_content.contains("description: \"Keep me\""),
+        "description should be restored, got: {}",
+        final_content
+    );
+    assert!(result.commit_sha.is_some());
+}
+
+#[test]
+fn test_finalize_no_fixup_when_frontmatter_unchanged() {
+    let dir = tempdir().unwrap();
+    let workspace_dir = tempdir().unwrap();
+    crate::git::ensure_repo(dir.path()).unwrap();
+
+    let skill_dir = dir.path().join("skills").join("no-fix-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: no-fix-skill\ndescription: Stay the same\n---\n# Content\n",
+    )
+    .unwrap();
+    crate::git::commit_all(dir.path(), "initial").unwrap();
+
+    let pre_sha = {
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        sha
+    };
+
+    // Simulate agent changing only body content, not frontmatter
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: no-fix-skill\ndescription: Stay the same\n---\n# Updated Content\n",
+    )
+    .unwrap();
+    crate::git::commit_all(dir.path(), "agent edits body only").unwrap();
+
+    let agent_sha = {
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        sha
+    };
+
+    let result = finalize_refine_run_inner(
+        "no-fix-skill",
+        dir.path().to_str().unwrap(),
+        workspace_dir.path().to_str().unwrap(),
+        None,
+        Some(&pre_sha),
+    )
+    .unwrap();
+
+    // HEAD should be the tagged version of the agent commit, not a fixup
+    // The commit_sha from result should exist and there should be no extra fixup commit
+    let final_sha = {
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        sha
+    };
+
+    // The final SHA equals the agent SHA because no fixup was needed
+    // (version tagging doesn't create a new commit, just a tag)
+    assert_eq!(final_sha, agent_sha, "no fixup commit should be created when frontmatter unchanged");
+    assert!(result.commit_sha.is_some());
+}

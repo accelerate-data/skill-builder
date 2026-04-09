@@ -147,6 +147,10 @@ The "Capture Intent" and "Interview and Research" phases are are in:
 
 Include these artifacts as input.
 
+### Protected frontmatter fields
+
+Never modify the `name:` or `description:` frontmatter fields in SKILL.md. These are controlled by other workflows (skill creation and Optimize Description). The backend will reject any changes to these fields, so do not attempt to update them even if the skill's scope or trigger intent has changed.
+
 ### Version management
 
 Before rewriting, read `metadata.version` from the existing SKILL.md frontmatter. If only a legacy top-level `version` field exists, treat that as the current version and migrate it into `metadata.version`. If no version field exists, treat the current version as `1.0.0`. After the rewrite, apply a semver bump and update `metadata.version` in SKILL.md frontmatter:
@@ -194,8 +198,6 @@ Delegate only the content-editing work:
 - updating or creating referenced files
 - preserving original domain knowledge
 - incorporating decisions and clarifications into the rewritten skill content
-- making manual description updates when the skill's scope or trigger intent changed
-
 Do not delegate:
 
 - rewrite triage and redirect decisions
