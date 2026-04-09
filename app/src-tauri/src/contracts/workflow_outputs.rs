@@ -20,7 +20,7 @@ pub struct ResearchStepOutput {
     pub dimensions_selected: i64,
     #[serde(default)]
     pub question_count: i64,
-    #[serde(default)]
+    /// Required — fails if missing. Empty default would be useless data.
     pub research_output: ClarificationsFile,
 }
 
@@ -37,7 +37,7 @@ pub struct DetailedResearchOutput {
     pub refinement_count: i64,
     #[serde(default)]
     pub section_count: i64,
-    #[serde(default)]
+    /// Required — fails if missing. Empty default would be useless data.
     pub clarifications_json: ClarificationsFile,
 }
 

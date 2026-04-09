@@ -70,14 +70,14 @@ mod tests {
     }
 
     #[test]
-    fn test_research_step_output_defaults_missing_research_output() {
+    fn test_research_step_output_rejects_missing_research_output() {
         let json = serde_json::json!({
             "status": "research_complete",
             "dimensions_selected": 3,
             "question_count": 7
         });
-        let parsed: ResearchStepOutput = serde_json::from_value(json).expect("should default missing fields");
-        assert_eq!(parsed.research_output.version, "");
+        let result = serde_json::from_value::<ResearchStepOutput>(json);
+        assert!(result.is_err(), "should reject missing research_output");
     }
 
     // ── DetailedResearchOutput ────────────────────────────────────────────
@@ -116,15 +116,14 @@ mod tests {
     }
 
     #[test]
-    fn test_detailed_research_output_defaults_missing_clarifications_json() {
+    fn test_detailed_research_output_rejects_missing_clarifications_json() {
         let json = serde_json::json!({
             "status": "detailed_research_complete",
             "refinement_count": 1,
             "section_count": 1
         });
-        let parsed: DetailedResearchOutput = serde_json::from_value(json).expect("should default missing fields");
-        assert_eq!(parsed.clarifications_json.version, "");
-        assert_eq!(parsed.refinement_count, 1);
+        let result = serde_json::from_value::<DetailedResearchOutput>(json);
+        assert!(result.is_err(), "should reject missing clarifications_json");
     }
 
     // ── DecisionsOutput ───────────────────────────────────────────────────

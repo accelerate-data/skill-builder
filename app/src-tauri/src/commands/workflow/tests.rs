@@ -459,18 +459,17 @@ fn test_materialize_step0_missing_numeric_fields_default_to_zero() {
 }
 
 #[test]
-fn test_materialize_step0_missing_research_output_defaults() {
+fn test_materialize_step0_rejects_missing_research_output() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
 
-    // Missing research_output defaults to empty ClarificationsFile
     let missing = serde_json::json!({
         "status": "research_complete",
         "dimensions_selected": 1,
         "question_count": 1
     });
-    materialize_workflow_step_output_value(&skill_root, 0, &missing)
-        .expect("missing research_output should default");
+    let err = materialize_workflow_step_output_value(&skill_root, 0, &missing).unwrap_err();
+    assert!(err.contains("invalid research step output"));
 
     // Choice is missing required `is_other` field — typed deserialization rejects it
     let invalid_nested = serde_json::json!({
@@ -560,7 +559,7 @@ fn test_materialize_step1_missing_numeric_fields_default_to_zero() {
 }
 
 #[test]
-fn test_materialize_step1_missing_clarifications_json_defaults() {
+fn test_materialize_step1_rejects_missing_clarifications_json() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
@@ -568,9 +567,8 @@ fn test_materialize_step1_missing_clarifications_json_defaults() {
         "refinement_count": 1,
         "section_count": 1
     });
-    // Missing clarifications_json defaults to empty ClarificationsFile
-    materialize_workflow_step_output_value(&skill_root, 1, &payload)
-        .expect("missing clarifications_json should default");
+    let err = materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+    assert!(err.contains("invalid detailed research output"));
 }
 
 #[test]
