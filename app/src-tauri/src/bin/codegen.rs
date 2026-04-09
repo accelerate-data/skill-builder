@@ -3,12 +3,10 @@
 //! Reads the canonical Rust contract types and produces:
 //! - TypeScript type definitions (via Specta) for frontend + sidecar
 //! - JSON Schema constants (via Schemars) for SDK outputFormat
-//!   Post-processed for Anthropic API compatibility:
-//!   - JSON Schema draft-07 (API rejects draft-2020-12)
-//!   - `additionalProperties: false` on all objects (API requirement)
-//!   - Recursive `$ref` cycles flattened to `{ "type": "object" }`
+//!   Flat schemas for Anthropic API: top-level fields only, nested types
+//!   collapsed to `{ "type": "object" }`. Deep validation is done by
+//!   Rust's typed serde deserialization, not the SDK schema.
 
-use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -16,141 +14,105 @@ use schemars::generate::SchemaSettings;
 use specta::TypeCollection;
 use specta_typescript::{BigIntExportBehavior, Typescript};
 
-/// Generate a JSON Schema using draft-07 (required by the Anthropic API).
+/// Generate a flat, SDK-compatible JSON Schema from a Rust type.
 ///
-/// Schemars v1 defaults to draft-2020-12 which the API silently rejects.
-/// See: https://github.com/anthropics/claude-agent-sdk-typescript/issues/105
-fn draft07_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
+/// 1. Generate the full schema via schemars (draft-07)
+/// 2. Flatten: keep only root-level properties, collapse nested types to
+///    `{ "type": "object" }` or `{ "type": "array" }`, drop `definitions`
+/// 3. Add `additionalProperties: false`
+fn flat_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
     let schema = SchemaSettings::draft07()
         .into_generator()
         .into_root_schema_for::<T>();
     let deep = serde_json::to_value(schema).expect("schema must serialize");
-    make_sdk_schema(&deep)
+    flatten_schema(&deep)
 }
 
-// ── SDK schema post-processing ────────────────────────────────────────────────
+/// Flatten a deep JSON Schema to top-level properties only.
+/// - `$ref` → `{ "type": "object" }`
+/// - `anyOf` with `$ref` → `{ "type": "object" }` (or nullable variant)
+/// - Array items with `$ref` → `{ "type": "array" }`
+/// - Drop `definitions` block entirely
+/// - Add `additionalProperties: false`
+fn flatten_schema(schema: &serde_json::Value) -> serde_json::Value {
+    let mut result = serde_json::Map::new();
 
-/// Transform a deep JSON Schema into an Anthropic API-compatible schema:
-/// 1. Add `additionalProperties: false` to every object with properties
-/// 2. Detect recursive `$ref` cycles and replace them with `{ "type": "object" }`
-fn make_sdk_schema(schema: &serde_json::Value) -> serde_json::Value {
-    let mut sdk = schema.clone();
+    // Copy top-level metadata
+    if let Some(s) = schema.get("$schema") {
+        result.insert("$schema".to_string(), s.clone());
+    }
+    if let Some(t) = schema.get("title") {
+        result.insert("title".to_string(), t.clone());
+    }
+    result.insert("type".to_string(), serde_json::json!("object"));
+    result.insert("additionalProperties".to_string(), serde_json::json!(false));
 
-    // First pass: find all definition names involved in recursive $ref cycles
-    let recursive_defs = find_recursive_refs(&sdk);
+    // Flatten each property
+    if let Some(props) = schema.get("properties").and_then(|p| p.as_object()) {
+        let mut flat_props = serde_json::Map::new();
+        for (key, prop) in props {
+            flat_props.insert(key.clone(), flatten_property(prop));
+        }
+        result.insert("properties".to_string(), serde_json::Value::Object(flat_props));
+    }
 
-    // Second pass: flatten recursive refs + add additionalProperties: false
-    transform_for_sdk(&mut sdk, &recursive_defs);
+    // Keep required array as-is
+    if let Some(req) = schema.get("required") {
+        result.insert("required".to_string(), req.clone());
+    }
 
-    sdk
+    serde_json::Value::Object(result)
 }
 
-/// Walk the definitions graph and find definition names that are part of a cycle.
-fn find_recursive_refs(schema: &serde_json::Value) -> HashSet<String> {
-    let definitions = schema
-        .get("definitions")
-        .and_then(|d| d.as_object())
-        .cloned()
-        .unwrap_or_default();
+/// Flatten a single property definition for SDK compatibility.
+fn flatten_property(prop: &serde_json::Value) -> serde_json::Value {
+    let obj = match prop.as_object() {
+        Some(o) => o,
+        None => return prop.clone(),
+    };
 
-    let mut recursive = HashSet::new();
+    // $ref → { "type": "object" }
+    if obj.contains_key("$ref") {
+        return serde_json::json!({ "type": "object" });
+    }
 
-    for def_name in definitions.keys() {
-        let mut visited = HashSet::new();
-        if has_cycle(def_name, &definitions, &mut visited) {
-            recursive.insert(def_name.clone());
+    // anyOf (nullable $ref) → { "type": ["object", "null"] }
+    if let Some(any_of) = obj.get("anyOf").and_then(|a| a.as_array()) {
+        let has_ref = any_of.iter().any(|v| v.get("$ref").is_some());
+        let has_null = any_of.iter().any(|v| v.get("type") == Some(&serde_json::json!("null")));
+        if has_ref {
+            if has_null {
+                return serde_json::json!({ "type": ["object", "null"] });
+            }
+            return serde_json::json!({ "type": "object" });
         }
     }
 
-    recursive
-}
-
-/// DFS: does following $ref from `current` eventually lead back to `current`?
-fn has_cycle(
-    current: &str,
-    definitions: &serde_json::Map<String, serde_json::Value>,
-    visited: &mut HashSet<String>,
-) -> bool {
-    if !visited.insert(current.to_string()) {
-        return true; // back-edge found
-    }
-
-    if let Some(def) = definitions.get(current) {
-        for ref_target in collect_refs(def) {
-            if has_cycle(&ref_target, definitions, visited) {
-                return true;
+    // Array with $ref items → { "type": "array" }
+    if obj.get("type") == Some(&serde_json::json!("array")) {
+        if let Some(items) = obj.get("items") {
+            if items.get("$ref").is_some() {
+                return serde_json::json!({ "type": "array" });
             }
         }
+        // Array of primitives — keep as-is
+        return prop.clone();
     }
 
-    visited.remove(current);
-    false
-}
-
-/// Collect all `$ref` target definition names from a schema node, recursively.
-fn collect_refs(value: &serde_json::Value) -> Vec<String> {
-    let mut refs = Vec::new();
-    collect_refs_inner(value, &mut refs);
-    refs
-}
-
-fn collect_refs_inner(value: &serde_json::Value, refs: &mut Vec<String>) {
-    match value {
-        serde_json::Value::Object(map) => {
-            if let Some(serde_json::Value::String(r)) = map.get("$ref") {
-                if let Some(name) = r.strip_prefix("#/definitions/") {
-                    refs.push(name.to_string());
+    // Nullable array: type: ["array", "null"] with $ref items
+    if let Some(type_val) = obj.get("type").and_then(|t| t.as_array()) {
+        let types: Vec<&str> = type_val.iter().filter_map(|v| v.as_str()).collect();
+        if types.contains(&"array") {
+            if let Some(items) = obj.get("items") {
+                if items.get("$ref").is_some() {
+                    return serde_json::json!({ "type": ["array", "null"] });
                 }
             }
-            for v in map.values() {
-                collect_refs_inner(v, refs);
-            }
         }
-        serde_json::Value::Array(arr) => {
-            for v in arr {
-                collect_refs_inner(v, refs);
-            }
-        }
-        _ => {}
     }
-}
 
-/// Walk the schema tree and apply SDK transformations:
-/// - Replace `$ref` to recursive definitions with `{ "type": "object" }`
-/// - Add `"additionalProperties": false` to every object with `"properties"`
-fn transform_for_sdk(value: &mut serde_json::Value, recursive_defs: &HashSet<String>) {
-    match value {
-        serde_json::Value::Object(map) => {
-            // Replace recursive $ref with { "type": "object" }
-            if let Some(serde_json::Value::String(r)) = map.get("$ref") {
-                if let Some(name) = r.strip_prefix("#/definitions/") {
-                    if recursive_defs.contains(name) {
-                        *value = serde_json::json!({ "type": "object" });
-                        return;
-                    }
-                }
-            }
-
-            // Add additionalProperties: false to objects with properties
-            if map.contains_key("properties") {
-                map.insert(
-                    "additionalProperties".to_string(),
-                    serde_json::Value::Bool(false),
-                );
-            }
-
-            // Recurse into all values
-            for v in map.values_mut() {
-                transform_for_sdk(v, recursive_defs);
-            }
-        }
-        serde_json::Value::Array(arr) => {
-            for v in arr.iter_mut() {
-                transform_for_sdk(v, recursive_defs);
-            }
-        }
-        _ => {}
-    }
+    // Primitive types (string, integer, number, boolean, enum) — keep as-is
+    prop.clone()
 }
 
 // Re-use the contract types from the main library crate.
@@ -243,22 +205,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  wrote {}", frontend_path.display());
     println!("  wrote {}", sidecar_path.display());
 
-    // ── 3. Export JSON Schema constants (SDK-compatible) ────────────────────
+    // ── 3. Export flat JSON Schema constants for SDK outputFormat ───────────
+    //
+    // Flat schemas: top-level fields + types only, nested objects as
+    // { "type": "object" }. The SDK's constrained decoding enforces the
+    // envelope; Rust typed deserialization validates the full payload.
 
     let schemas: Vec<(&str, serde_json::Value)> = vec![
-        ("RESEARCH_STEP", draft07_schema_for::<ResearchStepOutput>()),
-        ("DETAILED_RESEARCH", draft07_schema_for::<DetailedResearchOutput>()),
-        ("DECISIONS", draft07_schema_for::<DecisionsOutput>()),
-        ("GENERATE_SKILL", draft07_schema_for::<GenerateSkillOutput>()),
-        ("ANSWER_EVALUATION", draft07_schema_for::<AnswerEvaluationOutput>()),
-        ("CLARIFICATIONS", draft07_schema_for::<ClarificationsFile>()),
+        ("RESEARCH_STEP", flat_schema_for::<ResearchStepOutput>()),
+        ("DETAILED_RESEARCH", flat_schema_for::<DetailedResearchOutput>()),
+        ("DECISIONS", flat_schema_for::<DecisionsOutput>()),
+        ("GENERATE_SKILL", flat_schema_for::<GenerateSkillOutput>()),
+        ("ANSWER_EVALUATION", flat_schema_for::<AnswerEvaluationOutput>()),
+        ("CLARIFICATIONS", flat_schema_for::<ClarificationsFile>()),
     ];
 
     let mut consts = String::from(
         "// AUTO-GENERATED by codegen \u{2014} do not edit manually\n\
          // Run `cd app/src-tauri && cargo run --bin codegen` to regenerate\n\
          //\n\
-         // SDK-compatible: draft-07, additionalProperties: false, no recursive $ref\n\n",
+         // Flat SDK schemas: top-level fields only, nested types as { \"type\": \"object\" }.\n\
+         // Deep validation is done by Rust typed deserialization, not the SDK schema.\n\n",
     );
 
     for (name, schema) in &schemas {

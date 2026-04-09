@@ -152,10 +152,11 @@ fn test_detailed_research_output_format_requires_clarifications_payload() {
     assert!(required.iter().any(|v| v == "clarifications_json"));
 }
 
-/// Verify all generated schemas are Anthropic API-compatible:
-/// - JSON Schema draft-07 (not draft-2020-12)
+/// Verify all generated schemas are flat and Anthropic API-compatible:
+/// - JSON Schema draft-07
 /// - additionalProperties: false on the root object
-/// - No recursive $ref (Question.refinements cycle must be flattened)
+/// - No `definitions` block (flat schemas only)
+/// - No `$ref` anywhere (all types inlined or collapsed)
 #[test]
 fn test_generated_schemas_are_sdk_compatible() {
     let agents = [
@@ -181,17 +182,18 @@ fn test_generated_schemas_are_sdk_compatible() {
             "{agent}: root must have additionalProperties: false"
         );
 
-        // No recursive $ref — check that no definition references itself
-        if let Some(defs) = schema.get("definitions").and_then(|d| d.as_object()) {
-            for (name, def) in defs {
-                let def_str = serde_json::to_string(def).unwrap();
-                let self_ref = format!("\"$ref\":\"#/definitions/{}\"", name);
-                assert!(
-                    !def_str.contains(&self_ref),
-                    "{agent}: definition '{name}' must not self-reference (recursive $ref)"
-                );
-            }
-        }
+        // Must be flat — no definitions block
+        assert!(
+            schema.get("definitions").is_none(),
+            "{agent}: schema must not have definitions (must be flat)"
+        );
+
+        // Must have no $ref anywhere
+        let schema_str = serde_json::to_string(schema).unwrap();
+        assert!(
+            !schema_str.contains("$ref"),
+            "{agent}: schema must not contain $ref (must be flat)"
+        );
     }
 }
 
