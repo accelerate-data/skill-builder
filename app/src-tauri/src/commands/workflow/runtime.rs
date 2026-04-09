@@ -86,12 +86,24 @@ async fn run_workflow_step_inner(
         &settings.documents,
     );
 
-    const STRUCTURED_OUTPUT_SUFFIX: &str = " Your final response MUST be a single JSON object matching the outputFormat schema — no markdown, no explanation, no wrapping. Output ONLY the raw JSON.";
+    const JSON_ONLY: &str = "Your final response MUST be ONLY a raw JSON object — no markdown, no explanation, no wrapping.";
 
     let subagent_directive: Option<String> = match step_id {
-        1 => Some(format!("Launch the `skill-content-researcher:detailed-research` subagent to do detailed research.{}", STRUCTURED_OUTPUT_SUFFIX)),
-        2 => Some(format!("Launch the `skill-content-researcher:confirm-decisions` subagent to confirm decisions used for building skills.{}", STRUCTURED_OUTPUT_SUFFIX)),
-        3 => Some(format!("Launch the `skill-creator:generate-skill` subagent to generate the skill.{}", STRUCTURED_OUTPUT_SUFFIX)),
+        1 => Some(format!(
+            "Launch the `skill-content-researcher:detailed-research` subagent to do detailed research. \
+             {JSON_ONLY} Required fields: \
+             {{\"status\": \"detailed_research_complete\", \"refinement_count\": <number>, \"section_count\": <number>, \"clarifications_json\": <object>}}"
+        )),
+        2 => Some(format!(
+            "Launch the `skill-content-researcher:confirm-decisions` subagent to confirm decisions used for building skills. \
+             {JSON_ONLY} Required fields: \
+             {{\"version\": \"1\", \"metadata\": {{\"decision_count\": <number>, \"conflicts_resolved\": <number>, \"round\": <number>}}, \"decisions\": [{{\"id\": <string>, \"title\": <string>, \"original_question\": <string>, \"decision\": <string>, \"implication\": <string>, \"status\": \"resolved\"|\"conflict-resolved\"|\"needs-review\"|\"revised\"}}]}}"
+        )),
+        3 => Some(format!(
+            "Launch the `skill-creator:generate-skill` subagent to generate the skill. \
+             {JSON_ONLY} Required fields: \
+             {{\"status\": \"generated\"}}"
+        )),
         _ => None,
     };
 
