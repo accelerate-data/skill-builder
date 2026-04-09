@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Skill Builder Desktop App"
 authors = ["Hirak Banerjee"]
 edition = "2021"
+default-run = "skill-builder"
 
 [lib]
 name = "app_lib"
