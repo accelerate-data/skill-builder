@@ -152,6 +152,58 @@ fn test_detailed_research_output_format_requires_clarifications_payload() {
     assert!(required.iter().any(|v| v == "clarifications_json"));
 }
 
+/// Verify all generated schemas are Anthropic API-compatible:
+/// - JSON Schema draft-07 (not draft-2020-12)
+/// - additionalProperties: false on the root object
+/// - No recursive $ref (Question.refinements cycle must be flattened)
+#[test]
+fn test_generated_schemas_are_sdk_compatible() {
+    let agents = [
+        "skill-content-researcher:research-orchestrator",
+        "skill-content-researcher:detailed-research",
+        "skill-content-researcher:confirm-decisions",
+        "skill-creator:generate-skill",
+    ];
+    for agent in agents {
+        let format = workflow_output_format_for_agent(agent).unwrap();
+        let schema = &format["schema"];
+
+        // Must be draft-07
+        assert_eq!(
+            schema["$schema"],
+            "http://json-schema.org/draft-07/schema#",
+            "{agent}: schema must be draft-07"
+        );
+
+        // Root object must have additionalProperties: false
+        assert_eq!(
+            schema["additionalProperties"], false,
+            "{agent}: root must have additionalProperties: false"
+        );
+
+        // No recursive $ref — check that no definition references itself
+        if let Some(defs) = schema.get("definitions").and_then(|d| d.as_object()) {
+            for (name, def) in defs {
+                let def_str = serde_json::to_string(def).unwrap();
+                let self_ref = format!("\"$ref\":\"#/definitions/{}\"", name);
+                assert!(
+                    !def_str.contains(&self_ref),
+                    "{agent}: definition '{name}' must not self-reference (recursive $ref)"
+                );
+            }
+        }
+    }
+}
+
+/// Verify the answer evaluator schema is also SDK-compatible.
+#[test]
+fn test_answer_evaluator_schema_is_sdk_compatible() {
+    let format = answer_evaluator_output_format();
+    let schema = &format["schema"];
+    assert_eq!(schema["$schema"], "http://json-schema.org/draft-07/schema#");
+    assert_eq!(schema["additionalProperties"], false);
+}
+
 #[test]
 fn test_workflow_output_format_is_unset_for_unknown_agents() {
     assert!(workflow_output_format_for_agent("unknown-agent").is_none());
