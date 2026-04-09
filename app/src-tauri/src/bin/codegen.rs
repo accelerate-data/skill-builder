@@ -30,11 +30,16 @@ use app_lib::contracts::workflow_outputs::{
     PerQuestionEntry, ResearchStepOutput,
 };
 
-/// Project root relative to the codegen binary's Cargo.toml (`app/src-tauri`).
+/// Resolve the `app/` directory regardless of how the binary is invoked.
+///
+/// When invoked via `cargo run --manifest-path src-tauri/Cargo.toml` (cwd = `app/`),
+/// `CARGO_MANIFEST_DIR` points to `app/src-tauri`, so we go one level up.
+/// When invoked directly from `app/src-tauri` via `cargo run --bin codegen`,
+/// same logic applies.
 fn project_root() -> &'static Path {
-    // The binary runs with cwd = `app/src-tauri` when invoked via `cargo run --bin codegen`.
-    // All output paths are relative to the `app/` directory (one level up).
-    Path::new("..")
+    // CARGO_MANIFEST_DIR is set at compile time by Cargo and always points to
+    // the directory containing Cargo.toml (i.e. `app/src-tauri`).
+    Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -140,8 +145,8 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{clarifications}"###;
         clarifications = clarifications_schema,
     );
 
-    let schemas_path = Path::new("src/generated/schemas.rs");
-    write_with_dirs(schemas_path, &schemas_rs)?;
+    let schemas_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/generated/schemas.rs");
+    write_with_dirs(&schemas_path, &schemas_rs)?;
     println!("  wrote {}", schemas_path.display());
 
     println!("codegen: done");
