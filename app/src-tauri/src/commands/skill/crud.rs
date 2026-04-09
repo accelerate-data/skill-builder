@@ -310,7 +310,7 @@ pub(crate) fn create_skill_inner(
 
             if let Some(tags) = tags {
                 if !tags.is_empty() {
-                    crate::db::set_skill_tags(conn, name, tags)?;
+                    crate::db::set_skill_tags(conn, name, crate::skill_paths::DEFAULT_PLUGIN_SLUG, tags)?;
                 }
             }
 
@@ -486,14 +486,14 @@ pub(crate) fn delete_skill_inner(
             .unwrap_or(None)
             .is_some();
         if has_workflow_run {
-            crate::db::delete_workflow_run(conn, name)?;
+            crate::db::delete_workflow_run(conn, name, plugin_slug)?;
             log::info!(
                 "[delete_skill] workflow run DB records cleaned for {}",
                 name
             );
         } else {
-            crate::db::delete_imported_skill_by_name(conn, name)?;
-            crate::db::delete_skill(conn, name)?;
+            crate::db::delete_imported_skill_by_name(conn, name, plugin_slug)?;
+            crate::db::delete_skill_in_plugin(conn, name, plugin_slug)?;
             log::info!(
                 "[delete_skill] imported skill DB records cleaned for {}",
                 name

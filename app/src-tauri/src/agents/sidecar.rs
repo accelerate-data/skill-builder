@@ -75,8 +75,8 @@ pub struct SidecarConfig {
     pub transcript_log_dir: Option<String>,
     /// Plugin slug for the skill (from plugin-paths.json layout: `{root}/{plugin_slug}/{skill_name}`).
     /// Threaded through to `run_result` so persistence handlers can resolve the correct skill dir.
-    #[serde(rename = "pluginSlug", skip_serializing_if = "Option::is_none")]
-    pub plugin_slug: Option<String>,
+    #[serde(rename = "pluginSlug")]
+    pub plugin_slug: String,
 }
 
 impl std::fmt::Debug for SidecarConfig {
@@ -220,7 +220,7 @@ mod tests {
             workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
-            plugin_slug: None,
+            plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
         };
 
@@ -271,7 +271,7 @@ mod tests {
             workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
-            plugin_slug: None,
+            plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
         };
 
@@ -312,7 +312,7 @@ mod tests {
             workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
-            plugin_slug: None,
+            plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -356,7 +356,7 @@ mod tests {
             workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
-            plugin_slug: None,
+            plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
         };
         let json = serde_json::to_string(&config).unwrap();

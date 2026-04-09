@@ -66,6 +66,7 @@ pub fn get_externally_locked_skills(
 #[allow(clippy::too_many_arguments)]
 pub fn update_skill_metadata(
     skill_name: String,
+    plugin_slug: String,
     purpose: Option<String>,
     tags: Option<Vec<String>>,
     intake_json: Option<String>,
@@ -78,8 +79,9 @@ pub fn update_skill_metadata(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!(
-        "[update_skill_metadata] skill={} purpose={:?} tags={:?} intake={} description={}",
+        "[update_skill_metadata] skill={} plugin={} purpose={:?} tags={:?} intake={} description={}",
         skill_name,
+        plugin_slug,
         purpose,
         tags,
         intake_json.is_some(),
@@ -105,7 +107,7 @@ pub fn update_skill_metadata(
         })?;
     }
     if let Some(tags) = &tags {
-        crate::db::set_skill_tags(&conn, &skill_name, tags).map_err(|e| {
+        crate::db::set_skill_tags(&conn, &skill_name, &plugin_slug, tags).map_err(|e| {
             log::error!("[update_skill_metadata] Failed to set tags: {}", e);
             e
         })?;

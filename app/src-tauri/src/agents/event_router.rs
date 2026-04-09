@@ -572,7 +572,8 @@ mod tests {
                 "durationApiMs": 3500,
                 "toolUseCount": 2,
                 "compactionCount": 1,
-                "status": "completed"
+                "status": "completed",
+                "pluginSlug": "skills"
             }
         });
 
@@ -582,6 +583,7 @@ mod tests {
             Some(SidecarMessageAction::PersistRunSummary(summary)) => {
                 assert_eq!(summary.skill_name, "demo-skill");
                 assert_eq!(summary.step_id, 2);
+                assert_eq!(summary.plugin_slug, "skills");
                 assert_eq!(summary.workflow_session_id.as_deref(), Some("wf-123"));
             }
             other => panic!("expected run summary action, got {:?}", other),

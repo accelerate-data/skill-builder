@@ -292,6 +292,7 @@ pub async fn send_refine_message(
             runtime.sdk_effort,
             runtime.fallback_model,
             runtime.refine_prompt_suggestions,
+            &runtime.plugin_slug,
         );
 
         log::info!(

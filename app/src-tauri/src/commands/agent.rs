@@ -129,6 +129,7 @@ pub async fn start_agent(
     workflow_session_id: Option<String>,
     usage_session_id: Option<String>,
     run_source: Option<String>,
+    plugin_slug: String,
 ) -> Result<String, String> {
     log::info!(
         "[start_agent] agent_id={} model={} skill_name={} agent_name={:?} step_id={:?} run_source={:?}",
@@ -222,7 +223,7 @@ pub async fn start_agent(
         workflow_session_id,
         usage_session_id,
         run_source,
-        plugin_slug: None,
+        plugin_slug,
         transcript_log_dir: None,
     };
 

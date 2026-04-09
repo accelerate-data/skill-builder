@@ -624,7 +624,7 @@ async fn import_marketplace_entries_to_library(
                 skill.plugin_display_name = Some(plugin_display_name.clone());
 
                 let existing_imported =
-                    crate::db::get_imported_skill(&conn, &skill.skill_name).unwrap_or(None);
+                    crate::db::get_imported_skill(&conn, &skill.skill_name, &plugin_slug).unwrap_or(None);
                 if let Some(ref existing) = existing_imported {
                     merge_imported_fields(&mut skill, existing);
                 }

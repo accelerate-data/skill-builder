@@ -163,7 +163,7 @@ mod tests {
             workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
-            plugin_slug: None,
+            plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
         };
         let json = serde_json::to_string(&config).unwrap();

@@ -221,6 +221,7 @@ mod tests {
             conn,
             agent_id,
             skill_name,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             step_id,
             "claude-sonnet-4-6",
             status,
@@ -254,6 +255,7 @@ mod tests {
             conn,
             agent_id,
             skill_name,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             step_id,
             "claude-sonnet-4-6",
             status,
@@ -373,15 +375,15 @@ mod tests {
         crate::db::upsert_skill(&conn, "skill-a", "skill-builder", "test").unwrap();
         // Insert two sonnet runs and one opus run
         crate::db::persist_agent_run(
-            &conn, "run-1", "skill-a", 0, "claude-sonnet-4-6", "completed",
+            &conn, "run-1", "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "claude-sonnet-4-6", "completed",
             1000, 200, 0, 0, 0.10, 5000, 3, Some("end_turn"), None, 1, 0, None, Some("ws-1"),
         ).unwrap();
         crate::db::persist_agent_run(
-            &conn, "run-2", "skill-a", 1, "claude-opus-4-6", "completed",
+            &conn, "run-2", "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 1, "claude-opus-4-6", "completed",
             2000, 400, 0, 0, 0.50, 8000, 5, Some("end_turn"), None, 2, 0, None, Some("ws-2"),
         ).unwrap();
         crate::db::persist_agent_run(
-            &conn, "run-3", "skill-a", 0, "claude-sonnet-4-6", "completed",
+            &conn, "run-3", "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "claude-sonnet-4-6", "completed",
             500, 100, 0, 0, 0.05, 2000, 1, Some("end_turn"), None, 0, 0, None, Some("ws-3"),
         ).unwrap();
 
@@ -459,7 +461,7 @@ mod tests {
 
         // Attempt to overwrite with shutdown status (should be a no-op)
         crate::db::persist_agent_run(
-            &conn, "run-1", "skill-a", 0, "claude-sonnet-4-6", "shutdown",
+            &conn, "run-1", "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "claude-sonnet-4-6", "shutdown",
             0, 0, 0, 0, 0.0, 0, 0, None, None, 0, 0, None, None,
         ).unwrap();
 

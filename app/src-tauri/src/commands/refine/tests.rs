@@ -275,6 +275,7 @@ fn base_refine_config(prompt: &str) -> (crate::agents::sidecar::SidecarConfig, S
         None,
         None,
         true,
+        "skills",
     )
 }
 
@@ -324,6 +325,7 @@ fn test_refine_config_cwd_points_to_workspace_root() {
         None,
         None,
         true,
+        "skills",
     );
     assert_eq!(config.workspace_root_dir, ws);
     assert_eq!(config.workspace_skill_dir, ws);
@@ -368,6 +370,7 @@ fn test_refine_config_extended_thinking_sets_budget() {
         None,
         None,
         true,
+        "skills",
     );
     assert_eq!(
         config.thinking,

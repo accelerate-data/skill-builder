@@ -92,7 +92,7 @@ export interface RunResultEvent {
   status: "completed" | "error" | "shutdown";
   resultText?: string;
   workspacePath?: string;
-  pluginSlug?: string;
+  pluginSlug: string;
 }
 
 export type AgentEvent =

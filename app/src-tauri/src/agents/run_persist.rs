@@ -35,6 +35,7 @@ fn persist_run_summary_to_conn(
                 conn,
                 agent_id,
                 &summary.skill_name,
+                &summary.plugin_slug,
                 summary.step_id,
                 &entry.model,
                 &summary.status,
@@ -76,6 +77,7 @@ fn persist_run_summary_to_conn(
             conn,
             agent_id,
             &summary.skill_name,
+            &summary.plugin_slug,
             summary.step_id,
             &summary.model,
             &summary.status,
@@ -198,13 +200,11 @@ fn persist_description_evals(
         }
     };
 
-    let plugin_slug = summary.plugin_slug.as_deref()
-        .unwrap_or(crate::skill_paths::DEFAULT_PLUGIN_SLUG);
     // description-evals.json lives in the workspace skill dir under description-optimization/,
     // not in the skills source directory.
     let eval_path = crate::skill_paths::workspace_skill_dir(
         Path::new(workspace_path),
-        plugin_slug,
+        &summary.plugin_slug,
         &summary.skill_name,
     ).join("description-optimization").join("description-evals.json");
     if let Err(e) = write_eval_queries_to_file(&eval_path, &queries) {
@@ -279,7 +279,7 @@ mod tests {
             status: "completed".to_string(),
             result_text: None,
             workspace_path: None,
-            plugin_slug: None,
+            plugin_slug: "skills".to_string(),
         };
 
         persist_run_summary_to_conn(&conn, "agent-aggregate", &summary);
@@ -347,7 +347,7 @@ mod tests {
             status: "completed".to_string(),
             result_text: None,
             workspace_path: None,
-            plugin_slug: None,
+            plugin_slug: "skills".to_string(),
         };
 
         persist_run_summary_to_conn(&conn, "agent-breakdown", &summary);

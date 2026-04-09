@@ -45,6 +45,7 @@ export const deleteSkill = (workspacePath: string, name: string) =>
 
 export const updateSkillMetadata = (
   skillName: string,
+  pluginSlug: string,
   purpose: string | null,
   tags: string[] | null,
   intakeJson: string | null,
@@ -56,6 +57,7 @@ export const updateSkillMetadata = (
   disableModelInvocation?: boolean | null,
 ) => invoke("update_skill_metadata", {
   skillName,
+  pluginSlug,
   purpose,
   tags,
   intakeJson,
@@ -153,6 +155,7 @@ export const startAgent = (
   usageSessionId?: string,
   runSource?: string,
   systemPrompt?: string,
+  pluginSlug?: string,
 ) => invoke<string>("start_agent", {
   agentId, prompt, systemPrompt: systemPrompt ?? null, model, cwd, allowedTools, maxTurns,
   permissionMode: permissionMode ?? null, sessionId,
@@ -162,6 +165,7 @@ export const startAgent = (
   workflowSessionId: workflowSessionId ?? null,
   usageSessionId: usageSessionId ?? null,
   runSource: runSource ?? null,
+  pluginSlug: pluginSlug ?? "skills",
 });
 
 // --- Workflow ---

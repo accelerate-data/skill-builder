@@ -3,7 +3,7 @@ use rusqlite::{Connection, OptionalExtension};
 use crate::types::{WorkflowRunRow, WorkflowStepRow};
 
 use super::locks::check_pid_alive;
-use super::skills::{delete_skill, get_skill_master_id, upsert_skill};
+use super::skills::{delete_skill_in_plugin, get_skill_master_id_any_plugin, get_skill_master_id_in_plugin, upsert_skill};
 
 // --- Workflow Run ---
 
@@ -166,12 +166,12 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
         .map_err(|e| e.to_string())
 }
 
-pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), String> {
+pub fn delete_workflow_run(conn: &Connection, skill_name: &str, plugin_slug: &str) -> Result<(), String> {
     // Look up FK ids before deleting the parent rows
     let wr_id = get_workflow_run_id(conn, skill_name)?
         .ok_or_else(|| format!("Workflow run not found for skill '{}'", skill_name))?;
-    let s_id = get_skill_master_id(conn, skill_name)?
-        .ok_or_else(|| format!("Skill '{}' not found in skills master", skill_name))?;
+    let s_id = get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)?
+        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
 
     // Delete workflow-state child rows by FK columns only.
     // Usage history tables (agent_runs/workflow_sessions) are intentionally retained.
@@ -213,7 +213,7 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     .map_err(|e| e.to_string())?;
 
     // Also delete from skills master table
-    delete_skill(conn, skill_name)?;
+    delete_skill_in_plugin(conn, skill_name, plugin_slug)?;
     Ok(())
 }
 
@@ -304,7 +304,7 @@ pub fn create_workflow_session(
     skill_name: &str,
     pid: u32,
 ) -> Result<(), String> {
-    let skill_master_id = get_skill_master_id(conn, skill_name)?;
+    let skill_master_id = get_skill_master_id_any_plugin(conn, skill_name)?;
     conn.execute(
         "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, skill_id, pid) VALUES (?1, ?2, ?3, ?4)",
         rusqlite::params![session_id, skill_name, skill_master_id, pid as i64],
@@ -349,7 +349,7 @@ pub fn record_reconciliation_event(
 /// whose PID is still alive. Used by startup reconciliation to skip skills owned by
 /// another running instance.
 pub fn has_active_session_with_live_pid(conn: &Connection, skill_name: &str) -> bool {
-    let s_id = match get_skill_master_id(conn, skill_name) {
+    let s_id = match get_skill_master_id_any_plugin(conn, skill_name) {
         Ok(Some(id)) => id,
         _ => return false,
     };
