@@ -354,7 +354,7 @@ function DecisionCard({
   const [draft, setDraft] = useState(decision);
   useEffect(() => { setDraft(decision); }, [decision]);
 
-  const colors = statusColors[decision.status] ?? statusColors.resolved;
+  const colors = statusColors[decision.status];
 
   function handleDraftChange(field: "decision" | "implication", value: string) {
     const updated = { ...draft, [field]: value };
