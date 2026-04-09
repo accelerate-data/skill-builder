@@ -74,18 +74,25 @@ pub(crate) fn build_step0_prompt(
 ) -> String {
     let workspace_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let schemas_path = format!(
+        "{}/.claude/plugins/skill-content-researcher/skills/shared/schemas.md",
+        workspace_path.replace('\\', "/"),
+    );
     format!(
         "The skill name is: {}. The workspace directory is: {}. \
          The user context file is at: {}/user-context.md. \
          The context directory is: {}/context. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. \
          Read only the specific files named in your instructions and write files directly. \
+         The clarifications schema reference is at: {}. \
          The maximum research dimensions before scope warning is: {}. \
-         Use the skill-content-researcher:research to produce clarification questions which will be used to write the skill.",
+         Use the skill-content-researcher:research to produce clarification questions which will be used to write the skill. \
+         Your final response MUST be a single JSON object matching the outputFormat schema — no markdown, no explanation, no wrapping. Output ONLY the raw JSON.",
         skill_name,
         workspace_str,
         workspace_str,
         workspace_str,
+        schemas_path,
         max_dimensions,
     )
 }
