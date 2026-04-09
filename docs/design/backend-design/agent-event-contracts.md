@@ -1,8 +1,10 @@
 # Agent Event Contracts
 
 As-built reference for all Tauri events emitted from the Rust backend to the React frontend.
-All payload structs live in `app/src-tauri/src/agents/events.rs`. Frontend types that mirror
-these payloads live in `app/src/hooks/use-agent-stream.ts`.
+All payload structs live in `app/src-tauri/src/contracts/agent_events.rs` (canonical Rust types).
+TypeScript types are generated from Rust via codegen into `app/src/generated/contracts.ts` and
+`app/sidecar/generated/contracts.ts`. Frontend listener registration lives in
+`app/src/hooks/use-agent-stream.ts`.
 
 ---
 
@@ -60,6 +62,11 @@ internally consumed (i.e. everything except `run_result` and structured `agent_e
 |---|---|---|
 | `agent_id` | `String` | Identifier of the originating agent |
 | `message` | `serde_json::Value` | Full JSON message from the sidecar |
+
+> **Note:** Individual structured agent events (run_config, turn_usage, etc.) are now typed
+> via the `AgentEvent` tagged union in `contracts/agent_events.rs` rather than remaining
+> as opaque `serde_json::Value`. The `agent-message` channel still carries untyped JSON for
+> messages that are not internally consumed structured events.
 
 ---
 
@@ -163,7 +170,9 @@ This means frontend payload types have the shape
 
 ## Source References
 
-- Rust payload structs and emit logic: `app/src-tauri/src/agents/events.rs`
+- Canonical Rust contract types: `app/src-tauri/src/contracts/agent_events.rs`
+- Rust emit logic: `app/src-tauri/src/agents/events.rs`
+- Generated TypeScript types: `app/src/generated/contracts.ts`, `app/sidecar/generated/contracts.ts`
 - Frontend listener registration: `app/src/hooks/use-agent-stream.ts`
 - Frontend TypeScript event types: `app/src/lib/agent-events.ts`
 - Frontend run state and error classification: `app/src/stores/agent-store.ts`

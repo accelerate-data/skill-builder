@@ -8,6 +8,8 @@ Authoritative format spec for all artifacts produced and consumed during the ski
 
 This spec is normative. If examples and implementation diverge, treat this document as the source of truth and update prompts/parsers/tests in the same change.
 
+**Generated contracts:** Structural contracts for workflow artifacts (clarifications, decisions, answer evaluation, generate-skill output) and agent events are now defined as Rust structs in `app/src-tauri/src/contracts/` and generated via Specta (TypeScript types) and Schemars (JSON Schema). The Rust structs are the canonical type definitions; TypeScript consumers import from `app/src/generated/contracts.ts` and `app/sidecar/generated/contracts.ts`.
+
 ### Required test gates for contract changes
 
 When changing any format in this file, run all applicable checks before merge:
@@ -26,6 +28,7 @@ When changing any format in this file, run all applicable checks before merge:
 |---|---|---|
 | Structural (static) | Prompt inventory, frontmatter/model tiers, anti-pattern bans, and key policy-text invariants | `cd app && npm run test:agents:structural` |
 | Unit parser checks | App-side parsing stays compatible with canonical artifacts | `cd app && npm run test:unit` |
+| Codegen freshness | Generated TypeScript types and JSON Schema match Rust contract structs | `cd app && npm run codegen && git diff --exit-code src/generated/ sidecar/generated/ src-tauri/src/generated/` |
 | Promptfoo smoke (live) | End-to-end behavior still produces contract-compliant outputs in representative scenarios | `cd app && FORCE_PLUGIN_TESTS=1 npm run test:agents:smoke` |
 
 ### Promptfoo scenario ownership
@@ -47,6 +50,8 @@ Scenarios currently covering the behavior contract:
 # Canonical `clarifications.json` Format
 
 Written by the research skill (via `research-orchestrator`, Step 0). Updated in-place by `detailed-research` (Step 1). Read by `answer-evaluator`, `detailed-research`, `confirm-decisions`, and guard logic in downstream agents.
+
+> **Canonical type definition:** `app/src-tauri/src/contracts/clarifications.rs` (`ClarificationsFile` struct). TypeScript types are generated from Rust via codegen.
 
 ---
 
@@ -261,7 +266,7 @@ The research planner now represents the research plan **inside the `research_out
 }
 ```
 
-The precise field‑level schema for `research_output` is defined in `agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md` and enforced at runtime by the plugin’s Python normalizer. This document describes the **envelope** and where the canonical schema lives; if `schemas.md` and this example diverge, treat `schemas.md` as authoritative.
+The precise field‑level schema for `research_output` is defined in the Rust contract struct `app/src-tauri/src/contracts/clarifications.rs` (canonical type definition) and the agent-facing reference at `agent-sources/workspace/shared/schemas.md`. Runtime enforcement uses Serde deserialization against the Rust types. If `schemas.md` and this example diverge, treat the Rust contract types as authoritative.
 
 Legacy `research-plan.md` markdown output is no longer part of the app ↔ agent contract; it may still be generated for human‑readable views but must be derived from `research_output.metadata.research_plan`.
 
