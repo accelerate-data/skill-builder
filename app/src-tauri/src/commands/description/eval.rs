@@ -262,7 +262,7 @@ async fn run_single_eval_query(
         workflow_session_id: None,
         usage_session_id: None,
         run_source: Some("gate-eval".to_string()),
-        plugin_slug: Some(plugin_slug.to_string()),
+        plugin_slug: plugin_slug.to_string(),
         transcript_log_dir: Some(transcript_dir_str.clone()),
     };
 

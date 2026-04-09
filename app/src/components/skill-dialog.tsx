@@ -242,6 +242,7 @@ export default function SkillDialog(props: SkillDialogProps) {
         }
         await updateSkillMetadata(
           nameChanged ? skillName : editSkill.name,
+          editSkill.plugin_slug,
           purpose || null,
           tags,
           buildIntakeJson({ context: contextQuestions }),

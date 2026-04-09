@@ -321,6 +321,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         `synthetic:evals:${skillName}`,
         "test",
         genSystemPrompt,
+        pluginSlug,
       );
 
       useAgentStore.getState().registerRun(
@@ -408,6 +409,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         `synthetic:evals:${skillName}`,
         "test",
         regenSystemPrompt,
+        pluginSlug,
       );
 
       useAgentStore.getState().registerRun(
@@ -556,6 +558,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
         `synthetic:evals:${skillName}`,
         "test",
         evalSystemPrompt,
+        pluginSlug,
       );
 
       useAgentStore.getState().registerRun(

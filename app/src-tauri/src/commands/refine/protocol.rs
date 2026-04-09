@@ -155,6 +155,7 @@ pub(super) fn build_refine_config(
     sdk_effort: Option<String>,
     fallback_model: Option<String>,
     refine_prompt_suggestions: bool,
+    plugin_slug: &str,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
 
@@ -214,7 +215,7 @@ pub(super) fn build_refine_config(
         workflow_session_id: None,
         usage_session_id: Some(usage_session_id.to_string()),
         run_source: Some("refine".to_string()),
-        plugin_slug: None,
+        plugin_slug: plugin_slug.to_string(),
         transcript_log_dir: None,
     };
 

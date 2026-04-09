@@ -446,7 +446,7 @@ pub async fn start_generate_desc_evals(
         workflow_session_id: None,
         usage_session_id: None,
         run_source: Some("workflow".to_string()),
-        plugin_slug: Some(plugin_slug),
+        plugin_slug,
         transcript_log_dir: Some(desc_opt_log_dir.clone()),
     };
 

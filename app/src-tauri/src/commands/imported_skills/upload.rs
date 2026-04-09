@@ -278,7 +278,7 @@ mod tests {
             crate::git::skill_version_tag_exists(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill", "1.0.0").unwrap()
         );
         assert_eq!(
-            crate::db::get_imported_skill(&conn, "imported-skill")
+            crate::db::get_imported_skill(&conn, "imported-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG)
                 .unwrap()
                 .unwrap()
                 .version
@@ -334,7 +334,7 @@ mod tests {
         .unwrap_err();
 
         assert!(err.contains("already exists"));
-        assert!(crate::db::get_imported_skill(&conn, "imported-skill")
+        assert!(crate::db::get_imported_skill(&conn, "imported-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG)
             .unwrap()
             .is_none());
     }

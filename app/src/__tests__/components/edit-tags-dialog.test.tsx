@@ -201,6 +201,7 @@ describe("SkillDialog (edit mode)", () => {
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
         skillName: "sales-pipeline",
+        pluginSlug: "skills",
         purpose: "domain",
         tags: ["analytics", "crm"],
         intakeJson: null,

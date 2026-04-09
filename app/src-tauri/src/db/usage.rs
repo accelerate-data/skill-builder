@@ -1,7 +1,7 @@
 use crate::types::{AgentRunRecord, UsageByModel, UsageByStep, UsageSummary, WorkflowSessionRecord};
 use rusqlite::Connection;
 
-use super::skills::get_skill_master_id;
+use super::skills::get_skill_master_id_in_plugin;
 use super::workflow::get_workflow_run_id;
 
 pub(crate) fn step_name(step_id: i32) -> String {
@@ -40,6 +40,7 @@ pub fn persist_agent_run(
     conn: &Connection,
     agent_id: &str,
     skill_name: &str,
+    plugin_slug: &str,
     step_id: i32,
     model: &str,
     status: &str,
@@ -82,7 +83,7 @@ pub fn persist_agent_run(
     // idempotent with create_workflow_session; for refine/test synthetic IDs this
     // creates the required session row on first persist.
     if let Some(ws_id) = workflow_session_id {
-        let skill_master_id = get_skill_master_id(conn, skill_name)?;
+        let skill_master_id = get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)?;
         conn.execute(
             "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, skill_id, pid)
              VALUES (?1, ?2, ?3, ?4)",

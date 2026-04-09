@@ -59,6 +59,7 @@ fn test_list_skills_db_primary_includes_tags() {
     crate::db::set_skill_tags(
         &conn,
         "tagged-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         &["analytics".into(), "salesforce".into()],
     )
     .unwrap();
@@ -968,7 +969,7 @@ fn test_update_metadata_tags() {
     let conn = create_test_db();
     setup_skill_for_metadata(&conn, "tag-skill");
 
-    crate::db::set_skill_tags(&conn, "tag-skill", &["rust".into(), "wasm".into()]).unwrap();
+    crate::db::set_skill_tags(&conn, "tag-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["rust".into(), "wasm".into()]).unwrap();
 
     let tags = crate::db::get_tags_for_skills(&conn, &["tag-skill".into()]).unwrap();
     assert_eq!(tags.get("tag-skill").unwrap(), &["rust", "wasm"]);
@@ -999,7 +1000,7 @@ fn test_update_metadata_all_fields() {
         "UPDATE workflow_runs SET purpose = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
         rusqlite::params!["full-meta", "source"],
     ).unwrap();
-    crate::db::set_skill_tags(&conn, "full-meta", &["api".into(), "rest".into()]).unwrap();
+    crate::db::set_skill_tags(&conn, "full-meta", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["api".into(), "rest".into()]).unwrap();
     crate::db::set_skill_intake(&conn, "full-meta", Some(r#"{"audience":"Devs"}"#)).unwrap();
 
     let row = crate::db::get_workflow_run(&conn, "full-meta")
@@ -1067,9 +1068,9 @@ fn test_update_metadata_nonexistent_skill_is_noop() {
     crate::db::set_skill_intake(&conn, "ghost", Some("{}")).unwrap();
 
     // set_skill_tags now requires a skills master row — returns Err for unknown skills
-    let result = crate::db::set_skill_tags(&conn, "ghost", &["tag".into()]);
+    let result = crate::db::set_skill_tags(&conn, "ghost", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["tag".into()]);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("not found in skills master"));
+    assert!(result.unwrap_err().contains("not found in plugin"));
 
     // No row should exist
     assert!(crate::db::get_workflow_run(&conn, "ghost")
@@ -1554,7 +1555,7 @@ fn test_sync_user_context_writes_file_after_metadata_update() {
     crate::db::save_workflow_run(&conn, "test-sync-skill", 0, "pending", "domain").unwrap();
 
     // Set tags and behaviour fields
-    crate::db::set_skill_tags(&conn, "test-sync-skill", &["tag-a".to_string(), "tag-b".to_string()]).unwrap();
+    crate::db::set_skill_tags(&conn, "test-sync-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["tag-a".to_string(), "tag-b".to_string()]).unwrap();
     crate::db::set_skill_behaviour(
         &conn,
         "test-sync-skill",
@@ -1695,7 +1696,7 @@ fn test_sync_user_context_reflects_updated_fields_after_edit() {
 
     // Create skill with initial values
     crate::db::save_workflow_run(&conn, "edit-flow-skill", 0, "pending", "domain").unwrap();
-    crate::db::set_skill_tags(&conn, "edit-flow-skill", &["old-tag".to_string()]).unwrap();
+    crate::db::set_skill_tags(&conn, "edit-flow-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["old-tag".to_string()]).unwrap();
     crate::db::set_skill_behaviour(&conn, "edit-flow-skill", Some("Old description"), None, None, None, Some(false), None).unwrap();
 
     // First sync — initial state
@@ -1710,7 +1711,7 @@ fn test_sync_user_context_reflects_updated_fields_after_edit() {
         "UPDATE skills SET purpose = 'platform', updated_at = datetime('now') WHERE name = 'edit-flow-skill'",
         [],
     ).unwrap();
-    crate::db::set_skill_tags(&conn, "edit-flow-skill", &["new-tag-a".to_string(), "new-tag-b".to_string()]).unwrap();
+    crate::db::set_skill_tags(&conn, "edit-flow-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["new-tag-a".to_string(), "new-tag-b".to_string()]).unwrap();
     crate::db::set_skill_behaviour(&conn, "edit-flow-skill", Some("Updated description"), None, None, Some("provide a URL"), Some(true), None).unwrap();
     crate::db::set_skill_intake(&conn, "edit-flow-skill", Some(r#"{"context":"New custom context"}"#)).unwrap();
 

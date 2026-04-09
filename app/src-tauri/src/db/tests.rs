@@ -360,7 +360,7 @@ fn test_delete_workflow_run() {
     let conn = create_test_db();
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
     save_workflow_step(&conn, "test-skill", 0, "completed").unwrap();
-    delete_workflow_run(&conn, "test-skill").unwrap();
+    delete_workflow_run(&conn, "test-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
     assert!(get_workflow_run(&conn, "test-skill").unwrap().is_none());
     assert!(get_workflow_steps(&conn, "test-skill").unwrap().is_empty());
 }
@@ -525,7 +525,7 @@ fn test_delete_workflow_run_soft_deletes_skills_master() {
     save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
     assert!(get_skill_master_id(&conn, "my-skill").unwrap().is_some());
 
-    delete_workflow_run(&conn, "my-skill").unwrap();
+    delete_workflow_run(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
     // Workflow state is removed while the skills master row is soft-deleted.
     assert!(get_workflow_run(&conn, "my-skill").unwrap().is_none());
@@ -548,6 +548,7 @@ fn test_delete_workflow_run_preserves_agent_run_usage_history() {
         &conn,
         "agent-usage-1",
         "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         0,
         "sonnet",
         "completed",
@@ -576,7 +577,7 @@ fn test_delete_workflow_run_preserves_agent_run_usage_history() {
         .unwrap();
     assert_eq!(count_before, 1);
 
-    delete_workflow_run(&conn, "my-skill").unwrap();
+    delete_workflow_run(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
     let count_after: i64 = conn
         .query_row(
@@ -694,6 +695,7 @@ fn test_set_and_get_tags() {
     set_skill_tags(
         &conn,
         "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         &["analytics".into(), "salesforce".into()],
     )
     .unwrap();
@@ -711,6 +713,7 @@ fn test_tags_normalize_lowercase_trim() {
     set_skill_tags(
         &conn,
         "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         &["  Analytics ".into(), "SALESFORCE".into(), "  ".into()],
     )
     .unwrap();
@@ -728,6 +731,7 @@ fn test_tags_deduplicate() {
     set_skill_tags(
         &conn,
         "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         &["analytics".into(), "analytics".into(), "Analytics".into()],
     )
     .unwrap();
@@ -742,8 +746,8 @@ fn test_tags_deduplicate() {
 fn test_set_tags_replaces() {
     let conn = create_test_db();
     upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
-    set_skill_tags(&conn, "my-skill", &["old-tag".into()]).unwrap();
-    set_skill_tags(&conn, "my-skill", &["new-tag".into()]).unwrap();
+    set_skill_tags(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["old-tag".into()]).unwrap();
+    set_skill_tags(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["new-tag".into()]).unwrap();
     let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()])
         .unwrap()
         .remove("my-skill")
@@ -757,9 +761,9 @@ fn test_get_tags_for_skills_batch() {
     upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     upsert_skill(&conn, "skill-c", "skill-builder", "domain").unwrap();
-    set_skill_tags(&conn, "skill-a", &["tag1".into(), "tag2".into()]).unwrap();
-    set_skill_tags(&conn, "skill-b", &["tag2".into(), "tag3".into()]).unwrap();
-    set_skill_tags(&conn, "skill-c", &["tag1".into()]).unwrap();
+    set_skill_tags(&conn, "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["tag1".into(), "tag2".into()]).unwrap();
+    set_skill_tags(&conn, "skill-b", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["tag2".into(), "tag3".into()]).unwrap();
+    set_skill_tags(&conn, "skill-c", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["tag1".into()]).unwrap();
 
     let names = vec!["skill-a".into(), "skill-b".into(), "skill-c".into()];
     let map = get_tags_for_skills(&conn, &names).unwrap();
@@ -773,8 +777,8 @@ fn test_get_all_tags() {
     let conn = create_test_db();
     upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
-    set_skill_tags(&conn, "skill-a", &["beta".into(), "alpha".into()]).unwrap();
-    set_skill_tags(&conn, "skill-b", &["beta".into(), "gamma".into()]).unwrap();
+    set_skill_tags(&conn, "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["beta".into(), "alpha".into()]).unwrap();
+    set_skill_tags(&conn, "skill-b", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["beta".into(), "gamma".into()]).unwrap();
 
     let all = get_all_tags(&conn).unwrap();
     assert_eq!(all, vec!["alpha", "beta", "gamma"]);
@@ -784,9 +788,9 @@ fn test_get_all_tags() {
 fn test_delete_workflow_run_cascades_tags() {
     let conn = create_test_db();
     save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
-    set_skill_tags(&conn, "my-skill", &["tag1".into(), "tag2".into()]).unwrap();
+    set_skill_tags(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["tag1".into(), "tag2".into()]).unwrap();
 
-    delete_workflow_run(&conn, "my-skill").unwrap();
+    delete_workflow_run(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
     let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()])
         .unwrap()
@@ -862,7 +866,7 @@ fn test_list_all_workflow_runs_after_delete() {
     save_workflow_run(&conn, "skill-a", 0, "pending", "domain").unwrap();
     save_workflow_run(&conn, "skill-b", 0, "pending", "domain").unwrap();
 
-    delete_workflow_run(&conn, "skill-a").unwrap();
+    delete_workflow_run(&conn, "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
     let runs = list_all_workflow_runs(&conn).unwrap();
     assert_eq!(runs.len(), 1);
@@ -1009,6 +1013,7 @@ fn test_persist_agent_run_inserts_correctly() {
         &conn,
         "agent-1",
         "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         3,
         "sonnet",
         "completed",
@@ -1059,6 +1064,7 @@ fn test_persist_agent_run_without_session_id() {
         &conn,
         "agent-2",
         "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "haiku",
         "completed",
@@ -1093,6 +1099,7 @@ fn test_persist_agent_run_shutdown_does_not_overwrite_completed() {
         &conn,
         "agent-1",
         "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         0,
         "sonnet",
         "completed",
@@ -1114,7 +1121,7 @@ fn test_persist_agent_run_shutdown_does_not_overwrite_completed() {
 
     // Then attempt to overwrite with shutdown (partial/zero data)
     persist_agent_run(
-        &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown", 0, 0, 0, 0, 0.0, 0, 0, None,
+        &conn, "agent-1", "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "sonnet", "shutdown", 0, 0, 0, 0, 0.0, 0, 0, None,
         None, 0, 0, None, ws,
     )
     .unwrap();
@@ -1134,14 +1141,14 @@ fn test_persist_agent_run_shutdown_overwrites_running() {
 
     // First persist as running (agent start)
     persist_agent_run(
-        &conn, "agent-1", "my-skill", 0, "sonnet", "running", 0, 0, 0, 0, 0.0, 0, 0, None,
+        &conn, "agent-1", "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "sonnet", "running", 0, 0, 0, 0, 0.0, 0, 0, None,
         None, 0, 0, None, ws,
     )
     .unwrap();
 
     // Then shutdown with partial data — should succeed
     persist_agent_run(
-        &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown", 500, 200, 0, 0, 0.05, 3000, 0,
+        &conn, "agent-1", "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "sonnet", "shutdown", 500, 200, 0, 0, 0.05, 3000, 0,
         None, None, 0, 0, None, ws,
     )
     .unwrap();
@@ -1161,6 +1168,7 @@ fn test_get_usage_summary_correct_aggregates() {
         &conn,
         "agent-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -1183,6 +1191,7 @@ fn test_get_usage_summary_correct_aggregates() {
         &conn,
         "agent-2",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         3,
         "opus",
         "completed",
@@ -1203,7 +1212,7 @@ fn test_get_usage_summary_correct_aggregates() {
     .unwrap();
     // Running agents are included (toggle hides zero-cost sessions, not individual statuses)
     persist_agent_run(
-        &conn, "agent-3", "skill-a", 5, "sonnet", "running", 100, 50, 0, 0, 0.01, 0, 0, None,
+        &conn, "agent-3", "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 5, "sonnet", "running", 100, 50, 0, 0, 0.01, 0, 0, None,
         None, 0, 0, None, ws,
     )
     .unwrap();
@@ -1233,6 +1242,7 @@ fn test_reset_usage_marks_runs() {
         &conn,
         "agent-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -1255,6 +1265,7 @@ fn test_reset_usage_marks_runs() {
         &conn,
         "agent-2",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         3,
         "opus",
         "completed",
@@ -1295,6 +1306,7 @@ fn test_reset_usage_marks_runs() {
         &conn,
         "agent-3",
         "skill-b",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         6,
         "sonnet",
         "completed",
@@ -1328,6 +1340,7 @@ fn test_get_usage_by_step_groups_correctly() {
         &conn,
         "agent-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -1350,6 +1363,7 @@ fn test_get_usage_by_step_groups_correctly() {
         &conn,
         "agent-2",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -1372,6 +1386,7 @@ fn test_get_usage_by_step_groups_correctly() {
         &conn,
         "agent-3",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         5,
         "sonnet",
         "completed",
@@ -1415,6 +1430,7 @@ fn test_get_usage_by_model_groups_correctly() {
         &conn,
         "agent-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -1437,6 +1453,7 @@ fn test_get_usage_by_model_groups_correctly() {
         &conn,
         "agent-2",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         5,
         "opus",
         "completed",
@@ -1459,6 +1476,7 @@ fn test_get_usage_by_model_groups_correctly() {
         &conn,
         "agent-3",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         3,
         "sonnet",
         "completed",
@@ -1504,6 +1522,7 @@ fn test_get_agent_runs_model_family_filter() {
         &conn,
         "run-sonnet",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         0,
         "claude-sonnet-4-6",
         "completed",
@@ -1526,6 +1545,7 @@ fn test_get_agent_runs_model_family_filter() {
         &conn,
         "run-opus",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         4,
         "claude-opus-4-6",
         "completed",
@@ -1548,6 +1568,7 @@ fn test_get_agent_runs_model_family_filter() {
         &conn,
         "run-haiku",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "claude-haiku-4-5-20251001",
         "completed",
@@ -1599,6 +1620,7 @@ fn test_normalize_model_name_at_persist_time() {
         &conn,
         "a-sonnet",
         "skill-x",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         0,
         "sonnet",
         "completed",
@@ -1621,6 +1643,7 @@ fn test_normalize_model_name_at_persist_time() {
         &conn,
         "a-haiku",
         "skill-x",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         0,
         "Haiku",
         "completed",
@@ -1643,6 +1666,7 @@ fn test_normalize_model_name_at_persist_time() {
         &conn,
         "a-opus",
         "skill-x",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         0,
         "opus",
         "completed",
@@ -1713,6 +1737,7 @@ fn test_persist_agent_run_auto_creates_workflow_session_for_synthetic_ids() {
         &conn,
         "agent-r",
         "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         -10,
         "sonnet",
         "completed",
@@ -1754,6 +1779,7 @@ fn test_get_usage_by_step_labels_refine_and_test() {
         &conn,
         "agent-refine",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         -10,
         "sonnet",
         "completed",
@@ -1776,6 +1802,7 @@ fn test_get_usage_by_step_labels_refine_and_test() {
         &conn,
         "agent-test",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         -11,
         "sonnet",
         "completed",
@@ -1809,6 +1836,7 @@ fn test_reset_usage_excludes_from_by_step_and_by_model() {
         &conn,
         "agent-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -1850,6 +1878,7 @@ fn test_composite_pk_allows_same_agent_different_models() {
         &conn,
         "orchestrator-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "opus",
         "completed",
@@ -1872,6 +1901,7 @@ fn test_composite_pk_allows_same_agent_different_models() {
         &conn,
         "orchestrator-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -1922,7 +1952,7 @@ fn test_composite_pk_upsert_same_agent_and_model() {
 
     // Insert then update same agent_id + model — should replace, not duplicate
     persist_agent_run(
-        &conn, "agent-1", "skill-a", 1, "sonnet", "running", 0, 0, 0, 0, 0.0, 0, 0, None, None,
+        &conn, "agent-1", "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 1, "sonnet", "running", 0, 0, 0, 0, 0.0, 0, 0, None, None,
         0, 0, None, None,
     )
     .unwrap();
@@ -1930,6 +1960,7 @@ fn test_composite_pk_upsert_same_agent_and_model() {
         &conn,
         "agent-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -1984,6 +2015,7 @@ fn test_composite_pk_session_agent_count_uses_distinct() {
         &conn,
         "agent-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "opus",
         "completed",
@@ -2006,6 +2038,7 @@ fn test_composite_pk_session_agent_count_uses_distinct() {
         &conn,
         "agent-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -2030,6 +2063,7 @@ fn test_composite_pk_session_agent_count_uses_distinct() {
         &conn,
         "agent-2",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -2189,6 +2223,75 @@ fn test_reconcile_orphaned_sessions_dead_pid() {
 }
 
 #[test]
+fn test_delete_workflow_run_non_default_plugin() {
+    let conn = create_test_db();
+    // Create a non-default plugin and a skill in it.
+    ensure_plugin(&conn, "mkt-del", "Mkt Del", "marketplace", Some("https://example.com"), None, false)
+        .expect("ensure_plugin");
+    upsert_skill_in_plugin(&conn, "mkt-skill-del", "marketplace", "domain", "mkt-del")
+        .expect("upsert skill in non-default plugin");
+    // Insert workflow_run directly — save_workflow_run would create a duplicate skill in the
+    // default plugin via upsert_skill, which is not the scenario we're testing.
+    conn.execute(
+        "INSERT INTO workflow_runs (skill_name, current_step, status, purpose) VALUES (?1, 0, 'pending', 'domain')",
+        rusqlite::params!["mkt-skill-del"],
+    ).unwrap();
+    set_skill_tags(&conn, "mkt-skill-del", "mkt-del", &["mkt-tag".into()]).unwrap();
+
+    // delete_workflow_run with the correct plugin_slug should succeed
+    delete_workflow_run(&conn, "mkt-skill-del", "mkt-del").unwrap();
+
+    // Workflow run should be gone
+    assert!(get_workflow_run(&conn, "mkt-skill-del").unwrap().is_none());
+    // Skill master row should be soft-deleted
+    let row_exists: bool = conn
+        .query_row("SELECT COUNT(*) > 0 FROM skills WHERE name = 'mkt-skill-del'", [], |r| r.get(0))
+        .unwrap();
+    assert!(row_exists, "soft-deleted row should still exist in the table");
+    let listed = list_all_skills(&conn).unwrap();
+    assert!(!listed.iter().any(|s| s.name == "mkt-skill-del"), "soft-deleted skill should not appear in active list");
+}
+
+#[test]
+fn test_delete_imported_skill_by_name_non_default_plugin() {
+    let conn = create_test_db();
+    ensure_plugin(&conn, "mkt-imp", "Mkt Imp", "marketplace", Some("https://example.com"), None, false)
+        .expect("ensure_plugin");
+    upsert_skill_in_plugin(&conn, "mkt-imp-skill", "marketplace", "domain", "mkt-imp")
+        .expect("upsert skill");
+    let skill = ImportedSkill {
+        skill_id: "id-mkt-imp".to_string(),
+        skill_name: "mkt-imp-skill".to_string(),
+        library_key: Some("imported:id-mkt-imp".to_string()),
+        is_active: true,
+        disk_path: "/tmp/mkt-imp-skill".to_string(),
+        imported_at: "2024-01-01".to_string(),
+        is_bundled: false,
+        description: None,
+        purpose: Some("domain".to_string()),
+        version: None,
+        model: None,
+        argument_hint: None,
+        user_invocable: None,
+        disable_model_invocation: None,
+        marketplace_source_url: None,
+        plugin_slug: Some("mkt-imp".to_string()),
+        plugin_display_name: Some("Mkt Imp".to_string()),
+        is_default_plugin: Some(false),
+    };
+    test_insert_imported_skill(&conn, &skill).unwrap();
+
+    // Verify it exists
+    assert!(get_imported_skill(&conn, "mkt-imp-skill", "mkt-imp").unwrap().is_some());
+
+    // Delete by name with correct plugin_slug
+    delete_imported_skill_by_name(&conn, "mkt-imp-skill", "mkt-imp").unwrap();
+
+    // Verify it's gone
+    assert!(get_imported_skill(&conn, "mkt-imp-skill", "mkt-imp").unwrap().is_none());
+}
+
+#[test]
 fn test_reconcile_orphaned_sessions_live_pid() {
     let conn = create_test_db();
     let pid = std::process::id();
@@ -2214,7 +2317,7 @@ fn test_delete_workflow_run_preserves_usage_sessions() {
     save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
     create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
 
-    delete_workflow_run(&conn, "my-skill").unwrap();
+    delete_workflow_run(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
     let count: i64 = conn
         .query_row(
@@ -2245,6 +2348,7 @@ fn test_get_usage_summary_hide_cancelled() {
         &conn,
         "agent-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -2270,6 +2374,7 @@ fn test_get_usage_summary_hide_cancelled() {
         &conn,
         "agent-2",
         "skill-b",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         0,
         "sonnet",
         "shutdown",
@@ -2304,6 +2409,7 @@ fn test_get_recent_workflow_sessions_returns_sessions() {
         &conn,
         "agent-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -2329,6 +2435,7 @@ fn test_get_recent_workflow_sessions_returns_sessions() {
         &conn,
         "agent-2",
         "skill-b",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         3,
         "opus",
         "completed",
@@ -2375,6 +2482,7 @@ fn test_get_recent_workflow_sessions_hide_cancelled() {
         &conn,
         "agent-1",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -2400,6 +2508,7 @@ fn test_get_recent_workflow_sessions_hide_cancelled() {
         &conn,
         "agent-2",
         "skill-b",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         0,
         "sonnet",
         "shutdown",
@@ -2434,6 +2543,7 @@ fn test_get_usage_summary_multiple_sessions() {
         &conn,
         "agent-1a",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -2456,6 +2566,7 @@ fn test_get_usage_summary_multiple_sessions() {
         &conn,
         "agent-1b",
         "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         3,
         "opus",
         "completed",
@@ -2481,6 +2592,7 @@ fn test_get_usage_summary_multiple_sessions() {
         &conn,
         "agent-2a",
         "skill-b",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         1,
         "sonnet",
         "completed",
@@ -2506,6 +2618,7 @@ fn test_get_usage_summary_multiple_sessions() {
         &conn,
         "agent-3a",
         "skill-c",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         5,
         "opus",
         "completed",
@@ -2528,6 +2641,7 @@ fn test_get_usage_summary_multiple_sessions() {
         &conn,
         "agent-3b",
         "skill-c",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         6,
         "sonnet",
         "completed",
@@ -2811,16 +2925,16 @@ fn test_delete_imported_skill_by_name() {
     test_insert_imported_skill(&conn, &skill).unwrap();
 
     // Verify it exists
-    assert!(get_imported_skill(&conn, "delete-me").unwrap().is_some());
+    assert!(get_imported_skill(&conn, "delete-me", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().is_some());
 
     // Delete by name
-    delete_imported_skill_by_name(&conn, "delete-me").unwrap();
+    delete_imported_skill_by_name(&conn, "delete-me", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
     // Verify it's gone
-    assert!(get_imported_skill(&conn, "delete-me").unwrap().is_none());
+    assert!(get_imported_skill(&conn, "delete-me", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().is_none());
 
     // Deleting non-existent name should not error
-    delete_imported_skill_by_name(&conn, "does-not-exist").unwrap();
+    delete_imported_skill_by_name(&conn, "does-not-exist", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 }
 
 #[test]
@@ -3141,6 +3255,7 @@ fn test_get_step_agent_runs_uses_workflow_run_id_fk() {
         &conn,
         "agent-step-1",
         "step-test-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         3,
         "sonnet",
         "completed",
@@ -3515,7 +3630,7 @@ fn test_fk_cascade_deletes_child_rows_when_skill_deleted() {
 
     // Add child rows in skill_tags and skill_locks
     let tags = vec!["tag1".to_string(), "tag2".to_string()];
-    set_skill_tags(&conn, "cascade-test", &tags).unwrap();
+    set_skill_tags(&conn, "cascade-test", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &tags).unwrap();
     conn.execute(
         "INSERT INTO skill_locks (skill_name, instance_id, pid, skill_id)
          VALUES ('cascade-test', 'inst-1', 999,

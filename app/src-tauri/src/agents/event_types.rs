@@ -99,5 +99,5 @@ pub struct SidecarRunSummary {
     #[serde(rename = "workspacePath")]
     pub workspace_path: Option<String>,
     #[serde(rename = "pluginSlug")]
-    pub plugin_slug: Option<String>,
+    pub plugin_slug: String,
 }

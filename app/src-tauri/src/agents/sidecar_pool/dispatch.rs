@@ -1242,7 +1242,7 @@ mod tests {
             workflow_session_id: Some("session-123".to_string()),
             usage_session_id: None,
             run_source: Some("workflow".to_string()),
-            plugin_slug: None,
+            plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
         }
     }

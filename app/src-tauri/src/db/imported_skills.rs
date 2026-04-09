@@ -2,7 +2,7 @@ use crate::types::ImportedSkill;
 use rusqlite::{Connection, OptionalExtension};
 use std::fs;
 
-use super::skills::{get_skill_master_id, get_skill_master_id_any_plugin};
+use super::skills::{get_skill_master_id_in_plugin, get_skill_master_id_any_plugin};
 
 fn imported_skill_select(prefix: &str) -> String {
     format!(
@@ -169,9 +169,9 @@ pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill, skill_mas
     Ok(())
 }
 
-pub fn delete_imported_skill_by_name(conn: &Connection, name: &str) -> Result<(), String> {
-    log::debug!("delete_imported_skill_by_name: name={}", name);
-    let s_id = match get_skill_master_id(conn, name)? {
+pub fn delete_imported_skill_by_name(conn: &Connection, name: &str, plugin_slug: &str) -> Result<(), String> {
+    log::debug!("delete_imported_skill_by_name: name={} plugin={}", name, plugin_slug);
+    let s_id = match get_skill_master_id_in_plugin(conn, name, plugin_slug)? {
         Some(id) => id,
         None => return Ok(()), // Skill not in library — nothing to delete
     };
@@ -193,8 +193,9 @@ pub fn delete_imported_skill_by_name(conn: &Connection, name: &str) -> Result<()
 pub fn get_imported_skill(
     conn: &Connection,
     skill_name: &str,
+    plugin_slug: &str,
 ) -> Result<Option<ImportedSkill>, String> {
-    let s_id = match get_skill_master_id(conn, skill_name)? {
+    let s_id = match get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)? {
         Some(id) => id,
         None => return Ok(None),
     };

@@ -391,7 +391,9 @@ pub fn get_skill_master_in_plugin(
     }
 }
 
-/// Delete a skill from the master table by name.
+/// Delete a skill from the master table by name (default plugin only).
+/// Production code should use `delete_skill_in_plugin` with an explicit plugin slug.
+#[cfg(test)]
 pub fn delete_skill(conn: &Connection, name: &str) -> Result<(), String> {
     delete_skill_in_plugin(conn, name, DEFAULT_PLUGIN_SLUG)
 }
@@ -416,7 +418,9 @@ pub fn delete_skill_in_plugin(conn: &Connection, name: &str, plugin_slug: &str) 
     Ok(())
 }
 
-/// Get the `skills.id` integer for a given skill name. Returns None if not found.
+/// Get the `skills.id` integer for a given skill name (default plugin only).
+/// Production code should use `get_skill_master_id_in_plugin` with an explicit plugin slug.
+#[cfg(test)]
 pub fn get_skill_master_id(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
     get_skill_master_id_in_plugin(conn, skill_name, DEFAULT_PLUGIN_SLUG)
 }
@@ -568,9 +572,9 @@ pub fn get_tags_for_skills(
     Ok(map)
 }
 
-pub fn set_skill_tags(conn: &Connection, skill_name: &str, tags: &[String]) -> Result<(), String> {
-    let s_id = get_skill_master_id(conn, skill_name)?
-        .ok_or_else(|| format!("Skill '{}' not found in skills master", skill_name))?;
+pub fn set_skill_tags(conn: &Connection, skill_name: &str, plugin_slug: &str, tags: &[String]) -> Result<(), String> {
+    let s_id = get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)?
+        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
 
     conn.execute(
         "DELETE FROM skill_tags WHERE skill_id = ?1",
@@ -685,6 +689,31 @@ mod tests {
         // get_skill_master_id_any_plugin SHOULD find it
         let any_id = get_skill_master_id_any_plugin(&conn, "ext-skill").expect("query ok");
         assert!(any_id.is_some(), "any-plugin lookup must find skills in non-default plugins");
+    }
+
+    #[test]
+    fn plugin_aware_operations_work_for_non_default_plugin() {
+        let conn = create_test_db_for_tests();
+        // Create a non-default plugin and a skill in it.
+        ensure_plugin(&conn, "mkt-ops", "Mkt Ops", "marketplace", Some("https://example.com/mkt"), None, false)
+            .expect("ensure_plugin");
+        upsert_skill_in_plugin(&conn, "mkt-op-skill", "marketplace", "domain", "mkt-ops")
+            .expect("upsert skill");
+
+        // set_skill_tags with explicit plugin_slug should succeed
+        set_skill_tags(&conn, "mkt-op-skill", "mkt-ops", &["tag-a".into(), "tag-b".into()])
+            .expect("set_skill_tags for non-default plugin");
+        let tags = get_tags_for_skills(&conn, &vec!["mkt-op-skill".to_string()])
+            .expect("get_tags");
+        assert_eq!(tags.get("mkt-op-skill").map(|v| v.len()), Some(2));
+
+        // get_skill_master_id_in_plugin should find it
+        let id = get_skill_master_id_in_plugin(&conn, "mkt-op-skill", "mkt-ops").expect("query ok");
+        assert!(id.is_some(), "in-plugin lookup must find the skill");
+
+        // default-plugin lookup must NOT find it
+        let default_id = get_skill_master_id(&conn, "mkt-op-skill").expect("query ok");
+        assert!(default_id.is_none(), "default lookup must not find non-default plugin skills");
     }
 
     #[test]

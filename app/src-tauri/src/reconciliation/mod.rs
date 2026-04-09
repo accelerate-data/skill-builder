@@ -584,14 +584,14 @@ pub fn resolve_orphan(
     match action {
         "delete" => {
             crate::commands::imported_skills::validate_skill_name(skill_name)?;
-            crate::db::delete_workflow_run(conn, skill_name)?;
 
-            // Look up plugin slug so we delete from the right nested directory.
+            // Look up plugin slug BEFORE delete so we can pass it through.
             let plugin_slug = crate::db::get_skill_master_any_plugin(conn, skill_name)
                 .ok()
                 .flatten()
                 .map(|m| m.plugin_slug)
                 .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+            crate::db::delete_workflow_run(conn, skill_name, &plugin_slug)?;
             let output_dir = crate::skill_paths::resolve_skill_dir(
                 Path::new(skills_path),
                 &plugin_slug,
