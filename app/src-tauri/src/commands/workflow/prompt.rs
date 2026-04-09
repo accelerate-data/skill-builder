@@ -91,7 +91,8 @@ pub(crate) fn build_step0_prompt(
          The dimension reference files are in: {} (read individual .md files, not the directory itself). \
          The maximum research dimensions before scope warning is: {}. \
          Use the skill-content-researcher:research to produce clarification questions which will be used to write the skill. \
-         Your final response MUST be a single JSON object matching the outputFormat schema — no markdown, no explanation, no wrapping. Output ONLY the raw JSON.",
+         Your final response MUST be ONLY a raw JSON object — no markdown, no explanation, no wrapping. \
+         Required fields: {{\"status\": \"research_complete\", \"dimensions_selected\": <number>, \"question_count\": <number>, \"research_output\": <object>}}",
         skill_name,
         workspace_str,
         workspace_str,
