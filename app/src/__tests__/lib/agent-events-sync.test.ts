@@ -13,58 +13,31 @@ describe("AgentEvent type sync", () => {
     return parseInt(match[1], 10);
   }
 
-  function extractInterfaceUnionMembers(content: string, typeName: string): string[] {
-    const regex = new RegExp(`type ${typeName}\\s*=[\\s\\S]*?;`);
-    const match = content.match(regex);
-    if (!match) return [];
-    return match[0]
-      .split("=")[1]
-      .replace(/;/g, "")
-      .split("|")
-      .map((member) => member.trim())
-      .filter(Boolean)
-      .sort();
-  }
-
-  function extractInterfaceFields(content: string, interfaceName: string): string[] {
-    const regex = new RegExp(`interface ${interfaceName}\\s*\\{([\\s\\S]*?)\\}`, "m");
-    const match = content.match(regex);
-    if (!match) return [];
-    return ((match[1].match(/^\s+(\w+)\??\s*:/gm) ?? []).map((f) =>
-      f.trim().replace(/\??:$/, ""),
-    )).sort();
-  }
-
   it("version numbers match", () => {
     expect(extractVersion(frontendPath)).toBe(extractVersion(sidecarPath));
   });
 
-  it("AgentEvent variants match", () => {
-    const sidecarContent = fs.readFileSync(sidecarPath, "utf8");
-    const frontendContent = fs.readFileSync(frontendPath, "utf8");
-    expect(extractInterfaceUnionMembers(frontendContent, "AgentEvent")).toEqual(
-      extractInterfaceUnionMembers(sidecarContent, "AgentEvent"),
-    );
+  it("frontend imports from generated contracts", () => {
+    const content = fs.readFileSync(frontendPath, "utf8");
+    expect(content).toContain("@/generated/contracts");
   });
 
-  for (const interfaceName of [
-    "ModelUsageEntry",
-    "RunConfigEvent",
-    "RunInitEvent",
-    "TurnUsageEvent",
-    "CompactionEvent",
-    "ContextWindowEvent",
-    "SessionExhaustedEvent",
-    "InitProgressEvent",
-    "TurnCompleteEvent",
-    "RunResultEvent",
-  ]) {
-    it(`${interfaceName} fields match`, () => {
-      const sidecarContent = fs.readFileSync(sidecarPath, "utf8");
-      const frontendContent = fs.readFileSync(frontendPath, "utf8");
-      expect(extractInterfaceFields(frontendContent, interfaceName)).toEqual(
-        extractInterfaceFields(sidecarContent, interfaceName),
-      );
-    });
-  }
+  it("sidecar imports from generated contracts", () => {
+    const content = fs.readFileSync(sidecarPath, "utf8");
+    expect(content).toContain("./generated/contracts");
+  });
+
+  it("both files re-export AgentEvent", () => {
+    const frontendContent = fs.readFileSync(frontendPath, "utf8");
+    const sidecarContent = fs.readFileSync(sidecarPath, "utf8");
+    expect(frontendContent).toMatch(/export\s+type\s*\{[^}]*AgentEvent/);
+    expect(sidecarContent).toMatch(/export\s+type\s+AgentEvent\b/);
+  });
+
+  it("both files re-export AgentEventEnvelope", () => {
+    const frontendContent = fs.readFileSync(frontendPath, "utf8");
+    const sidecarContent = fs.readFileSync(sidecarPath, "utf8");
+    expect(frontendContent).toMatch(/AgentEventEnvelope/);
+    expect(sidecarContent).toMatch(/AgentEventEnvelope/);
+  });
 });

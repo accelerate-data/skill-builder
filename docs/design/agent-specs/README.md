@@ -36,15 +36,17 @@ One agent delegates to a plugin-internal skill:
 
 JSON contract write path:
 
-- Steps 0, 1, and 2 return structured payloads.
-- Rust validates payload shape and writes canonical files.
+- Steps 0, 1, and 2 return structured payloads. Steps 1 and 2 run as direct agents (not subagent relay) so `outputFormat` applies to the producing agent.
+- SDK `outputFormat` is set with inline JSON Schema generated from Rust structs (no `$ref`). Due to a known SDK bug ([anthropics/claude-agent-sdk-typescript#277](https://github.com/anthropics/claude-agent-sdk-typescript/issues/277)), `structured_output` is not populated for nested schemas. As a workaround, agents include prompt directives ("CRITICAL — raw JSON only") and reference generated JSON schema files. The sidecar parses JSON from the `result` text field when `structured_output` is absent.
+- Rust deserializes the extracted JSON into typed contract structs (`ResearchStepOutput`, `DetailedResearchOutput`, `DecisionsOutput`) — this is the authoritative validation.
 - `answer-evaluator` follows the same structured-output pattern for `answer-evaluation.json`.
-- For Step 0 and Step 1, the SDK `structuredOutput` schema must use the same canonical clarifications schema as `agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md`.
+- Agent-facing schema references are at `agent-sources/plugins/skill-content-researcher/shared/schemas.md` (semantic rules) and `shared/output-schemas/` (generated JSON Schema files agents can Read).
 
 Step-level structured payload keys:
 
 - Step 0 (`research-orchestrator`): envelope includes `research_output` carrying canonical clarifications JSON.
 - Step 1 (`detailed-research`): envelope includes `clarifications_json` carrying canonical clarifications JSON.
+- Step 2 (`confirm-decisions`): `DecisionsOutput` with `version`, `metadata`, `decisions`.
 
 Canonical format for every artifact: [canonical-format.md](canonical-format.md).
 
@@ -67,14 +69,19 @@ Written by `answer-evaluator` as a gate check before advancing from steps 0 and 
 
 ---
 
-## Contract Audit Snapshot (2026-03)
+## Contract Audit Snapshot (2026-04)
 
 | Contract area | Prompt/runtime state | Documentation state | Status |
 | --- | --- | --- | --- |
 | Clarifications artifact type | Agents + runtime use `clarifications.json` | Canonical spec now defines `clarifications.json` | aligned |
 | Decisions artifact type | Agents + runtime use `decisions.json` | Canonical spec now defines `decisions.json` | aligned |
 | Structured-output materialization | Steps 0/1/2 + gate evaluator validated/written by backend | This page now documents backend materialization path | aligned |
-| Workflow step outputs | Step 3 writes `SKILL.md`, `references/`, and `context/evaluations.md` | Workflow table includes all three outputs | aligned |
+| Rust contract structs | All workflow output types defined in `contracts/` with Specta + Schemars derives | `canonical-format.md` references Rust as canonical source | aligned |
+| Codegen pipeline | `cargo run --bin codegen` generates TS types + inline JSON Schema | Enforcement layers table documents freshness check | aligned |
+| SDK outputFormat | Inline JSON Schema passed for steps 0-2; `structured_output` not populated (SDK bug) | Documented with workaround (prompt directives + result text fallback) | known issue |
+| Sidecar fallback | `tryParseJsonFromText` extracts JSON from `result` text when `structured_output` absent | `canonical-format.md` documents extraction flow | aligned |
+| Agent prompt directives | Agent `.md` files reference generated `output-schemas/` and include "raw JSON only" instructions | `schemas.md` path updated to `shared/` | aligned |
+| Workflow step outputs | Step 3 writes `SKILL.md`, `references/`, `context/evaluations.md` | Workflow table includes all three outputs | aligned |
 | `answer-evaluation.json` consumers | Used by `detailed-research` | Infrastructure note reflects `detailed-research` only | aligned |
 | Mock transcript fixtures | Some sidecar mock transcripts still include legacy `clarifications.md`/`decisions.md` wording in sample text | Not yet fully normalized in fixtures/docs | follow-up |
 
@@ -83,3 +90,4 @@ Written by `answer-evaluator` as a gate check before advancing from steps 0 and 
 1. Normalize remaining legacy `clarifications.md` / `decisions.md` wording in sidecar mock transcript templates.
 2. Add/extend tests to flag new legacy transcript references automatically.
 3. Keep this page and `canonical-format.md` synchronized whenever agent I/O contracts change.
+4. When SDK bug ([anthropics/claude-agent-sdk-typescript#277](https://github.com/anthropics/claude-agent-sdk-typescript/issues/277)) is fixed: `structured_output` becomes the primary path. The `result` text fallback remains permanent (covers errors and missing `structured_output`). Prompt directives can be relaxed but not removed.

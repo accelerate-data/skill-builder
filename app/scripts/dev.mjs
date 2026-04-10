@@ -25,6 +25,7 @@ const config = JSON.stringify({ build: { devUrl: `http://localhost:${port}` } })
 const env = { ...process.env, DEV_PORT: port };
 
 try {
+  execSync('npm run codegen', { stdio: 'inherit', cwd: root });
   execSync('npm run sidecar:build', { stdio: 'inherit', cwd: root });
   const quote = process.platform === 'win32' ? `"` : `'`;
   const escapedConfig = process.platform === 'win32' ? config.replace(/"/g, '\\"') : config;

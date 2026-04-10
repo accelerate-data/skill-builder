@@ -95,10 +95,10 @@ function RefinementItem({
       {!reviewFeedback && relatedConflictQuestionIds && relatedConflictQuestionIds.length > 0 && (
         <RelatedConflictCallout relatedQuestionIds={relatedConflictQuestionIds} compact />
       )}
-      {refinement.choices.length > 0 && (
+      {(refinement.choices ?? []).length > 0 && (
         <ChoiceList
-          choices={refinement.choices}
-          selectedId={refinement.answer_choice}
+          choices={refinement.choices ?? []}
+          selectedId={refinement.answer_choice ?? null}
           recommendedId={parseRecommendedChoiceId(refinement.recommendation)}
           onSelect={(choiceId, choiceText) => {
             if (readOnly) return;
@@ -110,7 +110,7 @@ function RefinementItem({
           }}
         />
       )}
-      {(refinement.answer_choice !== null || refinement.choices.length === 0) && (
+      {(refinement.answer_choice != null || (refinement.choices ?? []).length === 0) && (
         <AnswerField
           value={refinement.answer_text ?? ""}
           onChange={(text) => {

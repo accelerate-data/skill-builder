@@ -29,6 +29,9 @@ export interface RequestContext {
    * whether turn_complete is a per-turn terminal (streaming) or informational only
    * (one-shot). Defaults to false. */
   streaming?: boolean;
+  /** Whether outputFormat was configured for this run. When true, the processor
+   * will fail hard if structured_output is absent from the SDK result. */
+  hasOutputFormat?: boolean;
 }
 
 // ---------------------------------------------------------------------------

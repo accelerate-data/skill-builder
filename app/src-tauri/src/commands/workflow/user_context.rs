@@ -67,10 +67,12 @@ pub fn write_user_context_file(
     let mut content = format!("# User Context\n\n{}\n", base);
 
     // Append reference document paths — the agent reads each file from disk.
+    // Use forward slashes so models don't misinterpret backslash escapes.
     if !documents.is_empty() {
-        content.push_str("\n## Reference Documents\n\n");
+        content.push_str("\n## Reference Documents\n\nEach path below is absolute — use it exactly as-is with the Read tool.\n\n");
         for doc in documents {
-            content.push_str(&format!("- **{}**: `{}`\n", doc.name, doc.file_path));
+            let normalized = doc.file_path.replace('\\', "/");
+            content.push_str(&format!("- **{}**: `{}`\n", doc.name, normalized));
         }
     }
 

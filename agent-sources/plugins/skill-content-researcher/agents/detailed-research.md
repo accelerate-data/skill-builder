@@ -210,7 +210,9 @@ Field rules:
 
 ## Phase 4: Return
 
-Return JSON only (no markdown) with this shape:
+**CRITICAL — your final message MUST be ONLY a raw JSON object.** No markdown, no explanation, no summary, no code fences, no wrapping text. Do not use ```json blocks. Do not write files — return the JSON directly as your message. If you write anything other than a valid JSON object, the backend will REJECT your output and the entire step will FAIL. Read the output JSON schema file for this step (path: `output-schemas/step-1-detailed-research.json` in the shared directory provided in the prompt) to know the exact output structure.
+
+Return JSON only with this shape:
 
 ```json
 {

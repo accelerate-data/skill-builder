@@ -16,7 +16,7 @@ The overall flow is as follows
 - Select top 3-5 dimensions when viable.
 - Run parallel sub-agent research for selected dimensions
 - Consolidate using `references/consolidation-handoff.md`
-- Validate final payload against `references/schemas.md`
+- Validate final payload against `../shared/schemas.md`
 - Return the canonical `clarifications.json` object as top-level JSON
 
 ## Step 0: Read user context
@@ -136,17 +136,17 @@ Extract `purpose` from the `**Purpose**` field in `user_context`. Read `referenc
 ## Step 4 — Score dimensions
 
 Use `references/scoring-rubric.md` to score all candidate dimensions. Emit a markdown summary table of dimension scores (dimension, score, reason) as visible output, then construct the scoring JSON internally — do not emit the JSON as visible text output.
-Use that scoring JSON to construct `metadata.research_plan` which is part of clarifications.json and schema defined in `references/schemas.md`.
+Use that scoring JSON to construct `metadata.research_plan` which is part of clarifications.json and schema defined in `../shared/schemas.md`.
 
 - Set `topic_relevance` from scoring JSON (`relevant|not_relevant`).
 - Set `dimensions_evaluated` from the count of entries in the candidate_dimension_scores array in scoring JSON
 - Set `dimension_scores` from `candidate_dimension_scores` (`name`, `score`, `reason`, `focus`).
-- If `topic_relevance` is `not_relevant`, return canonical minimal/scope-recommendation clarifications output per `references/schemas.md` with:
+- If `topic_relevance` is `not_relevant`, return canonical minimal/scope-recommendation clarifications output per `../shared/schemas.md` with:
   - `metadata.scope_recommendation: true`
   - `metadata.scope_reason`: one-sentence explanation of why no dimensions scored high enough
   - `metadata.warning.code: "all_dimensions_low_score"`
   - `metadata.warning.message`: concise explanation for UI
-  - `metadata.research_plan` present and schema-valid with minimal values per `references/schemas.md` Scope/Error Minimal Output (including `topic_relevance: "not_relevant"`, zero counts, and empty selected arrays)
+  - `metadata.research_plan` present and schema-valid with minimal values per `../shared/schemas.md` Scope/Error Minimal Output (including `topic_relevance: "not_relevant"`, zero counts, and empty selected arrays)
   - zero selected dimensions.
 
 ## Step 5 - Select dimensions for research
@@ -228,28 +228,56 @@ Proactively think about edge cases, input/output formats, example files, success
 
 ## Step 8 — Return final payload
 
+**CRITICAL — your final message MUST be ONLY a raw JSON object.** No markdown, no explanation, no summary, no code fences, no wrapping text. If you write anything other than a valid JSON object, the backend will REJECT your output and the entire step will FAIL. Read the output JSON schema file for this step (path: `output-schemas/step-0-research.json` in the shared directory provided in the prompt) to know the exact output structure.
+
+**NEVER abbreviate or truncate the JSON output.** Every question object MUST include ALL required fields: `id`, `title`, `text`, `must_answer`, `choices`, `refinements`. Do NOT use `"..."` as a placeholder for any field or value. Do NOT omit fields to save tokens. The backend performs strict schema validation — any missing required field will cause the entire step to FAIL.
+
 Return JSON only in this envelope shape:
 
 ```json
 {
   "status": "research_complete",
-  "dimensions_selected": 0,
-  "question_count": 0,
-  "research_output": { "...": "canonical clarifications object" }
+  "dimensions_selected": 3,
+  "question_count": 5,
+  "research_output": {
+    "version": "1",
+    "metadata": { "question_count": 5, "section_count": 2, "refinement_count": 0, "must_answer_count": 2, "priority_questions": ["Q1","Q2"] },
+    "sections": [
+      {
+        "id": 1,
+        "title": "Section Title",
+        "questions": [
+          {
+            "id": "Q1",
+            "title": "Question Title",
+            "text": "Full question text — this field is REQUIRED and must not be abbreviated",
+            "must_answer": true,
+            "choices": [
+              {"id": "A", "text": "Choice text", "is_other": false},
+              {"id": "B", "text": "Other (please specify)", "is_other": true}
+            ],
+            "refinements": []
+          }
+        ]
+      }
+    ],
+    "notes": [],
+    "answer_evaluator_notes": []
+  }
 }
 ```
 
 ### Output Contract
 
-1. `research_output` should follow the the canonical clarifications JSON object.
+1. `research_output` must follow the canonical clarifications JSON object. Every question must have all required fields (`id`, `title`, `text`, `must_answer`, `choices`, `refinements`) — omitting any field causes a hard failure.
 2. Before returning:
-   - Validate against `references/schemas.md` exactly.
+   - Validate against `../shared/schemas.md` exactly.
    - Ensure `metadata.research_plan` is present and schema-valid.
    - Ensure `metadata.research_plan.selected_dimensions` is present as `{ name, focus }` objects aligned to selected dimensions.
    - Preserve note separation (`notes` vs `answer_evaluator_notes`). Always emit `answer_evaluator_notes: []` — this field is populated by a downstream agent after user answers are evaluated, never during research.
    - Keep warning/error channels separate (`metadata.warning` and `metadata.error`).
 3. All-low-scores behavior:
-   - If `topic_relevance` is `not_relevant`, emit the minimal scope-recommendation payload from `references/schemas.md` with `metadata.scope_recommendation: true` and no dimension fan-out.
+   - If `topic_relevance` is `not_relevant`, emit the minimal scope-recommendation payload from `../shared/schemas.md` with `metadata.scope_recommendation: true` and no dimension fan-out.
 4. If the research task fails for a selected dimension:
    - Remove the dimension from `metadata.research_plan.selected_dimensions`.
    - Update the score of that dimension in `metadata.research_plan.dimension_scores` as `1` with reason `Research task failed`. This is not an error.

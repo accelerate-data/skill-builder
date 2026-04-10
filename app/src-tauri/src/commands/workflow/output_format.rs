@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use super::step_config::validate_clarifications_json;
 use crate::commands::workflow_artifacts::{
     AnswerEvaluationOutput, DecisionsOutput, DetailedResearchOutput, GenerateSkillOutput,
     ResearchStepOutput,
@@ -46,12 +45,11 @@ pub(crate) fn materialize_workflow_step_output_value(
             }
 
             log::info!(
-                "[materialize_step] step=0 research_output keys={:?}",
-                parsed.research_output.as_object().map(|o| o.keys().collect::<Vec<_>>())
+                "[materialize_step] step=0 research_output version={}",
+                parsed.research_output.version
             );
 
-            validate_clarifications_json(&parsed.research_output)
-                .map_err(|e| format!("Invalid research_output: {}", e))?;
+            // Typed deserialization into ClarificationsFile already validated structure.
 
             let clarifications_pretty = serde_json::to_string_pretty(&parsed.research_output)
                 .map_err(|e| format!("Failed to serialize research_output: {}", e))?;
@@ -79,12 +77,11 @@ pub(crate) fn materialize_workflow_step_output_value(
             }
 
             log::info!(
-                "[materialize_step] step=1 clarifications_json keys={:?}",
-                parsed.clarifications_json.as_object().map(|o| o.keys().collect::<Vec<_>>())
+                "[materialize_step] step=1 clarifications_json version={}",
+                parsed.clarifications_json.version
             );
 
-            validate_clarifications_json(&parsed.clarifications_json)
-                .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
+            // Typed deserialization into ClarificationsFile already validated structure.
 
             let clarifications_pretty = serde_json::to_string_pretty(&parsed.clarifications_json)
                 .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
@@ -335,146 +332,70 @@ pub fn materialize_workflow_step_output(
     Ok(())
 }
 
-/// Note: this schema is kept for reference but is NOT used when running answer-evaluator
-/// as a streaming session (streaming sessions don't use structured output). The validator
-/// `validate_answer_evaluation_json` is what enforces correctness at materialization time.
+/// Returns the JSON Schema for the answer-evaluator structured output.
+///
+/// Uses the generated schema from `contracts::workflow_outputs::AnswerEvaluationOutput`.
 pub(crate) fn answer_evaluator_output_format() -> serde_json::Value {
+    let schema: serde_json::Value = serde_json::from_str(
+        crate::generated::schemas::ANSWER_EVALUATION_SCHEMA,
+    )
+    .expect("generated ANSWER_EVALUATION_SCHEMA must be valid JSON");
     serde_json::json!({
         "type": "json_schema",
-        "schema": {
-            "type": "object",
-            "required": [
-                "verdict",
-                "answered_count",
-                "empty_count",
-                "vague_count",
-                "contradictory_count",
-                "total_count",
-                "reasoning",
-                "gate_decision",
-                "per_question"
-            ],
-            "properties": {
-                "verdict": {
-                    "type": "string",
-                    "enum": ["sufficient", "mixed", "insufficient"]
-                },
-                "answered_count": { "type": "integer", "minimum": 0 },
-                "empty_count": { "type": "integer", "minimum": 0 },
-                "vague_count": { "type": "integer", "minimum": 0 },
-                "contradictory_count": { "type": "integer", "minimum": 0 },
-                "total_count": { "type": "integer", "minimum": 0 },
-                "reasoning": { "type": "string", "minLength": 1 },
-                "gate_decision": {
-                    "type": "string",
-                    "enum": ["run_research", "revise"]
-                },
-                "per_question": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["question_id", "verdict"],
-                        "properties": {
-                            "question_id": { "type": "string", "minLength": 1 },
-                            "verdict": {
-                                "type": "string",
-                                "enum": ["clear", "needs_refinement", "not_answered", "vague", "contradictory"]
-                            },
-                            "reason": { "type": "string" }
-                        },
-                        "additionalProperties": false
-                    }
-                }
-            },
-            "additionalProperties": false
-        }
+        "schema": schema
     })
 }
 
-pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) -> Result<(), String> {
-    let root = evaluation
-        .as_object()
-        .ok_or_else(|| "answer_evaluation must be a JSON object".to_string())?;
+/// Validate an answer evaluation JSON payload via typed deserialization and
+/// apply semantic business rules (verdict enum, vague/contradictory reason requirement).
+///
+/// The typed deserialization into `AnswerEvaluationOutput` handles structural
+/// validation. The semantic checks below enforce business rules that go beyond
+/// the JSON schema (e.g. "reason is required when verdict is vague").
+pub(crate) fn validate_answer_evaluation_json(
+    evaluation: &serde_json::Value,
+) -> Result<AnswerEvaluationOutput, String> {
+    let parsed = serde_json::from_value::<AnswerEvaluationOutput>(evaluation.clone())
+        .map_err(|e| format!("invalid answer evaluation output: {}", e))?;
 
-    let verdict_str = root
-        .get("verdict")
-        .and_then(super::coerce_to_string)
-        .ok_or_else(|| "answer_evaluation.verdict must be present".to_string())?;
-    let verdict = verdict_str.as_str();
-    if !["sufficient", "mixed", "insufficient"].contains(&verdict) {
+    // Semantic validation: verdict enum
+    if !["sufficient", "mixed", "insufficient"].contains(&parsed.verdict.as_str()) {
         return Err(
             "answer_evaluation.verdict must be one of sufficient|mixed|insufficient".to_string(),
         );
     }
 
-    for field in [
-        "answered_count",
-        "empty_count",
-        "vague_count",
-        "contradictory_count",
-        "total_count",
-    ] {
-        if root.get(field).and_then(super::coerce_to_i64).is_none() {
-            return Err(format!("answer_evaluation.{} must be an integer", field));
-        }
-    }
-
-    let reasoning_str = root
-        .get("reasoning")
-        .and_then(super::coerce_to_string)
-        .ok_or_else(|| "answer_evaluation.reasoning must be present".to_string())?;
-    let reasoning = reasoning_str.as_str();
-    if reasoning.trim().is_empty() {
+    // Semantic validation: reasoning must not be empty
+    if parsed.reasoning.trim().is_empty() {
         return Err("answer_evaluation.reasoning must not be empty".to_string());
     }
 
-    let per_question = root
-        .get("per_question")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "answer_evaluation.per_question must be an array".to_string())?;
-    for (idx, entry) in per_question.iter().enumerate() {
-        let obj = entry
-            .as_object()
-            .ok_or_else(|| format!("answer_evaluation.per_question[{}] must be an object", idx))?;
-        if obj.get("question_id").and_then(super::coerce_to_string).is_none() {
-            return Err(format!(
-                "answer_evaluation.per_question[{}].question_id must be a string",
-                idx
-            ));
-        }
-        let pq_verdict_str = obj.get("verdict").and_then(super::coerce_to_string).ok_or_else(|| {
-            format!(
-                "answer_evaluation.per_question[{}].verdict must be present",
-                idx
-            )
-        })?;
-        let pq_verdict = pq_verdict_str.as_str();
-        if !["clear", "needs_refinement", "not_answered", "vague", "contradictory"].contains(&pq_verdict) {
+    // Semantic validation: vague/contradictory entries must have a reason
+    for (idx, entry) in parsed.per_question.iter().enumerate() {
+        if !["clear", "needs_refinement", "not_answered", "vague", "contradictory"]
+            .contains(&entry.verdict.as_str())
+        {
             return Err(format!(
                 "answer_evaluation.per_question[{}].verdict is invalid",
                 idx
             ));
         }
-        if pq_verdict == "vague" || pq_verdict == "contradictory" {
-            let reason_str = obj.get("reason").and_then(super::coerce_to_string).ok_or_else(|| {
-                format!(
-                    "answer_evaluation.per_question[{}].reason is required for {} verdict",
-                    idx, pq_verdict
-                )
-            })?;
-            if reason_str.trim().is_empty() {
-                return Err(format!(
-                    "answer_evaluation.per_question[{}].reason must not be empty",
-                    idx
-                ));
+        if entry.verdict == "vague" || entry.verdict == "contradictory" {
+            match &entry.reason {
+                Some(r) if !r.trim().is_empty() => {}
+                _ => {
+                    return Err(format!(
+                        "answer_evaluation.per_question[{}].reason is required for {} verdict",
+                        idx, entry.verdict
+                    ));
+                }
             }
         }
     }
 
-    // gate_decision is optional (may be absent in fallback error outputs) but must be valid when present.
-    if let Some(gd_str) = root.get("gate_decision").and_then(super::coerce_to_string) {
-        let gd = gd_str.as_str();
-        if !["run_research", "revise"].contains(&gd) {
+    // Semantic validation: gate_decision enum
+    if let Some(ref gd) = parsed.gate_decision {
+        if !["run_research", "revise"].contains(&gd.as_str()) {
             return Err(format!(
                 "answer_evaluation.gate_decision must be one of run_research|revise (got '{}')",
                 gd
@@ -482,19 +403,15 @@ pub(crate) fn validate_answer_evaluation_json(evaluation: &serde_json::Value) ->
         }
     }
 
-    Ok(())
+    Ok(parsed)
 }
 
 pub(crate) fn materialize_answer_evaluation_output_value(
     workspace_dir: &Path,
     structured_output: &serde_json::Value,
 ) -> Result<(), String> {
-    // Parse into typed struct first — deserialization failure is the boundary check.
-    let parsed = serde_json::from_value::<AnswerEvaluationOutput>(structured_output.clone())
-        .map_err(|e| format!("invalid answer evaluation output: {}", e))?;
-
-    // Run the existing semantic validation on top (verdict enum, vague/contradictory rules).
-    validate_answer_evaluation_json(structured_output)
+    // Typed deserialization + semantic validation in one step.
+    let parsed = validate_answer_evaluation_json(structured_output)
         .map_err(|e| format!("Invalid answer evaluation output: {}", e))?;
 
     std::fs::create_dir_all(workspace_dir).map_err(|e| {
