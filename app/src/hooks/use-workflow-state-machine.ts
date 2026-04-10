@@ -139,21 +139,6 @@ export function useWorkflowStateMachine({
     setPendingAutoStartStep(nextStep);
   }, [currentStep, steps, setCurrentStep]);
 
-  const autoStartAfterReset = useCallback((stepId: number) => {
-    const { reviewMode: isReview, disabledSteps: disabled } = useWorkflowStore.getState();
-    if (disabled.includes(stepId)) {
-      logFrontend("warn", `[autoStartAfterReset] step ${stepId} is disabled, skipping`);
-      return;
-    }
-    const cfg = stepConfigs[stepId];
-    if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !isReview) {
-      logFrontend("info", `[autoStartAfterReset] setting pendingAutoStartStep=${stepId} (reviewMode=${isReview})`);
-      setPendingAutoStartStep(stepId);
-    } else {
-      logFrontend("warn", `[autoStartAfterReset] NOT auto-starting step ${stepId}: type=${cfg?.type} reviewMode=${isReview}`);
-    }
-  }, [stepConfigs, setPendingAutoStartStep]);
-
   // --- Gate evaluation (delegated to useWorkflowGate) ---
 
   const gate = useWorkflowGate({
@@ -377,38 +362,44 @@ export function useWorkflowStateMachine({
 
   // --- Step execution ---
 
-  const handleStartAgentStep = useCallback(async () => {
+  const handleStartAgentStep = useCallback(async (overrideStep?: number) => {
+    // Guard: when passed directly to onClick, React sends a MouseEvent as the first arg.
+    const targetStep = typeof overrideStep === "number" ? overrideStep : currentStep;
     if (!workspacePath) {
       toast.error("Missing workspace path", { duration: Infinity });
       return;
     }
-    if (gateLoading || gate.gateAgentIdRef.current) {
+    // Read state from the store directly — avoids stale closures when called
+    // from performStepReset before React re-renders with cleared state.
+    const storeState = useWorkflowStore.getState();
+    if (storeState.isRunning || storeState.gateLoading || gate.gateAgentIdRef.current) {
       return;
     }
 
     try {
       clearRuns();
       useWorkflowStore.getState().clearRuntimeError();
-      updateStepStatus(currentStep, "in_progress");
+      updateStepStatus(targetStep, "in_progress");
       setRunning(true);
       setInitializing();
 
-      console.log(`[workflow] Starting step ${currentStep} for skill "${skillName}"`);
+      console.log(`[workflow] Starting step ${targetStep} for skill "${skillName}"`);
       const sessionId = useWorkflowStore.getState().workflowSessionId;
       const agentId = await runWorkflowStep(
         skillName,
-        currentStep,
+        targetStep,
         workspacePath,
         sessionId ?? undefined,
       );
+      const cfg = typeof overrideStep === "number" ? stepConfigs[overrideStep] : stepConfig;
       agentStartRun(
         agentId,
         resolveModelId(
-          useSettingsStore.getState().preferredModel ?? stepConfig?.model ?? "sonnet"
+          useSettingsStore.getState().preferredModel ?? cfg?.model ?? "sonnet"
         )
       );
     } catch (err) {
-      updateStepStatus(currentStep, "error");
+      updateStepStatus(targetStep, "error");
       setRunning(false);
       clearInitializing();
       toast.error(
@@ -416,7 +407,7 @@ export function useWorkflowStateMachine({
         { duration: Infinity },
       );
     }
-  }, [workspacePath, skillName, currentStep, stepConfig?.model, gateLoading, gate, clearRuns, updateStepStatus, setRunning, setInitializing, clearInitializing, agentStartRun]);
+  }, [workspacePath, skillName, currentStep, stepConfig?.model, stepConfigs, gate, clearRuns, updateStepStatus, setRunning, setInitializing, clearInitializing, agentStartRun]);
 
   // --- Step reset ---
 
@@ -447,7 +438,16 @@ export function useWorkflowStateMachine({
     }
 
     if (!disabled.includes(stepId)) {
-      autoStartAfterReset(stepId);
+      // Start the agent directly instead of going through the pendingAutoStartStep →
+      // useEffect pipeline. The effect-based approach is unreliable here because React 18
+      // may batch the Zustand store updates (from resetToStep) with the React state change
+      // (setPendingAutoStartStep), causing the effect to fire with stale selector values.
+      const { reviewMode: isReview } = useWorkflowStore.getState();
+      const cfg = stepConfigs[stepId];
+      if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !isReview) {
+        logFrontend("info", `[performStepReset] auto-starting step ${stepId}`);
+        handleStartAgentStep(stepId);
+      }
     }
   };
 
