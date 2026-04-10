@@ -2127,6 +2127,89 @@ describe("step reset behavior regressions", () => {
     expect(useWorkflowStore.getState().steps[3].status).toBe("pending");
   });
 
+  it("onResetStep on completed step auto-starts the agent without navigation roundtrip (VU-1021)", async () => {
+    // The core bug: clicking Reset Step on a completed step should immediately
+    // start the agent — no need to navigate away and back.
+    vi.mocked(runWorkflowStep).mockResolvedValue("agent-reset-auto");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    vi.mocked(readFile).mockRejectedValue("not found");
+    vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
+
+    let capturedOnResetStep: (() => void) | undefined;
+    vi.mocked(WorkflowStepComplete).mockImplementation(({ onResetStep }) => {
+      capturedOnResetStep = onResetStep;
+      return <div data-testid="step-complete" />;
+    });
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("step-complete")).toBeTruthy();
+    });
+
+    expect(capturedOnResetStep).toBeDefined();
+
+    await act(async () => {
+      capturedOnResetStep!();
+    });
+
+    // Agent should auto-start: runWorkflowStep called, step transitions to in_progress
+    await waitFor(() => {
+      expect(vi.mocked(runWorkflowStep)).toHaveBeenCalledWith(
+        "test-skill",
+        0,
+        "/test/workspace",
+        expect.anything(),
+      );
+    });
+    expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
+    expect(useWorkflowStore.getState().isRunning).toBe(true);
+  });
+
+  it("Reset Step button on error state auto-starts the agent (VU-1021)", async () => {
+    vi.mocked(runWorkflowStep).mockResolvedValue("agent-error-retry");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "error");
+    useWorkflowStore.getState().setRunning(false);
+
+    // Ensure no partial artifacts so the Reset button calls performStepReset directly
+    // (not showing a confirmation dialog).
+    vi.mocked(readFile).mockRejectedValue("not found");
+    vi.mocked(getContextFileContent).mockResolvedValue(null);
+    vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Reset Step/ })).toBeTruthy();
+    });
+
+    await act(async () => {
+      screen.getByRole("button", { name: /Reset Step/ }).click();
+    });
+
+    // Agent should auto-start after reset
+    await waitFor(() => {
+      expect(vi.mocked(runWorkflowStep)).toHaveBeenCalledWith(
+        "test-skill",
+        0,
+        "/test/workspace",
+        expect.anything(),
+      );
+    });
+    expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
+    expect(useWorkflowStore.getState().isRunning).toBe(true);
+  });
+
   it("ResetStepDialog for step 0 calls resetToStep(0) making step 0 pending", async () => {
     // Bug 2 regression: clicking step 0 from step 1 in update mode should call resetToStep(0),
     // making step 0 pending (not keeping it completed like navigateBackToStep would do).
@@ -2466,6 +2549,47 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     // Step 3 is pending and disabled — auto-start should not fire
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
+  });
+
+  // --- Scenario 5b: Review→update toggle auto-starts the first pending step (VU-1021 regression) ---
+  it("review→update toggle auto-starts the first pending agent step", async () => {
+    vi.mocked(runWorkflowStep).mockResolvedValue("agent-toggle-1");
+    vi.mocked(getWorkflowState).mockResolvedValueOnce({
+      run: {
+        skill_name: "test-skill",
+        current_step: 0,
+        status: "completed",
+        purpose: "domain",
+        created_at: "",
+        updated_at: "",
+      },
+      steps: [],
+    });
+
+    render(<WorkflowPage />);
+
+    // Wait for hydration — starts in review mode
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().hydrated).toBe(true);
+    });
+
+    expect(useWorkflowStore.getState().reviewMode).toBe(true);
+
+    // Toggle to update mode
+    act(() => {
+      useWorkflowStore.getState().setReviewMode(false);
+    });
+
+    // The auto-start effect should fire for step 0 (first pending step)
+    await waitFor(() => {
+      expect(vi.mocked(runWorkflowStep)).toHaveBeenCalledWith(
+        "test-skill",
+        0,
+        "/test/workspace",
+        expect.anything(),
+      );
+    });
+    expect(useWorkflowStore.getState().isRunning).toBe(true);
   });
 
   // --- Scenario 6: Full flow — step 2 + contradictions → no auto-advance to step 3 ---
