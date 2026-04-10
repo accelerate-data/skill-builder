@@ -1,20 +1,32 @@
 use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir};
 use std::path::Path;
 
+/// Parameters for [`build_prompt`].
+pub(crate) struct PromptParams<'a> {
+    pub skill_name: &'a str,
+    pub workspace_path: &'a str,
+    pub plugin_slug: &'a str,
+    pub skills_path: &'a str,
+    pub author_login: Option<&'a str>,
+    pub created_at: Option<&'a str>,
+    pub subagent_directive: Option<&'a str>,
+    pub step_id: u32,
+}
+
 /// Construct the agent prompt string injected into every `SidecarConfig`.
 /// Embeds workspace path, skills output path, author, and date.
 /// `subagent_directive` is appended as the final sentence — use it to instruct
 /// the model to launch a named subagent (steps 1–3).
-pub(crate) fn build_prompt(
-    skill_name: &str,
-    workspace_path: &str,
-    plugin_slug: &str,
-    skills_path: &str,
-    author_login: Option<&str>,
-    created_at: Option<&str>,
-    subagent_directive: Option<&str>,
-    step_id: u32,
-) -> String {
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_prompt(p: &PromptParams<'_>) -> String {
+    let skill_name = p.skill_name;
+    let workspace_path = p.workspace_path;
+    let plugin_slug = p.plugin_slug;
+    let skills_path = p.skills_path;
+    let author_login = p.author_login;
+    let created_at = p.created_at;
+    let subagent_directive = p.subagent_directive;
+    let step_id = p.step_id;
     let workspace_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);

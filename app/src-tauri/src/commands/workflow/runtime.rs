@@ -111,16 +111,16 @@ async fn run_workflow_step_inner(
             settings.max_dimensions,
         )
     } else {
-        build_prompt(
+        build_prompt(&super::prompt::PromptParams {
             skill_name,
             workspace_path,
-            &settings.plugin_slug,
-            &settings.skills_path,
-            settings.author_login.as_deref(),
-            settings.created_at.as_deref(),
-            subagent_directive.as_deref(),
+            plugin_slug: &settings.plugin_slug,
+            skills_path: &settings.skills_path,
+            author_login: settings.author_login.as_deref(),
+            created_at: settings.created_at.as_deref(),
+            subagent_directive: subagent_directive.as_deref(),
             step_id,
-        )
+        })
     };
     log::debug!(
         "[run_workflow_step] prompt for step={} step_id={}: {}",

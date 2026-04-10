@@ -13,7 +13,7 @@ use super::guards::{
     make_agent_id, parse_decisions_guard, parse_scope_recommendation,
     validate_decisions_exist_inner, workflow_step_runtime_label,
 };
-use super::prompt::build_prompt;
+use super::prompt::{build_prompt, PromptParams};
 use super::user_context::{format_user_context, write_user_context_file};
 use super::step_config::{
     build_betas, get_step_config, thinking_budget_for_step, workflow_output_format_for_agent,
@@ -997,16 +997,16 @@ fn test_materialize_step3_rejects_wrong_status() {
 
 #[test]
 fn test_build_prompt_all_three_paths() {
-    let prompt = build_prompt(
-        "my-skill",
-        "/home/user/.vibedata/skill-builder",
-        DEFAULT_PLUGIN_SLUG,
-        "/home/user/my-skills",
-        None,
-        None,
-        None,
-        1,
-    );
+    let prompt = build_prompt(&PromptParams {
+        skill_name: "my-skill",
+        workspace_path: "/home/user/.vibedata/skill-builder",
+        plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: "/home/user/my-skills",
+        author_login: None,
+        created_at: None,
+        subagent_directive: None,
+        step_id: 1,
+    });
     assert!(prompt.contains("my-skill"));
     assert!(prompt
         .contains("The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"));
@@ -1017,32 +1017,32 @@ fn test_build_prompt_all_three_paths() {
 
 #[test]
 fn test_build_prompt_with_skill_type() {
-    let prompt = build_prompt(
-        "my-skill",
-        "/home/user/.vibedata/skill-builder",
-        DEFAULT_PLUGIN_SLUG,
-        "/home/user/my-skills",
-        None,
-        None,
-        None,
-        1,
-    );
+    let prompt = build_prompt(&PromptParams {
+        skill_name: "my-skill",
+        workspace_path: "/home/user/.vibedata/skill-builder",
+        plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: "/home/user/my-skills",
+        author_login: None,
+        created_at: None,
+        subagent_directive: None,
+        step_id: 1,
+    });
     // Purpose is now in user-context.md, read by the agent
     assert!(prompt.contains("user-context.md"));
 }
 
 #[test]
 fn test_build_prompt_with_author_info() {
-    let prompt = build_prompt(
-        "my-skill",
-        "/home/user/.vibedata/skill-builder",
-        DEFAULT_PLUGIN_SLUG,
-        "/home/user/my-skills",
-        Some("octocat"),
-        Some("2025-06-15T12:00:00Z"),
-        None,
-        1,
-    );
+    let prompt = build_prompt(&PromptParams {
+        skill_name: "my-skill",
+        workspace_path: "/home/user/.vibedata/skill-builder",
+        plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: "/home/user/my-skills",
+        author_login: Some("octocat"),
+        created_at: Some("2025-06-15T12:00:00Z"),
+        subagent_directive: None,
+        step_id: 1,
+    });
     assert!(prompt.contains("The author of this skill is: octocat."));
     assert!(prompt.contains("The skill was created on: 2025-06-15."));
     assert!(prompt.contains("Today's date (for the modified timestamp) is:"));
@@ -1050,34 +1050,43 @@ fn test_build_prompt_with_author_info() {
 
 #[test]
 fn test_build_prompt_without_author_info() {
-    let prompt = build_prompt(
-        "my-skill",
-        "/home/user/.vibedata/skill-builder",
-        DEFAULT_PLUGIN_SLUG,
-        "/home/user/my-skills",
-        None,
-        None,
-        None,
-        1,
-    );
+    let prompt = build_prompt(&PromptParams {
+        skill_name: "my-skill",
+        workspace_path: "/home/user/.vibedata/skill-builder",
+        plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: "/home/user/my-skills",
+        author_login: None,
+        created_at: None,
+        subagent_directive: None,
+        step_id: 1,
+    });
     assert!(!prompt.contains("The author of this skill is:"));
     assert!(!prompt.contains("The skill was created on:"));
 }
 
 #[test]
 fn test_build_prompt_includes_step_specific_schema_file() {
-    let step1 = build_prompt("s", "/ws", DEFAULT_PLUGIN_SLUG, "/sk", None, None, None, 1);
+    let step1 = build_prompt(&PromptParams {
+        skill_name: "s", workspace_path: "/ws", plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: "/sk", author_login: None, created_at: None, subagent_directive: None, step_id: 1,
+    });
     assert!(step1.contains("step-1-detailed-research.json"));
     assert!(!step1.contains("step-0-research.json"));
     assert!(step1.contains("Do NOT read other step schema files"));
     assert!(step1.contains("DetailedResearchOutput"));
 
-    let step2 = build_prompt("s", "/ws", DEFAULT_PLUGIN_SLUG, "/sk", None, None, None, 2);
+    let step2 = build_prompt(&PromptParams {
+        skill_name: "s", workspace_path: "/ws", plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: "/sk", author_login: None, created_at: None, subagent_directive: None, step_id: 2,
+    });
     assert!(step2.contains("step-2-decisions.json"));
     assert!(!step2.contains("step-1-detailed-research.json"));
     assert!(step2.contains("DecisionsOutput"));
 
-    let step3 = build_prompt("s", "/ws", DEFAULT_PLUGIN_SLUG, "/sk", None, None, None, 3);
+    let step3 = build_prompt(&PromptParams {
+        skill_name: "s", workspace_path: "/ws", plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: "/sk", author_login: None, created_at: None, subagent_directive: None, step_id: 3,
+    });
     assert!(!step3.contains("step-0-research.json"));
     assert!(!step3.contains("step-1-detailed-research.json"));
     assert!(!step3.contains("step-2-decisions.json"));
@@ -2032,7 +2041,10 @@ fn test_format_user_context_partial_intake() {
 fn test_build_prompt_includes_user_context_md_instruction() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, None, 1);
+    let prompt = build_prompt(&PromptParams {
+        skill_name: "test-skill", workspace_path: ws.to_str().unwrap(), plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: skills.to_str().unwrap(), author_login: None, created_at: None, subagent_directive: None, step_id: 1,
+    });
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
@@ -2041,7 +2053,10 @@ fn test_build_prompt_includes_user_context_md_instruction() {
 fn test_build_prompt_without_user_context() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, None, 1);
+    let prompt = build_prompt(&PromptParams {
+        skill_name: "test-skill", workspace_path: ws.to_str().unwrap(), plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: skills.to_str().unwrap(), author_login: None, created_at: None, subagent_directive: None, step_id: 1,
+    });
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
