@@ -219,7 +219,7 @@ export function ClarificationsEditor({
         <MetadataBlock data={data} />
 
         <div className="px-6 pt-4 pb-1 text-base font-semibold tracking-tight text-foreground">
-          {data.metadata.title}
+          {data.metadata?.title}
         </div>
         <div
           className="mx-6 rounded-md border px-3 py-2 text-xs leading-relaxed"
@@ -314,25 +314,25 @@ function MetadataBlock({ data }: { data: ClarificationsFile }) {
   const m = data.metadata;
   return (
     <div className="mx-6 mt-4 flex flex-wrap gap-x-6 gap-y-1 rounded-lg border bg-muted/40 px-4 py-2.5 font-mono text-xs">
-      {(m.priority_questions ?? []).length > 0 && (
+      {(m?.priority_questions ?? []).length > 0 && (
         <span>
           <span className="text-muted-foreground">priority</span>{": "}
           <span className="text-amber-600 dark:text-amber-400">
-            [{(m.priority_questions ?? []).join(", ")}]
+            [{(m?.priority_questions ?? []).join(", ")}]
           </span>
         </span>
       )}
       <span>
         <span className="text-muted-foreground">questions</span>{": "}
-        <span style={{ color: "var(--color-pacific)" }}>{m.question_count}</span>
+        <span style={{ color: "var(--color-pacific)" }}>{m?.question_count}</span>
       </span>
       <span>
         <span className="text-muted-foreground">sections</span>{": "}
-        <span style={{ color: "var(--color-pacific)" }}>{m.section_count}</span>
+        <span style={{ color: "var(--color-pacific)" }}>{m?.section_count}</span>
       </span>
       <span>
         <span className="text-muted-foreground">refinements</span>{": "}
-        <span style={{ color: "var(--color-pacific)" }}>{m.refinement_count}</span>
+        <span style={{ color: "var(--color-pacific)" }}>{m?.refinement_count}</span>
       </span>
     </div>
   );

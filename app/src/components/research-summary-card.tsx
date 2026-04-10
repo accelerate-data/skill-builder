@@ -192,9 +192,9 @@ function parseResearchPlanFromClarifications(
 type OutcomeState = "ok" | "error" | "scope_guard" | "low_score";
 
 function getOutcomeState(meta: ClarificationsFile["metadata"]): OutcomeState {
-  if (meta.error) return "error";
-  if (meta.warning?.code === "scope_guard_triggered") return "scope_guard";
-  if (meta.warning?.code === "all_dimensions_low_score") return "low_score";
+  if (meta?.error) return "error";
+  if (meta?.warning?.code === "scope_guard_triggered") return "scope_guard";
+  if (meta?.warning?.code === "all_dimensions_low_score") return "low_score";
   return "ok";
 }
 
@@ -259,16 +259,16 @@ export function ResearchSummaryCard({
       <div className="flex items-start gap-2 px-4 py-3 bg-destructive/10 border-b text-destructive text-sm">
         <XCircle className="size-4 shrink-0 mt-0.5" />
         <div>
-          <p className="font-medium">{meta.error?.message}</p>
+          <p className="font-medium">{meta?.error?.message}</p>
         </div>
       </div>
     ) : (
       <div className="flex items-start gap-2 px-4 py-3 bg-amber-100 dark:bg-amber-900/30 border-b text-amber-700 dark:text-amber-300 text-sm">
         <AlertTriangle className="size-4 shrink-0 mt-0.5" />
         <div>
-          <p className="font-medium">{meta.warning?.message}</p>
-          {meta.scope_reason && (
-            <p className="mt-1 text-xs opacity-80">{meta.scope_reason}</p>
+          <p className="font-medium">{meta?.warning?.message}</p>
+          {meta?.scope_reason && (
+            <p className="mt-1 text-xs opacity-80">{meta?.scope_reason}</p>
           )}
         </div>
       </div>
