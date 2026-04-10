@@ -4,10 +4,19 @@ version = "0.1.0"
 description = "Skill Builder Desktop App"
 authors = ["Hirak Banerjee"]
 edition = "2021"
+default-run = "skill-builder"
 
 [lib]
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "codegen"
+path = "src/bin/codegen.rs"
+
+[[bin]]
+name = "validate-output"
+path = "src/bin/validate_output.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -38,6 +47,9 @@ tempfile = "3"
 htmd = "0.5"
 walkdir = "2"
 rand = { version = "0.8", features = ["small_rng"] }
+specta = { version = "=2.0.0-rc.22", features = ["derive"] }
+specta-typescript = "0.0.9"
+schemars = { version = "1", features = ["derive"] }
 
 
 [target.'cfg(unix)'.dependencies]

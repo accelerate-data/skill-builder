@@ -30,11 +30,11 @@ interface ClarificationsEditorProps {
 }
 
 function flattenQuestions(questions: Question[]): Question[] {
-  return questions.flatMap((question) => [question, ...flattenQuestions(question.refinements)]);
+  return questions.flatMap((question) => [question, ...flattenQuestions(question.refinements ?? [])]);
 }
 
 function flattenSectionQuestions(sections: Section[]): Question[] {
-  return sections.flatMap((section) => flattenQuestions(section.questions));
+  return sections.flatMap((section) => flattenQuestions(section.questions ?? []));
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ export function ClarificationsEditor({
   evaluating = false,
 }: ClarificationsEditorProps) {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
-  const [expandedSections, setExpandedSections] = useState<Set<number>>(() => new Set(data.sections.map((section) => section.id)));
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(() => new Set((data.sections ?? []).map((section) => section.id)));
   const [notesExpanded, setNotesExpanded] = useState(true);
   const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
   const { answered, total, mustUnanswered } = getTotalCounts(data);
@@ -59,7 +59,7 @@ export function ClarificationsEditor({
     () => getReviewFeedbackMap(data.answer_evaluator_notes ?? []),
     [data.answer_evaluator_notes],
   );
-  const allQuestions = useMemo(() => flattenSectionQuestions(data.sections), [data.sections]);
+  const allQuestions = useMemo(() => flattenSectionQuestions(data.sections ?? []), [data.sections]);
   const allQuestionIds = useMemo(() => new Set(allQuestions.map((question) => question.id)), [allQuestions]);
   const contradictionSourcesByQuestion = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -124,7 +124,7 @@ export function ClarificationsEditor({
     setExpandedSections((prev) => {
       const next = new Set(prev);
       let changed = false;
-      for (const section of data.sections) {
+      for (const section of data.sections ?? []) {
         if (!next.has(section.id)) {
           next.add(section.id);
           changed = true;
@@ -139,17 +139,17 @@ export function ClarificationsEditor({
       function walkQuestions(questions: Question[]): Question[] {
         return questions.map((q) => {
           if (q.id === questionId) return updater(q);
-          if (q.refinements.length > 0) {
-            return { ...q, refinements: walkQuestions(q.refinements) };
+          if ((q.refinements ?? []).length > 0) {
+            return { ...q, refinements: walkQuestions(q.refinements ?? []) };
           }
           return q;
         });
       }
       const updated: ClarificationsFile = {
         ...data,
-        sections: data.sections.map((s) => ({
+        sections: (data.sections ?? []).map((s) => ({
           ...s,
-          questions: walkQuestions(s.questions),
+          questions: walkQuestions(s.questions ?? []),
         })),
       };
       onChange(updated);
@@ -159,15 +159,15 @@ export function ClarificationsEditor({
 
   const hasNeedsReviewInTree = useCallback((q: Question): boolean => {
     if (needsReviewQuestionIds.has(q.id)) return true;
-    return q.refinements.some(hasNeedsReviewInTree);
+    return (q.refinements ?? []).some(hasNeedsReviewInTree);
   }, [needsReviewQuestionIds]);
 
-  const visibleSections = data.sections
+  const visibleSections = (data.sections ?? [])
     .map((section) => ({
       section,
       visibleQuestions: showNeedsReviewOnly
-        ? section.questions.filter(hasNeedsReviewInTree)
-        : section.questions,
+        ? (section.questions ?? []).filter(hasNeedsReviewInTree)
+        : (section.questions ?? []),
     }))
     .filter(({ visibleQuestions }) => visibleQuestions.length > 0);
 
@@ -219,7 +219,7 @@ export function ClarificationsEditor({
         <MetadataBlock data={data} />
 
         <div className="px-6 pt-4 pb-1 text-base font-semibold tracking-tight text-foreground">
-          {data.metadata.title}
+          {data.metadata?.title}
         </div>
         <div
           className="mx-6 rounded-md border px-3 py-2 text-xs leading-relaxed"
@@ -245,8 +245,8 @@ export function ClarificationsEditor({
           </div>
         )}
 
-        {data.notes.length > 0 && (
-          <NotesBlock notes={data.notes} isExpanded={notesExpanded} onToggle={() => setNotesExpanded((prev) => !prev)} />
+        {(data.notes ?? []).length > 0 && (
+          <NotesBlock notes={data.notes ?? []} isExpanded={notesExpanded} onToggle={() => setNotesExpanded((prev) => !prev)} />
         )}
 
         {visibleSections.map(({ section, visibleQuestions }) => (
@@ -314,25 +314,25 @@ function MetadataBlock({ data }: { data: ClarificationsFile }) {
   const m = data.metadata;
   return (
     <div className="mx-6 mt-4 flex flex-wrap gap-x-6 gap-y-1 rounded-lg border bg-muted/40 px-4 py-2.5 font-mono text-xs">
-      {m.priority_questions.length > 0 && (
+      {(m?.priority_questions ?? []).length > 0 && (
         <span>
           <span className="text-muted-foreground">priority</span>{": "}
           <span className="text-amber-600 dark:text-amber-400">
-            [{m.priority_questions.join(", ")}]
+            [{(m?.priority_questions ?? []).join(", ")}]
           </span>
         </span>
       )}
       <span>
         <span className="text-muted-foreground">questions</span>{": "}
-        <span style={{ color: "var(--color-pacific)" }}>{m.question_count}</span>
+        <span style={{ color: "var(--color-pacific)" }}>{m?.question_count}</span>
       </span>
       <span>
         <span className="text-muted-foreground">sections</span>{": "}
-        <span style={{ color: "var(--color-pacific)" }}>{m.section_count}</span>
+        <span style={{ color: "var(--color-pacific)" }}>{m?.section_count}</span>
       </span>
       <span>
         <span className="text-muted-foreground">refinements</span>{": "}
-        <span style={{ color: "var(--color-pacific)" }}>{m.refinement_count}</span>
+        <span style={{ color: "var(--color-pacific)" }}>{m?.refinement_count}</span>
       </span>
     </div>
   );

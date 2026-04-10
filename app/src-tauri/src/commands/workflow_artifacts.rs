@@ -1,103 +1,13 @@
 //! Typed Rust structs for structured workflow step outputs.
 //!
-//! Each struct mirrors exactly the JSON schema enforced by the agent's `output_format`
-//! contract (see `workflow/step_config.rs` and `commands/agent.rs`). Deserialization
-//! via `serde_json::from_value::<T>()` is the boundary check; any mismatch is caught
-//! here and surfaced as a typed error before file I/O occurs.
+//! All struct definitions now live in `contracts::workflow_outputs`. This module
+//! re-exports them for backward compatibility with existing consumers.
 
-use serde::{Deserialize, Serialize};
-
-// ─── Step 0: Research Orchestrator ───────────────────────────────────────────
-
-/// Structured output produced by the `research-orchestrator` agent (workflow step 0).
-///
-/// Required fields: `status` (const `"research_complete"`), `dimensions_selected`,
-/// `question_count`, `research_output`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResearchStepOutput {
-    pub status: String,
-    pub dimensions_selected: i64,
-    pub question_count: i64,
-    pub research_output: serde_json::Value,
-}
-
-// ─── Step 1: Detailed Research ───────────────────────────────────────────────
-
-/// Structured output produced by the `detailed-research` agent (workflow step 1).
-///
-/// Required fields: `status` (const `"detailed_research_complete"`), `refinement_count`,
-/// `section_count`, `clarifications_json`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DetailedResearchOutput {
-    pub status: String,
-    pub refinement_count: i64,
-    pub section_count: i64,
-    pub clarifications_json: serde_json::Value,
-}
-
-// ─── Step 2: Confirm Decisions ───────────────────────────────────────────────
-
-/// Structured output produced by the `confirm-decisions` agent (workflow step 2).
-///
-/// Required fields: `version`, `metadata`, `decisions`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DecisionsOutput {
-    pub version: String,
-    pub metadata: serde_json::Value,
-    pub decisions: Vec<serde_json::Value>,
-}
-
-// ─── Step 3: Generate / Benchmark Skill ──────────────────────────────────────
-
-/// Structured output produced by the `generate-skill` agent (workflow step 3,
-/// writing phase) or the `benchmark-skill` agent (benchmark phase).
-///
-/// generate-skill:  `{ status: "generated", skipped?: true, commit_summary?, version_bump?, call_trace }`
-/// rewrite-skill:   `{ status: "rewritten", skipped?: true, commit_summary?, version_bump?, call_trace }`
-/// benchmark-skill:  `{ status: "complete"|"partial"|"skipped", benchmark_path?, call_trace }`
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GenerateSkillOutput {
-    pub status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub benchmark_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skipped: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub commit_summary: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub version_bump: Option<String>,
-}
-
-// ─── Answer Evaluator ────────────────────────────────────────────────────────
-
-/// Per-question verdict entry within an [`AnswerEvaluationOutput`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PerQuestionEntry {
-    pub question_id: String,
-    pub verdict: String,
-    pub reason: Option<String>,
-}
-
-/// Structured output produced by the answer-evaluator agent (transition gate between
-/// steps 1 and 2).
-///
-/// Required fields: `verdict`, `answered_count`, `empty_count`, `vague_count`,
-/// `contradictory_count`, `total_count`, `reasoning`, `gate_decision`, `per_question`.
-///
-/// `gate_decision` is one of `"run_research"`, `"revise"` — set automatically by the agent
-/// based on verdict and contradictory_count (no user interaction required).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnswerEvaluationOutput {
-    pub verdict: String,
-    pub answered_count: i64,
-    pub empty_count: i64,
-    pub vague_count: i64,
-    pub contradictory_count: i64,
-    pub total_count: i64,
-    pub reasoning: String,
-    pub gate_decision: Option<String>,
-    pub per_question: Vec<PerQuestionEntry>,
-}
+#[allow(unused_imports)] // PerQuestionEntry re-exported for downstream crate consumers
+pub use crate::contracts::workflow_outputs::{
+    AnswerEvaluationOutput, DecisionsOutput, DetailedResearchOutput, GenerateSkillOutput,
+    PerQuestionEntry, ResearchStepOutput,
+};
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -116,6 +26,7 @@ mod tests {
             "research_output": {
                 "version": "1",
                 "metadata": {
+                    "title": "Test",
                     "question_count": 7,
                     "section_count": 2,
                     "refinement_count": 0,
@@ -143,7 +54,16 @@ mod tests {
         let json = serde_json::json!({
             "dimensions_selected": 3,
             "question_count": 7,
-            "research_output": {}
+            "research_output": {
+                "version": "1",
+                "metadata": {
+                    "title": "Test",
+                    "question_count": 7,
+                    "section_count": 0,
+                    "refinement_count": 0,
+                    "must_answer_count": 0
+                }
+            }
         });
         let result = serde_json::from_value::<ResearchStepOutput>(json);
         assert!(result.is_err(), "should reject missing status");
@@ -160,6 +80,36 @@ mod tests {
         assert!(result.is_err(), "should reject missing research_output");
     }
 
+    #[test]
+    fn test_research_step_output_rejects_missing_dimensions_selected() {
+        let json = serde_json::json!({
+            "status": "research_complete",
+            "question_count": 7,
+            "research_output": {
+                "version": "1",
+                "metadata": { "title": "T", "question_count": 7, "section_count": 0, "refinement_count": 0, "must_answer_count": 0 },
+                "sections": [], "notes": []
+            }
+        });
+        let result = serde_json::from_value::<ResearchStepOutput>(json);
+        assert!(result.is_err(), "should reject missing dimensions_selected");
+    }
+
+    #[test]
+    fn test_research_step_output_rejects_missing_question_count() {
+        let json = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 3,
+            "research_output": {
+                "version": "1",
+                "metadata": { "title": "T", "question_count": 7, "section_count": 0, "refinement_count": 0, "must_answer_count": 0 },
+                "sections": [], "notes": []
+            }
+        });
+        let result = serde_json::from_value::<ResearchStepOutput>(json);
+        assert!(result.is_err(), "should reject missing question_count");
+    }
+
     // ── DetailedResearchOutput ────────────────────────────────────────────
 
     #[test]
@@ -171,6 +121,7 @@ mod tests {
             "clarifications_json": {
                 "version": "1",
                 "metadata": {
+                    "title": "Detailed",
                     "question_count": 5,
                     "section_count": 3,
                     "refinement_count": 2,
@@ -205,6 +156,36 @@ mod tests {
         assert!(result.is_err(), "should reject missing clarifications_json");
     }
 
+    #[test]
+    fn test_detailed_research_output_rejects_missing_refinement_count() {
+        let json = serde_json::json!({
+            "status": "detailed_research_complete",
+            "section_count": 1,
+            "clarifications_json": {
+                "version": "1",
+                "metadata": { "title": "T", "question_count": 0, "section_count": 0, "refinement_count": 0, "must_answer_count": 0 },
+                "sections": [], "notes": []
+            }
+        });
+        let result = serde_json::from_value::<DetailedResearchOutput>(json);
+        assert!(result.is_err(), "should reject missing refinement_count");
+    }
+
+    #[test]
+    fn test_detailed_research_output_rejects_missing_section_count() {
+        let json = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "clarifications_json": {
+                "version": "1",
+                "metadata": { "title": "T", "question_count": 0, "section_count": 0, "refinement_count": 0, "must_answer_count": 0 },
+                "sections": [], "notes": []
+            }
+        });
+        let result = serde_json::from_value::<DetailedResearchOutput>(json);
+        assert!(result.is_err(), "should reject missing section_count");
+    }
+
     // ── DecisionsOutput ───────────────────────────────────────────────────
 
     #[test]
@@ -212,15 +193,18 @@ mod tests {
         let json = serde_json::json!({
             "version": "1",
             "metadata": {
-                "skill_name": "my-skill",
-                "created_at": "2025-01-01"
+                "decision_count": 1,
+                "conflicts_resolved": 0,
+                "round": 1
             },
             "decisions": [
                 {
                     "id": "D1",
-                    "category": "scope",
+                    "title": "Scope",
+                    "original_question": "Include ETL pipeline?",
                     "decision": "Include ETL pipeline",
-                    "rationale": "Core requirement"
+                    "implication": "Core requirement",
+                    "status": "resolved"
                 }
             ]
         });
@@ -238,7 +222,7 @@ mod tests {
     #[test]
     fn test_decisions_output_rejects_missing_version() {
         let json = serde_json::json!({
-            "metadata": {},
+            "metadata": { "decision_count": 0, "conflicts_resolved": 0, "round": 1 },
             "decisions": []
         });
         let result = serde_json::from_value::<DecisionsOutput>(json);
@@ -249,10 +233,20 @@ mod tests {
     fn test_decisions_output_rejects_missing_decisions() {
         let json = serde_json::json!({
             "version": "1",
-            "metadata": {}
+            "metadata": { "decision_count": 0, "conflicts_resolved": 0, "round": 1 }
         });
         let result = serde_json::from_value::<DecisionsOutput>(json);
         assert!(result.is_err(), "should reject missing decisions");
+    }
+
+    #[test]
+    fn test_decisions_output_rejects_missing_metadata() {
+        let json = serde_json::json!({
+            "version": "1",
+            "decisions": []
+        });
+        let result = serde_json::from_value::<DecisionsOutput>(json);
+        assert!(result.is_err(), "should reject missing metadata");
     }
 
     // ── GenerateSkillOutput ───────────────────────────────────────────────
@@ -403,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn test_answer_evaluation_output_rejects_missing_per_question() {
+    fn test_answer_evaluation_output_defaults_missing_per_question() {
         let json = serde_json::json!({
             "verdict": "sufficient",
             "answered_count": 5,
@@ -413,7 +407,7 @@ mod tests {
             "total_count": 5,
             "reasoning": "All answered."
         });
-        let result = serde_json::from_value::<AnswerEvaluationOutput>(json);
-        assert!(result.is_err(), "should reject missing per_question");
+        let parsed: AnswerEvaluationOutput = serde_json::from_value(json).expect("should default missing fields");
+        assert!(parsed.per_question.is_empty());
     }
 }

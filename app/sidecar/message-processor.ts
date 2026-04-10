@@ -77,8 +77,12 @@ export class MessageProcessor {
   /** Accumulates run-level state for run_result events. */
   private accumulator: RunMetadataAccumulator;
 
-  constructor(context?: RequestContext) {
+  /** When true, structured_output MUST be present — fail hard if absent. */
+  private readonly requireStructuredOutput: boolean;
+
+  constructor(context?: RequestContext & { hasOutputFormat?: boolean }) {
     this.accumulator = new RunMetadataAccumulator(context ?? {});
+    this.requireStructuredOutput = context?.hasOutputFormat === true;
   }
 
   private generateId(): string {
@@ -655,24 +659,47 @@ export class MessageProcessor {
     // structured_output and a text summary in result. Fall back to result
     // if it's already an object (older SDK versions).
     let structuredOutput: unknown = undefined;
+
     if ("structured_output" in raw && raw.structured_output != null) {
       structuredOutput = raw.structured_output;
     } else if ("result" in raw && raw.result != null && typeof raw.result !== "string") {
       structuredOutput = raw.result;
     }
 
-    // Extract display-ready markdown from structured output so the frontend
-    // never needs to inspect structuredOutput directly.
-    // Fallback: if structuredOutput is absent (e.g. agent returned JSON as a
-    // text block via the Skill tool), try parsing the last output text as JSON.
-    let consumedOutputItemId: string | undefined;
-    if (structuredOutput == null && this.lastOutputText) {
-      const parsed = tryParseJsonFromText(this.lastOutputText);
-      if (parsed != null && typeof parsed === "object") {
-        structuredOutput = parsed;
-        consumedOutputItemId = this.lastOutputItemId;
+    // When structured_output is absent, try to parse JSON from the result text.
+    // The SDK silently drops outputFormat enforcement for non-trivial schemas
+    // (known bug: anthropics/claude-agent-sdk-typescript#277), but prompt
+    // directives make the model return raw JSON in the result text field.
+    // Rust serde validates the parsed JSON downstream — this is a best-effort
+    // extraction, not a schema validation step.
+    if (structuredOutput == null) {
+      // Try parsing result text as JSON (covers both outputFormat and non-outputFormat paths).
+      const textToParse = (typeof raw.result === "string" ? raw.result : null) ?? this.lastOutputText;
+      if (textToParse) {
+        const parsed = tryParseJsonFromText(textToParse);
+        if (parsed != null && typeof parsed === "object") {
+          structuredOutput = parsed;
+          if (this.requireStructuredOutput) {
+            process.stderr.write(
+              `[message-processor] event=structured_output_fallback subtype=${subtype ?? "none"} ` +
+              `source=result_text — SDK did not populate structured_output, parsed from result text\n`
+            );
+          }
+        }
+      }
+
+      // If outputFormat was configured and we still have nothing: hard fail.
+      if (structuredOutput == null && this.requireStructuredOutput) {
+        resultStatus = "error";
+        errorSubtype = "structured_output_missing";
+        outputText = "Structured output missing — the agent did not return JSON matching the required schema. Retry the step.";
+        process.stderr.write(
+          `[message-processor] event=structured_output_missing subtype=${subtype ?? "none"} ` +
+          `result_type=${typeof raw.result} result_length=${typeof raw.result === "string" ? raw.result.length : 0}\n`
+        );
       }
     }
+
     const resultMarkdown = extractResultMarkdown(structuredOutput);
 
     // Mark any remaining pending tool calls as orphaned
@@ -707,19 +734,6 @@ export class MessageProcessor {
     );
 
     const results: ProcessedMessage[] = [...orphanedItems];
-
-    // If the result consumed the last output text for structured output,
-    // emit a replacement output item that hides the raw JSON so it's not
-    // displayed alongside the rendered resultMarkdown.
-    if (consumedOutputItemId && resultMarkdown) {
-      results.push(this.makeEnvelope({
-        id: consumedOutputItemId,
-        type: "output",
-        timestamp: now,
-        outputText: "",
-      }));
-    }
-
     results.push(this.makeEnvelope(item));
 
     // Forward contextWindow via a discrete agent event so context utilization

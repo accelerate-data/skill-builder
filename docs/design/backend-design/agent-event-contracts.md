@@ -1,8 +1,10 @@
 # Agent Event Contracts
 
 As-built reference for all Tauri events emitted from the Rust backend to the React frontend.
-All payload structs live in `app/src-tauri/src/agents/events.rs`. Frontend types that mirror
-these payloads live in `app/src/hooks/use-agent-stream.ts`.
+All payload structs live in `app/src-tauri/src/contracts/agent_events.rs` (canonical Rust types).
+TypeScript types are generated from Rust via codegen into `app/src/generated/contracts.ts` and
+`app/sidecar/generated/contracts.ts`. Frontend listener registration lives in
+`app/src/hooks/use-agent-stream.ts`.
 
 ---
 
@@ -60,6 +62,11 @@ internally consumed (i.e. everything except `run_result` and structured `agent_e
 |---|---|---|
 | `agent_id` | `String` | Identifier of the originating agent |
 | `message` | `serde_json::Value` | Full JSON message from the sidecar |
+
+> **Note:** Individual structured agent events (run_config, turn_usage, etc.) are now typed
+> via the `AgentEvent` tagged union in `contracts/agent_events.rs` rather than remaining
+> as opaque `serde_json::Value`. The `agent-message` channel still carries untyped JSON for
+> messages that are not internally consumed structured events.
 
 ---
 
@@ -161,9 +168,33 @@ This means frontend payload types have the shape
 
 ---
 
+## Structured Output Handling
+
+When a workflow step completes, the SDK result message may include:
+
+- `structured_output` — parsed JSON object (when SDK constrained decoding works)
+- `result` — text field containing the agent's final output
+
+Due to a known SDK bug ([anthropics/claude-agent-sdk-typescript#277](https://github.com/anthropics/claude-agent-sdk-typescript/issues/277)), `structured_output` is not populated for nested JSON schemas. In this case, the sidecar extracts JSON from the `result` text field via `tryParseJsonFromText`. If both are absent, the sidecar emits `status: "error"` with `errorSubtype: "structured_output_missing"`.
+
+The `result` text field is used when:
+- `structured_output` is absent (SDK bug workaround)
+- The agent returned an error (non-JSON output)
+
+Rust is the final validator — it deserializes the extracted JSON into typed contract structs.
+
+---
+
 ## Source References
 
-- Rust payload structs and emit logic: `app/src-tauri/src/agents/events.rs`
+- Canonical Rust contract types (agent events): `app/src-tauri/src/contracts/agent_events.rs`
+- Canonical Rust contract types (workflow outputs): `app/src-tauri/src/contracts/workflow_outputs.rs`
+- Rust emit logic: `app/src-tauri/src/agents/events.rs`
+- Generated TypeScript types: `app/src/generated/contracts.ts`, `app/sidecar/generated/contracts.ts`
+- Generated JSON Schema (inline): `agent-sources/plugins/skill-content-researcher/shared/output-schemas/`
+- Generated JSON Schema (deep, with `$ref`): `agent-sources/plugins/skill-content-researcher/shared/output-deep-schemas/`
+- Sidecar message processing: `app/sidecar/message-processor.ts`
+- Sidecar JSON extraction: `app/sidecar/lib/result-extraction.ts`
 - Frontend listener registration: `app/src/hooks/use-agent-stream.ts`
 - Frontend TypeScript event types: `app/src/lib/agent-events.ts`
 - Frontend run state and error classification: `app/src/stores/agent-store.ts`

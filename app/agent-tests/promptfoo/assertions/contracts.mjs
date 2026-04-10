@@ -114,7 +114,7 @@ export function assessDecisionsJsonSchema(payload) {
       && typeof decision?.original_question === "string"
       && typeof decision?.decision === "string"
       && typeof decision?.implication === "string"
-      && ["resolved", "conflict-resolved", "needs-review"].includes(decision?.status),
+      && ["resolved", "conflict-resolved", "needs-review", "revised"].includes(decision?.status),
     ),
   };
 }

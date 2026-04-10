@@ -1,25 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { CheckCircle2, GitBranch, AlertTriangle, ChevronRight } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import type { Decision, DecisionsMetadata, DecisionsOutput } from "@/generated/contracts";
+
+export type { Decision };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface DecisionsMetadata {
-  decision_count: number;
-  conflicts_resolved: number;
-  round: number;
-  contradictory_inputs?: true | "revised";
-  scope_recommendation?: true;
-}
-
-export interface Decision {
-  id: string;
-  title: string;
-  original_question: string;
-  decision: string;
-  implication: string;
-  status: "resolved" | "conflict-resolved" | "needs-review" | "revised";
-}
 
 interface DecisionsSummaryCardProps {
   decisionsContent: string;
@@ -30,11 +16,7 @@ interface DecisionsSummaryCardProps {
 
 // ─── Parsers & Serializers ────────────────────────────────────────────────────
 
-interface DecisionsJsonFile {
-  version?: string;
-  metadata?: DecisionsMetadata;
-  decisions?: Decision[];
-}
+type DecisionsJsonFile = Partial<DecisionsOutput>;
 
 const DEFAULT_METADATA: DecisionsMetadata = { decision_count: 0, conflicts_resolved: 0, round: 1 };
 
@@ -266,6 +248,12 @@ function StatusChip({ label, className, style }: { label: string; className?: st
 
 // ─── Decision Card ────────────────────────────────────────────────────────────
 
+const UNKNOWN_STATUS_COLORS = {
+  border: "var(--muted-foreground)",
+  badge: "var(--muted-foreground)",
+  badgeBg: "color-mix(in oklch, var(--muted-foreground), transparent 85%)",
+} as const;
+
 const statusColors: Record<Decision["status"], { border: string; badge: string; badgeBg: string }> = {
   resolved: {
     border: "var(--color-seafoam)",
@@ -372,7 +360,7 @@ function DecisionCard({
   const [draft, setDraft] = useState(decision);
   useEffect(() => { setDraft(decision); }, [decision]);
 
-  const colors = statusColors[decision.status];
+  const colors = statusColors[decision.status] ?? UNKNOWN_STATUS_COLORS;
 
   function handleDraftChange(field: "decision" | "implication", value: string) {
     const updated = { ...draft, [field]: value };

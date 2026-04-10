@@ -94,6 +94,7 @@ Run these automatically before reporting completion when files match:
 | `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` |
 | `app/sidecar/mock-templates/**` | `cd app && npm run test:unit` |
 | `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` |
+| `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` |
 
 For artifact format changes (agent output + app parser + mock templates): run `test:agents:structural` and `test:unit`, then tell the user to run `test:agents:smoke` manually. The `canonical-format.test.ts` suite is the canary for format drift.
 

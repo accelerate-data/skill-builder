@@ -77,6 +77,14 @@ jobs:
         working-directory: app/src-tauri
         run: cargo clippy -- -D warnings
 
+      - name: Run codegen
+        working-directory: app
+        run: npm run codegen
+
+      - name: Check codegen freshness
+        run: |
+          git diff --exit-code app/src/generated/ app/sidecar/generated/ app/src-tauri/src/generated/
+
   platform-windows:
     name: platform-windows
     runs-on: windows-latest

@@ -34,6 +34,10 @@ pub(crate) use user_context::write_user_context_file;
 // LLMs occasionally drift on JSON types: numbers as strings, strings as numbers,
 // bools as strings, etc. These helpers accept the canonical type first, then
 // fall back to the most common LLM drift.
+//
+// NOTE: With the typed contract structs in `contracts/`, most structural validation
+// is now handled by serde deserialization. These helpers are retained only for the
+// few remaining `serde_json::Value`-based call sites (e.g. `guards.rs`).
 
 /// Coerce a JSON value to i64: accepts native integers or string-encoded integers.
 pub(crate) fn coerce_to_i64(v: &serde_json::Value) -> Option<i64> {
@@ -42,6 +46,8 @@ pub(crate) fn coerce_to_i64(v: &serde_json::Value) -> Option<i64> {
 }
 
 /// Coerce a JSON value to String: accepts strings, or stringifies numbers/bools.
+#[deprecated(note = "Use typed contract structs instead of coercing serde_json::Value")]
+#[allow(dead_code)]
 pub(crate) fn coerce_to_string(v: &serde_json::Value) -> Option<String> {
     v.as_str().map(|s| s.to_string()).or_else(|| match v {
         serde_json::Value::Number(n) => Some(n.to_string()),
@@ -51,6 +57,8 @@ pub(crate) fn coerce_to_string(v: &serde_json::Value) -> Option<String> {
 }
 
 /// Coerce a JSON value to bool: accepts bools or string "true"/"false".
+#[deprecated(note = "Use typed contract structs instead of coercing serde_json::Value")]
+#[allow(dead_code)]
 pub(crate) fn coerce_to_bool(v: &serde_json::Value) -> Option<bool> {
     v.as_bool().or_else(|| match v.as_str() {
         Some("true") => Some(true),

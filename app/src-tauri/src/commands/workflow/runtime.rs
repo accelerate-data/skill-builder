@@ -86,10 +86,19 @@ async fn run_workflow_step_inner(
         &settings.documents,
     );
 
-    let subagent_directive: Option<&str> = match step_id {
-        1 => Some("Launch the `skill-content-researcher:detailed-research` subagent to do detailed research."),
-        2 => Some("Launch the `skill-content-researcher:confirm-decisions` subagent to confirm decisions used for building skills."),
-        3 => Some("Launch the `skill-creator:generate-skill` subagent to generate the skill."),
+    const JSON_ONLY: &str = "Your final response MUST be ONLY a raw JSON object — no markdown, no explanation, no wrapping.";
+
+    // Steps 1–2 run the agent directly (no subagent relay) so outputFormat is
+    // enforced on the agent that actually produces the data. Step 3 still
+    // uses the prompt-directive approach (subagent relay) until proven stable.
+    let subagent_directive: Option<String> = match step_id {
+        // Steps 1–2: agent runs directly — no subagent directive needed.
+        1 | 2 => None,
+        3 => Some(format!(
+            "Launch the `skill-creator:generate-skill` subagent to generate the skill. \
+             {JSON_ONLY} Required fields: \
+             {{\"status\": \"generated\"}}"
+        )),
         _ => None,
     };
 
@@ -102,15 +111,16 @@ async fn run_workflow_step_inner(
             settings.max_dimensions,
         )
     } else {
-        build_prompt(
+        build_prompt(&super::prompt::PromptParams {
             skill_name,
             workspace_path,
-            &settings.plugin_slug,
-            &settings.skills_path,
-            settings.author_login.as_deref(),
-            settings.created_at.as_deref(),
-            subagent_directive,
-        )
+            plugin_slug: &settings.plugin_slug,
+            skills_path: &settings.skills_path,
+            author_login: settings.author_login.as_deref(),
+            created_at: settings.created_at.as_deref(),
+            subagent_directive: subagent_directive.as_deref(),
+            step_id,
+        })
     };
     log::debug!(
         "[run_workflow_step] prompt for step={} step_id={}: {}",
@@ -131,9 +141,15 @@ async fn run_workflow_step_inner(
         required_plugins,
     );
 
-    // All steps use the prompt-directive approach: model is set explicitly and the
-    // prompt instructs the model to launch the named subagent. This avoids the
-    // unreliable --agent flag resolution that caused steps to misbehave.
+    // Steps 1–2 use the agent directly (agentName set) so the SDK's outputFormat
+    // constrains the agent that produces the data — no relay layer.
+    // Steps 0, 3 use the prompt-directive approach: model is set explicitly
+    // and the prompt instructs the model to launch a named subagent.
+    let direct_agent = match step_id {
+        1 | 2 => Some(agent_name.clone()),
+        _ => None,
+    };
+
     let mut config = SidecarConfig {
         prompt,
         system_prompt: None,
@@ -163,7 +179,7 @@ async fn run_workflow_step_inner(
         output_format: workflow_output_format_for_agent(&agent_name),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
-        agent_name: None,
+        agent_name: direct_agent,
         required_plugins: Some(required_plugins),
         setting_sources: None,
         conversation_history: None,

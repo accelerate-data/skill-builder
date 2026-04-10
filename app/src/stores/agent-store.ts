@@ -24,11 +24,11 @@ type PendingTerminalStatus = "completed" | "error" | "shutdown";
 // ---------------------------------------------------------------------------
 
 type PendingAgentEvent =
-  | RunConfigEvent
-  | RunInitEvent
-  | TurnUsageEvent
-  | CompactionEvent
-  | ContextWindowEvent;
+  | ({ _tag: "run_config" } & RunConfigEvent)
+  | ({ _tag: "run_init" } & RunInitEvent)
+  | ({ _tag: "turn_usage" } & TurnUsageEvent)
+  | ({ _tag: "compaction" } & CompactionEvent)
+  | ({ _tag: "context_window" } & ContextWindowEvent);
 
 /**
  * Build a partial state update that appends `event` to the pending metadata buffer.
@@ -69,7 +69,7 @@ function drainPendingMetadata(agentId: string) {
   // Then apply events (re-read state each iteration since apply* calls set())
   for (const event of pending) {
     const store = useAgentStore.getState();
-    switch (event.type) {
+    switch (event._tag) {
       case "run_config":
         store.applyRunConfig(agentId, event);
         break;
@@ -405,7 +405,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, event);
+        return pendingMetadataUpdate(state, agentId, { _tag: "run_config", ...event });
       }
 
       console.debug(
@@ -429,7 +429,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, event);
+        return pendingMetadataUpdate(state, agentId, { _tag: "run_init", ...event });
       }
 
       console.debug(
@@ -453,7 +453,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, event);
+        return pendingMetadataUpdate(state, agentId, { _tag: "turn_usage", ...event });
       }
 
       console.debug(
@@ -483,7 +483,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, event);
+        return pendingMetadataUpdate(state, agentId, { _tag: "compaction", ...event });
       }
 
       console.debug(
@@ -513,7 +513,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, event);
+        return pendingMetadataUpdate(state, agentId, { _tag: "context_window", ...event });
       }
 
       if (event.contextWindow <= 0) {

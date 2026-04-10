@@ -372,6 +372,7 @@ export class StreamSession {
       usageSessionId: config.usageSessionId,
       runSource: config.runSource,
       streaming: true,
+      hasOutputFormat: config.outputFormat != null,
     });
     processorRef.current = processor;
 
