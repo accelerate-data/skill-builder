@@ -184,6 +184,61 @@ describe("useWorkflowStateMachine", () => {
     expect(mockResetToStep).toHaveBeenCalledWith(0);
   });
 
+  it("performStepReset auto-starts the agent immediately after reset", async () => {
+    mockRunWorkflowStep.mockResolvedValueOnce("agent-reset-1");
+    mockWorkflowState = { ...mockWorkflowState, reviewMode: false };
+
+    const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
+
+    await act(async () => {
+      await result.current.performStepReset(0);
+    });
+
+    expect(mockResetToStep).toHaveBeenCalledWith(0);
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith("test-skill", 0, "/workspace", undefined);
+    expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");
+    expect(mockSetRunning).toHaveBeenCalledWith(true);
+  });
+
+  it("performStepReset does not auto-start in reviewMode", async () => {
+    mockWorkflowState = { ...mockWorkflowState, reviewMode: true };
+
+    const { result } = renderHook(() => useWorkflowStateMachine({ ...defaultOptions, reviewMode: true }));
+
+    await act(async () => {
+      await result.current.performStepReset(0);
+    });
+
+    expect(mockResetToStep).toHaveBeenCalledWith(0);
+    expect(mockRunWorkflowStep).not.toHaveBeenCalled();
+  });
+
+  it("performStepReset does not auto-start when step is disabled", async () => {
+    mockGetDisabledSteps.mockResolvedValueOnce([0]);
+
+    const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
+
+    await act(async () => {
+      await result.current.performStepReset(0);
+    });
+
+    expect(mockResetToStep).toHaveBeenCalledWith(0);
+    expect(mockRunWorkflowStep).not.toHaveBeenCalled();
+  });
+
+  it("handleStartAgentStep uses overrideStep when provided", async () => {
+    mockRunWorkflowStep.mockResolvedValueOnce("agent-override-1");
+
+    const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
+
+    await act(async () => {
+      await result.current.handleStartAgentStep(2);
+    });
+
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith("test-skill", 2, "/workspace", undefined);
+    expect(mockUpdateStepStatus).toHaveBeenCalledWith(2, "in_progress");
+  });
+
   it("auto-start is skipped in reviewMode", async () => {
     renderHook(() =>
       useWorkflowStateMachine({ ...defaultOptions, reviewMode: true })

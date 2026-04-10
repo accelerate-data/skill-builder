@@ -309,7 +309,7 @@ export default function WorkflowPage() {
                 <RotateCcw className="size-3.5" />
                 Reset Step
               </Button>
-              <Button size="sm" onClick={handleStartAgentStep}>
+              <Button size="sm" onClick={() => handleStartAgentStep()}>
                 <Play className="size-3.5" />
                 Retry
               </Button>
@@ -337,7 +337,7 @@ export default function WorkflowPage() {
           <p className="font-medium">Ready to run</p>
           <p className="mt-1 text-sm">Click Start to begin this step.</p>
         </div>
-        <Button size="sm" onClick={handleStartAgentStep}>
+        <Button size="sm" onClick={() => handleStartAgentStep()}>
           <Play className="size-3.5" />
           Start Step
         </Button>
