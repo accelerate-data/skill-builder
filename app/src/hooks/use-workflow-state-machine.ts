@@ -369,9 +369,10 @@ export function useWorkflowStateMachine({
       toast.error("Missing workspace path", { duration: Infinity });
       return;
     }
-    // Read gate state from the store directly — avoids stale closures when called
-    // from performStepReset before React re-renders with cleared gate state.
-    if (useWorkflowStore.getState().gateLoading || gate.gateAgentIdRef.current) {
+    // Read state from the store directly — avoids stale closures when called
+    // from performStepReset before React re-renders with cleared state.
+    const storeState = useWorkflowStore.getState();
+    if (storeState.isRunning || storeState.gateLoading || gate.gateAgentIdRef.current) {
       return;
     }
 

@@ -60,6 +60,7 @@ let mockWorkflowState = {
   steps: [{ id: 0, status: "pending" }],
   isRunning: false,
   isInitializing: false,
+  reviewMode: false,
   gateLoading: false,
   disabledSteps: [] as number[],
   setCurrentStep: mockSetCurrentStep,
@@ -138,6 +139,7 @@ describe("useWorkflowStateMachine", () => {
       workflowSessionId: null,
       steps: [{ id: 0, status: "pending" }],
       isRunning: false,
+      reviewMode: false,
       gateLoading: false,
       disabledSteps: [],
     };
@@ -306,6 +308,50 @@ describe("useWorkflowStateMachine", () => {
     expect(result.current.pendingStepSwitch).toBe(2);
     expect(result.current.showResetConfirm).toBe(true);
     expect(result.current.resetTarget).toBe(1);
+  });
+
+  it("handleStartAgentStep blocks when isRunning is true", async () => {
+    mockWorkflowState = { ...mockWorkflowState, isRunning: true };
+
+    const { result } = renderHook(() => useWorkflowStateMachine(defaultOptions));
+
+    await act(async () => {
+      await result.current.handleStartAgentStep();
+    });
+
+    expect(mockRunWorkflowStep).not.toHaveBeenCalled();
+  });
+
+  it("review→update toggle auto-starts a pending agent step", async () => {
+    // Align store steps with prop steps so the auto-start effect's store-direct
+    // reads match the selector-derived props.
+    mockWorkflowState = {
+      ...mockWorkflowState,
+      reviewMode: true,
+      steps: [{ id: 0, status: "pending" }, { id: 1, status: "pending" }],
+      disabledSteps: [],
+    };
+
+    const { result, rerender } = renderHook(
+      (props) => useWorkflowStateMachine(props),
+      { initialProps: { ...defaultOptions, reviewMode: true } }
+    );
+
+    // Toggle from review → update mode
+    mockWorkflowState = { ...mockWorkflowState, reviewMode: false };
+    mockRunWorkflowStep.mockResolvedValueOnce("agent-toggle-1");
+
+    rerender({ ...defaultOptions, reviewMode: false });
+
+    // The toggle effect sets pendingAutoStartStep, then the auto-start effect fires
+    await waitFor(() => {
+      expect(mockRunWorkflowStep).toHaveBeenCalledWith("test-skill", 0, "/workspace", undefined);
+    });
+
+    expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");
+    expect(mockSetRunning).toHaveBeenCalledWith(true);
+    // pendingAutoStartStep should be cleared after auto-start fires
+    expect(result.current.pendingAutoStartStep).toBeNull();
   });
 
   it("handleStartAgentStep blocks when gateLoading is true", async () => {
