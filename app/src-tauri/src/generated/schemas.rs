@@ -9,12 +9,10 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
   "additionalProperties": false,
   "properties": {
     "dimensions_selected": {
-      "default": 0,
       "format": "int64",
       "type": "integer"
     },
     "question_count": {
-      "default": 0,
       "format": "int64",
       "type": "integer"
     },
@@ -43,12 +41,10 @@ pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
       "type": "object"
     },
     "refinement_count": {
-      "default": 0,
       "format": "int64",
       "type": "integer"
     },
     "section_count": {
-      "default": 0,
       "format": "int64",
       "type": "integer"
     },
@@ -77,7 +73,6 @@ pub const DECISIONS_SCHEMA: &str = r###"{
       "type": "object"
     },
     "version": {
-      "default": "",
       "type": "string"
     }
   },
@@ -226,6 +221,937 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
     "version"
   ],
   "title": "ClarificationsFile",
+  "type": "object"
+}"###;
+
+pub const RESEARCH_STEP_INLINE_SCHEMA: &str = r###"{
+  "additionalProperties": false,
+  "properties": {
+    "dimensions_selected": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "question_count": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "research_output": {
+      "additionalProperties": false,
+      "description": "Root type for a clarifications file.",
+      "properties": {
+        "answer_evaluator_notes": {
+          "items": {
+            "additionalProperties": false,
+            "description": "A note (research note or evaluator feedback).",
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "title",
+              "body"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "metadata": {
+          "additionalProperties": false,
+          "default": {
+            "must_answer_count": 0,
+            "priority_questions": [],
+            "question_count": 0,
+            "refinement_count": 0,
+            "section_count": 0,
+            "title": ""
+          },
+          "description": "Metadata block with counts, priority questions, and optional scope/research info.",
+          "properties": {
+            "duplicates_removed": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Error attached to metadata.",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "must_answer_count": {
+              "default": 0,
+              "format": "int64",
+              "type": "integer"
+            },
+            "priority_questions": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "question_count": {
+              "default": 0,
+              "format": "int64",
+              "type": "integer"
+            },
+            "refinement_count": {
+              "default": 0,
+              "format": "int64",
+              "type": "integer"
+            },
+            "research_plan": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Research plan with dimension scoring.",
+                  "properties": {
+                    "dimension_scores": {
+                      "default": [],
+                      "items": {
+                        "additionalProperties": false,
+                        "description": "A scored dimension in the research plan.",
+                        "properties": {
+                          "focus": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "score": {
+                            "format": "double",
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "score",
+                          "reason",
+                          "focus"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "dimensions_evaluated": {
+                      "default": 0,
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "dimensions_selected": {
+                      "default": 0,
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "domain": {
+                      "type": "string"
+                    },
+                    "purpose": {
+                      "type": "string"
+                    },
+                    "selected_dimensions": {
+                      "default": [],
+                      "items": {
+                        "additionalProperties": false,
+                        "description": "A dimension selected for deeper research.",
+                        "properties": {
+                          "focus": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "focus"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "topic_relevance": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "purpose",
+                    "domain",
+                    "topic_relevance"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scope_next_action": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope_reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope_recommendation": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "section_count": {
+              "default": 0,
+              "format": "int64",
+              "type": "integer"
+            },
+            "title": {
+              "default": "",
+              "type": "string"
+            },
+            "warning": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Warning attached to metadata.",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "notes": {
+          "default": [],
+          "items": {
+            "additionalProperties": false,
+            "description": "A note (research note or evaluator feedback).",
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "title",
+              "body"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "sections": {
+          "default": [],
+          "items": {
+            "additionalProperties": false,
+            "description": "A section grouping related questions.",
+            "properties": {
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "questions": {
+                "default": [],
+                "items": {
+                  "additionalProperties": false,
+                  "description": "A question with choices and optional answer fields. Recursive via `refinements`.",
+                  "properties": {
+                    "answer_choice": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "answer_text": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "choices": {
+                      "default": [],
+                      "items": {
+                        "additionalProperties": false,
+                        "description": "A multiple-choice option.",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "is_other": {
+                            "type": "boolean"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "text",
+                          "is_other"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "consolidated_from": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "must_answer": {
+                      "type": "boolean"
+                    },
+                    "recommendation": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "refinements": {
+                      "default": [],
+                      "items": {
+                        "additionalProperties": false,
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "text",
+                    "must_answer"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "version": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "dimensions_selected",
+    "question_count",
+    "research_output"
+  ],
+  "title": "ResearchStepOutput",
+  "type": "object"
+}"###;
+
+pub const DETAILED_RESEARCH_INLINE_SCHEMA: &str = r###"{
+  "additionalProperties": false,
+  "properties": {
+    "clarifications_json": {
+      "additionalProperties": false,
+      "description": "Root type for a clarifications file.",
+      "properties": {
+        "answer_evaluator_notes": {
+          "items": {
+            "additionalProperties": false,
+            "description": "A note (research note or evaluator feedback).",
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "title",
+              "body"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "metadata": {
+          "additionalProperties": false,
+          "default": {
+            "must_answer_count": 0,
+            "priority_questions": [],
+            "question_count": 0,
+            "refinement_count": 0,
+            "section_count": 0,
+            "title": ""
+          },
+          "description": "Metadata block with counts, priority questions, and optional scope/research info.",
+          "properties": {
+            "duplicates_removed": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Error attached to metadata.",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "must_answer_count": {
+              "default": 0,
+              "format": "int64",
+              "type": "integer"
+            },
+            "priority_questions": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "question_count": {
+              "default": 0,
+              "format": "int64",
+              "type": "integer"
+            },
+            "refinement_count": {
+              "default": 0,
+              "format": "int64",
+              "type": "integer"
+            },
+            "research_plan": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Research plan with dimension scoring.",
+                  "properties": {
+                    "dimension_scores": {
+                      "default": [],
+                      "items": {
+                        "additionalProperties": false,
+                        "description": "A scored dimension in the research plan.",
+                        "properties": {
+                          "focus": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "score": {
+                            "format": "double",
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "score",
+                          "reason",
+                          "focus"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "dimensions_evaluated": {
+                      "default": 0,
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "dimensions_selected": {
+                      "default": 0,
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "domain": {
+                      "type": "string"
+                    },
+                    "purpose": {
+                      "type": "string"
+                    },
+                    "selected_dimensions": {
+                      "default": [],
+                      "items": {
+                        "additionalProperties": false,
+                        "description": "A dimension selected for deeper research.",
+                        "properties": {
+                          "focus": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "focus"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "topic_relevance": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "purpose",
+                    "domain",
+                    "topic_relevance"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scope_next_action": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope_reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope_recommendation": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "section_count": {
+              "default": 0,
+              "format": "int64",
+              "type": "integer"
+            },
+            "title": {
+              "default": "",
+              "type": "string"
+            },
+            "warning": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Warning attached to metadata.",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "notes": {
+          "default": [],
+          "items": {
+            "additionalProperties": false,
+            "description": "A note (research note or evaluator feedback).",
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "title",
+              "body"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "sections": {
+          "default": [],
+          "items": {
+            "additionalProperties": false,
+            "description": "A section grouping related questions.",
+            "properties": {
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "questions": {
+                "default": [],
+                "items": {
+                  "additionalProperties": false,
+                  "description": "A question with choices and optional answer fields. Recursive via `refinements`.",
+                  "properties": {
+                    "answer_choice": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "answer_text": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "choices": {
+                      "default": [],
+                      "items": {
+                        "additionalProperties": false,
+                        "description": "A multiple-choice option.",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "is_other": {
+                            "type": "boolean"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "text",
+                          "is_other"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "consolidated_from": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "must_answer": {
+                      "type": "boolean"
+                    },
+                    "recommendation": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "refinements": {
+                      "default": [],
+                      "items": {
+                        "additionalProperties": false,
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "text",
+                    "must_answer"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "version": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "refinement_count": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "section_count": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "refinement_count",
+    "section_count",
+    "clarifications_json"
+  ],
+  "title": "DetailedResearchOutput",
+  "type": "object"
+}"###;
+
+pub const DECISIONS_INLINE_SCHEMA: &str = r###"{
+  "additionalProperties": false,
+  "properties": {
+    "decisions": {
+      "items": {
+        "additionalProperties": false,
+        "description": "A single decision entry.",
+        "properties": {
+          "decision": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "implication": {
+            "type": "string"
+          },
+          "original_question": {
+            "type": "string"
+          },
+          "status": {
+            "description": "Status of a single decision.",
+            "enum": [
+              "resolved",
+              "conflict-resolved",
+              "needs-review",
+              "revised"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "original_question",
+          "decision",
+          "implication",
+          "status"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "metadata": {
+      "additionalProperties": false,
+      "description": "Top-level metadata block for a decisions file.",
+      "properties": {
+        "conflicts_resolved": {
+          "default": 0,
+          "format": "int64",
+          "type": "integer"
+        },
+        "contradictory_inputs": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "description": "Union type for contradictory inputs: `true` (active) or `\"revised\"` (string)."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision_count": {
+          "default": 0,
+          "format": "int64",
+          "type": "integer"
+        },
+        "round": {
+          "default": 0,
+          "format": "int64",
+          "type": "integer"
+        },
+        "scope_recommendation": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "metadata",
+    "decisions"
+  ],
+  "title": "DecisionsOutput",
   "type": "object"
 }"###;
 

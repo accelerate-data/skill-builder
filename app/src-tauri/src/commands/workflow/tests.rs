@@ -132,40 +132,145 @@ fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
     assert!(workflow_output_format_for_agent("skill-creator:generate-skill").is_some());
 }
 
+/// Steps 0–2 use inline schemas: all $ref resolved, no definitions block,
+/// additionalProperties: false on all objects, no $schema field.
+/// These are SDK-compatible (the SDK silently ignores $ref/definitions).
+fn assert_inline_schema_basics(schema: &serde_json::Value, label: &str) {
+    // No $schema (stripped for SDK compatibility)
+    assert!(
+        schema.get("$schema").is_none(),
+        "{label}: inline schema must not have $schema"
+    );
+    // No definitions block (all inlined)
+    assert!(
+        schema.get("definitions").is_none(),
+        "{label}: inline schema must not have definitions"
+    );
+    // No $ref anywhere
+    let schema_str = serde_json::to_string(schema).unwrap();
+    assert!(
+        !schema_str.contains("\"$ref\""),
+        "{label}: inline schema must not contain $ref"
+    );
+    // Root has additionalProperties: false
+    assert_eq!(
+        schema["additionalProperties"], false,
+        "{label}: root must have additionalProperties: false"
+    );
+    // Must be type: object
+    assert_eq!(
+        schema["type"], "object",
+        "{label}: root type must be object"
+    );
+}
+
 #[test]
-fn test_research_output_format_requires_artifact_fields() {
+fn test_research_step_schema_is_inline_with_all_required() {
     let format = workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").unwrap();
-    let required = format["schema"]["required"]
-        .as_array()
-        .expect("required array");
+    let schema = &format["schema"];
+    assert_inline_schema_basics(schema, "research-step");
+    let required = schema["required"].as_array().expect("required array");
     assert!(required.iter().any(|v| v == "status"));
-    assert!(required.iter().any(|v| v == "research_output"));
     assert!(required.iter().any(|v| v == "dimensions_selected"));
     assert!(required.iter().any(|v| v == "question_count"));
+    assert!(required.iter().any(|v| v == "research_output"));
+    // Nested ClarificationsFile is inlined as an object with properties
+    let ro = &schema["properties"]["research_output"];
+    assert!(
+        ro.get("properties").is_some() || ro["type"] == "object",
+        "research_output must be an inlined object"
+    );
 }
 
 #[test]
-fn test_detailed_research_output_format_requires_clarifications_payload() {
+fn test_detailed_research_schema_is_inline_with_all_required() {
     let format = workflow_output_format_for_agent("skill-content-researcher:detailed-research").unwrap();
-    let required = format["schema"]["required"]
-        .as_array()
-        .expect("required array");
-    assert!(required.iter().any(|v| v == "clarifications_json"));
+    let schema = &format["schema"];
+    assert_inline_schema_basics(schema, "detailed-research");
+    let required = schema["required"].as_array().expect("required array");
+    assert!(required.iter().any(|v| v == "status"));
     assert!(required.iter().any(|v| v == "refinement_count"));
     assert!(required.iter().any(|v| v == "section_count"));
+    assert!(required.iter().any(|v| v == "clarifications_json"));
+    // Nested ClarificationsFile is inlined
+    let cj = &schema["properties"]["clarifications_json"];
+    assert!(
+        cj.get("properties").is_some() || cj["type"] == "object",
+        "clarifications_json must be an inlined object"
+    );
 }
 
-/// Verify all generated schemas are flat and Anthropic API-compatible:
-/// - JSON Schema draft-07
-/// - additionalProperties: false on the root object
-/// - No `definitions` block (flat schemas only)
-/// - No `$ref` anywhere (all types inlined or collapsed)
 #[test]
-fn test_generated_schemas_are_sdk_compatible() {
+fn test_decisions_schema_is_inline_with_all_required() {
+    let format = workflow_output_format_for_agent("skill-content-researcher:confirm-decisions").unwrap();
+    let schema = &format["schema"];
+    assert_inline_schema_basics(schema, "decisions");
+    let required = schema["required"].as_array().expect("required array");
+    assert!(required.iter().any(|v| v == "version"));
+    assert!(required.iter().any(|v| v == "metadata"));
+    assert!(required.iter().any(|v| v == "decisions"));
+    // Nested Decision is inlined inside items
+    let items = &schema["properties"]["decisions"]["items"];
+    assert!(
+        items.get("properties").is_some(),
+        "decisions items must have inlined Decision properties"
+    );
+    // DecisionStatus enum is inlined
+    let status = &items["properties"]["status"];
+    assert!(
+        status.get("enum").is_some(),
+        "Decision.status must have inlined enum values"
+    );
+    let enum_vals: Vec<&str> = status["enum"].as_array().unwrap()
+        .iter().filter_map(|v| v.as_str()).collect();
+    assert!(enum_vals.contains(&"resolved"));
+    assert!(enum_vals.contains(&"conflict-resolved"));
+    assert!(enum_vals.contains(&"needs-review"));
+}
+
+/// All inline schemas must have additionalProperties: false on every
+/// nested object (required by Anthropic API).
+#[test]
+fn test_inline_schemas_have_additional_properties_false_everywhere() {
     let agents = [
         "skill-content-researcher:research-orchestrator",
         "skill-content-researcher:detailed-research",
         "skill-content-researcher:confirm-decisions",
+    ];
+    for agent in agents {
+        let format = workflow_output_format_for_agent(agent).unwrap();
+        let schema_str = serde_json::to_string(&format["schema"]).unwrap();
+        let schema: serde_json::Value = serde_json::from_str(&schema_str).unwrap();
+        fn check_objects(val: &serde_json::Value, path: &str) {
+            if let Some(obj) = val.as_object() {
+                // If this is an object type with properties, it must have additionalProperties: false
+                if obj.get("type") == Some(&serde_json::json!("object"))
+                    && obj.contains_key("properties")
+                {
+                    assert_eq!(
+                        obj.get("additionalProperties"),
+                        Some(&serde_json::json!(false)),
+                        "missing additionalProperties:false at {path}"
+                    );
+                }
+                for (k, v) in obj {
+                    check_objects(v, &format!("{path}.{k}"));
+                }
+            } else if let Some(arr) = val.as_array() {
+                for (i, v) in arr.iter().enumerate() {
+                    check_objects(v, &format!("{path}[{i}]"));
+                }
+            }
+        }
+        check_objects(&schema, agent);
+    }
+}
+
+/// Step 3 uses a flat schema (all primitives, no nested types).
+#[test]
+fn test_generated_schemas_are_sdk_compatible() {
+    let agents = [
+        // Steps 0–2 use inline schemas — tested in dedicated tests above
         "skill-creator:generate-skill",
     ];
     for agent in agents {
@@ -429,18 +534,19 @@ fn test_materialize_step0_rejects_wrong_status() {
 }
 
 #[test]
-fn test_materialize_step0_missing_numeric_fields_default_to_zero() {
+fn test_materialize_step0_rejects_missing_required_fields() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
 
-    // Missing dimensions_selected defaults to 0
+    // Missing dimensions_selected → hard fail (required per SKILL.md)
     let missing_dimensions = serde_json::json!({
         "status": "research_complete",
         "question_count": 1,
         "research_output": valid_clarifications_value()
     });
-    materialize_workflow_step_output_value(&skill_root, 0, &missing_dimensions)
-        .expect("missing numeric fields should default to 0");
+    let err = materialize_workflow_step_output_value(&skill_root, 0, &missing_dimensions)
+        .unwrap_err();
+    assert!(err.contains("dimensions_selected"), "should mention missing field: {err}");
 
     // Wrong type (string for integer) still errors
     let non_integer_question_count = serde_json::json!({
@@ -529,18 +635,19 @@ fn test_materialize_step1_rejects_wrong_status() {
 }
 
 #[test]
-fn test_materialize_step1_missing_numeric_fields_default_to_zero() {
+fn test_materialize_step1_rejects_missing_required_fields() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
 
-    // Missing refinement_count defaults to 0
+    // Missing refinement_count → hard fail (required per SKILL.md)
     let missing_refinement_count = serde_json::json!({
         "status": "detailed_research_complete",
         "section_count": 1,
         "clarifications_json": valid_clarifications_value()
     });
-    materialize_workflow_step_output_value(&skill_root, 1, &missing_refinement_count)
-        .expect("missing numeric fields should default to 0");
+    let err = materialize_workflow_step_output_value(&skill_root, 1, &missing_refinement_count)
+        .unwrap_err();
+    assert!(err.contains("refinement_count"), "should mention missing field: {err}");
 
     // Wrong type (string for integer) still errors
     let non_integer_section_count = serde_json::json!({
@@ -898,6 +1005,7 @@ fn test_build_prompt_all_three_paths() {
         None,
         None,
         None,
+        1,
     );
     assert!(prompt.contains("my-skill"));
     assert!(prompt
@@ -917,6 +1025,7 @@ fn test_build_prompt_with_skill_type() {
         None,
         None,
         None,
+        1,
     );
     // Purpose is now in user-context.md, read by the agent
     assert!(prompt.contains("user-context.md"));
@@ -932,6 +1041,7 @@ fn test_build_prompt_with_author_info() {
         Some("octocat"),
         Some("2025-06-15T12:00:00Z"),
         None,
+        1,
     );
     assert!(prompt.contains("The author of this skill is: octocat."));
     assert!(prompt.contains("The skill was created on: 2025-06-15."));
@@ -948,9 +1058,29 @@ fn test_build_prompt_without_author_info() {
         None,
         None,
         None,
+        1,
     );
     assert!(!prompt.contains("The author of this skill is:"));
     assert!(!prompt.contains("The skill was created on:"));
+}
+
+#[test]
+fn test_build_prompt_includes_step_specific_schema_file() {
+    let step1 = build_prompt("s", "/ws", DEFAULT_PLUGIN_SLUG, "/sk", None, None, None, 1);
+    assert!(step1.contains("step-1-detailed-research.json"));
+    assert!(!step1.contains("step-0-research.json"));
+    assert!(step1.contains("Do NOT read other step schema files"));
+    assert!(step1.contains("DetailedResearchOutput"));
+
+    let step2 = build_prompt("s", "/ws", DEFAULT_PLUGIN_SLUG, "/sk", None, None, None, 2);
+    assert!(step2.contains("step-2-decisions.json"));
+    assert!(!step2.contains("step-1-detailed-research.json"));
+    assert!(step2.contains("DecisionsOutput"));
+
+    let step3 = build_prompt("s", "/ws", DEFAULT_PLUGIN_SLUG, "/sk", None, None, None, 3);
+    assert!(!step3.contains("step-0-research.json"));
+    assert!(!step3.contains("step-1-detailed-research.json"));
+    assert!(!step3.contains("step-2-decisions.json"));
 }
 
 #[test]
@@ -1902,7 +2032,7 @@ fn test_format_user_context_partial_intake() {
 fn test_build_prompt_includes_user_context_md_instruction() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, None);
+    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, None, 1);
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }
@@ -1911,7 +2041,7 @@ fn test_build_prompt_includes_user_context_md_instruction() {
 fn test_build_prompt_without_user_context() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, None);
+    let prompt = build_prompt("test-skill", ws.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, skills.to_str().unwrap(), None, None, None, 1);
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
 }

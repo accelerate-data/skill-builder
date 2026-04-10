@@ -95,9 +95,14 @@ pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde
     use crate::generated::schemas;
 
     let schema_str = match agent_name {
-        "skill-content-researcher:research-orchestrator" => Some(schemas::RESEARCH_STEP_SCHEMA),
-        "skill-content-researcher:detailed-research" => Some(schemas::DETAILED_RESEARCH_SCHEMA),
-        "skill-content-researcher:confirm-decisions" => Some(schemas::DECISIONS_SCHEMA),
+        // Deep schema — all fields required per SKILL.md, nested ClarificationsFile enforced.
+        "skill-content-researcher:research-orchestrator" => Some(schemas::RESEARCH_STEP_INLINE_SCHEMA),
+        // Step 1 runs the agent directly (no subagent relay) — use the full
+        // nested schema so the SDK enforces the complete structure.
+        "skill-content-researcher:detailed-research" => Some(schemas::DETAILED_RESEARCH_INLINE_SCHEMA),
+        // Step 2 runs the agent directly (no subagent relay) — use the full
+        // nested schema so the SDK enforces Decision fields and DecisionStatus enum.
+        "skill-content-researcher:confirm-decisions" => Some(schemas::DECISIONS_INLINE_SCHEMA),
         "skill-creator:generate-skill" | "skill-creator:rewrite-skill" => {
             Some(schemas::GENERATE_SKILL_SCHEMA)
         }

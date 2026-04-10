@@ -32,7 +32,7 @@ type: string; event: AgentEvent; timestamp: number }
  * `gate_decision` is one of `"run_research"`, `"revise"` — set automatically by the agent
  * based on verdict and contradictory_count (no user interaction required).
  */
-export type AnswerEvaluationOutput = { verdict: string; answered_count: number; empty_count: number; vague_count: number; contradictory_count: number; total_count: number; reasoning: string; gate_decision: string | null; per_question: PerQuestionEntry[] }
+export type AnswerEvaluationOutput = { verdict: string; answered_count?: number; empty_count?: number; vague_count?: number; contradictory_count?: number; total_count?: number; reasoning?: string; gate_decision?: string | null; per_question?: PerQuestionEntry[] }
 
 /**
  * A multiple-choice option.
@@ -47,12 +47,12 @@ export type ClarificationsError = { code: string; message: string }
 /**
  * Root type for a clarifications file.
  */
-export type ClarificationsFile = { version: string; metadata: ClarificationsMetadata; sections?: Section[]; notes?: Note[]; answer_evaluator_notes?: Note[] | null }
+export type ClarificationsFile = { version?: string; metadata?: ClarificationsMetadata; sections?: Section[]; notes?: Note[]; answer_evaluator_notes?: Note[] | null }
 
 /**
  * Metadata block with counts, priority questions, and optional scope/research info.
  */
-export type ClarificationsMetadata = { title: string; question_count: number; section_count: number; refinement_count: number; must_answer_count: number; priority_questions?: string[]; duplicates_removed?: number | null; scope_recommendation?: boolean | null; scope_reason?: string | null; scope_next_action?: string | null; research_plan?: ClarificationsResearchPlan | null; warning?: ClarificationsWarning | null; error?: ClarificationsError | null }
+export type ClarificationsMetadata = { title?: string; question_count?: number; section_count?: number; refinement_count?: number; must_answer_count?: number; priority_questions?: string[]; duplicates_removed?: number | null; scope_recommendation?: boolean | null; scope_reason?: string | null; scope_next_action?: string | null; research_plan?: ClarificationsResearchPlan | null; warning?: ClarificationsWarning | null; error?: ClarificationsError | null }
 
 /**
  * Research plan with dimension scoring.
@@ -92,12 +92,13 @@ export type DecisionStatus = "resolved" | "conflict-resolved" | "needs-review" |
 /**
  * Top-level metadata block for a decisions file.
  */
-export type DecisionsMetadata = { decision_count: number; conflicts_resolved: number; round: number; contradictory_inputs?: ContradictoryInputs | null; scope_recommendation?: boolean | null }
+export type DecisionsMetadata = { decision_count?: number; conflicts_resolved?: number; round?: number; contradictory_inputs?: ContradictoryInputs | null; scope_recommendation?: boolean | null }
 
 /**
  * Structured output produced by the `confirm-decisions` agent (workflow step 2).
  * 
- * Required fields: `version`, `metadata`, `decisions`.
+ * All fields are required per the agent SKILL.md contract.
+ * `version` is always `"1"`, `metadata` and `decisions` are always present.
  */
 export type DecisionsOutput = { version: string; metadata: DecisionsMetadata; decisions: Decision[] }
 

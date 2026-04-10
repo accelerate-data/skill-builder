@@ -1,0 +1,104 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "decisions": {
+      "items": {
+        "additionalProperties": false,
+        "description": "A single decision entry.",
+        "properties": {
+          "decision": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "implication": {
+            "type": "string"
+          },
+          "original_question": {
+            "type": "string"
+          },
+          "status": {
+            "description": "Status of a single decision.",
+            "enum": [
+              "resolved",
+              "conflict-resolved",
+              "needs-review",
+              "revised"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "original_question",
+          "decision",
+          "implication",
+          "status"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "metadata": {
+      "additionalProperties": false,
+      "description": "Top-level metadata block for a decisions file.",
+      "properties": {
+        "conflicts_resolved": {
+          "default": 0,
+          "format": "int64",
+          "type": "integer"
+        },
+        "contradictory_inputs": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "description": "Union type for contradictory inputs: `true` (active) or `\"revised\"` (string)."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision_count": {
+          "default": 0,
+          "format": "int64",
+          "type": "integer"
+        },
+        "round": {
+          "default": 0,
+          "format": "int64",
+          "type": "integer"
+        },
+        "scope_recommendation": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "metadata",
+    "decisions"
+  ],
+  "title": "DecisionsOutput",
+  "type": "object"
+}

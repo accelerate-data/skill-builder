@@ -13,17 +13,27 @@ pub(crate) fn build_prompt(
     author_login: Option<&str>,
     created_at: Option<&str>,
     subagent_directive: Option<&str>,
+    step_id: u32,
 ) -> String {
     let workspace_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
+    let step_output_hint = match step_id {
+        1 => " Your output MUST be a DetailedResearchOutput with top-level keys: status (\"detailed_research_complete\"), refinement_count, section_count, clarifications_json. Do NOT return a ResearchStepOutput — that is step 0's format, not yours.",
+        2 => " Your output MUST be a DecisionsOutput with top-level keys: version, metadata, decisions. Do NOT return a ResearchStepOutput or DetailedResearchOutput.",
+        3 => " Your output MUST include a status field.",
+        _ => "",
+    };
     let mut prompt = format!(
-        "The skill name is: {}. The workspace directory is: {}. \
+        "EXECUTE IMMEDIATELY — do not greet the user, do not ask questions, do not offer options. \
+         Follow your agent instructions and produce structured JSON output.{} \
+         The skill name is: {}. The workspace directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
          The user context file is at: {}/user-context.md. \
          The context directory is: {}/context. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
+        step_output_hint,
         skill_name,
         workspace_str,
         skill_output_str,
@@ -43,16 +53,28 @@ pub(crate) fn build_prompt(
         }
     }
 
-    // Inject the clarifications schema path so agents (e.g. detailed-research)
-    // can read the data contract before constructing clarifications_json output.
-    let schemas_path = format!(
-        "{}/.claude/plugins/skill-content-researcher/skills/shared/schemas.md",
-        workspace_path.replace('\\', "/"),
+    // Inject schema paths so agents can read the data contracts.
+    let ws = workspace_path.replace('\\', "/");
+    let shared_dir = format!(
+        "{}/.claude/plugins/skill-content-researcher/shared",
+        ws,
     );
     prompt.push_str(&format!(
-        " The clarifications schema reference is at: {}.",
-        schemas_path,
+        " The clarifications schema reference is at: {}/schemas.md.",
+        shared_dir,
     ));
+    let schema_file = match step_id {
+        0 => "step-0-research.json",
+        1 => "step-1-detailed-research.json",
+        2 => "step-2-decisions.json",
+        _ => "",
+    };
+    if !schema_file.is_empty() {
+        prompt.push_str(&format!(
+            " Your output JSON schema file is at: {}/output-schemas/{} — read this file to know the EXACT output structure. Do NOT read other step schema files.",
+            shared_dir, schema_file,
+        ));
+    }
 
     prompt.push_str(" The workspace directory may contain other files written by the workflow (such as answer-evaluation.json) — read only the files explicitly named in your agent instructions. Do not read the logs/ directory or any file not named in your instructions.");
 
@@ -75,24 +97,25 @@ pub(crate) fn build_step0_prompt(
     let workspace_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let ws = workspace_path.replace('\\', "/");
-    let plugin_refs = format!(
-        "{}/.claude/plugins/skill-content-researcher/skills",
+    let plugin_dir = format!(
+        "{}/.claude/plugins/skill-content-researcher",
         ws,
     );
-    let schemas_path = format!("{}/shared/schemas.md", plugin_refs);
-    let dimensions_dir = format!("{}/research/references/dimensions", plugin_refs);
+    let schemas_path = format!("{}/shared/schemas.md", plugin_dir);
+    let dimensions_dir = format!("{}/skills/research/references/dimensions", plugin_dir);
     format!(
-        "The skill name is: {}. The workspace directory is: {}. \
+        "EXECUTE IMMEDIATELY — do not ask questions, do not greet the user, do not offer options. \
+         Your ONLY task: invoke the Skill tool with exactly `skill-content-researcher:research` to produce clarification questions. \
+         Do NOT use `detailed-research` or any other agent/skill — ONLY `skill-content-researcher:research`. \
+         Context for the skill invocation: \
+         The skill name is: {}. The workspace directory is: {}. \
          The user context file is at: {}/user-context.md. \
          The context directory is: {}/context. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. \
          Read only the specific files named in your instructions and write files directly. \
          The clarifications schema reference is at: {}. \
          The dimension reference files are in: {} (read individual .md files, not the directory itself). \
-         The maximum research dimensions before scope warning is: {}. \
-         Use the skill-content-researcher:research to produce clarification questions which will be used to write the skill. \
-         Your final response MUST be ONLY a raw JSON object — no markdown, no explanation, no wrapping. \
-         Required fields: {{\"status\": \"research_complete\", \"dimensions_selected\": <number>, \"question_count\": <number>, \"research_output\": <object>}}",
+         The maximum research dimensions before scope warning is: {}.",
         skill_name,
         workspace_str,
         workspace_str,

@@ -228,20 +228,48 @@ Proactively think about edge cases, input/output formats, example files, success
 
 ## Step 8 — Return final payload
 
+**CRITICAL — your final message MUST be ONLY a raw JSON object.** No markdown, no explanation, no summary, no code fences, no wrapping text. If you write anything other than a valid JSON object, the backend will REJECT your output and the entire step will FAIL. Read the output JSON schema file for this step (path: `output-schemas/step-0-research.json` in the shared directory provided in the prompt) to know the exact output structure.
+
+**NEVER abbreviate or truncate the JSON output.** Every question object MUST include ALL required fields: `id`, `title`, `text`, `must_answer`, `choices`, `refinements`. Do NOT use `"..."` as a placeholder for any field or value. Do NOT omit fields to save tokens. The backend performs strict schema validation — any missing required field will cause the entire step to FAIL.
+
 Return JSON only in this envelope shape:
 
 ```json
 {
   "status": "research_complete",
-  "dimensions_selected": 0,
-  "question_count": 0,
-  "research_output": { "...": "canonical clarifications object" }
+  "dimensions_selected": 3,
+  "question_count": 5,
+  "research_output": {
+    "version": "1",
+    "metadata": { "question_count": 5, "section_count": 2, "refinement_count": 0, "must_answer_count": 2, "priority_questions": ["Q1","Q2"] },
+    "sections": [
+      {
+        "id": 1,
+        "title": "Section Title",
+        "questions": [
+          {
+            "id": "Q1",
+            "title": "Question Title",
+            "text": "Full question text — this field is REQUIRED and must not be abbreviated",
+            "must_answer": true,
+            "choices": [
+              {"id": "A", "text": "Choice text", "is_other": false},
+              {"id": "B", "text": "Other (please specify)", "is_other": true}
+            ],
+            "refinements": []
+          }
+        ]
+      }
+    ],
+    "notes": [],
+    "answer_evaluator_notes": []
+  }
 }
 ```
 
 ### Output Contract
 
-1. `research_output` should follow the the canonical clarifications JSON object.
+1. `research_output` must follow the canonical clarifications JSON object. Every question must have all required fields (`id`, `title`, `text`, `must_answer`, `choices`, `refinements`) — omitting any field causes a hard failure.
 2. Before returning:
    - Validate against `../shared/schemas.md` exactly.
    - Ensure `metadata.research_plan` is present and schema-valid.

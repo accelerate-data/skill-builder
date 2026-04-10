@@ -80,6 +80,36 @@ mod tests {
         assert!(result.is_err(), "should reject missing research_output");
     }
 
+    #[test]
+    fn test_research_step_output_rejects_missing_dimensions_selected() {
+        let json = serde_json::json!({
+            "status": "research_complete",
+            "question_count": 7,
+            "research_output": {
+                "version": "1",
+                "metadata": { "title": "T", "question_count": 7, "section_count": 0, "refinement_count": 0, "must_answer_count": 0 },
+                "sections": [], "notes": []
+            }
+        });
+        let result = serde_json::from_value::<ResearchStepOutput>(json);
+        assert!(result.is_err(), "should reject missing dimensions_selected");
+    }
+
+    #[test]
+    fn test_research_step_output_rejects_missing_question_count() {
+        let json = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 3,
+            "research_output": {
+                "version": "1",
+                "metadata": { "title": "T", "question_count": 7, "section_count": 0, "refinement_count": 0, "must_answer_count": 0 },
+                "sections": [], "notes": []
+            }
+        });
+        let result = serde_json::from_value::<ResearchStepOutput>(json);
+        assert!(result.is_err(), "should reject missing question_count");
+    }
+
     // ── DetailedResearchOutput ────────────────────────────────────────────
 
     #[test]
@@ -126,6 +156,36 @@ mod tests {
         assert!(result.is_err(), "should reject missing clarifications_json");
     }
 
+    #[test]
+    fn test_detailed_research_output_rejects_missing_refinement_count() {
+        let json = serde_json::json!({
+            "status": "detailed_research_complete",
+            "section_count": 1,
+            "clarifications_json": {
+                "version": "1",
+                "metadata": { "title": "T", "question_count": 0, "section_count": 0, "refinement_count": 0, "must_answer_count": 0 },
+                "sections": [], "notes": []
+            }
+        });
+        let result = serde_json::from_value::<DetailedResearchOutput>(json);
+        assert!(result.is_err(), "should reject missing refinement_count");
+    }
+
+    #[test]
+    fn test_detailed_research_output_rejects_missing_section_count() {
+        let json = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "clarifications_json": {
+                "version": "1",
+                "metadata": { "title": "T", "question_count": 0, "section_count": 0, "refinement_count": 0, "must_answer_count": 0 },
+                "sections": [], "notes": []
+            }
+        });
+        let result = serde_json::from_value::<DetailedResearchOutput>(json);
+        assert!(result.is_err(), "should reject missing section_count");
+    }
+
     // ── DecisionsOutput ───────────────────────────────────────────────────
 
     #[test]
@@ -160,23 +220,33 @@ mod tests {
     }
 
     #[test]
-    fn test_decisions_output_defaults_missing_version() {
+    fn test_decisions_output_rejects_missing_version() {
         let json = serde_json::json!({
             "metadata": { "decision_count": 0, "conflicts_resolved": 0, "round": 1 },
             "decisions": []
         });
-        let parsed: DecisionsOutput = serde_json::from_value(json).expect("should default missing fields");
-        assert_eq!(parsed.version, "");
+        let result = serde_json::from_value::<DecisionsOutput>(json);
+        assert!(result.is_err(), "should reject missing version");
     }
 
     #[test]
-    fn test_decisions_output_defaults_missing_decisions() {
+    fn test_decisions_output_rejects_missing_decisions() {
         let json = serde_json::json!({
             "version": "1",
             "metadata": { "decision_count": 0, "conflicts_resolved": 0, "round": 1 }
         });
-        let parsed: DecisionsOutput = serde_json::from_value(json).expect("should default missing fields");
-        assert!(parsed.decisions.is_empty());
+        let result = serde_json::from_value::<DecisionsOutput>(json);
+        assert!(result.is_err(), "should reject missing decisions");
+    }
+
+    #[test]
+    fn test_decisions_output_rejects_missing_metadata() {
+        let json = serde_json::json!({
+            "version": "1",
+            "decisions": []
+        });
+        let result = serde_json::from_value::<DecisionsOutput>(json);
+        assert!(result.is_err(), "should reject missing metadata");
     }
 
     // ── GenerateSkillOutput ───────────────────────────────────────────────

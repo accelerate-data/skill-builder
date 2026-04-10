@@ -161,14 +161,17 @@ Decision candidate: **keep** (`effort` configurable, `fallbackModel` derived).
 ### `outputFormat`
 
 - Set only for agents with strict JSON response contracts.
+- Schemas are **inline JSON Schema** generated from Rust contract structs by `cargo run --bin codegen`. All `$ref` are resolved; `additionalProperties: false` on every object. No `$schema` or `definitions` block.
 - Contract-set coverage includes:
-  - Workflow JSON-contract agents: `skill-content-researcher:research-orchestrator`, `skill-content-researcher:detailed-research`, `skill-content-researcher:confirm-decisions`
+  - Workflow JSON-contract agents: `skill-content-researcher:research-orchestrator` (step 0), `skill-content-researcher:detailed-research` (step 1, direct agent), `skill-content-researcher:confirm-decisions` (step 2, direct agent)
   - Answer evaluator flow (`answer-evaluator`) via explicit `answer_evaluator_output_format()`
   - Direct `start_agent` contract paths: `_feedback`, `validate-skill`
 - Contract-unset coverage includes:
-  - Workflow non-contract agents: `skill-creator:generate-skill`
+  - Workflow non-contract agents: `skill-creator:generate-skill` (step 3, flat schema)
   - Refine conversational flow: `rewrite-skill`
   - Test conversational/text agents: `test-plan-with`, `test-plan-without`, `test-evaluator`
+- **Known SDK bug** ([anthropics/claude-agent-sdk-typescript#277](https://github.com/anthropics/claude-agent-sdk-typescript/issues/277)): SDK returns `subtype: "success"` with `structured_output: undefined` for nested schemas. The SDK does not enforce constrained decoding. Workaround: prompt directives force raw JSON output; sidecar parses JSON from `result` text field; Rust serde validates the final structure.
+- When the SDK bug is fixed, `structured_output` will be the primary path. The `result` text fallback remains permanent — it covers error cases and any future scenario where `structured_output` is absent.
 
 Decision candidate: **keep selective** (avoid forcing JSON on conversational/text agents).
 

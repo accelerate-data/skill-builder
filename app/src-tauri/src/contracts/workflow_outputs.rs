@@ -16,11 +16,8 @@ use crate::contracts::decisions::{Decision, DecisionsMetadata};
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
 pub struct ResearchStepOutput {
     pub status: String,
-    #[serde(default)]
     pub dimensions_selected: i64,
-    #[serde(default)]
     pub question_count: i64,
-    /// Required — fails if missing. Empty default would be useless data.
     pub research_output: ClarificationsFile,
 }
 
@@ -33,11 +30,8 @@ pub struct ResearchStepOutput {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
 pub struct DetailedResearchOutput {
     pub status: String,
-    #[serde(default)]
     pub refinement_count: i64,
-    #[serde(default)]
     pub section_count: i64,
-    /// Required — fails if missing. Empty default would be useless data.
     pub clarifications_json: ClarificationsFile,
 }
 
@@ -45,14 +39,12 @@ pub struct DetailedResearchOutput {
 
 /// Structured output produced by the `confirm-decisions` agent (workflow step 2).
 ///
-/// Required fields: `version`, `metadata`, `decisions`.
+/// All fields are required per the agent SKILL.md contract.
+/// `version` is always `"1"`, `metadata` and `decisions` are always present.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
 pub struct DecisionsOutput {
-    #[serde(default)]
     pub version: String,
-    #[serde(default)]
     pub metadata: DecisionsMetadata,
-    #[serde(default)]
     pub decisions: Vec<Decision>,
 }
 
