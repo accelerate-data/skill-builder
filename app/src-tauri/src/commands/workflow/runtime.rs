@@ -150,9 +150,33 @@ async fn run_workflow_step_inner(
         _ => None,
     };
 
+    // Inject output schema inline into system prompt for steps 0–2 so the model
+    // always sees the contract it must produce, regardless of whether
+    // structured_output is enforced by the SDK.
+    let system_prompt_for_step: Option<String> = match step_id {
+        0 => Some(format!(
+            "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
+            crate::generated::schemas::RESEARCH_STEP_INLINE_SCHEMA
+        )),
+        1 => Some(format!(
+            "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
+            crate::generated::schemas::DETAILED_RESEARCH_INLINE_SCHEMA
+        )),
+        2 => Some(format!(
+            "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
+            crate::generated::schemas::DECISIONS_INLINE_SCHEMA
+        )),
+        _ => None,
+    };
+    log::debug!(
+        "[run_workflow_step] system_prompt schema injected={} for step_id={}",
+        system_prompt_for_step.is_some(),
+        step_id
+    );
+
     let mut config = SidecarConfig {
         prompt,
-        system_prompt: None,
+        system_prompt: system_prompt_for_step,
         model: Some(settings.preferred_model.clone()),
         api_key: settings.api_key.clone(),
         workspace_root_dir: workspace_path.replace('\\', "/"),

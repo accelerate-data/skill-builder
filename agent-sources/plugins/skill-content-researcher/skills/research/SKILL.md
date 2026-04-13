@@ -228,7 +228,7 @@ Proactively think about edge cases, input/output formats, example files, success
 
 ## Step 8 — Return final payload
 
-**CRITICAL — your final message MUST be ONLY a raw JSON object.** No markdown, no explanation, no summary, no code fences, no wrapping text. If you write anything other than a valid JSON object, the backend will REJECT your output and the entire step will FAIL. Read the output JSON schema file for this step (path: `output-schemas/step-0-research.json` in the shared directory provided in the prompt) to know the exact output structure.
+**CRITICAL — your final message MUST be ONLY a raw JSON object.** No markdown, no explanation, no summary, no code fences, no wrapping text. If you write anything other than a valid JSON object, the backend will REJECT your output and the entire step will FAIL. The required output schema is provided in the system prompt of the orchestrator that invoked this skill.
 
 **NEVER abbreviate or truncate the JSON output.** Every question object MUST include ALL required fields: `id`, `title`, `text`, `must_answer`, `choices`, `refinements`. Do NOT use `"..."` as a placeholder for any field or value. Do NOT omit fields to save tokens. The backend performs strict schema validation — any missing required field will cause the entire step to FAIL.
 
