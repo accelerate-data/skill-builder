@@ -77,7 +77,7 @@ Read `app/plugin-paths.json` — it defines the canonical layout for all skill f
 - New state logic → store unit tests
 - New Rust command with logic → `#[cfg(test)]` tests
 - New UI interaction → component test
-- New page or major flow → E2E test (happy path)
+- New page or major page logic → page unit test (mocked children + Tauri) + E2E test (happy path)
 - Bug fix → regression test
 - Cosmetic changes and simple wiring don't need tests
 
@@ -95,6 +95,9 @@ Run these automatically before reporting completion when files match:
 | `app/sidecar/mock-templates/**` | `cd app && npm run test:unit` |
 | `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` |
 | `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` |
+| `app/src/**` | `cd app && npm run test:unit` |
+
+**E2E tests** use Playwright to drive the real Tauri app UI, but with mocked Tauri commands (`__TAURI_MOCK_OVERRIDES__` / `reloadWithOverrides`). They are not bare-metal system tests — the backend is always mocked.
 
 For artifact format changes (agent output + app parser + mock templates): run `test:agents:structural` and `test:unit`, then tell the user to run `test:agents:smoke` manually. The `canonical-format.test.ts` suite is the canary for format drift.
 
@@ -127,19 +130,6 @@ For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct car
 Update stale entries in the same commit that introduced the structural change, not as a follow-up.
 
 **Implementation agents must commit and push before reporting completion.**
-
-## Skills
-
-Use these repo-local skills when requests match:
-
-- `.claude/skills/create-linear-issue/SKILL.md` — create/log/file a Linear issue, bug, feature, or ticket decomposition
-- `.claude/skills/implement-linear-issue/SKILL.md` — implement/fix/work on a Linear issue (e.g. `VU-123`)
-- `.claude/skills/close-linear-issue/SKILL.md` — close/complete/ship/merge a Linear issue
-- `.claude/skills/tauri/SKILL.md` — Tauri-specific implementation or debugging
-- `.claude/skills/shadcn-ui/SKILL.md` — shadcn/ui component work (see also `front-end-design` for design-first flows)
-- `.claude/skills/front-end-design/SKILL.md` — design-first UI workflow for screens and components (see also `shadcn-ui` for component implementation)
-- `.claude/skills/explaining-code/SKILL.md` — explain code with diagrams and analogies
-- `.claude/skills/playwright/SKILL.md` — browser automation via playwright-cli (navigation, forms, screenshots, data extraction)
 
 ## Logging
 
