@@ -80,6 +80,23 @@ For changes that add or modify logging:
 3. verify failures log actionable context (`operation`, `error`) without sensitive payloads
 4. add/update tests where redaction logic exists
 
+## File-Based Logging for Autonomous Features
+
+For features that run multi-step autonomous loops (e.g. description optimization), use
+file-based logging as a supplementary debug channel alongside structured logs.
+
+Pattern (used by description optimization):
+
+- `init_log_file(log_dir, prefix)` — creates dir, returns a timestamped path
+  (`desc-opt-{component}-{timestamp}.log`)
+- `write_log_line(path, msg)` — appends a timestamped line, **silently ignores failures**
+- Frontend fires via a Tauri command (`write_desc_opt_log`) — fire-and-forget, never
+  awaited in the hot path
+
+Key principle: **file logging must never break the main feature.** All writes are
+best-effort. Use this pattern for any feature that needs autonomous debugging without
+polluting the primary log stream.
+
 ## Language-Specific Notes
 
 - Rust: `info!` on command entry, `error!` on failure, `debug!` for intermediate steps

@@ -39,3 +39,17 @@ markdownlint <file-or-dir>
 - Trust internal Agent SDK guarantees — don't wrap them
 - TypeScript: typed errors from Tauri commands, surface to user via error state
 - Agent tool errors: log and surface to user — don't crash the session
+
+## Nullish Coalescing and Empty Strings
+
+`??` only catches `null`/`undefined` — it does **not** treat `""` as falsy. Whenever a
+frontend value uses `??` for defaults and the source may return `""`, add a backend guard:
+
+```rust
+// Rust guard example
+let model = if model.trim().is_empty() { "sonnet".to_string() } else { model };
+```
+
+Never rely on frontend nullish coalescing to handle empty strings from persisted data or
+API responses. The bug surface is: frontend sends `""` → backend passes it through →
+downstream API returns HTTP 400.
