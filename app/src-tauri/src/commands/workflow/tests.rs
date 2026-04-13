@@ -1065,31 +1065,67 @@ fn test_build_prompt_without_author_info() {
 }
 
 #[test]
-fn test_build_prompt_includes_step_specific_schema_file() {
+fn test_build_prompt_does_not_include_schema_file_path() {
+    // Schema file paths are no longer injected into the prompt — they are
+    // injected into config.system_prompt instead (VU-1049).
+    for step_id in [1u32, 2, 3] {
+        let prompt = build_prompt(&PromptParams {
+            skill_name: "s", workspace_path: "/ws", plugin_slug: DEFAULT_PLUGIN_SLUG,
+            skills_path: "/sk", author_login: None, created_at: None, subagent_directive: None, step_id,
+        });
+        assert!(!prompt.contains("step-0-research.json"), "step {step_id}: schema file path must not be in prompt");
+        assert!(!prompt.contains("step-1-detailed-research.json"), "step {step_id}: schema file path must not be in prompt");
+        assert!(!prompt.contains("step-2-decisions.json"), "step {step_id}: schema file path must not be in prompt");
+        assert!(!prompt.contains("Do NOT read other step schema files"), "step {step_id}: old schema read directive must not be in prompt");
+    }
+    // Step-specific output-type hints are still present (from step_output_hint).
     let step1 = build_prompt(&PromptParams {
         skill_name: "s", workspace_path: "/ws", plugin_slug: DEFAULT_PLUGIN_SLUG,
         skills_path: "/sk", author_login: None, created_at: None, subagent_directive: None, step_id: 1,
     });
-    assert!(step1.contains("step-1-detailed-research.json"));
-    assert!(!step1.contains("step-0-research.json"));
-    assert!(step1.contains("Do NOT read other step schema files"));
     assert!(step1.contains("DetailedResearchOutput"));
-
     let step2 = build_prompt(&PromptParams {
         skill_name: "s", workspace_path: "/ws", plugin_slug: DEFAULT_PLUGIN_SLUG,
         skills_path: "/sk", author_login: None, created_at: None, subagent_directive: None, step_id: 2,
     });
-    assert!(step2.contains("step-2-decisions.json"));
-    assert!(!step2.contains("step-1-detailed-research.json"));
     assert!(step2.contains("DecisionsOutput"));
+}
 
-    let step3 = build_prompt(&PromptParams {
-        skill_name: "s", workspace_path: "/ws", plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: "/sk", author_login: None, created_at: None, subagent_directive: None, step_id: 3,
-    });
-    assert!(!step3.contains("step-0-research.json"));
-    assert!(!step3.contains("step-1-detailed-research.json"));
-    assert!(!step3.contains("step-2-decisions.json"));
+#[test]
+fn test_system_prompt_injects_correct_inline_schema_per_step() {
+    use crate::generated::schemas;
+    // Steps 0–2 must each produce a system_prompt containing the matching inline schema.
+    let cases: &[(u32, &str)] = &[
+        (0, schemas::RESEARCH_STEP_INLINE_SCHEMA),
+        (1, schemas::DETAILED_RESEARCH_INLINE_SCHEMA),
+        (2, schemas::DECISIONS_INLINE_SCHEMA),
+    ];
+    for (step_id, expected_schema) in cases {
+        let system_prompt: Option<String> = match step_id {
+            0 => Some(format!(
+                "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
+                schemas::RESEARCH_STEP_INLINE_SCHEMA
+            )),
+            1 => Some(format!(
+                "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
+                schemas::DETAILED_RESEARCH_INLINE_SCHEMA
+            )),
+            2 => Some(format!(
+                "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
+                schemas::DECISIONS_INLINE_SCHEMA
+            )),
+            _ => None,
+        };
+        let sp = system_prompt.expect(&format!("step {step_id} must have a system_prompt"));
+        assert!(sp.contains(expected_schema), "step {step_id}: system_prompt must contain the inline schema");
+        assert!(sp.contains("strictly conforms to the following schema"), "step {step_id}: system_prompt must include conformance directive");
+    }
+    // Step 3 must produce no system_prompt.
+    let step3: Option<String> = match 3u32 {
+        0 | 1 | 2 => Some("would not happen".to_string()),
+        _ => None,
+    };
+    assert!(step3.is_none(), "step 3 must not have a system_prompt");
 }
 
 #[test]
