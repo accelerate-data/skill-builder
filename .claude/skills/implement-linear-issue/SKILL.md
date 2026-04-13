@@ -115,7 +115,7 @@ Confirm changed code follows repo logging rules.
 
 ### Brand compliant
 
-Run the repo's off-brand color grep check for changed frontend files.
+For changed frontend files, verify compliance with `.claude/rules/frontend-design.md`: no raw Tailwind color classes or hardcoded hex values, correct AD brand CSS variables, state indicator colours, and Lucide icons only.
 
 ### Architecture compliant
 

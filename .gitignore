@@ -38,3 +38,4 @@ vd-memory/*
 # Python temp files
 __pycache__
 
+.mcp.json
