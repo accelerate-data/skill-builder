@@ -212,6 +212,8 @@ Field rules:
 
 **CRITICAL — your final message MUST be ONLY a raw JSON object.** No markdown, no explanation, no summary, no code fences, no wrapping text. Do not use ```json blocks. Do not write files — return the JSON directly as your message. If you write anything other than a valid JSON object, the backend will REJECT your output and the entire step will FAIL. The required output schema is provided in your system prompt.
 
+**XML characters in JSON values:** Write `&`, `<`, `>`, `"`, and `'` as literal characters in JSON string values — never XML-escape them (e.g., never write `&amp;` instead of `&`). If the system reports an XML or encoding error after you submit your output, do NOT attempt to manually escape or re-escape characters — return your JSON exactly as-is on one retry, then stop.
+
 Return JSON only with this shape:
 
 ```json
