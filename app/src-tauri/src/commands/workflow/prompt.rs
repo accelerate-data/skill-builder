@@ -65,7 +65,7 @@ pub(crate) fn build_prompt(p: &PromptParams<'_>) -> String {
         }
     }
 
-    // Inject schema paths so agents can read the data contracts.
+    // Inject clarifications schema reference path.
     let ws = workspace_path.replace('\\', "/");
     let shared_dir = format!(
         "{}/.claude/plugins/skill-content-researcher/shared",
@@ -75,18 +75,6 @@ pub(crate) fn build_prompt(p: &PromptParams<'_>) -> String {
         " The clarifications schema reference is at: {}/schemas.md.",
         shared_dir,
     ));
-    let schema_file = match step_id {
-        0 => "step-0-research.json",
-        1 => "step-1-detailed-research.json",
-        2 => "step-2-decisions.json",
-        _ => "",
-    };
-    if !schema_file.is_empty() {
-        prompt.push_str(&format!(
-            " Your output JSON schema file is at: {}/output-schemas/{} — read this file to know the EXACT output structure. Do NOT read other step schema files.",
-            shared_dir, schema_file,
-        ));
-    }
 
     prompt.push_str(" The workspace directory may contain other files written by the workflow (such as answer-evaluation.json) — read only the files explicitly named in your agent instructions. Do not read the logs/ directory or any file not named in your instructions.");
 
