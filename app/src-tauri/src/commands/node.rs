@@ -110,7 +110,7 @@ pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, St
     };
     checks.push(sidecar);
 
-    // 3. SDK CLI (cli.js)
+    // 3. SDK native binary (claude / claude.exe)
     let sdk = match crate::agents::sidecar::resolve_sdk_cli_path_public(&app) {
         Ok(path) => dep_ok("claude_sdk_cli", "Claude SDK", path),
         Err(e) => dep_fail(
