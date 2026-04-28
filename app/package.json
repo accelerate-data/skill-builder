@@ -85,6 +85,7 @@
     "vitest": "^4.1.4"
   },
   "overrides": {
-    "fast-xml-parser": ">=5.7.2"
+    "fast-xml-parser": ">=5.7.2",
+    "uuid": "^14.0.0"
   }
 }
