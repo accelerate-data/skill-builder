@@ -599,7 +599,7 @@ pub fn prior_skill_tag(path: &Path, plugin_slug: &str, skill_name: &str) -> Opti
         }
     }
 
-    versions.sort_by(|a, b| (b.0, b.1, b.2).cmp(&(a.0, a.1, a.2)));
+    versions.sort_by_key(|v| std::cmp::Reverse((v.0, v.1, v.2)));
     if versions.len() >= 2 {
         Some(versions[1].3.clone())
     } else {

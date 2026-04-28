@@ -34,37 +34,39 @@ console.log("Wrote dist/package.json (ESM marker)");
 cpSync(resolve(__dirname, "bootstrap.js"), resolve(__dirname, "dist/bootstrap.js"));
 console.log("Copied dist/bootstrap.js");
 
-// Copy SDK runtime files needed by cli.js at runtime.
-// The SDK's query() spawns cli.js as a child process, and cli.js
-// needs its sibling wasm files and vendor/ directory.
-const sdkDir = resolve(__dirname, "node_modules/@anthropic-ai/claude-agent-sdk");
+// Copy the SDK's native `claude` binary to dist/sdk/.
+// As of @anthropic-ai/claude-agent-sdk 0.2.116+, the runtime ships as a
+// platform-specific native executable in a sibling optional dependency
+// (e.g. @anthropic-ai/claude-agent-sdk-darwin-arm64), not as cli.js.
+// We pass the copied path to the SDK via `pathToClaudeCodeExecutable`.
 const outSdk = resolve(__dirname, "dist/sdk");
-
-if (existsSync(sdkDir)) {
+const sdkBinary = locateSdkBinary();
+if (sdkBinary) {
   mkdirSync(outSdk, { recursive: true });
-
-  // Copy cli.js (the actual Claude Code runtime)
-  cpSync(resolve(sdkDir, "cli.js"), resolve(outSdk, "cli.js"));
-
-  // Copy wasm files (tree-sitter, resvg)
-  for (const f of ["resvg.wasm", "tree-sitter-bash.wasm", "tree-sitter.wasm"]) {
-    const src = resolve(sdkDir, f);
-    if (existsSync(src)) cpSync(src, resolve(outSdk, f));
-  }
-
-  // Copy vendor directory (contains ripgrep binaries)
-  const vendorSrc = resolve(sdkDir, "vendor");
-  if (existsSync(vendorSrc)) {
-    cpSync(vendorSrc, resolve(outSdk, "vendor"), { recursive: true });
-  }
-
-  // Copy manifest.json (SDK metadata)
-  const manifestSrc = resolve(sdkDir, "manifest.json");
-  if (existsSync(manifestSrc)) cpSync(manifestSrc, resolve(outSdk, "manifest.json"));
-
-  console.log("Copied SDK runtime files to dist/sdk/");
+  const destName = process.platform === "win32" ? "claude.exe" : "claude";
+  cpSync(sdkBinary, resolve(outSdk, destName));
+  console.log(`Copied SDK binary to dist/sdk/${destName}`);
 } else {
-  console.warn("SDK not found — skipping runtime file copy");
+  console.warn("SDK native binary not found — skipping");
+}
+
+function locateSdkBinary() {
+  const platform = process.platform;
+  const arch = process.arch;
+  const ext = platform === "win32" ? ".exe" : "";
+  // On Linux, npm may install either the glibc or musl variant depending on host.
+  const candidates =
+    platform === "linux"
+      ? [
+          `@anthropic-ai/claude-agent-sdk-linux-${arch}-musl`,
+          `@anthropic-ai/claude-agent-sdk-linux-${arch}`,
+        ]
+      : [`@anthropic-ai/claude-agent-sdk-${platform}-${arch}`];
+  for (const pkg of candidates) {
+    const candidate = resolve(__dirname, "node_modules", pkg, `claude${ext}`);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
 }
 
 // Copy mock-templates directory for MOCK_AGENTS mode.

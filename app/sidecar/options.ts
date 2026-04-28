@@ -103,7 +103,7 @@ export function buildQueryOptions(
       | "plan",
     abortController,
     // Use the same Node binary that's running this sidecar process,
-    // so the SDK spawns cli.js with a compatible Node version.
+    // so any SDK-spawned Node tooling (e.g. MCP servers) uses a compatible runtime.
     executable: process.execPath as 'node',
     ...(config.pathToClaudeCodeExecutable
       ? { pathToClaudeCodeExecutable: config.pathToClaudeCodeExecutable }
