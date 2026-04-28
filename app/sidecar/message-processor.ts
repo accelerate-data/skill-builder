@@ -674,17 +674,20 @@ export class MessageProcessor {
     // extraction, not a schema validation step.
     if (structuredOutput == null) {
       // Try parsing result text as JSON (covers both outputFormat and non-outputFormat paths).
-      const textToParse = (typeof raw.result === "string" ? raw.result : null) ?? this.lastOutputText;
-      if (textToParse) {
-        const parsed = tryParseJsonFromText(textToParse);
-        if (parsed != null && typeof parsed === "object") {
-          structuredOutput = parsed;
-          if (this.requireStructuredOutput) {
-            process.stderr.write(
-              `[message-processor] event=structured_output_fallback subtype=${subtype ?? "none"} ` +
-              `source=result_text — SDK did not populate structured_output, parsed from result text\n`
-            );
-          }
+      // Try raw.result first; if it is a non-JSON string (e.g. prose summary), also
+      // try the last assistant text block (SDK bug: outputFormat silently dropped for
+      // nested schemas — anthropics/claude-agent-sdk-typescript#277).
+      const resultText = typeof raw.result === "string" ? raw.result : null;
+      const parsed =
+        (resultText ? tryParseJsonFromText(resultText) : null) ??
+        (this.lastOutputText ? tryParseJsonFromText(this.lastOutputText) : null);
+      if (parsed != null && typeof parsed === "object") {
+        structuredOutput = parsed;
+        if (this.requireStructuredOutput) {
+          process.stderr.write(
+            `[message-processor] event=structured_output_fallback subtype=${subtype ?? "none"} ` +
+            `source=result_text — SDK did not populate structured_output, parsed from result text\n`
+          );
         }
       }
 
