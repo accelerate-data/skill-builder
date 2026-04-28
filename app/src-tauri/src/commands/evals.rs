@@ -345,7 +345,7 @@ pub fn list_iterations(
         .collect();
 
     // Sort descending by iteration number
-    iterations.sort_by(|a, b| b.iteration.cmp(&a.iteration));
+    iterations.sort_by_key(|i| std::cmp::Reverse(i.iteration));
 
     log::debug!("[list_iterations] found {} iterations", iterations.len());
     Ok(iterations)
