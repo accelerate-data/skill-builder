@@ -115,7 +115,7 @@ pub async fn spawn_sidecar(
     skill_name: String,
     transcript_log_dir: Option<String>,
 ) -> Result<(), String> {
-    // Resolve the SDK cli.js path so the bundled SDK can find it
+    // Resolve the SDK native binary path so the bundled SDK can spawn it
     if config.path_to_claude_code_executable.is_none() {
         if let Ok(cli_path) = resolve_sdk_cli_path(&app_handle) {
             config.path_to_claude_code_executable = Some(cli_path);
@@ -139,10 +139,18 @@ pub fn resolve_sdk_cli_path_public(app_handle: &tauri::AppHandle) -> Result<Stri
     resolve_sdk_cli_path(app_handle)
 }
 
-/// Resolve the path to the SDK's cli.js, which the bundled SDK needs to spawn.
-/// Looks in sidecar/dist/sdk/cli.js (where build.js copies it).
+/// Resolve the path to the SDK's native `claude` binary, which the bundled SDK
+/// spawns as a child process. Looks in sidecar/dist/sdk/claude (or claude.exe
+/// on Windows), where build.js copies it from the platform-specific
+/// @anthropic-ai/claude-agent-sdk-{platform}-{arch} package.
 fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String> {
     use tauri::Manager;
+
+    let exe_name = if cfg!(windows) {
+        "claude.exe"
+    } else {
+        "claude"
+    };
 
     // Try resource directory first (production)
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
@@ -150,24 +158,24 @@ fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String>
             .join("sidecar")
             .join("dist")
             .join("sdk")
-            .join("cli.js");
+            .join(exe_name);
         if cli.exists() {
             return cli
                 .to_str()
                 .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
-                .ok_or_else(|| "Invalid SDK cli.js path".to_string());
+                .ok_or_else(|| "Invalid SDK binary path".to_string());
         }
     }
 
     // Fallback: next to the binary
     if let Ok(exe_dir) = std::env::current_exe() {
         if let Some(dir) = exe_dir.parent() {
-            let cli = dir.join("sidecar").join("dist").join("sdk").join("cli.js");
+            let cli = dir.join("sidecar").join("dist").join("sdk").join(exe_name);
             if cli.exists() {
                 return cli
                     .to_str()
                     .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
-                    .ok_or_else(|| "Invalid SDK cli.js path".to_string());
+                    .ok_or_else(|| "Invalid SDK binary path".to_string());
             }
         }
     }
@@ -175,17 +183,19 @@ fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String>
     // Dev mode fallback
     let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .map(|p| p.join("sidecar").join("dist").join("sdk").join("cli.js"));
+        .map(|p| p.join("sidecar").join("dist").join("sdk").join(exe_name));
     if let Some(path) = dev_path {
         if path.exists() {
             return path
                 .to_str()
                 .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
-                .ok_or_else(|| "Invalid SDK cli.js path".to_string());
+                .ok_or_else(|| "Invalid SDK binary path".to_string());
         }
     }
 
-    Err("Could not find SDK cli.js — run 'npm run build' in app/sidecar/ first".to_string())
+    Err(format!(
+        "Could not find SDK binary ({exe_name}) — run 'npm run build' in app/sidecar/ first"
+    ))
 }
 
 #[cfg(test)]
