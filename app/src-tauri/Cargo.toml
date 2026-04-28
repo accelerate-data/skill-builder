@@ -46,7 +46,7 @@ hex = "0.4"
 tempfile = "3"
 htmd = "0.5"
 walkdir = "2"
-rand = { version = "0.8", features = ["small_rng"] }
+rand = { version = "0.9", features = ["small_rng"] }
 specta = { version = "=2.0.0-rc.22", features = ["derive"] }
 specta-typescript = "0.0.9"
 schemars = { version = "1", features = ["derive"] }
