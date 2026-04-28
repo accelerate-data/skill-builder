@@ -137,9 +137,7 @@ Every new feature must include logging. Canonical logging conventions and log-le
 
 ## Gotchas
 
-- **SDK has NO team tools:** `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Agent tool for sub-agents instead. Multiple Agent calls in the same turn run in parallel.
 - **Parallel worktrees:** `npm run dev` auto-assigns a free port — safe to run multiple Tauri instances simultaneously.
 - **Windows compatibility:** Path separators, CRLF line endings, env-var prefix syntax, and Rust toolchain selection are recurring sources of Windows CI failures. Follow `.claude/rules/windows-compat.md` before writing path assertions, regex, `package.json` scripts, or Rust CI config.
 - **Linear Markdown — no double-escaping:** The `description` and `body` fields in `save_issue`/`save_comment` accept raw Markdown. Write literal newlines, `*`, `-`, `[ ]` etc. directly. Never escape them (`\\n`, `\\*`, `\\[X\\]`) — double-escaped descriptions render as garbled text in Linear.
-- **Business logic:** Use the data/calculation/action split across all layers (frontend, Rust, sidecar) — calculations must be pure functions, actions own all side effects. Full rules: `.claude/rules/coding-conventions.md`.
 - **State:** Component-local UI state must stay in `useState`, not Zustand. Use Zustand only for shared, cross-component, or navigation-persistent state. Full rules: `.claude/rules/state-management.md`.
