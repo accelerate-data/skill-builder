@@ -1137,8 +1137,8 @@ fn test_build_prompt_without_author_info() {
 
 #[test]
 fn test_build_prompt_does_not_include_schema_file_path() {
-    // Schema file paths are no longer injected into the prompt — they are
-    // injected into config.system_prompt instead (VU-1049).
+    // Schema file paths are no longer injected into the prompt. Workflow steps
+    // use SDK outputFormat for structured contracts.
     for step_id in [1u32, 2, 3] {
         let prompt = build_prompt(&PromptParams {
             skill_name: "s", workspace_path: "/ws", plugin_slug: DEFAULT_PLUGIN_SLUG,
@@ -1163,40 +1163,23 @@ fn test_build_prompt_does_not_include_schema_file_path() {
 }
 
 #[test]
-fn test_system_prompt_injects_correct_inline_schema_per_step() {
+fn test_output_format_contains_correct_inline_schema_per_workflow_step() {
     use crate::generated::schemas;
-    // Steps 0–2 must each produce a system_prompt containing the matching inline schema.
-    let cases: &[(u32, &str)] = &[
-        (0, schemas::RESEARCH_STEP_INLINE_SCHEMA),
-        (1, schemas::DETAILED_RESEARCH_INLINE_SCHEMA),
-        (2, schemas::DECISIONS_INLINE_SCHEMA),
+    let cases: &[(&str, &str)] = &[
+        ("skill-content-researcher:research-orchestrator", schemas::RESEARCH_STEP_INLINE_SCHEMA),
+        ("skill-content-researcher:detailed-research", schemas::DETAILED_RESEARCH_INLINE_SCHEMA),
+        ("skill-content-researcher:confirm-decisions", schemas::DECISIONS_INLINE_SCHEMA),
     ];
-    for (step_id, expected_schema) in cases {
-        let system_prompt: Option<String> = match step_id {
-            0 => Some(format!(
-                "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
-                schemas::RESEARCH_STEP_INLINE_SCHEMA
-            )),
-            1 => Some(format!(
-                "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
-                schemas::DETAILED_RESEARCH_INLINE_SCHEMA
-            )),
-            2 => Some(format!(
-                "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
-                schemas::DECISIONS_INLINE_SCHEMA
-            )),
-            _ => None,
-        };
-        let sp = system_prompt.expect(&format!("step {step_id} must have a system_prompt"));
-        assert!(sp.contains(expected_schema), "step {step_id}: system_prompt must contain the inline schema");
-        assert!(sp.contains("strictly conforms to the following schema"), "step {step_id}: system_prompt must include conformance directive");
+    for (agent, expected_schema) in cases {
+        let format = workflow_output_format_for_agent(agent)
+            .unwrap_or_else(|| panic!("{agent} must have workflow outputFormat"));
+        let actual_schema = format
+            .get("schema")
+            .expect("outputFormat must contain schema");
+        let expected_schema: serde_json::Value =
+            serde_json::from_str(expected_schema).expect("generated schema must parse");
+        assert_eq!(*actual_schema, expected_schema, "{agent}: outputFormat must use the inline schema");
     }
-    // Step 3 must produce no system_prompt.
-    let step3: Option<String> = match 3u32 {
-        0 | 1 | 2 => Some("would not happen".to_string()),
-        _ => None,
-    };
-    assert!(step3.is_none(), "step 3 must not have a system_prompt");
 }
 
 #[test]

@@ -146,34 +146,21 @@ async fn run_workflow_step_inner(
 
     let sdk_agent_identity = WORKFLOW_AGENT_IDENTITY.to_string();
 
-    // Inject output schema inline into system prompt for steps 0–2 so the model
-    // always sees the contract it must produce, regardless of whether
-    // structured_output is enforced by the SDK.
-    let system_prompt_for_step: Option<String> = match step_id {
-        0 => Some(format!(
-            "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
-            crate::generated::schemas::RESEARCH_STEP_INLINE_SCHEMA
-        )),
-        1 => Some(format!(
-            "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
-            crate::generated::schemas::DETAILED_RESEARCH_INLINE_SCHEMA
-        )),
-        2 => Some(format!(
-            "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
-            crate::generated::schemas::DECISIONS_INLINE_SCHEMA
-        )),
-        _ => None,
-    };
     log::debug!(
-        "[run_workflow_step] system_prompt schema injected={} for step_id={}",
-        system_prompt_for_step.is_some(),
+        "[run_workflow_step] sdk_agent_identity={} output_format_configured={} step_id={}",
+        sdk_agent_identity,
+        workflow_output_format_for_agent(&agent_name).is_some(),
         step_id
     );
 
     let mut config = SidecarConfig {
         mode: Some("one-shot".to_string()),
         prompt,
-        system_prompt: system_prompt_for_step,
+        // Do not set a string systemPrompt for workflow steps. The SDK treats
+        // that as a custom system prompt, which can replace the configured
+        // agent identity's instructions. Structured contracts are enforced via
+        // output_format below.
+        system_prompt: None,
         model: Some(settings.preferred_model.clone()),
         api_key: settings.api_key.clone(),
         workspace_root_dir: workspace_path.replace('\\', "/"),
