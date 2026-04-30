@@ -23,7 +23,7 @@ const MOCK_SCENARIO = process.env.MOCK_SCENARIO ?? "default";
 /** @internal Exported for testing only. */
 export function resolveStepTemplate(
   agentName: string | undefined,
-  config?: { skillName?: string; runSource?: string },
+  config?: { skillName?: string; runSource?: string; stepId?: number },
 ): string | null {
   if (!agentName) {
     // Eval generator: invoked without a plugin agentName; identified by skillName.
@@ -36,6 +36,12 @@ export function resolveStepTemplate(
   }
 
   // Exact matches first
+  if (agentName === "skill-content-researcher:skill-builder") {
+    if (config?.stepId === 1) return "step1-detailed-research";
+    if (config?.stepId === 2) return "step2-confirm-decisions";
+    if (config?.stepId === 3) return "step3-generate-skill";
+    return "step0-research";
+  }
   if (agentName === "skill-content-researcher:detailed-research") return "step1-detailed-research";
   if (agentName === "skill-content-researcher:confirm-decisions") return "step2-confirm-decisions";
   if (agentName === "skill-creator:generate-skill") return "step3-generate-skill";
