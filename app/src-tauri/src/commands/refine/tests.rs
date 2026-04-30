@@ -634,7 +634,11 @@ fn test_refine_prompt_includes_all_three_paths() {
     let skills_fwd = skills.replace('\\', "/");
     assert!(system_prompt
         .contains(&format!("The workspace directory is: {}/skills/my-skill", ws_fwd)));
-    assert!(system_prompt.contains("The skill directory is:"));
+    assert!(system_prompt.contains(&format!(
+        "The skill directory is: {}/{}",
+        skills_fwd,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG
+    )));
     assert!(system_prompt.contains("The context directory is:"));
 }
 
