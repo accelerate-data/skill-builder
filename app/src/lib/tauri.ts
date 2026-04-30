@@ -137,7 +137,7 @@ export const reviewSkillScope = (
 
 // --- Agent ---
 
-export const startAgent = (
+export const startOneShotAgent = (
   agentId: string,
   prompt: string,
   model: string,
@@ -489,7 +489,7 @@ export const cancelAgentRun = (skillName: string, agentId: string) =>
 export const cancelWorkflowStep = (agentId: string) =>
   invoke<void>("cancel_workflow_step", { agentId })
 
-export const answerRefineQuestion = (
+export const answerStreamingRefineQuestion = (
   sessionId: string,
   agentId: string,
   toolUseId: string,
@@ -503,19 +503,7 @@ export const answerRefineQuestion = (
   answers,
 })
 
-export const answerWorkflowStepQuestion = (
-  agentId: string,
-  toolUseId: string,
-  questions: unknown,
-  answers: Record<string, unknown>,
-) => invoke<void>("answer_workflow_step_question", {
-  agentId,
-  toolUseId,
-  questions,
-  answers,
-})
-
-export const sendRefineMessage = (
+export const sendStreamingRefineMessage = (
   sessionId: string,
   userMessage: string,
   workspacePath: string,

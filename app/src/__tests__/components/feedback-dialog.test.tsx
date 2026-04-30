@@ -37,7 +37,7 @@ const { mockStartAgent, mockGetWorkspacePath, mockCreateGithubIssue } = vi.hoist
 }));
 
 vi.mock("@/lib/tauri", () => ({
-  startAgent: mockStartAgent,
+  startOneShotAgent: mockStartAgent,
   getWorkspacePath: mockGetWorkspacePath,
   createGithubIssue: mockCreateGithubIssue,
   githubGetUser: vi.fn(() => Promise.resolve(null)),
@@ -213,7 +213,7 @@ describe("FeedbackDialog", () => {
     expect(analyzeBtn).toBeDisabled();
   });
 
-  it("clicking Analyze calls startAgent with enrichment prompt (model: haiku)", async () => {
+  it("clicking Analyze calls startOneShotAgent with enrichment prompt (model: haiku)", async () => {
     const user = userEvent.setup();
     render(<FeedbackDialog />);
 

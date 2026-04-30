@@ -187,11 +187,12 @@ export async function initAgentStream() {
         const toolUseId = typeof message.tool_use_id === "string" ? message.tool_use_id : "";
         const questions = Array.isArray(message.questions) ? message.questions : [];
         if (toolUseId && questions.length > 0) {
-          // Route to workflow store when this agent is the active workflow step agent,
-          // otherwise route to refine store (activeAgentId is only set for workflow steps).
           const activeAgentId = useAgentStore.getState().activeAgentId;
           if (activeAgentId === agent_id) {
-            useWorkflowStore.getState().setPendingQuestion({ agentId: agent_id, toolUseId, questions });
+            console.warn(
+              "[use-agent-stream] dropping question from one-shot workflow agent agent_id=%s",
+              agent_id,
+            );
           } else {
             useRefineStore.getState().addQuestionMessage(agent_id, toolUseId, questions);
           }

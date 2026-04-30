@@ -25,7 +25,7 @@ import { waitForAppReady } from "../helpers/app-helpers.js";
 async function getEvalRunAgentId(page: Page): Promise<string> {
   const banner = page.getByTestId("evals-run-thinking");
   await banner.waitFor({ timeout: 8_000 });
-  // data-agent-id is set after startAgent resolves — wait for it to be non-empty.
+  // data-agent-id is set after startOneShotAgent resolves — wait for it to be non-empty.
   await expect(banner).not.toHaveAttribute("data-agent-id", "", { timeout: 5_000 });
   const agentId = await banner.getAttribute("data-agent-id");
   if (!agentId) throw new Error("Could not read agent ID from evals-run-thinking banner");

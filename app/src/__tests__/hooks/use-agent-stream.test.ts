@@ -105,6 +105,31 @@ describe("initAgentStream", () => {
     expect(question.questions).toHaveLength(1);
   });
 
+  it("drops question messages for active one-shot workflow agents", async () => {
+    useAgentStore.getState().setActiveAgent("workflow-agent");
+    await initAgentStream();
+
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "workflow-agent",
+        message: {
+          type: "refine_question",
+          tool_use_id: "toolu_workflow",
+          questions: [
+            {
+              header: "Workflow Question",
+              question: "This should not be shown",
+              options: [{ label: "Continue", description: "Continue." }],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(useWorkflowStore.getState().pendingQuestion).toBeNull();
+    expect(useRefineStore.getState().messages).toHaveLength(0);
+  });
+
   it("updates run init via agent-run-init event", async () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     await initAgentStream();
