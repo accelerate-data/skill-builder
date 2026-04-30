@@ -1,14 +1,17 @@
 use crate::types::StepConfig;
 
+pub(crate) const WORKFLOW_AGENT_IDENTITY: &str = "skill-content-researcher:skill-builder";
+
 /// Canonical allowed-tools lookup keyed by agent name.
 /// Values must match the `tools:` frontmatter in the corresponding agent `.md` file.
 pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
     let tools: &[&str] = match agent_name {
+        WORKFLOW_AGENT_IDENTITY => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill"],
         "skill-content-researcher:research-orchestrator" => &["Read", "Skill", "AskUserQuestion"],
         "skill-content-researcher:detailed-research" => &["Read", "Agent", "AskUserQuestion"],
-        "skill-content-researcher:confirm-decisions" => &["Read", "AskUserQuestion"],
+        "skill-content-researcher:confirm-decisions" => &["Read", "Agent", "AskUserQuestion"],
         "answer-evaluator" => &["Read", "Skill"],
-        "skill-creator:generate-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill", "AskUserQuestion"],
+        "skill-creator:generate-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill", "AskUserQuestion"],
         "skill-creator:rewrite-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill", "AskUserQuestion"],
         "skill-creator:generate-skill-description-evals" => &["Read", "Skill"],
         _ => &["Read", "Glob", "Grep", "Agent", "Skill"],
@@ -34,12 +37,15 @@ pub fn resolve_model_id(shorthand: &str) -> String {
 
 /// Canonical step configuration table.
 ///
-/// | Step | Agent | Plugins | Source |
-/// |------|-------|---------|--------|
-/// | 0 | skill-content-researcher:research-orchestrator | skill-content-researcher | plugin agents/ |
-/// | 1 | skill-content-researcher:detailed-research | skill-content-researcher | plugin agents/ |
-/// | 2 | skill-content-researcher:confirm-decisions | skill-content-researcher | plugin agents/ |
-/// | 3 | skill-creator:generate-skill | skill-creator | plugin agents/ |
+/// `agent_name` identifies the step capability used for tools, output schema,
+/// and logging. The SDK agent identity is `WORKFLOW_AGENT_IDENTITY`.
+///
+/// | Step | Capability | Plugins |
+/// |------|------------|---------|
+/// | 0 | skill-content-researcher:research-orchestrator | skill-content-researcher |
+/// | 1 | skill-content-researcher:detailed-research | skill-content-researcher |
+/// | 2 | skill-content-researcher:confirm-decisions | skill-content-researcher |
+/// | 3 | skill-creator:generate-skill | skill-content-researcher, skill-creator |
 pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => {
@@ -91,7 +97,10 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 allowed_tools: one_shot_tools_for_agent(agent),
                 max_turns: 500,
                 agent_name: agent.to_string(),
-                required_plugins: vec!["skill-creator".to_string()],
+                required_plugins: vec![
+                    "skill-content-researcher".to_string(),
+                    "skill-creator".to_string(),
+                ],
             })
         }
         _ => Err(format!("Unknown step_id {}. Valid steps are 0-3.", step_id)),

@@ -18,7 +18,7 @@ use super::settings::{read_workflow_settings, WorkflowSettings};
 use super::output_format::answer_evaluator_output_format;
 use super::step_config::{
     build_betas, get_step_config, resolve_model_id, thinking_budget_for_step,
-    tools_for_agent, workflow_output_format_for_agent,
+    tools_for_agent, workflow_output_format_for_agent, WORKFLOW_AGENT_IDENTITY,
 };
 use super::user_context::write_user_context_file;
 
@@ -85,12 +85,18 @@ async fn run_workflow_step_inner(
 
     const JSON_ONLY: &str = "Your final response MUST be ONLY a raw JSON object — no markdown, no explanation, no wrapping.";
 
-    // Steps 1–2 run the agent directly (no subagent relay) so outputFormat is
-    // enforced on the agent that actually produces the data. Step 3 still
-    // uses the prompt-directive approach (subagent relay) until proven stable.
+    // The SDK always runs the generic skill-builder agent identity. Step prompts
+    // still carry the existing workflow-specific instructions and, when needed,
+    // tell the agent which capability to invoke before returning structured JSON.
     let subagent_directive: Option<String> = match step_id {
-        // Steps 1–2: agent runs directly — no subagent directive needed.
-        1 | 2 => None,
+        1 => Some(format!(
+            "Invoke the `skill-content-researcher:detailed-research` agent to perform detailed research. \
+             Then return that payload as your own final response. {JSON_ONLY}"
+        )),
+        2 => Some(format!(
+            "Invoke the `skill-content-researcher:confirm-decisions` agent to confirm decisions. \
+             Then return that payload as your own final response. {JSON_ONLY}"
+        )),
         3 => Some(format!(
             "Launch the `skill-creator:generate-skill` subagent to generate the skill. \
              {JSON_ONLY} Required fields: \
@@ -138,14 +144,7 @@ async fn run_workflow_step_inner(
         required_plugins,
     );
 
-    // Steps 1–2 use the agent directly (agentName set) so the SDK's outputFormat
-    // constrains the agent that produces the data — no relay layer.
-    // Steps 0, 3 use the prompt-directive approach: model is set explicitly
-    // and the prompt instructs the model to launch a named subagent.
-    let direct_agent = match step_id {
-        1 | 2 => Some(agent_name.clone()),
-        _ => None,
-    };
+    let sdk_agent_identity = WORKFLOW_AGENT_IDENTITY.to_string();
 
     // Inject output schema inline into system prompt for steps 0–2 so the model
     // always sees the contract it must produce, regardless of whether
@@ -201,7 +200,7 @@ async fn run_workflow_step_inner(
         output_format: workflow_output_format_for_agent(&agent_name),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
-        agent_name: direct_agent,
+        agent_name: Some(sdk_agent_identity),
         required_plugins: Some(required_plugins),
         setting_sources: None,
         conversation_history: None,

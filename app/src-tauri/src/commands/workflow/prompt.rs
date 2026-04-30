@@ -107,6 +107,7 @@ pub(crate) fn build_step0_prompt(
         "EXECUTE IMMEDIATELY — do not ask questions, do not greet the user, do not offer options. \
          Your ONLY task: invoke the Skill tool with exactly `skill-content-researcher:research` to produce clarification questions. \
          Do NOT use `detailed-research` or any other agent/skill — ONLY `skill-content-researcher:research`. \
+         After the skill returns, return its payload as your own final response. Your final response MUST be ONLY a raw JSON object — no markdown, no code fences, no explanation. \
          Context for the skill invocation: \
          The skill name is: {}. The workspace directory is: {}. \
          The user context file is at: {}/user-context.md. \

@@ -17,6 +17,7 @@ use super::prompt::{build_prompt, PromptParams};
 use super::user_context::{format_user_context, write_user_context_file};
 use super::step_config::{
     build_betas, get_step_config, thinking_budget_for_step, workflow_output_format_for_agent,
+    WORKFLOW_AGENT_IDENTITY,
 };
 use super::evaluation::get_step_output_files;
 
@@ -98,6 +99,7 @@ fn test_get_step_output_files_unknown_step() {
 
 #[test]
 fn test_step_config_canonical_agent_names() {
+    assert_eq!(WORKFLOW_AGENT_IDENTITY, "skill-content-researcher:skill-builder");
     assert_eq!(get_step_config(0).unwrap().agent_name, "skill-content-researcher:research-orchestrator");
     assert_eq!(get_step_config(1).unwrap().agent_name, "skill-content-researcher:detailed-research");
     assert_eq!(get_step_config(2).unwrap().agent_name, "skill-content-researcher:confirm-decisions");
@@ -120,7 +122,7 @@ fn test_step_config_canonical_required_plugins() {
     );
     assert_eq!(
         get_step_config(3).unwrap().required_plugins,
-        vec!["skill-creator"]
+        vec!["skill-content-researcher", "skill-creator"]
     );
 }
 
