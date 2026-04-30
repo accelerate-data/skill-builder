@@ -25,11 +25,17 @@ export interface RuntimeRequestBase {
   allowedTools?: string[];
   settingSources?: ("user" | "project")[];
   maxTurns?: number;
+  permissionMode?: string;
+  betas?: string[];
+  thinking?: { type: "disabled" | "adaptive" | "enabled"; budgetTokens?: number };
+  effort?: "low" | "medium" | "high" | "max";
+  fallbackModel?: string;
   outputFormat?: {
     type: "json_schema";
     schema: Record<string, unknown>;
   };
   promptSuggestions?: boolean;
+  pathToClaudeCodeExecutable?: string;
   context: RunPersistenceContext;
 }
 

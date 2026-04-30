@@ -90,6 +90,22 @@ describe("StreamSession — run_result emission ordering", () => {
     delete process.env.MOCK_AGENTS;
   });
 
+  it("exposes runtime session methods for message, answer, cancel, and close", () => {
+    const session = new StreamSession(
+      "session-runtime",
+      "req-start",
+      baseConfig(),
+      vi.fn(),
+    );
+
+    expect(typeof session.sendUserMessage).toBe("function");
+    expect(typeof session.answerQuestion).toBe("function");
+    expect(typeof session.cancel).toBe("function");
+    expect(typeof session.close).toBe("function");
+
+    session.close();
+  });
+
   it("emits run_result before session_exhausted on natural turn exhaustion (no result SDK message)", async () => {
     // SDK generator ends without emitting a result-type message
     async function* fakeConversation() {

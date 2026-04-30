@@ -461,6 +461,63 @@ describe("runPersistent", () => {
     expect(di1.item.resultStatus).toBe("success");
   });
 
+  it("rejects agent_request configs that explicitly ask for streaming mode", async () => {
+    const input = createInputStream([
+      JSON.stringify({
+        type: "agent_request",
+        request_id: "req_bad_mode",
+        config: {
+          mode: "streaming",
+          prompt: "test prompt",
+          apiKey: "sk-test",
+          workspaceRootDir: os.tmpdir(),
+          workspaceSkillDir: os.tmpdir(),
+        },
+      }),
+      JSON.stringify({ type: "shutdown" }),
+    ]);
+    const exitFn = vi.fn();
+    const capture = captureStdout();
+
+    try {
+      await runPersistent(input, exitFn);
+    } finally {
+      capture.restore();
+    }
+
+    expect(capture.lines.join("\n")).toContain("agent_request requires one-shot mode");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects stream_start configs that explicitly ask for one-shot mode", async () => {
+    const input = createInputStream([
+      JSON.stringify({
+        type: "stream_start",
+        request_id: "req_bad_stream_mode",
+        session_id: "sess_bad_mode",
+        config: {
+          mode: "one-shot",
+          prompt: "test prompt",
+          apiKey: "sk-test",
+          workspaceRootDir: os.tmpdir(),
+          workspaceSkillDir: os.tmpdir(),
+        },
+      }),
+      JSON.stringify({ type: "shutdown" }),
+    ]);
+    const exitFn = vi.fn();
+    const capture = captureStdout();
+
+    try {
+      await runPersistent(input, exitFn);
+    } finally {
+      capture.restore();
+    }
+
+    expect(capture.lines.join("\n")).toContain("stream_start requires streaming mode");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it("handles SDK errors per-request without crashing", async () => {
     mockQuery.mockImplementation(() => {
       throw new Error("SDK connection failed");

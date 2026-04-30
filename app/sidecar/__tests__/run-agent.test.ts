@@ -62,6 +62,24 @@ describe("runAgentRequest", () => {
     );
   });
 
+  it("rejects one-shot requests that include AskUserQuestion", async () => {
+    const messages: Record<string, unknown>[] = [];
+
+    await runAgentRequest(
+      baseConfig({ mode: "one-shot", allowedTools: ["Read", "AskUserQuestion"] }),
+      (msg) => messages.push(msg),
+    );
+
+    const runResult = findRunResult(messages);
+
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(runResult).toBeDefined();
+    expect((runResult!.event as Record<string, unknown>).status).toBe("error");
+    expect(JSON.stringify(runResult)).toContain(
+      "one-shot runtime requests cannot include user-question tools",
+    );
+  });
+
   it("streams all messages to the onMessage callback", async () => {
     // Use proper SDK message shapes that MessageProcessor can process
     const sdkMessages = [
