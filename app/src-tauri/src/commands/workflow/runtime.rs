@@ -175,6 +175,7 @@ async fn run_workflow_step_inner(
     );
 
     let mut config = SidecarConfig {
+        mode: Some("streaming".to_string()),
         prompt,
         system_prompt: system_prompt_for_step,
         model: Some(settings.preferred_model.clone()),
@@ -587,6 +588,7 @@ pub async fn run_answer_evaluator(
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
     let mut config = SidecarConfig {
+        mode: Some("streaming".to_string()),
         prompt,
         system_prompt: None,
         // Answer evaluator uses Sonnet for reliable skill invocation.

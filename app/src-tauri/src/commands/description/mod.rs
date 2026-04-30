@@ -421,6 +421,7 @@ pub async fn start_generate_desc_evals(
     }));
 
     let config = SidecarConfig {
+        mode: Some("one-shot".to_string()),
         prompt: user_prompt,
         system_prompt: Some(system_prompt),
         model: Some(model.clone()),

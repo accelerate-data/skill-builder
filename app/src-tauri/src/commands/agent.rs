@@ -194,6 +194,7 @@ pub async fn start_agent(
     let setting_sources = derive_setting_sources(agent_name.as_deref());
 
     let config = SidecarConfig {
+        mode: Some("one-shot".to_string()),
         prompt,
         system_prompt,
         model: model_for_config,

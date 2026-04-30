@@ -229,6 +229,7 @@ async fn run_single_eval_query(
     let transcript_dir_str = transcript_log_dir.to_string_lossy().into_owned();
 
     let config = SidecarConfig {
+        mode: Some("one-shot".to_string()),
         prompt: query.clone(),
         system_prompt: None,
         model: Some(model.to_string()),
