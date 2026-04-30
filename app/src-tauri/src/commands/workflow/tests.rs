@@ -457,6 +457,61 @@ fn test_materialize_step0_writes_research_and_clarifications() {
 }
 
 #[test]
+fn test_materialize_step0_accepts_null_focus_in_unselected_dimension_scores() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    let payload = serde_json::json!({
+        "status": "research_complete",
+        "dimensions_selected": 1,
+        "question_count": 0,
+        "research_output": {
+            "version": "1",
+            "metadata": {
+                "title": "Test",
+                "question_count": 0,
+                "section_count": 0,
+                "refinement_count": 0,
+                "must_answer_count": 0,
+                "priority_questions": [],
+                "research_plan": {
+                    "purpose": "Analyze leads",
+                    "domain": "Cloud services",
+                    "topic_relevance": "High",
+                    "dimensions_evaluated": 2,
+                    "dimensions_selected": 1,
+                    "dimension_scores": [
+                        {
+                            "name": "entities",
+                            "score": 5.0,
+                            "reason": "Critical custom relationships.",
+                            "focus": "Lead to opportunity conversion"
+                        },
+                        {
+                            "name": "modeling-patterns",
+                            "score": 3.0,
+                            "reason": "Mostly standard.",
+                            "focus": null
+                        }
+                    ],
+                    "selected_dimensions": [
+                        {
+                            "name": "entities",
+                            "focus": "Lead to opportunity conversion"
+                        }
+                    ]
+                }
+            },
+            "sections": [],
+            "notes": []
+        }
+    });
+
+    materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
+    let written = std::fs::read_to_string(skill_root.join("context/clarifications.json")).unwrap();
+    assert!(written.contains("\"modeling-patterns\""));
+}
+
+#[test]
 fn test_materialize_step0_empty_metadata_defaults_to_zeros() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");

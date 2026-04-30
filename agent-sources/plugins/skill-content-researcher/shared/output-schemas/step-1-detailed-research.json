@@ -110,7 +110,10 @@
                         "description": "A scored dimension in the research plan.",
                         "properties": {
                           "focus": {
-                            "type": "string"
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           },
                           "name": {
                             "type": "string"
@@ -126,8 +129,7 @@
                         "required": [
                           "name",
                           "score",
-                          "reason",
-                          "focus"
+                          "reason"
                         ],
                         "type": "object"
                       },

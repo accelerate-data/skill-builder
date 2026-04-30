@@ -85,7 +85,8 @@ pub struct DimensionScore {
     pub name: String,
     pub score: f64,
     pub reason: String,
-    pub focus: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus: Option<String>,
 }
 
 /// A dimension selected for deeper research.
@@ -406,5 +407,18 @@ mod tests {
         let reserialized = serde_json::to_string_pretty(&file).expect("serialize");
         let roundtrip: ClarificationsFile = serde_json::from_str(&reserialized).expect("roundtrip");
         assert_eq!(roundtrip.metadata.title, file.metadata.title);
+    }
+
+    #[test]
+    fn test_dimension_score_focus_accepts_null_for_unselected_dimensions() {
+        let json = serde_json::json!({
+            "name": "segmentation-and-periods",
+            "score": 3.0,
+            "reason": "Useful but mostly standard.",
+            "focus": null
+        });
+
+        let score: DimensionScore = serde_json::from_value(json).unwrap();
+        assert!(score.focus.is_none());
     }
 }
