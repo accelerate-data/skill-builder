@@ -10,7 +10,13 @@ export interface StepConfig {
 }
 
 export const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
+  0: {
+    type: "agent",
+    outputFiles: ["context/research-plan.md", "context/clarifications.json"],
+    model: "sonnet",
+    clarificationsEditable: true,
+    requiresStructuredOutput: true,
+  },
   1: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet", clarificationsEditable: true, requiresStructuredOutput: true },
   2: { type: "reasoning", outputFiles: ["context/decisions.json"], model: "opus" },
   3: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet", requiresStructuredOutput: true },

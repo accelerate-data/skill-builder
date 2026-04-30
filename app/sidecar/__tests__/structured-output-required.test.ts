@@ -9,11 +9,19 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { MessageProcessor } from "../message-processor.js";
 import type { DisplayItem, DisplayItemEnvelope } from "../display-types.js";
+import type { AgentEventEnvelope, RunResultEvent } from "../agent-events.js";
 
 function extractDisplayItems(output: Record<string, unknown>[]): DisplayItem[] {
   return output
     .filter((o) => o.type === "display_item")
     .map((o) => (o as DisplayItemEnvelope).item);
+}
+
+function extractRunResult(output: Record<string, unknown>[]): RunResultEvent | undefined {
+  return output
+    .filter((o) => o.type === "agent_event")
+    .map((o) => (o as AgentEventEnvelope).event)
+    .find((event): event is RunResultEvent => event.type === "run_result");
 }
 
 describe("structured_output required outputFormat path (VU-1015)", () => {
@@ -59,6 +67,8 @@ describe("structured_output required outputFormat path (VU-1015)", () => {
       expect(result?.resultStatus).toBe("error");
       expect(result?.errorSubtype).toBe("structured_output_missing");
       expect(result?.structuredOutput).toBeUndefined();
+      expect(extractRunResult(out)?.status).toBe("error");
+      expect(extractRunResult(out)?.resultSubtype).toBe("structured_output_missing");
     });
 
     it("hard-fails when SDK returns structured_output: null even if result text is JSON", () => {

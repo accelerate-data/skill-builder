@@ -699,8 +699,18 @@ export class MessageProcessor {
       `[message-processor] event=emit_display_item item_type=result id=${item.id} status=${resultStatus} subtype=${subtype ?? "none"} orphaned_tools=${orphanedItems.length}\n`,
     );
 
+    const summaryRaw = errorSubtype === "structured_output_missing"
+      ? {
+          ...raw,
+          subtype: errorSubtype,
+          is_error: true,
+          errors: [outputText],
+          stop_reason: "error",
+        }
+      : raw;
+
     // Build run_result from accumulated state.
-    const runSummary = this.accumulator.buildRunSummary(raw);
+    const runSummary = this.accumulator.buildRunSummary(summaryRaw);
     // Attach the agent's final output text so Rust can parse structured results
     // (e.g. step_id=-12 generate-skill-description-evals) without a second IPC round-trip.
     if (structuredOutput != null) {

@@ -267,7 +267,37 @@ describe("useWorkflowStateMachine", () => {
     };
     mockActiveAgentId = "agent-finish-1";
     mockRuns = {
-      "agent-finish-1": { status: "completed", displayItems: [], totalCost: 0 },
+      "agent-finish-1": {
+        status: "completed",
+        displayItems: [
+          {
+            id: "result-agent-finish-1",
+            type: "result",
+            timestamp: Date.now(),
+            outputText_result: "Agent completed",
+            structuredOutput: {
+              status: "research_complete",
+              dimensions_selected: 1,
+              question_count: 1,
+              research_plan_markdown: "# Research Plan",
+              clarifications_json: {
+                version: "1",
+                metadata: {
+                  question_count: 0,
+                  section_count: 0,
+                  refinement_count: 0,
+                  must_answer_count: 0,
+                  priority_questions: [],
+                },
+                sections: [],
+                notes: [],
+              },
+            },
+            resultStatus: "success",
+          },
+        ],
+        totalCost: 0,
+      },
     };
     // verifyStepOutput resolves true — step output exists
     mockVerifyStepOutput.mockResolvedValueOnce(true);

@@ -235,6 +235,31 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     // Agent completes — should stay on step 0 completion screen (clarifications editable)
     act(() => {
+      useAgentStore.getState().addDisplayItem("agent-1", {
+        id: "result-agent-1",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: "Agent completed",
+        structuredOutput: {
+          status: "research_complete",
+          dimensions_selected: 1,
+          question_count: 1,
+          research_plan_markdown: "# Research Plan",
+          clarifications_json: {
+            version: "1",
+            metadata: {
+              question_count: 0,
+              section_count: 0,
+              refinement_count: 0,
+              must_answer_count: 0,
+              priority_questions: [],
+            },
+            sections: [],
+            notes: [],
+          },
+        },
+        resultStatus: "success",
+      });
       useAgentStore.getState().completeRun("agent-1", true);
     });
 
@@ -682,6 +707,31 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
     // Agent completes step 0
     act(() => {
+      useAgentStore.getState().addDisplayItem("agent-1", {
+        id: "result-agent-1",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: "Agent completed",
+        structuredOutput: {
+          status: "research_complete",
+          dimensions_selected: 1,
+          question_count: 1,
+          research_plan_markdown: "# Research Plan",
+          clarifications_json: {
+            version: "1",
+            metadata: {
+              question_count: 0,
+              section_count: 0,
+              refinement_count: 0,
+              must_answer_count: 0,
+              priority_questions: [],
+            },
+            sections: [],
+            notes: [],
+          },
+        },
+        resultStatus: "success",
+      });
       useAgentStore.getState().completeRun("agent-1", true);
     });
 
@@ -903,7 +953,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(mockToast.error).toHaveBeenCalled();
   });
 
-  it("step 0 continues when structured output payload is missing", async () => {
+  it("step 0 errors when structured output payload is missing", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
@@ -917,9 +967,13 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+      expect(useWorkflowStore.getState().steps[0].status).toBe("error");
     });
     expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+    expect(mockToast.error).toHaveBeenCalledWith(
+      "Step 1 completed but produced no structured output",
+      { duration: Infinity },
+    );
   });
 
   it("step 0 errors when structured output fails backend materialization", async () => {
@@ -3518,7 +3572,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
 
-  it("step errors when verifyStepOutput returns false (no output files)", async () => {
+  it("step errors before file verification when structured output is missing", async () => {
     vi.mocked(verifyStepOutput).mockResolvedValue(false);
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -3529,7 +3583,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes with structured output (step 0 does not require it, so null is OK)
+    // Agent completes without structured output; step 0 now requires structured output.
     act(() => {
       useAgentStore.getState().completeRun("agent-no-output", true);
     });
@@ -3540,7 +3594,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
 
     expect(useWorkflowStore.getState().isRunning).toBe(false);
     expect(mockToast.error).toHaveBeenCalledWith(
-      "Step 1 completed but produced no output files",
+      "Step 1 completed but produced no structured output",
       { duration: Infinity },
     );
   });
@@ -3701,6 +3755,31 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     render(<WorkflowPage />);
 
     act(() => {
+      useAgentStore.getState().addDisplayItem("agent-verify-throw", {
+        id: "result-verify-throw",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: "Agent completed",
+        structuredOutput: {
+          status: "research_complete",
+          dimensions_selected: 1,
+          question_count: 1,
+          research_plan_markdown: "# Research Plan",
+          clarifications_json: {
+            version: "1",
+            metadata: {
+              question_count: 0,
+              section_count: 0,
+              refinement_count: 0,
+              must_answer_count: 0,
+              priority_questions: [],
+            },
+            sections: [],
+            notes: [],
+          },
+        },
+        resultStatus: "success",
+      });
       useAgentStore.getState().completeRun("agent-verify-throw", true);
     });
 
