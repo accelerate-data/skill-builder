@@ -278,14 +278,17 @@ created -> active -> closed
 
 | File | Purpose |
 |---|---|
-| `app/sidecar/run-agent.ts` | Current one-shot Claude SDK execution path. |
-| `app/sidecar/stream-session.ts` | Current streaming Claude SDK session path and `AskUserQuestion` bridge. |
-| `app/sidecar/options.ts` | Current Claude SDK option builder. |
-| `app/sidecar/config.ts` | Current sidecar request validation shape. |
+| `app/sidecar/runtime/types.ts` | Runtime request, sink, and session boundary types plus one-shot user-question guards. |
+| `app/sidecar/runtime/sink.ts` | Adapter from runtime sink methods to the existing JSONL sidecar message envelopes. |
+| `app/sidecar/runtime/claude-runtime.ts` | Claude runtime adapter for one-shot execution behind the boundary. |
+| `app/sidecar/run-agent.ts` | Compatibility wrapper for existing one-shot callers. |
+| `app/sidecar/stream-session.ts` | Streaming Claude SDK session path, runtime session methods, and `AskUserQuestion` bridge. |
+| `app/sidecar/options.ts` | Claude SDK option builder. |
+| `app/sidecar/config.ts` | Sidecar request validation shape, including optional runtime mode. |
 | `app/sidecar/message-processor.ts` | Current SDK-message to app-protocol mapper. |
 | `app/sidecar/run-metadata-accumulator.ts` | Current `run_result` summary construction. |
-| `app/sidecar/persistent-mode.ts` | Current sidecar request demultiplexer and streaming-session routing. |
-| `app/src-tauri/src/agents/sidecar.rs` | Rust `SidecarConfig` and sidecar spawn path. |
+| `app/sidecar/persistent-mode.ts` | Sidecar request demultiplexer that rejects mode mismatches and routes one-shot requests through the runtime boundary. |
+| `app/src-tauri/src/agents/sidecar.rs` | Rust `SidecarConfig`, runtime mode serialization, and sidecar spawn path. |
 | `app/src-tauri/src/agents/sidecar_pool/dispatch.rs` | Rust request dispatch, streaming, shutdown, and answer routing. |
 | `app/src-tauri/src/commands/workflow/runtime.rs` | Workflow calls that should choose one-shot or streaming explicitly. |
 | `app/src-tauri/src/commands/refine/protocol.rs` | Refine chat protocol that should remain streaming. |
