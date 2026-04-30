@@ -1220,7 +1220,9 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     const parsed = JSON.parse(serialized);
     expect(Array.isArray(parsed.answer_evaluator_notes)).toBe(true);
     expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Vague answer: Q1")).toBe(true);
-    // contradictory verdicts are resolved by the agent inline and not written to notes
+    expect(parsed.answer_evaluator_notes.some((n: { title: string; body: string }) =>
+      n.title === "Contradictory answer: Q2" && n.body.includes("One vague and one contradictory answer.")
+    )).toBe(true);
   });
 
   it("gate falls back when structured gate payload is missing", async () => {
@@ -3328,20 +3330,20 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     expect(useWorkflowStore.getState().gateLoading).toBe(false);
   });
 
-  it("buildGateFeedbackNotes maps three actionable verdict types with reasons", async () => {
-    // contradictory is resolved inline by the agent and is not written to notes
+  it("buildGateFeedbackNotes maps actionable verdict types with reasons", async () => {
     const evaluation = {
       verdict: "mixed",
       answered_count: 0,
       empty_count: 1,
       vague_count: 1,
-      contradictory_count: 0,
-      total_count: 3,
+      contradictory_count: 1,
+      total_count: 4,
       reasoning: "Multiple issues.",
       per_question: [
         { question_id: "Q1", verdict: "vague", reason: "Too general." },
         { question_id: "Q3", verdict: "not_answered", reason: "Skipped entirely." },
         { question_id: "Q4", verdict: "needs_refinement", reason: "Needs more constraints." },
+        { question_id: "Q5", verdict: "contradictory", reason: "Conflicts with Q1." },
       ],
     };
 
@@ -3391,10 +3393,11 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     const parsed = JSON.parse(serialized);
     const notes = parsed.answer_evaluator_notes as Array<{ type: string; title: string; body: string }>;
 
-    // Three actionable verdict types with custom reasons
+    // Actionable verdict types with custom reasons
     expect(notes.some((n) => n.title === "Vague answer: Q1" && n.body === "Too general.")).toBe(true);
     expect(notes.some((n) => n.title === "Not answered: Q3" && n.body === "Skipped entirely.")).toBe(true);
     expect(notes.some((n) => n.title === "Needs refinement: Q4" && n.body === "Needs more constraints.")).toBe(true);
+    expect(notes.some((n) => n.title === "Contradictory answer: Q5" && n.body.includes("Conflicts with Q1."))).toBe(true);
 
     // All should have type "answer_feedback"
     expect(notes.every((n) => n.type === "answer_feedback")).toBe(true);
@@ -3461,7 +3464,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     const parsed = JSON.parse(serialized);
     const notes = parsed.answer_evaluator_notes as Array<{ title: string; body: string }>;
 
-    // Fallback messages (contradictory is resolved by agent and not written to notes)
+    // Fallback messages
     expect(notes.some((n) => n.title === "Vague answer: Q1" && n.body === "Answer is too general and needs specific details.")).toBe(true);
     expect(notes.some((n) => n.title === "Not answered: Q3" && n.body.includes("still unanswered"))).toBe(true);
     expect(notes.some((n) => n.title === "Needs refinement: Q4" && n.body.includes("more concrete detail"))).toBe(true);
