@@ -285,7 +285,7 @@ pub fn run() {
         .manage(agents::sidecar_pool::SidecarPool::new())
         .manage(CloseGuardState::default())
         .manage(commands::refine::RefineSessionManager::new())
-        .manage(commands::workflow::runtime::WorkflowStepSessionManager::new())
+        .manage(commands::workflow::runtime::WorkflowStepRunManager::new())
         .manage(commands::description::DescriptionProcessState::new())
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,

@@ -140,9 +140,10 @@ A one-shot run is an autonomous request:
 3. The runtime emits exactly one terminal `run_result`.
 4. The runtime is done.
 
-One-shot runs are appropriate for autonomous workflow steps, skill tests,
-evaluation subruns, description optimization subruns, and background analysis.
-They must not require mid-run user input.
+One-shot runs are appropriate for workflow steps, skill tests, evaluation
+subruns, description optimization subruns, and background analysis. Workflow
+steps are one-shot by contract and must not expose `AskUserQuestion` or require
+mid-run user input.
 
 The existing `runAgentRequest` path is the closest current implementation of
 this mode. It should become the Claude-backed `runOnce` implementation first.
@@ -157,9 +158,9 @@ A streaming session is an app-owned interactive loop:
 4. The app can answer, cancel, resume, or close the session.
 5. The session emits terminal run summaries for persistence.
 
-Streaming sessions are appropriate for refine chat and workflow steps that may
-ask the user structured questions. The existing `StreamSession` class is the
-closest current implementation of this mode.
+Streaming sessions are appropriate for refine chat and other app-owned
+interactive loops that may ask the user structured questions. The existing
+`StreamSession` class is the closest current implementation of this mode.
 
 ## AskUserQuestion Contract
 
@@ -290,19 +291,16 @@ created -> active -> closed
 | `app/sidecar/persistent-mode.ts` | Sidecar request demultiplexer that rejects mode mismatches and routes one-shot requests through the runtime boundary. |
 | `app/src-tauri/src/agents/sidecar.rs` | Rust `SidecarConfig`, runtime mode serialization, and sidecar spawn path. |
 | `app/src-tauri/src/agents/sidecar_pool/dispatch.rs` | Rust request dispatch, streaming, shutdown, and answer routing. |
-| `app/src-tauri/src/commands/workflow/runtime.rs` | Workflow calls that should choose one-shot or streaming explicitly. |
+| `app/src-tauri/src/commands/workflow/runtime.rs` | Workflow one-shot request dispatch, cancellation, and question rejection. |
 | `app/src-tauri/src/commands/refine/protocol.rs` | Refine chat protocol that should remain streaming. |
-| `app/src-tauri/src/commands/workflow/step_config.rs` | Current step tool configuration, including `AskUserQuestion`. |
+| `app/src-tauri/src/commands/workflow/step_config.rs` | Workflow step tool configuration with one-shot-safe tool sets. |
 | `app/src/hooks/use-agent-stream.ts` | Frontend listener for normalized agent events. |
 | `app/src/stores/workflow-store.ts` | Frontend pending-question state. |
 
 ## Open Questions
 
-1. Should workflow steps 0-3 all remain streaming at first, then be narrowed to
-   one-shot where possible, or should the migration classify each step before
-   the boundary lands?
-2. Should runtime selection be a hidden developer setting during the OpenHands
+1. Should runtime selection be a hidden developer setting during the OpenHands
    port, or should Settings expose it once both adapters exist?
-3. Should Claude plugin layout remain the canonical skill layout after
+2. Should Claude plugin layout remain the canonical skill layout after
    OpenHands lands, or should the app introduce a runtime-neutral skill layout
    as a later migration?

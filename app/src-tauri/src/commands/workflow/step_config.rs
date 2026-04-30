@@ -16,6 +16,13 @@ pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
     tools.iter().map(|s| s.to_string()).collect()
 }
 
+fn one_shot_tools_for_agent(agent_name: &str) -> Vec<String> {
+    tools_for_agent(agent_name)
+        .into_iter()
+        .filter(|tool| tool != "AskUserQuestion")
+        .collect()
+}
+
 pub fn resolve_model_id(shorthand: &str) -> String {
     match shorthand {
         "sonnet" => "claude-sonnet-4-6".to_string(),
@@ -42,7 +49,7 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 name: "Research".to_string(),
                 prompt_template: "research-orchestrator.md".to_string(),
                 output_file: "context/clarifications.json".to_string(),
-                allowed_tools: tools_for_agent(agent),
+                allowed_tools: one_shot_tools_for_agent(agent),
                 max_turns: 50,
                 agent_name: agent.to_string(),
                 required_plugins: vec!["skill-content-researcher".to_string()],
@@ -55,7 +62,7 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 name: "Detailed Research".to_string(),
                 prompt_template: "detailed-research.md".to_string(),
                 output_file: "context/clarifications.json".to_string(),
-                allowed_tools: tools_for_agent(agent),
+                allowed_tools: one_shot_tools_for_agent(agent),
                 max_turns: 50,
                 agent_name: agent.to_string(),
                 required_plugins: vec!["skill-content-researcher".to_string()],
@@ -68,7 +75,7 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 name: "Confirm Decisions".to_string(),
                 prompt_template: "confirm-decisions.md".to_string(),
                 output_file: "context/decisions.json".to_string(),
-                allowed_tools: tools_for_agent(agent),
+                allowed_tools: one_shot_tools_for_agent(agent),
                 max_turns: 100,
                 agent_name: agent.to_string(),
                 required_plugins: vec!["skill-content-researcher".to_string()],
@@ -81,7 +88,7 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 name: "Generate Skill".to_string(),
                 prompt_template: "generate-skill.md".to_string(),
                 output_file: "skill/SKILL.md".to_string(),
-                allowed_tools: tools_for_agent(agent),
+                allowed_tools: one_shot_tools_for_agent(agent),
                 max_turns: 500,
                 agent_name: agent.to_string(),
                 required_plugins: vec!["skill-creator".to_string()],

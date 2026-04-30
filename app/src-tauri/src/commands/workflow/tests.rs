@@ -125,6 +125,20 @@ fn test_step_config_canonical_required_plugins() {
 }
 
 #[test]
+fn test_workflow_step_tools_are_one_shot_safe() {
+    for step_id in 0..=3 {
+        let config = get_step_config(step_id).unwrap();
+        assert!(
+            !config
+                .allowed_tools
+                .iter()
+                .any(|tool| tool == "AskUserQuestion"),
+            "workflow step {step_id} must not allow AskUserQuestion in one-shot mode"
+        );
+    }
+}
+
+#[test]
 fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
     assert!(workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").is_some());
     assert!(workflow_output_format_for_agent("skill-content-researcher:detailed-research").is_some());
