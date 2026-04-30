@@ -25,7 +25,7 @@ import { truncate, computeToolSummary } from "./tool-summaries.js";
 import { RESULT_ERROR_LABELS, ASSISTANT_ERROR_LABELS } from "./error-labels.js";
 import { RunMetadataAccumulator } from "./run-metadata-accumulator.js";
 import type { RequestContext } from "./run-metadata-accumulator.js";
-import { extractResultMarkdown, tryParseJsonFromText } from "./lib/result-extraction.js";
+import { extractResultMarkdown } from "./lib/result-extraction.js";
 
 // ---------------------------------------------------------------------------
 // MessageProcessor
@@ -41,7 +41,7 @@ export class MessageProcessor {
   /** True once processResultMessage has emitted a run_result event. */
   private resultEmitted = false;
 
-  /** Last top-level output text block — used as fallback for structured output extraction. */
+  /** Last top-level output text block — used for non-structured run summaries. */
   private lastOutputText: string | undefined;
 
   /** ID of the last top-level output item — used to emit a replacement when consumed by result. */
@@ -662,42 +662,21 @@ export class MessageProcessor {
 
     if ("structured_output" in raw && raw.structured_output != null) {
       structuredOutput = raw.structured_output;
-    } else if ("result" in raw && raw.result != null && typeof raw.result !== "string") {
+    } else if (!this.requireStructuredOutput && "result" in raw && raw.result != null && typeof raw.result !== "string") {
       structuredOutput = raw.result;
     }
 
-    // When structured_output is absent, try to parse JSON from the result text.
-    // The SDK silently drops outputFormat enforcement for non-trivial schemas
-    // (known bug: anthropics/claude-agent-sdk-typescript#277), but prompt
-    // directives make the model return raw JSON in the result text field.
-    // Rust serde validates the parsed JSON downstream — this is a best-effort
-    // extraction, not a schema validation step.
-    if (structuredOutput == null) {
-      // Try parsing result text as JSON (covers both outputFormat and non-outputFormat paths).
-      const textToParse = (typeof raw.result === "string" ? raw.result : null) ?? this.lastOutputText;
-      if (textToParse) {
-        const parsed = tryParseJsonFromText(textToParse);
-        if (parsed != null && typeof parsed === "object") {
-          structuredOutput = parsed;
-          if (this.requireStructuredOutput) {
-            process.stderr.write(
-              `[message-processor] event=structured_output_fallback subtype=${subtype ?? "none"} ` +
-              `source=result_text — SDK did not populate structured_output, parsed from result text\n`
-            );
-          }
-        }
-      }
-
-      // If outputFormat was configured and we still have nothing: hard fail.
-      if (structuredOutput == null && this.requireStructuredOutput) {
-        resultStatus = "error";
-        errorSubtype = "structured_output_missing";
-        outputText = "Structured output missing — the agent did not return JSON matching the required schema. Retry the step.";
-        process.stderr.write(
-          `[message-processor] event=structured_output_missing subtype=${subtype ?? "none"} ` +
-          `result_type=${typeof raw.result} result_length=${typeof raw.result === "string" ? raw.result.length : 0}\n`
-        );
-      }
+    // outputFormat is an SDK contract: when configured, the SDK must provide
+    // structured_output. If it is absent, fail clearly instead of recovering
+    // from display text.
+    if (structuredOutput == null && this.requireStructuredOutput) {
+      resultStatus = "error";
+      errorSubtype = "structured_output_missing";
+      outputText = "Structured output missing — the agent did not return JSON matching the required schema. Retry the step.";
+      process.stderr.write(
+        `[message-processor] event=structured_output_missing subtype=${subtype ?? "none"} ` +
+        `result_type=${typeof raw.result} result_length=${typeof raw.result === "string" ? raw.result.length : 0}\n`
+      );
     }
 
     const resultMarkdown = extractResultMarkdown(structuredOutput);

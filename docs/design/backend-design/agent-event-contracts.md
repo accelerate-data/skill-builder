@@ -172,16 +172,17 @@ This means frontend payload types have the shape
 
 When a workflow step completes, the SDK result message may include:
 
-- `structured_output` — parsed JSON object (when SDK constrained decoding works)
+- `structured_output` — parsed JSON object from SDK constrained decoding
 - `result` — text field containing the agent's final output
 
-Due to a known SDK bug ([anthropics/claude-agent-sdk-typescript#277](https://github.com/anthropics/claude-agent-sdk-typescript/issues/277)), `structured_output` is not populated for nested JSON schemas. In this case, the sidecar extracts JSON from the `result` text field via `tryParseJsonFromText`. If both are absent, the sidecar emits `status: "error"` with `errorSubtype: "structured_output_missing"`.
+For `outputFormat` runs, the sidecar requires `structured_output`. If it is absent, the sidecar emits `status: "error"` with `errorSubtype: "structured_output_missing"`; it does not parse JSON from `result` text as fallback. Regression coverage for the previously observed nested-schema SDK issue lives in `app/sidecar/__tests__/sdk-output-format.integration.test.ts`.
 
 The `result` text field is used when:
-- `structured_output` is absent (SDK bug workaround)
+
+- The run has no structured-output contract
 - The agent returned an error (non-JSON output)
 
-Rust is the final validator — it deserializes the extracted JSON into typed contract structs.
+Rust is the final validator — it deserializes `structured_output` into typed contract structs.
 
 ---
 

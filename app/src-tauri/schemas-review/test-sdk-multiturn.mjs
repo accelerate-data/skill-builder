@@ -2,10 +2,11 @@
  * Test: does the Agent SDK return structured_output for each step's inline schema?
  *
  * Pass criteria (in order):
- * 1. structured_output is present → PASS (SDK enforced)
- * 2. structured_output is null → parse result text with Rust serde (validate-output binary)
- *    - Rust serde succeeds → PASS (prompt directives + Rust validation worked)
- *    - Rust serde fails → FAIL
+ * 1. structured_output is present (SDK enforced)
+ * 2. Rust serde accepts that structured_output for the step contract
+ *
+ * Missing structured_output is a failure; the app no longer parses result text
+ * as a recovery path for outputFormat runs.
  *
  * Usage:
  *   cd app
@@ -210,29 +211,26 @@ for (const step of toRun) {
   }
 
   const hasStructured = result.structured_output != null;
-  console.log(`  structured_output: ${hasStructured ? "present (SDK enforced)" : "null (SDK bug)"}`);
+  console.log(`  structured_output: ${hasStructured ? "present (SDK enforced)" : "missing"}`);
   console.log(`  subtype: ${result.subtype}`);
 
-  if (hasStructured) {
-    // Best case: SDK enforced the schema
-    console.log(`  \x1b[32mPASS\x1b[0m  structured_output present`);
-    writeFileSync(join(outDir, `step-${step.id}.json`), JSON.stringify(result.structured_output, null, 2));
-    passed++;
+  if (!hasStructured) {
+    console.log(`  \x1b[31mFAIL\x1b[0m  structured_output missing`);
+    writeFileSync(join(outDir, `step-${step.id}-failed.txt`), String(result.result ?? ""));
+    failed++;
   } else {
-    // Fallback: validate result text with Rust serde
-    const text = String(result.result ?? "").trim();
-    console.log(`  result text (first 120): ${text.slice(0, 120)}...`);
-    console.log(`  Validating with Rust serde...`);
+    const jsonText = JSON.stringify(result.structured_output, null, 2);
+    console.log(`  Validating structured_output with Rust serde...`);
 
-    const validation = validateWithRust(step.id, text);
+    const validation = validateWithRust(step.id, jsonText);
     if (validation.ok) {
-      console.log(`  \x1b[32mPASS\x1b[0m  Rust serde deserialized successfully`);
-      writeFileSync(join(outDir, `step-${step.id}.json`), text);
+      console.log(`  \x1b[32mPASS\x1b[0m  structured_output present and valid`);
+      writeFileSync(join(outDir, `step-${step.id}.json`), jsonText);
       passed++;
     } else {
-      console.log(`  \x1b[31mFAIL\x1b[0m  Rust serde rejected the output`);
+      console.log(`  \x1b[31mFAIL\x1b[0m  Rust serde rejected structured_output`);
       console.log(`  ${validation.error.trim()}`);
-      writeFileSync(join(outDir, `step-${step.id}-failed.txt`), text);
+      writeFileSync(join(outDir, `step-${step.id}-failed.json`), jsonText);
       failed++;
     }
   }

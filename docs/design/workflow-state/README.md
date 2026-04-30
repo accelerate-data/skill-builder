@@ -60,7 +60,7 @@ Valid statuses: `pending | in_progress | waiting_for_user | completed | error`
 
 | Subtype | Cause | Recovery |
 |---|---|---|
-| `structured_output_missing` | Agent completed (`subtype: "success"`) but neither `structured_output` nor parseable JSON in `result` text was available. Caused by SDK bug + model returning non-JSON text. | Retry the step. |
+| `structured_output_missing` | Agent completed an `outputFormat` run but the SDK result did not include `structured_output`. | Retry the step. |
 | *(general)* | Agent runtime error, timeout, or sidecar failure. | Retry or reset the step. |
 
 ---
