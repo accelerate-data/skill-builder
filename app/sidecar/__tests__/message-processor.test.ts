@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { MessageProcessor } from "../message-processor.js";
-import { extractResultMarkdown, tryParseJsonFromText } from "../lib/result-extraction.js";
+import { extractResultMarkdown } from "../lib/result-extraction.js";
 import type { DisplayItem, DisplayItemEnvelope } from "../display-types.js";
 import type { AgentEventEnvelope } from "../agent-events.js";
 
@@ -651,42 +651,11 @@ describe("MessageProcessor", () => {
   });
 
   // =========================================================================
-  // tryParseJsonFromText helper
+  // resultMarkdown is derived only from structured output
   // =========================================================================
 
-  describe("tryParseJsonFromText", () => {
-    it("parses plain JSON string", () => {
-      const result = tryParseJsonFromText('{"status":"ok","count":3}');
-      expect(result).toEqual({ status: "ok", count: 3 });
-    });
-
-    it("strips ```json code fence before parsing", () => {
-      const text = "```json\n{\"status\":\"validation_complete\",\"validation_log_markdown\":\"# Log\"}\n```";
-      const result = tryParseJsonFromText(text) as Record<string, unknown>;
-      expect(result.status).toBe("validation_complete");
-      expect(result.validation_log_markdown).toBe("# Log");
-    });
-
-    it("strips plain ``` code fence before parsing", () => {
-      const text = "```\n{\"key\":\"value\"}\n```";
-      expect(tryParseJsonFromText(text)).toEqual({ key: "value" });
-    });
-
-    it("returns undefined for non-JSON text", () => {
-      expect(tryParseJsonFromText("just some plain text")).toBeUndefined();
-    });
-
-    it("returns undefined for empty string", () => {
-      expect(tryParseJsonFromText("")).toBeUndefined();
-    });
-  });
-
-  // =========================================================================
-  // resultMarkdown fallback from output text block
-  // =========================================================================
-
-  describe("resultMarkdown fallback from output text", () => {
-    it("extracts resultMarkdown from last output text when structuredOutput is absent", () => {
+  describe("resultMarkdown without structured output", () => {
+    it("does not extract resultMarkdown from last output text when structuredOutput is absent", () => {
       const jsonText = JSON.stringify({
         status: "validation_complete",
         validation_log_markdown: "# Validation Log\n\nAll good.",
@@ -707,12 +676,11 @@ describe("MessageProcessor", () => {
       const items = extractDisplayItems(out);
       const resultItem = items.find((i) => i.type === "result");
 
-      expect(resultItem?.resultMarkdown).toContain("# Validation Log");
-      expect(resultItem?.resultMarkdown).toContain("# Tests");
-      expect(resultItem?.structuredOutput).toMatchObject({ status: "validation_complete" });
+      expect(resultItem?.resultMarkdown).toBeUndefined();
+      expect(resultItem?.structuredOutput).toBeUndefined();
     });
 
-    it("extracts resultMarkdown from output text with ```json code fence", () => {
+    it("does not extract resultMarkdown from fenced JSON output text", () => {
       const jsonText = "```json\n" + JSON.stringify({
         status: "validation_complete",
         validation_log_markdown: "# Log",
@@ -730,7 +698,8 @@ describe("MessageProcessor", () => {
       const items = extractDisplayItems(out);
       const resultItem = items.find((i) => i.type === "result");
 
-      expect(resultItem?.resultMarkdown).toBe("# Log");
+      expect(resultItem?.resultMarkdown).toBeUndefined();
+      expect(resultItem?.structuredOutput).toBeUndefined();
     });
 
     it("does not override structuredOutput when already present", () => {

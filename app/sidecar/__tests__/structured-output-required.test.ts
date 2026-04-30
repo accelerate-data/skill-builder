@@ -1,11 +1,10 @@
 /**
- * Tests for VU-1015: SDK outputFormat returns success without structured_output
+ * Tests for VU-1015: SDK outputFormat should provide structured_output
  * for nested schemas (anthropics/claude-agent-sdk-typescript#277).
  *
- * The SDK silently drops structured_output for non-trivial nested schemas.
- * MessageProcessor must fall back to parsing JSON from the result text field
- * or the last assistant text block, and hard-fail when hasOutputFormat is
- * configured but no JSON is recoverable.
+ * When outputFormat is configured, MessageProcessor requires SDK
+ * structured_output and hard-fails if it is missing. Text parsing fallback
+ * belongs outside this path now that the SDK canary passes for nested schemas.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { MessageProcessor } from "../message-processor.js";
@@ -17,7 +16,7 @@ function extractDisplayItems(output: Record<string, unknown>[]): DisplayItem[] {
     .map((o) => (o as DisplayItemEnvelope).item);
 }
 
-describe("structured_output fallback (VU-1015)", () => {
+describe("structured_output required outputFormat path (VU-1015)", () => {
   describe("with hasOutputFormat: true (requireStructuredOutput)", () => {
     let processor: MessageProcessor;
 
@@ -43,14 +42,12 @@ describe("structured_output fallback (VU-1015)", () => {
       expect(result?.structuredOutput).toEqual(schema);
     });
 
-    it("falls back to result text when SDK omits structured_output (SDK bug)", () => {
-      // SDK bug: structured_output key is missing entirely even though
-      // outputFormat was configured and subtype is success.
+    it("hard-fails when SDK omits structured_output even if result text is JSON", () => {
       const schema = { step_summary: "Research complete", artifacts: ["plan.md"] };
       const raw = {
         type: "result",
         subtype: "success",
-        // structured_output intentionally absent — this is the SDK bug
+        // structured_output intentionally absent.
         result: JSON.stringify(schema),
         usage: { input_tokens: 100, output_tokens: 50 },
       };
@@ -59,12 +56,12 @@ describe("structured_output fallback (VU-1015)", () => {
       const items = extractDisplayItems(out);
       const result = items.find((i) => i.type === "result");
 
-      expect(result?.resultStatus).toBe("success");
-      expect(result?.structuredOutput).toEqual(schema);
+      expect(result?.resultStatus).toBe("error");
+      expect(result?.errorSubtype).toBe("structured_output_missing");
+      expect(result?.structuredOutput).toBeUndefined();
     });
 
-    it("falls back to result text when SDK returns structured_output: null (SDK bug)", () => {
-      // SDK bug variant: structured_output key is present but null.
+    it("hard-fails when SDK returns structured_output: null even if result text is JSON", () => {
       const schema = { step_summary: "Done", next_steps: ["deploy"] };
       const raw = {
         type: "result",
@@ -78,13 +75,29 @@ describe("structured_output fallback (VU-1015)", () => {
       const items = extractDisplayItems(out);
       const result = items.find((i) => i.type === "result");
 
-      expect(result?.resultStatus).toBe("success");
-      expect(result?.structuredOutput).toEqual(schema);
+      expect(result?.resultStatus).toBe("error");
+      expect(result?.errorSubtype).toBe("structured_output_missing");
+      expect(result?.structuredOutput).toBeUndefined();
     });
 
-    it("falls back to last assistant text when result field has no JSON (SDK bug)", () => {
-      // SDK returns a prose summary in result text (not JSON), but the agent
-      // wrote its JSON output as an assistant text block earlier in the turn.
+    it("hard-fails when SDK omits structured_output even if result is an object", () => {
+      const raw = {
+        type: "result",
+        subtype: "success",
+        result: { step_summary: "Done" },
+        usage: { input_tokens: 100, output_tokens: 50 },
+      };
+
+      const out = processor.process(raw);
+      const items = extractDisplayItems(out);
+      const result = items.find((i) => i.type === "result");
+
+      expect(result?.resultStatus).toBe("error");
+      expect(result?.errorSubtype).toBe("structured_output_missing");
+      expect(result?.structuredOutput).toBeUndefined();
+    });
+
+    it("hard-fails instead of parsing last assistant JSON text", () => {
       const schema = { step_summary: "Done", nested: { level: 2, items: [1, 2, 3] } };
 
       processor.process({
@@ -107,11 +120,12 @@ describe("structured_output fallback (VU-1015)", () => {
       const items = extractDisplayItems(out);
       const result = items.find((i) => i.type === "result");
 
-      expect(result?.resultStatus).toBe("success");
-      expect(result?.structuredOutput).toEqual(schema);
+      expect(result?.resultStatus).toBe("error");
+      expect(result?.errorSubtype).toBe("structured_output_missing");
+      expect(result?.structuredOutput).toBeUndefined();
     });
 
-    it("falls back to last assistant text with ```json fence (SDK bug)", () => {
+    it("hard-fails instead of parsing fenced JSON from last assistant text", () => {
       const schema = { step_summary: "Done", code_files: ["lib/a.ts", "lib/b.ts"] };
       const fencedJson = "```json\n" + JSON.stringify(schema) + "\n```";
 
@@ -135,8 +149,9 @@ describe("structured_output fallback (VU-1015)", () => {
       const items = extractDisplayItems(out);
       const result = items.find((i) => i.type === "result");
 
-      expect(result?.resultStatus).toBe("success");
-      expect(result?.structuredOutput).toEqual(schema);
+      expect(result?.resultStatus).toBe("error");
+      expect(result?.errorSubtype).toBe("structured_output_missing");
+      expect(result?.structuredOutput).toBeUndefined();
     });
 
     it("hard-fails with structured_output_missing when no JSON is recoverable", () => {

@@ -28,7 +28,7 @@ No hand-maintained type mirrors. No untyped `serde_json::Value` escape hatches. 
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────┐
 │  Rust Contract Structs                          │
 │  app/src-tauri/src/contracts/                   │
@@ -77,7 +77,7 @@ Wired into `app/scripts/dev.mjs` before `sidecar:build`. CI freshness check: `np
 
 ### Clarifications (`contracts/clarifications.rs`)
 
-```
+```text
 ClarificationsFile
 ├── version: String ("1")
 ├── metadata: ClarificationsMetadata
@@ -97,7 +97,7 @@ ClarificationsFile
 
 ### Decisions (`contracts/decisions.rs`)
 
-```
+```text
 DecisionsOutput
 ├── version: String
 ├── metadata: DecisionsMetadata
@@ -110,7 +110,7 @@ DecisionsOutput
 
 ### Agent Events (`contracts/agent_events.rs`)
 
-```
+```text
 AgentEventEnvelope
 ├── type: "agent_event"
 ├── event: AgentEvent (tagged union by "type")
@@ -132,15 +132,14 @@ AgentEventEnvelope
 
 The SDK's `outputFormat` gets **inline** JSON Schema generated from Rust structs — all `$ref` resolved, `additionalProperties: false` on every object, no `$schema`/`definitions` block. This is required because the SDK silently ignores schemas with `$ref`.
 
-**Known SDK bug** ([anthropics/claude-agent-sdk-typescript#277](https://github.com/anthropics/claude-agent-sdk-typescript/issues/277)): The SDK does not populate `structured_output` for nested schemas. It returns `subtype: "success"` with `structured_output: undefined`. Constrained decoding is not enforced.
+The sidecar requires SDK `structured_output` for `outputFormat` runs. If the SDK omits `structured_output`, the sidecar emits `structured_output_missing`; it does not parse JSON from `result` text as a recovery path.
 
-**Workaround (temporary)**:
 1. Agent `.md` files include strong prompt directives ("CRITICAL — raw JSON only, no markdown fences") and reference generated JSON schema files at `shared/output-schemas/`.
-2. The sidecar tries `structured_output` first; if absent, parses JSON from the `result` text field via `tryParseJsonFromText`.
-3. If both are absent, the sidecar emits `structured_output_missing` error.
-4. Rust serde deserializes the extracted JSON into typed contract structs — this is the authoritative validation.
+2. The sidecar reads `structured_output` from the SDK result.
+3. If `structured_output` is absent, the sidecar emits `structured_output_missing`.
+4. Rust serde deserializes `structured_output` into typed contract structs — this is the authoritative validation.
 
-When the SDK bug is fixed, `structured_output` will be the primary path. The `result` text fallback remains permanent — it covers error cases and any future scenario where `structured_output` is absent. Prompt directives can be relaxed but not removed, as they reinforce the JSON-only contract.
+Regression coverage for the previously observed nested-schema SDK issue ([anthropics/claude-agent-sdk-typescript#277](https://github.com/anthropics/claude-agent-sdk-typescript/issues/277)) lives in `app/sidecar/__tests__/sdk-output-format.integration.test.ts` and `app/src-tauri/schemas-review/test-sdk-multiturn.mjs`.
 
 ### Recursive Question type
 
@@ -199,7 +198,7 @@ Semantic validation: `validate_business_rules()` methods on contract structs for
 | `agent-sources/.../shared/output-schemas/` | Generated inline JSON Schema files (agents Read at runtime) |
 | `agent-sources/.../shared/output-deep-schemas/` | Deep JSON Schema with `$ref`/`$defs` (human-readable) |
 | `agent-sources/.../shared/schemas.md` | Semantic rules supplement (what JSON Schema cannot express) |
-| `app/sidecar/message-processor.ts` | Structured output extraction + fallback logic |
-| `app/sidecar/lib/result-extraction.ts` | `tryParseJsonFromText` — JSON parsing from `result` text |
+| `app/sidecar/message-processor.ts` | Structured output extraction + missing-output error handling |
+| `app/sidecar/lib/result-extraction.ts` | Display markdown extraction from structured output |
 | `app/src-tauri/schemas-review/test-sdk-multiturn.mjs` | SDK structured output test script |
 | `.claude/rules/codegen.md` | Agent rule: run codegen when modifying contracts |
