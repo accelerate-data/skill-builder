@@ -49,7 +49,6 @@ test('active workflow prompt surfaces stay OpenHands-native', () => {
     }
   }
 });
-
 test('deterministic eval packages cover OpenHands workflow agent topology', () => {
   const activeAgentFiles = [
     'agent-sources/plugins/skill-content-researcher/agents/research-agent.md',
@@ -74,4 +73,3 @@ test('deterministic eval packages cover OpenHands workflow agent topology', () =
     );
   }
 });
-

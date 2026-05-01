@@ -13,6 +13,7 @@ export const DESCRIPTION_OVERRIDES: Record<string, unknown> = {
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
     preferred_model: "sonnet",
+    openhands_model: "anthropic/sonnet",
   },
   check_workspace_path: true,
   list_skills: [
@@ -64,12 +65,16 @@ export async function navigateToDescriptionTab(
   await skillRow.waitFor({ timeout: 10_000 });
   await skillRow.click();
 
-  const descriptionTab = page.getByRole("tab", { name: "Optimize Description" });
+  const descriptionTab = page.getByRole("tab", {
+    name: "Optimize Description",
+  });
   await descriptionTab.waitFor({ timeout: 10_000 });
   await descriptionTab.click();
 }
 
-export async function emitGeneratedDescriptionQueries(page: Page): Promise<void> {
+export async function emitGeneratedDescriptionQueries(
+  page: Page,
+): Promise<void> {
   await emitTauriEvent(page, "description:eval-queries-generated", {
     skillName: "test-skill",
     queries: GENERATED_DESCRIPTION_EVAL_QUERIES,

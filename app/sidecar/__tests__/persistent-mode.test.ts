@@ -33,13 +33,23 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({
       type: "agent_request",
       request_id: "req_1",
-      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
+      config: {
+        prompt: "hello",
+        apiKey: "sk-test",
+        workspaceRootDir: os.tmpdir(),
+        workspaceSkillDir: os.tmpdir(),
+      },
     });
     const result = parseIncomingMessage(line);
     expect(result).toEqual({
       type: "agent_request",
       request_id: "req_1",
-      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
+      config: {
+        prompt: "hello",
+        apiKey: "sk-test",
+        workspaceRootDir: os.tmpdir(),
+        workspaceSkillDir: os.tmpdir(),
+      },
     });
   });
 
@@ -87,7 +97,12 @@ describe("parseIncomingMessage", () => {
   it("returns null for agent_request without request_id", () => {
     const line = JSON.stringify({
       type: "agent_request",
-      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
+      config: {
+        prompt: "hello",
+        apiKey: "sk-test",
+        workspaceRootDir: os.tmpdir(),
+        workspaceSkillDir: os.tmpdir(),
+      },
     });
     expect(parseIncomingMessage(line)).toBeNull();
   });
@@ -96,7 +111,12 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({
       type: "agent_request",
       request_id: "",
-      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
+      config: {
+        prompt: "hello",
+        apiKey: "sk-test",
+        workspaceRootDir: os.tmpdir(),
+        workspaceSkillDir: os.tmpdir(),
+      },
     });
     expect(parseIncomingMessage(line)).toBeNull();
   });
@@ -135,10 +155,7 @@ describe("parseIncomingMessage", () => {
   });
 
   it("trims whitespace around the line", () => {
-    const line =
-      "  " +
-      JSON.stringify({ type: "shutdown" }) +
-      "  \n";
+    const line = "  " + JSON.stringify({ type: "shutdown" }) + "  \n";
     const result = parseIncomingMessage(line);
     expect(result).toEqual({ type: "shutdown" });
   });
@@ -150,14 +167,24 @@ describe("parseIncomingMessage", () => {
       type: "stream_start",
       request_id: "req_1",
       session_id: "sess_1",
-      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
+      config: {
+        prompt: "hello",
+        apiKey: "sk-test",
+        workspaceRootDir: os.tmpdir(),
+        workspaceSkillDir: os.tmpdir(),
+      },
     });
     const result = parseIncomingMessage(line);
     expect(result).toEqual({
       type: "stream_start",
       request_id: "req_1",
       session_id: "sess_1",
-      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
+      config: {
+        prompt: "hello",
+        apiKey: "sk-test",
+        workspaceRootDir: os.tmpdir(),
+        workspaceSkillDir: os.tmpdir(),
+      },
     });
   });
 
@@ -165,7 +192,12 @@ describe("parseIncomingMessage", () => {
     const line = JSON.stringify({
       type: "stream_start",
       request_id: "req_1",
-      config: { prompt: "hello", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
+      config: {
+        prompt: "hello",
+        apiKey: "sk-test",
+        workspaceRootDir: os.tmpdir(),
+        workspaceSkillDir: os.tmpdir(),
+      },
     });
     expect(parseIncomingMessage(line)).toBeNull();
   });
@@ -411,7 +443,12 @@ describe("runPersistent", () => {
           usage: { input_tokens: 100, output_tokens: 50 },
         },
       },
-      { type: "result", subtype: "success", usage: { input_tokens: 100, output_tokens: 50 }, total_cost_usd: 0.01 },
+      {
+        type: "result",
+        subtype: "success",
+        usage: { input_tokens: 100, output_tokens: 50 },
+        total_cost_usd: 0.01,
+      },
     ];
 
     async function* fakeConversation() {
@@ -424,7 +461,8 @@ describe("runPersistent", () => {
     const config = {
       prompt: "test prompt",
       apiKey: "sk-test",
-      workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir(),
+      workspaceRootDir: os.tmpdir(),
+      workspaceSkillDir: os.tmpdir(),
     };
 
     const input = createInputStream([
@@ -448,12 +486,18 @@ describe("runPersistent", () => {
     // Filter out the sidecar_ready, system init, and request_complete lines
     const responseLinesRaw = capture.lines.filter((l) => {
       const parsed = JSON.parse(l);
-      return parsed.type !== "sidecar_ready" && parsed.type !== "system" && parsed.type !== "request_complete";
+      return (
+        parsed.type !== "sidecar_ready" &&
+        parsed.type !== "system" &&
+        parsed.type !== "request_complete"
+      );
     });
 
     // Now we get: display_item(output), assistant(pass-through), display_item(result), result(pass-through)
     // Filter to just display_items for easy assertions
-    const displayItemLines = responseLinesRaw.filter((l) => JSON.parse(l).type === "display_item");
+    const displayItemLines = responseLinesRaw.filter(
+      (l) => JSON.parse(l).type === "display_item",
+    );
     expect(displayItemLines.length).toBeGreaterThanOrEqual(2);
 
     const di0 = JSON.parse(displayItemLines[0]);
@@ -493,7 +537,9 @@ describe("runPersistent", () => {
       capture.restore();
     }
 
-    expect(capture.lines.join("\n")).toContain("agent_request requires one-shot mode");
+    expect(capture.lines.join("\n")).toContain(
+      "agent_request requires one-shot mode",
+    );
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
@@ -522,7 +568,9 @@ describe("runPersistent", () => {
       capture.restore();
     }
 
-    expect(capture.lines.join("\n")).toContain("stream_start requires streaming mode");
+    expect(capture.lines.join("\n")).toContain(
+      "stream_start requires streaming mode",
+    );
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
@@ -534,7 +582,8 @@ describe("runPersistent", () => {
     const config = {
       prompt: "test prompt",
       apiKey: "sk-test",
-      workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir(),
+      workspaceRootDir: os.tmpdir(),
+      workspaceSkillDir: os.tmpdir(),
     };
 
     const input = createInputStream([
@@ -560,8 +609,11 @@ describe("runPersistent", () => {
     // request_id wrapping, not a top-level error line.
     const runResultLine = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_err" && parsed.type === "agent_event"
-        && parsed.event?.type === "run_result";
+      return (
+        parsed.request_id === "req_err" &&
+        parsed.type === "agent_event" &&
+        parsed.event?.type === "run_result"
+      );
     });
     expect(runResultLine).toBeDefined();
 
@@ -603,8 +655,18 @@ describe("runPersistent", () => {
       return fakeConversation() as ReturnType<typeof query>;
     });
 
-    const config1 = { prompt: "first", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() };
-    const config2 = { prompt: "second", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() };
+    const config1 = {
+      prompt: "first",
+      apiKey: "sk-test",
+      workspaceRootDir: os.tmpdir(),
+      workspaceSkillDir: os.tmpdir(),
+    };
+    const config2 = {
+      prompt: "second",
+      apiKey: "sk-test",
+      workspaceRootDir: os.tmpdir(),
+      workspaceSkillDir: os.tmpdir(),
+    };
 
     const { Readable } = await import("node:stream");
     const input = new Readable({ read() {} });
@@ -615,19 +677,23 @@ describe("runPersistent", () => {
     const runPromise = runPersistent(input, exitFn);
 
     // Send first request (will hang)
-    input.push(JSON.stringify({
-      type: "agent_request",
-      request_id: "req_a",
-      config: config1,
-    }) + "\n");
+    input.push(
+      JSON.stringify({
+        type: "agent_request",
+        request_id: "req_a",
+        config: config1,
+      }) + "\n",
+    );
     await new Promise((r) => setTimeout(r, 20));
 
     // Send second request — should abort req_a and run req_b
-    input.push(JSON.stringify({
-      type: "agent_request",
-      request_id: "req_b",
-      config: config2,
-    }) + "\n");
+    input.push(
+      JSON.stringify({
+        type: "agent_request",
+        request_id: "req_b",
+        config: config2,
+      }) + "\n",
+    );
     await new Promise((r) => setTimeout(r, 20));
 
     // Shutdown
@@ -640,22 +706,30 @@ describe("runPersistent", () => {
     // req_a should have a request_complete (from abort cleanup)
     const reqAComplete = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_a" && parsed.type === "request_complete";
+      return (
+        parsed.request_id === "req_a" && parsed.type === "request_complete"
+      );
     });
     expect(reqAComplete).toBeDefined();
 
     // req_b should have completed successfully — result is now an agent_event(run_result) or display_item
     const reqBResult = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_b"
-        && ((parsed.type === "agent_event" && parsed.event?.type === "run_result") || parsed.type === "display_item");
+      return (
+        parsed.request_id === "req_b" &&
+        ((parsed.type === "agent_event" &&
+          parsed.event?.type === "run_result") ||
+          parsed.type === "display_item")
+      );
     });
     expect(reqBResult).toBeDefined();
 
     // req_b should also have request_complete
     const reqBComplete = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_b" && parsed.type === "request_complete";
+      return (
+        parsed.request_id === "req_b" && parsed.type === "request_complete"
+      );
     });
     expect(reqBComplete).toBeDefined();
 
@@ -668,13 +742,29 @@ describe("runPersistent", () => {
       callCount++;
       const current = callCount;
       async function* fakeConversation() {
-        yield { type: "result", subtype: "success", result: `result_${current}`, usage: { input_tokens: 10, output_tokens: 5 }, total_cost_usd: 0.001 };
+        yield {
+          type: "result",
+          subtype: "success",
+          result: `result_${current}`,
+          usage: { input_tokens: 10, output_tokens: 5 },
+          total_cost_usd: 0.001,
+        };
       }
       return fakeConversation() as ReturnType<typeof query>;
     });
 
-    const config1 = { prompt: "first", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() };
-    const config2 = { prompt: "second", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() };
+    const config1 = {
+      prompt: "first",
+      apiKey: "sk-test",
+      workspaceRootDir: os.tmpdir(),
+      workspaceSkillDir: os.tmpdir(),
+    };
+    const config2 = {
+      prompt: "second",
+      apiKey: "sk-test",
+      workspaceRootDir: os.tmpdir(),
+      workspaceSkillDir: os.tmpdir(),
+    };
 
     // Send requests one at a time with a gap so the first completes
     const { Readable } = await import("node:stream");
@@ -686,19 +776,23 @@ describe("runPersistent", () => {
     const runPromise = runPersistent(input, exitFn);
 
     // Send first request and wait for it to complete
-    input.push(JSON.stringify({
-      type: "agent_request",
-      request_id: "req_a",
-      config: config1,
-    }) + "\n");
+    input.push(
+      JSON.stringify({
+        type: "agent_request",
+        request_id: "req_a",
+        config: config1,
+      }) + "\n",
+    );
     await new Promise((r) => setTimeout(r, 20));
 
     // Send second request after first is done
-    input.push(JSON.stringify({
-      type: "agent_request",
-      request_id: "req_b",
-      config: config2,
-    }) + "\n");
+    input.push(
+      JSON.stringify({
+        type: "agent_request",
+        request_id: "req_b",
+        config: config2,
+      }) + "\n",
+    );
     await new Promise((r) => setTimeout(r, 20));
 
     // Shutdown
@@ -712,7 +806,11 @@ describe("runPersistent", () => {
     const runSummaries = capture.lines
       .filter((l) => {
         const parsed = JSON.parse(l);
-        return parsed.request_id && parsed.type === "agent_event" && parsed.event?.type === "run_result";
+        return (
+          parsed.request_id &&
+          parsed.type === "agent_event" &&
+          parsed.event?.type === "run_result"
+        );
       })
       .map((l) => JSON.parse(l));
 
@@ -836,18 +934,27 @@ describe("runPersistent", () => {
     const runPromise = runPersistent(input, exitFn);
 
     // Send a request that will hang
-    input.push(JSON.stringify({
-      type: "agent_request",
-      request_id: "req_stuck",
-      config: { prompt: "test", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
-    }) + "\n");
+    input.push(
+      JSON.stringify({
+        type: "agent_request",
+        request_id: "req_stuck",
+        config: {
+          prompt: "test",
+          apiKey: "sk-test",
+          workspaceRootDir: os.tmpdir(),
+          workspaceSkillDir: os.tmpdir(),
+        },
+      }) + "\n",
+    );
     await new Promise((r) => setTimeout(r, 20));
 
     // Send cancel for that request
-    input.push(JSON.stringify({
-      type: "cancel",
-      request_id: "req_stuck",
-    }) + "\n");
+    input.push(
+      JSON.stringify({
+        type: "cancel",
+        request_id: "req_stuck",
+      }) + "\n",
+    );
     await new Promise((r) => setTimeout(r, 20));
 
     // Shutdown
@@ -860,20 +967,30 @@ describe("runPersistent", () => {
     // The stuck request should have completed (via abort → shutdown summary → request_complete)
     const reqComplete = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_stuck" && parsed.type === "request_complete";
+      return (
+        parsed.request_id === "req_stuck" && parsed.type === "request_complete"
+      );
     });
     expect(reqComplete).toBeDefined();
 
     // Aborted requests should retain shutdown semantics, not execution-error semantics.
     const reqError = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_stuck" && parsed.type === "display_item" && parsed.item?.type === "error";
+      return (
+        parsed.request_id === "req_stuck" &&
+        parsed.type === "display_item" &&
+        parsed.item?.type === "error"
+      );
     });
     expect(reqError).toBeUndefined();
 
     const reqSummary = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_stuck" && parsed.type === "agent_event" && parsed.event?.type === "run_result";
+      return (
+        parsed.request_id === "req_stuck" &&
+        parsed.type === "agent_event" &&
+        parsed.event?.type === "run_result"
+      );
     });
     expect(reqSummary).toBeDefined();
     expect(JSON.parse(reqSummary!).event.status).toBe("shutdown");
@@ -890,10 +1007,14 @@ describe("runPersistent", () => {
         // Wait a bit to ensure cancel arrives while request is in-flight
         await new Promise<void>((resolve, reject) => {
           const timer = setTimeout(resolve, 50);
-          ac?.signal.addEventListener("abort", () => {
-            clearTimeout(timer);
-            reject(new Error("aborted"));
-          }, { once: true });
+          ac?.signal.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              reject(new Error("aborted"));
+            },
+            { once: true },
+          );
         });
         yield { type: "result", content: "completed normally" };
       }
@@ -908,18 +1029,27 @@ describe("runPersistent", () => {
     const runPromise = runPersistent(input, exitFn);
 
     // Send a request
-    input.push(JSON.stringify({
-      type: "agent_request",
-      request_id: "req_real",
-      config: { prompt: "test", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
-    }) + "\n");
+    input.push(
+      JSON.stringify({
+        type: "agent_request",
+        request_id: "req_real",
+        config: {
+          prompt: "test",
+          apiKey: "sk-test",
+          workspaceRootDir: os.tmpdir(),
+          workspaceSkillDir: os.tmpdir(),
+        },
+      }) + "\n",
+    );
     await new Promise((r) => setTimeout(r, 10));
 
     // Cancel a DIFFERENT request_id — should be ignored
-    input.push(JSON.stringify({
-      type: "cancel",
-      request_id: "req_other",
-    }) + "\n");
+    input.push(
+      JSON.stringify({
+        type: "cancel",
+        request_id: "req_other",
+      }) + "\n",
+    );
     await new Promise((r) => setTimeout(r, 80));
 
     // Shutdown
@@ -933,9 +1063,12 @@ describe("runPersistent", () => {
     // Result is now processed through MessageProcessor — look for agent_event(run_result) or display_item(result)
     const resultLine = capture.lines.find((l) => {
       const parsed = JSON.parse(l);
-      return parsed.request_id === "req_real"
-        && ((parsed.type === "agent_event" && parsed.event?.type === "run_result")
-          || (parsed.type === "display_item" && parsed.item?.type === "result"));
+      return (
+        parsed.request_id === "req_real" &&
+        ((parsed.type === "agent_event" &&
+          parsed.event?.type === "run_result") ||
+          (parsed.type === "display_item" && parsed.item?.type === "result"))
+      );
     });
     expect(resultLine).toBeDefined();
 
@@ -952,7 +1085,12 @@ describe("runPersistent", () => {
       JSON.stringify({
         type: "agent_request",
         request_id: "req_json",
-        config: { prompt: "test", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
+        config: {
+          prompt: "test",
+          apiKey: "sk-test",
+          workspaceRootDir: os.tmpdir(),
+          workspaceSkillDir: os.tmpdir(),
+        },
       }),
       JSON.stringify({ type: "shutdown" }),
     ]);
@@ -985,25 +1123,42 @@ describe("runPersistent", () => {
       const runPromise = runPersistent(input, exitFn);
 
       // First stream_start
-      input.push(JSON.stringify({
-        type: "stream_start",
-        request_id: "req-dup-1",
-        session_id: "test-session",
-        config: { prompt: "first prompt", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
-      }) + "\n");
+      input.push(
+        JSON.stringify({
+          type: "stream_start",
+          request_id: "req-dup-1",
+          session_id: "test-session",
+          config: {
+            prompt: "first prompt",
+            apiKey: "sk-test",
+            workspaceRootDir: os.tmpdir(),
+            workspaceSkillDir: os.tmpdir(),
+          },
+        }) + "\n",
+      );
       await new Promise((r) => setTimeout(r, 10));
 
       // Second stream_start with SAME session_id — should be rejected
-      input.push(JSON.stringify({
-        type: "stream_start",
-        request_id: "req-dup-2",
-        session_id: "test-session",
-        config: { prompt: "second prompt", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
-      }) + "\n");
+      input.push(
+        JSON.stringify({
+          type: "stream_start",
+          request_id: "req-dup-2",
+          session_id: "test-session",
+          config: {
+            prompt: "second prompt",
+            apiKey: "sk-test",
+            workspaceRootDir: os.tmpdir(),
+            workspaceSkillDir: os.tmpdir(),
+          },
+        }) + "\n",
+      );
       await new Promise((r) => setTimeout(r, 20));
 
       // Clean up
-      input.push(JSON.stringify({ type: "stream_end", session_id: "test-session" }) + "\n");
+      input.push(
+        JSON.stringify({ type: "stream_end", session_id: "test-session" }) +
+          "\n",
+      );
       input.push(JSON.stringify({ type: "shutdown" }) + "\n");
       input.push(null);
       await runPromise;
@@ -1020,10 +1175,7 @@ describe("runPersistent", () => {
     const errorLine = capture.lines.find((l) => {
       try {
         const parsed = JSON.parse(l);
-        return (
-          parsed.type === "error" &&
-          parsed.request_id === "req-dup-2"
-        );
+        return parsed.type === "error" && parsed.request_id === "req-dup-2";
       } catch {
         return false;
       }
@@ -1045,24 +1197,35 @@ describe("runPersistent", () => {
     try {
       const runPromise = runPersistent(input, exitFn);
 
-      input.push(JSON.stringify({
-        type: "stream_start",
-        request_id: "req_stream_1",
-        session_id: "sess_mock",
-        config: { prompt: "initial stream prompt", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
-      }) + "\n");
+      input.push(
+        JSON.stringify({
+          type: "stream_start",
+          request_id: "req_stream_1",
+          session_id: "sess_mock",
+          config: {
+            prompt: "initial stream prompt",
+            apiKey: "sk-test",
+            workspaceRootDir: os.tmpdir(),
+            workspaceSkillDir: os.tmpdir(),
+          },
+        }) + "\n",
+      );
       // Mock streaming mode has a 1500ms delay per turn for guard tests
       await new Promise((r) => setTimeout(r, 2000));
 
-      input.push(JSON.stringify({
-        type: "stream_message",
-        request_id: "req_stream_2",
-        session_id: "sess_mock",
-        user_message: "follow-up message",
-      }) + "\n");
+      input.push(
+        JSON.stringify({
+          type: "stream_message",
+          request_id: "req_stream_2",
+          session_id: "sess_mock",
+          user_message: "follow-up message",
+        }) + "\n",
+      );
       await new Promise((r) => setTimeout(r, 2000));
 
-      input.push(JSON.stringify({ type: "stream_end", session_id: "sess_mock" }) + "\n");
+      input.push(
+        JSON.stringify({ type: "stream_end", session_id: "sess_mock" }) + "\n",
+      );
       input.push(JSON.stringify({ type: "shutdown" }) + "\n");
       input.push(null);
       await runPromise;
@@ -1080,15 +1243,21 @@ describe("runPersistent", () => {
     const streamDisplayItems = capture.lines
       .map((l) => JSON.parse(l))
       .filter(
-        (msg: Record<string, unknown>) => msg.type === "display_item"
-          && (msg.request_id === "req_stream_1" || msg.request_id === "req_stream_2"),
+        (msg: Record<string, unknown>) =>
+          msg.type === "display_item" &&
+          (msg.request_id === "req_stream_1" ||
+            msg.request_id === "req_stream_2"),
       );
     expect(streamDisplayItems.length).toBeGreaterThanOrEqual(2);
     expect(
-      streamDisplayItems.some((msg: Record<string, unknown>) => msg.request_id === "req_stream_1"),
+      streamDisplayItems.some(
+        (msg: Record<string, unknown>) => msg.request_id === "req_stream_1",
+      ),
     ).toBe(true);
     expect(
-      streamDisplayItems.some((msg: Record<string, unknown>) => msg.request_id === "req_stream_2"),
+      streamDisplayItems.some(
+        (msg: Record<string, unknown>) => msg.request_id === "req_stream_2",
+      ),
     ).toBe(true);
 
     const turnCompleteForFollowUp = capture.lines
@@ -1152,7 +1321,12 @@ describe("runPersistent", () => {
           type: "stream_start",
           request_id: "req_start",
           session_id: "sess_qa",
-          config: { prompt: "help me", apiKey: "sk-test", workspaceRootDir: os.tmpdir(), workspaceSkillDir: os.tmpdir() },
+          config: {
+            prompt: "help me",
+            apiKey: "sk-test",
+            workspaceRootDir: os.tmpdir(),
+            workspaceSkillDir: os.tmpdir(),
+          },
         }) + "\n",
       );
 
@@ -1160,7 +1334,10 @@ describe("runPersistent", () => {
         expect(
           capture.lines.some((line) => {
             const parsed = JSON.parse(line);
-            return parsed.request_id === "req_start" && parsed.type === "refine_question";
+            return (
+              parsed.request_id === "req_start" &&
+              parsed.type === "refine_question"
+            );
           }),
         ).toBe(true);
       });
@@ -1188,16 +1365,22 @@ describe("runPersistent", () => {
     expect(
       capture.lines.some((line) => {
         const parsed = JSON.parse(line);
-        return parsed.request_id === "req_start" && parsed.type === "refine_question";
+        return (
+          parsed.request_id === "req_start" && parsed.type === "refine_question"
+        );
       }),
     ).toBe(true);
     expect(
       capture.lines.some((line) => {
         const parsed = JSON.parse(line);
-        return parsed.request_id === "req_answer"
-          && parsed.type === "display_item"
-          && parsed.item?.type === "output"
-          && String(parsed.item?.outputText ?? "").includes("Answer:Launch validate");
+        return (
+          parsed.request_id === "req_answer" &&
+          parsed.type === "display_item" &&
+          parsed.item?.type === "output" &&
+          String(parsed.item?.outputText ?? "").includes(
+            "Answer:Launch validate",
+          )
+        );
       }),
     ).toBe(true);
   });
@@ -1206,13 +1389,24 @@ describe("runPersistent", () => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     const stdin = new PassThrough();
-    const mockChild = Object.assign(new EventEmitter(), { stdout, stderr, stdin, kill: vi.fn() });
-    mockSpawn.mockReturnValueOnce(mockChild as ReturnType<typeof childProcess.spawn>);
+    const mockChild = Object.assign(new EventEmitter(), {
+      stdout,
+      stderr,
+      stdin,
+      kill: vi.fn(),
+    });
+    mockSpawn.mockReturnValueOnce(
+      mockChild as ReturnType<typeof childProcess.spawn>,
+    );
 
     // Close the child after it is spawned so the request completes and shutdown can drain
     setImmediate(() => {
       stdout.push(
-        JSON.stringify({ type: "openhands_result", status: "success", result_text: "{}" }) + "\n",
+        JSON.stringify({
+          type: "openhands_result",
+          status: "success",
+          result_text: "{}",
+        }) + "\n",
       );
       stdout.push(null);
       stderr.push(null);

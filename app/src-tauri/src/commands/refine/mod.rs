@@ -1,13 +1,13 @@
 pub mod content;
 pub mod diff;
 pub mod output;
+#[allow(dead_code)]
 pub(crate) mod protocol;
 
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::agents::sidecar;
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
@@ -15,6 +15,12 @@ use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::RefineSessionInfo;
 
 use protocol::*;
+
+const OPENHANDS_REFINE_UNSUPPORTED_MESSAGE: &str = "OpenHands refine streaming is not yet supported. Use workflow mode until the OpenHands AskUserQuestion tool is implemented.";
+
+fn openhands_refine_streaming_unsupported() -> bool {
+    true
+}
 
 // ─── Shared helper ───────────────────────────────────────────────────────────
 
@@ -84,6 +90,7 @@ fn discover_plugin_agents(workspace_path: &str) -> Vec<String> {
 /// across subsequent messages — the SDK preserves full conversation state.
 pub struct RefineSession {
     pub skill_name: String,
+    #[allow(dead_code)]
     pub usage_session_id: String,
     /// Whether the sidecar streaming session has been started.
     /// First `send_refine_message` sends `stream_start`, subsequent sends `stream_message`.
@@ -229,8 +236,7 @@ pub async fn send_refine_message(
 ) -> Result<String, String> {
     log::info!("[send_refine_message] session=[REDACTED]");
 
-    // 1. Look up session and check stream state
-    let (skill_name, usage_session_id, stream_started) = {
+    let skill_name = {
         let map = sessions.0.lock().map_err(|e| {
             log::error!(
                 "[send_refine_message] Failed to acquire session lock: {}",
@@ -251,118 +257,27 @@ pub async fn send_refine_message(
                 return Err(msg);
             }
         };
-        (
-            session.skill_name.clone(),
-            session.usage_session_id.clone(),
-            session.stream_started,
-        )
+        session.skill_name.clone()
     };
-    log::info!(
-        "[send_refine_message] skill={} stream_started={}",
-        skill_name,
-        stream_started
+    log::info!("[send_refine_message] skill={}", skill_name);
+
+    let _ = (
+        &user_message,
+        &plugin_slug,
+        &workspace_path,
+        &target_files,
+        &pool,
+        &db,
+        &app,
     );
 
-    let runtime = load_refine_runtime_settings(&db, &workspace_path, &skill_name, &plugin_slug)?;
-    ensure_skill_workspace_dir(&workspace_path, &runtime.plugin_slug, &skill_name);
-    let skill_output_dir = resolve_skill_output_dir(&db, &skill_name, &runtime.skills_path)?;
-
-    if !stream_started {
-        // ─── First message: start streaming session ───────────────────────
-        // All commands go through the same streaming config. No agent is
-        // specified — Claude decides which agent to invoke based on the
-        // user's message and the agents discovered from plugins.
-        let prompt = build_refine_prompt_with_output_dir(
-            &skill_name,
-            &workspace_path,
-            &runtime.plugin_slug,
-            &skill_output_dir,
-            &user_message,
-            target_files.as_deref(),
-        );
-        let (mut config, agent_id) = build_refine_config(
-            prompt.clone(),
-            &skill_name,
-            &usage_session_id,
-            &workspace_path,
-            runtime.api_key,
-            runtime.model,
-            runtime.extended_thinking,
-            runtime.interleaved_thinking_beta,
-            runtime.sdk_effort,
-            runtime.refine_prompt_suggestions,
-            &runtime.plugin_slug,
-        );
-
-        log::info!(
-            "[send_refine_message] skill={} model={}",
-            skill_name,
-            config.model.as_deref().unwrap_or("default"),
-        );
-        log::debug!(
-            "[send_refine_message] first message prompt ({} chars) for skill '{}'",
-            prompt.len(),
-            skill_name
-        );
-
-        // Resolve SDK cli.js path
-        if config.path_to_claude_code_executable.is_none() {
-            if let Ok(cli_path) = sidecar::resolve_sdk_cli_path_public(&app) {
-                config.path_to_claude_code_executable = Some(cli_path);
-            }
-        }
-
-        log::debug!(
-            "[send_refine_message] starting stream agent={} workspace_skill_dir={}",
-            agent_id,
-            config.workspace_skill_dir,
-        );
-
-        pool.send_stream_start(&skill_name, &session_id, &agent_id, config, &app)
-            .await
-            .map_err(|e| {
-                log::error!("[send_refine_message] Failed to start stream: {}", e);
-                e
-            })?;
-
-        // Mark session as stream-started
-        {
-            let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
-            if let Some(session) = map.get_mut(&session_id) {
-                session.stream_started = true;
-            }
-        }
-
-        Ok(agent_id)
-    } else {
-        // ─── Follow-up message: push into existing stream ─────────────────
-        let prompt = build_followup_prompt_with_output_dir(
-            &user_message,
-            &skill_output_dir,
-            target_files.as_deref(),
-        );
-        log::debug!(
-            "[send_refine_message] follow-up prompt ({} chars) for skill '{}':\n{}",
-            prompt.len(),
-            skill_name,
-            prompt
-        );
-
-        let agent_id = format!(
-            "refine-{}-{}",
-            skill_name,
-            chrono::Utc::now().timestamp_millis()
-        );
-
-        pool.send_stream_message(&skill_name, &session_id, &agent_id, &prompt, &app)
-            .await
-            .map_err(|e| {
-                log::error!("[send_refine_message] Failed to send stream message: {}", e);
-                e
-            })?;
-
-        Ok(agent_id)
-    }
+    debug_assert!(openhands_refine_streaming_unsupported());
+    log::warn!(
+        "[send_refine_message] skill={} rejected: {}",
+        skill_name,
+        OPENHANDS_REFINE_UNSUPPORTED_MESSAGE
+    );
+    Err(OPENHANDS_REFINE_UNSUPPORTED_MESSAGE.to_string())
 }
 
 // ─── close_refine_session ────────────────────────────────────────────────────

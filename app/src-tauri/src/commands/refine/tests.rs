@@ -8,6 +8,13 @@ use super::*;
 use crate::commands::imported_skills::validate_skill_name;
 use tempfile::tempdir;
 
+#[test]
+fn test_refine_streaming_is_explicitly_unsupported_for_openhands_migration() {
+    assert!(openhands_refine_streaming_unsupported());
+    assert!(OPENHANDS_REFINE_UNSUPPORTED_MESSAGE.contains("OpenHands refine streaming"));
+    assert!(OPENHANDS_REFINE_UNSUPPORTED_MESSAGE.contains("AskUserQuestion"));
+}
+
 // ===== get_skill_content_inner tests =====
 
 #[test]

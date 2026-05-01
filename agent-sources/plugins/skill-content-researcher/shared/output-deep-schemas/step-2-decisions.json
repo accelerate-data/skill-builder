@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "DecisionsOutput",
-  "description": "Structured output produced by the confirm-decisions agent (workflow step 2).",
+  "description": "Structured output produced by the OpenHands decision-confirmation workflow step.",
   "additionalProperties": false,
   "type": "object",
   "required": ["version", "metadata", "decisions"],

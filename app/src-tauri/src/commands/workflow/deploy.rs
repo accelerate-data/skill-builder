@@ -111,6 +111,16 @@ pub(crate) fn workspace_already_copied(workspace_path: &str) -> bool {
         .is_some_and(|set| set.contains(workspace_path))
 }
 
+fn workspace_openhands_layout_complete(workspace_path: &str) -> bool {
+    let Ok(skill_dirs) = discover_workspace_skill_dirs(Path::new(workspace_path)) else {
+        return false;
+    };
+    skill_dirs.iter().all(|skill_dir| {
+        crate::skill_paths::workspace_agent_files_dir(skill_dir).is_dir()
+            && crate::skill_paths::workspace_agent_skills_dir(skill_dir).is_dir()
+    })
+}
+
 /// Mark a workspace as initialized for this session.
 pub(crate) fn mark_workspace_copied(workspace_path: &str) {
     let mut cache = COPIED_WORKSPACES.lock().unwrap_or_else(|e| e.into_inner());
@@ -154,7 +164,7 @@ pub async fn ensure_workspace_prompts(
     {
         let mut cache = COPIED_WORKSPACES.lock().unwrap_or_else(|e| e.into_inner());
         let set = cache.get_or_insert_with(HashSet::new);
-        if set.contains(workspace_path) {
+        if set.contains(workspace_path) && workspace_openhands_layout_complete(workspace_path) {
             return Ok(());
         }
         set.insert(workspace_path.to_string());
@@ -214,7 +224,9 @@ pub fn ensure_workspace_prompts_sync(
     app_handle: &tauri::AppHandle,
     workspace_path: &str,
 ) -> Result<(), String> {
-    if workspace_already_copied(workspace_path) {
+    if workspace_already_copied(workspace_path)
+        && workspace_openhands_layout_complete(workspace_path)
+    {
         return Ok(());
     }
 
@@ -478,4 +490,58 @@ pub(crate) fn copy_managed_plugins_to_claude_dir(
 /// Recursively copy a directory and all its contents (delegates to shared fs_utils).
 pub(crate) fn copy_directory_recursive(src: &Path, dest: &Path) -> Result<(), String> {
     crate::fs_utils::copy_dir_recursive(src, dest)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_file(path: &Path, contents: &str) {
+        std::fs::create_dir_all(path.parent().expect("test path has parent")).unwrap();
+        std::fs::write(path, contents).unwrap();
+    }
+
+    fn bundled_plugins_fixture(root: &Path) -> PathBuf {
+        let plugins = root.join("plugins");
+        write_file(
+            &plugins.join("skill-content-researcher/agents/research-agent.md"),
+            "---\nname: research-agent\n---\nRun research.",
+        );
+        write_file(
+            &plugins.join("skill-content-researcher/skills/research/SKILL.md"),
+            "# Research",
+        );
+        plugins
+    }
+
+    #[test]
+    fn cached_workspace_with_new_skill_dir_is_not_considered_complete() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let workspace_str = workspace.to_string_lossy().to_string();
+
+        std::fs::create_dir_all(workspace.join("plugin/new-skill")).unwrap();
+        mark_workspace_copied(&workspace_str);
+
+        assert!(workspace_already_copied(&workspace_str));
+        assert!(!workspace_openhands_layout_complete(&workspace_str));
+        invalidate_workspace_cache(&workspace_str);
+    }
+
+    #[test]
+    fn copy_workflow_plugins_populates_openhands_layout_for_discovered_skill_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let plugins = bundled_plugins_fixture(tmp.path());
+        let workspace = tmp.path().join("workspace");
+        let skill_dir = workspace.join("plugin/new-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+
+        copy_workflow_plugins_to_openhands_layout(&plugins, &workspace).unwrap();
+
+        assert!(skill_dir.join(".agents/agents/research-agent.md").is_file());
+        assert!(skill_dir.join(".agents/skills/research/SKILL.md").is_file());
+        assert!(workspace_openhands_layout_complete(
+            workspace.to_string_lossy().as_ref()
+        ));
+    }
 }

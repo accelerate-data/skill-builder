@@ -21,10 +21,13 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 vi.mock("@/lib/tauri", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/tauri")>("@/lib/tauri");
+  const actual =
+    await vi.importActual<typeof import("@/lib/tauri")>("@/lib/tauri");
   return {
     ...actual,
-    getDefaultSkillsPath: vi.fn(() => Promise.resolve("/Users/test/skill-builder")),
+    getDefaultSkillsPath: vi.fn(() =>
+      Promise.resolve("/Users/test/skill-builder"),
+    ),
   };
 });
 
@@ -64,7 +67,9 @@ describe("SetupScreen", () => {
     expect(screen.getByLabelText("Skills Folder")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Test/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Browse/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Get Started/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Get Started/i }),
+    ).toBeInTheDocument();
   });
 
   it("pre-populates skills path with default", async () => {
@@ -97,7 +102,9 @@ describe("SetupScreen", () => {
     await user.type(screen.getByLabelText("Anthropic API Key"), "sk-ant-test");
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Get Started/i })).not.toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: /Get Started/i }),
+      ).not.toBeDisabled();
     });
   });
 
@@ -114,7 +121,9 @@ describe("SetupScreen", () => {
     await user.click(screen.getByRole("button", { name: /Test/i }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("test_api_key", { apiKey: "sk-ant-test" });
+      expect(mockInvoke).toHaveBeenCalledWith("test_api_key", {
+        apiKey: "sk-ant-test",
+      });
     });
   });
 
@@ -137,7 +146,9 @@ describe("SetupScreen", () => {
 
   it("normalizes duplicated Windows paths with spaces from the directory picker", async () => {
     const user = userEvent.setup();
-    vi.mocked(mockOpen).mockResolvedValueOnce("C:\\Users\\me\\Skill Builder\\Skill Builder\\");
+    vi.mocked(mockOpen).mockResolvedValueOnce(
+      "C:\\Users\\me\\Skill Builder\\Skill Builder\\",
+    );
     render(<SetupScreen onComplete={vi.fn()} />);
 
     await waitFor(() => {
@@ -173,6 +184,9 @@ describe("SetupScreen", () => {
         settings: expect.objectContaining({
           anthropic_api_key: "sk-ant-test",
           skills_path: "/Users/test/skill-builder",
+          openhands_provider: "anthropic",
+          openhands_api_key: "sk-ant-test",
+          openhands_model: "anthropic/claude-sonnet-4-6",
         }),
       });
       expect(onComplete).toHaveBeenCalled();
@@ -200,11 +214,15 @@ describe("SetupScreen", () => {
   });
 
   it("pre-populates API key from store when already set", async () => {
-    useSettingsStore.getState().setSettings({ anthropicApiKey: "sk-ant-existing" });
+    useSettingsStore
+      .getState()
+      .setSettings({ anthropicApiKey: "sk-ant-existing" });
     render(<SetupScreen />);
 
     await waitFor(() => {
-      const input = screen.getByLabelText("Anthropic API Key") as HTMLInputElement;
+      const input = screen.getByLabelText(
+        "Anthropic API Key",
+      ) as HTMLInputElement;
       expect(input.value).toBe("sk-ant-existing");
     });
   });

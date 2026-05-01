@@ -48,11 +48,10 @@ function buildRuntimeValidationResult(
 }
 
 /**
- * Compatibility entry point for existing one-shot sidecar callers.
- *
- * New runtime code should use ClaudeRuntime directly. This wrapper preserves
- * the historic function signature while routing through the one-shot runtime
- * boundary.
+ * One-shot sidecar entry point.
+ * The OpenHands clean break is explicit at workflow call sites via
+ * runtimeProvider="openhands"; legacy non-workflow callers still omit the
+ * field and continue through Claude until they are migrated separately.
  */
 export async function runAgentRequest(
   config: SidecarConfig,

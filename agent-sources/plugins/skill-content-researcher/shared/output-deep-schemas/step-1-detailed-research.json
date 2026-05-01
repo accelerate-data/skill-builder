@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "DetailedResearchOutput",
-  "description": "Structured output produced by the detailed-research agent (workflow step 1).",
+  "description": "Structured output produced by the OpenHands detailed-research workflow step.",
   "additionalProperties": false,
   "type": "object",
   "required": ["status", "refinement_count", "section_count", "clarifications_json"],

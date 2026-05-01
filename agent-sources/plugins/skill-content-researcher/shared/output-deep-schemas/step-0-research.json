@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "ResearchStepOutput",
-  "description": "Structured output produced by the research-orchestrator agent (workflow step 0).",
+  "description": "Structured output produced by the OpenHands research workflow step.",
   "additionalProperties": false,
   "type": "object",
   "required": ["status", "dimensions_selected", "question_count", "research_output"],

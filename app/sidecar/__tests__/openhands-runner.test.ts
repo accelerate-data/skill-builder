@@ -40,31 +40,59 @@ ${body}
 }
 
 describe("openhands runner.py", () => {
-  it("maps default maxTurns, base URL, agent name, and workspace paths onto AppConfig", () => {
+  it("maps model, base URL, agent context, tools, and workspace onto SDK Conversation", () => {
     const result = runPython(
       runnerImportScript(`
 captured = {}
 
-class LLMConfig:
-    pass
+class LLM:
+    def __init__(self, **kwargs):
+        captured["llm"] = kwargs
 
-class AppConfig:
-    def __init__(self):
-        self.llm = LLMConfig()
+class Tool:
+    def __init__(self, name):
+        self.name = name
 
-def fake_main(config, task_str):
-    captured["task_str"] = task_str
-    captured["default_agent"] = config.default_agent
-    captured["model"] = config.llm.model
-    captured["api_key"] = config.llm.api_key
-    captured["base_url"] = config.llm.base_url
-    captured["workspace_base"] = config.workspace_base
-    captured["workspace_mount_path"] = config.workspace_mount_path
-    captured["max_iterations"] = config.max_iterations
-    return None
+class TerminalTool:
+    name = "TerminalTool"
 
-runner.AppConfig = AppConfig
-runner._openhands_main = fake_main
+class FileEditorTool:
+    name = "FileEditorTool"
+
+class TaskTrackerTool:
+    name = "TaskTrackerTool"
+
+class AgentContext:
+    def __init__(self, skills=None, system_message_suffix=None):
+        captured["skills"] = skills
+        captured["system_message_suffix"] = system_message_suffix
+
+class Agent:
+    def __init__(self, llm, tools, agent_context):
+        captured["tools"] = [tool.name for tool in tools]
+
+class Conversation:
+    def __init__(self, agent, workspace):
+        captured["workspace"] = workspace
+        self.state = type("State", (), {"events": []})()
+    def send_message(self, prompt):
+        captured["prompt"] = prompt
+    def run(self, max_iterations):
+        captured["max_iterations"] = max_iterations
+        self.state.events.append(type("Event", (), {"message": "ok"})())
+        return None
+
+runner.LLM = LLM
+runner.Tool = Tool
+runner.TerminalTool = TerminalTool
+runner.FileEditorTool = FileEditorTool
+runner.TaskTrackerTool = TaskTrackerTool
+runner.AgentContext = AgentContext
+runner.Agent = Agent
+runner.Conversation = Conversation
+runner.load_project_skills = lambda workspace_dir: ["project-skill"]
+runner.load_skills_from_dir = lambda skills_dir: ({}, {}, {"research": "research-skill"})
+runner._OPENHANDS_IMPORT_ERROR = None
 
 request = {
     "mode": "one-shot",
@@ -75,10 +103,11 @@ request = {
     "agentName": "skill-writer-agent",
     "workspaceRootDir": "/tmp/workspace",
     "workspaceSkillDir": "/tmp/workspace/plugin/skill",
+    "allowedTools": ["terminal", "file_editor"],
 }
 
 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-    runner.run_via_openhands_main(request)
+    runner.run_via_openhands_sdk(request)
 
 print(json.dumps(captured, sort_keys=True))
 `),
@@ -87,16 +116,35 @@ print(json.dumps(captured, sort_keys=True))
     expect(result.status).toBe(0);
     const captured = JSON.parse(result.stdout) as Record<string, unknown>;
     expect(captured).toMatchObject({
-      task_str: "build",
-      default_agent: "skill-writer-agent",
-      model: "anthropic/claude-sonnet-4-6",
-      api_key: "sk-secret",
-      base_url: "https://models.example.com/v1",
-      workspace_base: "/tmp/workspace",
-      workspace_mount_path: "/tmp/workspace/plugin/skill",
+      prompt: "build",
+      llm: {
+        model: "anthropic/claude-sonnet-4-6",
+        api_key: "sk-secret",
+        base_url: "https://models.example.com/v1",
+      },
+      workspace: "/tmp/workspace/plugin/skill",
+      tools: ["TerminalTool", "FileEditorTool", "TaskTrackerTool"],
+      skills: ["project-skill"],
       max_iterations: 50,
     });
-  });
+  }, 30_000);
+
+  it("extracts final text from OpenHands conversation state events", () => {
+    const result = runPython(
+      runnerImportScript(`
+conversation = type("Conversation", (), {})()
+conversation.state = type("State", (), {})()
+conversation.state.events = [
+    type("Event", (), {"message": "first"})(),
+    type("Event", (), {"message": "{\\"status\\":\\"complete\\"}"})(),
+]
+print(runner._extract_final_text(conversation))
+`),
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('{"status":"complete"}');
+  }, 30_000);
 
   it("uses explicit maxTurns as max_iterations", () => {
     const result = runPython(
@@ -107,7 +155,7 @@ print(runner.parse_max_iterations({"maxTurns": 12}))
 
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe("12");
-  });
+  }, 30_000);
 
   it("rejects invalid maxTurns values", () => {
     const result = runPython(
@@ -121,23 +169,45 @@ except ValueError as exc:
 
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe("maxTurns must be a positive integer");
-  });
+  }, 30_000);
 
   it("redacts API keys from stderr and emitted error results", () => {
     const result = runPython(
       runnerImportScript(`
-class LLMConfig:
+class LLM:
+    def __init__(self, **kwargs):
+        pass
+
+class Tool:
+    def __init__(self, name):
+        self.name = name
+
+class TerminalTool:
+    name = "TerminalTool"
+class FileEditorTool:
+    name = "FileEditorTool"
+class TaskTrackerTool:
+    name = "TaskTrackerTool"
+class AgentContext:
+    def __init__(self, **kwargs):
+        pass
+class Agent:
+    def __init__(self, **kwargs):
+        raise RuntimeError("provider rejected sk-secret")
+class Conversation:
     pass
 
-class AppConfig:
-    def __init__(self):
-        self.llm = LLMConfig()
-
-def fake_main(config, task_str):
-    raise RuntimeError("provider rejected sk-secret")
-
-runner.AppConfig = AppConfig
-runner._openhands_main = fake_main
+runner.LLM = LLM
+runner.Tool = Tool
+runner.TerminalTool = TerminalTool
+runner.FileEditorTool = FileEditorTool
+runner.TaskTrackerTool = TaskTrackerTool
+runner.AgentContext = AgentContext
+runner.Agent = Agent
+runner.Conversation = Conversation
+runner.load_project_skills = lambda workspace_dir: []
+runner.load_skills_from_dir = lambda skills_dir: ({}, {}, {})
+runner._OPENHANDS_IMPORT_ERROR = None
 
 request = {
     "mode": "one-shot",
@@ -155,10 +225,13 @@ print(json.dumps({"stdout": stdout.getvalue(), "stderr": stderr.getvalue()}, sor
     );
 
     expect(result.status).toBe(0);
-    const captured = JSON.parse(result.stdout) as { stdout: string; stderr: string };
+    const captured = JSON.parse(result.stdout) as {
+      stdout: string;
+      stderr: string;
+    };
     expect(captured.stdout).not.toContain("sk-secret");
     expect(captured.stderr).not.toContain("sk-secret");
     expect(captured.stdout).toContain("[REDACTED]");
     expect(captured.stderr).toContain("[REDACTED]");
-  });
+  }, 30_000);
 });

@@ -7,9 +7,9 @@
 use crate::contracts::clarifications::ClarificationsFile;
 use crate::contracts::decisions::{Decision, DecisionsMetadata};
 
-// ─── Step 0: Research Orchestrator ───────────────────────────────────────────
+// ─── Step 0: Research Agent ──────────────────────────────────────────────────
 
-/// Structured output produced by the `research-orchestrator` agent (workflow step 0).
+/// Structured output produced by the OpenHands research workflow step.
 ///
 /// Required fields: `status` (const `"research_complete"`), `dimensions_selected`,
 /// `question_count`, `research_output`.
@@ -21,9 +21,9 @@ pub struct ResearchStepOutput {
     pub research_output: ClarificationsFile,
 }
 
-// ─── Step 1: Detailed Research ───────────────────────────────────────────────
+// ─── Step 1: Research Agent Refinement ───────────────────────────────────────
 
-/// Structured output produced by the `detailed-research` agent (workflow step 1).
+/// Structured output produced by the OpenHands detailed-research workflow step.
 ///
 /// Required fields: `status` (const `"detailed_research_complete"`), `refinement_count`,
 /// `section_count`, `clarifications_json`.
@@ -35,9 +35,9 @@ pub struct DetailedResearchOutput {
     pub clarifications_json: ClarificationsFile,
 }
 
-// ─── Step 2: Confirm Decisions ───────────────────────────────────────────────
+// ─── Step 2: Decision Confirmation ───────────────────────────────────────────
 
-/// Structured output produced by the `confirm-decisions` agent (workflow step 2).
+/// Structured output produced by the OpenHands decision-confirmation workflow step.
 ///
 /// All fields are required per the agent SKILL.md contract.
 /// `version` is always `"1"`, `metadata` and `decisions` are always present.

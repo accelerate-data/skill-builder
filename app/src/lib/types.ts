@@ -526,7 +526,7 @@ export type DiscoveryResolutionAction = "add-skill-builder" | "add-imported" | "
 
 // ─── Workflow step structured outputs ────────────────────────────────────────
 
-/** Structured output for workflow step 0 (research-orchestrator agent). */
+/** Structured output for the OpenHands research workflow step. */
 export interface ResearchStepOutput {
   status: "research_complete"
   dimensions_selected: number
@@ -534,7 +534,7 @@ export interface ResearchStepOutput {
   research_output: unknown
 }
 
-/** Structured output for workflow step 1 (detailed-research agent). */
+/** Structured output for the OpenHands detailed-research workflow step. */
 export interface DetailedResearchOutput {
   status: "detailed_research_complete"
   refinement_count: number
@@ -542,7 +542,7 @@ export interface DetailedResearchOutput {
   clarifications_json: unknown
 }
 
-/** Structured output for workflow step 2 (confirm-decisions agent). */
+/** Structured output for the OpenHands decision-confirmation workflow step. */
 export interface DecisionsOutput {
   version: string
   metadata: unknown

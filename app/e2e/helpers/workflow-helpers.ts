@@ -23,6 +23,7 @@ export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
     preferred_model: "sonnet",
+    openhands_model: "anthropic/sonnet",
   },
   check_workspace_path: true,
   list_skills: [
@@ -46,10 +47,14 @@ export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
   run_workflow_step: "agent-001",
   // Provide canonical step-0 artifacts so workflow completion can advance in e2e mocks.
   read_file: {
-    [skillContextPath(E2E_SKILLS_PATH, "test-skill", "research-plan.md")]: "# Research Results\n\nAnalysis complete.",
-    [skillContextPath(E2E_SKILLS_PATH, "test-skill", "clarifications.json")]: "{\"version\":\"1\",\"metadata\":{\"title\":\"Test\",\"question_count\":1,\"section_count\":1,\"refinement_count\":0,\"must_answer_count\":0,\"priority_questions\":[]},\"sections\":[],\"notes\":[]}",
-    [skillContextPath(E2E_WORKSPACE_PATH, "test-skill", "research-plan.md")]: "# Research Results\n\nAnalysis complete.",
-    [skillContextPath(E2E_WORKSPACE_PATH, "test-skill", "clarifications.json")]: "{\"version\":\"1\",\"metadata\":{\"title\":\"Test\",\"question_count\":1,\"section_count\":1,\"refinement_count\":0,\"must_answer_count\":0,\"priority_questions\":[]},\"sections\":[],\"notes\":[]}",
+    [skillContextPath(E2E_SKILLS_PATH, "test-skill", "research-plan.md")]:
+      "# Research Results\n\nAnalysis complete.",
+    [skillContextPath(E2E_SKILLS_PATH, "test-skill", "clarifications.json")]:
+      '{"version":"1","metadata":{"title":"Test","question_count":1,"section_count":1,"refinement_count":0,"must_answer_count":0,"priority_questions":[]},"sections":[],"notes":[]}',
+    [skillContextPath(E2E_WORKSPACE_PATH, "test-skill", "research-plan.md")]:
+      "# Research Results\n\nAnalysis complete.",
+    [skillContextPath(E2E_WORKSPACE_PATH, "test-skill", "clarifications.json")]:
+      '{"version":"1","metadata":{"title":"Test","question_count":1,"section_count":1,"refinement_count":0,"must_answer_count":0,"priority_questions":[]},"sections":[],"notes":[]}',
     "*": "",
   },
   get_artifact_content: null,

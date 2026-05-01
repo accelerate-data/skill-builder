@@ -22,6 +22,7 @@ export const EVALS_OVERRIDES: Record<string, unknown> = {
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
     preferred_model: E2E_PREFERRED_MODEL,
+    openhands_model: `anthropic/${E2E_PREFERRED_MODEL}`,
   },
   check_workspace_path: true,
   list_skills: [
@@ -65,5 +66,7 @@ export async function navigateToEvalsTab(
   await evalsTab.click();
 
   // Wait for the eval list heading
-  await page.getByRole("heading", { name: "Evals" }).waitFor({ timeout: 10_000 });
+  await page
+    .getByRole("heading", { name: "Evals" })
+    .waitFor({ timeout: 10_000 });
 }

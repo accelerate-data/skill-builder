@@ -9,8 +9,8 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   });
 
   test("can type API key and test it", async ({ page }) => {
-    // API key input is in the "Claude SDK" section, not the default "General" section
-    await page.getByRole("button", { name: "Claude SDK" }).click();
+    // API key input is in the "OpenHands" section, not the default "General" section.
+    await page.getByRole("button", { name: "OpenHands" }).click();
     const input = page.getByPlaceholder("sk-ant-...");
     await input.fill("sk-ant-test-key");
 
@@ -18,20 +18,25 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     await testButton.click();
 
     // Mock returns success, button should turn green with "Valid"
-    await expect(page.getByRole("button", { name: "Valid" }).first()).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Valid" }).first(),
+    ).toBeVisible();
   });
 
   test("shows error toast when API key is rejected", async ({ page }) => {
     // Override test_api_key to throw (rejected key)
     await page.evaluate(() => {
-      const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ ?? {};
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        ...overrides,
-        test_api_key: "__throw__:Invalid API key",
-      };
+      const overrides =
+        (window as unknown as Record<string, unknown>)
+          .__TAURI_MOCK_OVERRIDES__ ?? {};
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ =
+        {
+          ...overrides,
+          test_api_key: "__throw__:Invalid API key",
+        };
     });
 
-    await page.getByRole("button", { name: "Claude SDK" }).click();
+    await page.getByRole("button", { name: "OpenHands" }).click();
     const input = page.getByPlaceholder("sk-ant-...");
     await input.fill("sk-ant-invalid-key");
 
@@ -42,12 +47,15 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     await expect(testButton).toHaveText("Test", { timeout: 5_000 });
   });
 
-  test("saves industry and function role and persists after navigation", async ({ page }) => {
+  test("saves industry and function role and persists after navigation", async ({
+    page,
+  }) => {
     await reloadWithOverrides(page, {
       get_settings: {
         anthropic_api_key: "sk-ant-test",
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
+        openhands_model: "anthropic/claude-sonnet-4-6",
       },
       check_workspace_path: true,
       save_settings: undefined,
@@ -59,12 +67,16 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     await waitForAppReady(page);
 
     // Fill industry and blur to trigger auto-save
-    const industryInput = page.getByPlaceholder("e.g., Financial Services, Healthcare, Retail");
+    const industryInput = page.getByPlaceholder(
+      "e.g., Financial Services, Healthcare, Retail",
+    );
     await industryInput.fill("Financial Services");
     await industryInput.blur();
 
     // Fill function role and blur to trigger auto-save
-    const roleInput = page.getByPlaceholder("e.g., Analytics Engineer, Data Platform Lead");
+    const roleInput = page.getByPlaceholder(
+      "e.g., Analytics Engineer, Data Platform Lead",
+    );
     await roleInput.fill("Data Platform Lead");
     await roleInput.blur();
 
@@ -80,8 +92,12 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     await expect(page).toHaveURL("/settings", { timeout: 5_000 });
 
     // Verify the values persisted in the Zustand store (rendered from store state)
-    const industryAfter = page.getByPlaceholder("e.g., Financial Services, Healthcare, Retail");
-    const roleAfter = page.getByPlaceholder("e.g., Analytics Engineer, Data Platform Lead");
+    const industryAfter = page.getByPlaceholder(
+      "e.g., Financial Services, Healthcare, Retail",
+    );
+    const roleAfter = page.getByPlaceholder(
+      "e.g., Analytics Engineer, Data Platform Lead",
+    );
     await expect(industryAfter).toHaveValue("Financial Services");
     await expect(roleAfter).toHaveValue("Data Platform Lead");
   });
@@ -90,25 +106,43 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     await page.getByRole("button", { name: "GitHub" }).click();
 
     await expect(page.getByText("GitHub Account").first()).toBeVisible();
-    await expect(page.getByText("Connect your GitHub account to submit feedback and report issues.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Sign in with GitHub" })).toBeVisible();
+    await expect(
+      page.getByText(
+        "Connect your GitHub account to submit feedback and report issues.",
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Sign in with GitHub" }),
+    ).toBeVisible();
   });
 
-  test("Marketplace section supports adding registries and toggling auto-update", async ({ page }) => {
+  test("Marketplace section supports adding registries and toggling auto-update", async ({
+    page,
+  }) => {
     await reloadWithOverrides(page, {
       get_settings: {
         anthropic_api_key: "sk-ant-test",
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
+        openhands_model: "anthropic/claude-sonnet-4-6",
         marketplace_registries: [
-          { name: "Vibedata Skills", source_url: "hbanerjee74/skills", enabled: true },
+          {
+            name: "Vibedata Skills",
+            source_url: "hbanerjee74/skills",
+            enabled: true,
+          },
         ],
         auto_update: false,
       },
       check_workspace_path: true,
       list_skills: [],
       update_user_settings: undefined,
-      parse_github_url: { owner: "acme", repo: "skills", branch: "main", subpath: null },
+      parse_github_url: {
+        owner: "acme",
+        repo: "skills",
+        branch: "main",
+        subpath: null,
+      },
       check_marketplace_url: "Acme Skills",
     });
 
@@ -131,12 +165,15 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     await expect(autoUpdate).toHaveAttribute("aria-checked", "true");
   });
 
-  test("Advanced section supports log level changes and skills-folder browse", async ({ page }) => {
+  test("Advanced section supports log level changes and skills-folder browse", async ({
+    page,
+  }) => {
     await reloadWithOverrides(page, {
       get_settings: {
         anthropic_api_key: "sk-ant-test",
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
+        openhands_model: "anthropic/claude-sonnet-4-6",
         log_level: "info",
       },
       check_workspace_path: true,
@@ -155,7 +192,9 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     await expect(page.getByText("Saved")).toBeVisible({ timeout: 5_000 });
 
     await page.getByRole("button", { name: "Browse" }).click();
-    await expect(page.getByText("C:/skill-builder-test/workspace")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("C:/skill-builder-test/workspace")).toBeVisible(
+      { timeout: 5_000 },
+    );
     await expect(page.getByText("C:/skill-builder-test/data")).toBeVisible();
   });
 });
