@@ -56,9 +56,6 @@ function buildRunnerEnv(request: OneShotRunRequest): Record<string, string> {
     const val = process.env[key];
     if (val !== undefined) env[key] = val;
   }
-  if (process.env.OPENAI_API_KEY !== undefined) {
-    env.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-  }
   return env;
 }
 
@@ -110,6 +107,9 @@ export class OpenHandsRuntime implements AgentRuntime {
           signal.addEventListener("abort", abortHandler, { once: true });
         }
       }
+
+      // Suppress EPIPE on stdin — spawn errors are handled by the child 'error' / 'close' events
+      child.stdin.on("error", () => undefined);
 
       // Write the request to stdin then close stdin
       const requestJson = JSON.stringify(request);
@@ -167,37 +167,44 @@ export class OpenHandsRuntime implements AgentRuntime {
           stderrBuffer = "";
         }
 
-        // Remove abort handler if process exited normally
+        // Remove abort handler
         if (signal) {
           signal.removeEventListener("abort", abortHandler);
         }
 
-        process.stderr.write(
-          `[openhands-runtime] event=child_exit exit_code=${code ?? "null"} result_emitted=${processor.hasEmittedResult()}\n`,
-        );
+        // Close readline — this drains any buffered lines before emitting 'close'.
+        // We wait for readline 'close' before resolving to avoid a double-emit race
+        // where the fallback error result fires before the last 'line' event fires.
+        rl.on("close", () => {
+          process.stderr.write(
+            `[openhands-runtime] event=child_exit exit_code=${code ?? "null"} result_emitted=${processor.hasEmittedResult()}\n`,
+          );
 
-        if (!processor.hasEmittedResult()) {
-          if (signal?.aborted) {
-            process.stderr.write("[openhands-runtime] event=aborted emitting shutdown result\n");
-            const shutdownResult = processor.buildErrorResult("Run aborted by caller");
-            sink.emitAgentEvent({
-              ...shutdownResult,
-              status: "shutdown",
-            });
-          } else {
-            const message =
-              code !== 0 && code !== null
-                ? `OpenHands runner exited with code ${code}`
-                : "OpenHands runner exited without producing a result";
-            process.stderr.write(
-              `[openhands-runtime] event=no_result emitting error: ${message}\n`,
-            );
-            const errorResult = processor.buildErrorResult(message);
-            sink.emitAgentEvent(errorResult);
+          if (!processor.hasEmittedResult()) {
+            if (signal?.aborted) {
+              process.stderr.write("[openhands-runtime] event=aborted emitting shutdown result\n");
+              const shutdownResult = processor.buildErrorResult("Run aborted by caller");
+              sink.emitAgentEvent({
+                ...shutdownResult,
+                status: "shutdown",
+              });
+            } else {
+              const message =
+                code !== 0 && code !== null
+                  ? `OpenHands runner exited with code ${code}`
+                  : "OpenHands runner exited without producing a result";
+              process.stderr.write(
+                `[openhands-runtime] event=no_result emitting error: ${message}\n`,
+              );
+              const errorResult = processor.buildErrorResult(message);
+              sink.emitAgentEvent(errorResult);
+            }
           }
-        }
 
-        resolve();
+          resolve();
+        });
+
+        rl.close();
       });
 
       child.on("error", (err: Error) => {
