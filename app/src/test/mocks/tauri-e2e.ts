@@ -6,6 +6,7 @@
  * can render without the Rust backend.
  */
 
+import descriptionOptimizationResult from "../../../sidecar/mock-templates/outputs/description-optimization-loop/optimization-result.json";
 
 // E2E root matches test-paths.ts joinE2ePath() output at runtime.
 // Browser mocks can't access os.tmpdir(), so we use a synthetic root
@@ -324,16 +325,7 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
   load_eval_queries: [],
   save_eval_queries: undefined,
   start_generate_desc_evals: "desc-evals-agent-001",
-  run_optimization_loop: {
-    iterations_run: 2,
-    original_description: "Use when doing dbt work.",
-    best_description: "Use when the user needs analytics engineering help with dbt models, semantic models, data quality checks, or source freshness.",
-    history: [
-      { iteration: 0, description: "Use when doing dbt work.", train_passed: null, train_total: null, test_passed: 1, test_total: 4 },
-      { iteration: 1, description: "Use when the user needs dbt and analytics engineering help.", train_passed: 3, train_total: 4, test_passed: 3, test_total: 4 },
-      { iteration: 2, description: "Use when the user needs analytics engineering help with dbt models, semantic models, data quality checks, or source freshness.", train_passed: 4, train_total: 4, test_passed: 4, test_total: 4 },
-    ],
-  },
+  run_optimization_loop: descriptionOptimizationResult,
   apply_description: "1.0.1",
   cancel_description_optimization: undefined,
   write_desc_opt_log: undefined,

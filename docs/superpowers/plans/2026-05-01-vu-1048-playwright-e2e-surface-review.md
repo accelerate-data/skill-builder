@@ -35,6 +35,7 @@ No existing Playwright scenario is pruned in this issue. Several tests overlap l
 - Modify: `app/sidecar/mock-agent.ts`
 - Create: `app/sidecar/mock-templates/description-evals-generator.jsonl`
 - Create: `app/sidecar/mock-templates/outputs/description-evals-generator/description-evals-result.json`
+- Create: `app/sidecar/mock-templates/outputs/description-optimization-loop/optimization-result.json`
 - Test: `app/sidecar/__tests__/mock-agent.test.ts`
 
 - [x] **Step 1: Add deterministic query-generation and optimization payloads**

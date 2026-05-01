@@ -5,6 +5,7 @@ import {
   DESCRIPTION_OPTIMIZATION_RESULT,
   GENERATED_DESCRIPTION_EVAL_QUERIES,
 } from "../fixtures/description-optimization";
+import { emitTauriEvent } from "./agent-simulator";
 
 export const DESCRIPTION_OVERRIDES: Record<string, unknown> = {
   get_settings: {
@@ -69,21 +70,8 @@ export async function navigateToDescriptionTab(
 }
 
 export async function emitGeneratedDescriptionQueries(page: Page): Promise<void> {
-  await page.evaluate((queries) => {
-    const handlers = (
-      window as unknown as {
-        __TAURI_EVENT_HANDLERS__?: Map<string, Set<(e: { payload: unknown }) => void>>;
-      }
-    ).__TAURI_EVENT_HANDLERS__;
-    const set = handlers?.get("description:eval-queries-generated");
-    if (!set) return;
-    for (const handler of set) {
-      handler({
-        payload: {
-          skillName: "test-skill",
-          queries,
-        },
-      });
-    }
-  }, GENERATED_DESCRIPTION_EVAL_QUERIES);
+  await emitTauriEvent(page, "description:eval-queries-generated", {
+    skillName: "test-skill",
+    queries: GENERATED_DESCRIPTION_EVAL_QUERIES,
+  });
 }

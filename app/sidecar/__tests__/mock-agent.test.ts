@@ -418,6 +418,27 @@ describe("buildStructuredMockResult", () => {
     expect(Array.isArray(payload.per_question)).toBe(true);
   });
 
+  it("returns structured payload for description eval-query generation", async () => {
+    const result = await buildStructuredMockResult("description-evals-generator");
+    expect(result).not.toBeNull();
+    const payload = result as Record<string, unknown>;
+    expect(payload.status).toBe("generated");
+    expect(Array.isArray(payload.queries)).toBe(true);
+    const queries = payload.queries as Array<Record<string, unknown>>;
+    expect(queries.length).toBeGreaterThan(0);
+    expect(queries.every((query) => typeof query.query === "string")).toBe(true);
+    expect(queries.every((query) => typeof query.should_trigger === "boolean")).toBe(true);
+  });
+
+  it("returns structured payload for description optimization loop", async () => {
+    const result = await buildStructuredMockResult("description-optimization-loop");
+    expect(result).not.toBeNull();
+    const payload = result as Record<string, unknown>;
+    expect(payload.iterations_run).toBe(2);
+    expect(typeof payload.best_description).toBe("string");
+    expect(Array.isArray(payload.history)).toBe(true);
+  });
+
   it("returns null for benchmark-skill", async () => {
     const result = await buildStructuredMockResult("benchmark-skill");
     expect(result).toBeNull();

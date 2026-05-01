@@ -4,7 +4,7 @@ import type { SidecarConfig } from "./config.js";
 import { buildQueryOptions } from "./options.js";
 import { createAbortState, linkExternalSignal } from "./shutdown.js";
 import { emitSystemEvent, discoverInstalledPlugins, selectPluginPaths } from "./run-agent.js";
-import { writeMockOutputFiles, buildStructuredMockResult } from "./mock-agent.js";
+import { writeMockOutputFiles, buildStructuredMockResult, resolveStepTemplate } from "./mock-agent.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { MessageProcessor } from "./message-processor.js";
@@ -343,6 +343,13 @@ export class StreamSession implements RuntimeSession {
         // Workflow steps need proper mock output — use the step-template system.
         if (config.runSource === "workflow" && typeof config.stepId === "number" && config.stepId >= 0) {
           await this.emitMockWorkflowStep(config, onMessage);
+        } else if (config.stepId === -12) {
+          const stepTemplate = resolveStepTemplate(config.agentName, config);
+          if (stepTemplate) {
+            await this.emitMockTemplateResult(stepTemplate, config, onMessage);
+          } else {
+            await this.emitMockTurn(config.prompt, onMessage);
+          }
         } else {
           await this.emitMockTurn(config.prompt, onMessage);
         }
@@ -718,6 +725,37 @@ export class StreamSession implements RuntimeSession {
     }
 
     // Build the structured output that the Rust backend expects.
+    const structuredOutput = await buildStructuredMockResult(stepTemplate, config);
+
+    const resultMsg: Record<string, unknown> = {
+      type: "result",
+      subtype: "success",
+      result: `Mock: ${stepTemplate} completed`,
+      is_error: false,
+      duration_ms: 500,
+      duration_api_ms: 500,
+      num_turns: 1,
+      total_cost_usd: 0,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    };
+    if (structuredOutput !== null) {
+      resultMsg.structured_output = structuredOutput;
+    }
+
+    if (this.mockProcessor) {
+      const items = this.mockProcessor.process(resultMsg);
+      for (const item of items) {
+        onMessage(this.currentRequestId, item as Record<string, unknown>);
+      }
+    }
+  }
+
+  private async emitMockTemplateResult(
+    stepTemplate: string,
+    config: SidecarConfig,
+    onMessage: (requestId: string, message: Record<string, unknown>) => void,
+  ): Promise<void> {
+    await writeMockOutputFiles(stepTemplate, config);
     const structuredOutput = await buildStructuredMockResult(stepTemplate, config);
 
     const resultMsg: Record<string, unknown> = {

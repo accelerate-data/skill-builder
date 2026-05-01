@@ -602,5 +602,11 @@ export async function buildStructuredMockResult(
     );
   }
 
+  if (stepTemplate === "description-optimization-loop") {
+    return readJsonIfExists(
+      path.join(outputsRoot, "description-optimization-loop", "optimization-result.json"),
+    );
+  }
+
   return null;
 }

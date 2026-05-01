@@ -13,6 +13,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { emitTauriEvent, simulateAgentRun, simulateAgentError } from "../helpers/agent-simulator";
+import { getTrackedInvokes, trackInvokes } from "../helpers/invoke-tracking.js";
 import { navigateToRefineWithSkill } from "../helpers/refine-helpers";
 
 /**
@@ -25,27 +26,6 @@ async function getAgentId(page: Page): Promise<string> {
   const agentId = await thinking.getAttribute("data-agent-id");
   if (!agentId) throw new Error("Could not read agent ID from thinking indicator");
   return agentId;
-}
-
-async function trackInvokes(page: Page, commands: string[]): Promise<void> {
-  await page.evaluate((cmds) => {
-    const w = window as unknown as Record<string, unknown>;
-    w.__TAURI_TRACK_INVOKES__ = cmds;
-    w.__TAURI_TRACKED_INVOKES__ = [];
-  }, commands);
-}
-
-async function getTrackedInvokes(
-  page: Page,
-  cmd: string,
-): Promise<Array<{ cmd: string; args: Record<string, unknown> }>> {
-  const all = await page.evaluate(() => {
-    return ((window as unknown as Record<string, unknown>).__TAURI_TRACKED_INVOKES__ ?? []) as Array<{
-      cmd: string;
-      args: Record<string, unknown>;
-    }>;
-  });
-  return all.filter((entry) => entry.cmd === cmd);
 }
 
 test.describe("Refine Page", { tag: "@refine" }, () => {
