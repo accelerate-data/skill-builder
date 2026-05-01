@@ -14,13 +14,12 @@ import descriptionOptimizationResult from "../../../sidecar/mock-templates/outpu
 const E2E_ROOT = "/e2e-test";
 const E2E_SKILLS_PATH = `${E2E_ROOT}/skills`;
 const E2E_DEFAULT_SKILLS_PATH = `${E2E_ROOT}/default-skills`;
-const E2E_PREFERRED_MODEL = "claude-sonnet-4-6";
 
 const defaultSettings = {
   anthropic_api_key: "sk-ant-test-e2e",
   workspace_path: null,
   skills_path: E2E_SKILLS_PATH,
-  preferred_model: E2E_PREFERRED_MODEL,
+  preferred_model: "sonnet",
   log_level: "info",
 };
 
@@ -467,9 +466,6 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
     | undefined;
   if (overrides && cmd in overrides) {
     let val = overrides[cmd];
-    if (cmd === "get_settings" && val && typeof val === "object" && !Array.isArray(val)) {
-      val = { ...defaultSettings, ...(val as Record<string, unknown>) };
-    }
     if (cmd === "list_skills") {
       val = normalizeListSkills(val);
     }

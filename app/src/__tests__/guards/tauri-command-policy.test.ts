@@ -110,6 +110,37 @@ describe("Tauri command policy", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("requires wrapper commands to use invokeCommand unless explicitly allowlisted", () => {
+    const source = fs.readFileSync(path.join(sourceRoot, "lib/tauri.ts"), "utf8");
+    const allowedUnsafeCommands: Record<string, string> = {};
+    const unsafeCommands = Array.from(
+      source.matchAll(/invokeUnsafe(?:<[^)]*>)?\(\s*"([^"]+)"/g),
+      (match) => match[1],
+    );
+
+    const undocumentedCommands = unsafeCommands.filter(
+      (command) => !allowedUnsafeCommands[command],
+    );
+
+    expect(undocumentedCommands).toEqual([]);
+  });
+
+  it("rejects any invokeUnsafe call expression outside documented exceptions", () => {
+    const source = fs.readFileSync(path.join(sourceRoot, "lib/tauri.ts"), "utf8");
+
+    expect(source).not.toMatch(/\binvokeUnsafe\s*\(/);
+  });
+
+  it("keeps raw invoke calls behind the typed invokeCommand gateway", () => {
+    const source = fs.readFileSync(path.join(sourceRoot, "lib/tauri.ts"), "utf8");
+    const sourceWithoutGateway = source.replace(
+      /export const invokeCommand = <Invocation extends TauriCommandInvocation>\(\n\s+\.\.\.\[command, args\]: Invocation\n\) => invoke<TauriCommandResult<Invocation\[0\]>>\(command, args\);/,
+      "",
+    );
+
+    expect(sourceWithoutGateway).not.toMatch(/\binvoke(?:<[^)]*>)?\(/);
+  });
+
   it("exposes typed invokeCommand and names the raw escape hatch explicitly", () => {
     const source = fs.readFileSync(tauriWrapperPath, "utf8");
 
