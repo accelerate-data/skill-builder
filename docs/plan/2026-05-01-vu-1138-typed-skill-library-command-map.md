@@ -24,6 +24,7 @@
 - Modify: `app/src/lib/tauri-command-types.typecheck.ts` — add compile-time negative checks from this command scope.
 - Modify: `app/src/lib/tauri.ts` — replace in-scope `invokeUnsafe` calls with `invokeCommand`.
 - Modify: `app/src/__tests__/guards/tauri-command-policy.test.ts` — add a guard that fails when in-scope commands use `invokeUnsafe`.
+- Add: `app/src/__tests__/lib/tauri.test.ts` — assert every migrated public wrapper invokes the expected Tauri command with the expected args.
 
 ## Tasks
 
@@ -62,6 +63,8 @@
 - Focused guard and typecheck were run RED first and failed on the intended missing migration.
 - `cd app && npm run test:unit` passed.
 - `cd app && bash tests/run.sh e2e --tag @skills` passed.
+- `cd app && npx vitest run src/__tests__/lib/tauri.test.ts` passed with exact wrapper contract coverage for all 26 migrated commands.
 - `cd app && npx vitest run src/__tests__/components/app-layout.test.tsx src/__tests__/guards/tauri-command-policy.test.ts` passed after updating the typed no-arg call expectation.
+- `cd app && npx vitest run src/__tests__/lib/tauri.test.ts src/__tests__/guards/tauri-command-policy.test.ts src/__tests__/components/app-layout.test.tsx` passed after independent automation review requested wrapper-level contract coverage.
 - `cd app && npm run sidecar:build` passed and restored `app/sidecar/dist/agent-runner.js` for sidecar-backed E2E.
 - Full `cd app && bash tests/run.sh` did not pass: frontend unit, Rust unit, sidecar unit, and agent structural tests passed; integration still had unrelated workflow tests failing because their setup lacks a selected Settings model, and full E2E had unrelated workflow/sidecar scenarios failing outside the VU-1138 `@skills` surface.
