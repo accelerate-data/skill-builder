@@ -56,12 +56,21 @@ vi.mock("@/components/github-login-dialog", () => ({
   GitHubLoginDialog: () => null,
 }));
 
-vi.mock("@/stores/settings-store", () => ({
-  useSettingsStore: vi.fn(
-    (selector: (s: { preferredModel: string }) => unknown) =>
-      selector({ preferredModel: "claude-opus-4-6" }),
-  ),
-}));
+const mockSettingsState = {
+  preferredModel: "claude-opus-4-6",
+  setSettings: vi.fn(),
+};
+
+vi.mock("@/stores/settings-store", () => {
+  const useSettingsStore = vi.fn((selector: (s: typeof mockSettingsState) => unknown) =>
+    selector(mockSettingsState),
+  );
+  Object.assign(useSettingsStore, {
+    getState: () => mockSettingsState,
+  });
+
+  return { useSettingsStore };
+});
 
 import {
   FeedbackDialog,
@@ -170,6 +179,7 @@ describe("FeedbackDialog", () => {
       url: "https://github.com/hbanerjee74/skill-builder/issues/42",
       number: 42,
     });
+    mockSettingsState.setSettings.mockReset();
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.warning).mockReset();
     vi.mocked(toast.error).mockReset();
@@ -200,7 +210,7 @@ describe("FeedbackDialog", () => {
 
     await user.click(screen.getByTitle("Send feedback"));
 
-    expect(screen.getByLabelText("Title")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Title")).toBeInTheDocument();
     expect(screen.getByLabelText("Description")).toBeInTheDocument();
     // Should NOT show the sign-in prompt
     expect(screen.queryByText("Sign in to GitHub to submit feedback as an issue.")).not.toBeInTheDocument();
@@ -211,7 +221,7 @@ describe("FeedbackDialog", () => {
     renderWithQueryClient(<FeedbackDialog />);
 
     await user.click(screen.getByTitle("Send feedback"));
-    expect(screen.getByLabelText("Title")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Title")).toBeInTheDocument();
     expect(screen.getByLabelText("Description")).toBeInTheDocument();
     // No radio group in input state
     expect(screen.queryByLabelText("Bug")).not.toBeInTheDocument();
@@ -223,6 +233,7 @@ describe("FeedbackDialog", () => {
     renderWithQueryClient(<FeedbackDialog />);
 
     await user.click(screen.getByTitle("Send feedback"));
+    await screen.findByLabelText("Title");
     const analyzeBtn = screen.getByRole("button", { name: /Analyze/i });
     expect(analyzeBtn).toBeDisabled();
   });
@@ -232,7 +243,7 @@ describe("FeedbackDialog", () => {
     renderWithQueryClient(<FeedbackDialog />);
 
     await user.click(screen.getByTitle("Send feedback"));
-    await user.type(screen.getByLabelText("Title"), "App crashes");
+    await user.type(await screen.findByLabelText("Title"), "App crashes");
     await user.type(screen.getByLabelText("Description"), "On startup");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
@@ -262,7 +273,7 @@ describe("FeedbackDialog", () => {
     renderWithQueryClient(<FeedbackDialog />);
 
     await user.click(screen.getByTitle("Send feedback"));
-    await user.type(screen.getByLabelText("Title"), "App crashes");
+    await user.type(await screen.findByLabelText("Title"), "App crashes");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
     await waitFor(() => {
@@ -275,7 +286,7 @@ describe("FeedbackDialog", () => {
     renderWithQueryClient(<FeedbackDialog />);
 
     await user.click(screen.getByTitle("Send feedback"));
-    await user.type(screen.getByLabelText("Title"), "App crashes on startup");
+    await user.type(await screen.findByLabelText("Title"), "App crashes on startup");
     await user.type(screen.getByLabelText("Description"), "It just crashes");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
@@ -305,7 +316,7 @@ describe("FeedbackDialog", () => {
     renderWithQueryClient(<FeedbackDialog />);
 
     await user.click(screen.getByTitle("Send feedback"));
-    await user.type(screen.getByLabelText("Title"), "App crashes on startup");
+    await user.type(await screen.findByLabelText("Title"), "App crashes on startup");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
     await waitFor(() => {
@@ -335,7 +346,7 @@ describe("FeedbackDialog", () => {
     renderWithQueryClient(<FeedbackDialog />);
 
     await user.click(screen.getByTitle("Send feedback"));
-    await user.type(screen.getByLabelText("Title"), "App crashes");
+    await user.type(await screen.findByLabelText("Title"), "App crashes");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
     await waitFor(() => {
@@ -375,7 +386,7 @@ describe("FeedbackDialog", () => {
     renderWithQueryClient(<FeedbackDialog />);
 
     await user.click(screen.getByTitle("Send feedback"));
-    await user.type(screen.getByLabelText("Title"), "App crashes");
+    await user.type(await screen.findByLabelText("Title"), "App crashes");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
     await waitFor(() => {
@@ -410,7 +421,7 @@ describe("FeedbackDialog", () => {
     renderWithQueryClient(<FeedbackDialog />);
 
     await user.click(screen.getByTitle("Send feedback"));
-    await user.type(screen.getByLabelText("Title"), "App crashes");
+    await user.type(await screen.findByLabelText("Title"), "App crashes");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
     await waitFor(() => {
@@ -443,7 +454,7 @@ describe("FeedbackDialog", () => {
     renderWithQueryClient(<FeedbackDialog />);
 
     await user.click(screen.getByTitle("Send feedback"));
-    await user.type(screen.getByLabelText("Title"), "App crashes");
+    await user.type(await screen.findByLabelText("Title"), "App crashes");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
     await waitFor(() => {

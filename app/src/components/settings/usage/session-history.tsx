@@ -28,8 +28,8 @@ import {
 interface SessionHistoryProps {
   agentRuns: AgentRunRecord[]
   byModel: UsageByModel[]
-  modelFilter: string | null
-  setModelFilter: (v: string | null) => void
+  modelFamilyFilter: string | null
+  setModelFamilyFilter: (v: string | null) => void
   stepFilter: number | "all"
   setStepFilter: (v: number | "all") => void
   sortCol: SortCol
@@ -38,7 +38,7 @@ interface SessionHistoryProps {
 }
 
 export function SessionHistory({
-  agentRuns, byModel, modelFilter, setModelFilter,
+  agentRuns, byModel, modelFamilyFilter, setModelFamilyFilter,
   stepFilter, setStepFilter, sortCol, sortDir, onSort,
 }: SessionHistoryProps) {
 
@@ -47,7 +47,7 @@ export function SessionHistory({
   const filteredRuns = useMemo(() => {
     let rows = agentRuns
     if (stepFilter !== "all") rows = rows.filter((r) => r.step_id === stepFilter)
-    // model filter filtering is applied at the DB level via modelFilter in the store
+    // Model-family filtering is applied at the DB level via query filters.
     return [...rows].sort((a, b) => {
       let cmp = 0
       switch (sortCol) {
@@ -84,7 +84,7 @@ export function SessionHistory({
               </SelectContent>
             </Select>
             {availableModels.length > 1 && (
-              <Select value={modelFilter ?? "all"} onValueChange={(v) => setModelFilter(v === "all" ? null : v)}>
+              <Select value={modelFamilyFilter ?? "all"} onValueChange={(v) => setModelFamilyFilter(v === "all" ? null : v)}>
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
