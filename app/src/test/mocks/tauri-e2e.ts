@@ -20,6 +20,7 @@ const defaultSettings = {
   workspace_path: null,
   skills_path: E2E_SKILLS_PATH,
   preferred_model: "sonnet",
+  openhands_model: "anthropic/sonnet",
   log_level: "info",
 };
 

@@ -13,6 +13,7 @@ export const BASE_SETTINGS_OVERRIDES: Record<string, unknown> = {
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
     preferred_model: E2E_PREFERRED_MODEL,
+    openhands_model: `anthropic/${E2E_PREFERRED_MODEL}`,
   },
   check_workspace_path: true,
   list_skills: [],

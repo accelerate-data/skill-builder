@@ -325,7 +325,9 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         console.error("[workspace-refine] Failed to send refine message:", err);
         store.setRunning(false);
         store.setActiveAgentId(null);
-        toast.error("Failed to start agent", { duration: Infinity });
+        toast.error(err instanceof Error ? err.message : String(err), {
+          duration: Infinity,
+        });
       }
     },
     [selectedSkill, workspacePath, preferredModel],

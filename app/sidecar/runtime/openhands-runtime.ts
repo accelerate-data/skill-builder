@@ -53,11 +53,7 @@ function buildRunnerCommand(request: OneShotRunRequest): {
 // Sanitised environment
 // ---------------------------------------------------------------------------
 
-const ENV_ALLOWLIST = [
-  "PATH",
-  "HOME",
-  "PYTHONPATH",
-] as const;
+const ENV_ALLOWLIST = ["PATH", "HOME", "PYTHONPATH"] as const;
 
 function buildRunnerEnv(request: OneShotRunRequest): Record<string, string> {
   const env: Record<string, string> = {
@@ -75,7 +71,9 @@ function redactApiKey(text: string, apiKey: string): string {
   return text.replaceAll(apiKey, "[REDACTED]");
 }
 
-function buildRunnerRequest(request: OneShotRunRequest): Record<string, unknown> {
+function buildRunnerRequest(
+  request: OneShotRunRequest,
+): Record<string, unknown> {
   return {
     mode: request.mode,
     prompt: request.prompt,
@@ -86,6 +84,7 @@ function buildRunnerRequest(request: OneShotRunRequest): Record<string, unknown>
     apiKey: request.apiKey,
     workspaceRootDir: request.workspaceRootDir,
     workspaceSkillDir: request.workspaceSkillDir,
+    allowedTools: request.allowedTools,
     maxTurns: request.maxTurns ?? 50,
     outputFormat: request.outputFormat,
   };
@@ -129,7 +128,9 @@ export class OpenHandsRuntime implements AgentRuntime {
 
       // Wire abort signal to kill the child process
       const abortHandler = () => {
-        process.stderr.write("[openhands-runtime] event=abort killing child process\n");
+        process.stderr.write(
+          "[openhands-runtime] event=abort killing child process\n",
+        );
         child.kill("SIGTERM");
       };
       if (signal) {
@@ -178,7 +179,9 @@ export class OpenHandsRuntime implements AgentRuntime {
           processor.processLine(line, sink);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          process.stderr.write(`[openhands-runtime] error=line_processing message=${msg}\n`);
+          process.stderr.write(
+            `[openhands-runtime] error=line_processing message=${msg}\n`,
+          );
           sink.emitRaw({
             type: "system",
             subtype: "sdk_stderr",
@@ -215,8 +218,12 @@ export class OpenHandsRuntime implements AgentRuntime {
 
           if (!processor.hasEmittedResult()) {
             if (signal?.aborted) {
-              process.stderr.write("[openhands-runtime] event=aborted emitting shutdown result\n");
-              const shutdownResult = processor.buildErrorResult("Run aborted by caller");
+              process.stderr.write(
+                "[openhands-runtime] event=aborted emitting shutdown result\n",
+              );
+              const shutdownResult = processor.buildErrorResult(
+                "Run aborted by caller",
+              );
               sink.emitAgentEvent({
                 ...shutdownResult,
                 status: "shutdown",
@@ -242,7 +249,9 @@ export class OpenHandsRuntime implements AgentRuntime {
 
       child.on("error", (err: Error) => {
         const redactedMessage = redactApiKey(err.message, request.apiKey);
-        process.stderr.write(`[openhands-runtime] event=spawn_error message=${redactedMessage}\n`);
+        process.stderr.write(
+          `[openhands-runtime] event=spawn_error message=${redactedMessage}\n`,
+        );
         sink.emitRaw({
           type: "system",
           subtype: "sdk_stderr",
@@ -250,7 +259,9 @@ export class OpenHandsRuntime implements AgentRuntime {
           timestamp: Date.now(),
         });
         if (!processor.hasEmittedResult()) {
-          const errorResult = processor.buildErrorResult(`Failed to spawn OpenHands runner: ${redactedMessage}`);
+          const errorResult = processor.buildErrorResult(
+            `Failed to spawn OpenHands runner: ${redactedMessage}`,
+          );
           sink.emitAgentEvent(errorResult);
         }
         resolve();

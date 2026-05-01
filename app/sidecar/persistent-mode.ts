@@ -1,7 +1,10 @@
 import { createInterface, type Interface } from "node:readline";
 import { type SidecarConfig, parseSidecarConfig } from "./config.js";
 import { StreamSession } from "./stream-session.js";
-import { ClaudeRuntime, toOneShotRunRequest } from "./runtime/claude-runtime.js";
+import {
+  ClaudeRuntime,
+  toOneShotRunRequest,
+} from "./runtime/claude-runtime.js";
 import { OpenHandsRuntime } from "./runtime/openhands-runtime.js";
 import { createRecordRuntimeSink } from "./runtime/sink.js";
 
@@ -282,7 +285,9 @@ export async function runPersistent(
       // Wait for active streaming sessions to finish so their final
       // run_result events are emitted before the process exits.
       if (activeSessions.size > 0) {
-        const sessionDrains = Array.from(activeSessions.values()).map((s) => s.queryDone);
+        const sessionDrains = Array.from(activeSessions.values()).map(
+          (s) => s.queryDone,
+        );
         process.stderr.write(
           `[sidecar] Draining ${sessionDrains.length} active stream session(s)\n`,
         );
@@ -294,7 +299,9 @@ export async function runPersistent(
     }
 
     if (message.type === "cancel") {
-      process.stderr.write(`[sidecar] Cancel request for ${message.request_id}\n`);
+      process.stderr.write(
+        `[sidecar] Cancel request for ${message.request_id}\n`,
+      );
       // Rust sends cancel when a request times out.
       // Abort the matching in-flight request so the SDK stops waiting.
       if (currentAbort && currentRequestId === message.request_id) {
@@ -373,7 +380,8 @@ export async function runPersistent(
     }
 
     if (message.type === "stream_question_answer") {
-      const { request_id, session_id, tool_use_id, questions, answers } = message;
+      const { request_id, session_id, tool_use_id, questions, answers } =
+        message;
       process.stderr.write(
         `[sidecar] Stream question answer: session=${session_id} request=${request_id} tool=${tool_use_id}\n`,
       );
@@ -390,7 +398,12 @@ export async function runPersistent(
       }
 
       try {
-        session.answerQuestion(request_id, tool_use_id, questions as never, answers);
+        session.answerQuestion(
+          request_id,
+          tool_use_id,
+          questions as never,
+          answers,
+        );
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         writeLine(
@@ -405,7 +418,9 @@ export async function runPersistent(
 
     if (message.type === "stream_cancel") {
       const { session_id } = message;
-      process.stderr.write(`[sidecar] Stream cancel (interrupt): session=${session_id}\n`);
+      process.stderr.write(
+        `[sidecar] Stream cancel (interrupt): session=${session_id}\n`,
+      );
 
       const session = activeSessions.get(session_id);
       if (session) {
@@ -470,8 +485,7 @@ export async function runPersistent(
             abortController.signal,
           );
         } catch (err) {
-          const errorMessage =
-            err instanceof Error ? err.message : String(err);
+          const errorMessage = err instanceof Error ? err.message : String(err);
           writeLine(
             wrapWithRequestId(request_id, {
               type: "error",

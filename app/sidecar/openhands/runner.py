@@ -16,6 +16,7 @@ import json
 import sys
 import time
 import traceback
+from pathlib import Path
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -76,39 +77,20 @@ def emit_result(
 _OPENHANDS_IMPORT_ERROR: str | None = None
 
 try:
-    # OpenHands package layout may vary across versions; try the most likely paths.
-    try:
-        from openhands.core.main import main as _openhands_main  # type: ignore[import]
-    except ImportError:
-        _openhands_main = None  # type: ignore[assignment]
-
-    try:
-        from openhands.llm.llm import LLM  # type: ignore[import]
-    except ImportError:
-        try:
-            from openhands.llm import LLM  # type: ignore[import]
-        except ImportError:
-            LLM = None  # type: ignore[assignment]
-
-    try:
-        from openhands.core.config import AppConfig  # type: ignore[import]
-    except ImportError:
-        AppConfig = None  # type: ignore[assignment]
-
-    if all(x is None for x in [_openhands_main, LLM]):
-        _OPENHANDS_IMPORT_ERROR = (
-            "OpenHands SDK not installed or no usable entry point found. "
-            "Install dev dependencies from app/sidecar/openhands/requirements.txt"
-        )
+    from openhands.sdk import Agent, AgentContext, Conversation, LLM, Tool  # type: ignore[import]
+    from openhands.sdk.context.skills import load_project_skills, load_skills_from_dir  # type: ignore[import]
+    from openhands.tools.file_editor import FileEditorTool  # type: ignore[import]
+    from openhands.tools.task_tracker import TaskTrackerTool  # type: ignore[import]
+    from openhands.tools.terminal import TerminalTool  # type: ignore[import]
 
 except ImportError as exc:
     _OPENHANDS_IMPORT_ERROR = (
         f"OpenHands SDK not installed ({exc}). "
         "Install dev dependencies from app/sidecar/openhands/requirements.txt"
     )
-    _openhands_main = None  # type: ignore[assignment]
-    LLM = None  # type: ignore[assignment]
-    AppConfig = None  # type: ignore[assignment]
+    Agent = AgentContext = Conversation = LLM = Tool = None  # type: ignore[assignment]
+    load_project_skills = load_skills_from_dir = None  # type: ignore[assignment]
+    FileEditorTool = TaskTrackerTool = TerminalTool = None  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -141,77 +123,117 @@ def parse_max_iterations(request: dict[str, Any]) -> int:
 
 
 # ---------------------------------------------------------------------------
-# OpenHands run via AppConfig / main
+# OpenHands SDK run
 # ---------------------------------------------------------------------------
 
 
-def run_via_openhands_main(request: dict[str, Any]) -> str:
-    """
-    Attempt to drive OpenHands through its `main()` entry point.
+def _read_agent_file(workspace_skill_dir: str, agent_name: str | None) -> str:
+    if not agent_name:
+        return ""
+    path = Path(workspace_skill_dir) / ".agents" / "agents" / f"{agent_name}.md"
+    if not path.is_file():
+        return ""
+    content = path.read_text(encoding="utf-8")
+    if content.startswith("---"):
+        parts = content.split("---", 2)
+        if len(parts) == 3:
+            return parts[2].strip()
+    return content.strip()
 
-    The OpenHands `main()` function accepts an `AppConfig` and returns the
-    final agent state.  This is the most stable public API surface.
-    """
-    if _openhands_main is None or AppConfig is None:
-        raise RuntimeError("openhands.core.main.main or AppConfig not available")
+
+def _load_agent_skills(workspace_skill_dir: str) -> list[Any]:
+    skills: list[Any] = []
+    if load_project_skills is not None:
+        try:
+            skills.extend(load_project_skills(workspace_dir=workspace_skill_dir))
+        except Exception as exc:
+            print(f"[openhands-runner] project skill load warning: {exc}", file=sys.stderr)
+    skills_dir = Path(workspace_skill_dir) / ".agents" / "skills"
+    if skills_dir.is_dir() and load_skills_from_dir is not None:
+        try:
+            _, _, agent_skills = load_skills_from_dir(str(skills_dir))
+            skills.extend(agent_skills.values())
+        except Exception as exc:
+            print(f"[openhands-runner] AgentSkills load warning: {exc}", file=sys.stderr)
+    return skills
+
+
+def _normalize_tool_name(name: str) -> str:
+    return name.strip().replace("-", "_").lower()
+
+
+def _build_tools(request: dict[str, Any]) -> list[Any]:
+    requested = {_normalize_tool_name(name) for name in request.get("allowedTools") or []}
+    include_all = not requested
+    tools: list[Any] = []
+    if include_all or requested.intersection({"bash", "terminal", "terminaltool"}):
+        tools.append(Tool(name=TerminalTool.name))
+    if include_all or requested.intersection(
+        {"read", "write", "edit", "glob", "grep", "file_editor", "fileeditortool"}
+    ):
+        tools.append(Tool(name=FileEditorTool.name))
+    tools.append(Tool(name=TaskTrackerTool.name))
+    return tools
+
+
+def run_via_openhands_sdk(request: dict[str, Any]) -> str:
+    if any(x is None for x in [Agent, AgentContext, Conversation, LLM, Tool]):
+        raise RuntimeError(_OPENHANDS_IMPORT_ERROR or "OpenHands SDK not available")
 
     prompt: str = request["prompt"]
-    model: str = request.get("model") or "claude-sonnet-4-6"
+    model: str = request.get("model") or "anthropic/claude-sonnet-4-6"
     model_base_url: str | None = request.get("modelBaseUrl")
-    agent_name: str = request.get("agentName") or "CodeActAgent"
+    agent_name: str | None = request.get("agentName")
     api_key: str = request["apiKey"]
-    workspace_root: str = request.get("workspaceRootDir", ".")
-    workspace_skill_dir: str | None = request.get("workspaceSkillDir")
-    max_iterations = parse_max_iterations(request)
+    workspace_skill_dir: str = request.get("workspaceSkillDir") or request.get("workspaceRootDir") or "."
 
     print(
-        f"[openhands-runner] starting run via openhands.core.main model={model}",
+        f"[openhands-runner] starting SDK conversation model={model} agent={agent_name or 'default'}",
         file=sys.stderr,
     )
 
-    config = AppConfig()
-    config.default_agent = agent_name
+    llm_kwargs: dict[str, Any] = {"model": model, "api_key": api_key}
+    if model_base_url:
+        llm_kwargs["base_url"] = model_base_url
+    llm = LLM(**llm_kwargs)
 
-    # Set LLM config — attribute names differ across OpenHands versions.
-    llm_cfg = getattr(config, "llm", None) or getattr(config, "get_llm_config", lambda: None)()
-    if llm_cfg is not None:
-        llm_cfg.model = model
-        llm_cfg.api_key = api_key
-        if model_base_url:
-            llm_cfg.base_url = model_base_url
-    else:
-        # Fallback: set on config directly
-        config.model = model  # type: ignore[attr-defined]
-        config.api_key = api_key  # type: ignore[attr-defined]
-        if model_base_url:
-            config.base_url = model_base_url  # type: ignore[attr-defined]
+    agent_instructions = _read_agent_file(workspace_skill_dir, agent_name)
+    skills = _load_agent_skills(workspace_skill_dir)
+    agent_context = AgentContext(
+        skills=skills,
+        system_message_suffix=agent_instructions or None,
+    )
+    agent = Agent(
+        llm=llm,
+        tools=_build_tools(request),
+        agent_context=agent_context,
+    )
+    conversation = Conversation(agent=agent, workspace=workspace_skill_dir)
 
-    config.workspace_base = workspace_root  # type: ignore[attr-defined]
-    if workspace_skill_dir:
-        config.workspace_mount_path = workspace_skill_dir  # type: ignore[attr-defined]
-    config.max_iterations = max_iterations  # type: ignore[attr-defined]
+    emit_openhands_event("message", text=f"Starting OpenHands agent: {agent_name or 'default'}")
+    conversation.send_message(prompt)
+    try:
+        result = conversation.run(max_iterations=parse_max_iterations(request))
+    except TypeError:
+        result = conversation.run()
 
-    # Emit a synthetic progress event so callers see activity
-    emit_openhands_event("message", text=f"Starting OpenHands agent with prompt: {prompt[:120]}")
-
-    result_state = _openhands_main(config=config, task_str=prompt)
-
-    # Extract last assistant message from the event stream
-    final_text = _extract_final_text(result_state)
-    return final_text
+    return _extract_final_text(result) or _extract_final_text(conversation)
 
 
-def _extract_final_text(state: Any) -> str:
-    """Pull the final assistant message text from an OpenHands state object."""
-    if state is None:
+def _extract_final_text(source: Any) -> str:
+    """Pull the final assistant message text from an OpenHands state/conversation object."""
+    if source is None:
         return ""
 
-    # State.history contains event objects
+    # Conversation objects expose their event log as conversation.state.events.
+    state = getattr(source, "state", source)
     history = getattr(state, "history", None)
-    if history is None:
-        return str(state)
+    events_attr = getattr(state, "events", None)
+    events_source = history if history is not None else events_attr
+    if events_source is None:
+        return ""
 
-    events = list(history)
+    events = list(events_source)
     for event in reversed(events):
         # AgentFinishAction / MessageAction both have a .message attribute
         msg = getattr(event, "message", None) or getattr(event, "content", None)
@@ -222,114 +244,29 @@ def _extract_final_text(state: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Fallback: conversational run via LLM directly (no full agent loop)
-# ---------------------------------------------------------------------------
-
-
-def run_via_llm_direct(request: dict[str, Any]) -> str:
-    """
-    Fallback path when the OpenHands agent loop is not accessible.
-
-    Uses the OpenHands LLM wrapper to send a single completion request.
-    This does NOT use real tools or a sandbox — it's a plain completion call.
-    """
-    if LLM is None:
-        raise RuntimeError("openhands.llm.LLM not available")
-
-    prompt: str = request["prompt"]
-    system_prompt: str | None = request.get("systemPrompt")
-    model: str = request.get("model") or "claude-sonnet-4-6"
-    model_base_url: str | None = request.get("modelBaseUrl")
-    api_key: str = request["apiKey"]
-
-    print(
-        f"[openhands-runner] using LLM direct path model={model}",
-        file=sys.stderr,
-    )
-
-    # OpenHands LLM config uses either a dict or an LLMConfig object
-    try:
-        from openhands.core.config import LLMConfig  # type: ignore[import]
-
-        llm_config = LLMConfig(model=model, api_key=api_key)
-        if model_base_url:
-            llm_config.base_url = model_base_url
-    except ImportError:
-        llm_config = {"model": model, "api_key": api_key}  # type: ignore[assignment]
-        if model_base_url:
-            llm_config["base_url"] = model_base_url
-
-    llm = LLM(config=llm_config)
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": prompt})
-
-    emit_openhands_event("message", text=f"Sending request to LLM (model={model})")
-
-    response = llm.completion(messages=messages)
-
-    # Different OpenHands versions expose the text differently
-    if hasattr(response, "choices"):
-        return response.choices[0].message.content or ""
-    if hasattr(response, "content"):
-        content = response.content
-        if isinstance(content, list):
-            return " ".join(getattr(c, "text", str(c)) for c in content)
-        return str(content)
-    return str(response)
-
-
-# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
 
 def run(request: dict[str, Any]) -> None:
-    # Use full agent loop when available, otherwise fall back to direct LLM call.
-    # This is an import-time availability check only — if openhands fails at
-    # runtime the error is surfaced directly; the LLM fallback is not retried.
     result_text: str = ""
     run_error: str | None = None
     api_key = request.get("apiKey", "")
 
-    if _openhands_main is not None and AppConfig is not None:
-        try:
-            result_text = run_via_openhands_main(request)
-            emit_openhands_event(
-                "tool_call",
-                tool_name="OpenHandsAgent",
-                summary="Agent run completed",
-            )
-        except Exception as exc:
-            print(
-                f"[openhands-runner] openhands main path failed: {_redact(str(exc), api_key)}",
-                file=sys.stderr,
-            )
-            _print_redacted_exception(exc, api_key)
-            run_error = _redact(str(exc), api_key)
-    elif LLM is not None:
-        try:
-            result_text = run_via_llm_direct(request)
-            emit_openhands_event(
-                "tool_call",
-                tool_name="LLMDirect",
-                summary="LLM direct call completed",
-            )
-        except Exception as exc:
-            print(
-                f"[openhands-runner] LLM direct path failed: {_redact(str(exc), api_key)}",
-                file=sys.stderr,
-            )
-            _print_redacted_exception(exc, api_key)
-            run_error = _redact(str(exc), api_key)
-    else:
-        run_error = (
-            _OPENHANDS_IMPORT_ERROR
-            or "No usable OpenHands execution path found. "
-            "Install dev dependencies from app/sidecar/openhands/requirements.txt"
+    try:
+        result_text = run_via_openhands_sdk(request)
+        emit_openhands_event(
+            "tool_call",
+            tool_name="OpenHandsSDK",
+            summary="Agent run completed",
         )
+    except Exception as exc:
+        print(
+            f"[openhands-runner] SDK run failed: {_redact(str(exc), api_key)}",
+            file=sys.stderr,
+        )
+        _print_redacted_exception(exc, api_key)
+        run_error = _redact(str(exc), api_key)
 
     if run_error is not None:
         emit_result(status="error", error_message=run_error)

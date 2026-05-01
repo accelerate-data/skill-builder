@@ -37,6 +37,7 @@ pub struct SidecarPool {
     /// Streaming session log files, keyed by session_id.
     /// Follow-up messages in a session clone from here to ensure all turns
     /// are logged to the same JSONL file.
+    #[allow(dead_code)]
     pub(super) session_logs: Arc<Mutex<HashMap<String, RequestLogFile>>>,
     /// Handle for the background idle cleanup task. Aborted on pool drop.
     pub(super) idle_cleanup_task: Arc<Mutex<Option<JoinHandle<()>>>>,
@@ -229,8 +230,8 @@ impl SidecarPool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::process::RequestLogFile;
+    use super::*;
     use std::sync::atomic::Ordering;
 
     #[tokio::test]

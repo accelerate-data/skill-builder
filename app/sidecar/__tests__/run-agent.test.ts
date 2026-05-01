@@ -16,7 +16,12 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import * as fsPromises from "node:fs/promises";
-import { runAgentRequest, emitSystemEvent, selectPluginPaths, discoverInstalledPlugins } from "../run-agent.js";
+import {
+  runAgentRequest,
+  emitSystemEvent,
+  selectPluginPaths,
+  discoverInstalledPlugins,
+} from "../run-agent.js";
 import type { SidecarConfig } from "../config.js";
 
 const mockQuery = vi.mocked(query);
@@ -24,8 +29,9 @@ const mockQuery = vi.mocked(query);
 function findRunResult(messages: Record<string, unknown>[]) {
   return messages.find(
     (message) =>
-      message.type === "agent_event"
-      && (message.event as Record<string, unknown> | undefined)?.type === "run_result",
+      message.type === "agent_event" &&
+      (message.event as Record<string, unknown> | undefined)?.type ===
+        "run_result",
   );
 }
 
@@ -66,7 +72,10 @@ describe("runAgentRequest", () => {
     const messages: Record<string, unknown>[] = [];
 
     await runAgentRequest(
-      baseConfig({ mode: "one-shot", allowedTools: ["Read", "AskUserQuestion"] }),
+      baseConfig({
+        mode: "one-shot",
+        allowedTools: ["Read", "AskUserQuestion"],
+      }),
       (msg) => messages.push(msg),
     );
 
@@ -90,7 +99,12 @@ describe("runAgentRequest", () => {
           usage: { input_tokens: 10, output_tokens: 5 },
         },
       },
-      { type: "result", subtype: "success", usage: { input_tokens: 50, output_tokens: 20 }, total_cost_usd: 0.01 },
+      {
+        type: "result",
+        subtype: "success",
+        usage: { input_tokens: 50, output_tokens: 20 },
+        total_cost_usd: 0.01,
+      },
     ];
 
     async function* fakeConversation() {
@@ -118,11 +132,13 @@ describe("runAgentRequest", () => {
     expect(runResult).toBeDefined();
 
     // Verify display items
-    const outputItem = (displayItems[0] as Record<string, unknown>).item as Record<string, unknown>;
+    const outputItem = (displayItems[0] as Record<string, unknown>)
+      .item as Record<string, unknown>;
     expect(outputItem.type).toBe("output");
     expect(outputItem.outputText).toBe("step 1");
 
-    const resultItem = (displayItems[1] as Record<string, unknown>).item as Record<string, unknown>;
+    const resultItem = (displayItems[1] as Record<string, unknown>)
+      .item as Record<string, unknown>;
     expect(resultItem.type).toBe("result");
     expect(resultItem.resultStatus).toBe("success");
   });
@@ -137,9 +153,15 @@ describe("runAgentRequest", () => {
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
     // System events come first: sdk_plugins_debug, init_start, sdk_ready
-    expect(messages[0]).toMatchObject({ type: "system", subtype: "sdk_plugins_debug" });
+    expect(messages[0]).toMatchObject({
+      type: "system",
+      subtype: "sdk_plugins_debug",
+    });
 
-    expect(messages[1]).toMatchObject({ type: "system", subtype: "init_start" });
+    expect(messages[1]).toMatchObject({
+      type: "system",
+      subtype: "init_start",
+    });
     expect(messages[1]).toHaveProperty("timestamp");
     expect(typeof messages[1].timestamp).toBe("number");
 
@@ -165,14 +187,20 @@ describe("runAgentRequest", () => {
 
     // sdk_plugins_debug, init_start, error display item, then error run_result
     const errorItem = messages.find(
-      (m) => m.type === "display_item" && (m as Record<string, unknown>).item &&
-        ((m as Record<string, unknown>).item as Record<string, unknown>).type === "error",
+      (m) =>
+        m.type === "display_item" &&
+        (m as Record<string, unknown>).item &&
+        ((m as Record<string, unknown>).item as Record<string, unknown>)
+          .type === "error",
     );
     expect(errorItem).toBeDefined();
 
     const runResult = messages.find(
-      (m) => m.type === "agent_event" && (m as Record<string, unknown>).event &&
-        ((m as Record<string, unknown>).event as Record<string, unknown>).type === "run_result",
+      (m) =>
+        m.type === "agent_event" &&
+        (m as Record<string, unknown>).event &&
+        ((m as Record<string, unknown>).event as Record<string, unknown>)
+          .type === "run_result",
     );
     expect(runResult).toBeDefined();
   });
@@ -186,10 +214,7 @@ describe("runAgentRequest", () => {
     const originalKey = process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
     try {
-      await runAgentRequest(
-        baseConfig({ apiKey: "sk-my-test-key" }),
-        vi.fn(),
-      );
+      await runAgentRequest(baseConfig({ apiKey: "sk-my-test-key" }), vi.fn());
       // API key should NOT be set on process.env (no global mutation)
       expect(process.env.ANTHROPIC_API_KEY).toBeUndefined();
 
@@ -217,7 +242,7 @@ describe("runAgentRequest", () => {
 
     const callArgs = mockQuery.mock.calls[0][0];
     expect(callArgs.options).toMatchObject({
-      cwd: "/tmp/test",  // SDK cwd derived from workspaceSkillDir
+      cwd: "/tmp/test", // SDK cwd derived from workspaceSkillDir
       maxTurns: 50,
       permissionMode: "bypassPermissions",
     });
@@ -263,11 +288,14 @@ describe("runAgentRequest", () => {
       };
       throw new Error("stream failed after startup");
     }
-    mockQuery.mockReturnValue(failingConversation() as ReturnType<typeof query>);
+    mockQuery.mockReturnValue(
+      failingConversation() as ReturnType<typeof query>,
+    );
 
     const messages: Record<string, unknown>[] = [];
-    await runAgentRequest(baseConfig({ skillName: "sales-analysis", stepId: -10 }), (msg) =>
-      messages.push(msg),
+    await runAgentRequest(
+      baseConfig({ skillName: "sales-analysis", stepId: -10 }),
+      (msg) => messages.push(msg),
     );
 
     const displayItems = messages.filter((m) => m.type === "display_item");
@@ -276,7 +304,8 @@ describe("runAgentRequest", () => {
     expect(displayItems).toHaveLength(2);
     expect(runResult).toBeDefined();
 
-    const errorItem = (displayItems[1] as Record<string, unknown>).item as Record<string, unknown>;
+    const errorItem = (displayItems[1] as Record<string, unknown>)
+      .item as Record<string, unknown>;
     expect(errorItem.type).toBe("error");
     expect(errorItem.errorMessage).toBe("stream failed after startup");
 
@@ -295,13 +324,19 @@ describe("selectPluginPaths", () => {
   it("returns no plugins when none are explicitly required", () => {
     expect(
       selectPluginPaths(
-        ["/workspace/.claude/plugins/vd-agent", "/workspace/.claude/plugins/skill-creator"],
+        [
+          "/workspace/.claude/plugins/vd-agent",
+          "/workspace/.claude/plugins/skill-creator",
+        ],
         undefined,
       ),
     ).toEqual([]);
     expect(
       selectPluginPaths(
-        ["/workspace/.claude/plugins/vd-agent", "/workspace/.claude/plugins/skill-creator"],
+        [
+          "/workspace/.claude/plugins/vd-agent",
+          "/workspace/.claude/plugins/skill-creator",
+        ],
         [],
       ),
     ).toEqual([]);
@@ -350,7 +385,10 @@ describe("result message error subtypes", () => {
     };
 
     async function* fakeConversation() {
-      yield { type: "assistant", message: { content: [{ type: "text", text: "Working..." }] } };
+      yield {
+        type: "assistant",
+        message: { content: [{ type: "text", text: "Working..." }] },
+      };
       yield errorResult;
     }
     mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
@@ -446,7 +484,9 @@ describe("result message error subtypes", () => {
       };
       // No "result" message — iterator ends
     }
-    mockQuery.mockReturnValue(noResultConversation() as ReturnType<typeof query>);
+    mockQuery.mockReturnValue(
+      noResultConversation() as ReturnType<typeof query>,
+    );
 
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
@@ -468,14 +508,17 @@ describe("result message error subtypes", () => {
         message: { content: [], usage: null },
       };
     }
-    mockQuery.mockReturnValue(authErrorConversation() as ReturnType<typeof query>);
+    mockQuery.mockReturnValue(
+      authErrorConversation() as ReturnType<typeof query>,
+    );
 
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
 
     const runResults = messages.filter(
-      (m) => m.type === "agent_event"
-        && (m.event as Record<string, unknown>)?.type === "run_result",
+      (m) =>
+        m.type === "agent_event" &&
+        (m.event as Record<string, unknown>)?.type === "run_result",
     );
     // Exactly one run_result — from the assistant error handler
     // (the missing-result guard should see resultEmitted=true and skip)
@@ -484,7 +527,6 @@ describe("result message error subtypes", () => {
     expect(data.resultSubtype).toBe("error_authentication");
   });
 });
-
 
 describe("runAgentRequest passes prompt directly to query", () => {
   beforeEach(() => {
@@ -524,12 +566,21 @@ describe("runAgentRequest — abort via external signal", () => {
       // External signal fires after first message
       externalController.abort();
       // One more yield that should be skipped due to abort check
-      yield { type: "result", subtype: "success", usage: { input_tokens: 10, output_tokens: 5 }, total_cost_usd: 0.001 };
+      yield {
+        type: "result",
+        subtype: "success",
+        usage: { input_tokens: 10, output_tokens: 5 },
+        total_cost_usd: 0.001,
+      };
     }
     mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
 
     const messages: Record<string, unknown>[] = [];
-    await runAgentRequest(baseConfig(), (msg) => messages.push(msg), externalController.signal);
+    await runAgentRequest(
+      baseConfig(),
+      (msg) => messages.push(msg),
+      externalController.signal,
+    );
 
     const runResult = messages.find(
       (m) =>
@@ -550,7 +601,12 @@ describe("runAgentRequest — stop hook integration", () => {
 
   it("passes a Stop hook in SDK options that prevents termination while sub-agents are active", async () => {
     async function* fakeConversation() {
-      yield { type: "result", subtype: "success", usage: { input_tokens: 10, output_tokens: 5 }, total_cost_usd: 0.001 };
+      yield {
+        type: "result",
+        subtype: "success",
+        usage: { input_tokens: 10, output_tokens: 5 },
+        total_cost_usd: 0.001,
+      };
     }
     mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
 
@@ -576,24 +632,39 @@ describe("runAgentRequest — stop hook integration", () => {
         type: "assistant",
         message: {
           content: [
-            { type: "tool_use", id: "tu_orphan", name: "Bash", input: { command: "sleep 10" } },
+            {
+              type: "tool_use",
+              id: "tu_orphan",
+              name: "Bash",
+              input: { command: "sleep 10" },
+            },
           ],
           usage: { input_tokens: 10, output_tokens: 5 },
         },
       };
       externalController.abort();
-      yield { type: "result", subtype: "success", usage: { input_tokens: 10, output_tokens: 5 }, total_cost_usd: 0.001 };
+      yield {
+        type: "result",
+        subtype: "success",
+        usage: { input_tokens: 10, output_tokens: 5 },
+        total_cost_usd: 0.001,
+      };
     }
     mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
 
     const messages: Record<string, unknown>[] = [];
-    await runAgentRequest(baseConfig(), (msg) => messages.push(msg), externalController.signal);
+    await runAgentRequest(
+      baseConfig(),
+      (msg) => messages.push(msg),
+      externalController.signal,
+    );
 
     // Should have an orphaned tool call display item
     const orphanedItems = messages.filter(
       (m) =>
         m.type === "display_item" &&
-        ((m as Record<string, unknown>).item as Record<string, unknown>)?.toolStatus === "orphaned",
+        ((m as Record<string, unknown>).item as Record<string, unknown>)
+          ?.toolStatus === "orphaned",
     );
     expect(orphanedItems.length).toBeGreaterThanOrEqual(1);
 
@@ -610,14 +681,21 @@ describe("runAgentRequest — stop hook integration", () => {
         type: "assistant",
         message: {
           content: [
-            { type: "tool_use", id: "tu_fail", name: "Read", input: { path: "/tmp/x.ts" } },
+            {
+              type: "tool_use",
+              id: "tu_fail",
+              name: "Read",
+              input: { path: "/tmp/x.ts" },
+            },
           ],
           usage: { input_tokens: 10, output_tokens: 5 },
         },
       };
       throw new Error("stream crashed");
     }
-    mockQuery.mockReturnValue(failingConversation() as ReturnType<typeof query>);
+    mockQuery.mockReturnValue(
+      failingConversation() as ReturnType<typeof query>,
+    );
 
     const messages: Record<string, unknown>[] = [];
     await runAgentRequest(baseConfig(), (msg) => messages.push(msg));
@@ -625,7 +703,8 @@ describe("runAgentRequest — stop hook integration", () => {
     const orphanedItems = messages.filter(
       (m) =>
         m.type === "display_item" &&
-        ((m as Record<string, unknown>).item as Record<string, unknown>)?.toolStatus === "orphaned",
+        ((m as Record<string, unknown>).item as Record<string, unknown>)
+          ?.toolStatus === "orphaned",
     );
     expect(orphanedItems.length).toBeGreaterThanOrEqual(1);
 

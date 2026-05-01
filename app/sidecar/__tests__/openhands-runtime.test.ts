@@ -14,7 +14,9 @@ import type { OneShotRunRequest, RuntimeSink } from "../runtime/types.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeRequest(overrides: Partial<OneShotRunRequest> = {}): OneShotRunRequest {
+function makeRequest(
+  overrides: Partial<OneShotRunRequest> = {},
+): OneShotRunRequest {
   return {
     mode: "one-shot",
     allowUserQuestions: false,
@@ -120,7 +122,9 @@ describe("OpenHandsRuntime.runOnce", () => {
         timestamp: Date.now(),
       }),
     ]);
-    mockSpawn.mockReturnValue(child as unknown as ReturnType<typeof childProcess.spawn>);
+    mockSpawn.mockReturnValue(
+      child as unknown as ReturnType<typeof childProcess.spawn>,
+    );
 
     const runtime = new OpenHandsRuntime();
     const { sink } = makeSink();
@@ -143,12 +147,16 @@ describe("OpenHandsRuntime.runOnce", () => {
         timestamp: Date.now(),
       }),
     ]);
-    mockSpawn.mockReturnValue(child as unknown as ReturnType<typeof childProcess.spawn>);
+    mockSpawn.mockReturnValue(
+      child as unknown as ReturnType<typeof childProcess.spawn>,
+    );
 
     const runtime = new OpenHandsRuntime();
     const { sink } = makeSink();
     await runtime.runOnce(
-      makeRequest({ pathToOpenHandsRunner: "/opt/skill-builder/openhands-runner" }),
+      makeRequest({
+        pathToOpenHandsRunner: "/opt/skill-builder/openhands-runner",
+      }),
       sink,
     );
 
@@ -166,6 +174,7 @@ describe("OpenHandsRuntime.runOnce", () => {
       modelBaseUrl: "https://models.example.com/v1",
       workspaceRootDir: "/tmp/workspace-root",
       workspaceSkillDir: "/tmp/workspace-root/plugin/skill",
+      allowedTools: ["file_editor", "terminal"],
     });
     let stdinWritten = "";
 
@@ -203,7 +212,9 @@ describe("OpenHandsRuntime.runOnce", () => {
       child.emit("close", 0);
     });
 
-    mockSpawn.mockReturnValue(child as unknown as ReturnType<typeof childProcess.spawn>);
+    mockSpawn.mockReturnValue(
+      child as unknown as ReturnType<typeof childProcess.spawn>,
+    );
 
     const runtime = new OpenHandsRuntime();
     const { sink } = makeSink();
@@ -216,8 +227,11 @@ describe("OpenHandsRuntime.runOnce", () => {
     expect(serialized.agentName).toBe("skill-writer-agent");
     expect(serialized.modelBaseUrl).toBe("https://models.example.com/v1");
     expect(serialized.maxTurns).toBe(50);
+    expect(serialized.allowedTools).toEqual(["file_editor", "terminal"]);
     expect(serialized.workspaceRootDir).toBe("/tmp/workspace-root");
-    expect(serialized.workspaceSkillDir).toBe("/tmp/workspace-root/plugin/skill");
+    expect(serialized.workspaceSkillDir).toBe(
+      "/tmp/workspace-root/plugin/skill",
+    );
   });
 
   it("serializes explicit maxTurns into the runner request", async () => {
@@ -257,7 +271,9 @@ describe("OpenHandsRuntime.runOnce", () => {
       child.emit("close", 0);
     });
 
-    mockSpawn.mockReturnValue(child as unknown as ReturnType<typeof childProcess.spawn>);
+    mockSpawn.mockReturnValue(
+      child as unknown as ReturnType<typeof childProcess.spawn>,
+    );
 
     const runtime = new OpenHandsRuntime();
     const { sink } = makeSink();
@@ -283,7 +299,9 @@ describe("OpenHandsRuntime.runOnce", () => {
         timestamp: Date.now(),
       }),
     ]);
-    mockSpawn.mockReturnValue(child as unknown as ReturnType<typeof childProcess.spawn>);
+    mockSpawn.mockReturnValue(
+      child as unknown as ReturnType<typeof childProcess.spawn>,
+    );
 
     const runtime = new OpenHandsRuntime();
     const { messages, sink } = makeSink();
@@ -304,7 +322,9 @@ describe("OpenHandsRuntime.runOnce", () => {
 
   it("emits error run_result when process exits with non-zero code and no result", async () => {
     const child = makeMockChild([], 1 /* non-zero exit code */);
-    mockSpawn.mockReturnValue(child as unknown as ReturnType<typeof childProcess.spawn>);
+    mockSpawn.mockReturnValue(
+      child as unknown as ReturnType<typeof childProcess.spawn>,
+    );
 
     const runtime = new OpenHandsRuntime();
     const { messages, sink } = makeSink();
@@ -344,7 +364,9 @@ describe("OpenHandsRuntime.runOnce", () => {
       });
     });
 
-    mockSpawn.mockReturnValue(child as unknown as ReturnType<typeof childProcess.spawn>);
+    mockSpawn.mockReturnValue(
+      child as unknown as ReturnType<typeof childProcess.spawn>,
+    );
 
     const controller = new AbortController();
 
@@ -370,11 +392,10 @@ describe("OpenHandsRuntime.runOnce", () => {
 
     // Should throw synchronously before spawning
     await expect(
-      runtime.runOnce(
-        makeRequest({ allowedTools: ["AskUserQuestion"] }),
-        sink,
-      ),
-    ).rejects.toThrow("one-shot runtime requests cannot include user-question tools");
+      runtime.runOnce(makeRequest({ allowedTools: ["AskUserQuestion"] }), sink),
+    ).rejects.toThrow(
+      "one-shot runtime requests cannot include user-question tools",
+    );
 
     // Should not have spawned anything
     expect(mockSpawn).not.toHaveBeenCalled();
@@ -412,14 +433,20 @@ describe("OpenHandsRuntime.runOnce", () => {
       child.emit("close", 0);
     });
 
-    mockSpawn.mockReturnValue(child as unknown as ReturnType<typeof childProcess.spawn>);
+    mockSpawn.mockReturnValue(
+      child as unknown as ReturnType<typeof childProcess.spawn>,
+    );
 
     const runtime = new OpenHandsRuntime();
     const { messages, sink } = makeSink();
     await runtime.runOnce(makeRequest(), sink);
 
     const stderrMsg = messages.find(
-      (m) => m.type === "system" && m.subtype === "sdk_stderr" && typeof m.data === "string" && (m.data as string).includes("python error"),
+      (m) =>
+        m.type === "system" &&
+        m.subtype === "sdk_stderr" &&
+        typeof m.data === "string" &&
+        (m.data as string).includes("python error"),
     );
     expect(stderrMsg).toBeDefined();
   });
@@ -455,7 +482,9 @@ describe("OpenHandsRuntime.runOnce", () => {
       child.emit("close", 0);
     });
 
-    mockSpawn.mockReturnValue(child as unknown as ReturnType<typeof childProcess.spawn>);
+    mockSpawn.mockReturnValue(
+      child as unknown as ReturnType<typeof childProcess.spawn>,
+    );
 
     const runtime = new OpenHandsRuntime();
     const { messages, sink } = makeSink();

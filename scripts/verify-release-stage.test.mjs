@@ -17,7 +17,7 @@ const WINDOWS_REQUIRED_PATHS = [
   "sidecar/dist/package.json",
   "sidecar/dist/bootstrap.js",
   "sidecar/dist/agent-runner.js",
-  "sidecar/dist/sdk/claude.exe",
+  "sidecar/dist/openhands/openhands-runner.exe",
   "agent-sources/plugins/skill-creator/LICENSE.txt",
   "agent-sources/skills/skill-test/SKILL.md",
   "workspace/CLAUDE.md",
@@ -30,7 +30,7 @@ const MACOS_REQUIRED_PATHS = [
   "Skill Builder.app/Contents/Resources/sidecar/dist/package.json",
   "Skill Builder.app/Contents/Resources/sidecar/dist/bootstrap.js",
   "Skill Builder.app/Contents/Resources/sidecar/dist/agent-runner.js",
-  "Skill Builder.app/Contents/Resources/sidecar/dist/sdk/claude",
+  "Skill Builder.app/Contents/Resources/sidecar/dist/openhands/openhands-runner",
   "Skill Builder.app/Contents/Resources/agent-sources/plugins/skill-creator/LICENSE.txt",
   "Skill Builder.app/Contents/Resources/agent-sources/skills/skill-test/SKILL.md",
   "Skill Builder.app/Contents/Resources/workspace/CLAUDE.md",
@@ -104,7 +104,7 @@ test("CLI prints missing paths and exits 1 when the stage is incomplete", () => 
     assert.match(result.stderr, /Release stage is missing 10 required path\(s\):/);
     assert.match(result.stderr, /- Skill Builder\.app/);
     assert.match(result.stderr, /- run\.sh/);
-    assert.match(result.stderr, /- Skill Builder\.app\/Contents\/Resources\/sidecar\/dist\/sdk\/claude/);
+    assert.match(result.stderr, /- Skill Builder\.app\/Contents\/Resources\/sidecar\/dist\/openhands\/openhands-runner/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

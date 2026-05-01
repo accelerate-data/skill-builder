@@ -286,9 +286,6 @@ pub async fn run_workflow_step(
         }
     }
 
-    // Ensure OpenHands agent files exist in the workspace skill directory.
-    ensure_workspace_prompts(&app, &workspace_path).await?;
-
     let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
     log::info!(
         "[run_workflow_step] settings: skills_path={} purpose={} intake={} industry={:?} function={:?}",
@@ -299,13 +296,20 @@ pub async fn run_workflow_step(
         settings.function_role,
     );
 
-    // Gate: reject disabled steps when guard conditions are active
-    let context_dir = crate::skill_paths::workspace_skill_dir(
+    let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
         Path::new(&workspace_path),
         &settings.plugin_slug,
         &skill_name,
-    )
-    .join("context");
+    );
+    std::fs::create_dir_all(&workspace_skill_dir)
+        .map_err(|e| format!("Failed to create workspace skill dir: {}", e))?;
+
+    // Ensure OpenHands agent files exist after the skill directory is present;
+    // deployment discovers workspace skill directories before copying `.agents`.
+    ensure_workspace_prompts(&app, &workspace_path).await?;
+
+    // Gate: reject disabled steps when guard conditions are active
+    let context_dir = workspace_skill_dir.join("context");
 
     if step_id >= 1 {
         let clarifications_path = context_dir.join("clarifications.json");

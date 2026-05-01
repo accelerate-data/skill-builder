@@ -776,6 +776,7 @@ impl SidecarPool {
 
     /// Start a streaming session on the sidecar.
     /// The first user message is embedded in the config.prompt field.
+    #[allow(dead_code)]
     pub async fn send_stream_start(
         &self,
         skill_name: &str,
@@ -851,6 +852,7 @@ impl SidecarPool {
     }
 
     /// Push a follow-up message into an active streaming session.
+    #[allow(dead_code)]
     pub async fn send_stream_message(
         &self,
         skill_name: &str,
@@ -959,7 +961,11 @@ impl SidecarPool {
     /// Interrupt the current turn without closing the session.
     /// The sidecar aborts the AbortController; the next stream_message
     /// resumes the conversation via the SDK's `resume` option.
-    pub async fn send_stream_cancel(&self, skill_name: &str, session_id: &str) -> Result<(), String> {
+    pub async fn send_stream_cancel(
+        &self,
+        skill_name: &str,
+        session_id: &str,
+    ) -> Result<(), String> {
         let message = serde_json::json!({
             "type": "stream_cancel",
             "session_id": session_id,
@@ -967,7 +973,10 @@ impl SidecarPool {
 
         let result = self.write_to_sidecar_stdin(skill_name, &message).await;
         if let Err(ref e) = result {
-            log::warn!("[send_stream_cancel] Failed for session '[REDACTED]': {}", e);
+            log::warn!(
+                "[send_stream_cancel] Failed for session '[REDACTED]': {}",
+                e
+            );
         } else {
             log::info!(
                 "[send_stream_cancel] session=[REDACTED] on skill '{}'",
@@ -986,7 +995,11 @@ impl SidecarPool {
         });
         let result = self.write_to_sidecar_stdin(skill_name, &message).await;
         if let Err(ref e) = result {
-            log::warn!("[send_cancel] Failed for request '[REDACTED]' on skill '{}': {}", skill_name, e);
+            log::warn!(
+                "[send_cancel] Failed for request '[REDACTED]' on skill '{}': {}",
+                skill_name,
+                e
+            );
         } else {
             log::info!("[send_cancel] request=[REDACTED] on skill '{}'", skill_name);
         }
