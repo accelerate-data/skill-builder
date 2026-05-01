@@ -79,6 +79,9 @@ pub struct SidecarConfig {
     /// Threaded through to `run_result` so persistence handlers can resolve the correct skill dir.
     #[serde(rename = "pluginSlug")]
     pub plugin_slug: String,
+    /// Selects the agent runtime backend. Defaults to "claude" when absent.
+    #[serde(rename = "runtimeProvider", skip_serializing_if = "Option::is_none")]
+    pub runtime_provider: Option<String>,
 }
 
 impl std::fmt::Debug for SidecarConfig {
@@ -102,6 +105,7 @@ impl std::fmt::Debug for SidecarConfig {
             .field("agent_name", &self.agent_name)
             .field("required_plugins", &self.required_plugins)
             .field("setting_sources", &self.setting_sources)
+            .field("runtime_provider", &self.runtime_provider)
             .finish()
     }
 }
@@ -236,6 +240,7 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            runtime_provider: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -289,6 +294,7 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            runtime_provider: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -331,6 +337,7 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            runtime_provider: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -376,6 +383,7 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            runtime_provider: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();

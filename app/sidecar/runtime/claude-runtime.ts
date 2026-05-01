@@ -75,6 +75,7 @@ export function toOneShotRunRequest(config: SidecarConfig): OneShotRunRequest {
     outputFormat: config.outputFormat,
     promptSuggestions: config.promptSuggestions,
     pathToClaudeCodeExecutable: config.pathToClaudeCodeExecutable,
+    runtimeProvider: config.runtimeProvider,
     context: {
       skillName: config.skillName,
       stepId: config.stepId,
@@ -109,6 +110,7 @@ export function toClaudeSidecarConfig(request: OneShotRunRequest | StreamingSess
     outputFormat: request.outputFormat,
     promptSuggestions: request.promptSuggestions,
     pathToClaudeCodeExecutable: request.pathToClaudeCodeExecutable,
+    runtimeProvider: request.runtimeProvider,
     skillName: request.context.skillName,
     stepId: request.context.stepId,
     workflowSessionId: request.context.workflowSessionId,

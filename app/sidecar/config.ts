@@ -37,6 +37,8 @@ export interface SidecarConfig {
   /** Plugin slug for the skill (from plugin-paths.json: {root}/{plugin_slug}/{skill_name}).
    * Threaded through to run_result so persistence handlers can resolve the correct skill dir. */
   pluginSlug: string;
+  /** Selects the agent runtime backend. Defaults to "claude" when absent. */
+  runtimeProvider?: "claude" | "openhands";
 }
 
 // --- Validation helpers ---------------------------------------------------
@@ -113,6 +115,7 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   assertOptStringIn(c, "permissionMode", ["default", "acceptEdits", "bypassPermissions", "plan"]);
   assertOptStringIn(c, "effort", ["low", "medium", "high", "max"]);
   assertOptStringIn(c, "runSource", ["workflow", "refine", "test", "gate-eval"]);
+  assertOptStringIn(c, "runtimeProvider", ["claude", "openhands"]);
 
   // Optional numeric fields
   assertOptPositiveInt(c, "maxTurns");
