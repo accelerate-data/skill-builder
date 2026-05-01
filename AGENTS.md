@@ -76,6 +76,17 @@ Use these folder boundaries for documentation work:
 
 Read `app/plugin-paths.json` — it defines the canonical layout for all skill file paths.
 
+#### Data And Error Boundaries
+
+- SQLite mutations must use bound parameters, not string-concatenated SQL.
+- Usage and log snapshot records should stay immutable when parent entities are
+  renamed or deleted.
+- Persisted strings that may be empty need backend guards. Frontend `??`
+  defaults do not catch `""`, and empty model/config values can become
+  downstream API errors.
+- User input, Tauri IPC payloads, and external API responses must be validated
+  at the boundary.
+
 #### Frontend Server State
 
 Request/response backend data belongs in TanStack Query hooks under
@@ -126,7 +137,8 @@ Update stale entries in the same commit that introduced the structural change, n
 
 ## Logging
 
-Every new feature must include logging. Canonical logging conventions and log-level guidance live in `.claude/rules/logging-policy.md`.
+Every new feature must include logging. Repo-specific logging requirements live
+in `.claude/rules/logging-policy.md`.
 
 ## Gotchas
 

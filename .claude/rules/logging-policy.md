@@ -1,104 +1,29 @@
-# Logging Policy
+# Logging Rules
 
-This policy defines required logging behavior across frontend, Rust backend, sidecar, and Python orchestration code.
+Keep logging useful, structured, and safe. Generic logging hygiene still
+applies; this file records repo-specific requirements.
 
-## Scope
+## Required Rules
 
-Applies to:
+- Every new feature must include logging at the runtime boundary it changes.
+- Rust `#[tauri::command]` handlers log `info!` on entry with key non-sensitive
+  params and `error!` on failure.
+- Sidecar logs go to `stderr` only. `stdout` is reserved for the sidecar JSONL
+  protocol.
+- Multi-step operations should carry an existing `runId` or request id in
+  significant frontend, Rust, and sidecar logs.
+- Never log API keys, OAuth tokens, session tokens, passwords, private keys,
+  connection strings, or raw sensitive payloads.
 
-- `app/src/**` (frontend)
-- `app/src-tauri/**` (Rust backend)
-- `app/sidecar/**` (Node/TypeScript sidecar)
+## File-Based Debug Logs
 
-## Level Usage
+Autonomous multi-step features may add supplementary file logs when normal logs
+are not enough for diagnosis. File-log writes must be best effort and must never
+break the main feature.
 
-Use these levels consistently:
+Use the description-optimization pattern when applicable:
 
-- `error`: operation failed, user impact likely
-- `warn`/`warning`: unexpected but recoverable
-- `info`: key lifecycle events and state transitions
-- `debug`: intermediate troubleshooting details
-
-## Sensitive Data Rules
-
-Never log secrets or sensitive values, including:
-
-- API keys, OAuth tokens, session tokens, passwords, private keys
-- raw connection strings and credentials
-- PII values and sensitive payload fields
-
-If correlation is required, log redacted/masked forms only.
-
-## Redaction Rules
-
-When sensitive fields may appear in logs:
-
-1. redact by key name before logging (`token`, `password`, `secret`, `authorization`, `api_key`)
-2. mask long identifiers (`abcd...wxyz`) instead of full values
-3. avoid logging full request/response bodies unless sanitized
-
-## Structured Logging
-
-Prefer structured/contextual log records over free-form messages.
-
-Recommended fields:
-
-- `event`
-- `component`
-- `operation`
-- `request_id` or `run_id`
-- `status` (`success`/`failure`)
-- `error_code` (on failures)
-
-Examples:
-
-- Rust: `info!("event=workspace_apply operation=clone_repo run_id={} status=success", run_id)`
-- Frontend: `console.log("event=navigate operation=open_monitor run_id=%s", runId)`
-
-## Correlation IDs
-
-Every multi-step operation must carry a correlation identifier and include it in logs:
-
-- frontend: include `runId`/`requestId` in significant logs
-- Rust commands: log request/run IDs where available
-- sidecar: include request `id` on protocol events
-
-## Log Injection Prevention
-
-Treat user-controlled strings as untrusted:
-
-- avoid directly logging unbounded raw user input
-- sanitize newline/control characters where practical
-- prefer structured fields to concatenated strings
-
-## CI and Review Enforcement
-
-For changes that add or modify logging:
-
-1. verify no secrets are logged
-2. verify context fields/correlation IDs are present for critical operations
-3. verify failures log actionable context (`operation`, `error`) without sensitive payloads
-4. add/update tests where redaction logic exists
-
-## File-Based Logging for Autonomous Features
-
-For features that run multi-step autonomous loops (e.g. description optimization), use
-file-based logging as a supplementary debug channel alongside structured logs.
-
-Pattern (used by description optimization):
-
-- `init_log_file(log_dir, prefix)` — creates dir, returns a timestamped path
-  (`desc-opt-{component}-{timestamp}.log`)
-- `write_log_line(path, msg)` — appends a timestamped line, **silently ignores failures**
-- Frontend fires via a Tauri command (`write_desc_opt_log`) — fire-and-forget, never
-  awaited in the hot path
-
-Key principle: **file logging must never break the main feature.** All writes are
-best-effort. Use this pattern for any feature that needs autonomous debugging without
-polluting the primary log stream.
-
-## Language-Specific Notes
-
-- Rust: `info!` on command entry, `error!` on failure, `debug!` for intermediate steps
-- Frontend: `console.log` for significant actions, `console.warn` for recoverable anomalies, `console.error` for failures
-- Sidecar: log to `stderr` only; `stdout` is reserved for JSONL protocol
+- create a timestamped file under the feature log directory
+- append timestamped lines
+- silently ignore write failures
+- keep frontend fire-and-forget writes off the hot path

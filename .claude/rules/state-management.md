@@ -1,69 +1,28 @@
-# State Management Conventions
+# State Management Rules
 
-Applies to: frontend (React + Zustand).
+Applies to `app/src/**`.
 
-## Component-Local State Rule
+## Local UI State
 
-Use React `useState` / `useReducer` for state that is:
+Use component-local `useState` or `useReducer` for state that is only needed by
+one component subtree, should reset on unmount, or represents ephemeral UI such
+as open/closed, hover, active tab, or form draft state.
 
-- Only needed within a single component or its direct children
-- Ephemeral UI state (open/closed, hover, active tab, form draft before submit)
-- Not needed by sibling components or route-level logic
+Use Zustand only for shared state, navigation-persistent selections, workflow or
+refine runtime state, and live agent event streams.
 
-Use Zustand **only** when state must be:
+## Server State
 
-- Shared across unrelated components (not in the same render subtree)
-- Persisted across route navigations
-- Read or written by sidecar event handlers or Tauri command callbacks outside of React
+Request/response backend data belongs in TanStack Query hooks under
+`app/src/lib/queries/`, not in Zustand stores.
 
-### Decision heuristics
+Use query hooks for Tauri command results, lists, records, loading/error state,
+refresh, invalidation, stale-response handling, and mutations that affect
+backend data.
 
-- "If this component unmounts and remounts, should this state reset?" → yes = local state
-- "Does any other component need to read or write this?" → no = local state
+When backend data changes:
 
-### Examples
-
-**Wrong** — ephemeral toggle hoisted into global store:
-
-```ts
-// workflow-store.ts
-isStepExpanded: false,
-setStepExpanded: (v) => set({ isStepExpanded: v }),
-```
-
-**Right** — local state in component:
-
-```tsx
-const [isExpanded, setIsExpanded] = useState(false);
-```
-
-## Server State Rule
-
-Request/response backend data must use TanStack Query hooks under
-`app/src/lib/queries/`.
-
-Use query hooks for:
-
-- Tauri command results fetched from SQLite, filesystem, GitHub, or the app
-  backend
-- Lists and records that need loading, error, refresh, invalidation, or
-  stale-response handling
-- Mutations that should refresh related backend data
-
-Do not store server data, loading flags, request errors, or fetch methods in
-Zustand stores.
-
-Use Zustand for:
-
-- UI state shared across unrelated components
-- Navigation-persistent UI selections
-- Form drafts and local interaction state that should not be cached as backend
-  data
-- Live event stream state such as active agent runs, display items, workflow
-  runtime status, and refine chat state
-
-When a mutation changes backend data, invalidate the smallest stable query
-family in `app/src/lib/queries/query-keys.ts`.
-
-When an event stream changes request/response data, update or invalidate the
-query cache through `app/src/lib/queries/agent-stream-cache.ts`.
+- mutations invalidate the smallest stable query family in
+  `app/src/lib/queries/query-keys.ts`
+- agent event streams update or invalidate through
+  `app/src/lib/queries/agent-stream-cache.ts`

@@ -254,13 +254,12 @@
     "artifact_contracts": "docs/design/agent-specs/canonical-format.md — high-level artifact format contracts",
     "research_output_schema": "agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md — canonical research_output schema",
     "startup_recon_design": "docs/design/startup-recon/ — reconciliation scenario matrix (scenarios 1–12), used by reconciliation/",
-    "coding_conventions": ".claude/rules/coding-conventions.md — naming, error handling",
     "frontend_rules": ".claude/rules/frontend-design.md — AD brand, component constraints, state indicators",
     "codegen_rules": ".claude/rules/codegen.md — generated contract freshness requirements",
     "path_conventions": ".claude/rules/path-conventions.md — skill builder path vs workspace path rules",
     "state_management": ".claude/rules/state-management.md — frontend local-state vs Zustand boundaries",
-    "windows_compat": ".claude/rules/windows-compat.md — path separators, CRLF, env-var syntax, Rust toolchain. Read before writing path assertions, regex, package.json scripts, or CI config.",
-    "logging_policy": ".claude/rules/logging-policy.md — log levels, sensitive data redaction, structured logging, correlation IDs",
+    "windows_compat": ".claude/rules/windows-compat.md — repo-specific Windows CI guardrails for paths, CRLF, package scripts, and Rust toolchain.",
+    "logging_policy": ".claude/rules/logging-policy.md — repo-specific logging rules for Tauri commands, sidecar stderr, sensitive data, and file debug logs.",
     "test_map": "TEST_MAP.md — changed-path validation map, Rust command → E2E tag mappings, shared infra blast radius, cross-boundary format compliance, and live-eval boundaries."
   },
   "notes_for_agents": {
