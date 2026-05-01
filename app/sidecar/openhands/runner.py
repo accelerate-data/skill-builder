@@ -35,6 +35,10 @@ def _redact(text: str, api_key: str) -> str:
     return text
 
 
+def _print_redacted_exception(exc: Exception, api_key: str) -> None:
+    print(_redact(traceback.format_exc(), api_key), file=sys.stderr, end="")
+
+
 def now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -129,6 +133,13 @@ def parse_request(raw: str) -> dict[str, Any]:
     return data
 
 
+def parse_max_iterations(request: dict[str, Any]) -> int:
+    raw_max_turns = request.get("maxTurns", 50)
+    if not isinstance(raw_max_turns, int) or raw_max_turns <= 0:
+        raise ValueError("maxTurns must be a positive integer")
+    return raw_max_turns
+
+
 # ---------------------------------------------------------------------------
 # OpenHands run via AppConfig / main
 # ---------------------------------------------------------------------------
@@ -146,8 +157,12 @@ def run_via_openhands_main(request: dict[str, Any]) -> str:
 
     prompt: str = request["prompt"]
     model: str = request.get("model") or "claude-sonnet-4-6"
+    model_base_url: str | None = request.get("modelBaseUrl")
+    agent_name: str = request.get("agentName") or "CodeActAgent"
     api_key: str = request["apiKey"]
     workspace_root: str = request.get("workspaceRootDir", ".")
+    workspace_skill_dir: str | None = request.get("workspaceSkillDir")
+    max_iterations = parse_max_iterations(request)
 
     print(
         f"[openhands-runner] starting run via openhands.core.main model={model}",
@@ -155,20 +170,26 @@ def run_via_openhands_main(request: dict[str, Any]) -> str:
     )
 
     config = AppConfig()
-    config.default_agent = "CodeActAgent"
+    config.default_agent = agent_name
 
     # Set LLM config — attribute names differ across OpenHands versions.
     llm_cfg = getattr(config, "llm", None) or getattr(config, "get_llm_config", lambda: None)()
     if llm_cfg is not None:
         llm_cfg.model = model
         llm_cfg.api_key = api_key
+        if model_base_url:
+            llm_cfg.base_url = model_base_url
     else:
         # Fallback: set on config directly
         config.model = model  # type: ignore[attr-defined]
         config.api_key = api_key  # type: ignore[attr-defined]
+        if model_base_url:
+            config.base_url = model_base_url  # type: ignore[attr-defined]
 
     config.workspace_base = workspace_root  # type: ignore[attr-defined]
-    config.max_iterations = 10  # type: ignore[attr-defined]
+    if workspace_skill_dir:
+        config.workspace_mount_path = workspace_skill_dir  # type: ignore[attr-defined]
+    config.max_iterations = max_iterations  # type: ignore[attr-defined]
 
     # Emit a synthetic progress event so callers see activity
     emit_openhands_event("message", text=f"Starting OpenHands agent with prompt: {prompt[:120]}")
@@ -218,6 +239,7 @@ def run_via_llm_direct(request: dict[str, Any]) -> str:
     prompt: str = request["prompt"]
     system_prompt: str | None = request.get("systemPrompt")
     model: str = request.get("model") or "claude-sonnet-4-6"
+    model_base_url: str | None = request.get("modelBaseUrl")
     api_key: str = request["apiKey"]
 
     print(
@@ -230,8 +252,12 @@ def run_via_llm_direct(request: dict[str, Any]) -> str:
         from openhands.core.config import LLMConfig  # type: ignore[import]
 
         llm_config = LLMConfig(model=model, api_key=api_key)
+        if model_base_url:
+            llm_config.base_url = model_base_url
     except ImportError:
         llm_config = {"model": model, "api_key": api_key}  # type: ignore[assignment]
+        if model_base_url:
+            llm_config["base_url"] = model_base_url
 
     llm = LLM(config=llm_config)
 
@@ -266,6 +292,7 @@ def run(request: dict[str, Any]) -> None:
     # runtime the error is surfaced directly; the LLM fallback is not retried.
     result_text: str = ""
     run_error: str | None = None
+    api_key = request.get("apiKey", "")
 
     if _openhands_main is not None and AppConfig is not None:
         try:
@@ -277,11 +304,11 @@ def run(request: dict[str, Any]) -> None:
             )
         except Exception as exc:
             print(
-                f"[openhands-runner] openhands main path failed: {exc}",
+                f"[openhands-runner] openhands main path failed: {_redact(str(exc), api_key)}",
                 file=sys.stderr,
             )
-            traceback.print_exc(file=sys.stderr)
-            run_error = _redact(str(exc), request.get("apiKey", ""))
+            _print_redacted_exception(exc, api_key)
+            run_error = _redact(str(exc), api_key)
     elif LLM is not None:
         try:
             result_text = run_via_llm_direct(request)
@@ -292,11 +319,11 @@ def run(request: dict[str, Any]) -> None:
             )
         except Exception as exc:
             print(
-                f"[openhands-runner] LLM direct path failed: {exc}",
+                f"[openhands-runner] LLM direct path failed: {_redact(str(exc), api_key)}",
                 file=sys.stderr,
             )
-            traceback.print_exc(file=sys.stderr)
-            run_error = _redact(str(exc), request.get("apiKey", ""))
+            _print_redacted_exception(exc, api_key)
+            run_error = _redact(str(exc), api_key)
     else:
         run_error = (
             _OPENHANDS_IMPORT_ERROR
@@ -335,12 +362,19 @@ def main() -> None:
     try:
         run(request)
     except Exception as exc:
+        api_key = request.get("apiKey", "") if "request" in locals() else ""
         print(
-            f"[openhands-runner] unexpected error: {exc}",
+            f"[openhands-runner] unexpected error: {_redact(str(exc), api_key)}",
             file=sys.stderr,
         )
-        traceback.print_exc(file=sys.stderr)
-        emit_result(status="error", error_message=_redact(str(exc), ""))
+        _print_redacted_exception(exc, api_key)
+        emit_result(
+            status="error",
+            error_message=_redact(
+                str(exc),
+                api_key,
+            ),
+        )
 
 
 if __name__ == "__main__":

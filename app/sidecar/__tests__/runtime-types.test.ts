@@ -26,6 +26,7 @@ describe("runtime request types", () => {
       allowUserQuestions: false,
       prompt: "Generate the skill.",
       apiKey: "sk-test",
+      modelBaseUrl: "https://models.example.com/v1",
       workspaceRootDir: "/workspace",
       workspaceSkillDir: "/workspace/plugin/skill",
       allowedTools: ["Read", "Write", "Edit"],
@@ -33,6 +34,7 @@ describe("runtime request types", () => {
     };
 
     expect(() => assertOneShotHasNoUserQuestions(request)).not.toThrow();
+    expect(request.modelBaseUrl).toBe("https://models.example.com/v1");
   });
 
   it("rejects one-shot requests that include AskUserQuestion", () => {
