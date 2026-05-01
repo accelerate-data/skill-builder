@@ -1,6 +1,6 @@
 # OpenHands Native Migration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development`. Do not implement this plan as a single-agent linear edit pass. Each task below must be assigned to an isolated implementation subagent with a narrow file scope and its own commit.
 
 **Issue:** VU-1145
 
@@ -15,12 +15,45 @@
 ## Source Context
 
 - Linear issue: VU-1145
+- Functional spec: `not_applicable` per user-approved User Flow gate waiver for this runtime/platform issue.
 - Primary design: `docs/design/openhands-native-migration/README.md`
 - Runtime boundary prerequisite: `docs/design/agent-runtime-boundary/README.md`
+- Repo implementation plan: `docs/plan/2026-05-02-vu-1145-openhands-native-migration.md`
 - Earlier completed groundwork: VU-1133 and VU-1143
 - Superseded plan: `docs/superpowers/plans/2026-05-01-openhands-runtime-migration.md`
 
 The older plan kept Claude as a compatibility fallback while adding OpenHands as a selectable provider. This plan follows the newer clean-break design: OpenHands becomes the native workflow runtime, generated artifacts move from `.claude/plugins/` to `.agents/`, and Claude Code router/sub-agent mechanics are removed.
+
+## Execution Mode
+
+Implementation must run in subagent mode.
+
+- Assign each numbered task to a scoped implementation subagent.
+- Do not let one subagent own both implementation and quality review for the same task.
+- Keep task commits small and reviewable.
+- After every task, run the listed deterministic tests before starting the next task.
+- If a task changes scope, update this plan before continuing.
+
+## Independent Quality Gates
+
+Each implementation task has two gates:
+
+1. **Implementation gate:** the task subagent runs the task-specific commands listed in that task.
+2. **Independent review gate:** a separate quality subagent reviews the diff for that task, checks the task acceptance bullets, and reruns or inspects the relevant tests without sharing implementation context.
+
+The independent quality subagent must verify:
+
+- no Claude Code-only runtime, tool, plugin, or prompt dependency remains in the changed workflow path;
+- one-shot workflow requests cannot ask user questions;
+- generated workflow artifacts use `.agents/agents/` and `.agents/skills/`;
+- app-facing JSONL envelopes remain `display_item`, `agent_event`, `refine_question`, and `run_result`;
+- all changed scenarios are covered by deterministic tests or eval/smoke automation.
+
+Do not proceed to PR preparation until every task has an implementation gate and an independent review gate recorded in the implementation notes.
+
+## Manual Test Policy
+
+No manual test is required for this migration. The required coverage is deterministic tests plus automated OpenHands smoke/eval coverage. If implementation discovers a scenario that cannot be validated through automation, pause and amend this plan with the exact manual test before performing it.
 
 ## Current State To Preserve
 
@@ -380,7 +413,35 @@ git add app/sidecar app/src-tauri app/src repo-map.json
 git commit -m "Remove Claude workflow runtime compatibility"
 ```
 
-## Task 8: Verification, Docs, And Release Decision
+## Task 8: Add Automated Migration Smoke And Eval Coverage
+
+**Files:**
+
+- Modify or create: `tests/evals/packages/*`
+- Modify or create: `tests/evals/scripts/*`
+- Modify: `tests/evals/docs/scenario-inventory.md`
+- Modify: `TEST_MAP.md`
+- Test: `tests/evals`
+
+- [ ] Add an automated OpenHands workflow smoke that exercises step 0 and step 3 without manual UI interaction.
+- [ ] The smoke must assert terminal `run_result`, parseable expected artifact output, no `AskUserQuestion`, and `.agents` artifact discovery.
+- [ ] Add deterministic tests or eval checks for provider-prefixed model strings, Ollama/base URL handling, runner JSONL parsing, `structured_output_missing` behavior, and unsupported refine streaming.
+- [ ] If live provider credentials are required, make the smoke skip with a precise prerequisite message rather than failing opaquely.
+- [ ] Run the automated smoke/eval command and record the exact command in the PR body.
+- [ ] Run:
+
+```bash
+cd tests/evals && npm test
+```
+
+- [ ] Commit:
+
+```bash
+git add tests/evals TEST_MAP.md
+git commit -m "Add OpenHands migration smoke coverage"
+```
+
+## Task 9: Verification, Docs, And Release Decision
 
 **Files:**
 
@@ -403,7 +464,8 @@ cd app/sidecar && npx vitest run
 cargo test --manifest-path app/src-tauri/Cargo.toml
 ```
 
-- [ ] If API keys and OpenHands dependencies are configured, run one live workflow smoke for step 0 and step 3. If not configured, record the skipped smoke and exact missing prerequisite in the PR body.
+- [ ] Run the automated OpenHands workflow smoke/eval for step 0 and step 3. If credentials or local OpenHands dependencies are missing, record the exact skipped prerequisite in the PR body.
+- [ ] Do not substitute manual UI testing for this smoke. If the smoke cannot be automated, stop and update this plan before implementation continues.
 - [ ] Run release-stage verification if packaging changed:
 
 ```bash
