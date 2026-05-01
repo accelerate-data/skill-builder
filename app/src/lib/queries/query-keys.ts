@@ -1,0 +1,39 @@
+export interface UsageQueryFilters {
+  hideCancelled: boolean;
+  startDate: string | null;
+  skillFilter: string | null;
+  modelFamilyFilter: string | null;
+}
+
+export const queryKeys = {
+  skills: {
+    all: ["skills"] as const,
+    builder: (workspacePath: string | null, sourceUrl: string | null = null) =>
+      ["skills", "builder", workspacePath, sourceUrl] as const,
+    imported: (sourceUrl: string | null = null) =>
+      ["skills", "imported", sourceUrl] as const,
+  },
+  usage: {
+    all: ["usage"] as const,
+    summary: (filters: UsageQueryFilters) => ["usage", "summary", filters] as const,
+    sessions: (filters: UsageQueryFilters) => ["usage", "sessions", filters] as const,
+    agentRuns: (filters: UsageQueryFilters) => ["usage", "agent-runs", filters] as const,
+    byStep: (filters: UsageQueryFilters) => ["usage", "by-step", filters] as const,
+    byModel: (filters: UsageQueryFilters) => ["usage", "by-model", filters] as const,
+    byDay: (filters: UsageQueryFilters) => ["usage", "by-day", filters] as const,
+    skillNames: ["usage", "skill-names"] as const,
+  },
+  documents: {
+    all: ["documents"] as const,
+    list: ["documents", "list"] as const,
+    skills: ["documents", "skills"] as const,
+  },
+  plugins: {
+    all: ["plugins"] as const,
+    list: ["plugins", "list"] as const,
+  },
+  auth: {
+    all: ["auth"] as const,
+    githubUser: ["auth", "github-user"] as const,
+  },
+};
