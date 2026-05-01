@@ -261,11 +261,15 @@ pub(super) fn build_followup_prompt_for_plugin(
 }
 
 /// The refine-initial.txt template, embedded at compile time.
-const REFINE_PROMPT_TEMPLATE: &str =
-    include_str!("../../../../../agent-sources/workspace/prompts/refine-initial.txt");
+const REFINE_PROMPT_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/workspace/prompts/refine-initial.txt"
+));
 
-const REFINE_FOLLOWUP_TEMPLATE: &str =
-    include_str!("../../../../../agent-sources/workspace/prompts/refine-followup.txt");
+const REFINE_FOLLOWUP_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/workspace/prompts/refine-followup.txt"
+));
 
 /// Build the initial refine prompt using a pre-resolved skill output directory.
 /// Uses the refine-initial.txt template with variable substitution.

@@ -1,11 +1,15 @@
 use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir};
 use std::path::Path;
 
-const WORKFLOW_STEP_TEMPLATE: &str =
-    include_str!("../../../../../agent-sources/workspace/prompts/workflow-step.txt");
+const WORKFLOW_STEP_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/workspace/prompts/workflow-step.txt"
+));
 
-const ANSWER_EVALUATOR_TEMPLATE: &str =
-    include_str!("../../../../../agent-sources/workspace/prompts/answer-evaluator.txt");
+const ANSWER_EVALUATOR_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/workspace/prompts/answer-evaluator.txt"
+));
 
 /// Parameters for [`build_prompt`].
 pub(crate) struct PromptParams<'a> {

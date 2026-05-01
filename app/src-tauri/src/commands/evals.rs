@@ -1095,10 +1095,16 @@ pub fn discard_pending_eval(
 // --- Eval prompt builder ---
 
 /// The eval-initial.txt template, embedded at compile time.
-const EVAL_PROMPT_TEMPLATE: &str = include_str!("../../../../agent-sources/workspace/prompts/eval-initial.txt");
+const EVAL_PROMPT_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/workspace/prompts/eval-initial.txt"
+));
 
 /// The eval-generator-system-prompt.txt template, embedded at compile time.
-const EVAL_GEN_PROMPT_TEMPLATE: &str = include_str!("../../../../agent-sources/workspace/prompts/eval-generator-system-prompt.txt");
+const EVAL_GEN_PROMPT_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/workspace/prompts/eval-generator-system-prompt.txt"
+));
 
 /// Build the evaluate-skill prompt from the embedded template.
 /// Replaces `{{placeholder}}` tokens with actual values.

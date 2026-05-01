@@ -1,8 +1,10 @@
 use crate::db::Db;
 use serde::Serialize;
 
-const SUGGESTIONS_TEMPLATE: &str =
-    include_str!("../../../../../agent-sources/workspace/prompts/skill-suggestions.txt");
+const SUGGESTIONS_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/workspace/prompts/skill-suggestions.txt"
+));
 
 #[derive(Serialize)]
 pub struct FieldSuggestions {
