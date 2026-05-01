@@ -3,13 +3,12 @@ import { LayoutGrid, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import SkillDialog from "@/components/skill-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
-import { useSkillStore } from "@/stores/skill-store"
-import { listSkills } from "@/lib/tauri"
+import { useInvalidateSkillQueries } from "@/lib/queries/skills"
 
 export default function DashboardPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const workspacePath = useSettingsStore((s) => s.workspacePath)
-  const setSkills = useSkillStore((s) => s.setSkills)
+  const invalidateSkillQueries = useInvalidateSkillQueries()
 
   return (
     <div
@@ -42,9 +41,7 @@ export default function DashboardPage() {
           open={createOpen}
           onOpenChange={setCreateOpen}
           onCreated={async () => {
-            if (workspacePath) {
-              listSkills(workspacePath).then(setSkills).catch(() => {})
-            }
+            await invalidateSkillQueries()
           }}
         />
       )}

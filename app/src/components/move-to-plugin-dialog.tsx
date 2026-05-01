@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { moveSkillToPlugin } from "@/lib/tauri"
-import { usePluginStore } from "@/stores/plugin-store"
+import { usePluginsQuery } from "@/lib/queries/plugins"
 
 interface MoveToPluginDialogProps {
   open: boolean
@@ -30,8 +30,7 @@ export function MoveToPluginDialog({
   currentPluginSlug,
   onMoved,
 }: MoveToPluginDialogProps) {
-  const allPlugins = usePluginStore((s) => s.plugins)
-  const fetchPlugins = usePluginStore((s) => s.fetchPlugins)
+  const { data: allPlugins = [], refetch: refetchPlugins } = usePluginsQuery()
   const [selected, setSelected] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -44,8 +43,8 @@ export function MoveToPluginDialog({
 
   useEffect(() => {
     if (!open) return
-    fetchPlugins()
-  }, [open, fetchPlugins])
+    refetchPlugins()
+  }, [open, refetchPlugins])
 
   useEffect(() => {
     if (open && plugins.length > 0) {
@@ -58,7 +57,7 @@ export function MoveToPluginDialog({
     setSubmitting(true)
     try {
       await moveSkillToPlugin(skillKey, selected)
-      await usePluginStore.getState().fetchPlugins()
+      await refetchPlugins()
       onOpenChange(false)
       onMoved()
     } catch (err) {
@@ -66,7 +65,7 @@ export function MoveToPluginDialog({
     } finally {
       setSubmitting(false)
     }
-  }, [selected, skillKey, onOpenChange, onMoved])
+  }, [selected, skillKey, refetchPlugins, onOpenChange, onMoved])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

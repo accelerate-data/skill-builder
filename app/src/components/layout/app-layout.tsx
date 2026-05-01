@@ -13,13 +13,13 @@ import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { toast } from "@/lib/toast";
 import { useSkillStore } from "@/stores/skill-store";
-import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
 import { cancelRefineTurn, cancelWorkflowStep, cleanupSkillSidecar, cancelDescriptionOptimization } from "@/lib/tauri";
 import { getEvalsRunning, subscribeEvalsRunning } from "@/lib/eval-running-state";
 import { getDescriptionOptRunning, subscribeDescriptionOptRunning } from "@/lib/description-opt-running-state";
+import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
 import {
   Dialog,
   DialogContent,
@@ -31,10 +31,11 @@ import {
 
 export function AppLayout() {
   const isConfigured = useSettingsStore((s) => s.isConfigured);
-  const builderSkills = useSkillStore((s) => s.skills);
+  const workspacePath = useSettingsStore((s) => s.workspacePath);
+  const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
+  const { data: importedSkills = [] } = useImportedSkillsQuery();
   const selectedWorkspaceSkillName = useSkillStore((s) => s.activeSkill);
   const setSelectedWorkspaceSkillName = useSkillStore((s) => s.setActiveSkill);
-  const importedSkills = useImportedSkillsStore((s) => s.skills);
   const refineRunning = useRefineStore((s) => s.isRunning);
   const [evalsRunningReactive, setEvalsRunningReactive] = useState(getEvalsRunning);
   useEffect(() => subscribeEvalsRunning(setEvalsRunningReactive), []);
@@ -167,11 +168,9 @@ export function AppLayout() {
   );
   const selectedSkillData = selectedBuilderSkill ?? selectedImportedSkill ?? null;
   const selectedSkillType: "builder" | "imported" | "marketplace" = selectedBuilderSkill
-    ? selectedBuilderSkill.skill_source === "marketplace" || !!selectedImportedSkill?.marketplace_source_url
+    ? selectedBuilderSkill.skill_source === "marketplace"
       ? "marketplace"
-      : selectedImportedSkill && !selectedImportedSkill.marketplace_source_url
-        ? "imported"
-        : "builder"
+      : "builder"
     : selectedImportedSkill?.marketplace_source_url
       ? "marketplace"
       : "imported";

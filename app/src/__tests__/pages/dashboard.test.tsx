@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { resetTauriMocks } from "@/test/mocks/tauri";
+import { renderWithQueryClient as render } from "@/test/query-test-utils";
 import { useSettingsStore } from "@/stores/settings-store";
 
 // Mock @tanstack/react-router

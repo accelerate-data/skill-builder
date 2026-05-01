@@ -467,6 +467,9 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
     | undefined;
   if (overrides && cmd in overrides) {
     let val = overrides[cmd];
+    if (cmd === "get_settings" && val && typeof val === "object" && !Array.isArray(val)) {
+      val = { ...defaultSettings, ...(val as Record<string, unknown>) };
+    }
     if (cmd === "list_skills") {
       val = normalizeListSkills(val);
     }

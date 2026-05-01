@@ -1,15 +1,14 @@
 import { useEffect, useState } from "react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
-import { useSkillStore } from "@/stores/skill-store";
 import {
   getWorkflowState,
   getDisabledSteps,
   saveWorkflowState,
-  listSkills,
   readFile,
   getContextFileContent,
 } from "@/lib/tauri";
+import { invalidateSkillDataAfterWorkflow } from "@/lib/queries/agent-stream-cache";
 import { joinPath } from "@/lib/path-utils";
 
 interface UseWorkflowPersistenceOptions {
@@ -195,11 +194,8 @@ export function useWorkflowPersistence({
 
       saveWorkflowState(skillName, stepToSave, status, stepStatuses, purpose ?? undefined)
         .then(() => {
-          if (workspacePath) {
-            listSkills(workspacePath)
-              .then(useSkillStore.getState().setSkills)
-              .catch((err) => console.error("event=refresh_skills_failed error=%s", err));
-          }
+          invalidateSkillDataAfterWorkflow()
+            .catch((err) => console.error("event=refresh_skills_failed error=%s", err));
         })
         .catch((err) => console.error("Failed to persist workflow state:", err));
     }, 300);

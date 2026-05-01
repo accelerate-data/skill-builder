@@ -70,6 +70,14 @@ Read these before starting any non-trivial task:
 
 Read `app/plugin-paths.json` — it defines the canonical layout for all skill file paths.
 
+#### Frontend Server State
+
+Request/response backend data belongs in TanStack Query hooks under
+`app/src/lib/queries/`. Zustand stores are for UI state, navigation-persistent
+selections, workflow/refine runtime state, and live agent event streams. Event
+streams that affect request/response data should update or invalidate the query
+cache through explicit helpers.
+
 ## Testing
 
 ### When to write tests

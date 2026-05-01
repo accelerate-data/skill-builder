@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { Loader2, DollarSign, RotateCcw } from "lucide-react"
 import { toast } from "@/lib/toast"
+import { toUsageStartDate, useResetUsageMutation, useUsageQueries, useUsageSkillNamesQuery } from "@/lib/queries/usage"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
@@ -33,17 +34,33 @@ import {
 
 export function UsageSection() {
   const {
-    summary, agentRuns, byStep, byModel, byDay,
-    loading, error, fetchUsage, resetCounter,
     hideCancelled, toggleHideCancelled,
     dateRange, setDateRange,
-    skillFilter, skillNames, setSkillFilter, fetchSkillNames,
-    modelFilter, setModelFilter,
+    skillFilter, setSkillFilter,
+    modelFamilyFilter, setModelFamilyFilter,
+    resetFilters,
   } = useUsageStore()
   const [resetting, setResetting] = useState(false)
   const [stepFilter, setStepFilter] = useState<number | "all">("all")
   const [sortCol, setSortCol] = useState<SortCol>("date")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+  const filters = useMemo(() => ({
+    hideCancelled,
+    startDate: toUsageStartDate(dateRange),
+    skillFilter,
+    modelFamilyFilter,
+  }), [dateRange, hideCancelled, modelFamilyFilter, skillFilter])
+  const usage = useUsageQueries(filters)
+  const skillNamesQuery = useUsageSkillNamesQuery()
+  const resetUsageMutation = useResetUsageMutation()
+  const summary = usage.summary.data ?? null
+  const agentRuns = usage.agentRuns.data ?? []
+  const byStep = usage.byStep.data ?? []
+  const byModel = usage.byModel.data ?? []
+  const byDay = usage.byDay.data ?? []
+  const skillNames = skillNamesQuery.data ?? []
+  const loading = usage.isLoading || skillNamesQuery.isLoading
+  const error = usage.error ?? skillNamesQuery.error
 
   const handleSort = useCallback((col: SortCol) => {
     if (sortCol === col) {
@@ -54,15 +71,11 @@ export function UsageSection() {
     }
   }, [sortCol])
 
-  useEffect(() => {
-    fetchUsage()
-    fetchSkillNames()
-  }, [fetchUsage, fetchSkillNames])
-
   const handleReset = async () => {
     setResetting(true)
     try {
-      await resetCounter()
+      await resetUsageMutation.mutateAsync()
+      resetFilters()
     } catch (err) {
       console.error("usage: reset failed", err)
       toast.error(`Failed to reset usage: ${err instanceof Error ? err.message : String(err)}`, {
@@ -86,7 +99,7 @@ export function UsageSection() {
   if (error) {
     return (
       <div className="flex flex-col gap-6 p-6">
-        <p className="text-destructive">Failed to load usage data: {error}</p>
+        <p className="text-destructive">Failed to load usage data: {error instanceof Error ? error.message : String(error)}</p>
       </div>
     )
   }
@@ -172,8 +185,8 @@ export function UsageSection() {
       <SessionHistory
         agentRuns={agentRuns}
         byModel={byModel}
-        modelFilter={modelFilter}
-        setModelFilter={setModelFilter}
+        modelFamilyFilter={modelFamilyFilter}
+        setModelFamilyFilter={setModelFamilyFilter}
         stepFilter={stepFilter}
         setStepFilter={setStepFilter}
         sortCol={sortCol}

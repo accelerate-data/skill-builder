@@ -66,15 +66,15 @@ test.describe("Skill History & Restore", { tag: "@dashboard" }, () => {
     const moreButton = page.getByLabel("More actions");
     await moreButton.click({ force: true });
     await page.getByRole("menuitem", { name: "Restore version" }).click();
+    const dialog = page.getByRole("alertdialog", { name: "Restore Version" });
 
     // Should show version badges (exact match to avoid matching commit messages)
-    const dialog = page.getByLabel("Restore Version");
     await expect(dialog.getByText("v2", { exact: true })).toBeVisible({ timeout: 5_000 });
     await expect(dialog.getByText("v1", { exact: true })).toBeVisible();
 
     // Should show commit messages (stripped of prefix)
-    await expect(page.getByText("Packaged as v2")).toBeVisible();
-    await expect(page.getByText("Packaged as v1")).toBeVisible();
+    await expect(dialog.getByText("Packaged as v2")).toBeVisible();
+    await expect(dialog.getByText("Packaged as v1")).toBeVisible();
 
     // Should show Restore buttons
     const restoreButtons = page.getByRole("button", { name: "Restore" });

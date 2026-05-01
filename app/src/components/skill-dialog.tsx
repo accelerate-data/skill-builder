@@ -22,7 +22,7 @@ import { Textarea } from "@/components/ui/textarea"
 import ScopeAdvisor from "@/components/scope-advisor"
 import { useScopeAdvisor } from "@/hooks/use-scope-advisor"
 import { useSettingsStore } from "@/stores/settings-store"
-import { useDocumentStore } from "@/stores/document-store"
+import { useDocumentsQuery } from "@/lib/queries/documents"
 import { renameSkill, updateSkillMetadata, createSkill } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { EditableSkill } from "@/lib/types"
@@ -115,7 +115,7 @@ export default function SkillDialog(props: SkillDialogProps) {
   const isEdit = props.mode === "edit"
   const navigate = useNavigate()
   const { workspacePath: storeWorkspacePath, skillsPath } = useSettingsStore()
-  const documents = useDocumentStore((s) => s.documents)
+  const { data: documents = [] } = useDocumentsQuery()
   const allScopeDocuments = useMemo(() => documents.filter((d) => d.scope === "all"), [documents])
 
   // Extract mode-specific props

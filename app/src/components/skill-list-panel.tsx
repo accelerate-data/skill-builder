@@ -23,7 +23,6 @@ import { CreatePluginDialog } from "@/components/create-plugin-dialog";
 import { MoveToPluginDialog } from "@/components/move-to-plugin-dialog";
 import { SkillRow } from "@/components/skill-row";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import {
   useUnifiedSkills,
@@ -36,13 +35,18 @@ import {
   deletePlugin,
   exportSkillAsFile,
   getExternallyLockedSkills,
-  listSkills,
   parseSkillFile,
   removeSkillFromPlugin,
   resetWorkflowStep,
 } from "@/lib/tauri";
 import type { SkillFileMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+  useBuilderSkillsQuery,
+  useDeleteImportedSkillMutation,
+  useImportedSkillsQuery,
+  useInvalidateSkillQueries,
+} from "@/lib/queries/skills";
 
 export interface SkillListPanelProps {
   onSelectSkill?: (name: string, tab?: string) => void;
@@ -76,26 +80,15 @@ export function SkillListPanel({
   const [deletingPlugin, setDeletingPlugin] = useState(false);
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
-  const builderSkills = useSkillStore((s) => s.skills);
-  const setSkills = useSkillStore((s) => s.setSkills);
   const selectedSkill = useSkillStore((s) => s.activeSkill);
   const setSelectedSkill = useSkillStore((s) => s.setActiveSkill);
-  const importedSkills = useImportedSkillsStore((s) => s.skills);
-  const fetchImportedSkills = useImportedSkillsStore((s) => s.fetchSkills);
+  const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
+  const { data: importedSkills = [] } = useImportedSkillsQuery();
+  const deleteImportedSkillMutation = useDeleteImportedSkillMutation();
+  const invalidateSkillQueries = useInvalidateSkillQueries();
   const runs = useAgentStore((s) => s.runs);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-
-  // Fetch both skill lists whenever workspacePath becomes available
-  useEffect(() => {
-    if (!workspacePath) return;
-    listSkills(workspacePath)
-      .then(setSkills)
-      .catch((err) => console.error("event=fetch_skills_failed error=%s", err));
-    fetchImportedSkills().catch((err) =>
-      console.error("event=fetch_imported_skills_failed error=%s", err),
-    );
-  }, [workspacePath, setSkills, fetchImportedSkills]);
 
   // Refresh external locks on every navigation so stale lock state clears after leaving a skill
   useEffect(() => {
@@ -107,17 +100,16 @@ export function SkillListPanel({
   // Sort by creation date (newest first) — stable across edits since created_at never changes.
   const unifiedSkills = useUnifiedSkills(builderSkills, importedSkills);
 
-  // Default selection — run once on mount after stores are populated
+  // Default selection once query data is available.
   useEffect(() => {
+    if (unifiedSkills.length === 0 || selectedSkill) return;
     const stored = localStorage.getItem("last-selected-skill");
     if (stored && unifiedSkills.some((s) => s.key === stored)) {
       setSelectedSkill(stored);
     } else if (unifiedSkills.length > 0) {
       setSelectedSkill(unifiedSkills[0].key);
     }
-    // Intentionally mount-only: we only restore the saved selection once
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedSkill, setSelectedSkill, unifiedSkills]);
 
   const runningAgent = Object.values(runs).find(
     (r) => r.status === "running" && (r.runSource === "workflow" || r.runSource === "refine"),
@@ -215,7 +207,7 @@ export function SkillListPanel({
   function handleDelete(skill: UnifiedSkill) {
     if (skill.importedSkillId) {
       const toastId = toast.loading(`Deleting "${skill.name}"...`);
-      useImportedSkillsStore.getState().deleteSkill(skill.importedSkillId, fetchImportedSkills)
+      deleteImportedSkillMutation.mutateAsync(skill.importedSkillId)
         .then(() => toast.success(`Deleted "${skill.name}"`, { id: toastId }))
         .catch((err) => toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId }));
       return;
@@ -226,10 +218,7 @@ export function SkillListPanel({
   }
 
   async function refreshSkillLists() {
-    if (workspacePath) {
-      await listSkills(workspacePath).then(setSkills);
-    }
-    await fetchImportedSkills();
+    await invalidateSkillQueries();
   }
 
   function handleDeletePlugin(pluginSlug: string, pluginDisplayName: string) {
@@ -415,9 +404,7 @@ export function SkillListPanel({
           onCreated={async (createdName) => {
             localStorage.setItem("last-selected-skill", createdName);
             setSelectedSkill(createdName);
-            if (workspacePath) {
-              listSkills(workspacePath).then(setSkills).catch(() => {});
-            }
+            await invalidateSkillQueries();
           }}
         />
       )}
@@ -429,7 +416,7 @@ export function SkillListPanel({
         onOpenChange={setDeleteOpen}
         onDeleted={() => {
           setDeleteTarget(null);
-          if (workspacePath) listSkills(workspacePath).then(setSkills).catch(() => {});
+          invalidateSkillQueries().catch(() => {});
         }}
       />
 
@@ -498,7 +485,7 @@ export function SkillListPanel({
         meta={uploadMeta}
         onImported={() => {
           setUploadOpen(false);
-          fetchImportedSkills().catch(() => {});
+          invalidateSkillQueries().catch(() => {});
         }}
       />
 
@@ -512,7 +499,7 @@ export function SkillListPanel({
           onOpenChange={(open) => { if (!open) setRestoreTarget(null); }}
           onRestored={() => {
             setRestoreTarget(null);
-            if (workspacePath) listSkills(workspacePath).then(setSkills).catch(() => {});
+            invalidateSkillQueries().catch(() => {});
           }}
         />
       )}

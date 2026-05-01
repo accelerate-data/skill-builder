@@ -154,7 +154,7 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
 
     await page.goto("/refine");
     await expect(page).toHaveURL(/\/\?tab=refine/);
-    await expect(page.getByText("Select a skill")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: /test-skill/ })).toBeVisible({ timeout: 5_000 });
   });
 
   test("dashboard skill menu can open Refine directly", async ({ page }) => {

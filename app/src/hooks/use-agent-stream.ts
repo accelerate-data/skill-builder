@@ -3,6 +3,7 @@ import { toast } from "@/lib/toast";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
+import { invalidateUsageDataAfterAgentRun } from "@/lib/queries/agent-stream-cache";
 import type { DisplayItem } from "@/lib/display-types";
 import type { RefineQuestionPrompt } from "@/stores/refine-store";
 import type {
@@ -222,6 +223,9 @@ export async function initAgentStream() {
         event.payload.success,
         event.payload.error_detail,
       );
+      invalidateUsageDataAfterAgentRun().catch((error) => {
+        console.warn("[use-agent-stream] event=invalidate_usage_failed error=%s", error);
+      });
     }),
     reg<AgentShutdownPayload>("agent-shutdown", (event) => {
       useAgentStore.getState().shutdownRun(event.payload.agent_id);

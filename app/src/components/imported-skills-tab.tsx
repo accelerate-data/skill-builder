@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from "react"
+import { useCallback, useState } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "@/lib/toast"
 import { FolderInput, Package, FolderTree, Trash2, Lock, LockOpen } from "lucide-react"
@@ -12,7 +12,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSettingsStore } from "@/stores/settings-store"
-import { usePluginStore } from "@/stores/plugin-store"
+import { usePluginsQuery } from "@/lib/queries/plugins"
+import { useInvalidateSkillQueries } from "@/lib/queries/skills"
 import GitHubImportDialog from "@/components/github-import-dialog"
 import { ImportSkillDialog } from "@/components/import-skill-dialog"
 import { CreatePluginDialog } from "@/components/create-plugin-dialog"
@@ -20,9 +21,15 @@ import { deletePlugin, parseSkillFile, setPluginUpgradeLock } from "@/lib/tauri"
 import type { LibraryPlugin, SkillFileMeta } from "@/lib/types"
 
 export function ImportedSkillsTab() {
-  const plugins = usePluginStore((s) => s.plugins)
-  const isLoading = usePluginStore((s) => s.isLoading)
-  const fetchPlugins = usePluginStore((s) => s.fetchPlugins)
+  const { data: plugins = [], isFetching, refetch: refetchPlugins } = usePluginsQuery()
+  const invalidateSkillQueries = useInvalidateSkillQueries()
+  const refreshPlugins = useCallback(async () => {
+    await Promise.all([
+      refetchPlugins(),
+      invalidateSkillQueries(),
+    ])
+  }, [invalidateSkillQueries, refetchPlugins])
+  const showLoading = isFetching && plugins.length === 0
 
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
@@ -34,10 +41,6 @@ export function ImportedSkillsTab() {
     name: null, description: null, version: null, model: null,
     argument_hint: null, user_invocable: null, disable_model_invocation: null,
   })
-
-  useEffect(() => {
-    fetchPlugins()
-  }, [fetchPlugins])
 
   const handleImport = useCallback(async () => {
     const filePath = await open({
@@ -64,7 +67,7 @@ export function ImportedSkillsTab() {
     const newLocked = !plugin.upgrade_locked
     try {
       await setPluginUpgradeLock(plugin.slug, newLocked)
-      await fetchPlugins()
+      await refreshPlugins()
       toast.success(
         newLocked
           ? `Upgrades locked for "${plugin.display_name}"`
@@ -76,13 +79,13 @@ export function ImportedSkillsTab() {
         { duration: Infinity },
       )
     }
-  }, [fetchPlugins])
+  }, [refreshPlugins])
 
   const handleDeletePlugin = useCallback(async (plugin: LibraryPlugin) => {
     const toastId = toast.loading(`Deleting plugin "${plugin.display_name}"...`)
     try {
       await deletePlugin(plugin.slug)
-      await fetchPlugins()
+      await refreshPlugins()
       toast.success(`Deleted plugin "${plugin.display_name}"`, { id: toastId })
     } catch (err) {
       toast.error(
@@ -90,7 +93,7 @@ export function ImportedSkillsTab() {
         { id: toastId, duration: Infinity },
       )
     }
-  }, [fetchPlugins])
+  }, [refreshPlugins])
 
   const displayPlugins = plugins.filter((p) => !p.is_default)
 
@@ -120,7 +123,7 @@ export function ImportedSkillsTab() {
         </Button>
       </div>
 
-      {isLoading ? (
+      {showLoading ? (
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
             <div key={i} className="flex items-center gap-4 rounded-md border px-4 py-3">
@@ -214,7 +217,7 @@ export function ImportedSkillsTab() {
       <GitHubImportDialog
         open={showGitHubImport}
         onOpenChange={setShowGitHubImport}
-        onImported={fetchPlugins}
+        onImported={refreshPlugins}
         registries={marketplaceRegistries.filter(r => r.enabled)}
       />
 
@@ -223,14 +226,14 @@ export function ImportedSkillsTab() {
         onOpenChange={setImportOpen}
         filePath={importFile}
         meta={importMeta}
-        onImported={fetchPlugins}
+        onImported={refreshPlugins}
       />
 
 
       <CreatePluginDialog
         open={createPluginOpen}
         onOpenChange={setCreatePluginOpen}
-        onCreated={fetchPlugins}
+        onCreated={refreshPlugins}
       />
     </div>
   )

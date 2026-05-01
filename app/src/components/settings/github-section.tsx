@@ -10,14 +10,17 @@ import {
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import { useAuthStore } from "@/stores/auth-store"
+import { useGithubLogoutMutation, useGithubUserQuery } from "@/lib/queries/auth"
 
 interface GitHubSectionProps {
   onLoginOpen: () => void
 }
 
 export function GitHubSection({ onLoginOpen }: GitHubSectionProps) {
-  const { user, isLoggedIn, isLoading: isAuthLoading, lastCheckedAt, logout } = useAuthStore()
+  const { data: user = null, isLoading: isAuthLoading, dataUpdatedAt } = useGithubUserQuery()
+  const logoutMutation = useGithubLogoutMutation()
+  const isLoggedIn = Boolean(user)
+  const lastCheckedAt = dataUpdatedAt > 0 ? new Date(dataUpdatedAt).toISOString() : null
 
   const githubStatusLabel = isAuthLoading ? "Checking" : isLoggedIn && user ? "Connected" : "Not connected"
 
@@ -60,7 +63,13 @@ export function GitHubSection({ onLoginOpen }: GitHubSectionProps) {
                   )}
                 </div>
               </div>
-              <Button variant="outline" size="sm" className="w-fit" onClick={logout}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                onClick={() => logoutMutation.mutate()}
+                disabled={logoutMutation.isPending}
+              >
                 <LogOut className="size-4" />
                 Sign Out
               </Button>

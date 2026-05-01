@@ -45,6 +45,7 @@ import { useWorkflowPersistence } from "@/hooks/use-workflow-persistence";
 import { useWorkflowAutosave } from "@/hooks/use-workflow-autosave";
 import { useWorkflowSession } from "@/hooks/use-workflow-session";
 import { useWorkflowStateMachine } from "@/hooks/use-workflow-state-machine";
+import { useBuilderSkillsQuery } from "@/lib/queries/skills";
 
 interface WorkflowMainHeaderProps {
   skillName: string;
@@ -123,8 +124,10 @@ export default function WorkflowPage() {
   const activeRunDisplayItemCount = useAgentStore((s) =>
     s.activeAgentId ? (s.runs[s.activeAgentId]?.displayItems.length ?? 0) : 0
   );
-  const pluginSlug = useSkillStore((s) => s.skills.find((sk) => sk.name === skillName)?.plugin_slug);
-  const skillLibraryKey = useSkillStore((s) => s.skills.find((sk) => sk.name === skillName)?.library_key);
+  const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
+  const currentSkill = builderSkills.find((sk) => sk.name === skillName);
+  const pluginSlug = currentSkill?.plugin_slug;
+  const skillLibraryKey = currentSkill?.library_key;
 
   const stepConfig = STEP_CONFIGS[currentStep];
 

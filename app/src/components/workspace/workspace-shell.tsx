@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { FileText } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import { WorkspaceEvals } from "./workspace-evals";
 import { WorkspaceDescription } from "./workspace-description";
 import type { SkillSummary, ImportedSkill, EditableSkill } from "@/lib/types";
 import { toEditableSkill } from "@/lib/types";
+import { patchBuilderSkillQueryData, useBuilderSkillsQuery } from "@/lib/queries/skills";
 
 interface WorkspaceShellProps {
   skill: SkillSummary | ImportedSkill;
@@ -35,7 +37,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const evalsRunningRef = useRef(false);
   const descriptionRunningRef = useRef(false);
-  const isSkillStoreLoading = useSkillStore((s) => s.isLoading);
+  const queryClient = useQueryClient();
 
   // Sync tab when a navigation sets initialTab (e.g. "Refine" from the More menu)
   useEffect(() => {
@@ -99,6 +101,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
   const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const isBuilderSkill = "name" in skill;
   const workspacePath = useSettingsStore((s) => s.workspacePath);
+  const { isFetching: isSkillListFetching } = useBuilderSkillsQuery(workspacePath);
 
   const toggleFileViewer = useCallback(async () => {
     const store = useRefineStore.getState();
@@ -143,20 +146,15 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
   }, [isBuilderSkill, workspacePath, skill]);
 
   // Called by WorkspaceDescription after a description is applied to disk.
-  // Updates the skill store with the new description so Overview reflects it immediately,
-  // and reloads the skill files cache so the file viewer shows the updated SKILL.md.
+  // Patches query data immediately because apply_description writes to disk,
+  // while listSkills can still return the prior DB-backed description.
   const handleDescriptionApply = useCallback(async (newDescription: string, newVersion: string) => {
-    // 1. Patch the description in the skill store directly (apply_description only writes to disk,
-    //    not the DB, so listSkills would return the stale value).
-    //    Use the real semver returned by apply_description so Overview shows the new tag.
     useSkillStore.getState().setLatestVersion(newVersion);
-    const skills = useSkillStore.getState().skills;
-    const updatedSkills = skills.map((s) =>
-      s.name === (skill as TauriSkillSummary).name && s.plugin_slug === (skill as TauriSkillSummary).plugin_slug
-        ? { ...s, description: newDescription }
-        : s
+    patchBuilderSkillQueryData(queryClient, (cachedSkill) =>
+      cachedSkill.name === (skill as TauriSkillSummary).name && cachedSkill.plugin_slug === (skill as TauriSkillSummary).plugin_slug
+        ? { ...cachedSkill, description: newDescription }
+        : cachedSkill
     );
-    useSkillStore.getState().setSkills(updatedSkills);
 
     // 2. Reload skill files so the file viewer (and any open panel) shows updated SKILL.md content.
     if (!isBuilderSkill || !workspacePath) return;
@@ -180,7 +178,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
       // Non-fatal: file viewer will reload on next open
       useRefineStore.getState().setSkillFiles([]);
     }
-  }, [isBuilderSkill, workspacePath, skill]);
+  }, [isBuilderSkill, queryClient, workspacePath, skill]);
 
   return (
     <div className="flex h-full flex-col">
@@ -222,7 +220,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
             <WorkspaceOverview
               skill={skill}
               skillType={skillType}
-              isLoading={isSkillStoreLoading}
+              isLoading={isSkillListFetching}
             />
           </TabsContent>
 

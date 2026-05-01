@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
+import { renderWithQueryClient as render } from "@/test/query-test-utils";
 
 vi.mock("@/stores/settings-store", () => ({
   useSettingsStore: vi.fn((selector) =>
