@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useSkillStore } from "@/stores/skill-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, listModels, listSkills } from "@/lib/tauri";
+import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, listModels } from "@/lib/tauri";
 import type { DiscoveredSkill, OrphanSkill } from "@/lib/types";
 import { checkForMarketplaceUpdates } from "./use-marketplace-updates";
+import { queryKeys } from "@/lib/queries/query-keys";
 
 interface StartupState {
   settingsLoaded: boolean;
@@ -33,6 +34,7 @@ export interface UseAppStartupReturn extends StartupState {
 export function useAppStartup(): UseAppStartupReturn {
   const setSettings = useSettingsStore((s) => s.setSettings);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [reconciled, setReconciled] = useState(false);
@@ -116,12 +118,9 @@ export function useAppStartup(): UseAppStartupReturn {
           reconcileStartup(true)
             .then((applied) => {
               if (cancelledRef.current) return;
-              const wp = useSettingsStore.getState().workspacePath;
-              if (wp) {
-                listSkills(wp)
-                  .then((skills) => useSkillStore.getState().setSkills(skills))
-                  .catch((err) => console.warn("[app-layout] op=refresh_skills_after_auto_recon status=failure err=%s", err));
-              }
+              queryClient.invalidateQueries({ queryKey: queryKeys.skills.all }).catch((err) =>
+                console.warn("[app-layout] op=refresh_skills_after_auto_recon status=failure err=%s", err),
+              );
               if (applied.orphans.length > 0) {
                 setOrphans(applied.orphans);
               }
@@ -160,7 +159,7 @@ export function useAppStartup(): UseAppStartupReturn {
     useAuthStore.getState().loadUser();
 
     return () => { cancelledRef.current = true; };
-  }, [setSettings]);
+  }, [queryClient, router, setSettings]);
 
   const handleApplyReconciliation = async () => {
     if (!reconRequiresApply) {
@@ -182,12 +181,9 @@ export function useAppStartup(): UseAppStartupReturn {
       }
       // Refresh skill list so sidebar status dots and navigation reflect
       // any workflow resets performed by reconciliation.
-      const wp = useSettingsStore.getState().workspacePath;
-      if (wp) {
-        listSkills(wp)
-          .then((skills) => useSkillStore.getState().setSkills(skills))
-          .catch((err) => console.warn("[app-layout] op=refresh_skills_after_recon status=failure err=%s", err));
-      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.skills.all }).catch((err) =>
+        console.warn("[app-layout] op=refresh_skills_after_recon status=failure err=%s", err),
+      );
       setAckDone(true);
       setReconNotifications([]);
       setReconDiscovered([]);

@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { screen, act, waitFor } from "@testing-library/react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { resetTauriMocks } from "@/test/mocks/tauri";
+import { renderWithQueryClient as render } from "@/test/query-test-utils";
 
 // Mock TanStack Router — useBlocker returns idle state by default
 const mockBlocker = vi.hoisted(() => ({

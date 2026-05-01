@@ -5,10 +5,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import SkillDialog from "@/components/skill-dialog";
 import { BenchmarkOverviewCard } from "@/components/workspace/benchmark-overview-card";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getSkillHistory, listSkills, readLatestBenchmark } from "@/lib/tauri";
+import { getSkillHistory, readLatestBenchmark } from "@/lib/tauri";
 import { useSkillStore } from "@/stores/skill-store";
 import type { BenchmarkData, SkillSummary, ImportedSkill, Purpose, SkillCommit, EditableSkill } from "@/lib/types";
 import { PURPOSE_LABELS, toEditableSkill } from "@/lib/types";
+import { useInvalidateSkillQueries } from "@/lib/queries/skills";
 
 interface WorkspaceOverviewProps {
   skill: SkillSummary | ImportedSkill;
@@ -54,6 +55,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   const [benchmarkIteration, setBenchmarkIteration] = useState<number | null>(null);
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const latestVersion = useSkillStore((s) => s.latestVersion);
+  const invalidateSkillQueries = useInvalidateSkillQueries();
 
   const isBuilderSkill = "name" in skill;
   const skillName = isBuilderSkill ? skill.name : skill.skill_name;
@@ -261,9 +263,7 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
           onOpenChange={setEditDialogOpen}
           onSaved={() => {
             setEditDialogOpen(false);
-            if (workspacePath) {
-              listSkills(workspacePath).then(useSkillStore.getState().setSkills).catch(() => {});
-            }
+            invalidateSkillQueries().catch(() => {});
           }}
         />
       )}

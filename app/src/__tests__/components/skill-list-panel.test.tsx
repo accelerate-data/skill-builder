@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { useSkillStore } from "@/stores/skill-store";
-import { useImportedSkillsStore } from "@/stores/imported-skills-store";
 import { useAgentStore } from "@/stores/agent-store";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
+import { createTestQueryClient } from "@/test/query-test-utils";
+import { queryKeys } from "@/lib/queries/query-keys";
 
 const mockNavigate = vi.fn();
 
@@ -26,6 +28,8 @@ vi.mock("@/components/skill-dialog", () => ({
 
 vi.mock("@/lib/tauri", () => ({
   listSkills: vi.fn().mockResolvedValue([]),
+  listImportedSkills: vi.fn().mockResolvedValue([]),
+  deleteImportedSkill: vi.fn().mockResolvedValue(undefined),
   getExternallyLockedSkills: vi.fn().mockResolvedValue([]),
   listPlugins: vi.fn().mockResolvedValue([]),
   resetWorkflowStep: vi.fn(),
@@ -35,7 +39,7 @@ vi.mock("@/lib/tauri", () => ({
 }));
 
 import { SkillListPanel } from "@/components/skill-list-panel";
-import { removeSkillFromPlugin } from "@/lib/tauri";
+import { listImportedSkills, listSkills, removeSkillFromPlugin } from "@/lib/tauri";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -98,6 +102,31 @@ async function openSkillMenu(skillName: string, user: ReturnType<typeof userEven
   await user.click(moreBtn);
 }
 
+let builderSkillResults: SkillSummary[] = [];
+let importedSkillResults: ImportedSkill[] = [];
+
+function setBuilderSkills(skills: SkillSummary[]) {
+  builderSkillResults = skills;
+  vi.mocked(listSkills).mockResolvedValue(builderSkillResults);
+}
+
+function setImportedSkills(skills: ImportedSkill[]) {
+  importedSkillResults = skills;
+  vi.mocked(listImportedSkills).mockResolvedValue(importedSkillResults);
+}
+
+function renderWithSkillQueries(ui: React.ReactElement) {
+  const queryClient = createTestQueryClient();
+  queryClient.setQueryData(queryKeys.skills.builder(null, null), builderSkillResults);
+  queryClient.setQueryData(queryKeys.skills.imported(), importedSkillResults);
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      {ui}
+    </QueryClientProvider>,
+  );
+}
+
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
 const recentBuilder = makeBuilderSkill({
@@ -123,8 +152,13 @@ const importedSkill = makeImportedSkill({
 
 describe("SkillListPanel", () => {
   beforeEach(() => {
-    useSkillStore.setState({ skills: [] });
-    useImportedSkillsStore.setState({ skills: [] });
+    setBuilderSkills([]);
+    setImportedSkills([]);
+    useSkillStore.setState({
+      activeSkill: null,
+      lockedSkills: new Set(),
+      latestVersion: null,
+    });
     useAgentStore.getState().clearRuns();
     mockNavigate.mockClear();
     localStorage.clear();
@@ -137,18 +171,18 @@ describe("SkillListPanel", () => {
   // ── Collapse toggle ─────────────────────────────────────────────────────
 
   it("renders collapse button when onCollapse is provided", () => {
-    render(<SkillListPanel onCollapse={() => {}} />);
+    renderWithSkillQueries(<SkillListPanel onCollapse={() => {}} />);
     expect(screen.getByTitle("Collapse skill list")).toBeInTheDocument();
   });
 
   it("does not render collapse button when onCollapse is omitted", () => {
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
     expect(screen.queryByTitle("Collapse skill list")).not.toBeInTheDocument();
   });
 
   it("calls onCollapse when collapse button is clicked", () => {
     const onCollapse = vi.fn();
-    render(<SkillListPanel onCollapse={onCollapse} />);
+    renderWithSkillQueries(<SkillListPanel onCollapse={onCollapse} />);
     fireEvent.click(screen.getByTitle("Collapse skill list"));
     expect(onCollapse).toHaveBeenCalledOnce();
   });
@@ -156,10 +190,10 @@ describe("SkillListPanel", () => {
   // ── Merge & sort ──────────────────────────────────────────────────────────
 
   it("renders builder and imported skills in merged list sorted by lastModified desc", () => {
-    useSkillStore.setState({ skills: [olderBuilder, recentBuilder] });
-    useImportedSkillsStore.setState({ skills: [importedSkill] });
+    setBuilderSkills([olderBuilder, recentBuilder]);
+    setImportedSkills([importedSkill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     // Skill rows have aria-selected; other buttons ("+", "More actions") do not
     const rows = screen.getAllByRole("button").filter((r) => r.hasAttribute("aria-selected"));
@@ -170,9 +204,9 @@ describe("SkillListPanel", () => {
   // ── Search ────────────────────────────────────────────────────────────────
 
   it("filters rows by search input (case-insensitive)", () => {
-    useSkillStore.setState({ skills: [recentBuilder, olderBuilder] });
+    setBuilderSkills([recentBuilder, olderBuilder]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const input = screen.getByPlaceholderText("Search skills…");
     fireEvent.change(input, { target: { value: "OLDER" } });
@@ -182,9 +216,9 @@ describe("SkillListPanel", () => {
   });
 
   it("hides rows that don't match search", () => {
-    useSkillStore.setState({ skills: [recentBuilder, olderBuilder] });
+    setBuilderSkills([recentBuilder, olderBuilder]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
     const input = screen.getByPlaceholderText("Search skills…");
     fireEvent.change(input, { target: { value: "xyz-no-match" } });
 
@@ -196,9 +230,9 @@ describe("SkillListPanel", () => {
 
   it("renders red dot for never-started skill", () => {
     const skill = makeBuilderSkill({ name: "new-skill" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-new-skill");
     expect(dot.className).toMatch(/bg-destructive/);
@@ -206,9 +240,9 @@ describe("SkillListPanel", () => {
 
   it("renders amber dot for step-1 skill", () => {
     const skill = makeBuilderSkill({ name: "step1-skill", current_step: "Step 1" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-step1-skill");
     expect(dot.className).toMatch(/bg-amber-/);
@@ -216,9 +250,9 @@ describe("SkillListPanel", () => {
 
   it("renders yellow dot for step-2 skill", () => {
     const skill = makeBuilderSkill({ name: "step2-skill", current_step: "Step 2" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-step2-skill");
     expect(dot.className).toMatch(/bg-amber-/);
@@ -226,9 +260,9 @@ describe("SkillListPanel", () => {
 
   it("renders green dot for completed builder skill", () => {
     const skill = makeBuilderSkill({ name: "done-skill", status: "completed" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-done-skill");
     expect(dot.style.backgroundColor).toBe("var(--color-seafoam)");
@@ -236,9 +270,9 @@ describe("SkillListPanel", () => {
 
   it("renders violet dot for imported (uploaded) skill", () => {
     const skill = makeImportedSkill({ skill_name: "imp-skill" });
-    useImportedSkillsStore.setState({ skills: [skill] });
+    setImportedSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-imported:id-imp-skill");
     expect(dot.style.backgroundColor).toBe("var(--color-violet)");
@@ -249,9 +283,9 @@ describe("SkillListPanel", () => {
       skill_name: "mkt-skill",
       marketplace_source_url: "https://example.com/registry",
     });
-    useImportedSkillsStore.setState({ skills: [skill] });
+    setImportedSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-imported:id-mkt-skill");
     expect(dot.style.backgroundColor).toBe("var(--color-pacific)");
@@ -259,9 +293,9 @@ describe("SkillListPanel", () => {
 
   it("creates a plugin from a builder skill in the main sidebar", async () => {
     const user = userEvent.setup();
-    useSkillStore.setState({ skills: [recentBuilder] });
+    setBuilderSkills([recentBuilder]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     await openSkillMenu("recent-skill", user);
     await user.click(screen.getByRole("menuitem", { name: "Create plugin" }));
@@ -272,22 +306,20 @@ describe("SkillListPanel", () => {
 
   it("moves a builder skill to another existing plugin from the main sidebar", async () => {
     const user = userEvent.setup();
-    useSkillStore.setState({
-      skills: [
-        recentBuilder,
-        makeBuilderSkill({
-          name: "plugin-skill",
-          library_key: "skill-builder:analytics-pack:plugin-skill",
-          plugin_slug: "analytics-pack",
-          plugin_display_name: "Analytics Pack",
-          is_default_plugin: false,
-          status: "completed",
-          created_at: new Date(Date.now() - 120_000).toISOString(),
-        }),
-      ],
-    });
+    setBuilderSkills([
+      recentBuilder,
+      makeBuilderSkill({
+        name: "plugin-skill",
+        library_key: "skill-builder:analytics-pack:plugin-skill",
+        plugin_slug: "analytics-pack",
+        plugin_display_name: "Analytics Pack",
+        is_default_plugin: false,
+        status: "completed",
+        created_at: new Date(Date.now() - 120_000).toISOString(),
+      }),
+    ]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     await openSkillMenu("recent-skill", user);
     await user.click(screen.getByRole("menuitem", { name: "Move to plugin" }));
@@ -298,20 +330,18 @@ describe("SkillListPanel", () => {
 
   it("removes a builder skill from its plugin from the main sidebar", async () => {
     const user = userEvent.setup();
-    useSkillStore.setState({
-      skills: [
-        makeBuilderSkill({
-          name: "plugin-skill",
-          library_key: "skill-builder:analytics-pack:plugin-skill",
-          plugin_slug: "analytics-pack",
-          plugin_display_name: "Analytics Pack",
-          is_default_plugin: false,
-          status: "completed",
-        }),
-      ],
-    });
+    setBuilderSkills([
+      makeBuilderSkill({
+        name: "plugin-skill",
+        library_key: "skill-builder:analytics-pack:plugin-skill",
+        plugin_slug: "analytics-pack",
+        plugin_display_name: "Analytics Pack",
+        is_default_plugin: false,
+        status: "completed",
+      }),
+    ]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     await openSkillMenu("plugin-skill", user);
     await user.click(screen.getByRole("menuitem", { name: "Remove from plugin" }));
@@ -323,7 +353,7 @@ describe("SkillListPanel", () => {
 
   it("applies animate-dot-pulse when an active workflow run exists for the skill", () => {
     const skill = makeBuilderSkill({ name: "running-skill", current_step: "Step 1" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
     useAgentStore.setState((state) => ({
       runs: {
         ...state.runs,
@@ -343,7 +373,7 @@ describe("SkillListPanel", () => {
       },
     }));
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-running-skill");
     expect(dot.className).toMatch(/animate-dot-pulse/);
@@ -351,9 +381,9 @@ describe("SkillListPanel", () => {
 
   it("does NOT apply animate-dot-pulse when no active run exists", () => {
     const skill = makeBuilderSkill({ name: "idle-skill", current_step: "Step 1" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const dot = screen.getByLabelText("status-dot-idle-skill");
     expect(dot.className).not.toMatch(/animate-dot-pulse/);
@@ -364,7 +394,7 @@ describe("SkillListPanel", () => {
   it("locks other rows while a workflow is running; running row is not locked", () => {
     const skillA = makeBuilderSkill({ name: "skill-a", current_step: "Step 1" });
     const skillB = makeBuilderSkill({ name: "skill-b", status: "completed" });
-    useSkillStore.setState({ skills: [skillA, skillB] });
+    setBuilderSkills([skillA, skillB]);
     useAgentStore.setState((state) => ({
       runs: {
         ...state.runs,
@@ -384,7 +414,7 @@ describe("SkillListPanel", () => {
       },
     }));
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     // skill-b row should be locked
     const skillBRow = screen.getByText("skill-b").closest('[role="button"]');
@@ -399,7 +429,7 @@ describe("SkillListPanel", () => {
   it("shows Lock icon on locked rows", () => {
     const skillA = makeBuilderSkill({ name: "running-skill-a" });
     const skillB = makeBuilderSkill({ name: "locked-skill-b" });
-    useSkillStore.setState({ skills: [skillA, skillB] });
+    setBuilderSkills([skillA, skillB]);
     useAgentStore.setState((state) => ({
       runs: {
         ...state.runs,
@@ -419,7 +449,7 @@ describe("SkillListPanel", () => {
       },
     }));
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const skillBRow = screen.getByText("locked-skill-b").closest('[role="button"]');
     expect(skillBRow?.className).toMatch(/cursor-not-allowed/);
@@ -431,35 +461,35 @@ describe("SkillListPanel", () => {
   // ── Default selection ─────────────────────────────────────────────────────
 
   it("selects last-selected-skill from localStorage on mount", () => {
-    useSkillStore.setState({ skills: [recentBuilder, olderBuilder] });
+    setBuilderSkills([recentBuilder, olderBuilder]);
     localStorage.setItem("last-selected-skill", "older-skill");
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const olderRow = screen.getByText("older-skill").closest('[role="button"]');
     expect(olderRow?.getAttribute("aria-selected")).toBe("true");
   });
 
   it("falls back to most-recently-modified skill when localStorage key is absent", () => {
-    useSkillStore.setState({ skills: [olderBuilder, recentBuilder] });
+    setBuilderSkills([olderBuilder, recentBuilder]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const recentRow = screen.getByText("recent-skill").closest('[role="button"]');
     expect(recentRow?.getAttribute("aria-selected")).toBe("true");
   });
 
   it("falls back to no selection when skill list is empty", () => {
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
     // No rows present — just verify no crash and no selected rows
     expect(screen.queryAllByRole("button", { hidden: true })).toBeTruthy();
   });
 
   it("ignores stale localStorage entry when skill no longer exists", () => {
-    useSkillStore.setState({ skills: [recentBuilder] });
+    setBuilderSkills([recentBuilder]);
     localStorage.setItem("last-selected-skill", "deleted-skill");
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     const recentRow = screen.getByText("recent-skill").closest('[role="button"]');
     expect(recentRow?.getAttribute("aria-selected")).toBe("true");
@@ -469,9 +499,9 @@ describe("SkillListPanel", () => {
 
   it("navigates to /skill/$skillName when clicking a never-started skill", () => {
     const skill = makeBuilderSkill({ name: "new-workflow" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
     fireEvent.click(screen.getByText("new-workflow").closest('[role="button"]')!);
 
     expect(mockNavigate).toHaveBeenCalledWith({
@@ -482,9 +512,9 @@ describe("SkillListPanel", () => {
 
   it("navigates to /skill/$skillName when clicking a step-1 skill", () => {
     const skill = makeBuilderSkill({ name: "step1-nav", current_step: "Step 1" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
     fireEvent.click(screen.getByText("step1-nav").closest('[role="button"]')!);
 
     expect(mockNavigate).toHaveBeenCalledWith({
@@ -496,9 +526,9 @@ describe("SkillListPanel", () => {
   it("calls onSelectSkill when clicking a completed skill", () => {
     const onSelectSkill = vi.fn();
     const skill = makeBuilderSkill({ name: "done-skill", status: "completed" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
 
-    render(<SkillListPanel onSelectSkill={onSelectSkill} />);
+    renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("done-skill").closest('[role="button"]')!);
 
     expect(onSelectSkill).toHaveBeenCalledWith("done-skill");
@@ -508,9 +538,9 @@ describe("SkillListPanel", () => {
   it("calls onSelectSkill when clicking an imported skill", () => {
     const onSelectSkill = vi.fn();
     const skill = makeImportedSkill({ skill_name: "my-import" });
-    useImportedSkillsStore.setState({ skills: [skill] });
+    setImportedSkills([skill]);
 
-    render(<SkillListPanel onSelectSkill={onSelectSkill} />);
+    renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("my-import").closest('[role="button"]')!);
 
     expect(onSelectSkill).toHaveBeenCalledWith("imported:id-my-import");
@@ -520,7 +550,7 @@ describe("SkillListPanel", () => {
     const onSelectSkill = vi.fn();
     const skillA = makeBuilderSkill({ name: "running-skill" });
     const skillB = makeBuilderSkill({ name: "locked-skill", status: "completed" });
-    useSkillStore.setState({ skills: [skillA, skillB] });
+    setBuilderSkills([skillA, skillB]);
     useAgentStore.setState((state) => ({
       runs: {
         ...state.runs,
@@ -540,7 +570,7 @@ describe("SkillListPanel", () => {
       },
     }));
 
-    render(<SkillListPanel onSelectSkill={onSelectSkill} />);
+    renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("locked-skill").closest('[role="button"]')!);
 
     expect(mockNavigate).not.toHaveBeenCalled();
@@ -551,7 +581,7 @@ describe("SkillListPanel", () => {
     const onSelectSkill = vi.fn();
     const skillA = makeBuilderSkill({ name: "refine-skill", status: "completed" });
     const skillB = makeBuilderSkill({ name: "other-skill", status: "completed" });
-    useSkillStore.setState({ skills: [skillA, skillB] });
+    setBuilderSkills([skillA, skillB]);
     useAgentStore.setState((state) => ({
       runs: {
         ...state.runs,
@@ -571,7 +601,7 @@ describe("SkillListPanel", () => {
       },
     }));
 
-    render(<SkillListPanel onSelectSkill={onSelectSkill} />);
+    renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
 
     // other-skill should be locked
     const otherRow = screen.getByText("other-skill").closest('[role="button"]');
@@ -589,9 +619,9 @@ describe("SkillListPanel", () => {
   it("shows Review menu item for completed builder skills and navigates to workflow in review mode", async () => {
     const user = userEvent.setup();
     const skill = makeBuilderSkill({ name: "review-skill", status: "completed" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     await openSkillMenu("review-skill", user);
 
@@ -611,9 +641,9 @@ describe("SkillListPanel", () => {
   it("does not show Review menu item for imported skills", async () => {
     const user = userEvent.setup();
     const skill = makeImportedSkill({ skill_name: "imported-no-review" });
-    useImportedSkillsStore.setState({ skills: [skill] });
+    setImportedSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     await openSkillMenu("imported-no-review", user);
 
@@ -627,9 +657,9 @@ describe("SkillListPanel", () => {
   it("groups completed builder actions into workflow and skill sections", async () => {
     const user = userEvent.setup();
     const skill = makeBuilderSkill({ name: "grouped-builder", status: "completed" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     await openSkillMenu("grouped-builder", user);
 
@@ -647,9 +677,9 @@ describe("SkillListPanel", () => {
   it("shows the lifecycle section for imported skills without workflow-only actions", async () => {
     const user = userEvent.setup();
     const skill = makeImportedSkill({ skill_name: "imported-lifecycle-only" });
-    useImportedSkillsStore.setState({ skills: [skill] });
+    setImportedSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     await openSkillMenu("imported-lifecycle-only", user);
 
@@ -669,9 +699,9 @@ describe("SkillListPanel", () => {
       skill_name: "marketplace-menu",
       marketplace_source_url: "https://example.com/registry",
     });
-    useImportedSkillsStore.setState({ skills: [skill] });
+    setImportedSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     await openSkillMenu("marketplace-menu", user);
 
@@ -688,9 +718,9 @@ describe("SkillListPanel", () => {
   it("keeps the in-progress builder menu focused on resuming the workflow", async () => {
     const user = userEvent.setup();
     const skill = makeBuilderSkill({ name: "resume-builder", current_step: "Step 1" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
 
-    render(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     await openSkillMenu("resume-builder", user);
 
@@ -709,7 +739,7 @@ describe("SkillListPanel", () => {
   it("does not navigate when clicking the running skill itself", () => {
     const onSelectSkill = vi.fn();
     const skill = makeBuilderSkill({ name: "running-skill", current_step: "Step 2" });
-    useSkillStore.setState({ skills: [skill] });
+    setBuilderSkills([skill]);
     useAgentStore.setState((state) => ({
       runs: {
         ...state.runs,
@@ -729,7 +759,7 @@ describe("SkillListPanel", () => {
       },
     }));
 
-    render(<SkillListPanel onSelectSkill={onSelectSkill} />);
+    renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("running-skill").closest('[role="button"]')!);
 
     expect(mockNavigate).not.toHaveBeenCalled();
