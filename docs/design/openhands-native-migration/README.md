@@ -4,22 +4,23 @@
 
 ## Overview
 
-Skill Builder currently uses `@anthropic-ai/claude-agent-sdk` and the Claude Code CLI binary as its agent runtime. This design describes a clean-break migration to OpenHands as the native runtime, replacing the Claude SDK binary with a PyInstaller-bundled `openhands-runner` binary, adopting the OpenHands file-based agent and AgentSkills conventions, and simplifying the multi-agent workflow from a sub-agent fan-out pattern to named inline agents.
+Skill Builder currently uses `@anthropic-ai/claude-agent-sdk` and the Claude Code CLI binary as its agent runtime. This design describes a clean-break migration to OpenHands as the native runtime — covering both the **runtime layer** (replacing the execution engine behind the existing sidecar boundary) and the **agent layer** (replacing Claude Code-specific agent and skill files with OpenHands-native equivalents and simplifying the workflow topology).
 
-The migration has two layers: the **runtime layer** (replacing the execution engine behind the existing sidecar boundary, already begun in VU-1143) and the **agent layer** (replacing the Claude Code-specific agent and skill files with OpenHands-native equivalents and simplifying the workflow topology).
+The migration replaces the Claude SDK binary with a PyInstaller-bundled `openhands-runner` binary, adopts OpenHands file-based agent and AgentSkills conventions, and simplifies the multi-agent workflow from a sub-agent fan-out pattern to named inline agents. The sidecar boundary, JSONL protocol, and all app-owned runtime contracts are preserved.
 
-This document covers the agent layer design. The runtime layer contract is defined in `docs/design/agent-runtime-boundary/README.md`.
+The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary/README.md`. This document is the full migration plan.
 
 ## Design Scope
 
 **Covers**
 
-- The target agent topology (named agents, named skills, step routing).
+- Target agent topology (named agents, named skills, step routing).
 - How Claude Code agent/skill files map to OpenHands file-based agents and AgentSkills.
 - The simplified inline research pattern replacing parallel sub-agent fan-out.
 - Multi-model support through the LiteLLM provider string model.
-- The PyInstaller single-binary packaging strategy for the OpenHands runner.
+- OpenHands-native runtime packaging via PyInstaller single binary.
 - The output layout change from `.claude/plugins/` to `.agents/`.
+- Which app-owned runtime contracts are preserved and how they are enforced in OpenHands.
 - What is removed: the Claude SDK dependency, Claude Code tool names, the sub-agent coordination layer, and the confirm-decisions and generate-skill agent files.
 
 **Does not cover**
@@ -33,15 +34,31 @@ This document covers the agent layer design. The runtime layer contract is defin
 
 | Decision | Rationale |
 |---|---|
-| Clean break from Claude SDK, no dual-runtime support. | Maintaining two parallel execution paths adds indefinite carrying cost. A branch release with a 1-month test window validates OpenHands before it becomes the default. |
+| Clean break from Claude SDK, not from Skill Builder's runtime invariants. | Removing the Claude SDK dependency does not remove the execution contracts the app depends on: structured output, one-shot step isolation, artifact visibility, per-agent tool constraints. These are explicitly re-expressed in OpenHands terms. |
+| No dual-runtime compatibility. | Maintaining two parallel execution paths adds indefinite carrying cost. A branch release with a 1-month test window validates OpenHands before it becomes the default. |
 | PyInstaller single binary for the OpenHands runner. | Tauri already bundles a native binary (the Claude CLI). The same infra handles a PyInstaller-built `openhands-runner`. No Docker, no system Python, no `uv` first-launch step. |
 | OpenHands file-based agents in `.agents/agents/` and AgentSkills in `.agents/skills/`. | OpenHands natively discovers these directories. `SKILL.md` is already in the AgentSkills standard format — no conversion needed. |
+| Tool availability moves from `allowedTools` to agent frontmatter `tools:`. | The per-agent tool constraint is preserved — it moves from Rust configuration into the agent file. `allowedTools` is not dropped; it is replaced by the OpenHands-native equivalent. |
 | Inline research replaces parallel sub-agent fan-out. | OpenHands action-observation loop is sequential. Inline research in one context is simpler, has better cross-dimension coherence, and produces equivalent quality output. The parallel spawning machinery and merge/deduplication logic are removed. |
 | Four named agents replace six. | `skill-builder` (router), `research-orchestrator`, `detailed-research`, and `confirm-decisions` are eliminated. `research-agent` and `skill-writer-agent` absorb their responsibilities. |
 | Confirm-decisions logic moves into `skill-writer-agent` base instructions. | Step 2 and step 3 are both one-shot calls to `skill-writer-agent`. The step number in the prompt distinguishes the phase. No separate agent file needed. |
 | LiteLLM provider strings for multi-model support. | OpenHands routes all LLM calls through LiteLLM. Any provider string (`anthropic/claude-sonnet-4-6`, `openai/gpt-4o`, `google/gemini-2.0-flash`, `ollama/llama3.2`) works without runner changes. Settings adds a provider picker and per-provider API key. |
 | `AGENTS.md` is the always-on context file. | Both Claude Code and OpenHands read `AGENTS.md` natively. No change to the always-on instruction layer. |
 | `AskUserQuestion` gap is deferred. | Refine streaming depends on a custom interrupt tool. Until it is built, streaming sessions return a clear error. Workflow one-shot steps are unaffected. |
+
+## Runtime Invariants
+
+The app depends on a set of execution contracts that must hold regardless of which runtime is active. These are not Claude-specific — they are Skill Builder's runtime contract with the agent execution layer.
+
+| Contract | Current enforcement | OpenHands enforcement |
+|---|---|---|
+| One-shot steps cannot interrupt for user input | `AskUserQuestion` absent from `allowedTools` for steps 0–3 | `AskUserQuestion` absent from `tools:` in all workflow step agent frontmatter |
+| Structured output is required for steps 0–3 | Prompt instructions; frontend parser validates `run_result` payload | Same prompt instructions; `extractJsonFromText` fallback + `structured_output_missing` retry prompt if first attempt produces invalid JSON |
+| Artifact parsing errors are app-visible | Parser emits `run_result` error event over JSONL | Unchanged — same JSONL protocol, same `run_result` envelope |
+| Per-step turn budget is enforced | `max_turns` in `SidecarConfig` | `max_iterations` in `RunConfig`, populated from the same `max_turns` field |
+| Tool availability is scoped per agent | `allowedTools` in `SidecarConfig`, per step | `tools:` in each agent's frontmatter |
+
+Nothing in this migration removes a runtime invariant. The mechanism changes; the contract does not.
 
 ## Current Architecture
 
@@ -167,7 +184,7 @@ All dimension reference files (`references/dimensions/*.md`), `references/scorin
 | `Agent`, `Skill` | Not needed | Inline execution replaces sub-agent delegation |
 | `AskUserQuestion` | Deferred — custom tool | Required for refine streaming only; not used in one-shot workflow steps |
 
-`allowedTools` and `permissionMode` are removed from `SidecarConfig`, `step_config.rs`, and all request paths. OpenHands tool availability is determined by the agent frontmatter `tools:` list and the runner's registered tool set.
+`allowedTools` in `SidecarConfig` is replaced by `tools:` in agent frontmatter. The per-agent tool constraint is preserved — it moves from Rust configuration into the agent file. `permissionMode` is removed with no equivalent needed: OpenHands does not have a global permission mode; tool access is scoped to each agent's frontmatter declaration. `requiredPlugins` is replaced by `skills:` in agent frontmatter.
 
 ## Workflow Step Routing
 
@@ -195,9 +212,9 @@ OpenHands routes all LLM calls through LiteLLM. The `model` field in `SidecarCon
 
 Settings UI adds a provider dropdown and per-provider API key field. The `apiKey` field in `SidecarConfig` carries the selected provider's key. A `modelBaseUrl` field is added for local/custom endpoints. Rust emits the appropriate env var to the runner based on the provider prefix.
 
-## Python Packaging
+## Runtime Packaging
 
-The `openhands-runner` binary is built with PyInstaller at CI time and bundled as a Tauri external binary resource, replacing `pathToClaudeCodeExecutable` in `sidecar.rs`.
+The `openhands-runner` binary is built with PyInstaller at CI time and bundled as a Tauri external binary resource, replacing the Claude CLI binary and `pathToClaudeCodeExecutable` in `sidecar.rs`.
 
 ```text
 app/src-tauri/
@@ -211,6 +228,8 @@ app/src-tauri/
 The build script (`app/sidecar/openhands/build.sh`) runs `pyinstaller runner.py --onefile --name openhands-runner` per platform. Binary size is approximately 80–150 MB per platform, comparable to the Claude CLI binary.
 
 `resolve_sdk_cli_path` in Rust is replaced by `resolve_openhands_runner_path`, which resolves the bundled binary path using Tauri's resource resolver.
+
+If startup latency from PyInstaller initialization is unacceptable in testing, the fallback is a `uv`-managed venv with a first-launch install step. The decision between these approaches is made at CI validation time, not deferred to production.
 
 ## Output Layout
 
@@ -238,9 +257,9 @@ Refine streaming remains broken until a custom `AskUserQuestion` tool is impleme
 | `@anthropic-ai/claude-agent-sdk` npm package | Runtime replaced by `openhands-runner` binary |
 | Claude Code CLI binary in Tauri resources | Replaced by `openhands-runner` |
 | `pathToClaudeCodeExecutable` in `SidecarConfig` | Replaced by `resolve_openhands_runner_path` |
-| `allowedTools` in `SidecarConfig` and `step_config.rs` | OpenHands tool availability is set in agent frontmatter |
-| `permissionMode` in `SidecarConfig` | Claude Code-specific concept |
-| `requiredPlugins` in `SidecarConfig` | Replaced by agent `skills:` frontmatter |
+| `allowedTools` in `SidecarConfig` and `step_config.rs` | Replaced by `tools:` in agent frontmatter — constraint is preserved, not dropped |
+| `permissionMode` in `SidecarConfig` | Claude Code-specific concept with no OpenHands equivalent; per-agent tool scoping via frontmatter covers the same ground |
+| `requiredPlugins` in `SidecarConfig` | Replaced by `skills:` in agent frontmatter |
 | `.claude/plugins/` output layout | Replaced by `.agents/` |
 | `plugin.json` and `.claude-plugin/` | Not needed by OpenHands |
 | `skill-builder.md` agent | Router — step routing moves to `step_config.rs` |
