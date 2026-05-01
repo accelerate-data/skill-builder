@@ -28,6 +28,13 @@ def emit(obj: dict[str, Any]) -> None:
     print(json.dumps(obj, separators=(",", ":")), flush=True)
 
 
+def _redact(text: str, api_key: str) -> str:
+    """Replace api_key occurrences in text with [REDACTED] to prevent key leakage over stdout."""
+    if api_key and api_key in text:
+        return text.replace(api_key, "[REDACTED]")
+    return text
+
+
 def now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -84,11 +91,6 @@ try:
     except ImportError:
         AppConfig = None  # type: ignore[assignment]
 
-    try:
-        from openhands.events.action.message import MessageAction  # type: ignore[import]
-    except ImportError:
-        MessageAction = None  # type: ignore[assignment]
-
     if all(x is None for x in [_openhands_main, LLM]):
         _OPENHANDS_IMPORT_ERROR = (
             "OpenHands SDK not installed or no usable entry point found. "
@@ -103,7 +105,6 @@ except ImportError as exc:
     _openhands_main = None  # type: ignore[assignment]
     LLM = None  # type: ignore[assignment]
     AppConfig = None  # type: ignore[assignment]
-    MessageAction = None  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -118,11 +119,13 @@ def parse_request(raw: str) -> dict[str, Any]:
         raise ValueError(f"Invalid JSON on stdin: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError("Request must be a JSON object")
-    if data.get("mode") != "one-shot":
-        raise ValueError(f"Unsupported mode: {data.get('mode')!r} (only 'one-shot' is supported)")
     for required in ("prompt", "apiKey"):
         if required not in data:
             raise ValueError(f"Missing required field: {required!r}")
+    # Accept absent mode as "one-shot" — the Node adapter may not always set it explicitly.
+    mode = data.get("mode", "one-shot")
+    if mode != "one-shot":
+        raise ValueError(f"Unsupported mode: {mode!r} (only 'one-shot' is supported)")
     return data
 
 
@@ -276,7 +279,7 @@ def run(request: dict[str, Any]) -> None:
                 file=sys.stderr,
             )
             traceback.print_exc(file=sys.stderr)
-            run_error = str(exc)
+            run_error = _redact(str(exc), request.get("apiKey", ""))
     elif LLM is not None:
         try:
             result_text = run_via_llm_direct(request)
@@ -291,7 +294,7 @@ def run(request: dict[str, Any]) -> None:
                 file=sys.stderr,
             )
             traceback.print_exc(file=sys.stderr)
-            run_error = str(exc)
+            run_error = _redact(str(exc), request.get("apiKey", ""))
     else:
         run_error = (
             _OPENHANDS_IMPORT_ERROR
@@ -335,7 +338,7 @@ def main() -> None:
             file=sys.stderr,
         )
         traceback.print_exc(file=sys.stderr)
-        emit_result(status="error", error_message=str(exc))
+        emit_result(status="error", error_message=_redact(str(exc), ""))
 
 
 if __name__ == "__main__":
