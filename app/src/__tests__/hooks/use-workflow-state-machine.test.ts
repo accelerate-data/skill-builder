@@ -116,6 +116,9 @@ let mockWorkflowState = {
 const mockSetActiveAgent = vi.fn();
 const mockClearRuns = vi.fn();
 const mockAgentStartRun = vi.fn();
+const mockSettingsState = vi.hoisted(() => ({
+  preferredModel: "test-settings-model" as string | null,
+}));
 let mockActiveAgentId: string | null = null;
 let mockRuns: Record<
   string,
@@ -162,8 +165,10 @@ vi.mock("@/stores/agent-store", () => ({
 
 vi.mock("@/stores/settings-store", () => ({
   useSettingsStore: Object.assign(
-    vi.fn(() => ({ preferredModel: "test-settings-model" })),
-    { getState: vi.fn(() => ({ preferredModel: "test-settings-model" })) },
+    vi.fn((selector?: (s: typeof mockSettingsState) => unknown) =>
+      selector ? selector(mockSettingsState) : mockSettingsState,
+    ),
+    { getState: vi.fn(() => mockSettingsState) },
   ),
 }));
 
@@ -200,6 +205,7 @@ describe("useWorkflowStateMachine", () => {
       gateLoading: false,
       disabledSteps: [],
     };
+    mockSettingsState.preferredModel = "test-settings-model";
   });
 
   it("handleStartAgentStep calls runWorkflowStep and marks step in_progress", async () => {
@@ -242,6 +248,28 @@ describe("useWorkflowStateMachine", () => {
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "error");
     expect(mockSetRunning).toHaveBeenCalledWith(false);
     expect(toast.error).toHaveBeenCalled();
+  });
+
+  it("handleStartAgentStep stops before mutating workflow state when model is missing", async () => {
+    mockSettingsState.preferredModel = null;
+    const { toast } = await import("@/lib/toast");
+
+    const { result } = renderHook(() =>
+      useWorkflowStateMachine(defaultOptions),
+    );
+
+    await act(async () => {
+      await result.current.handleStartAgentStep();
+    });
+
+    expect(mockRunWorkflowStep).not.toHaveBeenCalled();
+    expect(mockUpdateStepStatus).not.toHaveBeenCalled();
+    expect(mockSetRunning).not.toHaveBeenCalled();
+    expect(mockAgentStartRun).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "Select a model in Settings",
+      expect.any(Object),
+    );
   });
 
   it("performStepReset calls resetWorkflowStep and resetToStep", async () => {

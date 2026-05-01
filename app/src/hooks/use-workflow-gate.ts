@@ -76,13 +76,26 @@ export function useWorkflowGate({
   const runGateEvaluation = useCallback(async () => {
     if (!workspacePath) return;
     console.log(`[workflow] Running answer evaluator gate for "${skillName}"`);
-    setGateLoading(true);
+
+    let model: string;
+    try {
+      model = requireSettingsModel(preferredModel);
+    } catch (err) {
+      console.error("[workflow] Gate evaluation skipped:", err);
+      toast.warning("Answer evaluation skipped — proceeding to next step", {
+        duration: Infinity,
+      });
+      updateStepStatus(currentStep, "completed");
+      advanceToNextStep();
+      return;
+    }
 
     try {
+      setGateLoading(true);
       const agentId = await runAnswerEvaluator(skillName, workspacePath);
       console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
       gateAgentIdRef.current = agentId;
-      agentStartRun(agentId, requireSettingsModel(preferredModel));
+      agentStartRun(agentId, model);
       setActiveAgent(agentId);
     } catch (err) {
       console.error("[workflow] Gate evaluation failed to start:", err);

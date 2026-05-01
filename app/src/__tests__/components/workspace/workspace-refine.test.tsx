@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import { WorkspaceRefine } from "@/components/workspace/workspace-refine";
 import type { SkillSummary } from "@/lib/types";
 
@@ -32,13 +32,15 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 // --- Store mocks ---
+const settingsStoreState = vi.hoisted(() => ({
+  workspacePath: "/workspace",
+  preferredModel: null as string | null,
+  availableModels: [] as unknown[],
+}));
+
 vi.mock("@/stores/settings-store", () => ({
-  useSettingsStore: vi.fn((selector: (s: unknown) => unknown) =>
-    selector({
-      workspacePath: "/workspace",
-      preferredModel: null,
-      availableModels: [],
-    }),
+  useSettingsStore: vi.fn((selector: (s: typeof settingsStoreState) => unknown) =>
+    selector(settingsStoreState),
   ),
 }));
 
@@ -105,7 +107,11 @@ vi.mock("@/hooks/use-agent-stream", () => ({}));
 
 // --- Child component mocks ---
 vi.mock("@/components/refine/chat-panel", () => ({
-  ChatPanel: () => <div data-testid="chat-panel" />,
+  ChatPanel: ({ onSend }: { onSend: (text: string) => void }) => (
+    <button data-testid="chat-panel" onClick={() => onSend("Refine this")}>
+      Send
+    </button>
+  ),
 }));
 
 // --- Helpers ---
@@ -139,6 +145,7 @@ describe("WorkspaceRefine", () => {
     refineStoreState.selectedModifiedFile = null;
     refineStoreState.isRunning = false;
     refineStoreState.activeAgentId = null;
+    settingsStoreState.preferredModel = null;
   });
 
   it("renders the chat panel by default for the selected skill", async () => {
@@ -265,6 +272,29 @@ describe("WorkspaceRefine", () => {
 
     expect(tauriMocks.closeRefineSession).toHaveBeenCalledWith(
       "session-unmount",
+    );
+  });
+
+  it("does not start a refine turn when no model is configured", async () => {
+    const { toast } = await import("@/lib/toast");
+    const skill = makeSkill("my-skill");
+    refineStoreState.selectedSkill = skill;
+    refineStoreState.sessionId = "session-no-model";
+
+    await act(async () => {
+      renderRefine(skill);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("chat-panel"));
+    });
+
+    expect(tauriMocks.sendStreamingRefineMessage).not.toHaveBeenCalled();
+    expect(refineStoreState.addUserMessage).not.toHaveBeenCalled();
+    expect(refineStoreState.setRunning).not.toHaveBeenCalledWith(true);
+    expect(toast.error).toHaveBeenCalledWith(
+      "Select a model in Settings before running agents.",
+      expect.any(Object),
     );
   });
 });

@@ -284,7 +284,15 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         targetFiles?.join(",") ?? "all",
       );
 
-      const model = requireSettingsModel(preferredModel);
+      let model: string;
+      try {
+        model = requireSettingsModel(preferredModel);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err), {
+          duration: Infinity,
+        });
+        return;
+      }
 
       runSkillRef.current = selectedSkill;
       store.setPendingFollowupMessage(null);
