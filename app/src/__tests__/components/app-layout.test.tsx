@@ -130,7 +130,7 @@ describe("AppLayout", () => {
     render(<AppLayout />);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("reconcile_startup");
+      expect(mockInvoke).toHaveBeenCalledWith("reconcile_startup", {});
     });
 
     await waitFor(() => {
@@ -155,7 +155,7 @@ describe("AppLayout", () => {
 
     // Wait for settings to load
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("reconcile_startup");
+      expect(mockInvoke).toHaveBeenCalledWith("reconcile_startup", {});
     });
 
     // Content should NOT be rendered yet

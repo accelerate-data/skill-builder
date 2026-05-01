@@ -107,7 +107,7 @@
     },
     "frontend_lib": {
       "path": "app/src/lib/",
-      "description": "Utilities and shared types: tauri.ts (typed Tauri command wrappers), types.ts (shared TS types), agent-events.ts (frontend AgentEvent types), display-types.ts (DisplayItem types), agent-results.ts (result parsing), eval-run.ts (pure calculation helpers for evaluate-skill runs: prompt builder, refine prefill builder, structuredOutput parser, progress percent), description-optimization.ts (pure helpers for description optimization: parseProgressEvent, scoreRate, scoreDelta, findBestIteration, etc.), description-opt-running-state.ts (module-scoped pub/sub for description optimization running state — used by app-layout to gate skill switches), models.ts (model list), workflow-steps.ts + workflow-step-configs.ts (step definitions), workflow-teardown.ts (shared workflow session teardown helper), clarifications-types.ts, path-utils.ts, app-log.ts, help-urls.ts, toast.ts, utils.ts"
+      "description": "Utilities and shared types: tauri.ts (typed Tauri command wrappers), tauri-command-types.ts (central typed command map), tauri-command-types.typecheck.ts (compile-time command contract assertions), types.ts (shared TS types), agent-events.ts (frontend AgentEvent types), display-types.ts (DisplayItem types), agent-results.ts (result parsing), eval-run.ts (pure calculation helpers for evaluate-skill runs: prompt builder, refine prefill builder, structuredOutput parser, progress percent), description-optimization.ts (pure helpers for description optimization: parseProgressEvent, scoreRate, scoreDelta, findBestIteration, etc.), description-opt-running-state.ts (module-scoped pub/sub for description optimization running state — used by app-layout to gate skill switches), models.ts (model list), workflow-steps.ts + workflow-step-configs.ts (step definitions), workflow-teardown.ts (shared workflow session teardown helper), clarifications-types.ts, path-utils.ts, app-log.ts, help-urls.ts, toast.ts, utils.ts"
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
@@ -175,7 +175,7 @@
     "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, SDK invocation, mock mode)",
     "app/sidecar/__tests__/": "Sidecar unit tests (one test file per sidecar module)",
     "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, evals, settings, usage, skill-tester, skills-library, integration, desktop-smoke, fixtures, helpers, setup",
-    "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains suite-owned tier config, OpenCode provider config, package-level eval configs, deterministic harness tests, repo-local Promptfoo state ignores, and live model smoke commands.",
+    "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains suite-owned tier config, OpenCode provider config, package-level eval configs, deterministic harness tests, static assertions for code contracts, repo-local Promptfoo state ignores, and live model smoke commands.",
     "agent-sources/workspace/": "Workspace agent instructions: CLAUDE.md (full), CLAUDE-MINIMAL.md (lightweight), prompts/ (shared fragments). Deployed to workspace .claude/ at app startup.",
     "agent-sources/plugins/": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent",
     "docs/design/": "Architecture decision records and design specs: agent-specs, backend-design, startup-recon, workflow-state, clarifications-rendering, skill-tester, skills-marketplace, and more. Primary reference for non-obvious design decisions.",

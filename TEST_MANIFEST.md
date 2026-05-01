@@ -7,6 +7,8 @@ Maps sources to tests that tooling can't derive automatically. Frontend tests fo
 Changes to these files affect all test layers — run the full test suite (`./tests/run.sh`):
 
 - `src/lib/tauri.ts` — Tauri command type definitions used everywhere
+- `src/lib/tauri-command-types.ts` — typed Tauri command name/args/result contract
+- `src/lib/tauri-command-types.typecheck.ts` — compile-time negative checks for typed Tauri commands
 - `src/test/mocks/tauri.ts` — Unit/integration mock infrastructure
 - `src/test/mocks/tauri-e2e.ts` — E2E mock infrastructure
 - `src/test/mocks/tauri-e2e-event.ts` — E2E event system mock
@@ -129,6 +131,7 @@ Agent prompts define artifact formats (`clarifications.json`, `decisions.json`, 
 ```bash
 # Frontend: auto-detect affected tests
 npm run test:changed                           # Tests affected by recent changes
+npm run test:guard                             # Static frontend policy guards
 
 # Rust: module-level tests + E2E cross-check
 cargo test --manifest-path src-tauri/Cargo.toml commands::workflow
