@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, Document } from "@/lib/types";
+import type { AppSettings, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, Document } from "@/lib/types";
 import type { EvalQuery } from "@/lib/description-optimization";
 import type { FieldSuggestions, TauriCommandInvocation, TauriCommandResult } from "@/lib/tauri-command-types";
 
@@ -465,25 +465,25 @@ export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
 // --- Refine ---
 
 export const getSkillContentAtPath = (path: string) =>
-  invokeUnsafe<SkillFileContent[]>("get_skill_content_at_path", { path })
+  invokeCommand("get_skill_content_at_path", { path })
 
 export const getSkillContentForRefine = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeUnsafe<SkillFileContent[]>("get_skill_content_for_refine", { skillName, workspacePath, pluginSlug })
+  invokeCommand("get_skill_content_for_refine", { skillName, workspacePath, pluginSlug })
 
 export const startRefineSession = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeUnsafe<RefineSessionInfo>("start_refine_session", { skillName, pluginSlug, workspacePath })
+  invokeCommand("start_refine_session", { skillName, pluginSlug, workspacePath })
 
 export const closeRefineSession = (sessionId: string) =>
-  invokeUnsafe<void>("close_refine_session", { sessionId })
+  invokeCommand("close_refine_session", { sessionId })
 
 export const cancelRefineTurn = (sessionId: string) =>
-  invokeUnsafe<void>("cancel_refine_turn", { sessionId })
+  invokeCommand("cancel_refine_turn", { sessionId })
 
 export const cancelAgentRun = (skillName: string, agentId: string) =>
-  invokeUnsafe<void>("cancel_agent_run", { skillName, agentId })
+  invokeCommand("cancel_agent_run", { skillName, agentId })
 
 export const cancelWorkflowStep = (agentId: string) =>
-  invokeUnsafe<void>("cancel_workflow_step", { agentId })
+  invokeCommand("cancel_workflow_step", { agentId })
 
 export const answerStreamingRefineQuestion = (
   sessionId: string,
@@ -491,7 +491,7 @@ export const answerStreamingRefineQuestion = (
   toolUseId: string,
   questions: unknown,
   answers: Record<string, unknown>,
-) => invokeUnsafe<void>("answer_refine_question", {
+) => invokeCommand("answer_refine_question", {
   sessionId,
   agentId,
   toolUseId,
@@ -505,14 +505,14 @@ export const sendStreamingRefineMessage = (
   workspacePath: string,
   pluginSlug: string,
   targetFiles?: string[],
-) => invokeUnsafe<string>("send_refine_message", { sessionId, userMessage, pluginSlug, workspacePath, targetFiles: targetFiles ?? null, command: null })
+) => invokeCommand("send_refine_message", { sessionId, userMessage, pluginSlug, workspacePath, targetFiles: targetFiles ?? null, command: null })
 
 export const finalizeRefineRun = (
   skillName: string,
   workspacePath: string,
   pluginSlug: string,
   structuredOutput?: unknown,
-) => invokeUnsafe<RefineFinalizeResult>("finalize_refine_run", {
+) => invokeCommand("finalize_refine_run", {
   skillName,
   workspacePath,
   pluginSlug,
@@ -523,7 +523,7 @@ export const cleanBenchmarkSnapshot = (
   skillName: string,
   workspacePath: string,
   pluginSlug: string,
-) => invokeUnsafe<void>("clean_benchmark_snapshot", {
+) => invokeCommand("clean_benchmark_snapshot", {
   skillName,
   workspacePath,
   pluginSlug,
@@ -536,7 +536,7 @@ export const getSkillHistory = (
   skillName: string,
   pluginSlug: string,
   limit?: number,
-) => invokeUnsafe<SkillCommit[]>("get_skill_history", {
+) => invokeCommand("get_skill_history", {
   workspacePath,
   skillName,
   pluginSlug,
@@ -548,7 +548,7 @@ export const restoreSkillVersion = (
   skillName: string,
   pluginSlug: string,
   sha: string,
-) => invokeUnsafe<string>("restore_skill_version", {
+) => invokeCommand("restore_skill_version", {
   workspacePath,
   skillName,
   pluginSlug,
@@ -556,7 +556,7 @@ export const restoreSkillVersion = (
 })
 
 export const getSkillFilesAtSha = (workspacePath: string, skillName: string, pluginSlug: string, sha: string) =>
-  invokeUnsafe<SkillFileContent[]>("get_skill_files_at_sha", { workspacePath, skillName, pluginSlug, sha })
+  invokeCommand("get_skill_files_at_sha", { workspacePath, skillName, pluginSlug, sha })
 
 // --- Answer Evaluation (Transition Gate) ---
 
@@ -569,13 +569,13 @@ export type AnswerEvaluation = AnswerEvaluationOutput;
 export const runAnswerEvaluator = (
   skillName: string,
   workspacePath: string,
-) => invokeUnsafe<string>("run_answer_evaluator", { skillName, workspacePath });
+) => invokeCommand("run_answer_evaluator", { skillName, workspacePath });
 
 export const materializeAnswerEvaluationOutput = (
   skillName: string,
   workspacePath: string,
   structuredOutput: AnswerEvaluationOutput,
-) => invokeUnsafe<void>("materialize_answer_evaluation_output", {
+) => invokeCommand("materialize_answer_evaluation_output", {
   skillName,
   workspacePath,
   structuredOutput,
@@ -584,36 +584,36 @@ export const materializeAnswerEvaluationOutput = (
 export const getClarificationsContent = (
   skillName: string,
   workspacePath: string,
-) => invokeUnsafe<string>("get_clarifications_content", { skillName, workspacePath });
+) => invokeCommand("get_clarifications_content", { skillName, workspacePath });
 
 export const saveClarificationsContent = (
   skillName: string,
   workspacePath: string,
   content: string,
-) => invokeUnsafe<void>("save_clarifications_content", { skillName, workspacePath, content });
+) => invokeCommand("save_clarifications_content", { skillName, workspacePath, content });
 
 export const getDecisionsContent = (
   skillName: string,
   workspacePath: string,
-) => invokeUnsafe<string>("get_decisions_content", { skillName, workspacePath });
+) => invokeCommand("get_decisions_content", { skillName, workspacePath });
 
 export const saveDecisionsContent = (
   skillName: string,
   workspacePath: string,
   content: string,
-) => invokeUnsafe<void>("save_decisions_content", { skillName, workspacePath, content });
+) => invokeCommand("save_decisions_content", { skillName, workspacePath, content });
 
 export const getContextFileContent = (
   skillName: string,
   workspacePath: string,
   fileName: string,
-) => invokeUnsafe<string>("get_context_file_content", { skillName, workspacePath, fileName });
+) => invokeCommand("get_context_file_content", { skillName, workspacePath, fileName });
 
 export const logGateDecision = (
   skillName: string,
   verdict: string,
   decision: string,
-) => invokeUnsafe<void>("log_gate_decision", { skillName, verdict, decision });
+) => invokeCommand("log_gate_decision", { skillName, verdict, decision });
 
 // --- File Import ---
 

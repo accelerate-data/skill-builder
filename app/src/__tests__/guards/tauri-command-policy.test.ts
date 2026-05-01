@@ -3,6 +3,33 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 
 const sourceRoot = path.resolve(__dirname, "../../");
+const tauriWrapperPath = path.join(sourceRoot, "lib/tauri.ts");
+const tauriCommandTypesPath = path.join(sourceRoot, "lib/tauri-command-types.ts");
+
+const vu1140Commands = [
+  "get_skill_content_at_path",
+  "get_skill_content_for_refine",
+  "start_refine_session",
+  "close_refine_session",
+  "cancel_refine_turn",
+  "cancel_agent_run",
+  "cancel_workflow_step",
+  "answer_refine_question",
+  "send_refine_message",
+  "finalize_refine_run",
+  "clean_benchmark_snapshot",
+  "get_skill_history",
+  "restore_skill_version",
+  "get_skill_files_at_sha",
+  "run_answer_evaluator",
+  "materialize_answer_evaluation_output",
+  "get_clarifications_content",
+  "save_clarifications_content",
+  "get_decisions_content",
+  "save_decisions_content",
+  "get_context_file_content",
+  "log_gate_decision",
+] as const;
 
 function walkSourceFiles(dir: string): string[] {
   const files: string[] = [];
@@ -84,7 +111,7 @@ describe("Tauri command policy", () => {
   });
 
   it("exposes typed invokeCommand and names the raw escape hatch explicitly", () => {
-    const source = fs.readFileSync(path.join(sourceRoot, "lib/tauri.ts"), "utf8");
+    const source = fs.readFileSync(tauriWrapperPath, "utf8");
 
     expect(source).toContain("export const invokeCommand");
     expect(source).toContain("export const invokeUnsafe");
@@ -98,5 +125,29 @@ describe("Tauri command policy", () => {
     const offenders = vu1138CommandNames.filter((command) => unsafeCommands.includes(command));
 
     expect(offenders).toEqual([]);
+  });
+
+  it("keeps VU-1140 command wrappers on the typed invokeCommand path", () => {
+    const wrapperSource = fs.readFileSync(tauriWrapperPath, "utf8");
+    const typeSource = fs.readFileSync(tauriCommandTypesPath, "utf8");
+    const missingMapEntries: string[] = [];
+    const missingTypedWrappers: string[] = [];
+    const unsafeWrappers: string[] = [];
+
+    for (const command of vu1140Commands) {
+      if (!new RegExp(`${command}:`).test(typeSource)) {
+        missingMapEntries.push(command);
+      }
+      if (!wrapperSource.includes(`invokeCommand("${command}"`)) {
+        missingTypedWrappers.push(command);
+      }
+      if (new RegExp(`invokeUnsafe(?:<[^>]+>)?\\("${command}"`).test(wrapperSource)) {
+        unsafeWrappers.push(command);
+      }
+    }
+
+    expect(missingMapEntries).toEqual([]);
+    expect(missingTypedWrappers).toEqual([]);
+    expect(unsafeWrappers).toEqual([]);
   });
 });
