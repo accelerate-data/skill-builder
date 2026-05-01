@@ -1,6 +1,6 @@
 import { build } from "esbuild";
 import { cpSync, mkdirSync, existsSync, writeFileSync, rmSync } from "fs";
-import { resolve, dirname } from "path";
+import { resolve, dirname, basename } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -50,6 +50,23 @@ if (sdkBinary) {
   console.warn("SDK native binary not found — skipping");
 }
 
+// Stage the PyInstaller-built OpenHands runner if it already exists.
+// Normal JS sidecar builds must not require Python/PyInstaller; developers can
+// build the native runner explicitly via app/sidecar/openhands/build.sh.
+const openHandsRunner = locateOpenHandsRunner();
+const outOpenHands = resolve(__dirname, "dist/openhands");
+mkdirSync(outOpenHands, { recursive: true });
+if (openHandsRunner) {
+  const destName = process.platform === "win32" ? "openhands-runner.exe" : "openhands-runner";
+  const dest = resolve(outOpenHands, destName);
+  if (openHandsRunner !== dest) {
+    cpSync(openHandsRunner, dest);
+  }
+  console.log(`Staged OpenHands runner to dist/openhands/${destName}`);
+} else {
+  console.warn("OpenHands runner binary not found — skipping. Run app/sidecar/openhands/build.sh to build it.");
+}
+
 function locateSdkBinary() {
   const platform = process.platform;
   const arch = process.arch;
@@ -65,6 +82,19 @@ function locateSdkBinary() {
   for (const pkg of candidates) {
     const candidate = resolve(__dirname, "node_modules", pkg, `claude${ext}`);
     if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function locateOpenHandsRunner() {
+  const destName = process.platform === "win32" ? "openhands-runner.exe" : "openhands-runner";
+  const candidates = [
+    resolve(__dirname, "dist", "openhands", destName),
+    resolve(__dirname, "openhands", "dist", destName),
+    resolve(__dirname, "openhands", destName),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate) && basename(candidate) === destName) return candidate;
   }
   return null;
 }

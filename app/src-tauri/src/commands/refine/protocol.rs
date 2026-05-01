@@ -211,6 +211,7 @@ pub(super) fn build_refine_config(
         output_format: None,
         prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
+        path_to_openhands_runner: None,
         agent_name: None,
         required_plugins: Some(vec![
             "skill-content-researcher".to_string(),

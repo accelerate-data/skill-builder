@@ -171,6 +171,7 @@ async fn run_workflow_step_inner(
         output_format: workflow_output_format_for_step(step_id),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
+        path_to_openhands_runner: None,
         agent_name: Some(agent_name),
         // Compatibility field retained until Slice 4 moves workflow discovery
         // fully to `.agents`; OpenHands ignores Claude plugin loading.
@@ -551,6 +552,7 @@ pub async fn run_answer_evaluator(
         output_format: Some(answer_evaluator_output_format()),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
+        path_to_openhands_runner: None,
         agent_name: Some("answer-evaluator".to_string()),
         // Compatibility field retained until Slice 4 moves workflow discovery
         // fully to `.agents`; OpenHands ignores Claude plugin loading.

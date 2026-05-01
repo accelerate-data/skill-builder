@@ -39,7 +39,7 @@
     {
       "name": "esbuild (sidecar)",
       "config_files": ["app/sidecar/build.js"],
-      "notes": "Compiles TypeScript sidecar to `app/sidecar/dist/` for Tauri bundling. No hot-reload — restart `npm run dev` after editing sidecar source."
+      "notes": "Compiles TypeScript sidecar to `app/sidecar/dist/` for Tauri bundling and stages an already-built OpenHands runner from `app/sidecar/dist/openhands/` when present. No hot-reload — restart `npm run dev` after editing sidecar source."
     },
     {
       "name": "GitHub Actions",
@@ -131,7 +131,7 @@
     },
     "sidecar_core": {
       "path": "app/sidecar/",
-      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer, routes one-shot vs streaming requests), runtime/ (runtime boundary types, sink adapter, and Claude runtime adapter), run-agent.ts (one-shot compatibility wrapper), stream-session.ts (async generator push pattern for multi-turn streaming), message-processor.ts (transforms SDK messages into DisplayItems and AgentEvents), message-classifier.ts (classifies SDK message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts + options.ts (sidecar config validation and Claude SDK option builder), error-labels.ts (user-facing error strings), shutdown.ts (graceful shutdown handler)"
+      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer, routes one-shot vs streaming requests), runtime/ (runtime boundary types, sink adapter, Claude runtime adapter, and OpenHands runtime adapter), openhands/ (Python runner plus PyInstaller build script), run-agent.ts (one-shot compatibility wrapper), stream-session.ts (async generator push pattern for multi-turn streaming), message-processor.ts (transforms SDK messages into DisplayItems and AgentEvents), message-classifier.ts (classifies SDK message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts + options.ts (sidecar config validation and Claude SDK option builder), error-labels.ts (user-facing error strings), shutdown.ts (graceful shutdown handler)"
     },
     "sidecar_mock": {
       "path": "app/sidecar/mock-agent.ts",
@@ -172,7 +172,7 @@
     "app/src/test/": "Frontend test infrastructure: setup.ts (Vitest global setup), fixtures.ts (test data factories), mocks/ (Tauri invoke mocks, store mocks, router mocks). Distinguished from app/src/__tests__/ which contains the actual test files.",
     "app/src/__tests__/": "Frontend unit/integration tests, mirroring src/ structure: components/, guards/, hooks/, lib/, pages/, stores/",
     "app/src-tauri/src/": "Rust backend runtime (Tauri commands, DB, agents, types, reconciliation, support modules)",
-    "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, SDK invocation, mock mode)",
+    "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, Claude/OpenHands runtime adapters, mock mode)",
     "app/sidecar/__tests__/": "Sidecar unit tests (one test file per sidecar module)",
     "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, description, evals, settings, usage, skill-tester, skills-library, integration, desktop-smoke, fixtures, helpers, setup",
     "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains suite-owned tier config, OpenCode provider config, package-level eval configs, deterministic harness tests, static assertions for code contracts including shared Tauri command policy analysis, repo-local Promptfoo state ignores, one-scenario-per-package smoke, and live model regression commands.",
@@ -188,7 +188,7 @@
   "dependencies_internal": {
     "frontend → rust": "Via Tauri IPC (`invoke()` from @tauri-apps/api/core)",
     "rust → sidecar": "Node.js child process, stdin/stdout JSONL protocol",
-    "sidecar → anthropic": "Via runtime/claude-runtime.ts using @anthropic-ai/claude-agent-sdk (SDK query())",
+    "sidecar → agent runtime": "Via runtime/claude-runtime.ts using @anthropic-ai/claude-agent-sdk for Claude runs, or runtime/openhands-runtime.ts spawning the packaged OpenHands runner for OpenHands runs",
     "frontend → sidecar_events": "Typed via agent-events.ts contract, received as Tauri events"
   },
   "dependencies_external": {
