@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, LibraryPlugin, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, IterationMeta, PendingEval, SkillEvalContext, EvalBenchmark, Document } from "@/lib/types";
-import type { EvalQuery, OptimizationResult } from "@/lib/description-optimization";
+import type { AppSettings, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, LibraryPlugin, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, Document } from "@/lib/types";
+import type { EvalQuery } from "@/lib/description-optimization";
 import type { TauriCommandInvocation, TauriCommandResult } from "@/lib/tauri-command-types";
 
 export const invokeCommand = <Invocation extends TauriCommandInvocation>(
@@ -710,17 +710,17 @@ export const runOptimizationLoop = (
   workspacePath: string,
   model: string,
   evalQueries: EvalQuery[],
-) => invokeUnsafe<OptimizationResult>("run_optimization_loop", { skillName, pluginSlug, workspacePath, model, evalQueries });
+) => invokeCommand("run_optimization_loop", { skillName, pluginSlug, workspacePath, model, evalQueries });
 
 export const cancelDescriptionOptimization = () =>
-  invokeUnsafe<void>("cancel_description_optimization");
+  invokeCommand("cancel_description_optimization", {});
 
 export const applyDescription = (
   skillName: string,
   pluginSlug: string,
   workspacePath: string,
   description: string,
-) => invokeUnsafe<string>("apply_description", { skillName, pluginSlug, workspacePath, description });
+) => invokeCommand("apply_description", { skillName, pluginSlug, workspacePath, description });
 
 export const saveEvalQueries = (
   skillName: string,
@@ -728,7 +728,7 @@ export const saveEvalQueries = (
   workspacePath: string,
   evalQueries: EvalQuery[],
 ) =>
-  invokeUnsafe<void>("save_eval_queries", {
+  invokeCommand("save_eval_queries", {
     skillName,
     pluginSlug,
     workspacePath,
@@ -739,7 +739,7 @@ export const loadEvalQueries = (
   skillName: string,
   pluginSlug: string,
   workspacePath: string,
-) => invokeUnsafe<EvalQuery[]>("load_eval_queries", { skillName, pluginSlug, workspacePath });
+) => invokeCommand("load_eval_queries", { skillName, pluginSlug, workspacePath });
 
 /** Start the generate-skill-description-evals agent.
  * Rust intercepts the run_result (step_id=-12), persists queries to
@@ -753,7 +753,7 @@ export const startGenerateDescEvalQueries = (
   workspaceSkillDir: string,
   model: string,
   numEvalQueries: number,
-) => invokeUnsafe<string>("start_generate_desc_evals", {
+) => invokeCommand("start_generate_desc_evals", {
   agentId,
   skillName,
   pluginSlug,
@@ -767,7 +767,7 @@ export const writeDescOptLog = (
   pluginSlug: string,
   workspacePath: string,
   message: string,
-) => invokeUnsafe<void>("write_desc_opt_log", { skillName, pluginSlug, workspacePath, message });
+) => invokeCommand("write_desc_opt_log", { skillName, pluginSlug, workspacePath, message });
 
 // --- Benchmark ---
 
@@ -777,27 +777,24 @@ export interface LatestBenchmarkResult {
 }
 
 export const readLatestBenchmark = (skillName: string, workspacePath: string) =>
-  invokeUnsafe<LatestBenchmarkResult | null>(
-    "read_latest_benchmark",
-    { skillName, workspacePath },
-  );
+  invokeCommand("read_latest_benchmark", { skillName, workspacePath });
 
 // --- Test case management (Evals tab) ---
 
 export const listTestCases = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeUnsafe<TestCase[]>("list_test_cases", { skillName, workspacePath, pluginSlug });
+  invokeCommand("list_test_cases", { skillName, workspacePath, pluginSlug });
 
 export const saveTestCase = (skillName: string, workspacePath: string, pluginSlug: string, testCase: TestCase) =>
-  invokeUnsafe<TestCase>("save_test_case", { skillName, workspacePath, pluginSlug, testCase });
+  invokeCommand("save_test_case", { skillName, workspacePath, pluginSlug, testCase });
 
 export const deleteTestCase = (skillName: string, workspacePath: string, pluginSlug: string, id: number) =>
-  invokeUnsafe<void>("delete_test_case", { skillName, workspacePath, pluginSlug, id });
+  invokeCommand("delete_test_case", { skillName, workspacePath, pluginSlug, id });
 
 export const listIterations = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeUnsafe<IterationMeta[]>("list_iterations", { skillName, workspacePath, pluginSlug });
+  invokeCommand("list_iterations", { skillName, workspacePath, pluginSlug });
 
 export const createNextIterationDir = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeUnsafe<[number, string]>("create_next_iteration_dir", { skillName, workspacePath, pluginSlug });
+  invokeCommand("create_next_iteration_dir", { skillName, workspacePath, pluginSlug });
 
 export const materializeEvalBenchmark = (
   iterDir: string,
@@ -809,7 +806,7 @@ export const materializeEvalBenchmark = (
   runCount: number,
   comparisonMode?: string,
 ) =>
-  invokeUnsafe<EvalBenchmark>("materialize_eval_benchmark", {
+  invokeCommand("materialize_eval_benchmark", {
     iterDir,
     skillName,
     workspacePath,
@@ -821,7 +818,7 @@ export const materializeEvalBenchmark = (
   });
 
 export const readIterationResult = (iterationPath: string, skillName?: string, workspacePath?: string, pluginSlug?: string) =>
-  invokeUnsafe<[EvalBenchmark, string[]]>("read_iteration_result", {
+  invokeCommand("read_iteration_result", {
     iterationPath,
     skillName: skillName ?? null,
     workspacePath: workspacePath ?? null,
@@ -829,16 +826,16 @@ export const readIterationResult = (iterationPath: string, skillName?: string, w
   });
 
 export const readGrading = (gradingPath: string) =>
-  invokeUnsafe<Record<string, unknown>>("read_grading", { gradingPath });
+  invokeCommand("read_grading", { gradingPath });
 
 export const readSkillContextForEvalGen = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeUnsafe<SkillEvalContext>("read_skill_context_for_eval_gen", { skillName, workspacePath, pluginSlug });
+  invokeCommand("read_skill_context_for_eval_gen", { skillName, workspacePath, pluginSlug });
 
 export const readPendingEval = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeUnsafe<PendingEval>("read_pending_eval", { skillName, workspacePath, pluginSlug });
+  invokeCommand("read_pending_eval", { skillName, workspacePath, pluginSlug });
 
 export const discardPendingEval = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeUnsafe<void>("discard_pending_eval", { skillName, workspacePath, pluginSlug });
+  invokeCommand("discard_pending_eval", { skillName, workspacePath, pluginSlug });
 
 export const buildEvalPrompt = (
   skillName: string,
@@ -851,7 +848,7 @@ export const buildEvalPrompt = (
   iterDir: string,
   comparisonMode?: string,
 ) =>
-  invokeUnsafe<[string, string]>("build_eval_prompt", {
+  invokeCommand("build_eval_prompt", {
     skillName,
     pluginSlug,
     workspacePath,
@@ -870,7 +867,7 @@ export const buildEvalGenPrompt = (
   userIntent: string,
   userContextFile: string,
 ) =>
-  invokeUnsafe<[string, string]>("build_eval_gen_prompt", {
+  invokeCommand("build_eval_gen_prompt", {
     skillName,
     skillPath,
     outputPath,
