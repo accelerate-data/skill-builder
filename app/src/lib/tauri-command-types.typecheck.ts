@@ -7,16 +7,36 @@ declare const evalQueries: EvalQuery[];
 
 void invokeCommand("get_settings", {});
 void invokeCommand("save_settings", { settings });
+void invokeCommand("delete_skill", { workspacePath: "/tmp/skills", name: "demo-skill" });
+void invokeCommand("import_marketplace_to_library", {
+  sourceUrl: "https://github.com/acme/skills",
+  skillPaths: ["plugins/demo/skills/demo-skill"],
+  metadataOverrides: null,
+});
 
 // @ts-expect-error command names must be declared in TauriCommandMap
 void invokeCommand("get_settingz", {});
 
+// @ts-expect-error VU-1138 command names must be declared in TauriCommandMap
+void invokeCommand("delete_skills", { workspacePath: "/tmp/skills", name: "demo-skill" });
+
 // @ts-expect-error argument names must match the command contract
 void invokeCommand("test_api_key", { api_key: "sk-ant-test" });
+
+// @ts-expect-error VU-1138 argument names must match the command contract
+void invokeCommand("delete_skill", { workspace_path: "/tmp/skills", name: "demo-skill" });
 
 // @ts-expect-error command result is AppSettings, not string
 const invalidSettingsResult: Promise<string> = invokeCommand("get_settings", {});
 void invalidSettingsResult;
+
+// @ts-expect-error VU-1138 command result is MarketplaceImportResult[], not string
+const invalidMarketplaceImportResult: Promise<string> = invokeCommand("import_marketplace_to_library", {
+  sourceUrl: "https://github.com/acme/skills",
+  skillPaths: ["plugins/demo/skills/demo-skill"],
+  metadataOverrides: null,
+});
+void invalidMarketplaceImportResult;
 
 import type { TauriCommandName } from "@/lib/tauri-command-types";
 

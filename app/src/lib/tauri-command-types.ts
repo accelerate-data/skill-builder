@@ -1,21 +1,53 @@
 import type {
   AppSettings,
+  AvailablePlugin,
+  AvailableSkill,
   BenchmarkData,
   DeviceFlowResponse,
   EvalBenchmark,
+  GitHubRepoInfo,
   GitHubAuthResult,
   GitHubUser,
+  ImportedSkill,
   IterationMeta,
+  LibraryPlugin,
+  MarketplaceImportResult,
+  MarketplaceUpdateResult,
   ModelInfo,
   PendingEval,
   ReconciliationResult,
   SkillEvalContext,
+  SkillFileMeta,
+  SkillMetadataOverride,
+  SkillSummary,
   StartupDeps,
   TestCase,
 } from "@/lib/types";
 import type { EvalQuery, OptimizationResult } from "@/lib/description-optimization";
 
 export type NoArgs = Record<string, never>;
+
+export interface FieldSuggestions {
+  description: string;
+  domain: string;
+  audience: string;
+  challenges: string;
+  scope: string;
+  unique_setup: string;
+  claude_mistakes: string;
+  context_questions: string;
+}
+
+export interface ScopeReviewSuggestion {
+  name: string;
+  description: string;
+}
+
+export interface ScopeReviewResult {
+  status: string;
+  reason: string;
+  suggested_skills: ScopeReviewSuggestion[];
+}
 
 export interface TauriCommandMap {
   get_settings: { args: NoArgs; result: AppSettings };
@@ -45,6 +77,118 @@ export interface TauriCommandMap {
   github_poll_for_token: { args: { deviceCode: string }; result: GitHubAuthResult };
   github_get_user: { args: NoArgs; result: GitHubUser | null };
   github_logout: { args: NoArgs; result: void };
+  delete_skill: { args: { workspacePath: string; name: string }; result: void };
+  update_skill_metadata: {
+    args: {
+      skillName: string;
+      pluginSlug: string;
+      purpose: string | null;
+      tags: string[] | null;
+      intakeJson: string | null;
+      description: string | null;
+      version: string | null;
+      model: string | null;
+      argumentHint: string | null;
+      userInvocable: boolean | null;
+      disableModelInvocation: boolean | null;
+    };
+    result: void;
+  };
+  rename_skill: {
+    args: { oldName: string; newName: string; workspacePath: string };
+    result: void;
+  };
+  export_skill_as_file: {
+    args: { skillName: string; pluginSlug: string; destPath: string };
+    result: void;
+  };
+  generate_suggestions: {
+    args: {
+      skillName: string;
+      purpose: string;
+      industry: string | null;
+      functionRole: string | null;
+      domain: string | null;
+      scope: string | null;
+      audience: string | null;
+      challenges: string | null;
+      fields: string[] | null;
+    };
+    result: FieldSuggestions;
+  };
+  review_skill_scope: {
+    args: {
+      skillName: string;
+      description: string;
+      purpose: string;
+      contextQuestions: string | null;
+      industry: string | null;
+    };
+    result: ScopeReviewResult;
+  };
+  get_dashboard_skill_names: { args: NoArgs; result: string[] };
+  list_skills: {
+    args: { workspacePath: string; sourceUrl: string | null };
+    result: SkillSummary[];
+  };
+  list_imported_skills: {
+    args: { sourceUrl: string | null };
+    result: ImportedSkill[];
+  };
+  delete_imported_skill: { args: { skillId: string }; result: void };
+  list_plugins: { args: NoArgs; result: LibraryPlugin[] };
+  delete_plugin: { args: { pluginSlug: string }; result: void };
+  set_plugin_upgrade_lock: {
+    args: { pluginSlug: string; locked: boolean };
+    result: void;
+  };
+  create_plugin_from_skills: {
+    args: { pluginName: string; skillKeys: string[] };
+    result: string;
+  };
+  move_skill_to_plugin: {
+    args: { skillKey: string; pluginSlug: string };
+    result: void;
+  };
+  remove_skill_from_plugin: { args: { skillKey: string }; result: void };
+  parse_github_url: { args: { url: string }; result: GitHubRepoInfo };
+  check_marketplace_url: { args: { url: string }; result: string };
+  list_github_skills: {
+    args: { owner: string; repo: string; branch: string; subpath: string | null };
+    result: AvailableSkill[];
+  };
+  list_github_plugins: {
+    args: { owner: string; repo: string; branch: string; subpath: string | null };
+    result: AvailablePlugin[];
+  };
+  import_marketplace_to_library: {
+    args: {
+      sourceUrl: string;
+      skillPaths: string[];
+      metadataOverrides: Record<string, SkillMetadataOverride> | null;
+    };
+    result: MarketplaceImportResult[];
+  };
+  import_marketplace_plugin_to_library: {
+    args: { sourceUrl: string; pluginPath: string; pluginName: string };
+    result: MarketplaceImportResult[];
+  };
+  check_marketplace_updates: { args: NoArgs; result: MarketplaceUpdateResult };
+  check_skill_customized: { args: { skillName: string }; result: boolean };
+  parse_skill_file: { args: { filePath: string }; result: SkillFileMeta };
+  import_skill_from_file: {
+    args: {
+      filePath: string;
+      name: string;
+      description: string;
+      version: string;
+      model: string | null;
+      argumentHint: string | null;
+      userInvocable: boolean | null;
+      disableModelInvocation: boolean | null;
+    };
+    result: string;
+  };
   run_optimization_loop: {
     args: {
       skillName: string;
