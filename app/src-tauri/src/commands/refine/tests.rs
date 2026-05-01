@@ -1149,6 +1149,42 @@ fn test_finalize_refine_no_tag_when_head_unchanged() {
     assert_eq!(version, "1.0.0", "no-op refine should not create a new tag");
 }
 
+#[test]
+fn test_finalize_refine_commits_dirty_skill_path_and_tags() {
+    let dir = tempdir().unwrap();
+    let workspace_dir = tempdir().unwrap();
+    let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+    crate::git::ensure_repo(dir.path()).unwrap();
+
+    let skill_dir = dir.path().join(plugin).join("dirty-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
+    let initial_sha = crate::git::commit_all(dir.path(), "dirty-skill: initial").unwrap().unwrap();
+    crate::git::create_skill_version_tag(dir.path(), plugin, "dirty-skill", "1.0.0").unwrap();
+
+    // Simulate rewrite-skill editing the configured skill directory but failing to commit.
+    std::fs::write(skill_dir.join("SKILL.md"), "# V1 refined\n").unwrap();
+
+    let result = finalize_refine_run_inner_for_plugin(
+        "dirty-skill",
+        dir.path().to_str().unwrap(),
+        workspace_dir.path().to_str().unwrap(),
+        plugin,
+        None,
+        Some(&initial_sha),
+    )
+    .unwrap();
+
+    let new_sha = result.commit_sha.expect("finalize should commit dirty skill changes");
+    assert_ne!(new_sha, initial_sha);
+    let version = crate::git::latest_skill_semver(dir.path(), plugin, "dirty-skill").unwrap();
+    assert_eq!(version, "1.0.1", "backend refine commit should bump patch version");
+    assert!(
+        result.diff.files.iter().any(|file| file.path == "skills/dirty-skill/SKILL.md"),
+        "refine diff should include the backend-committed skill file"
+    );
+}
+
 // ===== Protected frontmatter field tests =====
 
 use super::output::update_skill_name;

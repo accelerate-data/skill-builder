@@ -133,6 +133,83 @@ pub fn commit_all(path: &Path, message: &str) -> Result<Option<String>, String> 
     Ok(Some(oid.to_string()))
 }
 
+/// Stage and commit only one repo-relative path. Returns the commit SHA, or
+/// Ok(None) if that path has no changes.
+pub fn commit_path(path: &Path, relative_path: &Path, message: &str) -> Result<Option<String>, String> {
+    let relative = relative_path
+        .to_string_lossy()
+        .replace(std::path::MAIN_SEPARATOR, "/")
+        .trim_matches('/')
+        .to_string();
+    if relative.is_empty() {
+        return Err("Refusing to commit empty relative path".to_string());
+    }
+
+    log::debug!("[git] commit_path at {} path={} — \"{}\"", path.display(), relative, message);
+    let repo = ensure_repo(path)?;
+
+    ensure_no_unrelated_staged_changes(&repo, &relative)?;
+
+    let mut scoped_opts = StatusOptions::new();
+    scoped_opts.include_untracked(true).recurse_untracked_dirs(true).pathspec(&relative);
+    let scoped_statuses = repo
+        .statuses(Some(&mut scoped_opts))
+        .map_err(|e| format!("Failed to get statuses for '{}': {}", relative, e))?;
+    if scoped_statuses.is_empty() {
+        log::debug!("[git] No changes under '{}' — skipping", relative);
+        return Ok(None);
+    }
+
+    let mut index = repo
+        .index()
+        .map_err(|e| format!("Failed to get index: {}", e))?;
+    index
+        .add_all([relative.as_str()].iter(), git2::IndexAddOption::DEFAULT, None)
+        .map_err(|e| format!("Failed to stage '{}': {}", relative, e))?;
+
+    for entry in scoped_statuses.iter() {
+        if entry.status().contains(git2::Status::WT_DELETED) {
+            if let Some(p) = entry.path() {
+                let _ = index.remove_path(Path::new(p));
+            }
+        }
+    }
+
+    index
+        .write()
+        .map_err(|e| format!("Failed to write index: {}", e))?;
+
+    let tree_id = index
+        .write_tree()
+        .map_err(|e| format!("Failed to write tree: {}", e))?;
+    let tree = repo
+        .find_tree(tree_id)
+        .map_err(|e| format!("Failed to find tree: {}", e))?;
+
+    let head_commit = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+    if let Some(ref parent) = head_commit {
+        let parent_tree = parent
+            .tree()
+            .map_err(|e| format!("Failed to get parent tree: {}", e))?;
+        let diff = repo
+            .diff_tree_to_tree(Some(&parent_tree), Some(&tree), None)
+            .map_err(|e| format!("Failed to compute diff: {}", e))?;
+        if diff.deltas().count() == 0 {
+            log::debug!("[git] No changes to commit — skipping");
+            return Ok(None);
+        }
+    }
+
+    let sig = default_signature(&repo)?;
+    let parents: Vec<&git2::Commit> = head_commit.as_ref().into_iter().collect();
+    let oid = repo
+        .commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+        .map_err(|e| format!("Failed to commit '{}': {}", relative, e))?;
+
+    log::info!("[git] Committed {}: {} ({})", relative, message, &oid.to_string()[..8]);
+    Ok(Some(oid.to_string()))
+}
+
 // --- Tag name helpers (templates from plugin-paths.json via skill_paths) ---
 
 pub fn skill_version_tag_name(plugin_slug: &str, skill_name: &str, version: &str) -> String {
@@ -844,6 +921,40 @@ fn default_signature(repo: &Repository) -> Result<Signature<'static>, String> {
     repo.signature()
         .or_else(|_| Signature::now("Skill Builder", "noreply@skillbuilder.local"))
         .map_err(|e| format!("Failed to create signature: {}", e))
+}
+
+fn ensure_no_unrelated_staged_changes(repo: &Repository, relative: &str) -> Result<(), String> {
+    let prefix = format!("{}/", relative.trim_end_matches('/'));
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true).recurse_untracked_dirs(true);
+    let statuses = repo
+        .statuses(Some(&mut opts))
+        .map_err(|e| format!("Failed to inspect staged changes: {}", e))?;
+
+    for entry in statuses.iter() {
+        let Some(path) = entry.path() else {
+            continue;
+        };
+        if path == relative || path.starts_with(&prefix) {
+            continue;
+        }
+
+        let status = entry.status();
+        let staged = status.intersects(
+            git2::Status::INDEX_NEW
+                | git2::Status::INDEX_MODIFIED
+                | git2::Status::INDEX_DELETED
+                | git2::Status::INDEX_RENAMED
+                | git2::Status::INDEX_TYPECHANGE,
+        );
+        if staged {
+            return Err(format!(
+                "Refusing scoped commit for '{}' because unrelated staged change exists at '{}'",
+                relative, path
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Check if a commit touches any file under the given path prefix.

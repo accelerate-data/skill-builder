@@ -266,8 +266,9 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
     // Clean up any stale skill snapshot left by a prior rewrite→benchmark cycle
     cleanup_skill_snapshot(&workspace_skill_root);
 
-    // Agent now handles commit+tag via shell git; read HEAD for the commit SHA
-    let commit_sha = {
+    // Read HEAD for the commit SHA. The rewrite agent is instructed to commit,
+    // but finalize also commits scoped skill changes if the agent only edited files.
+    let mut commit_sha = {
         let repo = git2::Repository::open(Path::new(skills_path))
             .map_err(|e| format!("Failed to open repo: {}", e))?;
         repo.head()
@@ -278,10 +279,36 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
 
     // If HEAD hasn't changed since the session started, the agent made no commits.
     // Return files with an empty diff instead of diffing a stale prior commit.
-    let head_unchanged = match (&commit_sha, pre_run_sha) {
+    let mut head_unchanged = match (&commit_sha, pre_run_sha) {
         (Some(current), Some(pre)) => current == pre,
         _ => false,
     };
+    if head_unchanged {
+        let relative_skill_path = Path::new(plugin_slug).join(skill_name);
+        match crate::git::commit_path(
+            Path::new(skills_path),
+            &relative_skill_path,
+            &format!("{}: refine update", skill_name),
+        ) {
+            Ok(Some(new_sha)) => {
+                log::info!(
+                    "[finalize_refine_run] backend committed refine changes skill={} sha={}",
+                    skill_name,
+                    &new_sha[..8.min(new_sha.len())]
+                );
+                commit_sha = Some(new_sha);
+                head_unchanged = false;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                log::warn!(
+                    "[finalize_refine_run] backend scoped commit failed skill={}: {}",
+                    skill_name,
+                    e
+                );
+            }
+        }
+    }
     if head_unchanged {
         log::info!(
             "[finalize_refine_run] HEAD unchanged skill={} — no agent commit, skipping diff",

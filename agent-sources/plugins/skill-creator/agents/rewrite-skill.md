@@ -215,8 +215,8 @@ Perform a full preservation sweep to confirm no original domain knowledge was dr
 After all file edits are complete, stage and commit:
 
 ```bash
-git -c user.email="agent@skillbuilder" -c user.name="Skill Builder" add "{skill_name}/"
-git -c user.email="agent@skillbuilder" -c user.name="Skill Builder" commit -m "{skill_name}: {your commit_summary}"
+git -C "{skill_output_dir}/../.." -c user.email="agent@skillbuilder" -c user.name="Skill Builder" add "{skill_output_dir}/"
+git -C "{skill_output_dir}/../.." -c user.email="agent@skillbuilder" -c user.name="Skill Builder" commit -m "{skill_name}: {your commit_summary}"
 ```
 
 If the commit reports "nothing to commit", skip committing. Version tagging is handled automatically by the backend after the commit is detected.
