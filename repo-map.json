@@ -52,7 +52,7 @@
         ".github/workflows/sync-skill-creator.yml",
         ".github/workflows/sync-vd-agent.yml"
       ],
-      "notes": "pr-ci.yml: platform CI (Linux/Windows/macOS) + frontend unit/integration. pr-policy.yml: docs build, agents-structural, instruction-docs-lint, repo-map-audit, test-manifest-audit. security.yml: dependency-review, CodeQL, cargo-audit. docs.yml: VitePress GitHub Pages deploy. release.yml: multi-platform Tauri build + publish."
+      "notes": "pr-ci.yml: heavy platform CI (Linux/Windows/macOS) + frontend unit/integration on main push or manual dispatch. pr-policy.yml: cheap PR checks for docs build/help links, script tests, agents-structural, eval-harness, instruction-docs-lint, repo-map-audit, test-manifest-audit. security.yml: dependency-review, CodeQL, cargo-audit. docs.yml: deterministic VitePress GitHub Pages deploy. release.yml: multi-platform Tauri build, release-stage verification, and publish."
     }
   ],
   "test_frameworks": [
@@ -186,7 +186,7 @@
     "docs/references/": "Vendored external reference docs (e.g. Anthropic API snapshots)",
     ".claude/rules/": "Shared agent rules (agent-agnostic, detailed policy). Referenced from AGENTS.md.",
     ".claude/repo-map.schema.json": "Schema for repo-map.json",
-    "scripts/": "Developer and automation scripts. worktree.sh is the canonical maintainer helper for creating development worktrees; it bootstraps app/eval dependencies and symlinks worktree Promptfoo state back to the source checkout."
+    "scripts/": "Developer and automation scripts. worktree.sh is the canonical maintainer helper for creating development worktrees; it bootstraps app/eval dependencies and symlinks worktree Promptfoo state back to the source checkout. check-help-docs.mjs verifies app/VitePress help links against docs/user-guide. verify-release-stage.mjs verifies staged release archives include required runtime resources."
   },
   "dependencies_internal": {
     "frontend → rust": "Via Tauri IPC (`invoke()` from @tauri-apps/api/core)",
@@ -224,6 +224,9 @@
     "test_agents_smoke": "cd app && npm run test:agents:smoke  # live OpenCode/Promptfoo model call",
     "test_eval_harness": "cd tests/evals && npm test",
     "test_eval_harness_smoke": "cd tests/evals && npm run eval:harness-smoke  # live OpenCode/Promptfoo model call",
+    "test_release_docs_ci_scripts": "node --test scripts/*.test.mjs",
+    "check_help_docs": "node scripts/check-help-docs.mjs",
+    "verify_release_stage": "node scripts/verify-release-stage.mjs <stage-dir> <windows|macos>",
     "create_worktree": "./scripts/worktree.sh feature/<branch-name>",
     "test_sidecar": "cd app/sidecar && npx vitest run",
     "test_e2e": "cd app && npm run test:e2e",
