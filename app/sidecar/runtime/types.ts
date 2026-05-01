@@ -37,6 +37,7 @@ export interface RuntimeRequestBase {
   };
   promptSuggestions?: boolean;
   pathToClaudeCodeExecutable?: string;
+  pathToOpenHandsRunner?: string;
   runtimeProvider?: "claude" | "openhands";
   context: RunPersistenceContext;
 }

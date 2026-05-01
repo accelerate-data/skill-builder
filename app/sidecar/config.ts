@@ -25,6 +25,7 @@ export interface SidecarConfig {
   };
   promptSuggestions?: boolean;
   pathToClaudeCodeExecutable?: string;
+  pathToOpenHandsRunner?: string;
   /** Skill name this run is associated with. Used by mock agent for template discrimination. */
   skillName?: string;
   /** Step ID for persistence (-1=unknown, -10=refine, -11=test, 0-3=workflow steps). */
@@ -111,6 +112,7 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   assertOptString(c, "workflowSessionId");
   assertOptString(c, "usageSessionId");
   assertOptString(c, "pathToClaudeCodeExecutable");
+  assertOptString(c, "pathToOpenHandsRunner");
 
   // Optional enum fields
   assertOptStringIn(c, "mode", ["one-shot", "streaming"]);

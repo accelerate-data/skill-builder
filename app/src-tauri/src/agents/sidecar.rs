@@ -46,6 +46,11 @@ pub struct SidecarConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub path_to_claude_code_executable: Option<String>,
+    #[serde(
+        rename = "pathToOpenHandsRunner",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub path_to_openhands_runner: Option<String>,
     #[serde(rename = "agentName", skip_serializing_if = "Option::is_none")]
     pub agent_name: Option<String>,
     #[serde(rename = "requiredPlugins", skip_serializing_if = "Option::is_none")]
@@ -125,8 +130,14 @@ pub async fn spawn_sidecar(
     skill_name: String,
     transcript_log_dir: Option<String>,
 ) -> Result<(), String> {
-    // Resolve the SDK native binary path so the bundled SDK can spawn it
-    if config.path_to_claude_code_executable.is_none() {
+    if config.runtime_provider.as_deref() == Some("openhands") {
+        if config.path_to_openhands_runner.is_none() {
+            if let Ok(runner_path) = resolve_openhands_runner_path(&app_handle) {
+                config.path_to_openhands_runner = Some(runner_path);
+            }
+        }
+    } else if config.path_to_claude_code_executable.is_none() {
+        // Resolve the SDK native binary path so the bundled SDK can spawn it.
         if let Ok(cli_path) = resolve_sdk_cli_path(&app_handle) {
             config.path_to_claude_code_executable = Some(cli_path);
         }
@@ -147,6 +158,27 @@ pub async fn spawn_sidecar(
 /// Public accessor for startup dependency checks.
 pub fn resolve_sdk_cli_path_public(app_handle: &tauri::AppHandle) -> Result<String, String> {
     resolve_sdk_cli_path(app_handle)
+}
+
+/// Public accessor for startup dependency checks.
+pub fn resolve_openhands_runner_path_public(
+    app_handle: &tauri::AppHandle,
+) -> Result<String, String> {
+    resolve_openhands_runner_path(app_handle)
+}
+
+fn openhands_runner_executable_name() -> &'static str {
+    if cfg!(windows) {
+        "openhands-runner.exe"
+    } else {
+        "openhands-runner"
+    }
+}
+
+fn normalize_executable_path(path: &str) -> String {
+    path.strip_prefix("\\\\?\\")
+        .unwrap_or(path)
+        .replace('\\', "/")
 }
 
 /// Resolve the path to the SDK's native `claude` binary, which the bundled SDK
@@ -172,7 +204,7 @@ fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String>
         if cli.exists() {
             return cli
                 .to_str()
-                .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
+                .map(normalize_executable_path)
                 .ok_or_else(|| "Invalid SDK binary path".to_string());
         }
     }
@@ -184,7 +216,7 @@ fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String>
             if cli.exists() {
                 return cli
                     .to_str()
-                    .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
+                    .map(normalize_executable_path)
                     .ok_or_else(|| "Invalid SDK binary path".to_string());
             }
         }
@@ -198,13 +230,74 @@ fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String>
         if path.exists() {
             return path
                 .to_str()
-                .map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).replace('\\', "/"))
+                .map(normalize_executable_path)
                 .ok_or_else(|| "Invalid SDK binary path".to_string());
         }
     }
 
     Err(format!(
         "Could not find SDK binary ({exe_name}) — run 'npm run build' in app/sidecar/ first"
+    ))
+}
+
+/// Resolve the path to the PyInstaller-built OpenHands runner.
+///
+/// Looks in sidecar/dist/openhands/openhands-runner (or .exe on Windows),
+/// matching the staging path created by app/sidecar/build.js.
+fn resolve_openhands_runner_path(app_handle: &tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+
+    let exe_name = openhands_runner_executable_name();
+
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        let runner = resource_dir
+            .join("sidecar")
+            .join("dist")
+            .join("openhands")
+            .join(exe_name);
+        if runner.exists() {
+            return runner
+                .to_str()
+                .map(normalize_executable_path)
+                .ok_or_else(|| "Invalid OpenHands runner path".to_string());
+        }
+    }
+
+    if let Ok(exe_dir) = std::env::current_exe() {
+        if let Some(dir) = exe_dir.parent() {
+            let runner = dir
+                .join("sidecar")
+                .join("dist")
+                .join("openhands")
+                .join(exe_name);
+            if runner.exists() {
+                return runner
+                    .to_str()
+                    .map(normalize_executable_path)
+                    .ok_or_else(|| "Invalid OpenHands runner path".to_string());
+            }
+        }
+    }
+
+    let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| {
+            p.join("sidecar")
+                .join("dist")
+                .join("openhands")
+                .join(exe_name)
+        });
+    if let Some(path) = dev_path {
+        if path.exists() {
+            return path
+                .to_str()
+                .map(normalize_executable_path)
+                .ok_or_else(|| "Invalid OpenHands runner path".to_string());
+        }
+    }
+
+    Err(format!(
+        "Could not find OpenHands runner ({exe_name}) — run 'cd app/sidecar/openhands && ./build.sh' and then 'cd app && npm run sidecar:build'"
     ))
 }
 
@@ -233,6 +326,7 @@ mod tests {
             output_format: None,
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
+            path_to_openhands_runner: None,
             agent_name: Some("research-entities".to_string()),
             required_plugins: None,
             setting_sources: None,
@@ -289,6 +383,7 @@ mod tests {
             output_format: None,
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
+            path_to_openhands_runner: None,
             agent_name: None,
             required_plugins: None,
             setting_sources: None,
@@ -333,6 +428,7 @@ mod tests {
             output_format: None,
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
+            path_to_openhands_runner: None,
             agent_name: None,
             required_plugins: None,
             setting_sources: None,
@@ -380,6 +476,7 @@ mod tests {
             output_format: None,
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
+            path_to_openhands_runner: None,
             agent_name: None,
             required_plugins: None,
             setting_sources: None,
@@ -398,6 +495,75 @@ mod tests {
         assert!(
             parsed.get("skillName").is_none(),
             "skillName must be absent when None"
+        );
+    }
+
+    #[test]
+    fn test_sidecar_config_openhands_runner_path_serialized_as_camel_case() {
+        let config = SidecarConfig {
+            mode: Some("one-shot".to_string()),
+            prompt: "test".to_string(),
+            system_prompt: None,
+            model: None,
+            model_base_url: None,
+            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
+            workspace_root_dir: "/tmp".to_string(),
+            workspace_skill_dir: "/tmp".to_string(),
+            allowed_tools: None,
+            max_turns: None,
+            permission_mode: None,
+            betas: None,
+            thinking: None,
+            fallback_model: None,
+            effort: None,
+            output_format: None,
+            prompt_suggestions: None,
+            path_to_claude_code_executable: None,
+            path_to_openhands_runner: Some("/tmp/openhands-runner".to_string()),
+            agent_name: None,
+            required_plugins: None,
+            setting_sources: None,
+            conversation_history: None,
+            skill_name: None,
+            step_id: None,
+            workflow_session_id: None,
+            usage_session_id: None,
+            run_source: None,
+            plugin_slug: "skills".to_string(),
+            transcript_log_dir: None,
+            runtime_provider: Some("openhands".to_string()),
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed["pathToOpenHandsRunner"], "/tmp/openhands-runner");
+        assert!(
+            parsed.get("path_to_openhands_runner").is_none(),
+            "snake_case key must not appear in JSON"
+        );
+        assert!(
+            parsed.get("pathToClaudeCodeExecutable").is_none(),
+            "OpenHands runner path must not be serialized as the Claude executable path"
+        );
+    }
+
+    #[test]
+    fn test_openhands_runner_executable_name_matches_platform() {
+        let expected = if cfg!(windows) {
+            "openhands-runner.exe"
+        } else {
+            "openhands-runner"
+        };
+
+        assert_eq!(openhands_runner_executable_name(), expected);
+    }
+
+    #[test]
+    fn test_normalize_executable_path_strips_windows_verbatim_prefix_and_slashes() {
+        assert_eq!(
+            normalize_executable_path(r"\\?\C:\Skill Builder\openhands-runner.exe"),
+            "C:/Skill Builder/openhands-runner.exe"
         );
     }
 }

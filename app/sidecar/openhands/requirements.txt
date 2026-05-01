@@ -5,3 +5,4 @@
 # The import path inside the package is `openhands.*`.
 
 openhands-ai>=0.38.0
+pyinstaller>=6.0.0

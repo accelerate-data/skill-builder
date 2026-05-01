@@ -252,6 +252,7 @@ async fn run_single_eval_query(
         output_format: None,
         prompt_suggestions: None,
         path_to_claude_code_executable: sdk_cli_path,
+        path_to_openhands_runner: None,
         // Use the production agent so eval reflects real routing behaviour.
         // required_plugins loads the vd-agent plugin (agent spec + sibling agents).
         agent_name: Some("vd-agent:data-product-builder".to_string()),

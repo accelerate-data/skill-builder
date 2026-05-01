@@ -110,21 +110,21 @@ pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, St
     };
     checks.push(sidecar);
 
-    // 3. SDK native binary (claude / claude.exe)
-    let sdk = match crate::agents::sidecar::resolve_sdk_cli_path_public(&app) {
-        Ok(path) => dep_ok("claude_sdk_cli", "Claude SDK", path),
+    // 3. OpenHands runner native binary (openhands-runner / openhands-runner.exe)
+    let runner = match crate::agents::sidecar::resolve_openhands_runner_path_public(&app) {
+        Ok(path) => dep_ok("openhands_runner", "OpenHands runner", path),
         Err(e) => dep_fail(
-            "claude_sdk_cli",
+            "openhands_runner",
             "missing_dependency",
-            "Claude SDK",
+            "OpenHands runner",
             e,
-            "From the repository root run: `cd app && npm run sidecar:build`, then restart Skill Builder.",
+            "From the repository root run: `cd app/sidecar/openhands && ./build.sh`, then `cd ../../ && npm run sidecar:build`, and restart Skill Builder.",
         ),
     };
-    checks.push(sdk);
+    checks.push(runner);
 
-    // 4. Git (required by Claude Code for version control operations)
-    //    Windows: also validates git-bash which the SDK needs for the Bash tool
+    // 4. Git (required by agent runtime for version control operations)
+    //    Windows: also validates git-bash for shell-compatible tool execution.
     let git_check = check_git_available().await;
     checks.push(git_check);
 

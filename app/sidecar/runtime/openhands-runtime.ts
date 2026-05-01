@@ -38,6 +38,17 @@ function resolveRunnerPath(): string {
   }
 }
 
+function buildRunnerCommand(request: OneShotRunRequest): {
+  command: string;
+  args: string[];
+} {
+  if (request.pathToOpenHandsRunner) {
+    return { command: request.pathToOpenHandsRunner, args: [] };
+  }
+
+  return { command: "python3", args: [resolveRunnerPath()] };
+}
+
 // ---------------------------------------------------------------------------
 // Sanitised environment
 // ---------------------------------------------------------------------------
@@ -92,11 +103,11 @@ export class OpenHandsRuntime implements AgentRuntime {
   ): Promise<void> {
     assertOneShotHasNoUserQuestions(request);
 
-    const runnerPath = resolveRunnerPath();
+    const runner = buildRunnerCommand(request);
     const env = buildRunnerEnv(request);
 
     process.stderr.write(
-      `[openhands-runtime] event=spawn runner=${runnerPath}\n`,
+      `[openhands-runtime] event=spawn runner=${runner.command}${runner.args.length > 0 ? ` ${runner.args.join(" ")}` : ""}\n`,
     );
 
     const processor = new OpenHandsEventProcessor({
@@ -111,9 +122,7 @@ export class OpenHandsRuntime implements AgentRuntime {
     });
 
     return new Promise<void>((resolve) => {
-      // "python3" is correct for macOS/Linux dev environments.
-      // Production will use the PyInstaller binary path via resolve_openhands_runner_path.
-      const child = child_process.spawn("python3", [runnerPath], {
+      const child = child_process.spawn(runner.command, runner.args, {
         env,
         stdio: ["pipe", "pipe", "pipe"],
       });

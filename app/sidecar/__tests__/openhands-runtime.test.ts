@@ -133,6 +133,32 @@ describe("OpenHandsRuntime.runOnce", () => {
     );
   });
 
+  it("spawns the packaged runner directly when pathToOpenHandsRunner is provided", async () => {
+    const child = makeMockChild([
+      JSON.stringify({
+        type: "openhands_result",
+        status: "success",
+        result_text: "done",
+        structured_output: null,
+        timestamp: Date.now(),
+      }),
+    ]);
+    mockSpawn.mockReturnValue(child as unknown as ReturnType<typeof childProcess.spawn>);
+
+    const runtime = new OpenHandsRuntime();
+    const { sink } = makeSink();
+    await runtime.runOnce(
+      makeRequest({ pathToOpenHandsRunner: "/opt/skill-builder/openhands-runner" }),
+      sink,
+    );
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/opt/skill-builder/openhands-runner",
+      [],
+      expect.objectContaining({ stdio: ["pipe", "pipe", "pipe"] }),
+    );
+  });
+
   it("writes serialized request to stdin and closes it", async () => {
     const request = makeRequest({
       agentName: "skill-writer-agent",
