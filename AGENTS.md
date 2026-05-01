@@ -1,6 +1,6 @@
 # Skill Builder
 
-Multi-agent workflow for creating domain-specific Claude skills. Tauri desktop app (React + Rust) orchestrates agents via a Node.js sidecar.
+Desktop app for creating domain-specific Claude Code-compatible skills. Tauri desktop app (React + Rust) orchestrates agents via a Node.js sidecar.
 
 **Maintenance rule:** This file contains architecture, conventions, and guidelines — not product details. Do not add counts, feature descriptions, or any fact that can be discovered by reading code. If it will go stale when the code changes, it doesn't belong here — point to the source file instead.
 
@@ -10,7 +10,7 @@ Use this precedence when maintaining agent guidance:
 
 1. `AGENTS.md` (canonical, cross-agent source of truth)
 2. `.claude/rules/*.md` (shared detailed rules; agent-agnostic content)
-3. `.claude/skills/*/SKILL.md` (workflow playbooks)
+3. `agent-sources/**` (runtime agent, plugin, skill, and workspace instructions)
 4. Agent-specific adapter files (for example `CLAUDE.md`) that reference canonical docs
 
 Adapter files must not duplicate canonical policy unless they are adding agent-specific behavior.
@@ -20,7 +20,7 @@ Adapter files must not duplicate canonical policy unless they are adding agent-s
 | Layer | Technology |
 |---|---|
 | Desktop framework | Tauri v2 |
-| Frontend | React 19, TypeScript strict, Vite 7 |
+| Frontend | React 19, TypeScript strict, Vite 8 |
 | Styling | Tailwind CSS 4, shadcn/ui |
 | State | Zustand, TanStack Router |
 | Icons | Lucide React |
@@ -59,7 +59,7 @@ Read these before starting any non-trivial task:
 
 | Artifact | Update when |
 |---|---|
-| `AGENTS.md` | A fact is durable, non-obvious, and won't be obvious from code · a skill is added to `.claude/skills/` |
+| `AGENTS.md` | A fact is durable, non-obvious, and won't be obvious from code |
 | `repo-map.json` | Any file added, removed, or renamed inside `commands/`, `stores/`, `pages/`, `components/`, `lib/`, `hooks/` · sub-module directory added or restructured · new Tauri command file · entrypoint or package structure change |
 | `README.md` | User-facing installation, configuration, commands, or architecture overview changes |
 | `TEST_MANIFEST.md` | Rust command file added/removed · E2E spec added/removed · shared infra file added/removed · agent artifact format changes affecting a Rust or TS parser |
@@ -117,7 +117,7 @@ For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct car
   ./scripts/worktree.sh feature/<branch-name>
   ```
 
-**Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/` · `cd app && npm run test:unit` when changing event types in `app/src/lib/` or `app/sidecar/`.
+**Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, or `.claude/rules/` · `cd app && npm run test:unit` when changing event types in `app/src/lib/` or `app/sidecar/`.
 
 **Pre-PR `repo-map.json` audit (required):** Before opening or updating a PR, verify `repo-map.json` reflects the current codebase. Check:
 

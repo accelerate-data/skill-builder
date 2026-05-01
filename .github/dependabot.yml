@@ -17,6 +17,11 @@ updates:
     schedule:
       interval: weekly
 
+  - package-ecosystem: npm
+    directory: /tests/evals
+    schedule:
+      interval: weekly
+
   - package-ecosystem: cargo
     directory: /app/src-tauri
     schedule:

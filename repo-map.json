@@ -32,7 +32,7 @@
       "notes": "Bundles frontend (Vite), Rust backend, sidecar dist, and agent-sources as app resources. Identifier: com.vibedata.skill-builder. CSP allows Anthropic API + GitHub API. Dev port: DEV_PORT (default 1420), HMR on DEV_PORT+1."
     },
     {
-      "name": "Vite 7",
+      "name": "Vite 8",
       "config_files": ["app/vite.config.ts", "app/tsconfig.json"],
       "notes": "React + Tailwind plugin. Path alias `@/` → `./src/`. E2E mock path alias via TAURI_E2E env var."
     },
@@ -79,7 +79,7 @@
     {
       "name": "Skill Builder Desktop",
       "type": "Tauri v2 desktop app",
-      "description": "Multi-agent workflow for creating domain-specific Claude skills. React frontend + Rust backend + Node.js agent sidecar.",
+      "description": "Desktop workflow for creating domain-specific Claude Code-compatible skills. React frontend + Rust backend + Node.js agent sidecar.",
       "identifier": "com.vibedata.skill-builder"
     }
   ],
@@ -185,7 +185,7 @@
     "docs/user-guide/": "VitePress user documentation, deployed via docs.yml to GitHub Pages",
     "docs/references/": "Vendored external reference docs (e.g. Anthropic API snapshots)",
     ".claude/rules/": "Shared agent rules (agent-agnostic, detailed policy). Referenced from AGENTS.md.",
-    ".claude/skills/": "Workflow playbooks for Claude Code CLI skills",
+    ".claude/repo-map.schema.json": "Schema for repo-map.json",
     "scripts/": "Developer and automation scripts. worktree.sh is the canonical maintainer helper for creating development worktrees; it bootstraps app/eval dependencies and symlinks worktree Promptfoo state back to the source checkout."
   },
   "dependencies_internal": {
@@ -204,7 +204,7 @@
       "db": "rusqlite (bundled SQLite)"
     },
     "dev": {
-      "vite": "Vite 7 + @vitejs/plugin-react",
+      "vite": "Vite 8 + @vitejs/plugin-react",
       "vitest": "Vitest (unit + structural agent tests)",
       "playwright": "Playwright (E2E)",
       "promptfoo": "Promptfoo (agent smoke tests, manual only)",
@@ -256,9 +256,9 @@
     "startup_recon_design": "docs/design/startup-recon/ — reconciliation scenario matrix (scenarios 1–12), used by reconciliation/",
     "coding_conventions": ".claude/rules/coding-conventions.md — naming, error handling",
     "frontend_rules": ".claude/rules/frontend-design.md — AD brand, component constraints, state indicators",
-    "rust_rules": ".claude/rules/rust-backend.md — command conventions, error types, Rust testing",
-    "sidecar_rules": ".claude/rules/agent-sidecar.md — JSONL protocol, sidecar constraints",
-    "db_change_protocol": ".claude/rules/db-schema-change.md — mandatory protocol for any schema, migration, or persistence change",
+    "codegen_rules": ".claude/rules/codegen.md — generated contract freshness requirements",
+    "path_conventions": ".claude/rules/path-conventions.md — skill builder path vs workspace path rules",
+    "state_management": ".claude/rules/state-management.md — frontend local-state vs Zustand boundaries",
     "windows_compat": ".claude/rules/windows-compat.md — path separators, CRLF, env-var syntax, Rust toolchain. Read before writing path assertions, regex, package.json scripts, or CI config.",
     "logging_policy": ".claude/rules/logging-policy.md — log levels, sensitive data redaction, structured logging, correlation IDs",
     "test_manifest": "TEST_MANIFEST.md — Rust command → E2E tag mappings, shared infra blast radius, cross-boundary format compliance. Read before choosing tests for Rust or cross-layer changes."
