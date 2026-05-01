@@ -368,15 +368,25 @@ describe("skill-content-researcher plugin structure", () => {
   });
 
   it("active workflow prompts avoid Claude routing mechanics", () => {
+    const skillCreatorSkillPath = path.join(
+      REPO_ROOT,
+      "agent-sources",
+      "plugins",
+      "skill-creator",
+      "skills",
+      "skill-creator",
+      "SKILL.md",
+    );
     const activeFiles = [
       resolveAgentPath("research-agent"),
       resolveAgentPath("answer-evaluator"),
       resolveAgentPath("skill-writer-agent"),
       path.join(pluginRoot, "skills", "research", "SKILL.md"),
+      skillCreatorSkillPath,
     ];
     const forbiddenPatterns: Array<[string, RegExp]> = [
       ["Claude Code routing", /Claude Code/i],
-      ["Claude tool names", /\b(?:AskUserQuestion|TaskOutput|TaskStop|bypassPermissions)\b/],
+      ["Claude tool names", /\b(?:AskUserQuestion|TaskOutput|TaskStop|StructuredOutput|bypassPermissions)\b/],
       ["Agent tool routing", /(?:\bAgent\b|\bSkill\b)\s+tool/i],
       ["sub-agent fan-out", /sub-?agents?|fan-?out|spawn .*parallel/i],
       ["wait/merge mechanics", /wait for all|merge helper|merge-helper/i],

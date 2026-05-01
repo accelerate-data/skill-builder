@@ -113,7 +113,7 @@ The research should focus on producing high-quality, actionable clarifications t
 
 Start by understanding the user's intent. The user may need to fill the gaps, and should confirm before proceeding to the next step.
 
-1. What should this skill enable Claude to do?
+1. What should this skill enable the agent to do?
 2. When should this skill trigger? (what user phrases/contexts)
 3. What's the expected output format?
 4. Who's the typical user?
@@ -179,7 +179,7 @@ For each dimension:
    reference documents to produce 500-800 words of working research notes for
    that dimension.
 3. Frame the notes so the resulting clarification questions help answer:
-   - What should this skill enable Claude to do?
+   - What should this skill enable the agent to do?
    - When should this skill trigger?
    - What's the expected output?
    - Who's the typical user?
@@ -192,7 +192,7 @@ For each dimension:
 ## Step 7 — Consolidate
 
 - Use `references/consolidation-handoff.md` to produce `clarifications_json`.
-- Construct the result object internally — **do not emit it as visible text output**. Pass it directly to `StructuredOutput` using the schema below.
+- Construct the result object internally using the schema below, then return it as the raw JSON object described in Step 8.
 
   ```json
   {
