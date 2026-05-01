@@ -1,3 +1,1 @@
-The command is: {{command}}.{{target_files_clause}}
-
-Current request: {{user_message}}
+{{target_files_clause}}{{user_message}}

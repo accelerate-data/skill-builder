@@ -1,6 +1,12 @@
 use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir};
 use std::path::Path;
 
+const WORKFLOW_STEP_TEMPLATE: &str =
+    include_str!("../../../../../agent-sources/workspace/prompts/workflow-step.txt");
+
+const ANSWER_EVALUATOR_TEMPLATE: &str =
+    include_str!("../../../../../agent-sources/workspace/prompts/answer-evaluator.txt");
+
 /// Parameters for [`build_prompt`].
 pub(crate) struct PromptParams<'a> {
     pub skill_name: &'a str,
@@ -31,61 +37,47 @@ pub(crate) fn build_prompt(p: &PromptParams<'_>) -> String {
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
+
     let step_output_hint = match step_id {
         1 => " Your output MUST be a DetailedResearchOutput with top-level keys: status (\"detailed_research_complete\"), refinement_count, section_count, clarifications_json. Do NOT return a ResearchStepOutput — that is step 0's format, not yours.",
         2 => " Your output MUST be a DecisionsOutput with top-level keys: version, metadata, decisions. Do NOT return a ResearchStepOutput or DetailedResearchOutput.",
         3 => " Your output MUST include a status field.",
         _ => "",
     };
-    let mut prompt = format!(
-        "EXECUTE IMMEDIATELY — do not greet the user, do not ask questions, do not offer options. \
-         Follow your agent instructions and produce structured JSON output.{} \
-         The skill name is: {}. The workspace directory is: {}. \
-         The skill output directory (SKILL.md and references/) is: {}. \
-         This skill output directory is the configured Settings Skills Folder target for the shipped skill. \
-         Workflow context files live in the workspace directory; shipped skill files must be written only to the skill output directory, never to the workspace directory or a workspace skill/ subdirectory. \
-         The user context file is at: {}/user-context.md. \
-         The context directory is: {}/context. \
-         All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
-        step_output_hint,
-        skill_name,
-        workspace_str,
-        skill_output_str,
-        workspace_str,
-        workspace_str,
-    );
 
-    if let Some(author) = author_login {
-        prompt.push_str(&format!(" The author of this skill is: {}.", author));
-        if let Some(created) = created_at {
-            let created_date = &created[..10.min(created.len())];
-            let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-            prompt.push_str(&format!(
-                " The skill was created on: {}. Today's date (for the modified timestamp) is: {}.",
-                created_date, today
-            ));
+    let author_sentence = match author_login {
+        Some(author) => {
+            let base = format!(" The author of this skill is: {}.", author);
+            if let Some(created) = created_at {
+                let created_date = &created[..10.min(created.len())];
+                let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                format!("{} The skill was created on: {}. Today's date (for the modified timestamp) is: {}.", base, created_date, today)
+            } else {
+                base
+            }
         }
-    }
+        None => String::new(),
+    };
 
-    // Inject clarifications schema reference path.
     let ws = workspace_path.replace('\\', "/");
-    let shared_dir = format!(
-        "{}/.claude/plugins/skill-content-researcher/shared",
+    let schemas_path = format!(
+        "{}/.claude/plugins/skill-content-researcher/shared/schemas.md",
         ws,
     );
-    prompt.push_str(&format!(
-        " The clarifications schema reference is at: {}/schemas.md.",
-        shared_dir,
-    ));
 
-    prompt.push_str(" The workspace directory may contain other files written by the workflow (such as answer-evaluation.json) — read only the files explicitly named in your agent instructions. Do not read the logs/ directory or any file not named in your instructions.");
+    let subagent_str = subagent_directive
+        .map(|d| format!(" {}", d))
+        .unwrap_or_default();
 
-    if let Some(directive) = subagent_directive {
-        prompt.push(' ');
-        prompt.push_str(directive);
-    }
-
-    prompt
+    WORKFLOW_STEP_TEMPLATE
+        .trim_end_matches('\n')
+        .replace("{{step_output_hint}}", step_output_hint)
+        .replace("{{skill_name}}", skill_name)
+        .replace("{{workspace_dir}}", &workspace_str)
+        .replace("{{skill_output_dir}}", &skill_output_str)
+        .replace("{{author_sentence}}", &author_sentence)
+        .replace("{{schemas_path}}", &schemas_path)
+        .replace("{{subagent_directive}}", &subagent_str)
 }
 
 /// Build the prompt for step 0 (research) — invokes the research skill directly
@@ -142,15 +134,9 @@ pub(crate) fn build_evaluator_prompt(
         .to_string_lossy()
         .replace('\\', "/");
 
-    format!(
-        "The skill name is: {}. The workspace directory is: {}. \
-         The skill output directory (SKILL.md and references/) is: {}. \
-         The user context file is at: {}/user-context.md. \
-         The context directory is: {}/context. \
-         All directories already exist — do not create any directories. \
-         Use user-context.md to evaluate answers in the user's specific domain. \
-         Use the skill-content-researcher:answer-evaluator skill to evaluate the user's answers.",
-        skill_name, workspace_str, skill_output_str,
-        workspace_str, workspace_str,
-    )
+    ANSWER_EVALUATOR_TEMPLATE
+        .trim_end_matches('\n')
+        .replace("{{skill_name}}", skill_name)
+        .replace("{{workspace_dir}}", &workspace_str)
+        .replace("{{skill_output_dir}}", &skill_output_str)
 }

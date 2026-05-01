@@ -1,6 +1,9 @@
 use crate::db::Db;
 use serde::Serialize;
 
+const SUGGESTIONS_TEMPLATE: &str =
+    include_str!("../../../../../agent-sources/workspace/prompts/skill-suggestions.txt");
+
 #[derive(Serialize)]
 pub struct FieldSuggestions {
     pub description: String,
@@ -185,13 +188,15 @@ Max 2 sentences. Topic: {}.>\"",
         }
     }).collect();
 
-    let prompt = format!(
-        "{framing} These skills target OLAP systems (data warehouses and lakehouses), not OLTP.\n\n\
-         Given a Claude skill named \"{readable_name}\" of type \"{purpose}\".{context}{detail_context}\n\n\
-         Suggest brief values for these fields. Be specific and practical, not generic.\n\n\
-         Respond in exactly this JSON format (no markdown, no extra text):\n\
-         {{{}}}", field_schemas.join(", ")
-    );
+    let json_schema = format!("{{{}}}", field_schemas.join(", "));
+    let prompt = SUGGESTIONS_TEMPLATE
+        .trim_end_matches('\n')
+        .replace("{{framing}}", framing)
+        .replace("{{readable_name}}", &readable_name)
+        .replace("{{purpose}}", &purpose)
+        .replace("{{context}}", &context)
+        .replace("{{detail_context}}", &detail_context)
+        .replace("{{json_schema}}", &json_schema);
 
     log::debug!("[generate_suggestions] prompt={}", prompt);
 
