@@ -1,0 +1,20 @@
+{
+  "description": "Workspace skill suggestions prompt JSON output.",
+  "metadata": {
+    "eval_tier": "light"
+  },
+  "prompts": [
+    "Skills are loaded into Claude Code to help engineers build data pipelines. Claude already knows standard methodologies from its training data. A skill must encode the delta -- the customer-specific and domain-specific knowledge that Claude gets wrong or misses when working without the skill. These skills target OLAP systems (data warehouses and lakehouses), not OLTP.\n\nGiven a Claude skill named \"fabric dbt standards\" of type \"data-engineering\". User context: Industry: SaaS, Role: Analytics engineering. Skill details: Domain: Data engineering standards; Scope: dbt models on Microsoft Fabric; Target audience: Analytics engineers; Key challenges: SCD2 snapshots and incremental materializations.\n\nSuggest brief values for these fields. Be specific and practical, not generic.\n\nRespond in exactly this JSON format (no markdown, no extra text):\n{\"description\":\"<Third person. Nouns must be specific. Format: '[Verb]s [specific noun(s)] [context]. Use when [one trigger].' Max 2 sentences. Topic: fabric dbt standards.>\",\"domain\":\"<2-5 word domain name>\",\"scope\":\"<short phrase>\",\"audience\":\"<2-3 short bullet points starting with • on separate lines>\",\"challenges\":\"<2-3 short bullet points starting with • on separate lines>\",\"unique_setup\":\"<2-3 short bullet points starting with • on separate lines>\",\"claude_mistakes\":\"<2-3 short bullet points starting with • on separate lines>\",\"context_questions\":\"<exactly 2 bullets starting with • on separate lines, 2-4 words each>\"}"
+  ],
+  "tests": [
+    {
+      "description": "[smoke] skill suggestions field JSON",
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); const fields = ['description','domain','scope','audience','challenges','unique_setup','claude_mistakes','context_questions']; fields.every((field) => typeof data[field] === 'string' && data[field].trim().length > 0) && /Use when/i.test(data.description) && /dbt|Fabric|snapshot|incremental|lakehouse/i.test(Object.values(data).join(' ')) && data.context_questions.split('\\n').filter((line) => line.trim().startsWith('•')).length === 2"
+        }
+      ]
+    }
+  ]
+}

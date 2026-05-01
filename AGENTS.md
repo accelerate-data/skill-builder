@@ -105,10 +105,28 @@ Before writing tests, read existing tests for the files you changed. Update
 broken tests, remove redundant ones, and add coverage only for genuinely new
 behavior or regressions.
 
-Never run live model/API evals autonomously. Commands such as
-`test:agents:smoke`, `test:scope-advisor:smoke`, and `tests/evals` live eval
-scripts require explicit user approval. Deterministic eval harness tests are
-allowed: `cd tests/evals && npm test`.
+### Which tests to run
+
+Run these automatically before reporting completion when files match:
+
+| Changed files | Run |
+|---|---|
+| `agent-sources/plugins/**/agents/*.md` | `cd app && npm run test:agents:structural` |
+| `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
+| `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` |
+| `app/sidecar/mock-templates/**` | `cd app && npm run test:unit` |
+| `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` |
+| `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` |
+| `app/src/**` | `cd app && npm run test:unit` |
+| `tests/evals/**` | `cd tests/evals && npm test`; run affected `npm run eval:<package>` scripts when the issue changes live eval behavior |
+
+**E2E tests** use Playwright to drive the real Tauri app UI, but with mocked Tauri commands (`__TAURI_MOCK_OVERRIDES__` / `reloadWithOverrides`). They are not bare-metal system tests — the backend is always mocked.
+
+For artifact format changes (agent output + app parser + mock templates): run `test:agents:structural`, `test:unit`, and the affected live eval package or smoke subset. The `canonical-format.test.ts` suite is the canary for format drift.
+
+For Rust and cross-layer changes, consult `TEST_MAP.md` for the correct cargo filter and E2E tag. Unsure? `app/tests/run.sh` runs everything.
+
+Live OpenCode evals are allowed when the issue calls for them. Choose the smallest useful scope: `cd tests/evals && npm run eval:smoke` before model/runtime changes, a targeted `npm run eval:<package>` for package-local work, or `npm run eval:regression` for broad model migrations. The deterministic harness contract test is `cd tests/evals && npm test`.
 
 ## Issue Management
 

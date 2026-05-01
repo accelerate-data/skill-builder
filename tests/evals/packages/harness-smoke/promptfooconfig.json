@@ -11,16 +11,8 @@
       "description": "[smoke] harness-smoke",
       "assert": [
         {
-          "type": "contains",
-          "value": "\"scenario\":\"harness-smoke\""
-        },
-        {
-          "type": "contains",
-          "value": "\"ok\":true"
-        },
-        {
-          "type": "contains",
-          "value": "\"failures\":[]"
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); data.scenario === 'harness-smoke' && data.ok === true && Array.isArray(data.failures) && data.failures.length === 0"
         }
       ]
     }

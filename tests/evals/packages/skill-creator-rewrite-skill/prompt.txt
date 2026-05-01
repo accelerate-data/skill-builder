@@ -1,0 +1,21 @@
+Eval mode: produce the final plain-text summary for an app refine route handled by skill-creator:rewrite-skill. Do not inspect directories, launch tools, write files, or announce that you will inspect anything.
+
+Run context:
+- skill_name: fabric-dbt-standards
+- command: refine
+- skill_dir: /tmp/skill-builder/skills/skill-builder/fabric-dbt-standards
+- workspace_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
+- selected eval gap: snapshot-scd2-policy
+- requested change: add dbt_valid_from/dbt_valid_to SCD2 guidance and clarify that fact tables should not be snapshotted for slowly changing dimensions
+
+The relevant skill context and selected eval gap have already been supplied above. Respond immediately with the same final rewrite summary shape the app receives after a successful targeted refine.
+
+Return ONLY the rewrite-skill final plain-text summary using its documented fields:
+- status: rewritten
+- Summary:
+- Description updated: yes or no
+- Version bump: patch, minor, or major
+- call_trace:
+- Commit: created or skipped
+- Tag: created or skipped
+- Modified files

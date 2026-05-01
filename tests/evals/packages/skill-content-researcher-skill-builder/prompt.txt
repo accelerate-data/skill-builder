@@ -1,0 +1,27 @@
+EXECUTE IMMEDIATELY - do not greet the user, do not ask questions, do not offer options.
+
+This is the skill-content-researcher:skill-builder one-shot workflow wrapper for the research step. Use the same final response contract the app captures from structured output.
+
+Skill name: fabric-dbt-standards
+Workspace directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
+User context: Purpose is organization specific data engineering standards. Description asks for dbt-Fabric standards covering bronze/silver/gold naming, incremental models, SCD2 snapshots, semantic handoff, and CI review expectations.
+
+Return JSON only. Required top-level shape:
+{
+  "status": "research_complete",
+  "dimensions_selected": 3,
+  "question_count": 3,
+  "research_output": {
+    "version": "1",
+    "metadata": {
+      "scope_recommendation": false,
+      "priority_questions": [],
+      "research_plan": {
+        "selected_dimensions": []
+      }
+    },
+    "sections": [],
+    "notes": [],
+    "answer_evaluator_notes": []
+  }
+}

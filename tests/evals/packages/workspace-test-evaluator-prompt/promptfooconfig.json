@@ -1,0 +1,20 @@
+{
+  "description": "Workspace skill tester evaluator prompt behavior.",
+  "metadata": {
+    "eval_tier": "light"
+  },
+  "prompts": [
+    "Task prompt:\n\"\"\"\nI'm building a dbt-Fabric snapshot for dim_customer and need the correct SCD2 convention.\n\"\"\"\n\nPlan A (with skill \"fabric-dbt-standards\" loaded):\n\"\"\"\nUse dbt snapshots only for slowly changing dimensions such as dim_customer. Configure a unique_key on customer_id, set updated_at as the check timestamp, document dbt_valid_from/dbt_valid_to usage, and keep fact_order as an incremental model rather than a snapshot.\n\"\"\"\n\nPlan B (no skill loaded):\n\"\"\"\nCreate a snapshot for customer data and maybe add dates. Use standard dbt settings.\n\"\"\"\n\nUse the Evaluation Rubric from your context to compare the two plans.\n\nFirst, output bullet points (one per line) using:\n- ↑ if Plan A (with skill) is meaningfully better on this dimension\n- ↓ if Plan B (no skill) is meaningfully better on this dimension\n- → if both plans are similar, weak, or neither is clearly better\n\nThen output a \"## Recommendations\" section with 2-4 specific, actionable suggestions for how to improve the skill based on the evaluation. Focus on gaps where Plan A underperformed or where the skill could have provided more guidance."
+  ],
+  "tests": [
+    {
+      "description": "[smoke] skill tester evaluator compares plans",
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const hasArrowBullet = /(^|\\n)\\s*[-*]?\\s*[↑↓→]/.test(output); const hasPlanAWin = /↑[^\\n]*(Plan A|skill|snapshot|SCD2|dbt)/i.test(output); const recommendations = /##\\s+Recommendations([\\s\\S]+)/i.exec(output); hasArrowBullet && hasPlanAWin && recommendations && recommendations[1].trim().length > 40 && !/^\\s*\\{/.test(output.trim())"
+        }
+      ]
+    }
+  ]
+}

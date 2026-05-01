@@ -1,0 +1,20 @@
+{
+  "description": "skill-content-researcher:skill-builder workflow wrapper JSON output.",
+  "metadata": {
+    "eval_tier": "standard"
+  },
+  "prompts": [
+    "file://prompt.txt"
+  ],
+  "tests": [
+    {
+      "description": "[smoke] skill-builder wrapper one-shot routing",
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); data.status === 'research_complete' && Number.isInteger(data.dimensions_selected) && Number.isInteger(data.question_count) && data.research_output && data.research_output.version === '1' && data.research_output.metadata && typeof data.research_output.metadata.scope_recommendation === 'boolean' && Array.isArray(data.research_output.sections)"
+        }
+      ]
+    }
+  ]
+}

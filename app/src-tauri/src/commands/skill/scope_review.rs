@@ -99,7 +99,7 @@ pub async fn review_skill_scope(
          These skills are used to build data warehouses and lakehouses — OLAP systems, not OLTP. \
          The data source is valuable context but not compulsory.\n\n\
          CORE TEST: Does the description describe exactly the process named by the skill? \
-         If yes → focused. If the description wanders into a second process → fail.\n\n\
+         If yes → status: \"focused\" and suggested_skills: []. If the description wanders into a second process → fail.\n\n\
          ## Name rule\n\
          A good name uses the gerund pattern: verb-ing + specific object (kebab-case).\n\
          Pass: forecasting-churned-customers, validating-grain-feed-compliance\n\
@@ -140,7 +140,9 @@ Only use CASE 3 when the domain itself is unclear.\n\n\
          Example: name=forecasting-churned-customers, description=\"Forecasts churn risk and tracks renewal pipeline health\"\n\
          Action: produce 1 suggestion per process found — (1) original name + description trimmed to match, then one additional suggestion per stray process (new gerund name + description for each).\n\
          Reason: name each stray process found.\n\n\
-         Use industry and document context to override a generic breadth signal.\n\n\
+         Use industry, document context, and the What Claude needs to know field to override a generic breadth signal only when that context explicitly establishes the listed activities as one company-specific workflow. \
+Generic implementation context such as \"guide analytics engineers\" or \"build data marts\" is not enough to override multiple distinct business processes. \
+When there is no explicit unified-workflow statement, apply the four cases from the name and description alone.\n\n\
          Skill to evaluate:\n\
          - Name: {skill_name}\n\
          - Description: {description}\n\

@@ -1,0 +1,24 @@
+Your inputs:
+
+expectations:
+[
+  "The plan uses dbt snapshot columns dbt_valid_from and dbt_valid_to for SCD2 history.",
+  "The plan says fact tables should not be snapshotted for slowly changing dimensions.",
+  "The plan describes a concrete implementation sequence."
+]
+
+plan_text:
+"I would update the dim_customer snapshot using dbt snapshots and include dbt_valid_from and dbt_valid_to for type 2 tracking. I would keep fact_order as an incremental model rather than snapshot it because facts are events, not changing dimensions. Steps: update snapshots/customer_snapshot.sql, add tests for unique_key and updated_at, then document the convention in references/snapshots.md."
+
+grading_output_path:
+/tmp/skill-builder/workspace/skills/fabric-dbt-standards/evals/run-0/eval-1/grading.json
+
+Grade whether the plan satisfies each expectation. Apply strict PASS/FAIL rigor. In this eval harness, return ONLY the grading.json content as a JSON object.
+
+Required field names:
+- `expectations` is an array with one object per expectation
+- each expectation object must use `text`, `passed` boolean, and `evidence`
+- do not use `expectation`, `result`, or string PASS/FAIL fields
+- `summary` must include integer `passed`, `failed`, and `total`
+- `claims` must be an array
+- `eval_feedback` may be an array

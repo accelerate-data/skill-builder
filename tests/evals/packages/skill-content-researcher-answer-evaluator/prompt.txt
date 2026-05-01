@@ -1,0 +1,54 @@
+Eval mode: evaluate only the inline clarifications JSON below. Do not read files, inspect directories, launch tools, or write files. Return the final JSON verdict immediately.
+
+The workspace directory is `/tmp/skill-builder/workspace/skills/fabric-dbt-standards`.
+The context directory is `/tmp/skill-builder/workspace/skills/fabric-dbt-standards/context`.
+All directories already exist - do not create any directories.
+
+Evaluate this representative clarifications.json as the answer-evaluator would after reading it:
+
+{
+  "version": "1",
+  "metadata": {
+    "question_count": 3,
+    "section_count": 1,
+    "refinement_count": 0,
+    "must_answer_count": 2,
+    "priority_questions": ["Q1", "Q2"],
+    "scope_recommendation": false
+  },
+  "sections": [
+    {
+      "id": "S1",
+      "title": "Modeling standards",
+      "questions": [
+        {
+          "id": "Q1",
+          "question": "Which lakehouse layers should the skill cover?",
+          "answer_text": "Bronze, silver, and gold layers with dbt model naming prefixes stg_, int_, and fct_."
+        },
+        {
+          "id": "Q2",
+          "question": "How should incremental models behave?",
+          "answer_text": "Use merge strategy keyed by natural business keys plus updated_at watermark; full refresh only by approval."
+        },
+        {
+          "id": "Q3",
+          "question": "Who is the user?",
+          "answer_text": "TBD"
+        }
+      ]
+    }
+  ],
+  "notes": []
+}
+
+Return a single JSON object with verdict, answered_count, empty_count, vague_count, contradictory_count, total_count, reasoning, gate_decision, and per_question. JSON only.
+
+Contract constraints:
+- verdict must be one of: "sufficient", "mixed", "insufficient"
+- gate_decision must be one of: "run_research", "revise"
+- "TBD" is a vague answer, not an empty answer
+- answered_count counts only clear plus needs_refinement answers
+- per_question must be an array, not an object/map
+- each per_question entry must use fields `question_id` and `verdict`
+- per_question must contain entries for Q1, Q2, and Q3

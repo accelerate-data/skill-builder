@@ -1,0 +1,26 @@
+Eval mode: evaluate this create-skill form submission using the Skill Builder scope-advisor product contract. Return the final JSON object immediately. Do not use tools, do not ask follow-up questions, and do not return prose outside the JSON.
+
+Skill name: {{skill_name}}
+Skill description: {{description}}
+Purpose: {{purpose}}
+What Claude needs to know: {{context_questions}}
+Industry: {{industry}}
+
+Contract:
+- Broad recognizable business domains with multiple distinct processes are `too-broad`.
+- Unclear domain is `both-need-improvement`.
+- Focused description with bad name is `name-needs-improvement`.
+- Context overrides breadth only when it explicitly establishes the listed activities as one company-specific workflow.
+- Focused submissions return no suggested skills.
+
+Return JSON only with this shape:
+{
+  "status": "focused|too-broad|name-needs-improvement|description-needs-improvement|both-need-improvement",
+  "reason": "...",
+  "suggested_skills": [
+    {
+      "name": "gerund-kebab-case",
+      "description": "third-person trigger description"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+Eval mode: the app AskUserQuestion tool is not available in this OpenCode eval runtime. Do not use tools. Read the rendered Skill Builder prompt below and return the exact AskUserQuestion call transcript that should happen next. The transcript must include the header, multiSelect flag, and option labels. Do not output JSON. Do not continue to rewrite-skill.
+
+Rendered Skill Builder prompt:
+
+The skill name is: fabric-dbt-standards. The command is: refine. The skill directory is: /tmp/skill-builder/skills/skill-builder/fabric-dbt-standards. The context directory is: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context. The workspace directory is: /tmp/skill-builder/workspace/skills/fabric-dbt-standards. All directories already exist - never create directories with mkdir or any other method. The user context file is at: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/user-context.md - read it for purpose, description, and all user context.
+
+ROUTING:
+
+- For modifying the existing skill, launch the skill-creator:rewrite-skill subagent via the Agent tool.
+
+- EVAL FAILURE FEEDBACK: If the user's message contains lines matching the pattern "eval `{eval_name}`: {/path/to/grading.json}", treat it as eval failure feedback from the Evals tab. Do NOT run a new benchmark. Do NOT launch rewrite-skill immediately. Follow these steps IN ORDER - you MUST complete each step before moving to the next:
+
+  STEP 1 - Read grading files.
+  Read each grading file using the Read tool. Extract failed assertions (expectations where passed=false), including their text and evidence.
+
+  STEP 2 - Triage each failure.
+  Determine whether the assertion is a legitimate skill gap (the skill should be improved) or an impossible/unreasonable assertion.
+
+  STEP 3 - MANDATORY: Call AskUserQuestion tool.
+  YOU MUST CALL THE AskUserQuestion TOOL. THIS IS NOT OPTIONAL.
+  Do NOT respond in plain text. Do NOT skip to Step 5. Do NOT launch rewrite-skill yet.
+  If you have not called AskUserQuestion, STOP and call it now.
+  Structure the call: header="Skill Gaps", multiSelect=true, options array with one option per failing eval that has genuine skill gaps (label=eval name, description=one-sentence summary).
+
+  STEP 4 - HARD STOP. Wait for the user's selection.
+  Do NOT proceed until you receive the user's response to AskUserQuestion.
+
+  STEP 5 - Launch rewrite-skill with selected gaps only.
+  Only after the user selects which gaps to fix.
+
+- CONSTRAINT: You can only refine or validate the existing skill. Do NOT create new skills or evaluate existing skills.
+
+Current request: eval `snapshot-scd2-policy`: {/Users/hbanerjee/src/worktrees/feature/vu-1135-audit-and-rebuild-skill-builder-eval-coverage-for-model/tests/evals/fixtures/refine-grading/snapshot-scd2-policy.json}
