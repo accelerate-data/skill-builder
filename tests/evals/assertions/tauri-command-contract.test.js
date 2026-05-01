@@ -60,6 +60,33 @@ test("typed Tauri command contract is the only non-test command policy", () => {
     "github_poll_for_token",
     "github_get_user",
     "github_logout",
+    "start_agent",
+    "run_workflow_step",
+    "materialize_workflow_step_output",
+    "reset_workflow_step",
+    "navigate_back_to_step",
+    "preview_step_reset",
+    "verify_step_output",
+    "get_disabled_steps",
+    "get_workflow_state",
+    "save_workflow_state",
+    "read_file",
+    "write_file",
+    "list_skill_files",
+    "get_workspace_path",
+    "cleanup_skill_sidecar",
+    "graceful_shutdown",
+    "allow_app_exit",
+    "create_workflow_session",
+    "end_workflow_session",
+    "resolve_orphan",
+    "resolve_discovery",
+    "cancel_workflow_step",
+    "get_clarifications_content",
+    "save_clarifications_content",
+    "get_decisions_content",
+    "save_decisions_content",
+    "get_context_file_content",
   ];
 
   for (const command of migratedCommands) {
@@ -72,6 +99,10 @@ test("typed Tauri command contract is the only non-test command policy", () => {
   assert.match(typecheckSource, /@ts-expect-error argument names must match/);
   assert.match(typecheckSource, /@ts-expect-error command result is AppSettings/);
   assert.match(typecheckSource, /@ts-expect-error widened command names must not decouple command and args/);
+  assert.match(typecheckSource, /@ts-expect-error run_workflow_step requires workflowSessionId/);
+  assert.match(typecheckSource, /@ts-expect-error get_workspace_path uses the typed no-args convention/);
+  assert.match(typecheckSource, /@ts-expect-error resolve_discovery only accepts known discovery actions/);
+  assert.match(typecheckSource, /@ts-expect-error get_context_file_content requires a context fileName/);
 });
 
 test("direct invokeUnsafe imports stay out of application code", () => {

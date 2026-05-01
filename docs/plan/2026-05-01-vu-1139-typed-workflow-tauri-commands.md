@@ -79,10 +79,10 @@ Import the wrapper result types already used by `app/src/lib/tauri.ts`:
 
 ```ts
 import type {
-  AgentRunRecord,
   AppSettings,
   DetailedResearchOutput,
   DeviceFlowResponse,
+  DiscoveryResolutionAction,
   GitHubAuthResult,
   GitHubUser,
   GenerateSkillOutput,
@@ -91,6 +91,9 @@ import type {
   ResearchStepOutput,
   SkillFileEntry,
   StartupDeps,
+  StepResetPreview,
+  StepStatusUpdate,
+  WorkflowStateResponse,
   DecisionsOutput,
 } from "@/lib/types";
 ```
@@ -121,6 +124,12 @@ create_workflow_session
 end_workflow_session
 resolve_orphan
 resolve_discovery
+cancel_workflow_step
+get_clarifications_content
+save_clarifications_content
+get_decisions_content
+save_decisions_content
+get_context_file_content
 ```
 
 Use camelCase argument names because the frontend wrappers and Tauri serde bridge already use those names. Use `NoArgs` for `get_workspace_path`, `graceful_shutdown`, and `allow_app_exit`.
@@ -193,7 +202,7 @@ cd app && cargo test --manifest-path src-tauri/Cargo.toml reconciliation
 
 - [x] **Step 3: Run deterministic eval harness only if agent/eval contracts changed**
 
-This issue does not touch agent prompts, eval fixtures, or model-backed smoke suites. The deterministic eval harness contract was run with `cd tests/evals && npm test`. Do not run `test:agents:smoke` unless explicitly requested.
+This issue does not touch agent prompts, eval fixtures, or model-backed smoke suites. The deterministic eval harness contract was expanded for the newly migrated command list and run with `cd tests/evals && npm test`. Do not run `test:agents:smoke` unless explicitly requested.
 
 ## Task 5: Linear Update and Commit
 

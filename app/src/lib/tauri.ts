@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase } from "@/lib/types";
+import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, DiscoveryResolutionAction } from "@/lib/types";
 import type { EvalQuery } from "@/lib/description-optimization";
 import type { TauriCommandInvocation, TauriCommandResult } from "@/lib/tauri-command-types";
 
@@ -150,7 +150,6 @@ export const startOneShotAgent = (
   allowedTools?: string[],
   maxTurns?: number,
   permissionMode?: string,
-  sessionId?: string,
   skillName?: string,
   stepLabel?: string,
   agentName?: string,
@@ -163,7 +162,7 @@ export const startOneShotAgent = (
   pluginSlug?: string,
 ) => invokeCommand("start_agent", {
   agentId, prompt, systemPrompt: systemPrompt ?? null, model, cwd, allowedTools, maxTurns,
-  permissionMode: permissionMode ?? null, sessionId,
+  permissionMode: permissionMode ?? null,
   skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown",
   agentName: agentName ?? null, transcriptLogDir: transcriptLogDir ?? null,
   stepId: stepId ?? null,
@@ -323,7 +322,7 @@ export const recordReconciliationCancel = (
 export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
   invokeCommand("resolve_orphan", { skillName, action });
 
-export const resolveDiscovery = (skillName: string, action: string, pluginSlug?: string | null) =>
+export const resolveDiscovery = (skillName: string, action: DiscoveryResolutionAction, pluginSlug?: string | null) =>
   invokeCommand("resolve_discovery", { skillName, action, pluginSlug: pluginSlug ?? null });
 
 // --- Feedback ---

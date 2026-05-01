@@ -478,6 +478,48 @@ export interface SkillFileMeta {
   disable_model_invocation: boolean | null
 }
 
+// ─── Workflow command DTOs ───────────────────────────────────────────────────
+
+export interface StepResetPreview {
+  step_id: number
+  step_name: string
+  files: string[]
+}
+
+export interface WorkflowRunRow {
+  skill_name: string
+  current_step: number
+  status: string
+  purpose: string
+  created_at: string
+  updated_at: string
+  author_login?: string | null
+  author_avatar?: string | null
+  display_name?: string | null
+  intake_json?: string | null
+  source?: string
+}
+
+export interface WorkflowStepRow {
+  skill_name: string
+  step_id: number
+  status: string
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface WorkflowStateResponse {
+  run: WorkflowRunRow | null
+  steps: WorkflowStepRow[]
+}
+
+export interface StepStatusUpdate {
+  step_id: number
+  status: string
+}
+
+export type DiscoveryResolutionAction = "add-skill-builder" | "add-imported" | "remove"
+
 // ─── Workflow step structured outputs ────────────────────────────────────────
 
 /** Structured output for workflow step 0 (research-orchestrator agent). */
