@@ -1,6 +1,6 @@
 ---
 name: research
-description: ALWAYS use this skill when producing clarification questions for any skill-building purpose (domain, source, data-engineering, platform). Invoke immediately in the research phase: score candidate dimensions, select top dimensions, run parallel dimension research, and return the complete clarifications.json payload. Do not attempt to produce clarifications without using this skill.
+description: ALWAYS use this skill when producing clarification questions for any skill-building purpose (domain, source, data-engineering, platform). Invoke immediately in the research phase: score candidate dimensions, select top dimensions, research each selected dimension inline and sequentially, and return the complete clarifications.json payload. Do not attempt to produce clarifications without using this skill.
 user_invocable: false
 ---
 
@@ -14,7 +14,7 @@ The overall flow is as follows
 - Score all candidate dimensions using `references/scoring-rubric.md`
 - Emit scope recommendation output when rubric `topic_relevance` is `not_relevant`.
 - Select top 3-5 dimensions when viable.
-- Run parallel sub-agent research for selected dimensions
+- Research each selected dimension inline and sequentially
 - Consolidate using `references/consolidation-handoff.md`
 - Validate final payload against `../shared/schemas.md`
 - Return the canonical `clarifications.json` object as top-level JSON
@@ -120,7 +120,10 @@ Start by understanding the user's intent. The user may need to fill the gaps, an
 
 Proactively ask questions about edge cases, input/output formats, example files, success criteria, and dependencies.
 
-Check available MCPs - if useful for research (searching docs, finding similar skills, looking up best practices), research in parallel via subagents if available, otherwise inline. Come prepared with context to reduce burden on the user.
+Check available MCPs when they are useful for research, such as searching docs,
+finding similar skills, or looking up best practices. Incorporate useful context
+inline before constructing the clarification payload so the user does not have
+to provide details the available material already answers.
 
 ## Step 3 — Select Dimension Set
 
@@ -163,38 +166,28 @@ Update the `metadata.research_plan` created in Step 2.
 - Set `selected_dimensions` as an array of `{ name, focus }` objects copied from the selected `dimension_scores` entries.
 - Set accurate counts `dimensions_selected`.
 
-## Step 6 — Parallel Dimension Research
+## Step 6 — Sequential Dimension Research
 
-For each selected dimension object in `metadata.research_plan.selected_dimensions` spawn one subagent in parallel the same turn, mode: bypassPermissions. **This is important:** don't spawn one and and then come back for the others. Launch everything at once so it all finishes around the same time.
+For each selected dimension object in
+`metadata.research_plan.selected_dimensions`, research that dimension inline
+before moving to the next selected dimension.
 
-Wait for all subagents to complete and return results before proceeding to step 5.
+For each dimension:
 
-### Sub-agent prompt
-
-Before spawning subagents, read `references/dimensions/entities.md`. Note the **absolute path** from the Read result (e.g. `/.../references/dimensions/entities.md`). Strip the filename to get `{dim_refs_dir}`. Subagents don't inherit the skill's `references/` resolution, so you must pass the absolute path.
-
-Spawn each subagent with the following prompt verbatim, substituting `{name}`, `{focus}`, `{user_context}`, and `{dim_refs_dir}`:
-
----
-**Dimension**: {name}
-**Focus**: {focus}
-
-{user_context}
-
-Read `{dim_refs_dir}/{name}.md`.
-
-Your output should be raw research text only (500-800 words).
-Frame your research such that user responses will answer:
-
-- What should this skill enable Claude to do?
-- When should this skill trigger?
-- What's the expected output?
-- Who's the typical user?
-- Should we set up test cases?
-
-Proactively think about edge cases, input/output formats, example files, success criteria, and dependencies.
-
----
+1. Read `references/dimensions/{name}.md`.
+2. Use the selected `{focus}`, the full user context, and any user-provided
+   reference documents to produce 500-800 words of working research notes for
+   that dimension.
+3. Frame the notes so the resulting clarification questions help answer:
+   - What should this skill enable Claude to do?
+   - When should this skill trigger?
+   - What's the expected output?
+   - Who's the typical user?
+   - Should we set up test cases?
+4. Include edge cases, input/output formats, example files, success criteria,
+   dependencies, and assumptions when they materially affect the skill.
+5. Keep the dimension notes in memory for consolidation. Do not emit them as the
+   final visible output.
 
 ## Step 7 — Consolidate
 
@@ -277,10 +270,10 @@ Return JSON only in this envelope shape:
    - Preserve note separation (`notes` vs `answer_evaluator_notes`). Always emit `answer_evaluator_notes: []` — this field is populated by a downstream agent after user answers are evaluated, never during research.
    - Keep warning/error channels separate (`metadata.warning` and `metadata.error`).
 3. All-low-scores behavior:
-   - If `topic_relevance` is `not_relevant`, emit the minimal scope-recommendation payload from `../shared/schemas.md` with `metadata.scope_recommendation: true` and no dimension fan-out.
+   - If `topic_relevance` is `not_relevant`, emit the minimal scope-recommendation payload from `../shared/schemas.md` with `metadata.scope_recommendation: true` and no selected-dimension research.
 4. If the research task fails for a selected dimension:
    - Remove the dimension from `metadata.research_plan.selected_dimensions`.
-   - Update the score of that dimension in `metadata.research_plan.dimension_scores` as `1` with reason `Research task failed`. This is not an error.
-5. If all selected dimension research tasks fail:
+   - Update the score of that dimension in `metadata.research_plan.dimension_scores` as `1` with reason `Dimension research failed`. This is not an error.
+5. If all selected dimension research fails:
    - Return the error envelope with `metadata.error.code: "all_dimensions_failed"` and `metadata.error.message: "all selected dimension research tasks failed"`.
    - Set `metadata.research_plan.selected_dimensions` to `[]` and `dimensions_selected` to `0`.
