@@ -4,6 +4,9 @@ import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import { markdownComponents } from "@/components/markdown-link";
 
+const REMARK_PLUGINS = [remarkGfm];
+const REHYPE_PLUGINS = [rehypeSanitize];
+
 interface MemoizedMarkdownProps {
   content: string;
   className?: string;
@@ -19,7 +22,7 @@ export const MemoizedMarkdown = memo(function MemoizedMarkdown({
 }: MemoizedMarkdownProps) {
   return (
     <div className={className}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={markdownComponents}>
         {content}
       </ReactMarkdown>
     </div>

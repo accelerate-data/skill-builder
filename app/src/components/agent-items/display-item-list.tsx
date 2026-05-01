@@ -10,6 +10,8 @@ import { ErrorItem } from "./error-item";
 import { BareOutput } from "./bare-output";
 import { ToolActivityGroupView } from "./tool-activity-group";
 
+export const DISPLAY_ITEM_WINDOW_SIZE = 100;
+
 const PassthroughRenderer = memo(function PassthroughRenderer({
   item,
   depth = 0,
@@ -74,12 +76,24 @@ export const DisplayItemList = memo(function DisplayItemList({
   depth = 0,
 }: DisplayItemListProps) {
   const groups = useMemo(() => groupDisplayItems(items), [items]);
+  const hiddenGroupCount = Math.max(0, groups.length - DISPLAY_ITEM_WINDOW_SIZE);
+  const visibleGroups = hiddenGroupCount > 0
+    ? groups.slice(-DISPLAY_ITEM_WINDOW_SIZE)
+    : groups;
 
   if (groups.length === 0) return null;
 
   return (
     <div className="flex min-w-0 w-full flex-col gap-2 overflow-hidden">
-      {groups.map((group) => (
+      {hiddenGroupCount > 0 && (
+        <div
+          data-testid="display-item-window-indicator"
+          className="rounded border border-dashed border-muted-foreground/25 bg-muted/30 px-3 py-2 text-center text-xs text-muted-foreground"
+        >
+          {hiddenGroupCount} older {hiddenGroupCount === 1 ? "item" : "items"} hidden
+        </div>
+      )}
+      {visibleGroups.map((group) => (
         <div key={group.key} className="min-w-0 w-full animate-message-in">
           <VisualGroupRenderer group={group} depth={depth} />
         </div>

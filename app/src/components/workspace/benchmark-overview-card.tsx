@@ -6,6 +6,9 @@ import rehypeSanitize from "rehype-sanitize";
 import { markdownComponents } from "@/components/markdown-link";
 import type { BenchmarkData, BenchmarkConfigSummary, BenchmarkDelta } from "@/lib/types";
 
+const REMARK_PLUGINS = [remarkGfm];
+const REHYPE_PLUGINS = [rehypeSanitize];
+
 interface BenchmarkOverviewCardProps {
   benchmarkData: BenchmarkData;
   iteration: number | null;
@@ -144,7 +147,7 @@ export function BenchmarkOverviewCard({ benchmarkData, iteration }: BenchmarkOve
           {notesExpanded && (
             <div className="border-t px-4 pb-4 pt-3">
               <div className="markdown-body compact max-w-none text-xs leading-relaxed">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
+                <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={markdownComponents}>
                   {notes}
                 </ReactMarkdown>
               </div>

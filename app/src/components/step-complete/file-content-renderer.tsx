@@ -8,6 +8,9 @@ import { ClarificationsEditor } from "@/components/clarifications-editor";
 import { parseClarifications } from "@/lib/clarifications-types";
 import { isSkillFile, parseFrontmatter } from "@/lib/frontmatter";
 
+const REMARK_PLUGINS = [remarkGfm];
+const REHYPE_PLUGINS = [rehypeSanitize];
+
 export function FileContentRenderer({ file, content }: { file: string; content: string }) {
   const parsed = useMemo(() => {
     if (isSkillFile(file)) return parseFrontmatter(content);
@@ -31,7 +34,7 @@ export function FileContentRenderer({ file, content }: { file: string; content: 
     <div className="rounded-md border">
       {parsed.frontmatter && <SkillFrontmatterHeader frontmatter={parsed.frontmatter} />}
       <div className="markdown-body compact max-w-none p-4">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={markdownComponents}>
+        <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={markdownComponents}>
           {parsed.body}
         </ReactMarkdown>
       </div>

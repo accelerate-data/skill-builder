@@ -197,6 +197,34 @@ fn test_migration_count_matches_expected() {
 }
 
 #[test]
+fn test_performance_indexes_migration_creates_current_query_indexes() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    run_migrations(&conn).unwrap();
+    for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+        migrate_fn(&conn).unwrap();
+        super::mark_migration_applied(&conn, version).unwrap();
+    }
+
+    for index_name in [
+        "idx_workflow_steps_run_step",
+        "idx_workflow_artifacts_run",
+        "idx_agent_runs_session_reset_started",
+        "idx_agent_runs_skill_started",
+        "idx_workflow_sessions_reset_started_skill",
+    ] {
+        let exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?1",
+                [index_name],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(exists, 1, "expected performance index {index_name}");
+    }
+}
+
+#[test]
 fn test_repair_plugin_ownership_schema_recovers_when_migration_38_was_only_marked_applied() {
     let conn = Connection::open_in_memory().unwrap();
     ensure_migration_table(&conn).unwrap();

@@ -49,4 +49,28 @@ describe("markdown link guard", () => {
 
     expect(violations).toEqual([]);
   });
+
+  it("production ReactMarkdown usages use stable plugin arrays", () => {
+    const srcDir = path.resolve(__dirname, "../../");
+    const files = walkDir(srcDir, [".tsx", ".ts"]);
+
+    const violations: string[] = [];
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, "utf-8");
+      const lines = content.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (
+          line.includes("<ReactMarkdown") &&
+          (line.includes("remarkPlugins={[") || line.includes("rehypePlugins={["))
+        ) {
+          const rel = path.relative(srcDir, file);
+          violations.push(`${rel}:${i + 1}: ${line.trim()}`);
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
 });

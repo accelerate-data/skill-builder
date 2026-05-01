@@ -45,6 +45,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (39, run_plugin_upgrade_locked_migration),
     (40, run_documents_migration),
     (41, run_reset_legacy_tags_migrated),
+    (42, run_performance_indexes_migration),
 ];
 
 pub(super) fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -1908,6 +1909,23 @@ pub(super) fn run_reset_legacy_tags_migrated(conn: &Connection) -> Result<(), ru
         }
     }
     log::info!("migration 41: reset legacy_tags_migrated for marketplace tag migration");
+    Ok(())
+}
+
+pub(super) fn run_performance_indexes_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_workflow_steps_run_step
+            ON workflow_steps(workflow_run_id, step_id);
+        CREATE INDEX IF NOT EXISTS idx_workflow_artifacts_run
+            ON workflow_artifacts(workflow_run_id);
+        CREATE INDEX IF NOT EXISTS idx_agent_runs_session_reset_started
+            ON agent_runs(workflow_session_id, reset_marker, started_at);
+        CREATE INDEX IF NOT EXISTS idx_agent_runs_skill_started
+            ON agent_runs(skill_name, started_at);
+        CREATE INDEX IF NOT EXISTS idx_workflow_sessions_reset_started_skill
+            ON workflow_sessions(reset_marker, started_at, skill_name);",
+    )?;
+    log::info!("migration 42: added workflow performance indexes");
     Ok(())
 }
 
