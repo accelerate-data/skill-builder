@@ -1082,6 +1082,8 @@ fn test_build_prompt_all_three_paths() {
     assert!(prompt
         .contains("The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"));
     assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/skills/my-skill"));
+    assert!(prompt.contains("This skill output directory is the configured Settings Skills Folder target for the shipped skill"));
+    assert!(prompt.contains("shipped skill files must be written only to the skill output directory, never to the workspace directory or a workspace skill/ subdirectory"));
     assert!(prompt.contains("The user context file is at: /home/user/.vibedata/skill-builder/skills/my-skill/user-context.md"));
     assert!(prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/skills/my-skill/context"));
 }

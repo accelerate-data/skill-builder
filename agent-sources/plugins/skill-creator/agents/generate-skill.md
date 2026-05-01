@@ -17,9 +17,10 @@ Instead, you:
 1. gather the required local context and constraints for the skill to be created.
 2. delegate the skill content creation work to `skill-creator:skill-creator` using the `Skill` tool
 3. verify the delegated outputs against this prompt's requirements
-4. apply finishing steps locally, including version bump, commit, tag, and final output formatting
+4. apply finishing steps locally, including version metadata and final output formatting
 
 You do NOT run evaluations or benchmarks — those are handled by a separate benchmark or description-optimization workflow.
+You do NOT commit or tag the generated skill — the app commits the configured Skills Folder after materializing the step output.
 
 </role>
 
@@ -34,6 +35,15 @@ You do NOT run evaluations or benchmarks — those are handled by a separate ben
 - `skill_output_dir`: path where the skill (`SKILL.md` and `references/`) live
 - Derive `context_dir` as `workspace_dir/context`
 - Derive `eval_dir` as `workspace_dir/evals` (`eval.json` **must** be created in this location)
+
+## Directory Contract
+
+The configured Skills Folder is authoritative for shipped skill files.
+
+- Write `SKILL.md` only at `{skill_output_dir}/SKILL.md`.
+- Write shipped references only under `{skill_output_dir}/references/`.
+- Do not write shipped skill files under `{workspace_dir}` or `{workspace_dir}/skill`.
+- Use `{workspace_dir}` only for workflow context, handoff files, logs, and eval artifacts such as `{eval_dir}/evals.json`.
 
 </context>
 
@@ -57,7 +67,7 @@ Read `{context_dir}/decisions.json`. Parse the JSON.
 
 If `metadata.contradictory_inputs == true` in `decisions.json`
 
-- Write this stub to `SKILL.md` and return this JSON:
+- Write this stub to `{skill_output_dir}/SKILL.md` and return this JSON:
 
 ```text
 ---
@@ -86,7 +96,7 @@ If `metadata.contradictory_inputs` is absent (the normal case), read `{context_d
 
 If `metadata.scope_recommendation == true` in the parsed `clarifications.json`.
 
-- Write this stub to `SKILL.md`
+- Write this stub to `{skill_output_dir}/SKILL.md`
 
 ```text
 ---
@@ -107,7 +117,7 @@ The research planner determined the skill scope is too broad. See `clarification
 
 ### Malformed input
 
-If any JSON file that is present is malformed, write this stub to `SKILL.md` and return this JSON:
+If any JSON file that is present is malformed, write this stub to `{skill_output_dir}/SKILL.md` and return this JSON:
 
 ```text
 ---
@@ -192,8 +202,8 @@ After Phase 0-1 context gathering is complete, invoke the `skill-creator:skill-c
 
 Delegate only the content-creation work:
 
-- writing `SKILL.md`
-- creating or updating referenced files
+- writing `{skill_output_dir}/SKILL.md`
+- creating or updating referenced files under `{skill_output_dir}/references/`
 - writing `{eval_dir}/evals.json`
 - incorporating decisions and clarifications into the generated skill content
 - drafting the initial skill description from the `Write the SKILL.md` guidance in the `skill-creator` skill
@@ -220,18 +230,9 @@ Before committing:
 
 If any check fails, fix the generated files before proceeding.
 
-## Phase 4: Commit and tag
+## Phase 4: Final response
 
-After all files are written, commit and tag the initial version:
-
-```bash
-cd "{skills_output_root}"
-git -c user.email="agent@skillbuilder" -c user.name="Skill Builder" add "{skill_name}/"
-git -c user.email="agent@skillbuilder" -c user.name="Skill Builder" commit -m "{skill_name}: {your commit_summary}"
-git tag "{skill_name}/v1.0.0"
-```
-
-If the commit reports "nothing to commit", skip tagging.
+Do not run git commands. The app publishes and commits generated skill files in the configured Skills Folder after this agent returns structured output.
 
 ---
 

@@ -42,6 +42,8 @@ pub(crate) fn build_prompt(p: &PromptParams<'_>) -> String {
          Follow your agent instructions and produce structured JSON output.{} \
          The skill name is: {}. The workspace directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
+         This skill output directory is the configured Settings Skills Folder target for the shipped skill. \
+         Workflow context files live in the workspace directory; shipped skill files must be written only to the skill output directory, never to the workspace directory or a workspace skill/ subdirectory. \
          The user context file is at: {}/user-context.md. \
          The context directory is: {}/context. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
