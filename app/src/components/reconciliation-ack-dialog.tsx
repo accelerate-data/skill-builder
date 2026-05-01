@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { resolveDiscovery } from "@/lib/tauri"
-import type { DiscoveredSkill } from "@/lib/types"
+import type { DiscoveredSkill, DiscoveryResolutionAction } from "@/lib/types"
 
 interface ReconciliationAckDialogProps {
   notifications: string[]
@@ -67,7 +67,7 @@ export default function ReconciliationAckDialog({
     discoveredSkills.every((s) => resolutions[discoveryKey(s)] === "resolved")
 
   const handleResolve = useCallback(
-    async (skill: DiscoveredSkill, action: string) => {
+    async (skill: DiscoveredSkill, action: DiscoveryResolutionAction) => {
       const key = discoveryKey(skill)
       console.log(
         "[reconciliation-ack] resolving discovery: skill=%s plugin=%s action=%s",

@@ -392,7 +392,6 @@ export function WorkspaceEvals({
         ["Read", "Glob", "Write"],
         10,
         undefined,
-        undefined,
         "eval-generator",
         "generate-eval",
         undefined,
@@ -500,7 +499,6 @@ export function WorkspaceEvals({
         cwd,
         ["Read", "Glob", "Write"],
         10,
-        undefined,
         undefined,
         "eval-generator",
         "regen-eval",
@@ -702,7 +700,6 @@ export function WorkspaceEvals({
         workspacePath,
         ["Read", "Write", "Glob", "Agent"],
         undefined, // maxTurns — let agent decide
-        undefined,
         undefined,
         skillName,
         "evaluate-skill",

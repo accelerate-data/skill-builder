@@ -41,9 +41,66 @@ void invalidMarketplaceImportResult;
 import type { TauriCommandName } from "@/lib/tauri-command-types";
 
 declare const maybeCommand: TauriCommandName;
+declare const unsafeWorkflowCommand: "run_workflow_step" | "save_workflow_state";
 
 // @ts-expect-error widened command names must not decouple command and args
 void invokeCommand(maybeCommand, {});
+
+// @ts-expect-error widened workflow command names must not bypass command-specific args
+void invokeCommand(unsafeWorkflowCommand, {});
+
+void invokeCommand("run_workflow_step", {
+  skillName: "demo",
+  stepId: 1,
+  workspacePath: "/tmp/workspace",
+  workflowSessionId: null,
+});
+
+void invokeCommand("get_workspace_path", {});
+
+void invokeCommand("resolve_discovery", {
+  skillName: "demo",
+  action: "add-skill-builder",
+  pluginSlug: null,
+});
+
+void invokeCommand("cancel_workflow_step", { agentId: "demo-step-agent" });
+void invokeCommand("get_context_file_content", {
+  skillName: "demo",
+  workspacePath: "/tmp/workspace",
+  fileName: "clarifications.json",
+});
+
+// @ts-expect-error run_workflow_step requires workflowSessionId to be string or null, not number
+void invokeCommand("run_workflow_step", {
+  skillName: "demo",
+  stepId: 1,
+  workspacePath: "/tmp/workspace",
+  workflowSessionId: 123,
+});
+
+// @ts-expect-error get_workspace_path uses the typed no-args convention
+void invokeCommand("get_workspace_path", { apply: true });
+
+// @ts-expect-error resolve_discovery action and pluginSlug must match the contract
+void invokeCommand("resolve_discovery", {
+  skillName: "demo",
+  action: 42,
+  pluginSlug: false,
+});
+
+// @ts-expect-error resolve_discovery only accepts known discovery actions
+void invokeCommand("resolve_discovery", {
+  skillName: "demo",
+  action: "keep",
+  pluginSlug: null,
+});
+
+// @ts-expect-error get_context_file_content requires a context fileName
+void invokeCommand("get_context_file_content", {
+  skillName: "demo",
+  workspacePath: "/tmp/workspace",
+});
 
 void invokeCommand("run_optimization_loop", {
   skillName: "dbt-analytics",

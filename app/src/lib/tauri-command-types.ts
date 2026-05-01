@@ -7,6 +7,7 @@ import type {
   DetailedResearchOutput,
   DecisionsOutput,
   DeviceFlowResponse,
+  DiscoveryResolutionAction,
   Document,
   EvalBenchmark,
   GenerateSkillOutput,
@@ -153,7 +154,6 @@ type AgentStartArgs = {
   allowedTools?: string[];
   maxTurns?: number;
   permissionMode: string | null;
-  sessionId?: string;
   skillName: string;
   stepLabel: string;
   agentName: string | null;
@@ -262,7 +262,7 @@ export interface TauriCommandMap {
   end_workflow_session: { args: { sessionId: string }; result: void };
   resolve_orphan: { args: { skillName: string; action: "delete" | "keep" }; result: void };
   resolve_discovery: {
-    args: { skillName: string; action: string; pluginSlug: string | null };
+    args: { skillName: string; action: DiscoveryResolutionAction; pluginSlug: string | null };
     result: void;
   };
   create_github_issue: { args: { request: CreateGithubIssueRequest }; result: CreateGithubIssueResponse };
