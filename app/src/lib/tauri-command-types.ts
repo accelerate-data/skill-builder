@@ -2,6 +2,7 @@ import type {
   AppSettings,
   AvailablePlugin,
   AvailableSkill,
+  AnswerEvaluationOutput,
   BenchmarkData,
   DeviceFlowResponse,
   EvalBenchmark,
@@ -15,8 +16,12 @@ import type {
   MarketplaceUpdateResult,
   ModelInfo,
   PendingEval,
+  RefineFinalizeResult,
+  RefineSessionInfo,
   ReconciliationResult,
+  SkillCommit,
   SkillEvalContext,
+  SkillFileContent,
   SkillFileMeta,
   SkillMetadataOverride,
   SkillSummary,
@@ -319,6 +324,88 @@ export interface TauriCommandMap {
       userContextFile: string;
     };
     result: [string, string];
+  };
+  get_skill_content_at_path: { args: { path: string }; result: SkillFileContent[] };
+  get_skill_content_for_refine: {
+    args: { skillName: string; workspacePath: string; pluginSlug: string };
+    result: SkillFileContent[];
+  };
+  start_refine_session: {
+    args: { skillName: string; pluginSlug: string; workspacePath: string };
+    result: RefineSessionInfo;
+  };
+  close_refine_session: { args: { sessionId: string }; result: void };
+  cancel_refine_turn: { args: { sessionId: string }; result: void };
+  cancel_agent_run: { args: { skillName: string; agentId: string }; result: void };
+  cancel_workflow_step: { args: { agentId: string }; result: void };
+  answer_refine_question: {
+    args: {
+      sessionId: string;
+      agentId: string;
+      toolUseId: string;
+      questions: unknown;
+      answers: Record<string, unknown>;
+    };
+    result: void;
+  };
+  send_refine_message: {
+    args: {
+      sessionId: string;
+      userMessage: string;
+      pluginSlug: string;
+      workspacePath: string;
+      targetFiles: string[] | null;
+      command: string | null;
+    };
+    result: string;
+  };
+  finalize_refine_run: {
+    args: {
+      skillName: string;
+      workspacePath: string;
+      pluginSlug: string;
+      structuredOutput: unknown | null;
+    };
+    result: RefineFinalizeResult;
+  };
+  clean_benchmark_snapshot: {
+    args: { skillName: string; workspacePath: string; pluginSlug: string };
+    result: void;
+  };
+  get_skill_history: {
+    args: { workspacePath: string; skillName: string; pluginSlug: string; limit: number | null };
+    result: SkillCommit[];
+  };
+  restore_skill_version: {
+    args: { workspacePath: string; skillName: string; pluginSlug: string; sha: string };
+    result: string;
+  };
+  get_skill_files_at_sha: {
+    args: { workspacePath: string; skillName: string; pluginSlug: string; sha: string };
+    result: SkillFileContent[];
+  };
+  run_answer_evaluator: { args: { skillName: string; workspacePath: string }; result: string };
+  materialize_answer_evaluation_output: {
+    args: { skillName: string; workspacePath: string; structuredOutput: AnswerEvaluationOutput };
+    result: void;
+  };
+  get_clarifications_content: { args: { skillName: string; workspacePath: string }; result: string };
+  save_clarifications_content: {
+    args: { skillName: string; workspacePath: string; content: string };
+    result: void;
+  };
+  get_decisions_content: { args: { skillName: string; workspacePath: string }; result: string };
+  save_decisions_content: {
+    args: { skillName: string; workspacePath: string; content: string };
+    result: void;
+  };
+  get_context_file_content: {
+    args: { skillName: string; workspacePath: string; fileName: string };
+    result: string;
+  };
+  log_gate_decision: {
+    args: { skillName: string; verdict: string; decision: string };
+    result: void;
   };
 }
 

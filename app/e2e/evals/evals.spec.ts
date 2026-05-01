@@ -154,6 +154,7 @@ test.describe("Evals tab — sidecar integration", { tag: "@evals-integration" }
         anthropic_api_key: "sk-ant-test",
         workspace_path: bridge.workspaceDir,
         skills_path: bridge.workspaceDir,
+        preferred_model: "sonnet",
       },
       create_next_iteration_dir: [1, iterDir],
     });

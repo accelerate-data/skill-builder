@@ -9,6 +9,31 @@ function read(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
+const vu1140Commands = [
+  "get_skill_content_at_path",
+  "get_skill_content_for_refine",
+  "start_refine_session",
+  "close_refine_session",
+  "cancel_refine_turn",
+  "cancel_agent_run",
+  "cancel_workflow_step",
+  "answer_refine_question",
+  "send_refine_message",
+  "finalize_refine_run",
+  "clean_benchmark_snapshot",
+  "get_skill_history",
+  "restore_skill_version",
+  "get_skill_files_at_sha",
+  "run_answer_evaluator",
+  "materialize_answer_evaluation_output",
+  "get_clarifications_content",
+  "save_clarifications_content",
+  "get_decisions_content",
+  "save_decisions_content",
+  "get_context_file_content",
+  "log_gate_decision",
+];
+
 test("typed Tauri command contract is the only non-test command policy", () => {
   const tauriSource = read("app/src/lib/tauri.ts");
   const typeSource = read("app/src/lib/tauri-command-types.ts");
@@ -74,4 +99,29 @@ test("direct invokeUnsafe imports stay out of application code", () => {
 
   walk(sourceRoot);
   assert.deepEqual(offenders, []);
+});
+
+test("VU-1140 scoped commands stay on the typed invokeCommand path", () => {
+  const tauriSource = read("app/src/lib/tauri.ts");
+  const typeSource = read("app/src/lib/tauri-command-types.ts");
+
+  const missingMapEntries = [];
+  const missingTypedWrappers = [];
+  const unsafeWrappers = [];
+
+  for (const command of vu1140Commands) {
+    if (!new RegExp(`${command}:`).test(typeSource)) {
+      missingMapEntries.push(command);
+    }
+    if (!tauriSource.includes(`invokeCommand("${command}"`)) {
+      missingTypedWrappers.push(command);
+    }
+    if (new RegExp(`invokeUnsafe(?:<[^>]+>)?\\("${command}"`).test(tauriSource)) {
+      unsafeWrappers.push(command);
+    }
+  }
+
+  assert.deepEqual(missingMapEntries, []);
+  assert.deepEqual(missingTypedWrappers, []);
+  assert.deepEqual(unsafeWrappers, []);
 });

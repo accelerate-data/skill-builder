@@ -88,3 +88,29 @@ const invalidGradingResult: Promise<unknown[]> = invokeCommand("read_grading", {
   gradingPath: "/workspace/skill/evals/grading.json",
 });
 void invalidGradingResult;
+
+// @ts-expect-error refine command requires camelCase sessionId
+void invokeCommand("close_refine_session", { session_id: "session-1" });
+
+// @ts-expect-error send_refine_message requires nullable targetFiles and command fields
+void invokeCommand("send_refine_message", {
+  sessionId: "session-1",
+  userMessage: "Update this skill",
+  pluginSlug: "skills",
+  workspacePath: "/tmp/workspace",
+});
+
+// @ts-expect-error answer evaluator output must match AnswerEvaluationOutput
+void invokeCommand("materialize_answer_evaluation_output", {
+  skillName: "demo",
+  workspacePath: "/tmp/workspace",
+  structuredOutput: { verdict: "ok" },
+});
+
+// @ts-expect-error git history limit must be number or null
+void invokeCommand("get_skill_history", {
+  workspacePath: "/tmp/workspace",
+  skillName: "demo",
+  pluginSlug: "skills",
+  limit: "10",
+});
