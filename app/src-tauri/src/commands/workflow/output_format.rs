@@ -301,6 +301,67 @@ pub(crate) fn publish_generated_skill_output(
     Ok(published_dir)
 }
 
+pub(crate) fn publish_commit_and_tag_generated_skill(
+    workspace_skill_root: &Path,
+    skills_dir: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<(), String> {
+    let published_dir =
+        publish_generated_skill_output(workspace_skill_root, skills_dir, plugin_slug, skill_name)?;
+    let published_skill_md = published_dir.join("SKILL.md");
+    let published_content = std::fs::read_to_string(&published_skill_md).map_err(|e| {
+        format!(
+            "Failed to read generated skill frontmatter '{}': {}",
+            published_skill_md.display(),
+            e
+        )
+    })?;
+    let version = crate::commands::imported_skills::parse_frontmatter_full(&published_content)
+        .version
+        .ok_or_else(|| {
+            format!(
+                "Generated skill '{}' is missing metadata.version in '{}'",
+                skill_name,
+                published_skill_md.display()
+            )
+        })?;
+
+    let commit_message = format!("{}: generated skill", skill_name);
+    match crate::git::commit_all(skills_dir, &commit_message).map_err(|e| {
+        format!(
+            "Generated skill publish commit failed for '{}': {}",
+            skill_name, e
+        )
+    })? {
+        Some(sha) => log::info!(
+            "[materialize_workflow_step_output] committed generated skill={} sha={}",
+            skill_name,
+            &sha[..8.min(sha.len())]
+        ),
+        None => log::info!(
+            "[materialize_workflow_step_output] no generated skill changes to commit skill={}",
+            skill_name
+        ),
+    }
+
+    let tag_name =
+        crate::git::create_skill_version_tag(skills_dir, plugin_slug, skill_name, &version)
+            .map_err(|e| {
+                format!(
+                    "Generated skill version tag failed for '{}': {}",
+                    skill_name, e
+                )
+            })?;
+    log::info!(
+        "[materialize_workflow_step_output] tagged generated skill={} tag={}",
+        skill_name,
+        tag_name
+    );
+
+    Ok(())
+}
+
 #[tauri::command]
 pub fn materialize_workflow_step_output(
     skill_name: String,
@@ -338,7 +399,7 @@ pub fn materialize_workflow_step_output(
         },
     )?;
 
-    // After successful generate materialization, publish and commit the skill.
+    // After successful generate materialization, publish, commit, and tag the skill.
     // Benchmark output does not trigger a commit (benchmark data is in workspace, not git).
     // Rewrite/refine commit+tag is handled by finalize_refine_run.
     if step_id == 3 {
@@ -360,25 +421,12 @@ pub fn materialize_workflow_step_output(
             drop(conn);
 
             let skills_dir = Path::new(&skills_path);
-            publish_generated_skill_output(&skill_root, skills_dir, &plugin_slug, &skill_name)?;
-
-            let commit_message = format!("{}: generated skill", skill_name);
-            match crate::git::commit_all(skills_dir, &commit_message) {
-                Ok(Some(sha)) => log::info!(
-                    "[materialize_workflow_step_output] committed generated skill={} sha={}",
-                    skill_name,
-                    &sha[..8.min(sha.len())]
-                ),
-                Ok(None) => log::info!(
-                    "[materialize_workflow_step_output] no generated skill changes to commit skill={}",
-                    skill_name
-                ),
-                Err(e) => log::warn!(
-                    "[materialize_workflow_step_output] generated skill publish commit failed skill={}: {}",
-                    skill_name,
-                    e
-                ),
-            }
+            publish_commit_and_tag_generated_skill(
+                &skill_root,
+                skills_dir,
+                &plugin_slug,
+                &skill_name,
+            )?;
 
             match git2::Repository::open(skills_dir) {
                 Ok(repo) => {

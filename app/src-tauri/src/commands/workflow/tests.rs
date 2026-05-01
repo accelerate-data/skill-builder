@@ -7,7 +7,7 @@ use super::deploy::{
 };
 use super::output_format::{
     answer_evaluator_output_format, materialize_answer_evaluation_output_value,
-    materialize_workflow_step_output_value,
+    materialize_workflow_step_output_value, publish_commit_and_tag_generated_skill,
 };
 use super::guards::{
     make_agent_id, parse_decisions_guard, parse_scope_recommendation,
@@ -989,6 +989,78 @@ fn test_materialize_step3_generate_skipped_writes_skipped_benchmark() {
     let meta: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
     assert_eq!(meta["benchmark_status"], "skipped");
+}
+
+#[test]
+fn publish_commit_and_tag_generated_skill_creates_initial_version_tag() {
+    let workspace = tempfile::tempdir().unwrap();
+    let skills = tempfile::tempdir().unwrap();
+    let workspace_skill_root = workspace.path().join("skills").join("tagged-skill");
+    let generated_refs = workspace_skill_root.join("skill").join("references");
+    std::fs::create_dir_all(&generated_refs).unwrap();
+    std::fs::write(
+        workspace_skill_root.join("skill").join("SKILL.md"),
+        "---\nname: tagged-skill\nmetadata:\n  version: 1.0.0\n---\n# Tagged Skill\n",
+    )
+    .unwrap();
+    std::fs::write(generated_refs.join("terms.md"), "# Terms\n").unwrap();
+
+    publish_commit_and_tag_generated_skill(
+        &workspace_skill_root,
+        skills.path(),
+        "skills",
+        "tagged-skill",
+    )
+    .unwrap();
+
+    assert!(crate::git::skill_version_tag_exists(
+        skills.path(),
+        "skills",
+        "tagged-skill",
+        "1.0.0"
+    )
+    .unwrap());
+}
+
+#[test]
+fn publish_commit_and_tag_generated_skill_surfaces_duplicate_tag_error() {
+    let workspace = tempfile::tempdir().unwrap();
+    let skills = tempfile::tempdir().unwrap();
+    let plugin_slug = "skills";
+    let skill_name = "tagged-skill";
+    let published_dir =
+        crate::skill_paths::resolve_skill_dir(skills.path(), plugin_slug, skill_name);
+    std::fs::create_dir_all(&published_dir).unwrap();
+    std::fs::write(
+        published_dir.join("SKILL.md"),
+        "---\nname: tagged-skill\nmetadata:\n  version: 1.0.0\n---\n# Existing\n",
+    )
+    .unwrap();
+    crate::git::commit_all(skills.path(), "tagged-skill: existing").unwrap();
+    crate::git::create_skill_version_tag(skills.path(), plugin_slug, skill_name, "1.0.0")
+        .unwrap();
+
+    let workspace_skill_root = workspace.path().join("skills").join(skill_name);
+    let generated_dir = workspace_skill_root.join("skill");
+    std::fs::create_dir_all(&generated_dir).unwrap();
+    std::fs::write(
+        generated_dir.join("SKILL.md"),
+        "---\nname: tagged-skill\nmetadata:\n  version: 1.0.0\n---\n# Updated\n",
+    )
+    .unwrap();
+
+    let err = publish_commit_and_tag_generated_skill(
+        &workspace_skill_root,
+        skills.path(),
+        plugin_slug,
+        skill_name,
+    )
+    .unwrap_err();
+
+    assert!(
+        err.contains("Generated skill version tag failed"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
