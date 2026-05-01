@@ -12,7 +12,7 @@
       "assert": [
         {
           "type": "javascript",
-          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); data.status === 'generated' && (data.skipped === undefined || typeof data.skipped === 'boolean') && (data.commit_summary === undefined || typeof data.commit_summary === 'string') && (data.version_bump === undefined || ['major','minor','patch','none'].includes(data.version_bump)) && (data.call_trace === undefined || Array.isArray(data.call_trace))"
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); const trace = Array.isArray(data.call_trace) ? data.call_trace.join(' ') : ''; data.status === 'generated' && data.skipped !== true && typeof data.commit_summary === 'string' && data.commit_summary.length > 20 && data.version_bump === 'minor' && Array.isArray(data.call_trace) && data.call_trace.length >= 5 && /read-user-context/.test(trace) && /read-decisions/.test(trace) && /use-skill-creator-skill/.test(trace) && /write-skill/.test(trace) && /write-references/.test(trace) && /write-evals/.test(trace)"
         }
       ]
     }

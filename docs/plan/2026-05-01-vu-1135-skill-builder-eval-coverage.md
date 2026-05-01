@@ -24,6 +24,34 @@
 
 ## Tasks
 
+### Task 0: Independent Review Fixes
+
+**Files:**
+
+- Modify: `tests/evals/docs/scenario-inventory.md`
+- Modify: `tests/evals/package.json`
+- Modify: `tests/evals/packages/workspace-refine-initial-prompt/prompt.txt`
+- Modify: `tests/evals/packages/workspace-refine-initial-prompt/promptfooconfig.json`
+- Modify: `tests/evals/packages/workspace-test-evaluator-prompt/promptfooconfig.json`
+- Modify: `tests/evals/packages/skill-content-researcher-confirm-decisions/prompt.txt`
+- Modify: `tests/evals/packages/skill-content-researcher-confirm-decisions/promptfooconfig.json`
+- Modify: `tests/evals/packages/skill-creator-generate-skill/prompt.txt`
+- Modify: `tests/evals/packages/skill-creator-generate-skill/promptfooconfig.json`
+- Modify: `tests/evals/packages/scope-advisor/promptfooconfig.json`
+- Create: `tests/evals/packages/scope-advisor/prompt.txt`
+- Create: `tests/evals/packages/workspace-eval-generator-system-prompt/prompt.txt`
+- Create: `tests/evals/packages/workspace-eval-generator-system-prompt/promptfooconfig.json`
+- Create: `tests/evals/packages/workspace-skill-suggestions-prompt/promptfooconfig.json`
+
+- [x] Align `workspace-test-evaluator-prompt` with the real arrow-bullet plus `## Recommendations` text output contract instead of JSON.
+- [x] Align `workspace-refine-initial-prompt` with the real `AskUserQuestion` event/tool-call surface instead of a synthetic JSON stand-in.
+- [x] Add missing package coverage for the app's eval-generator system prompt.
+- [x] Add missing package coverage for the app's skill-suggestions prompt.
+- [x] Strengthen `confirm-decisions` assertions to require the full canonical decision object and metadata fields.
+- [x] Strengthen `skill-creator-generate-skill` assertions so non-stub output requires `commit_summary`, `version_bump`, and `call_trace`.
+- [x] Fix the scope-advisor non-English coverage claim with an actual non-English input and English-output assertion.
+- [ ] Re-run deterministic tests, targeted affected eval suites, aggregate smoke, and relevant repo quality gates. Local deterministic/Markdown gates are green; live OpenCode eval completion is blocked by provider billing after targeted suites were rerun.
+
 ### Task 1: Inventory And Smoke Contract
 
 **Files:**
@@ -125,7 +153,9 @@ prompt is supposed to emit.
 - `cd tests/evals && npm run eval:workspace-workflow-step-prompt`
 - `cd tests/evals && npm run eval:workspace-refine-initial-prompt`
 - `cd tests/evals && npm run eval:workspace-eval-initial-prompt`
+- `cd tests/evals && npm run eval:workspace-eval-generator-system-prompt`
 - `cd tests/evals && npm run eval:workspace-description-evals-generator-prompt`
+- `cd tests/evals && npm run eval:workspace-skill-suggestions-prompt`
 - `cd tests/evals && npm run eval:scope-advisor`
 - `cd tests/evals && npm run eval:smoke`
 - `markdownlint AGENTS.md TEST_MANIFEST.md docs/plan/2026-05-01-vu-1135-skill-builder-eval-coverage.md tests/evals/docs/scenario-inventory.md`
@@ -147,8 +177,16 @@ prompt is supposed to emit.
 - [x] `eval:workspace-refine-initial-prompt`
 - [x] `eval:workspace-eval-initial-prompt`
 - [x] `eval:workspace-description-evals-generator-prompt`
-- [x] `eval:scope-advisor`
-- [x] Run aggregate `eval:smoke` after all package suites are green.
+- [x] `eval:workspace-eval-generator-system-prompt`
+- [x] `eval:workspace-skill-suggestions-prompt`
+- [ ] `eval:scope-advisor` after latest scope prompt-file stabilization; blocked by OpenCode provider billing.
+- [ ] Run aggregate `eval:smoke` after all package suites are green; reran repeatedly through the package list, but final completion is blocked by OpenCode provider billing.
 - [x] Run markdown lint for changed Markdown.
 - [x] Build the sidecar artifact required by Tauri's Rust build script.
 - [x] Run the Rust scope-review compile/test filter.
+
+OpenCode provider blocker observed on 2026-05-01:
+
+```text
+Error: Insufficient balance. Manage your billing here: https://opencode.ai/workspace/wrk_01KPXDSPNVVRRW9SYV6P5494BW/billing
+```

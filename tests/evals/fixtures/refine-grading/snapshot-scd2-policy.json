@@ -1,0 +1,29 @@
+{
+  "expectations": [
+    {
+      "text": "The plan uses dbt snapshot columns dbt_valid_from and dbt_valid_to for SCD2 history.",
+      "passed": false,
+      "evidence": "The plan mentions SCD2 but does not name the dbt_valid_from or dbt_valid_to columns."
+    },
+    {
+      "text": "The plan says fact tables should not be snapshotted for slowly changing dimensions.",
+      "passed": false,
+      "evidence": "The plan proposes snapshotting fact_order."
+    }
+  ],
+  "summary": {
+    "passed": 0,
+    "failed": 2,
+    "total": 2,
+    "pass_rate": 0
+  },
+  "claims": [],
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "reason": "The skill should explicitly cover dbt SCD2 column conventions."
+      }
+    ],
+    "overall": "The failure indicates a genuine skill gap."
+  }
+}

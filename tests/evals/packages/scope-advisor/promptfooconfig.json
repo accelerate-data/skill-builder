@@ -4,7 +4,7 @@
     "eval_tier": "standard"
   },
   "prompts": [
-    "You are the Skill Builder scope advisor. Evaluate this create-skill form submission using the product response contract. Skill name: {{skill_name}}. Skill description: {{description}}. Purpose: {{purpose}}. What Claude needs to know: {{context_questions}}. Industry: {{industry}}. Apply the app contract: broad recognizable business domains with multiple distinct processes are `too-broad`; unclear domain is `both-need-improvement`; focused description with bad name is `name-needs-improvement`; context overrides breadth only when it explicitly establishes the listed activities as one company-specific workflow; focused submissions return no suggested skills. Return JSON only with this shape: {\"status\":\"focused|too-broad|name-needs-improvement|description-needs-improvement|both-need-improvement\",\"reason\":\"...\",\"suggested_skills\":[{\"name\":\"gerund-kebab-case\",\"description\":\"third-person trigger description\"}]}."
+    "file://prompt.txt"
   ],
   "tests": [
     {
@@ -43,7 +43,7 @@
       "description": "[regression] scope advisor context override and non-English cases",
       "vars": {
         "skill_name": "validating-grain-feed-compliance",
-        "description": "Validates quality testing, traceability documents, and supplier audit evidence for grain feed compliance decisions.",
+        "description": "Valida pruebas de calidad, documentos de trazabilidad y evidencia de auditoria de proveedores para decisiones de cumplimiento de alimento de grano.",
         "purpose": "Business process knowledge",
         "context_questions": "Uploaded company policy says testing, traceability, and supplier audit checks are one compliance workflow.",
         "industry": "Agriculture"
@@ -51,7 +51,7 @@
       "assert": [
         {
           "type": "javascript",
-          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); data.status === 'focused' && typeof data.reason === 'string' && Array.isArray(data.suggested_skills) && data.suggested_skills.length === 0"
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); data.status === 'focused' && typeof data.reason === 'string' && /workflow|compliance|focused|context|policy/i.test(data.reason) && !/[áéíóúñ¿¡]/i.test(data.reason) && Array.isArray(data.suggested_skills) && data.suggested_skills.length === 0"
         }
       ]
     }

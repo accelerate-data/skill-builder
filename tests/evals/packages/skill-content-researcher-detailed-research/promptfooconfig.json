@@ -12,7 +12,7 @@
       "assert": [
         {
           "type": "javascript",
-          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); data.status === 'detailed_research_complete' && Number.isInteger(data.refinement_count) && Number.isInteger(data.section_count) && data.clarifications_json && data.clarifications_json.version === '1' && data.clarifications_json.metadata && Number.isInteger(data.clarifications_json.metadata.question_count) && Array.isArray(data.clarifications_json.sections)"
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); const sections = data.clarifications_json && data.clarifications_json.sections; const questions = Array.isArray(sections) ? sections.flatMap((s) => Array.isArray(s.questions) ? s.questions : []) : []; data.status === 'detailed_research_complete' && Number.isInteger(data.refinement_count) && data.refinement_count >= 0 && Number.isInteger(data.section_count) && Array.isArray(sections) && data.section_count === sections.length && data.clarifications_json.version === '1' && data.clarifications_json.metadata && Number.isInteger(data.clarifications_json.metadata.question_count) && data.clarifications_json.metadata.question_count === questions.length"
         }
       ]
     }

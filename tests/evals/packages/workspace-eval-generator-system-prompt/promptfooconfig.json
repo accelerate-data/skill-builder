@@ -1,0 +1,20 @@
+{
+  "description": "Workspace eval-generator system prompt pending-eval JSON output.",
+  "metadata": {
+    "eval_tier": "standard"
+  },
+  "prompts": [
+    "file://prompt.txt"
+  ],
+  "tests": [
+    {
+      "description": "[smoke] eval generator writes pending eval contract",
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); typeof data.eval_name === 'string' && data.eval_name.trim().split(/\\s+/).length >= 3 && data.eval_name.length <= 80 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(data.slug) && typeof data.prompt === 'string' && data.prompt.length > 80 && /\\?$/.test(data.prompt.trim()) && /dim_customer|snapshot|SCD2|dbt|Fabric/i.test(data.prompt) && !/review|confirm|validate|check if|verify|ensure it follows/i.test(data.prompt) && Array.isArray(data.expectations) && data.expectations.length >= 4 && data.expectations.length <= 6 && data.expectations.every((e) => typeof e === 'string' && e.length > 20)"
+        }
+      ]
+    }
+  ]
+}

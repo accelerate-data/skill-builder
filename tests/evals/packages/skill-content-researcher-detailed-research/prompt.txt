@@ -47,4 +47,5 @@ Existing clarifications_json:
   "notes": []
 }
 
-Return JSON only. Required top-level fields: status="detailed_research_complete", refinement_count integer, section_count integer, clarifications_json.version="1", clarifications_json.metadata, clarifications_json.sections array.
+Return JSON only. Preserve `clarifications_json.sections` as an array, keep `section_count` consistent with the sections array, and keep `clarifications_json.metadata.question_count` consistent with the questions represented in the sections.
+Required top-level fields: status="detailed_research_complete", refinement_count integer, section_count integer, clarifications_json.version="1", clarifications_json.metadata, clarifications_json.sections array.

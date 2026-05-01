@@ -13,7 +13,7 @@ Generate the final structured status JSON that workflow step 3 returns after cre
 
 Required JSON fields:
 - status: "generated"
-- skipped: optional boolean
-- commit_summary: optional string
-- version_bump: optional "major", "minor", "patch", or "none"
-- call_trace: optional array
+- skipped: omit or false for this non-stub generation case
+- commit_summary: required string for non-stub output
+- version_bump: "minor" for new skills
+- call_trace: required array containing logical steps, including read-user-context, read-decisions, use-skill-creator-skill, write-skill, write-references, and write-evals

@@ -12,7 +12,7 @@
       "assert": [
         {
           "type": "javascript",
-          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); data.status === 'requires_user_selection' && data.ask_user_question && data.ask_user_question.header === 'Skill Gaps' && data.ask_user_question.multiSelect === true && Array.isArray(data.ask_user_question.options) && data.ask_user_question.options.length >= 1 && data.rewrite_started === false"
+          "value": "/AskUserQuestion|ask user|question/i.test(output) && /Skill Gaps/i.test(output) && /snapshot-scd2-policy/i.test(output) && /multiSelect|multiple/i.test(output) && !/rewrite-skill/i.test(output.replace(/ROUTING:[\\s\\S]*?Current request:/, '')) && !/^\\s*\\{/.test(output.trim())"
         }
       ]
     }

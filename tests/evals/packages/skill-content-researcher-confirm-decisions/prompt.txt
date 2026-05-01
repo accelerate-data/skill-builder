@@ -38,4 +38,13 @@ Completed research context:
   "notes": ["Skill should help analytics engineers produce repo-compliant dbt-Fabric code."]
 }
 
-Return ONLY the canonical decisions JSON object with version="1", metadata.decision_count integer, and decisions array. Each decision must include id and decision.
+Return ONLY the canonical decisions JSON object.
+
+Required contract:
+- version: "1"
+- metadata.decision_count integer
+- metadata.conflicts_resolved integer
+- metadata.round: 1
+- decisions array length equals metadata.decision_count
+- every decision includes id, title, original_question, decision, implication, and status
+- status is one of resolved, conflict-resolved, or needs-review

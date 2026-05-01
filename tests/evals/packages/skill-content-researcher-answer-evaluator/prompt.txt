@@ -1,3 +1,5 @@
+Eval mode: evaluate only the inline clarifications JSON below. Do not read files, inspect directories, launch tools, or write files. Return the final JSON verdict immediately.
+
 The workspace directory is `/tmp/skill-builder/workspace/skills/fabric-dbt-standards`.
 The context directory is `/tmp/skill-builder/workspace/skills/fabric-dbt-standards/context`.
 All directories already exist - do not create any directories.
