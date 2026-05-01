@@ -17,6 +17,7 @@ export const EVALS_OVERRIDES: Record<string, unknown> = {
     anthropic_api_key: "sk-ant-test",
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
+    preferred_model: "sonnet",
   },
   check_workspace_path: true,
   list_skills: [

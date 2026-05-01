@@ -52,10 +52,10 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow`, `@setup` |
 | `src-tauri/src/commands/workflow_lifecycle.rs` | `commands::workflow_lifecycle` | `@workflow` |
 | `src-tauri/src/commands/refine.rs` | `commands::refine` | `@refine` |
-| `src-tauri/src/commands/description/mod.rs` | `commands::description` | -- |
-| `src-tauri/src/commands/description/eval.rs` | `commands::description::eval` | -- |
-| `src-tauri/src/commands/description/loop_runner.rs` | `commands::description::loop_runner` | -- |
-| `src-tauri/src/commands/description/improve.rs` | `commands::description::improve` | -- |
+| `src-tauri/src/commands/description/mod.rs` | `commands::description` | `@description` |
+| `src-tauri/src/commands/description/eval.rs` | `commands::description::eval` | `@description` |
+| `src-tauri/src/commands/description/loop_runner.rs` | `commands::description::loop_runner` | `@description` |
+| `src-tauri/src/commands/description/improve.rs` | `commands::description::improve` | `@description` |
 | `src-tauri/src/commands/git.rs` | -- | `@dashboard` |
 | `src-tauri/src/commands/lifecycle.rs` | -- | -- |
 | `src-tauri/src/commands/feedback.rs` | -- | -- |
@@ -96,6 +96,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/workflow/display-items.spec.ts` | `@workflow` |
 | `e2e/workflow/file-viewer.spec.ts` | `@workflow` |
 | `e2e/refine/refine.spec.ts` | `@refine` |
+| `e2e/description/description-optimization.spec.ts` | `@description` |
 | `e2e/skills-library/skills-library.spec.ts` | `@skills` |
 | `e2e/github-import/github-import.spec.ts` | `@skills` |
 | `e2e/usage/usage-smoke.spec.ts` | `@dashboard` |

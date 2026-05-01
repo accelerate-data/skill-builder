@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { getTrackedInvokeCount, trackInvokes } from "../helpers/invoke-tracking.js";
 import { navigateToSettingsSection, BASE_SETTINGS_OVERRIDES } from "../helpers/settings-helpers";
 import { E2E_SKILLS_PATH } from "../helpers/test-paths";
 
@@ -47,11 +48,7 @@ test.describe("Workspace Reconfigure", { tag: "@settings" }, () => {
       ],
     });
 
-    // Enable invoke tracking for update_user_settings
-    await page.evaluate(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_TRACK_INVOKES__ = ["update_user_settings"];
-      (window as unknown as Record<string, unknown>).__TAURI_TRACKED_INVOKES__ = [];
-    });
+    await trackInvokes(page, ["update_user_settings"]);
 
     // Click Browse to change skills path
     const browseButton = page.getByRole("button", { name: "Browse" });
@@ -59,10 +56,7 @@ test.describe("Workspace Reconfigure", { tag: "@settings" }, () => {
 
     // Verify update_user_settings was called
     await expect(async () => {
-      const tracked = await page.evaluate(() =>
-        (window as unknown as Record<string, unknown>).__TAURI_TRACKED_INVOKES__ as Array<{ cmd: string }>,
-      );
-      expect(tracked.some((t) => t.cmd === "update_user_settings")).toBe(true);
+      expect(await getTrackedInvokeCount(page, "update_user_settings")).toBeGreaterThan(0);
     }).toPass({ timeout: 5_000 });
   });
 });
