@@ -1,25 +1,9 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   emitGeneratedDescriptionQueries,
   navigateToDescriptionTab,
 } from "../helpers/description-helpers";
-
-async function trackInvokes(page: Page, commands: string[]) {
-  await page.evaluate((cmds) => {
-    const w = window as unknown as Record<string, unknown>;
-    w.__TAURI_TRACK_INVOKES__ = cmds;
-    w.__TAURI_TRACKED_INVOKES__ = [];
-  }, commands);
-}
-
-async function trackedInvokeCount(page: Page, cmd: string) {
-  return page.evaluate((command) => {
-    const calls = ((window as unknown as Record<string, unknown>).__TAURI_TRACKED_INVOKES__ ?? []) as Array<{
-      cmd: string;
-    }>;
-    return calls.filter((call) => call.cmd === command).length;
-  }, cmd);
-}
+import { getTrackedInvokeCount, trackInvokes } from "../helpers/invoke-tracking.js";
 
 test.describe("Optimize Description", { tag: "@description" }, () => {
   test("happy path generates queries, runs optimization, views results, and applies the best description", async ({ page }) => {
@@ -39,7 +23,7 @@ test.describe("Optimize Description", { tag: "@description" }, () => {
 
     await expect(page.getByText("Use the skill to audit dbt model freshness")).toBeVisible();
     await expect(page.getByText("Summarize this marketing email")).toBeVisible();
-    await expect(await trackedInvokeCount(page, "start_generate_desc_evals")).toBe(1);
+    await expect(await getTrackedInvokeCount(page, "start_generate_desc_evals")).toBe(1);
 
     await page.getByRole("button", { name: "Optimize" }).click();
 
@@ -49,11 +33,11 @@ test.describe("Optimize Description", { tag: "@description" }, () => {
     await expect(page.getByText("1.00").first()).toBeVisible();
     await expect(page.getByText("After (Best)")).toBeVisible();
     await expect(page.getByText("analytics engineering help with dbt models")).toBeVisible();
-    await expect(await trackedInvokeCount(page, "run_optimization_loop")).toBe(1);
+    await expect(await getTrackedInvokeCount(page, "run_optimization_loop")).toBe(1);
 
     await page.getByRole("button", { name: "Apply best description" }).click();
 
     await expect(page.getByText("Description applied successfully.")).toBeVisible();
-    await expect(await trackedInvokeCount(page, "apply_description")).toBe(1);
+    await expect(await getTrackedInvokeCount(page, "apply_description")).toBe(1);
   });
 });

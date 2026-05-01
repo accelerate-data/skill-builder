@@ -16,6 +16,7 @@ import { simulateAgentRun } from "../helpers/agent-simulator.js";
 import { navigateToEvalsTab, EVALS_OVERRIDES } from "../helpers/evals-helpers.js";
 import { createSidecarBridge, type SidecarBridge } from "../helpers/sidecar-bridge.js";
 import { waitForAppReady } from "../helpers/app-helpers.js";
+import { getTrackedInvokes, trackInvokes } from "../helpers/invoke-tracking.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -30,29 +31,6 @@ async function getEvalRunAgentId(page: Page): Promise<string> {
   const agentId = await banner.getAttribute("data-agent-id");
   if (!agentId) throw new Error("Could not read agent ID from evals-run-thinking banner");
   return agentId;
-}
-
-/** Enable invoke tracking for the given command names. */
-async function trackInvokes(page: Page, commands: string[]): Promise<void> {
-  await page.evaluate((cmds) => {
-    const w = window as unknown as Record<string, unknown>;
-    w.__TAURI_TRACK_INVOKES__ = cmds;
-    w.__TAURI_TRACKED_INVOKES__ = [];
-  }, commands);
-}
-
-/** Return all tracked invocations for a given command. */
-async function getTrackedInvokes(
-  page: Page,
-  cmd: string,
-): Promise<Array<{ cmd: string; args: Record<string, unknown> }>> {
-  const all = await page.evaluate(() => {
-    return ((window as unknown as Record<string, unknown>).__TAURI_TRACKED_INVOKES__ ?? []) as Array<{
-      cmd: string;
-      args: Record<string, unknown>;
-    }>;
-  });
-  return all.filter((entry) => entry.cmd === cmd);
 }
 
 // ---------------------------------------------------------------------------
