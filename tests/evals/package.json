@@ -18,6 +18,7 @@
     "smol-toml": "^1.6.1"
   },
   "overrides": {
-    "@anthropic-ai/sdk": ">=0.81.0"
+    "@anthropic-ai/sdk": ">=0.91.1",
+    "uuid": "^14.0.0"
   }
 }

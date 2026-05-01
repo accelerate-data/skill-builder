@@ -18,6 +18,7 @@
     "vitest": "^4.0.18"
   },
   "overrides": {
+    "@anthropic-ai/sdk": ">=0.91.1",
     "rollup": "^4.59.0"
   }
 }
