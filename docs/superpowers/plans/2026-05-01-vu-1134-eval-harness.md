@@ -4,9 +4,9 @@
 
 **Goal:** Replace the app-local Promptfoo harness with a root `tests/evals` harness patterned after Migration Utility's tiered runner.
 
-**Architecture:** The new harness owns its own npm package, repo-local Promptfoo state, config-resolution scripts, tier config, and package-level eval configs. Existing Skill Builder agent and scope-advisor scenarios are moved into this harness as live/model-backed packages, while deterministic Node tests validate the harness itself without calling an LLM.
+**Architecture:** The new harness owns its own npm package, repo-local Promptfoo state, config-resolution scripts, tier config, OpenCode provider config, and package-level eval configs. Skill Builder eval packages run through the Migration Utility-style `opencode-cli-provider.js` and suite-level OpenCode agents; deterministic Node tests validate the harness itself without calling an LLM.
 
-**Tech Stack:** Node.js test runner, Promptfoo, JavaScript provider scripts, JSON package configs, TOML tier config, existing Claude CLI live scenario providers.
+**Tech Stack:** Node.js test runner, Promptfoo, OpenCode CLI, JavaScript provider scripts, JSON package configs, TOML tier config.
 
 ---
 
@@ -14,7 +14,7 @@
 
 No manual UI or exploratory tests are required.
 
-Live/model-backed smoke evals are automated CLI scenarios, but they remain human-triggered because they make live model/API calls. Coding agents must not run them autonomously. The implementation will document the exact manual commands.
+Live/model-backed smoke evals are automated OpenCode CLI scenarios, but they remain human-triggered because they make live model/API calls. Coding agents must not run them autonomously. The implementation will document the exact manual commands.
 
 ## Files
 
@@ -22,14 +22,15 @@ Live/model-backed smoke evals are automated CLI scenarios, but they remain human
 - Create: `tests/evals/package-lock.json`
 - Create: `tests/evals/.gitignore`
 - Create: `tests/evals/config/eval-tiers.toml`
+- Create: `tests/evals/opencode.json`
 - Create: `tests/evals/scripts/promptfoo.sh`
 - Create: `tests/evals/scripts/run-promptfoo-with-guard.js`
 - Create: `tests/evals/scripts/eval-tier-config.js`
 - Create: `tests/evals/scripts/resolve-promptfoo-config.js`
+- Create: `tests/evals/scripts/opencode-cli-provider.js`
 - Create: `tests/evals/scripts/*.test.js`
-- Create: `tests/evals/providers/skill-builder-agent-provider.mjs`
-- Create: `tests/evals/providers/scope-advisor-provider.mjs`
-- Create: `tests/evals/assertions/contracts.mjs`
+- Create: `tests/evals/assertions/check-json-contract.js`
+- Create: `tests/evals/assertions/check-scope-advisor-contract.js`
 - Create: `tests/evals/packages/agent-contracts/promptfooconfig.json`
 - Create: `tests/evals/packages/scope-advisor/promptfooconfig.json`
 - Modify: `app/package.json`
@@ -50,18 +51,18 @@ Live/model-backed smoke evals are automated CLI scenarios, but they remain human
 ### Task 2: Port Migration Utility Harness Scripts
 
 - [ ] Copy and adapt the Migration Utility scripts into `tests/evals/scripts`.
-- [ ] Add `tests/evals/config/eval-tiers.toml` with light/standard/high/x_high tiers.
+- [ ] Add `tests/evals/config/eval-tiers.toml` with light/standard/high/x_high tiers that all resolve to OpenCode agents.
+- [ ] Add `tests/evals/opencode.json` with `eval_light`, `eval_standard`, `eval_high`, and `eval_x_high` agents and provider timeouts disabled.
 - [ ] Keep Promptfoo state under `tests/evals/.promptfoo`, cache under `tests/evals/.cache`, temp configs under `tests/evals/.tmp`, and outputs under `tests/evals/results` or `tests/evals/output`.
 - [ ] Run `cd tests/evals && npm test` and verify deterministic harness tests pass.
 - [ ] Commit the harness infrastructure.
 
-### Task 3: Move Existing Promptfoo Scenarios Into Packages
+### Task 3: Move Eval Packages To OpenCode
 
-- [ ] Copy `app/agent-tests/promptfoo/provider.mjs` to `tests/evals/providers/skill-builder-agent-provider.mjs`.
-- [ ] Copy `app/agent-tests/promptfoo/scope-advisor-provider.mjs` to `tests/evals/providers/scope-advisor-provider.mjs`.
-- [ ] Copy `app/agent-tests/promptfoo/assertions/contracts.mjs` to `tests/evals/assertions/contracts.mjs`.
-- [ ] Convert the two existing YAML configs into package-level JSON configs with `metadata.eval_tier`, package-local providers supplied by the resolver, and the existing assertions preserved.
-- [ ] Update providers to read model/budget/timeout from resolved provider config instead of package-local environment variables where possible.
+- [ ] Convert the two existing YAML config surfaces into package-level JSON configs with `metadata.eval_tier` and no package-local providers.
+- [ ] Use prompts that instruct OpenCode to run the relevant Skill Builder agent/scope-advisor contract scenario and emit JSON only.
+- [ ] Add assertion helpers that validate JSON shape and scenario contract booleans without exact model wording.
+- [ ] Ensure package configs receive their provider only from the resolver.
 - [ ] Delete the old `app/agent-tests/promptfoo` directory.
 - [ ] Run `cd tests/evals && npm test`.
 - [ ] Commit the package migration.
@@ -88,5 +89,5 @@ Live/model-backed smoke evals are automated CLI scenarios, but they remain human
 ## Self-Review
 
 - The plan covers the VU-1134 harness acceptance criteria and leaves eval scenario redesign to VU-1135.
-- The only human-triggered step is live/model-backed smoke execution; the scenarios themselves are automated CLI runs.
+- The only human-triggered step is live/model-backed OpenCode smoke execution; the scenarios themselves are automated CLI runs.
 - The plan keeps deterministic harness validation separate from live eval behavior.
