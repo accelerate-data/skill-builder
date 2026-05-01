@@ -14,10 +14,11 @@ use super::output_format::{
     answer_evaluator_output_format, materialize_answer_evaluation_output_value,
     materialize_workflow_step_output_value, publish_commit_and_tag_generated_skill,
 };
-use super::prompt::{build_prompt, PromptParams};
+use super::prompt::{PromptParams, build_prompt};
+use super::runtime::workflow_one_shot_runtime_provider;
 use super::step_config::{
-    build_betas, get_step_config, thinking_budget_for_step, workflow_output_format_for_agent,
-    WORKFLOW_AGENT_IDENTITY,
+    build_betas, get_step_config, thinking_budget_for_step, tools_for_agent,
+    workflow_output_format_for_step,
 };
 use super::user_context::{format_user_context, write_user_context_file};
 
@@ -98,26 +99,27 @@ fn test_get_step_output_files_unknown_step() {
 
 #[test]
 fn test_step_config_canonical_agent_names() {
+    assert_eq!(get_step_config(0).unwrap().agent_name, "research-agent");
+    assert_eq!(get_step_config(1).unwrap().agent_name, "research-agent");
+    assert_eq!(get_step_config(2).unwrap().agent_name, "skill-writer-agent");
+    assert_eq!(get_step_config(3).unwrap().agent_name, "skill-writer-agent");
+}
+
+#[test]
+fn test_step_config_canonical_output_files() {
     assert_eq!(
-        WORKFLOW_AGENT_IDENTITY,
-        "skill-content-researcher:skill-builder"
+        get_step_config(0).unwrap().output_file,
+        "context/clarifications.json"
     );
     assert_eq!(
-        get_step_config(0).unwrap().agent_name,
-        "skill-content-researcher:research-orchestrator"
+        get_step_config(1).unwrap().output_file,
+        "context/clarifications.json"
     );
     assert_eq!(
-        get_step_config(1).unwrap().agent_name,
-        "skill-content-researcher:detailed-research"
+        get_step_config(2).unwrap().output_file,
+        "context/decisions.json"
     );
-    assert_eq!(
-        get_step_config(2).unwrap().agent_name,
-        "skill-content-researcher:confirm-decisions"
-    );
-    assert_eq!(
-        get_step_config(3).unwrap().agent_name,
-        "skill-creator:generate-skill"
-    );
+    assert_eq!(get_step_config(3).unwrap().output_file, "skill/SKILL.md");
 }
 
 #[test]
@@ -142,31 +144,63 @@ fn test_step_config_canonical_required_plugins() {
 
 #[test]
 fn test_workflow_step_tools_are_one_shot_safe() {
+    let forbidden_tools = ["AskUserQuestion", "Agent", "Skill"];
     for step_id in 0..=3 {
         let config = get_step_config(step_id).unwrap();
+        assert_eq!(
+            config.allowed_tools,
+            vec!["file_editor", "terminal"],
+            "workflow step {step_id} must use OpenHands file and terminal tools"
+        );
         assert!(
             !config
                 .allowed_tools
                 .iter()
-                .any(|tool| tool == "AskUserQuestion"),
-            "workflow step {step_id} must not allow AskUserQuestion in one-shot mode"
+                .any(|tool| forbidden_tools.contains(&tool.as_str())),
+            "workflow step {step_id} must not allow Claude Code routing or interrupt tools"
         );
     }
 }
 
 #[test]
-fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
-    assert!(
-        workflow_output_format_for_agent("skill-content-researcher:research-orchestrator")
-            .is_some()
+fn test_workflow_step_config_uses_openhands_runtime_provider() {
+    assert_eq!(
+        workflow_one_shot_runtime_provider().as_deref(),
+        Some("openhands")
     );
-    assert!(
-        workflow_output_format_for_agent("skill-content-researcher:detailed-research").is_some()
+}
+
+#[test]
+fn test_answer_evaluator_uses_openhands_file_editor_only() {
+    assert_eq!(tools_for_agent("answer-evaluator"), vec!["file_editor"]);
+}
+
+#[test]
+fn test_workflow_output_format_is_set_for_json_contract_workflow_steps() {
+    for step_id in 0..=3 {
+        assert!(
+            workflow_output_format_for_step(step_id).is_some(),
+            "workflow step {step_id} must have an output format"
+        );
+    }
+    assert_eq!(
+        get_step_config(0).unwrap().agent_name,
+        get_step_config(1).unwrap().agent_name
     );
-    assert!(
-        workflow_output_format_for_agent("skill-content-researcher:confirm-decisions").is_some()
+    assert_ne!(
+        workflow_output_format_for_step(0).unwrap()["schema"],
+        workflow_output_format_for_step(1).unwrap()["schema"],
+        "shared research-agent steps must still use step-specific schemas"
     );
-    assert!(workflow_output_format_for_agent("skill-creator:generate-skill").is_some());
+    assert_eq!(
+        get_step_config(2).unwrap().agent_name,
+        get_step_config(3).unwrap().agent_name
+    );
+    assert_ne!(
+        workflow_output_format_for_step(2).unwrap()["schema"],
+        workflow_output_format_for_step(3).unwrap()["schema"],
+        "shared skill-writer-agent steps must still use step-specific schemas"
+    );
 }
 
 /// Steps 0–2 use inline schemas: all $ref resolved, no definitions block,
@@ -203,8 +237,7 @@ fn assert_inline_schema_basics(schema: &serde_json::Value, label: &str) {
 
 #[test]
 fn test_research_step_schema_is_inline_with_all_required() {
-    let format =
-        workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").unwrap();
+    let format = workflow_output_format_for_step(0).unwrap();
     let schema = &format["schema"];
     assert_inline_schema_basics(schema, "research-step");
     let required = schema["required"].as_array().expect("required array");
@@ -222,8 +255,7 @@ fn test_research_step_schema_is_inline_with_all_required() {
 
 #[test]
 fn test_detailed_research_schema_is_inline_with_all_required() {
-    let format =
-        workflow_output_format_for_agent("skill-content-researcher:detailed-research").unwrap();
+    let format = workflow_output_format_for_step(1).unwrap();
     let schema = &format["schema"];
     assert_inline_schema_basics(schema, "detailed-research");
     let required = schema["required"].as_array().expect("required array");
@@ -241,8 +273,7 @@ fn test_detailed_research_schema_is_inline_with_all_required() {
 
 #[test]
 fn test_decisions_schema_is_inline_with_all_required() {
-    let format =
-        workflow_output_format_for_agent("skill-content-researcher:confirm-decisions").unwrap();
+    let format = workflow_output_format_for_step(2).unwrap();
     let schema = &format["schema"];
     assert_inline_schema_basics(schema, "decisions");
     let required = schema["required"].as_array().expect("required array");
@@ -265,7 +296,7 @@ fn test_decisions_schema_is_inline_with_all_required() {
         .as_array()
         .unwrap()
         .iter()
-        .filter_map(|v| v.as_str())
+        .filter_map(|v: &serde_json::Value| v.as_str())
         .collect();
     assert!(enum_vals.contains(&"resolved"));
     assert!(enum_vals.contains(&"conflict-resolved"));
@@ -276,13 +307,8 @@ fn test_decisions_schema_is_inline_with_all_required() {
 /// nested object (required by Anthropic API).
 #[test]
 fn test_inline_schemas_have_additional_properties_false_everywhere() {
-    let agents = [
-        "skill-content-researcher:research-orchestrator",
-        "skill-content-researcher:detailed-research",
-        "skill-content-researcher:confirm-decisions",
-    ];
-    for agent in agents {
-        let format = workflow_output_format_for_agent(agent).unwrap();
+    for step_id in 0..=2 {
+        let format = workflow_output_format_for_step(step_id).unwrap();
         let schema_str = serde_json::to_string(&format["schema"]).unwrap();
         let schema: serde_json::Value = serde_json::from_str(&schema_str).unwrap();
         fn check_objects(val: &serde_json::Value, path: &str) {
@@ -306,46 +332,40 @@ fn test_inline_schemas_have_additional_properties_false_everywhere() {
                 }
             }
         }
-        check_objects(&schema, agent);
+        check_objects(&schema, &format!("step {step_id}"));
     }
 }
 
 /// Step 3 uses a flat schema (all primitives, no nested types).
 #[test]
 fn test_generated_schemas_are_sdk_compatible() {
-    let agents = [
-        // Steps 0–2 use inline schemas — tested in dedicated tests above
-        "skill-creator:generate-skill",
-    ];
-    for agent in agents {
-        let format = workflow_output_format_for_agent(agent).unwrap();
-        let schema = &format["schema"];
+    let format = workflow_output_format_for_step(3).unwrap();
+    let schema = &format["schema"];
 
-        // Must be draft-07
-        assert_eq!(
-            schema["$schema"], "http://json-schema.org/draft-07/schema#",
-            "{agent}: schema must be draft-07"
-        );
+    // Must be draft-07
+    assert_eq!(
+        schema["$schema"], "http://json-schema.org/draft-07/schema#",
+        "step 3: schema must be draft-07"
+    );
 
-        // Root object must have additionalProperties: false
-        assert_eq!(
-            schema["additionalProperties"], false,
-            "{agent}: root must have additionalProperties: false"
-        );
+    // Root object must have additionalProperties: false
+    assert_eq!(
+        schema["additionalProperties"], false,
+        "step 3: root must have additionalProperties: false"
+    );
 
-        // Must be flat — no definitions block
-        assert!(
-            schema.get("definitions").is_none(),
-            "{agent}: schema must not have definitions (must be flat)"
-        );
+    // Must be flat — no definitions block
+    assert!(
+        schema.get("definitions").is_none(),
+        "step 3: schema must not have definitions (must be flat)"
+    );
 
-        // Must have no $ref anywhere
-        let schema_str = serde_json::to_string(schema).unwrap();
-        assert!(
-            !schema_str.contains("$ref"),
-            "{agent}: schema must not contain $ref (must be flat)"
-        );
-    }
+    // Must have no $ref anywhere
+    let schema_str = serde_json::to_string(schema).unwrap();
+    assert!(
+        !schema_str.contains("$ref"),
+        "step 3: schema must not contain $ref (must be flat)"
+    );
 }
 
 /// Verify the answer evaluator schema is also SDK-compatible.
@@ -358,8 +378,8 @@ fn test_answer_evaluator_schema_is_sdk_compatible() {
 }
 
 #[test]
-fn test_workflow_output_format_is_unset_for_unknown_agents() {
-    assert!(workflow_output_format_for_agent("unknown-agent").is_none());
+fn test_workflow_output_format_is_unset_for_unknown_steps() {
+    assert!(workflow_output_format_for_step(99).is_none());
 }
 
 #[test]
@@ -1035,13 +1055,10 @@ fn publish_commit_and_tag_generated_skill_creates_initial_version_tag() {
     )
     .unwrap();
 
-    assert!(crate::git::skill_version_tag_exists(
-        skills.path(),
-        "skills",
-        "tagged-skill",
-        "1.0.0"
-    )
-    .unwrap());
+    assert!(
+        crate::git::skill_version_tag_exists(skills.path(), "skills", "tagged-skill", "1.0.0")
+            .unwrap()
+    );
 }
 
 #[test]
@@ -1059,8 +1076,7 @@ fn publish_commit_and_tag_generated_skill_surfaces_duplicate_tag_error() {
     )
     .unwrap();
     crate::git::commit_all(skills.path(), "tagged-skill: existing").unwrap();
-    crate::git::create_skill_version_tag(skills.path(), plugin_slug, skill_name, "1.0.0")
-        .unwrap();
+    crate::git::create_skill_version_tag(skills.path(), plugin_slug, skill_name, "1.0.0").unwrap();
 
     let workspace_skill_root = workspace.path().join("skills").join(skill_name);
     let generated_dir = workspace_skill_root.join("skill");
@@ -1293,23 +1309,14 @@ fn test_build_prompt_does_not_include_schema_file_path() {
 #[test]
 fn test_output_format_contains_correct_inline_schema_per_workflow_step() {
     use crate::generated::schemas;
-    let cases: &[(&str, &str)] = &[
-        (
-            "skill-content-researcher:research-orchestrator",
-            schemas::RESEARCH_STEP_INLINE_SCHEMA,
-        ),
-        (
-            "skill-content-researcher:detailed-research",
-            schemas::DETAILED_RESEARCH_INLINE_SCHEMA,
-        ),
-        (
-            "skill-content-researcher:confirm-decisions",
-            schemas::DECISIONS_INLINE_SCHEMA,
-        ),
+    let cases: &[(u32, &str)] = &[
+        (0, schemas::RESEARCH_STEP_INLINE_SCHEMA),
+        (1, schemas::DETAILED_RESEARCH_INLINE_SCHEMA),
+        (2, schemas::DECISIONS_INLINE_SCHEMA),
     ];
-    for (agent, expected_schema) in cases {
-        let format = workflow_output_format_for_agent(agent)
-            .unwrap_or_else(|| panic!("{agent} must have workflow outputFormat"));
+    for (step_id, expected_schema) in cases {
+        let format = workflow_output_format_for_step(*step_id)
+            .unwrap_or_else(|| panic!("step {step_id} must have workflow outputFormat"));
         let actual_schema = format
             .get("schema")
             .expect("outputFormat must contain schema");
@@ -1317,7 +1324,7 @@ fn test_output_format_contains_correct_inline_schema_per_workflow_step() {
             serde_json::from_str(expected_schema).expect("generated schema must parse");
         assert_eq!(
             *actual_schema, expected_schema,
-            "{agent}: outputFormat must use the inline schema"
+            "step {step_id}: outputFormat must use the inline schema"
         );
     }
 }
@@ -1430,9 +1437,11 @@ fn test_delete_step_output_files_from_step_onwards() {
     );
 
     // Steps 0, 1 output (unified clarifications.json) should still exist
-    assert!(workspace_skill_dir
-        .join("context/clarifications.json")
-        .exists());
+    assert!(
+        workspace_skill_dir
+            .join("context/clarifications.json")
+            .exists()
+    );
 
     // Steps 2+ outputs should be deleted
     assert!(!workspace_skill_dir.join("context/decisions.json").exists());
@@ -1564,11 +1573,13 @@ fn test_copy_directory_recursive_handles_nested_dirs() {
 
     assert!(dest_path.join("top.md").exists());
     assert!(dest_path.join("sub").join("middle.txt").exists());
-    assert!(dest_path
-        .join("sub")
-        .join("deep")
-        .join("bottom.md")
-        .exists());
+    assert!(
+        dest_path
+            .join("sub")
+            .join("deep")
+            .join("bottom.md")
+            .exists()
+    );
 
     let bottom =
         std::fs::read_to_string(dest_path.join("sub").join("deep").join("bottom.md")).unwrap();
@@ -1688,10 +1699,12 @@ fn test_copy_managed_plugins_replaces_managed_and_preserves_unmanaged() {
     let replaced =
         std::fs::read_to_string(claude_plugins_dir.join("skill-creator").join("SKILL.md")).unwrap();
     assert_eq!(replaced, "new plugin content");
-    assert!(claude_plugins_dir
-        .join("skill-creator")
-        .join(".skill-builder-managed")
-        .exists());
+    assert!(
+        claude_plugins_dir
+            .join("skill-creator")
+            .join(".skill-builder-managed")
+            .exists()
+    );
 
     let preserved =
         std::fs::read_to_string(claude_plugins_dir.join("user-plugin").join("README.md")).unwrap();

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::agents::sidecar::{self, SidecarConfig};
+use crate::agents::sidecar::SidecarConfig;
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 use crate::skill_paths::resolve_workspace_skill_dir;
@@ -14,12 +14,16 @@ use super::guards::{
 };
 use super::output_format::answer_evaluator_output_format;
 use super::prompt::{build_evaluator_prompt, build_prompt, build_step0_prompt};
-use super::settings::{read_workflow_settings, WorkflowSettings};
+use super::settings::{WorkflowSettings, read_workflow_settings};
 use super::step_config::{
     build_betas, get_step_config, thinking_budget_for_step, tools_for_agent,
-    workflow_output_format_for_agent, WORKFLOW_AGENT_IDENTITY,
+    workflow_output_format_for_step,
 };
 use super::user_context::write_user_context_file;
+
+pub(crate) fn workflow_one_shot_runtime_provider() -> Option<String> {
+    Some("openhands".to_string())
+}
 
 // ─── Session management ──────────────────────────────────────────────────────
 
@@ -82,28 +86,6 @@ async fn run_workflow_step_inner(
         &settings.documents,
     );
 
-    const JSON_ONLY: &str = "Your final response MUST be ONLY a raw JSON object — no markdown, no explanation, no wrapping.";
-
-    // The SDK always runs the generic skill-builder agent identity. Step prompts
-    // still carry the existing workflow-specific instructions and, when needed,
-    // tell the agent which capability to invoke before returning structured JSON.
-    let subagent_directive: Option<String> = match step_id {
-        1 => Some(format!(
-            "Invoke the `skill-content-researcher:detailed-research` agent to perform detailed research. \
-             Then return that payload as your own final response. {JSON_ONLY}"
-        )),
-        2 => Some(format!(
-            "Invoke the `skill-content-researcher:confirm-decisions` agent to confirm decisions. \
-             Then return that payload as your own final response. {JSON_ONLY}"
-        )),
-        3 => Some(format!(
-            "Launch the `skill-creator:generate-skill` subagent to generate the skill. \
-             {JSON_ONLY} Required fields: \
-             {{\"status\": \"generated\"}}"
-        )),
-        _ => None,
-    };
-
     let prompt = if step_id == 0 {
         build_step0_prompt(
             skill_name,
@@ -119,7 +101,7 @@ async fn run_workflow_step_inner(
             skills_path: &settings.skills_path,
             author_login: settings.author_login.as_deref(),
             created_at: settings.created_at.as_deref(),
-            subagent_directive: subagent_directive.as_deref(),
+            subagent_directive: None,
             step_id,
         })
     };
@@ -142,16 +124,13 @@ async fn run_workflow_step_inner(
         required_plugins,
     );
 
-    let sdk_agent_identity = WORKFLOW_AGENT_IDENTITY.to_string();
-
     log::debug!(
-        "[run_workflow_step] sdk_agent_identity={} output_format_configured={} step_id={}",
-        sdk_agent_identity,
-        workflow_output_format_for_agent(&agent_name).is_some(),
+        "[run_workflow_step] output_format_configured={} step_id={}",
+        workflow_output_format_for_step(step_id).is_some(),
         step_id
     );
 
-    let mut config = SidecarConfig {
+    let config = SidecarConfig {
         mode: Some("one-shot".to_string()),
         prompt,
         // Do not set a string systemPrompt for workflow steps. The SDK treats
@@ -172,7 +151,9 @@ async fn run_workflow_step_inner(
         .replace('\\', "/"),
         allowed_tools: Some(step.allowed_tools),
         max_turns: Some(step.max_turns),
-        permission_mode: Some("bypassPermissions".to_string()),
+        // Compatibility field retained while non-workflow Claude runtime paths
+        // still share SidecarConfig; OpenHands one-shot workflow ignores it.
+        permission_mode: None,
         betas: build_betas(
             thinking_budget,
             &settings.preferred_model,
@@ -187,10 +168,12 @@ async fn run_workflow_step_inner(
         // model is always set explicitly; suppress fallback_model to avoid SDK errors.
         fallback_model: None,
         effort: settings.sdk_effort.clone(),
-        output_format: workflow_output_format_for_agent(&agent_name),
+        output_format: workflow_output_format_for_step(step_id),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
-        agent_name: Some(sdk_agent_identity),
+        agent_name: Some(agent_name),
+        // Compatibility field retained until Slice 4 moves workflow discovery
+        // fully to `.agents`; OpenHands ignores Claude plugin loading.
         required_plugins: Some(required_plugins),
         setting_sources: None,
         conversation_history: None,
@@ -210,15 +193,8 @@ async fn run_workflow_step_inner(
             .to_string_lossy()
             .into_owned(),
         ),
-        runtime_provider: None,
+        runtime_provider: workflow_one_shot_runtime_provider(),
     };
-
-    // Resolve SDK cli.js path (same as spawn_sidecar does internally)
-    if config.path_to_claude_code_executable.is_none() {
-        if let Ok(cli_path) = sidecar::resolve_sdk_cli_path_public(app) {
-            config.path_to_claude_code_executable = Some(cli_path);
-        }
-    }
 
     log::debug!(
         "[run_workflow_step] starting one-shot request agent={} workspace_skill_dir={}",
@@ -318,9 +294,11 @@ pub async fn run_workflow_step(
     let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
     log::info!(
         "[run_workflow_step] settings: skills_path={} purpose={} intake={} industry={:?} function={:?}",
-        settings.skills_path, settings.purpose,
+        settings.skills_path,
+        settings.purpose,
         settings.intake_json.is_some(),
-        settings.industry, settings.function_role,
+        settings.industry,
+        settings.function_role,
     );
 
     // Gate: reject disabled steps when guard conditions are active
@@ -543,7 +521,7 @@ pub async fn run_answer_evaluator(
 
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
-    let mut config = SidecarConfig {
+    let config = SidecarConfig {
         mode: Some("one-shot".to_string()),
         prompt,
         system_prompt: None,
@@ -560,7 +538,9 @@ pub async fn run_answer_evaluator(
         .replace('\\', "/"),
         allowed_tools: Some(tools_for_agent("answer-evaluator")),
         max_turns: Some(20),
-        permission_mode: Some("bypassPermissions".to_string()),
+        // Compatibility field retained while non-workflow Claude runtime paths
+        // still share SidecarConfig; OpenHands one-shot workflow ignores it.
+        permission_mode: None,
         betas: None,
         thinking: None,
         // When model is set explicitly, fallback_model must differ — suppress it.
@@ -569,7 +549,9 @@ pub async fn run_answer_evaluator(
         output_format: Some(answer_evaluator_output_format()),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
-        agent_name: None,
+        agent_name: Some("answer-evaluator".to_string()),
+        // Compatibility field retained until Slice 4 moves workflow discovery
+        // fully to `.agents`; OpenHands ignores Claude plugin loading.
         required_plugins: Some(vec!["skill-content-researcher".to_string()]),
         setting_sources: None,
         conversation_history: None,
@@ -589,15 +571,8 @@ pub async fn run_answer_evaluator(
             .to_string_lossy()
             .into_owned(),
         ),
-        runtime_provider: None,
+        runtime_provider: workflow_one_shot_runtime_provider(),
     };
-
-    // Resolve SDK cli.js path (same as run_workflow_step_inner does)
-    if config.path_to_claude_code_executable.is_none() {
-        if let Ok(cli_path) = sidecar::resolve_sdk_cli_path_public(&app) {
-            config.path_to_claude_code_executable = Some(cli_path);
-        }
-    }
 
     log::debug!(
         "[run_answer_evaluator] starting one-shot request agent={} workspace_skill_dir={}",
