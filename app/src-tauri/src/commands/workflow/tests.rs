@@ -1777,7 +1777,20 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
             .join(".claude/plugins/skill-content-researcher/.claude-plugin/plugin.json")
             .exists()
     );
+    assert!(
+        !workspace
+            .path()
+            .join(".claude/plugins/skill-content-researcher/.claude-plugin/plugin.json")
+            .exists()
+    );
+    assert!(
+        !workspace
+            .path()
+            .join(".claude/plugins/skill-creator/.claude-plugin/plugin.json")
+            .exists()
+    );
     assert!(!workspace_skill_dir.join("CLAUDE.md").exists());
+    assert!(!workspace.path().join("CLAUDE.md").exists());
 }
 
 #[test]
