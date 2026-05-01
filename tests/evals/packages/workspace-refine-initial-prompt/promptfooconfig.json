@@ -1,0 +1,20 @@
+{
+  "description": "Workspace refine-initial eval-feedback routing behavior.",
+  "metadata": {
+    "eval_tier": "standard"
+  },
+  "prompts": [
+    "file://prompt.txt"
+  ],
+  "tests": [
+    {
+      "description": "[smoke] refine prompt eval feedback triage",
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); data.status === 'requires_user_selection' && data.ask_user_question && data.ask_user_question.header === 'Skill Gaps' && data.ask_user_question.multiSelect === true && Array.isArray(data.ask_user_question.options) && data.ask_user_question.options.length >= 1 && data.rewrite_started === false"
+        }
+      ]
+    }
+  ]
+}

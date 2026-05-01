@@ -1,0 +1,59 @@
+{
+  "description": "Scope advisor app-facing JSON behavior coverage.",
+  "metadata": {
+    "eval_tier": "standard"
+  },
+  "prompts": [
+    "You are the Skill Builder scope advisor. Evaluate this create-skill form submission using the product response contract. Skill name: {{skill_name}}. Skill description: {{description}}. Purpose: {{purpose}}. What Claude needs to know: {{context_questions}}. Industry: {{industry}}. Apply the app contract: broad recognizable business domains with multiple distinct processes are `too-broad`; unclear domain is `both-need-improvement`; focused description with bad name is `name-needs-improvement`; context overrides breadth only when it explicitly establishes the listed activities as one company-specific workflow; focused submissions return no suggested skills. Return JSON only with this shape: {\"status\":\"focused|too-broad|name-needs-improvement|description-needs-improvement|both-need-improvement\",\"reason\":\"...\",\"suggested_skills\":[{\"name\":\"gerund-kebab-case\",\"description\":\"third-person trigger description\"}]}."
+  ],
+  "tests": [
+    {
+      "description": "[smoke] scope advisor too broad suggestions",
+      "vars": {
+        "skill_name": "sales-analysis",
+        "description": "Analyzes revenue trends, pipeline health, rep performance, churn risk, and renewal pipeline health for the sales organization.",
+        "purpose": "Business process knowledge",
+        "context_questions": "No additional company context is available.",
+        "industry": "B2B SaaS"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); data.status === 'too-broad' && typeof data.reason === 'string' && data.reason.length > 10 && Array.isArray(data.suggested_skills) && data.suggested_skills.length >= 3 && data.suggested_skills.every((s) => /^[a-z]+ing-[a-z0-9-]+$/.test(s.name) && typeof s.description === 'string' && s.description.length > 20)"
+        }
+      ]
+    },
+    {
+      "description": "[regression] scope advisor name and description improvement cases",
+      "vars": {
+        "skill_name": "sales-report",
+        "description": "Forecasts which customers are at risk of churning based on usage drops, support escalations, and renewal date proximity.",
+        "purpose": "Business process knowledge",
+        "context_questions": "Use this for customer success and revenue retention workflows.",
+        "industry": "B2B SaaS"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); data.status === 'name-needs-improvement' && typeof data.reason === 'string' && data.reason.length > 10 && Array.isArray(data.suggested_skills) && data.suggested_skills.length >= 1 && data.suggested_skills.every((s) => /^[a-z]+[a-z0-9-]*-[a-z0-9-]+$/.test(s.name) && typeof s.description === 'string' && s.description.length > 20)"
+        }
+      ]
+    },
+    {
+      "description": "[regression] scope advisor context override and non-English cases",
+      "vars": {
+        "skill_name": "validating-grain-feed-compliance",
+        "description": "Validates quality testing, traceability documents, and supplier audit evidence for grain feed compliance decisions.",
+        "purpose": "Business process knowledge",
+        "context_questions": "Uploaded company policy says testing, traceability, and supplier audit checks are one compliance workflow.",
+        "industry": "Agriculture"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); data.status === 'focused' && typeof data.reason === 'string' && Array.isArray(data.suggested_skills) && data.suggested_skills.length === 0"
+        }
+      ]
+    }
+  ]
+}

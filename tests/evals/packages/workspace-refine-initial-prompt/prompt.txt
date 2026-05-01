@@ -1,0 +1,24 @@
+Return JSON only for the Skill Builder refine-initial eval-failure route.
+
+Rendered app prompt context:
+- skill_name: fabric-dbt-standards
+- command: refine
+- skill_dir: /tmp/skill-builder/skills/skill-builder/fabric-dbt-standards
+- context_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context
+- workspace_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
+- current request: eval `snapshot-scd2-policy`: {/tmp/skill-builder/workspace/skills/fabric-dbt-standards/evals/run-0/eval-1/grading.json}
+
+The app route treats this as eval failure feedback. It must not launch rewrite-skill immediately. It must triage the grading file, ask the user which genuine skill gaps to fix, and hard stop until the user's selection.
+
+For this eval harness, represent the AskUserQuestion tool call as JSON:
+{
+  "status": "requires_user_selection",
+  "ask_user_question": {
+    "header": "Skill Gaps",
+    "multiSelect": true,
+    "options": [
+      { "label": "snapshot-scd2-policy", "description": "..." }
+    ]
+  },
+  "rewrite_started": false
+}

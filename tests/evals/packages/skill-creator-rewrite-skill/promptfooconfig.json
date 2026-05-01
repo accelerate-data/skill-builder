@@ -1,0 +1,20 @@
+{
+  "description": "skill-creator:rewrite-skill refine JSON output.",
+  "metadata": {
+    "eval_tier": "standard"
+  },
+  "prompts": [
+    "file://prompt.txt"
+  ],
+  "tests": [
+    {
+      "description": "[smoke] rewrite skill refine contract",
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "/status:\\s*rewritten/i.test(output) && /Summary:/i.test(output) && /Description updated:\\s*(yes|no)/i.test(output) && /Version bump:\\s*(patch|minor|major)/i.test(output) && /call_trace:/i.test(output) && /Commit:\\s*(created|skipped)/i.test(output) && /Tag:\\s*(created|skipped)/i.test(output)"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+Return JSON only for a Skill Builder workflow step 0 run.
+
+Rendered app prompt context:
+- skill_name: fabric-dbt-standards
+- workspace_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
+- context_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context
+- skill_output_dir: /tmp/skill-builder/skills/skill-builder/fabric-dbt-standards
+- author: hbanerjee
+- created_date: 2026-04-30
+- modified_date: 2026-05-01
+- max_dimensions: 5
+- user-context.md is the only workspace input
+
+Required JSON shape:
+{
+  "status": "research_complete",
+  "dimensions_selected": 3,
+  "question_count": 3,
+  "research_output": {
+    "version": "1",
+    "metadata": { "scope_recommendation": false },
+    "sections": []
+  }
+}

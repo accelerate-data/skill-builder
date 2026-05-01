@@ -1,0 +1,11 @@
+EXECUTE IMMEDIATELY - do not ask questions, do not greet the user, do not offer options.
+
+This is the app step-0 research prompt for skill-content-researcher:research. Use the inline context as if it came from user-context.md and return the same structured output the app captures.
+
+Skill name: fabric-dbt-standards
+Workspace directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
+Context directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context
+Maximum research dimensions before scope warning: 5
+User context: Purpose is organization specific data engineering standards. Description asks for a skill for analytics engineers building dbt models on Microsoft Fabric, covering bronze/silver/gold modeling rules, naming conventions, incremental strategy, SCD2 snapshot guidance, semantic model handoff, and CI review expectations.
+
+Return JSON only. Required top-level fields: status="research_complete", dimensions_selected integer, question_count integer, research_output.version="1", research_output.metadata.priority_questions array, research_output.metadata.research_plan object, research_output.sections array.

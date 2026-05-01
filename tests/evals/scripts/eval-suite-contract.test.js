@@ -5,6 +5,7 @@ const test = require('node:test');
 const yaml = require('js-yaml');
 
 const EVAL_ROOT = path.resolve(__dirname, '..');
+const PACKAGE_JSON = 'package.json';
 const OPENCODE_CONFIG = 'opencode.json';
 const PACKAGE_ROOT = path.join(EVAL_ROOT, 'packages');
 const SCRIPT_ROOT = path.join(EVAL_ROOT, 'scripts');
@@ -93,6 +94,54 @@ test('all eval package configs declare a valid metadata.eval_tier', () => {
   }
 });
 
+test('every eval package has exactly one smoke scenario', () => {
+  const packageConfigs = collectPackageConfigs(PACKAGE_ROOT);
+
+  for (const relativePath of packageConfigs) {
+    const parsed = readYaml(relativePath);
+    const smokeTests = (parsed.tests || []).filter((entry) => (
+      typeof entry.description === 'string' && entry.description.startsWith('[smoke]')
+    ));
+
+    assert.equal(
+      smokeTests.length,
+      1,
+      `${relativePath} must define exactly one [smoke] scenario`,
+    );
+  }
+});
+
+test('eval:smoke runs the smoke filter across every package config', () => {
+  const packageConfigs = collectPackageConfigs(PACKAGE_ROOT);
+  const packageJson = readJson(PACKAGE_JSON);
+  const smokeScript = packageJson.scripts?.['eval:smoke'];
+
+  assert.ok(smokeScript, 'package.json must define scripts.eval:smoke');
+  assert.match(smokeScript, /--filter-pattern '\^\\\[smoke\\\]'/);
+  for (const relativePath of packageConfigs) {
+    assert.ok(
+      smokeScript.includes(`-c ${relativePath}`),
+      `eval:smoke must include ${relativePath}`,
+    );
+  }
+});
+
+test('scenario inventory records a decision for every eval package', () => {
+  const inventory = fs.readFileSync(path.join(EVAL_ROOT, 'docs', 'scenario-inventory.md'), 'utf8');
+  const packageNames = collectPackageConfigs(PACKAGE_ROOT)
+    .map((relativePath) => relativePath.split(path.sep).join('/').split('/')[1]);
+
+  for (const packageName of packageNames) {
+    assert.ok(
+      inventory.includes(`\`${packageName}\``),
+      `scenario inventory must mention ${packageName}`,
+    );
+  }
+
+  assert.match(inventory, /Model-Change Validation Order/);
+  assert.match(inventory, /No manual validation is required/);
+});
+
 test('eval suite no longer references provider files or the Claude agent sdk', () => {
   const textFiles = [
     ...collectTextFiles(PACKAGE_ROOT),
@@ -124,6 +173,28 @@ test('package configs do not declare package-local providers', () => {
       false,
       `${relativePath} must receive providers from scripts/resolve-promptfoo-config.js`,
     );
+  }
+});
+
+test('package prompts use app-shaped scenarios instead of meta file inspection', () => {
+  const packageConfigs = collectPackageConfigs(PACKAGE_ROOT);
+  const forbiddenPromptPatterns = [
+    /\bInspect\b/,
+    /Do not edit files/i,
+    /Return JSON only:\s*\{\\"package\\".*\\"checks\\"/i,
+    /\\"evidence\\":\[/,
+  ];
+
+  for (const relativePath of packageConfigs) {
+    const parsed = readYaml(relativePath);
+    const promptText = JSON.stringify(parsed.prompts || []);
+    for (const pattern of forbiddenPromptPatterns) {
+      assert.equal(
+        pattern.test(promptText),
+        false,
+        `${relativePath} uses meta-inspection prompt wording: ${pattern}`,
+      );
+    }
   }
 });
 

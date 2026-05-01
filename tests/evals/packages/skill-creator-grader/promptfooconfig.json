@@ -1,0 +1,20 @@
+{
+  "description": "skill-creator:grader eval-loop grading JSON output.",
+  "metadata": {
+    "eval_tier": "standard"
+  },
+  "prompts": [
+    "file://prompt.txt"
+  ],
+  "tests": [
+    {
+      "description": "[smoke] grader writes strict grading json",
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); Array.isArray(data.expectations) && data.expectations.length === 3 && data.expectations.every((e) => typeof e.text === 'string' && typeof e.passed === 'boolean' && typeof e.evidence === 'string') && data.summary && data.summary.passed === 3 && data.summary.failed === 0 && data.summary.total === 3 && Array.isArray(data.claims) && (data.eval_feedback === undefined || Array.isArray(data.eval_feedback))"
+        }
+      ]
+    }
+  ]
+}
