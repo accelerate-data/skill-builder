@@ -182,6 +182,7 @@ pub(super) fn build_refine_config(
             interleaved_thinking_beta,
         ),
         model: Some(model),
+        model_base_url: None,
         api_key,
         workspace_root_dir: cwd.clone(),
         workspace_skill_dir: cwd,

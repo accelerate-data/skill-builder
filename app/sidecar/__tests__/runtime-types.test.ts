@@ -5,6 +5,7 @@ import {
   type OneShotRunRequest,
   type StreamingSessionRequest,
 } from "../runtime/types.js";
+import { toClaudeSidecarConfig, toOneShotRunRequest } from "../runtime/claude-runtime.js";
 
 const baseContext = {
   skillName: "demo-skill",
@@ -68,5 +69,34 @@ describe("runtime request types", () => {
 
     expect(request.allowUserQuestions).toBe(true);
     expect(request.mode).toBe("streaming");
+  });
+
+  it("carries modelBaseUrl from sidecar config into one-shot runtime requests", () => {
+    const request = toOneShotRunRequest({
+      prompt: "Generate the skill.",
+      apiKey: "sk-test",
+      model: "anthropic/claude-sonnet-4-6",
+      modelBaseUrl: "https://models.example.com/v1",
+      workspaceRootDir: "/workspace",
+      workspaceSkillDir: "/workspace/plugin/skill",
+      pluginSlug: "demo-plugin",
+    });
+
+    expect(request.modelBaseUrl).toBe("https://models.example.com/v1");
+  });
+
+  it("carries modelBaseUrl from runtime requests back into sidecar config", () => {
+    const config = toClaudeSidecarConfig({
+      mode: "one-shot",
+      allowUserQuestions: false,
+      prompt: "Generate the skill.",
+      apiKey: "sk-test",
+      modelBaseUrl: "https://models.example.com/v1",
+      workspaceRootDir: "/workspace",
+      workspaceSkillDir: "/workspace/plugin/skill",
+      context: baseContext,
+    });
+
+    expect(config.modelBaseUrl).toBe("https://models.example.com/v1");
   });
 });

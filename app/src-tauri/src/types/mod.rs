@@ -142,6 +142,7 @@ mod tests {
             prompt: "test prompt".to_string(),
             system_prompt: None,
             model: Some("sonnet".to_string()),
+            model_base_url: None,
             api_key: SecretString::new("sk-test".to_string()),
             workspace_root_dir: "/tmp".to_string(),
             workspace_skill_dir: "/tmp".to_string(),

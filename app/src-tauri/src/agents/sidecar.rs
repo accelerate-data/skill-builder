@@ -11,6 +11,8 @@ pub struct SidecarConfig {
     pub system_prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(rename = "modelBaseUrl", skip_serializing_if = "Option::is_none")]
+    pub model_base_url: Option<String>,
     #[serde(rename = "apiKey")]
     pub api_key: SecretString,
     /// Workspace root directory (`{data_dir}/workspace`). Used for plugin
@@ -90,6 +92,7 @@ impl std::fmt::Debug for SidecarConfig {
             .field("mode", &self.mode)
             .field("prompt", &self.prompt)
             .field("model", &self.model)
+            .field("model_base_url", &self.model_base_url)
             .field("api_key", &"[redacted]")
             .field("workspace_root_dir", &self.workspace_root_dir)
             .field("workspace_skill_dir", &self.workspace_skill_dir)
@@ -216,6 +219,7 @@ mod tests {
             prompt: "Analyze this codebase".to_string(),
             system_prompt: None,
             model: Some("sonnet".to_string()),
+            model_base_url: Some("https://models.example.com/v1".to_string()),
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             workspace_root_dir: "/home/user/project".to_string(),
             workspace_skill_dir: "/home/user/project".to_string(),
@@ -252,6 +256,7 @@ mod tests {
         assert_eq!(parsed["maxTurns"], 25);
         assert_eq!(parsed["permissionMode"], "bypassPermissions");
         assert_eq!(parsed["model"], "sonnet");
+        assert_eq!(parsed["modelBaseUrl"], "https://models.example.com/v1");
         assert_eq!(parsed["mode"], "one-shot");
         assert_eq!(parsed["agentName"], "research-entities");
         // betas is None + skip_serializing_if — should be absent
@@ -267,6 +272,7 @@ mod tests {
             prompt: "Reason about this".to_string(),
             system_prompt: None,
             model: Some("opus".to_string()),
+            model_base_url: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             workspace_root_dir: "/home/user/project".to_string(),
             workspace_skill_dir: "/home/user/project".to_string(),
@@ -313,6 +319,7 @@ mod tests {
             prompt: "test".to_string(),
             system_prompt: None,
             model: None,
+            model_base_url: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             workspace_root_dir: "/tmp".to_string(),
             workspace_skill_dir: "/tmp".to_string(),
@@ -359,6 +366,7 @@ mod tests {
             prompt: "test".to_string(),
             system_prompt: None,
             model: None,
+            model_base_url: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             workspace_root_dir: "/tmp".to_string(),
             workspace_skill_dir: "/tmp".to_string(),

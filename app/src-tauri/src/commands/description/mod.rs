@@ -499,6 +499,7 @@ pub async fn start_generate_desc_evals(
         prompt: user_prompt,
         system_prompt: Some(system_prompt),
         model: Some(model.clone()),
+        model_base_url: None,
         api_key,
         workspace_root_dir: workspace_skill_dir.clone(),
         workspace_skill_dir,
