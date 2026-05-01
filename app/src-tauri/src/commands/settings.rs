@@ -304,7 +304,7 @@ fn persist_settings(
     settings: AppSettings,
     log_scope: &str,
 ) -> Result<(), String> {
-    let mut settings = settings;
+    let mut settings = crate::db::normalize_openhands_settings(settings);
 
     // Normalize skills_path before persisting
     if let Some(ref sp) = settings.skills_path {
@@ -376,7 +376,10 @@ fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
             }
         };
     }
-    // Skip: anthropic_api_key (sensitive), github_oauth_token/login/avatar/email (auth-managed)
+    // Skip: API keys and OAuth token/login/avatar/email (auth-managed or sensitive)
+    cmp_opt!(openhands_provider, "openhands_provider");
+    cmp_opt!(openhands_model, "openhands_model");
+    cmp_opt!(openhands_base_url, "openhands_base_url");
     cmp_opt!(skills_path, "skills_path");
     cmp_opt!(preferred_model, "preferred_model");
     cmp_val!(log_level, "log_level");

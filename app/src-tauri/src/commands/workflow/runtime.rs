@@ -139,7 +139,7 @@ async fn run_workflow_step_inner(
         // output_format below.
         system_prompt: None,
         model: Some(settings.preferred_model.clone()),
-        model_base_url: None,
+        model_base_url: settings.model_base_url.clone(),
         api_key: settings.api_key.clone(),
         workspace_root_dir: workspace_path.replace('\\', "/"),
         workspace_skill_dir: resolve_workspace_skill_dir(
@@ -447,19 +447,23 @@ pub async fn run_answer_evaluator(
 
     // Read settings from DB — same pattern as read_workflow_settings but without
     // step-specific validation (this is a gate, not a workflow step).
-    let (api_key, skills_path, plugin_slug, industry, function_role, intake_json, preferred_model) = {
+    let (
+        api_key,
+        skills_path,
+        plugin_slug,
+        industry,
+        function_role,
+        intake_json,
+        preferred_model,
+        model_base_url,
+    ) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
             e.to_string()
         })?;
-        let key = match settings.anthropic_api_key {
-            Some(k) => crate::types::SecretString::new(k),
-            None => {
-                log::error!("run_answer_evaluator: API key not configured");
-                return Err("Anthropic API key not configured".to_string());
-            }
-        };
+        let (model, key, model_base_url) = crate::db::selected_openhands_runtime(&settings)
+            .inspect_err(|e| log::error!("run_answer_evaluator: {}", e))?;
         let _wp = settings.workspace_path.ok_or_else(|| {
             log::error!("run_answer_evaluator: workspace_path not configured");
             "Workspace path not configured".to_string()
@@ -484,10 +488,8 @@ pub async fn run_answer_evaluator(
             settings.industry,
             settings.function_role,
             ij,
-            settings
-                .preferred_model
-                .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| "Model not configured. Select a model in Settings before running the answer evaluator.".to_string())?,
+            model,
+            model_base_url,
         )
     };
 
@@ -526,7 +528,7 @@ pub async fn run_answer_evaluator(
         prompt,
         system_prompt: None,
         model: Some(preferred_model),
-        model_base_url: None,
+        model_base_url,
         api_key,
         workspace_root_dir: workspace_path.replace('\\', "/"),
         workspace_skill_dir: resolve_workspace_skill_dir(

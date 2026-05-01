@@ -7,6 +7,10 @@ import { listModels, updateUserSettings } from "@/lib/tauri"
 /** Fields managed by the settings form (local state mirroring the store). */
 export interface SettingsFormFields {
   apiKey: string | null
+  openhandsProvider: string
+  openhandsApiKey: string | null
+  openhandsModel: string
+  openhandsBaseUrl: string | null
   skillsPath: string | null
   preferredModel: string
   logLevel: string
@@ -30,6 +34,12 @@ export function useSettingsForm() {
 
   // Local form fields — initialized from store snapshot
   const [apiKey, setApiKey] = useState<string | null>(store.anthropicApiKey ?? null)
+  const [openhandsProvider, setOpenhandsProvider] = useState(store.openhandsProvider ?? "anthropic")
+  const [openhandsApiKey, setOpenhandsApiKey] = useState<string | null>(
+    store.openhandsApiKey ?? (store.openhandsProvider === "anthropic" ? store.anthropicApiKey : null) ?? null,
+  )
+  const [openhandsModel, setOpenhandsModel] = useState(store.openhandsModel ?? store.preferredModel ?? "")
+  const [openhandsBaseUrl, setOpenhandsBaseUrl] = useState<string | null>(store.openhandsBaseUrl ?? null)
   const [skillsPath, setSkillsPath] = useState<string | null>(store.skillsPath ?? null)
   const [preferredModel, setPreferredModel] = useState(store.preferredModel ?? "")
   const [logLevel, setLogLevel] = useState(store.logLevel ?? "info")
@@ -67,6 +77,10 @@ export function useSettingsForm() {
 
     const settings: AppSettings = {
       anthropic_api_key: resolve("apiKey", apiKey),
+      openhands_provider: resolve("openhandsProvider", openhandsProvider),
+      openhands_api_key: resolve("openhandsApiKey", openhandsApiKey),
+      openhands_model: resolve("openhandsModel", openhandsModel),
+      openhands_base_url: resolve("openhandsBaseUrl", openhandsBaseUrl),
       workspace_path: workspacePath,
       skills_path: resolve("skillsPath", skillsPath),
       preferred_model: resolve("preferredModel", preferredModel),
@@ -94,6 +108,10 @@ export function useSettingsForm() {
       await updateUserSettings(settings)
       setStoreSettings({
         anthropicApiKey: settings.anthropic_api_key,
+        openhandsProvider: settings.openhands_provider ?? "anthropic",
+        openhandsApiKey: settings.openhands_api_key ?? null,
+        openhandsModel: settings.openhands_model ?? null,
+        openhandsBaseUrl: settings.openhands_base_url ?? null,
         workspacePath: settings.workspace_path,
         skillsPath: settings.skills_path,
         preferredModel: settings.preferred_model,
@@ -124,11 +142,15 @@ export function useSettingsForm() {
         context: { operation: "settings_auto_save" },
       })
     }
-  }, [apiKey, skillsPath, preferredModel, logLevel, extendedThinking, interleavedThinkingBeta, sdkEffort, refinePromptSuggestions, maxDimensions, industry, functionRole, autoUpdate, workspacePath, setStoreSettings])
+  }, [apiKey, openhandsProvider, openhandsApiKey, openhandsModel, openhandsBaseUrl, skillsPath, preferredModel, logLevel, extendedThinking, interleavedThinkingBeta, sdkEffort, refinePromptSuggestions, maxDimensions, industry, functionRole, autoUpdate, workspacePath, setStoreSettings])
 
   return {
     // Fields + setters
     apiKey, setApiKey,
+    openhandsProvider, setOpenhandsProvider,
+    openhandsApiKey, setOpenhandsApiKey,
+    openhandsModel, setOpenhandsModel,
+    openhandsBaseUrl, setOpenhandsBaseUrl,
     skillsPath, setSkillsPath,
     preferredModel, setPreferredModel,
     logLevel, setLogLevel,

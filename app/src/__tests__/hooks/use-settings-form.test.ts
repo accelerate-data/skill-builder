@@ -30,6 +30,10 @@ describe("useSettingsForm", () => {
   it("initializes fields from store snapshot", () => {
     useSettingsStore.getState().setSettings({
       anthropicApiKey: "sk-test",
+      openhandsProvider: "openai",
+      openhandsApiKey: "sk-openai",
+      openhandsModel: "gpt-4o",
+      openhandsBaseUrl: "https://models.example.com/v1",
       preferredModel: "claude-sonnet-4-6",
       logLevel: "debug",
     });
@@ -37,6 +41,10 @@ describe("useSettingsForm", () => {
     const { result } = renderHook(() => useSettingsForm());
 
     expect(result.current.apiKey).toBe("sk-test");
+    expect(result.current.openhandsProvider).toBe("openai");
+    expect(result.current.openhandsApiKey).toBe("sk-openai");
+    expect(result.current.openhandsModel).toBe("gpt-4o");
+    expect(result.current.openhandsBaseUrl).toBe("https://models.example.com/v1");
     expect(result.current.preferredModel).toBe("claude-sonnet-4-6");
     expect(result.current.logLevel).toBe("debug");
   });
@@ -63,6 +71,27 @@ describe("useSettingsForm", () => {
 
     const payload = mocks.updateUserSettings.mock.calls[0][0];
     expect(payload.preferred_model).toBe("new-model");
+  });
+
+  it("autoSave persists OpenHands provider fields and updates store", async () => {
+    const { result } = renderHook(() => useSettingsForm());
+
+    await act(async () => {
+      await result.current.autoSave({
+        openhandsProvider: "ollama",
+        openhandsApiKey: null,
+        openhandsModel: "llama3.1",
+        openhandsBaseUrl: "http://localhost:11434",
+      });
+    });
+
+    const payload = mocks.updateUserSettings.mock.calls[0][0];
+    expect(payload.openhands_provider).toBe("ollama");
+    expect(payload.openhands_api_key).toBeNull();
+    expect(payload.openhands_model).toBe("llama3.1");
+    expect(payload.openhands_base_url).toBe("http://localhost:11434");
+    expect(useSettingsStore.getState().openhandsProvider).toBe("ollama");
+    expect(useSettingsStore.getState().openhandsBaseUrl).toBe("http://localhost:11434");
   });
 
   it("autoSave sets saved indicator", async () => {

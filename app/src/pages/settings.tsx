@@ -20,7 +20,7 @@ import { useSettingsForm } from "@/hooks/use-settings-form"
 
 const sections = [
   { id: "general", label: "General" },
-  { id: "skill-building", label: "Claude SDK" },
+  { id: "skill-building", label: "OpenHands" },
   { id: "skills", label: "Plugins" },
   { id: "marketplace", label: "Marketplace" },
   { id: "github", label: "GitHub" },
@@ -115,6 +115,14 @@ export default function SettingsPage() {
             <SdkSection
               apiKey={form.apiKey}
               setApiKey={form.setApiKey}
+              openhandsProvider={form.openhandsProvider}
+              setOpenhandsProvider={form.setOpenhandsProvider}
+              openhandsApiKey={form.openhandsApiKey}
+              setOpenhandsApiKey={form.setOpenhandsApiKey}
+              openhandsModel={form.openhandsModel}
+              setOpenhandsModel={form.setOpenhandsModel}
+              openhandsBaseUrl={form.openhandsBaseUrl}
+              setOpenhandsBaseUrl={form.setOpenhandsBaseUrl}
               preferredModel={form.preferredModel}
               setPreferredModel={form.setPreferredModel}
               extendedThinking={form.extendedThinking}

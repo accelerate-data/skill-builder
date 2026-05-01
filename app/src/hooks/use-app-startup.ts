@@ -55,6 +55,10 @@ export function useAppStartup(): UseAppStartupReturn {
       if (cancelledRef.current) return;
       setSettings({
         anthropicApiKey: s.anthropic_api_key,
+        openhandsProvider: s.openhands_provider ?? "anthropic",
+        openhandsApiKey: s.openhands_api_key ?? s.anthropic_api_key,
+        openhandsModel: s.openhands_model ?? s.preferred_model,
+        openhandsBaseUrl: s.openhands_base_url ?? null,
         workspacePath: s.workspace_path,
         skillsPath: s.skills_path,
         preferredModel: s.preferred_model,

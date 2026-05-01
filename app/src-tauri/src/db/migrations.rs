@@ -45,6 +45,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (40, run_documents_migration),
     (41, run_reset_legacy_tags_migrated),
     (42, run_performance_indexes_migration),
+    (43, run_openhands_settings_migration),
 ];
 
 pub(super) fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -175,6 +176,58 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             deleted_at   TEXT
         );",
     )
+}
+
+pub(super) fn run_openhands_settings_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let current: Result<String, rusqlite::Error> = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'app_settings'",
+        [],
+        |row| row.get(0),
+    );
+    let Ok(json) = current else {
+        return Ok(());
+    };
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&json) else {
+        return Ok(());
+    };
+    let Some(obj) = value.as_object_mut() else {
+        return Ok(());
+    };
+
+    obj.entry("openhands_provider")
+        .or_insert_with(|| serde_json::json!("anthropic"));
+    obj.entry("openhands_api_key")
+        .or_insert(serde_json::Value::Null);
+    obj.entry("openhands_base_url")
+        .or_insert(serde_json::Value::Null);
+    if !obj.contains_key("openhands_model") || obj["openhands_model"].is_null() {
+        let legacy_model = obj
+            .get("preferred_model")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+            .map(|model| {
+                if model.contains('/') {
+                    model.to_string()
+                } else {
+                    format!("anthropic/{model}")
+                }
+            });
+        obj.insert(
+            "openhands_model".to_string(),
+            legacy_model
+                .map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        );
+    }
+
+    let updated = serde_json::to_string(&value)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "UPDATE settings SET value = ?1 WHERE key = 'app_settings'",
+        [updated],
+    )?;
+    Ok(())
 }
 
 pub(super) fn run_plugin_ownership_migration(conn: &Connection) -> Result<(), rusqlite::Error> {

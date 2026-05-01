@@ -130,6 +130,10 @@ import {
 
 const defaultSettings: AppSettings = {
   anthropic_api_key: null,
+  openhands_provider: null,
+  openhands_api_key: null,
+  openhands_model: null,
+  openhands_base_url: null,
   workspace_path: null,
   skills_path: null,
   preferred_model: null,
@@ -152,6 +156,10 @@ const defaultSettings: AppSettings = {
 
 const populatedSettings: AppSettings = {
   anthropic_api_key: "sk-ant-existing-key",
+  openhands_provider: "anthropic",
+  openhands_api_key: "sk-ant-existing-key",
+  openhands_model: "anthropic/claude-sonnet-4-6",
+  openhands_base_url: null,
   workspace_path: "/home/user/workspace",
   skills_path: null,
   preferred_model: "sonnet",
@@ -185,6 +193,10 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
   // Populate the settings store with the mock settings
   useSettingsStore.setState({
     anthropicApiKey: settings.anthropic_api_key,
+    openhandsProvider: settings.openhands_provider,
+    openhandsApiKey: settings.openhands_api_key,
+    openhandsModel: settings.openhands_model,
+    openhandsBaseUrl: settings.openhands_base_url,
     workspacePath: settings.workspace_path,
     skillsPath: settings.skills_path,
     preferredModel: settings.preferred_model,
@@ -250,7 +262,7 @@ describe("SettingsPage", () => {
     });
 
     expect(screen.getByRole("button", { name: /General/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Claude SDK/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /OpenHands/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Plugins/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Marketplace/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitHub/i })).toBeInTheDocument();
@@ -293,11 +305,73 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/Claude SDK/i);
+    await switchToSection(/OpenHands/i);
 
     // API key field (password input)
     const apiKeyInput = screen.getByPlaceholderText("sk-ant-...");
     expect(apiKeyInput).toHaveValue("sk-ant-existing-key");
+  });
+
+  it("auto-saves OpenAI provider model settings", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks(populatedSettings);
+    renderWithQueryClient(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await switchToSection(/OpenHands/i);
+
+    await user.selectOptions(screen.getByLabelText(/Provider/i), "openai");
+    await user.clear(screen.getByLabelText(/Model/i));
+    await user.type(screen.getByLabelText(/Model/i), "gpt-4o");
+    await user.tab();
+
+    const { updateUserSettings } = await import("@/lib/tauri");
+    await waitFor(() => {
+      expect(updateUserSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          openhands_provider: "openai",
+          openhands_model: "gpt-4o",
+        }),
+      );
+    });
+  });
+
+  it("allows Ollama without an API key and saves base URL", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks({
+      ...populatedSettings,
+      openhands_provider: "ollama",
+      openhands_api_key: null,
+      openhands_model: "llama3.1",
+      openhands_base_url: "http://localhost:11434",
+    });
+    renderWithQueryClient(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await switchToSection(/OpenHands/i);
+
+    expect(screen.getByLabelText(/API Key/i)).not.toBeRequired();
+    const baseUrlInput = screen.getByLabelText(/Base URL/i);
+    await user.clear(baseUrlInput);
+    await user.type(baseUrlInput, "http://localhost:11435");
+    await user.tab();
+
+    const { updateUserSettings } = await import("@/lib/tauri");
+    await waitFor(() => {
+      expect(updateUserSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          openhands_provider: "ollama",
+          openhands_api_key: null,
+          openhands_base_url: "http://localhost:11435",
+        }),
+      );
+    });
   });
 
   it("shows 'Not configured' when no skills folder path", async () => {
@@ -322,7 +396,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/Claude SDK/i);
+    await switchToSection(/OpenHands/i);
 
     const testButtons = screen.getAllByRole("button", { name: /Test/i });
     // First "Test" button is the Anthropic API key test button
@@ -343,7 +417,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/Claude SDK/i);
+    await switchToSection(/OpenHands/i);
 
     const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
     await user.click(thinkingSwitch);
@@ -365,7 +439,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/Claude SDK/i);
+    await switchToSection(/OpenHands/i);
 
     const apiKeyInput = screen.getByPlaceholderText("sk-ant-...");
     await user.clear(apiKeyInput);
@@ -389,7 +463,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/Claude SDK/i);
+    await switchToSection(/OpenHands/i);
 
     const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
     await user.click(thinkingSwitch);
@@ -412,7 +486,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/Claude SDK/i);
+    await switchToSection(/OpenHands/i);
 
     const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
     await user.click(thinkingSwitch);

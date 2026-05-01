@@ -48,6 +48,10 @@ mod tests {
     fn test_app_settings_serde_roundtrip() {
         let settings = AppSettings {
             anthropic_api_key: Some("sk-ant-test-key".to_string()),
+            openhands_provider: Some("anthropic".to_string()),
+            openhands_api_key: Some("sk-ant-test-key".to_string()),
+            openhands_model: Some("anthropic/sonnet".to_string()),
+            openhands_base_url: None,
             workspace_path: Some("/home/user/skills".to_string()),
             skills_path: Some("/home/user/output".to_string()),
             preferred_model: Some("sonnet".to_string()),
