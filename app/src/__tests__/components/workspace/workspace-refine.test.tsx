@@ -34,7 +34,11 @@ vi.mock("@tanstack/react-router", () => ({
 // --- Store mocks ---
 vi.mock("@/stores/settings-store", () => ({
   useSettingsStore: vi.fn((selector: (s: unknown) => unknown) =>
-    selector({ workspacePath: "/workspace", preferredModel: null, availableModels: [] }),
+    selector({
+      workspacePath: "/workspace",
+      preferredModel: null,
+      availableModels: [],
+    }),
   ),
 }));
 
@@ -57,6 +61,7 @@ const refineStoreState = vi.hoisted(() => ({
   setRunning: vi.fn(),
   setActiveAgentId: vi.fn(),
   setAvailableAgents: vi.fn(),
+  setPendingFollowupMessage: vi.fn(),
   addUserMessage: vi.fn(),
   addAgentTurn: vi.fn(),
   updateSkillFiles: vi.fn(),
@@ -173,7 +178,11 @@ describe("WorkspaceRefine", () => {
       renderRefine(skill);
     });
 
-    expect(tauriMocks.startRefineSession).toHaveBeenCalledWith("my-skill", "/workspace", "skills");
+    expect(tauriMocks.startRefineSession).toHaveBeenCalledWith(
+      "my-skill",
+      "/workspace",
+      "skills",
+    );
   });
 
   it("calls closeRefineSession and startRefineSession when skill prop changes", async () => {
@@ -197,7 +206,11 @@ describe("WorkspaceRefine", () => {
     });
 
     expect(tauriMocks.closeRefineSession).toHaveBeenCalledWith("session-1");
-    expect(tauriMocks.startRefineSession).toHaveBeenCalledWith("skill-b", "/workspace", "skills");
+    expect(tauriMocks.startRefineSession).toHaveBeenCalledWith(
+      "skill-b",
+      "/workspace",
+      "skills",
+    );
   });
 
   it("calls cancelRefineTurn when Escape is pressed during a running session", async () => {
@@ -250,6 +263,8 @@ describe("WorkspaceRefine", () => {
       unmount!();
     });
 
-    expect(tauriMocks.closeRefineSession).toHaveBeenCalledWith("session-unmount");
+    expect(tauriMocks.closeRefineSession).toHaveBeenCalledWith(
+      "session-unmount",
+    );
   });
 });

@@ -14,8 +14,7 @@ use crate::db::Db;
 /// its default of `['project']`.
 fn derive_setting_sources(agent_name: Option<&str>) -> Option<Vec<String>> {
     match agent_name {
-        Some(n) if n == "evaluate-skill"
-            || n.ends_with(":evaluate-skill") => Some(vec![]),
+        Some(n) if n == "evaluate-skill" || n.ends_with(":evaluate-skill") => Some(vec![]),
         _ => None,
     }
 }
@@ -39,22 +38,6 @@ fn derive_required_plugins(agent_name: Option<&str>) -> Vec<String> {
     }
     // Standalone agents that need explicit plugin access:
     vec![]
-}
-
-/// Suppress `fallback_model` when it equals `model` to avoid the SDK error
-/// "Fallback model cannot be the same as the main model".
-///
-/// Only applies when an explicit `model` is set (i.e. no `agent_name`).
-/// When `model` is `None` (agent frontmatter is authoritative) we leave
-/// `fallback_model` as-is — the agent's frontmatter model may differ.
-pub(crate) fn suppress_same_fallback_model(
-    model: Option<&str>,
-    fallback_model: Option<String>,
-) -> Option<String> {
-    match model {
-        Some(m) if fallback_model.as_deref() == Some(m) => None,
-        _ => fallback_model,
-    }
 }
 
 /// Output format schemas for non-workflow agents (feedback).
@@ -141,7 +124,7 @@ pub async fn start_agent(
         transcript_log_dir,
         prompt.chars().take(120).collect::<String>()
     );
-    let (api_key, extended_thinking, interleaved_thinking_beta, sdk_effort, fallback_model) = {
+    let (api_key, extended_thinking, interleaved_thinking_beta, sdk_effort) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[start_agent] Failed to acquire DB lock: {}", e);
             e.to_string()
@@ -157,7 +140,6 @@ pub async fn start_agent(
             settings.extended_thinking,
             settings.interleaved_thinking_beta,
             settings.sdk_effort.clone(),
-            settings.fallback_model.clone(),
         )
     };
 
@@ -180,17 +162,6 @@ pub async fn start_agent(
     // Explicit model always passed — overrides agent frontmatter default.
     let model_for_config = Some(model.clone());
 
-    // The SDK rejects a config where fallbackModel == the explicit main model.
-    // Suppress fallback_model when it would equal model_for_config (e.g. user's
-    // preferred model is haiku and the evaluator is also invoked with haiku).
-    if fallback_model.as_deref() == model_for_config.as_deref() && model_for_config.is_some() {
-        log::debug!(
-            "[start_agent] suppressing fallback_model '{}' — equals main model",
-            model_for_config.as_deref().unwrap_or("")
-        );
-    }
-    let fallback_model = suppress_same_fallback_model(model_for_config.as_deref(), fallback_model);
-
     let setting_sources = derive_setting_sources(agent_name.as_deref());
 
     let config = SidecarConfig {
@@ -210,7 +181,7 @@ pub async fn start_agent(
             interleaved_thinking_beta,
         ),
         thinking,
-        fallback_model,
+        fallback_model: None,
         effort: sdk_effort,
         output_format,
         prompt_suggestions: None,
@@ -243,7 +214,7 @@ pub async fn start_agent(
 
 #[cfg(test)]
 mod tests {
-    use super::{derive_required_plugins, derive_setting_sources, output_format_for_agent, suppress_same_fallback_model};
+    use super::{derive_required_plugins, derive_setting_sources, output_format_for_agent};
 
     #[test]
     fn plugin_scoped_agent_derives_plugin_name() {
@@ -284,8 +255,14 @@ mod tests {
     fn other_agents_get_default_setting_sources() {
         assert_eq!(derive_setting_sources(None), None);
         assert_eq!(derive_setting_sources(Some("generate-skill")), None);
-        assert_eq!(derive_setting_sources(Some("skill-creator:generate-skill")), None);
-        assert_eq!(derive_setting_sources(Some("skill-creator:analyze-skill")), None);
+        assert_eq!(
+            derive_setting_sources(Some("skill-creator:generate-skill")),
+            None
+        );
+        assert_eq!(
+            derive_setting_sources(Some("skill-creator:analyze-skill")),
+            None
+        );
     }
 
     #[test]
@@ -324,45 +301,13 @@ mod tests {
         assert!(output_format_for_agent("my-skill", Some("test-plan-with")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-plan-without")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-evaluator")).is_none());
-        assert!(output_format_for_agent("my-skill", Some("skill-creator:generate-skill")).is_none());
-        assert!(output_format_for_agent("my-skill", Some("skill-creator:generate-skill-description-evals")).is_none());
-    }
-
-    #[test]
-    fn test_suppress_same_fallback_model_clears_when_equal() {
-        // Evaluator scenario: preferred_model = haiku, model = haiku → suppress
-        let result = suppress_same_fallback_model(
-            Some("claude-haiku-4-5-20251001"),
-            Some("claude-haiku-4-5-20251001".to_string()),
-        );
         assert!(
-            result.is_none(),
-            "fallback must be suppressed when equal to main model"
+            output_format_for_agent("my-skill", Some("skill-creator:generate-skill")).is_none()
         );
+        assert!(output_format_for_agent(
+            "my-skill",
+            Some("skill-creator:generate-skill-description-evals")
+        )
+        .is_none());
     }
-
-    #[test]
-    fn test_suppress_same_fallback_model_keeps_when_different() {
-        // Typical scenario: preferred_model = sonnet, fallback = sonnet, main = opus
-        let result = suppress_same_fallback_model(
-            Some("claude-opus-4-6"),
-            Some("claude-sonnet-4-6".to_string()),
-        );
-        assert_eq!(result.as_deref(), Some("claude-sonnet-4-6"));
-    }
-
-    #[test]
-    fn test_suppress_same_fallback_model_keeps_when_no_explicit_model() {
-        // agent_name is set → model_for_config = None; fallback is preserved
-        let result =
-            suppress_same_fallback_model(None, Some("claude-haiku-4-5-20251001".to_string()));
-        assert_eq!(result.as_deref(), Some("claude-haiku-4-5-20251001"));
-    }
-
-    #[test]
-    fn test_suppress_same_fallback_model_noop_when_no_fallback() {
-        let result = suppress_same_fallback_model(Some("claude-sonnet-4-6"), None);
-        assert!(result.is_none());
-    }
-
 }

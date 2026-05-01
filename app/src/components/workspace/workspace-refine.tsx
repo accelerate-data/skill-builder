@@ -30,6 +30,7 @@ import {
 } from "@/lib/tauri";
 import type { EditableSkill } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
+import { requireSettingsModel } from "@/lib/models";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import type { RefineQuestionResponse } from "@/stores/refine-store";
@@ -48,14 +49,25 @@ function releaseSkillResources(skillName: string, reason: string): void {
   );
   console.log("[workspace-refine] releaseLock: %s (%s)", skillName, reason);
   cleanupSkillSidecar(skillName).catch((e) =>
-    console.warn("[workspace-refine] non-fatal: op=cleanupSkillSidecar err=%s", e),
+    console.warn(
+      "[workspace-refine] non-fatal: op=cleanupSkillSidecar err=%s",
+      e,
+    ),
   );
 }
 
 /** Load skill files from disk, returning null on failure. */
-async function loadSkillFiles(basePath: string, skillName: string, pluginSlug: string): Promise<SkillFile[] | null> {
+async function loadSkillFiles(
+  basePath: string,
+  skillName: string,
+  pluginSlug: string,
+): Promise<SkillFile[] | null> {
   try {
-    const contents = await getSkillContentForRefine(skillName, basePath, pluginSlug);
+    const contents = await getSkillContentForRefine(
+      skillName,
+      basePath,
+      pluginSlug,
+    );
     return contents
       .map((c): SkillFile => ({ filename: c.path, content: c.content }))
       .sort((a, b) => {
@@ -83,7 +95,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     activeAgentId ? s.runs[activeAgentId]?.status : undefined,
   );
   const activeRunTurns = useAgentStore((s) =>
-    activeAgentId ? s.runs[activeAgentId]?.contextHistory?.length ?? 0 : 0,
+    activeAgentId ? (s.runs[activeAgentId]?.contextHistory?.length ?? 0) : 0,
   );
 
   // Cumulative session metrics (accumulated across all agent runs)
@@ -110,7 +122,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       if (store.selectedSkill) {
         if (store.sessionId) {
           closeRefineSession(store.sessionId).catch((e) =>
-            console.warn("[workspace-refine] non-fatal: op=closeRefineSession err=%s", e),
+            console.warn(
+              "[workspace-refine] non-fatal: op=closeRefineSession err=%s",
+              e,
+            ),
           );
         }
         releaseSkillResources(store.selectedSkill.name, "unmount");
@@ -130,7 +145,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
       if (store.sessionId) {
         closeRefineSession(store.sessionId).catch((e) =>
-          console.warn("[workspace-refine] non-fatal: op=closeRefineSession err=%s", e),
+          console.warn(
+            "[workspace-refine] non-fatal: op=closeRefineSession err=%s",
+            e,
+          ),
         );
       }
 
@@ -143,7 +161,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     },
   });
 
-  const availableFiles = useMemo(() => skillFiles.map((f) => f.filename), [skillFiles]);
+  const availableFiles = useMemo(
+    () => skillFiles.map((f) => f.filename),
+    [skillFiles],
+  );
   const availableAgents = useRefineStore((s) => s.availableAgents);
 
   // --- Select skill on mount ---
@@ -157,7 +178,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       const prevSkill = store.selectedSkill;
       if (prevSkill && prevSkill.name !== s.name) {
         await releaseLock(prevSkill.name).catch((e) =>
-          console.warn("[workspace-refine] non-fatal: op=releaseLock err=%s", e),
+          console.warn(
+            "[workspace-refine] non-fatal: op=releaseLock err=%s",
+            e,
+          ),
         );
       }
 
@@ -166,18 +190,27 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         console.log("[workspace-refine] acquireLock: %s", s.name);
       } catch (err) {
         console.error("[workspace-refine] acquireLock failed: %s", s.name, err);
-        toast.error(`Cannot open Refine: ${err instanceof Error ? err.message : String(err)}`, {
-          duration: Infinity,
-          cause: err,
-          context: { operation: "workspace_refine_acquire_lock", skillName: s.name },
-        });
+        toast.error(
+          `Cannot open Refine: ${err instanceof Error ? err.message : String(err)}`,
+          {
+            duration: Infinity,
+            cause: err,
+            context: {
+              operation: "workspace_refine_acquire_lock",
+              skillName: s.name,
+            },
+          },
+        );
         return;
       }
 
       const prevSessionId = store.sessionId;
       if (prevSessionId) {
         await closeRefineSession(prevSessionId).catch((err) =>
-          console.warn("[workspace-refine] Failed to close previous session:", err),
+          console.warn(
+            "[workspace-refine] Failed to close previous session:",
+            err,
+          ),
         );
       }
 
@@ -190,17 +223,30 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
       if (workspacePath) {
         try {
-          const session = await startRefineSession(s.name, workspacePath, s.plugin_slug);
+          const session = await startRefineSession(
+            s.name,
+            workspacePath,
+            s.plugin_slug,
+          );
           useRefineStore.getState().setSessionId(session.session_id);
-          useRefineStore.getState().setAvailableAgents(session.available_agents ?? []);
+          useRefineStore
+            .getState()
+            .setAvailableAgents(session.available_agents ?? []);
         } catch (err) {
-          console.error("[workspace-refine] Failed to start refine session:", err);
+          console.error(
+            "[workspace-refine] Failed to start refine session:",
+            err,
+          );
           toast.error("Failed to start refine session", { duration: Infinity });
           store.setLoadingFiles(false);
           return;
         }
 
-        const files = await loadSkillFiles(workspacePath, s.name, s.plugin_slug);
+        const files = await loadSkillFiles(
+          workspacePath,
+          s.name,
+          s.plugin_slug,
+        );
         if (files) {
           store.setSkillFiles(files);
           store.setGitDiff(null);
@@ -238,10 +284,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         targetFiles?.join(",") ?? "all",
       );
 
-      const model = preferredModel ?? "sonnet";
+      const model = requireSettingsModel(preferredModel);
 
       runSkillRef.current = selectedSkill;
-      store.setPendingRedirect(null);
+      store.setPendingFollowupMessage(null);
       store.setGitDiff(null);
       store.addUserMessage(text, targetFiles);
       store.setRunning(true);
@@ -255,13 +301,15 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           targetFiles,
         );
 
-        useAgentStore.getState().registerRun(
-          agentId,
-          model,
-          selectedSkill.name,
-          "refine",
-          `synthetic:refine:${selectedSkill.name}:${sessionId}`,
-        );
+        useAgentStore
+          .getState()
+          .registerRun(
+            agentId,
+            model,
+            selectedSkill.name,
+            "refine",
+            `synthetic:refine:${selectedSkill.name}:${sessionId}`,
+          );
 
         store.addAgentTurn(agentId);
         store.setActiveAgentId(agentId);
@@ -316,7 +364,14 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       const store = useRefineStore.getState();
       const sessionId = store.sessionId;
       const agentId = store.activeAgentId;
-      if (!selectedSkill || !workspacePath || !sessionId || !agentId || !message.toolUseId || !message.questions) {
+      if (
+        !selectedSkill ||
+        !workspacePath ||
+        !sessionId ||
+        !agentId ||
+        !message.toolUseId ||
+        !message.questions
+      ) {
         throw new Error("Refine question session is no longer available");
       }
 
@@ -324,22 +379,32 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         label.toLowerCase().startsWith("launch "),
       );
       if (redirectLabel?.toLowerCase().includes("validate")) {
-        const userMessages = store.messages.filter((entry) => entry.role === "user");
-        store.setPendingRedirect({
-          command: "validate",
-          text: userMessages.length > 0 ? userMessages[userMessages.length - 1]?.userText ?? "" : "",
-        });
+        const userMessages = store.messages.filter(
+          (entry) => entry.role === "user",
+        );
+        const previousText =
+          userMessages.length > 0
+            ? (userMessages[userMessages.length - 1]?.userText ?? "")
+            : "";
+        store.setPendingFollowupMessage(
+          `validate this skill${previousText ? `: ${previousText}` : ""}`,
+        );
       } else if (
-        redirectLabel?.toLowerCase().includes("benchmark")
-        || redirectLabel?.toLowerCase().includes("eval")
+        redirectLabel?.toLowerCase().includes("benchmark") ||
+        redirectLabel?.toLowerCase().includes("eval")
       ) {
-        const userMessages = store.messages.filter((entry) => entry.role === "user");
-        store.setPendingRedirect({
-          command: "benchmark",
-          text: userMessages.length > 0 ? userMessages[userMessages.length - 1]?.userText ?? "" : "",
-        });
+        const userMessages = store.messages.filter(
+          (entry) => entry.role === "user",
+        );
+        const previousText =
+          userMessages.length > 0
+            ? (userMessages[userMessages.length - 1]?.userText ?? "")
+            : "";
+        store.setPendingFollowupMessage(
+          `benchmark this skill${previousText ? `: ${previousText}` : ""}`,
+        );
       } else {
-        store.setPendingRedirect(null);
+        store.setPendingFollowupMessage(null);
       }
 
       await answerStreamingRefineQuestion(
@@ -358,7 +423,9 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   useEffect(() => {
     if (!activeAgentId || !activeRunStatus) return;
 
-    const isTerminal = ["completed", "error", "shutdown"].includes(activeRunStatus);
+    const isTerminal = ["completed", "error", "shutdown"].includes(
+      activeRunStatus,
+    );
     if (!isTerminal) return;
 
     console.log(
@@ -368,7 +435,9 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     );
 
     if (activeRunStatus === "error") {
-      toast.error("Agent failed — check the chat for details", { duration: Infinity });
+      toast.error("Agent failed — check the chat for details", {
+        duration: Infinity,
+      });
     }
     // "shutdown" status is user-initiated (cancel) — no error toast needed.
 
@@ -405,10 +474,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             hasStructuredObject ? structuredOutput : undefined,
           );
           store.updateSkillFiles(
-            finalized.files.map((file): SkillFile => ({
-              filename: file.path,
-              content: file.content,
-            })),
+            finalized.files.map(
+              (file): SkillFile => ({
+                filename: file.path,
+                content: file.content,
+              }),
+            ),
           );
           store.setGitDiff(finalized.diff);
           if (finalized.diff) {
@@ -416,7 +487,11 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           }
         } catch {
           try {
-            const files = await loadSkillFiles(workspacePath, completionSkill.name, completionSkill.plugin_slug);
+            const files = await loadSkillFiles(
+              workspacePath,
+              completionSkill.name,
+              completionSkill.plugin_slug,
+            );
             if (files) {
               store.updateSkillFiles(files);
               store.setGitDiff(null);
@@ -429,34 +504,44 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           }
         }
       } else if (workspacePath && completionSkill) {
-        await cleanBenchmarkSnapshot(completionSkill.name, workspacePath, completionSkill.plugin_slug).catch(() => {});
-        const files = await loadSkillFiles(workspacePath, completionSkill.name, completionSkill.plugin_slug);
+        await cleanBenchmarkSnapshot(
+          completionSkill.name,
+          workspacePath,
+          completionSkill.plugin_slug,
+        ).catch(() => {});
+        const files = await loadSkillFiles(
+          workspacePath,
+          completionSkill.name,
+          completionSkill.plugin_slug,
+        );
         if (files) {
           store.updateSkillFiles(files);
           store.setGitDiff(null);
         }
       }
 
-      const pendingRedirect = store.pendingRedirect;
-      store.setPendingRedirect(null);
+      const pendingFollowupMessage = store.pendingFollowupMessage;
+      store.setPendingFollowupMessage(null);
       store.setRunning(false);
       store.setActiveAgentId(null);
       runSkillRef.current = null;
 
-      if (pendingRedirect) {
-        const redirectText = pendingRedirect.command
-          ? `${pendingRedirect.command} this skill${pendingRedirect.text ? `: ${pendingRedirect.text}` : ""}`
-          : pendingRedirect.text;
-        if (redirectText) {
-          setTimeout(() => {
-            void handleSend(redirectText);
-          }, 0);
-        }
+      if (pendingFollowupMessage) {
+        setTimeout(() => {
+          void handleSend(pendingFollowupMessage);
+        }, 0);
       }
     };
 
     void complete();
-  }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill, extractStructuredResultPayload, handleSend]);
+  }, [
+    activeAgentId,
+    activeRunStatus,
+    workspacePath,
+    selectedSkill,
+    extractStructuredResultPayload,
+    handleSend,
+  ]);
 
   // --- Status bar ---
   const [elapsed, setElapsed] = useState(0);
@@ -481,17 +566,27 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     };
   }, [isRunning]);
 
-  const activeModel = preferredModel ?? "claude-sonnet-4-6";
-  const modelLabel =
-    availableModels.find((m) => m.id === activeModel)?.displayName ?? deriveModelLabel(activeModel);
+  const activeModel = preferredModel;
+  const modelLabel = activeModel
+    ? (availableModels.find((m) => m.id === activeModel)?.displayName ??
+      deriveModelLabel(activeModel))
+    : "No model selected";
 
   const dotStyle = isRunning
     ? { background: "var(--color-pacific)" }
     : selectedSkill
       ? { background: "var(--color-seafoam)" }
       : undefined;
-  const dotClass = isRunning ? "animate-pulse" : selectedSkill ? "" : "bg-zinc-500";
-  const statusLabel = isRunning ? "running..." : selectedSkill ? "ready" : "loading...";
+  const dotClass = isRunning
+    ? "animate-pulse"
+    : selectedSkill
+      ? ""
+      : "bg-zinc-500";
+  const statusLabel = isRunning
+    ? "running..."
+    : selectedSkill
+      ? "ready"
+      : "loading...";
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 w-full flex-1 overflow-hidden">
@@ -510,13 +605,18 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       {/* Status bar */}
       <div className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4">
         <div className="flex items-center gap-1.5">
-          <div className={`size-[5px] rounded-full ${dotClass}`} style={dotStyle} />
+          <div
+            className={`size-[5px] rounded-full ${dotClass}`}
+            style={dotStyle}
+          />
           <span className="text-xs text-muted-foreground">{statusLabel}</span>
         </div>
         {selectedSkill && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs text-muted-foreground">{selectedSkill.name}</span>
+            <span className="text-xs text-muted-foreground">
+              {selectedSkill.name}
+            </span>
           </>
         )}
         <span className="text-muted-foreground/20">&middot;</span>
@@ -524,14 +624,17 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         {isRunning && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs text-muted-foreground">{(elapsed / 1000).toFixed(1)}s</span>
+            <span className="text-xs text-muted-foreground">
+              {(elapsed / 1000).toFixed(1)}s
+            </span>
           </>
         )}
-        {(sessionTurns + activeRunTurns) > 0 && (
+        {sessionTurns + activeRunTurns > 0 && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
             <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
-              {sessionTurns + activeRunTurns} {sessionTurns + activeRunTurns === 1 ? "turn" : "turns"}
+              {sessionTurns + activeRunTurns}{" "}
+              {sessionTurns + activeRunTurns === 1 ? "turn" : "turns"}
             </span>
           </>
         )}
@@ -554,12 +657,18 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       </div>
 
       {blockerStatus === "blocked" && (
-        <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) handleNavStay();
+          }}
+        >
           <DialogContent showCloseButton={false}>
             <DialogHeader>
               <DialogTitle>Agent Running</DialogTitle>
               <DialogDescription>
-                An agent is still running. Leaving will abandon it and end the session.
+                An agent is still running. Leaving will abandon it and end the
+                session.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

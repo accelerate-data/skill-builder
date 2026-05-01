@@ -12,7 +12,6 @@ interface SettingsState {
   extendedThinking: boolean;
   interleavedThinkingBeta: boolean;
   sdkEffort: string | null;
-  fallbackModel: string | null;
   refinePromptSuggestions: boolean;
   githubOauthToken: string | null;
   githubUserLogin: string | null;
@@ -42,7 +41,6 @@ const initialState = {
   extendedThinking: false,
   interleavedThinkingBeta: true,
   sdkEffort: null,
-  fallbackModel: null,
   refinePromptSuggestions: true,
   githubOauthToken: null,
   githubUserLogin: null,

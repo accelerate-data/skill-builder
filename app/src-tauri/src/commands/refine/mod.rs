@@ -120,7 +120,11 @@ pub async fn start_refine_session(
     sessions: tauri::State<'_, RefineSessionManager>,
     db: tauri::State<'_, Db>,
 ) -> Result<RefineSessionInfo, String> {
-    log::info!("[start_refine_session] skill={} plugin={}", skill_name, plugin_slug);
+    log::info!(
+        "[start_refine_session] skill={} plugin={}",
+        skill_name,
+        plugin_slug
+    );
     validate_skill_name(&skill_name)?;
 
     let skills_path = resolve_skills_path(&db).map_err(|e| {
@@ -204,7 +208,7 @@ pub async fn start_refine_session(
 ///
 /// On the first call, writes user-context.md to the workspace directory and
 /// starts a streaming session (stream_start) with the agent prompt including
-/// all 3 directory paths, command, and a pointer to user-context.md.
+/// all 3 directory paths and a pointer to user-context.md.
 /// On subsequent calls, pushes a follow-up message
 /// (stream_message) — the SDK maintains full conversation state.
 ///
@@ -218,16 +222,12 @@ pub async fn send_refine_message(
     plugin_slug: String,
     workspace_path: String,
     target_files: Option<Vec<String>>,
-    command: Option<String>,
     sessions: tauri::State<'_, RefineSessionManager>,
     pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    log::info!(
-        "[send_refine_message] session=[REDACTED] command={:?}",
-        command
-    );
+    log::info!("[send_refine_message] session=[REDACTED]");
 
     // 1. Look up session and check stream state
     let (skill_name, usage_session_id, stream_started) = {
@@ -290,7 +290,6 @@ pub async fn send_refine_message(
             runtime.extended_thinking,
             runtime.interleaved_thinking_beta,
             runtime.sdk_effort,
-            runtime.fallback_model,
             runtime.refine_prompt_suggestions,
             &runtime.plugin_slug,
         );
@@ -301,10 +300,9 @@ pub async fn send_refine_message(
             config.model.as_deref().unwrap_or("default"),
         );
         log::debug!(
-            "[send_refine_message] first message prompt ({} chars) for skill '{}' command={:?}",
+            "[send_refine_message] first message prompt ({} chars) for skill '{}'",
             prompt.len(),
-            skill_name,
-            command
+            skill_name
         );
 
         // Resolve SDK cli.js path
@@ -345,10 +343,9 @@ pub async fn send_refine_message(
             target_files.as_deref(),
         );
         log::debug!(
-            "[send_refine_message] follow-up prompt ({} chars) for skill '{}' command={:?}:\n{}",
+            "[send_refine_message] follow-up prompt ({} chars) for skill '{}':\n{}",
             prompt.len(),
             skill_name,
-            command,
             prompt
         );
 

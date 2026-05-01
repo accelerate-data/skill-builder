@@ -13,7 +13,8 @@ const PLUGIN_AGENTS: Record<string, string> = {
   "rewrite-skill": "skill-creator/agents/rewrite-skill.md",
   "detailed-research": "skill-content-researcher/agents/detailed-research.md",
   "confirm-decisions": "skill-content-researcher/agents/confirm-decisions.md",
-  "answer-evaluator": "skill-content-researcher/skills/answer-evaluator/SKILL.md",
+  "answer-evaluator":
+    "skill-content-researcher/skills/answer-evaluator/SKILL.md",
 };
 
 /** Resolve the .md file path for any agent (top-level or plugin). */
@@ -26,12 +27,9 @@ function resolveAgentPath(agentName: string): string {
 /** All agent names (top-level + plugin). */
 const ALL_AGENTS = [...EXPECTED_AGENTS, ...Object.keys(PLUGIN_AGENTS)];
 
-const EXPECTED_MODELS: Record<string, string> = {};
-const DEFAULT_MODEL = "sonnet";
-
 function frontmatter(filePath: string): Record<string, string> {
   const content = fs.readFileSync(filePath, "utf8");
-  const lines = content.split("\n").map(line => line.replace(/\r$/, ""));
+  const lines = content.split("\n").map((line) => line.replace(/\r$/, ""));
   if (lines[0] !== "---") return {};
   const end = lines.indexOf("---", 1);
   if (end === -1) return {};
@@ -57,7 +55,10 @@ describe("agent files", () => {
     const missing = EXPECTED_AGENTS.filter((agent) => {
       const file = path.join(AGENTS_DIR, `${agent}.md`);
       if (!fs.existsSync(file)) return true;
-      const firstLine = fs.readFileSync(file, "utf8").split("\n")[0].replace(/\r$/, "");
+      const firstLine = fs
+        .readFileSync(file, "utf8")
+        .split("\n")[0]
+        .replace(/\r$/, "");
       return firstLine !== "---";
     });
     expect(missing).toHaveLength(0);
@@ -65,9 +66,16 @@ describe("agent files", () => {
 
   it.each(EXPECTED_AGENTS)("model tier correct: %s", (agent) => {
     const fm = frontmatter(path.join(AGENTS_DIR, `${agent}.md`));
-    const expected = EXPECTED_MODELS[agent] ?? DEFAULT_MODEL;
-    expect(fm.model).toBe(expected);
+    expect(fm.model).toBeUndefined();
   });
+
+  it.each(Object.keys(PLUGIN_AGENTS))(
+    "does not pin model in bundled agent frontmatter: %s",
+    (agent) => {
+      const fm = frontmatter(resolveAgentPath(agent));
+      expect(fm.model).toBeUndefined();
+    },
+  );
 });
 
 // ── Canonical format compliance ────────────────────────────────────────────
@@ -83,8 +91,8 @@ describe("canonical format compliance", () => {
 
   it.each(
     ALL_AGENTS.flatMap((agent) =>
-      antiPatterns.map(([label, pattern]) => [agent, label, pattern] as const)
-    )
+      antiPatterns.map(([label, pattern]) => [agent, label, pattern] as const),
+    ),
   )("%s: no %s", (agent, _label, pattern) => {
     const content = fs.readFileSync(resolveAgentPath(agent), "utf8");
     expect(content).not.toMatch(pattern);
@@ -121,18 +129,20 @@ describe("read directive compliance", () => {
 
   it.each(
     TARGET_FILES.flatMap((file) =>
-      bannedPatterns.map(([label, pattern]) => [file, label, pattern] as const)
-    )
+      bannedPatterns.map(([label, pattern]) => [file, label, pattern] as const),
+    ),
   )("%s: avoids %s", (file, _label, pattern) => {
     const content = fs.readFileSync(file, "utf8");
     expect(content).not.toMatch(pattern);
   });
 
-  it.each(TARGET_FILES)("%s: requires progressive discovery language", (file) => {
-    const content = fs.readFileSync(file, "utf8");
-    expect(content).toMatch(/progressive|staged|demand-driven/i);
-  });
-
+  it.each(TARGET_FILES)(
+    "%s: requires progressive discovery language",
+    (file) => {
+      const content = fs.readFileSync(file, "utf8");
+      expect(content).toMatch(/progressive|staged|demand-driven/i);
+    },
+  );
 });
 
 describe("Research scope guard contract prompts", () => {
@@ -142,7 +152,7 @@ describe("Research scope guard contract prompts", () => {
         REPO_ROOT,
         "agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md",
       ),
-      "utf8"
+      "utf8",
     );
     expect(content).not.toMatch(/Preflight Scope Guard/i);
     expect(content).toMatch(/topic_relevance[^\n]{0,80}not_relevant/i);
@@ -156,18 +166,24 @@ describe("Research scope guard contract prompts", () => {
         REPO_ROOT,
         "agent-sources/plugins/skill-content-researcher/skills/research/references/scoring-rubric.md",
       ),
-      "utf8"
+      "utf8",
     );
-    expect(content).toMatch(/Do not perform selection or branching in this rubric output/i);
-    expect(content).not.toMatch(/If all scores are <=2, trigger scope recommendation output/i);
+    expect(content).toMatch(
+      /Do not perform selection or branching in this rubric output/i,
+    );
+    expect(content).not.toMatch(
+      /If all scores are <=2, trigger scope recommendation output/i,
+    );
   });
 
   it("detailed-research includes scope recommendation short-circuit contract", () => {
     const content = fs.readFileSync(
       resolveAgentPath("detailed-research"),
-      "utf8"
+      "utf8",
     );
-    expect(content).toMatch(/Scope (Recommendation )?[Gg]uard|scope_recommendation/);
+    expect(content).toMatch(
+      /Scope (Recommendation )?[Gg]uard|scope_recommendation/,
+    );
     expect(content).toMatch(/status": "detailed_research_complete"/);
     expect(content).toMatch(/refinement_count": 0/);
     expect(content).toMatch(/section_count": 0/);
@@ -177,11 +193,15 @@ describe("Research scope guard contract prompts", () => {
   it("detailed-research preserves original questions and canonical metadata", () => {
     const content = fs.readFileSync(
       resolveAgentPath("detailed-research"),
-      "utf8"
+      "utf8",
     );
     expect(content).toMatch(/strictly additive/i);
-    expect(content).toMatch(/do \*\*not\*\* delete any existing `sections\[\]\.questions\[\]` item/i);
-    expect(content).toMatch(/every original top-level question ID captured before merge must still exist after merge/i);
+    expect(content).toMatch(
+      /do \*\*not\*\* delete any existing `sections\[\]\.questions\[\]` item/i,
+    );
+    expect(content).toMatch(
+      /every original top-level question ID captured before merge must still exist after merge/i,
+    );
     expect(content).toMatch(/metadata\.priority_questions/);
     expect(content).toMatch(/metadata\.duplicates_removed/);
     expect(content).toMatch(/remove transient merge-helper fields/i);
@@ -199,17 +219,23 @@ describe("Research scope guard contract prompts", () => {
 describe("Agent output contracts (backend protocol alignment)", () => {
   it("skill-builder is the one-shot workflow identity and returns delegated JSON as final output", () => {
     const content = fs.readFileSync(resolveAgentPath("skill-builder"), "utf8");
-    expect(content).toMatch(/focused on building skills for use in Claude Code/i);
+    expect(content).toMatch(
+      /focused on building skills for use in Claude Code/i,
+    );
     expect(content).toMatch(/workflow step instruction/i);
-    expect(content).toMatch(/return the final payload required by the configured SDK `outputFormat`/i);
-    expect(content).toMatch(/convert that returned payload into your own final response/i);
+    expect(content).toMatch(
+      /return the final payload required by the configured SDK `outputFormat`/i,
+    );
+    expect(content).toMatch(
+      /convert that returned payload into your own final response/i,
+    );
     expect(content).toMatch(/Do not use `AskUserQuestion`/i);
   });
 
   it("confirm-decisions returns version/metadata/decisions shape", () => {
     const content = fs.readFileSync(
       resolveAgentPath("confirm-decisions"),
-      "utf8"
+      "utf8",
     );
     // Backend uses additionalProperties: false — only version, metadata, decisions allowed at top level
     expect(content).toMatch(/"version"/);
@@ -232,7 +258,10 @@ describe("Agent output contracts (backend protocol alignment)", () => {
   });
 
   it("answer-evaluator returns verdict enum and per_question array", () => {
-    const content = fs.readFileSync(resolveAgentPath("answer-evaluator"), "utf8");
+    const content = fs.readFileSync(
+      resolveAgentPath("answer-evaluator"),
+      "utf8",
+    );
     expect(content).toMatch(/"verdict"/);
     expect(content).toMatch(/sufficient|mixed|insufficient/);
     expect(content).toMatch(/"per_question"/);
@@ -266,16 +295,16 @@ describe("detailed-research output contract", () => {
     fs.readFileSync(
       path.join(
         REPO_ROOT,
-        "app/sidecar/mock-templates/outputs/step1/context/clarifications.json"
+        "app/sidecar/mock-templates/outputs/step1/context/clarifications.json",
       ),
-      "utf-8"
-    )
+      "utf-8",
+    ),
   );
 
   it("step1 clarifications.json sections contain refinements (additive from step0)", () => {
     const hasRefinements = step1Json.sections.some(
       (s: { questions?: Array<{ refinements?: unknown[] }> }) =>
-        s.questions?.some((q) => q.refinements && q.refinements.length > 0)
+        s.questions?.some((q) => q.refinements && q.refinements.length > 0),
     );
     expect(hasRefinements).toBe(true);
   });
@@ -311,7 +340,6 @@ describe("skill-content-researcher plugin structure", () => {
     const fm = frontmatter(researchPath);
     expect(fm.user_invocable).toBe("false");
   });
-
 });
 
 describe("skill-creator plugin structure", () => {
@@ -344,7 +372,7 @@ describe("skill-creator plugin structure", () => {
     // Aggregation + optimization scripts via uv under scripts/
     expect(content).toMatch(/uv run scripts\/aggregate_benchmark\.py/);
     expect(content).toMatch(/uv run scripts\/run_loop\.py/);
-// Eval viewer launched via generate_review.py (relative or with skill-creator-path placeholder)
+    // Eval viewer launched via generate_review.py (relative or with skill-creator-path placeholder)
     expect(content).toMatch(/generate_review\.py/);
   });
 
@@ -368,14 +396,23 @@ describe("skill-creator plugin structure", () => {
       resolveAgentPath("generate-skill"),
       "utf8",
     );
-    expect(content).toMatch(/Write the quantitative assertions at the same time as the prompts/i);
-    expect(content).toMatch(/treat those fields and those assertions as fixed/i);
+    expect(content).toMatch(
+      /Write the quantitative assertions at the same time as the prompts/i,
+    );
+    expect(content).toMatch(
+      /treat those fields and those assertions as fixed/i,
+    );
     expect(content).toMatch(/deterministic `slug`/i);
-    expect(content).toMatch(/Do not rewrite `evals\/evals\.json` or `eval_metadata\.json` during the run/i);
-    expect(generateSkillContent).toMatch(/must include a human-readable `eval_name`, a deterministic `slug`, and its fixed `expectations` at creation time/i);
+    expect(content).toMatch(
+      /Do not rewrite `evals\/evals\.json` or `eval_metadata\.json` during the run/i,
+    );
+    expect(generateSkillContent).toMatch(
+      /must include a human-readable `eval_name`, a deterministic `slug`, and its fixed `expectations` at creation time/i,
+    );
     expect(schemaContent).toMatch(/evals\[\]\.eval_name/);
     expect(schemaContent).toMatch(/evals\[\]\.slug/);
-    expect(schemaContent).toMatch(/written at eval creation time and frozen for subsequent benchmark iterations/i);
+    expect(schemaContent).toMatch(
+      /written at eval creation time and frozen for subsequent benchmark iterations/i,
+    );
   });
-
 });

@@ -1,10 +1,17 @@
-/** Maps a model alias or full ID to the canonical dateless model ID.
- *  Mirrors resolve_model_id() in commands/workflow.rs. */
-export function resolveModelId(model: string): string {
-  switch (model) {
-    case "sonnet": return "claude-sonnet-4-6";
-    case "haiku":  return "claude-haiku-4-5";
-    case "opus":   return "claude-opus-4-6";
-    default:       return model;
+export function requireSettingsModel(model?: string | null): string {
+  const selected = model?.trim();
+  if (!selected) {
+    throw new Error("Select a model in Settings before running agents.");
   }
+  return selected;
+}
+
+export function formatProviderModelId(model: string): string {
+  return model
+    .split("-")
+    .filter(Boolean)
+    .map((part) =>
+      /^\d+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1),
+    )
+    .join(" ");
 }

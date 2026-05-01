@@ -1,4 +1,5 @@
-import type { DateRange } from "@/stores/usage-store"
+import type { DateRange } from "@/stores/usage-store";
+import { formatProviderModelId } from "@/lib/models";
 
 export const STEP_NAMES: Record<number, string> = {
   [-11]: "Test",
@@ -9,7 +10,7 @@ export const STEP_NAMES: Record<number, string> = {
   3: "Review",
   4: "Confirm Decisions",
   5: "Generate Skill",
-}
+};
 
 export const STEP_COLORS: Record<number, string> = {
   [-11]: "var(--color-navy)",
@@ -20,13 +21,13 @@ export const STEP_COLORS: Record<number, string> = {
   3: "var(--color-ocean)",
   4: "var(--color-seafoam)",
   5: "var(--color-seafoam)",
-}
+};
 
-export const MODEL_COLORS: Record<string, string> = {
-  sonnet: "var(--color-ocean)",
-  haiku: "var(--color-pacific)",
-  opus: "var(--color-navy)",
-}
+export const MODEL_COLORS = [
+  "var(--color-ocean)",
+  "var(--color-pacific)",
+  "var(--color-navy)",
+] as const;
 
 export const DATE_RANGE_OPTIONS: { label: string; value: DateRange }[] = [
   { label: "7d", value: "7d" },
@@ -34,64 +35,67 @@ export const DATE_RANGE_OPTIONS: { label: string; value: DateRange }[] = [
   { label: "30d", value: "30d" },
   { label: "90d", value: "90d" },
   { label: "All time", value: "all" },
-]
+];
 
 export function getStepName(stepId: number): string {
-  return STEP_NAMES[stepId] ?? `Step ${stepId}`
+  return STEP_NAMES[stepId] ?? `Step ${stepId}`;
 }
 
 export function getStepColor(stepId: number): string {
-  return STEP_COLORS[stepId] ?? "var(--color-muted-foreground)"
+  return STEP_COLORS[stepId] ?? "var(--color-muted-foreground)";
 }
 
 export function getModelColor(model: string): string {
-  const key = model.toLowerCase()
-  if (key.includes("haiku")) return MODEL_COLORS.haiku
-  if (key.includes("opus")) return MODEL_COLORS.opus
-  if (key.includes("sonnet")) return MODEL_COLORS.sonnet
-  return "var(--color-muted-foreground)"
+  const key = model.toLowerCase();
+  if (key.length > 0) {
+    const palette = MODEL_COLORS;
+    const index =
+      [...key].reduce((sum, char) => sum + char.charCodeAt(0), 0) %
+      palette.length;
+    return palette[index];
+  }
+  return "var(--color-muted-foreground)";
 }
 
 export function formatCost(amount: number): string {
-  return `$${amount.toFixed(2)}`
+  return `$${amount.toFixed(2)}`;
 }
 
 export function formatTokens(count: number): string {
-  return count.toLocaleString()
+  return count.toLocaleString();
 }
 
 export function formatSessionTime(iso: string): string {
   try {
-    const date = new Date(iso)
-    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
-      + " " + date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+    const date = new Date(iso);
+    return (
+      date.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
+      " " +
+      date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+    );
   } catch {
-    return ""
+    return "";
   }
 }
 
 export function formatDayLabel(dateStr: string): string {
   try {
     // dateStr is "YYYY-MM-DD" from SQLite DATE()
-    const [, month, day] = dateStr.split("-")
-    return `${parseInt(month)}/${parseInt(day)}`
+    const [, month, day] = dateStr.split("-");
+    return `${parseInt(month)}/${parseInt(day)}`;
   } catch {
-    return dateStr
+    return dateStr;
   }
 }
 
 export function formatTokensShort(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return String(n)
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
 }
 
 export function shortModelName(model: string): string {
-  const lower = model.toLowerCase()
-  if (lower.includes("haiku")) return "Haiku"
-  if (lower.includes("opus")) return "Opus"
-  if (lower.includes("sonnet")) return "Sonnet"
-  return model
+  return formatProviderModelId(model);
 }
 
-export type SortCol = "date" | "skill" | "step" | "model" | "cost" | "tokens"
+export type SortCol = "date" | "skill" | "step" | "model" | "cost" | "tokens";

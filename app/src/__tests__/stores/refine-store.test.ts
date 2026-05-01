@@ -14,7 +14,7 @@ const initialState = {
   gitDiff: null,
   previewRevision: 0,
   messages: [],
-  pendingRedirect: null,
+  pendingFollowupMessage: null,
   activeAgentId: null,
   isRunning: false,
   sessionId: null,
@@ -39,7 +39,7 @@ describe("useRefineStore", () => {
     expect(state.gitDiff).toBeNull();
     expect(state.previewRevision).toBe(0);
     expect(state.messages).toEqual([]);
-    expect(state.pendingRedirect).toBeNull();
+    expect(state.pendingFollowupMessage).toBeNull();
     expect(state.activeAgentId).toBeNull();
     expect(state.isRunning).toBe(false);
     expect(state.sessionId).toBeNull();
@@ -125,19 +125,21 @@ describe("useRefineStore", () => {
     expect(useRefineStore.getState().messages).toHaveLength(1);
   });
 
-  it("addUserMessage with command stores the command on the message", () => {
-    const msg = useRefineStore.getState().addUserMessage("check structure", undefined, "validate");
+  it("addUserMessage ignores stale command arguments", () => {
+    const msg = useRefineStore.getState().addUserMessage("check structure");
 
-    expect(msg.command).toBe("validate");
+    expect("command" in msg).toBe(false);
     expect(msg.userText).toBe("check structure");
     expect(msg.targetFiles).toBeUndefined();
   });
 
-  it("addUserMessage with command and targetFiles stores both", () => {
+  it("addUserMessage with targetFiles has no command residue", () => {
     const targets = ["SKILL.md"];
-    const msg = useRefineStore.getState().addUserMessage("check quality", targets, "validate");
+    const msg = useRefineStore
+      .getState()
+      .addUserMessage("check quality", targets);
 
-    expect(msg.command).toBe("validate");
+    expect("command" in msg).toBe(false);
     expect(msg.targetFiles).toEqual(targets);
     expect(msg.userText).toBe("check quality");
   });
@@ -167,8 +169,12 @@ describe("useRefineStore", () => {
       },
     ];
 
-    const first = useRefineStore.getState().addQuestionMessage("agent-1", "toolu_123", questions);
-    const duplicate = useRefineStore.getState().addQuestionMessage("agent-1", "toolu_123", questions);
+    const first = useRefineStore
+      .getState()
+      .addQuestionMessage("agent-1", "toolu_123", questions);
+    const duplicate = useRefineStore
+      .getState()
+      .addQuestionMessage("agent-1", "toolu_123", questions);
 
     expect(duplicate.id).toBe(first.id);
     expect(useRefineStore.getState().messages).toHaveLength(1);
@@ -251,7 +257,10 @@ describe("useRefineStore", () => {
     useRefineStore.getState().updateSkillFiles([
       { filename: "SKILL.md", content: "new" },
       { filename: "references/glossary.md", content: "new glossary" },
-      { filename: "context/agent-validation-log.md", content: "# Validation\nok" },
+      {
+        filename: "context/agent-validation-log.md",
+        content: "# Validation\nok",
+      },
     ]);
 
     const state = useRefineStore.getState();
@@ -286,7 +295,10 @@ describe("useRefineStore", () => {
 
     useRefineStore.getState().updateSkillFiles([
       { filename: "SKILL.md", content: "new" },
-      { filename: "context/agent-validation-log.md", content: "# Validation\nok" },
+      {
+        filename: "context/agent-validation-log.md",
+        content: "# Validation\nok",
+      },
     ]);
 
     const state = useRefineStore.getState();
@@ -294,9 +306,9 @@ describe("useRefineStore", () => {
   });
 
   it("setSkillFiles bumps previewRevision so the right panel can remount after reload", () => {
-    useRefineStore.getState().setSkillFiles([
-      { filename: "SKILL.md", content: "new" },
-    ]);
+    useRefineStore
+      .getState()
+      .setSkillFiles([{ filename: "SKILL.md", content: "new" }]);
 
     const state = useRefineStore.getState();
     expect(state.previewRevision).toBe(1);
@@ -345,7 +357,13 @@ describe("useRefineStore", () => {
   it("setGitDiff stores and clears git-backed diff state", () => {
     const diff = {
       stat: "1 file changed",
-      files: [{ path: "my-skill/SKILL.md", status: "modified", diff: "@@ -1 +1 @@\n-old\n+new\n" }],
+      files: [
+        {
+          path: "my-skill/SKILL.md",
+          status: "modified",
+          diff: "@@ -1 +1 @@\n-old\n+new\n",
+        },
+      ],
     };
 
     useRefineStore.getState().setGitDiff(diff);
@@ -357,7 +375,9 @@ describe("useRefineStore", () => {
 
   it("setActiveFileTab changes the active file tab", () => {
     useRefineStore.getState().setActiveFileTab("references/glossary.md");
-    expect(useRefineStore.getState().activeFileTab).toBe("references/glossary.md");
+    expect(useRefineStore.getState().activeFileTab).toBe(
+      "references/glossary.md",
+    );
   });
 
   it("setRunning toggles the running flag", () => {
@@ -387,7 +407,9 @@ describe("useRefineStore", () => {
       sessionId: "session-123",
       activeAgentId: "refine-my-skill-1",
       isRunning: true,
-      messages: [{ id: "m1", role: "agent", agentId: "refine-my-skill-1", timestamp: 1 }],
+      messages: [
+        { id: "m1", role: "agent", agentId: "refine-my-skill-1", timestamp: 1 },
+      ],
     });
 
     useRefineStore.getState().setRunning(false);

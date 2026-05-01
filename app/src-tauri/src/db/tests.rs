@@ -1,6 +1,6 @@
+use super::migrations::*;
 use super::*;
 use crate::types::{AppSettings, ImportedSkill};
-use super::migrations::*;
 
 fn create_test_db() -> Connection {
     create_test_db_for_tests()
@@ -181,16 +181,13 @@ fn test_migration_count_matches_expected() {
         super::mark_migration_applied(&conn, version).unwrap();
     }
     let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM schema_migrations",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
         .unwrap();
     let expected = super::NUMBERED_MIGRATIONS.len() as i64;
     assert_eq!(
-        count,
-        expected,
+        count, expected,
         "Expected {expected} migrations in schema_migrations; got {count}. \
          Did you add a migration without registering it in NUMBERED_MIGRATIONS, or remove one?"
     );
@@ -456,9 +453,16 @@ fn test_delete_skill_soft_deletes_from_master() {
     // Row remains for historical joins but is hidden from active skill lists.
     // get_skill_master_id now filters deleted rows, so verify existence via raw SQL.
     let row_exists: bool = conn
-        .query_row("SELECT COUNT(*) > 0 FROM skills WHERE name = 'to-delete'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM skills WHERE name = 'to-delete'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
-    assert!(row_exists, "soft-deleted row should still exist in the table");
+    assert!(
+        row_exists,
+        "soft-deleted row should still exist in the table"
+    );
     let listed = list_all_skills(&conn).unwrap();
     assert!(!listed.iter().any(|s| s.name == "to-delete"));
 
@@ -482,7 +486,14 @@ fn test_delete_skill_nonexistent_is_ok() {
 #[test]
 fn test_marketplace_skill_creates_master_row_only() {
     let conn = create_test_db();
-    upsert_skill_in_plugin(&conn, "mkt-skill", "marketplace", "platform", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
+    upsert_skill_in_plugin(
+        &conn,
+        "mkt-skill",
+        "marketplace",
+        "platform",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap();
 
     // Skills master row should exist with source=marketplace
     let skills = list_all_skills(&conn).unwrap();
@@ -517,7 +528,9 @@ fn test_redo_workflow_moves_non_default_plugin_skill_to_default_plugin() {
     )
     .unwrap();
     let plugin_id: i64 = conn
-        .query_row("SELECT id FROM plugins WHERE slug = 'my-plugin'", [], |r| r.get(0))
+        .query_row("SELECT id FROM plugins WHERE slug = 'my-plugin'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     // Insert skill directly in non-default plugin (simulates existing non-default skill)
     conn.execute(
@@ -532,7 +545,11 @@ fn test_redo_workflow_moves_non_default_plugin_skill_to_default_plugin() {
 
     // Exactly one skills row must exist
     let count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM skills WHERE name = 'redo-skill'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'redo-skill'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(count, 1, "skill must be in exactly one plugin after redo");
 
@@ -559,9 +576,16 @@ fn test_delete_workflow_run_soft_deletes_skills_master() {
     assert!(get_workflow_run(&conn, "my-skill").unwrap().is_none());
     // get_skill_master_id now filters deleted rows; verify existence via raw SQL.
     let row_exists: bool = conn
-        .query_row("SELECT COUNT(*) > 0 FROM skills WHERE name = 'my-skill'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM skills WHERE name = 'my-skill'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
-    assert!(row_exists, "soft-deleted row should still exist in the table");
+    assert!(
+        row_exists,
+        "soft-deleted row should still exist in the table"
+    );
     let listed = list_all_skills(&conn).unwrap();
     assert!(!listed.iter().any(|s| s.name == "my-skill"));
 }
@@ -645,12 +669,14 @@ fn test_backfill_migration_populates_skills_from_workflow_runs() {
         "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, source)
          VALUES ('created-skill', 'sales', 3, 'in_progress', 'domain', 'created')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
     conn.execute(
         "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, source)
          VALUES ('mkt-skill', 'analytics', 5, 'completed', 'platform', 'marketplace')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Run the skills table + backfill migrations
     run_skills_table_migration(&conn).unwrap();
@@ -774,8 +800,20 @@ fn test_tags_deduplicate() {
 fn test_set_tags_replaces() {
     let conn = create_test_db();
     upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
-    set_skill_tags(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["old-tag".into()]).unwrap();
-    set_skill_tags(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["new-tag".into()]).unwrap();
+    set_skill_tags(
+        &conn,
+        "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["old-tag".into()],
+    )
+    .unwrap();
+    set_skill_tags(
+        &conn,
+        "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["new-tag".into()],
+    )
+    .unwrap();
     let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()])
         .unwrap()
         .remove("my-skill")
@@ -789,9 +827,27 @@ fn test_get_tags_for_skills_batch() {
     upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     upsert_skill(&conn, "skill-c", "skill-builder", "domain").unwrap();
-    set_skill_tags(&conn, "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["tag1".into(), "tag2".into()]).unwrap();
-    set_skill_tags(&conn, "skill-b", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["tag2".into(), "tag3".into()]).unwrap();
-    set_skill_tags(&conn, "skill-c", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["tag1".into()]).unwrap();
+    set_skill_tags(
+        &conn,
+        "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["tag1".into(), "tag2".into()],
+    )
+    .unwrap();
+    set_skill_tags(
+        &conn,
+        "skill-b",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["tag2".into(), "tag3".into()],
+    )
+    .unwrap();
+    set_skill_tags(
+        &conn,
+        "skill-c",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["tag1".into()],
+    )
+    .unwrap();
 
     let names = vec!["skill-a".into(), "skill-b".into(), "skill-c".into()];
     let map = get_tags_for_skills(&conn, &names).unwrap();
@@ -805,8 +861,20 @@ fn test_get_all_tags() {
     let conn = create_test_db();
     upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
-    set_skill_tags(&conn, "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["beta".into(), "alpha".into()]).unwrap();
-    set_skill_tags(&conn, "skill-b", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["beta".into(), "gamma".into()]).unwrap();
+    set_skill_tags(
+        &conn,
+        "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["beta".into(), "alpha".into()],
+    )
+    .unwrap();
+    set_skill_tags(
+        &conn,
+        "skill-b",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["beta".into(), "gamma".into()],
+    )
+    .unwrap();
 
     let all = get_all_tags(&conn).unwrap();
     assert_eq!(all, vec!["alpha", "beta", "gamma"]);
@@ -816,7 +884,13 @@ fn test_get_all_tags() {
 fn test_delete_workflow_run_cascades_tags() {
     let conn = create_test_db();
     save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
-    set_skill_tags(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["tag1".into(), "tag2".into()]).unwrap();
+    set_skill_tags(
+        &conn,
+        "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["tag1".into(), "tag2".into()],
+    )
+    .unwrap();
 
     delete_workflow_run(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
@@ -1067,7 +1141,7 @@ fn test_persist_agent_run_inserts_correctly() {
     assert_eq!(run.agent_id, "agent-1");
     assert_eq!(run.skill_name, "my-skill");
     assert_eq!(run.step_id, 3);
-    assert_eq!(run.model, "claude-sonnet-4-6");
+    assert_eq!(run.model, "sonnet");
     assert_eq!(run.status, "completed");
     assert_eq!(run.input_tokens, 1000);
     assert_eq!(run.output_tokens, 500);
@@ -1149,8 +1223,26 @@ fn test_persist_agent_run_shutdown_does_not_overwrite_completed() {
 
     // Then attempt to overwrite with shutdown (partial/zero data)
     persist_agent_run(
-        &conn, "agent-1", "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "sonnet", "shutdown", 0, 0, 0, 0, 0.0, 0, 0, None,
-        None, 0, 0, None, ws,
+        &conn,
+        "agent-1",
+        "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        0,
+        "sonnet",
+        "shutdown",
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        0,
+        0,
+        None,
+        None,
+        0,
+        0,
+        None,
+        ws,
     )
     .unwrap();
 
@@ -1169,15 +1261,51 @@ fn test_persist_agent_run_shutdown_overwrites_running() {
 
     // First persist as running (agent start)
     persist_agent_run(
-        &conn, "agent-1", "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "sonnet", "running", 0, 0, 0, 0, 0.0, 0, 0, None,
-        None, 0, 0, None, ws,
+        &conn,
+        "agent-1",
+        "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        0,
+        "sonnet",
+        "running",
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        0,
+        0,
+        None,
+        None,
+        0,
+        0,
+        None,
+        ws,
     )
     .unwrap();
 
     // Then shutdown with partial data — should succeed
     persist_agent_run(
-        &conn, "agent-1", "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "sonnet", "shutdown", 500, 200, 0, 0, 0.05, 3000, 0,
-        None, None, 0, 0, None, ws,
+        &conn,
+        "agent-1",
+        "my-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        0,
+        "sonnet",
+        "shutdown",
+        500,
+        200,
+        0,
+        0,
+        0.05,
+        3000,
+        0,
+        None,
+        None,
+        0,
+        0,
+        None,
+        ws,
     )
     .unwrap();
 
@@ -1240,8 +1368,26 @@ fn test_get_usage_summary_correct_aggregates() {
     .unwrap();
     // Running agents are included (toggle hides zero-cost sessions, not individual statuses)
     persist_agent_run(
-        &conn, "agent-3", "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 5, "sonnet", "running", 100, 50, 0, 0, 0.01, 0, 0, None,
-        None, 0, 0, None, ws,
+        &conn,
+        "agent-3",
+        "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        5,
+        "sonnet",
+        "running",
+        100,
+        50,
+        0,
+        0,
+        0.01,
+        0,
+        0,
+        None,
+        None,
+        0,
+        0,
+        None,
+        ws,
     )
     .unwrap();
 
@@ -1527,21 +1673,19 @@ fn test_get_usage_by_model_groups_correctly() {
     let by_model = get_usage_by_model(&conn, false, None, None).unwrap();
     assert_eq!(by_model.len(), 2);
 
-    // Ordered by total_cost DESC: Opus ($0.50) then Sonnet ($0.15).
-    // The query now groups by family name so aliases normalize to "Opus"/"Sonnet".
-    assert_eq!(by_model[0].model, "Opus");
+    // Ordered by total_cost DESC: exact "opus" ($0.50) then exact "sonnet" ($0.15).
+    assert_eq!(by_model[0].model, "opus");
     assert_eq!(by_model[0].run_count, 1);
     assert!((by_model[0].total_cost - 0.50).abs() < 1e-10);
 
-    assert_eq!(by_model[1].model, "Sonnet");
+    assert_eq!(by_model[1].model, "sonnet");
     assert_eq!(by_model[1].run_count, 2);
     assert!((by_model[1].total_cost - 0.15).abs() < 1e-10);
 }
 
 #[test]
-fn test_get_agent_runs_model_family_filter() {
-    // Verify the model_family CASE WHEN clause in get_agent_runs correctly
-    // includes only rows whose model matches the requested family.
+fn test_get_agent_runs_model_filter_matches_exact_model_substring() {
+    // Verify model filtering matches the persisted provider model string directly.
     let conn = create_test_db();
     let ws = Some("wf-session-mf");
     create_workflow_session(&conn, "wf-session-mf", "skill-a", 1000).unwrap();
@@ -1620,26 +1764,34 @@ fn test_get_agent_runs_model_family_filter() {
     let all = get_agent_runs(&conn, false, None, None, None, 100).unwrap();
     assert_eq!(all.len(), 3);
 
-    // Filter Opus: only opus row
-    let opus = get_agent_runs(&conn, false, None, None, Some("Opus"), 100).unwrap();
+    // Filter exact Opus provider model: only opus row
+    let opus = get_agent_runs(&conn, false, None, None, Some("claude-opus-4-6"), 100).unwrap();
     assert_eq!(opus.len(), 1);
     assert_eq!(opus[0].agent_id, "run-opus");
 
-    // Filter Sonnet: only sonnet row
-    let sonnet = get_agent_runs(&conn, false, None, None, Some("Sonnet"), 100).unwrap();
+    // Filter exact Sonnet provider model: only sonnet row
+    let sonnet = get_agent_runs(&conn, false, None, None, Some("claude-sonnet-4-6"), 100).unwrap();
     assert_eq!(sonnet.len(), 1);
     assert_eq!(sonnet[0].agent_id, "run-sonnet");
 
-    // Filter Haiku: only haiku row
-    let haiku = get_agent_runs(&conn, false, None, None, Some("Haiku"), 100).unwrap();
+    // Filter exact Haiku provider model: only haiku row
+    let haiku = get_agent_runs(
+        &conn,
+        false,
+        None,
+        None,
+        Some("claude-haiku-4-5-20251001"),
+        100,
+    )
+    .unwrap();
     assert_eq!(haiku.len(), 1);
     assert_eq!(haiku[0].agent_id, "run-haiku");
 }
 
 #[test]
-fn test_normalize_model_name_at_persist_time() {
-    // Short-form aliases stored via persist_agent_run must be normalized to
-    // canonical full IDs before they reach the DB.
+fn test_persist_agent_run_stores_model_exactly() {
+    // Runtime callers are responsible for passing the Settings-selected provider
+    // model ID. Persistence stores whatever it receives without alias mapping.
     let conn = create_test_db();
     let ws = Some("wf-norm");
     create_workflow_session(&conn, "wf-norm", "skill-x", 1000).unwrap();
@@ -1720,20 +1872,20 @@ fn test_normalize_model_name_at_persist_time() {
         .map(|r| (r.agent_id.as_str(), r.model.as_str()))
         .collect();
 
-    assert_eq!(models["a-sonnet"], "claude-sonnet-4-6");
-    assert_eq!(models["a-haiku"], "claude-haiku-4-5-20251001");
-    assert_eq!(models["a-opus"], "claude-opus-4-6");
+    assert_eq!(models["a-sonnet"], "sonnet");
+    assert_eq!(models["a-haiku"], "Haiku");
+    assert_eq!(models["a-opus"], "opus");
 
-    // model family filter must also work on freshly-persisted canonical IDs
-    let opus = get_agent_runs(&conn, false, None, None, Some("Opus"), 10).unwrap();
+    // model filter works on the exact stored value.
+    let opus = get_agent_runs(&conn, false, None, None, Some("opus"), 10).unwrap();
     assert_eq!(opus.len(), 1);
     assert_eq!(opus[0].agent_id, "a-opus");
 }
 
 #[test]
-fn test_migration_32_normalizes_short_aliases() {
-    // Insert short-form aliases directly (bypassing persist_agent_run normalization)
-    // then verify migration 32 normalizes them.
+fn test_migration_32_preserves_existing_models() {
+    // Migration 32 is a reserved historical slot; clean-break model routing does
+    // not rewrite persisted model values.
     let conn = create_test_db();
     create_workflow_session(&conn, "wf-mig32", "skill-y", 1000).unwrap();
     conn.execute(
@@ -1744,7 +1896,7 @@ fn test_migration_32_normalizes_short_aliases() {
         [],
     ).unwrap();
 
-    run_normalize_model_names_migration(&conn).unwrap();
+    run_reserved_model_settings_migration(&conn).unwrap();
 
     let runs = get_agent_runs(&conn, false, None, None, None, 10).unwrap();
     let models: std::collections::HashMap<&str, &str> = runs
@@ -1752,9 +1904,9 @@ fn test_migration_32_normalizes_short_aliases() {
         .map(|r| (r.agent_id.as_str(), r.model.as_str()))
         .collect();
 
-    assert_eq!(models["old-sonnet"], "claude-sonnet-4-6");
-    assert_eq!(models["old-haiku"], "claude-haiku-4-5-20251001");
-    assert_eq!(models["old-opus"], "claude-opus-4-6");
+    assert_eq!(models["old-sonnet"], "Sonnet");
+    assert_eq!(models["old-haiku"], "haiku");
+    assert_eq!(models["old-opus"], "Opus");
 }
 
 #[test]
@@ -1953,23 +2105,23 @@ fn test_composite_pk_allows_same_agent_different_models() {
     let runs = get_session_agent_runs(&conn, "wf-session-cpk").unwrap();
     assert_eq!(runs.len(), 2);
 
-    // Verify distinct canonical model IDs (aliases normalize at persist time)
+    // Verify distinct stored model IDs; clean-break routing does not normalize aliases.
     let models: Vec<&str> = runs.iter().map(|r| r.model.as_str()).collect();
-    assert!(models.contains(&"claude-opus-4-6"));
-    assert!(models.contains(&"claude-sonnet-4-6"));
+    assert!(models.contains(&"opus"));
+    assert!(models.contains(&"sonnet"));
 
     // Both should have the same agent_id
     assert!(runs.iter().all(|r| r.agent_id == "orchestrator-1"));
 
-    // get_usage_by_model groups by family name so both normalize to their family.
+    // get_usage_by_model groups by the exact stored model string.
     let by_model = get_usage_by_model(&conn, false, None, None).unwrap();
     assert_eq!(by_model.len(), 2);
 
-    let opus = by_model.iter().find(|m| m.model == "Opus").unwrap();
+    let opus = by_model.iter().find(|m| m.model == "opus").unwrap();
     assert!((opus.total_cost - 0.50).abs() < 1e-10);
     assert_eq!(opus.run_count, 1);
 
-    let sonnet = by_model.iter().find(|m| m.model == "Sonnet").unwrap();
+    let sonnet = by_model.iter().find(|m| m.model == "sonnet").unwrap();
     assert!((sonnet.total_cost - 0.08).abs() < 1e-10);
     assert_eq!(sonnet.run_count, 1);
 }
@@ -1980,8 +2132,26 @@ fn test_composite_pk_upsert_same_agent_and_model() {
 
     // Insert then update same agent_id + model — should replace, not duplicate
     persist_agent_run(
-        &conn, "agent-1", "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 1, "sonnet", "running", 0, 0, 0, 0, 0.0, 0, 0, None, None,
-        0, 0, None, None,
+        &conn,
+        "agent-1",
+        "skill-a",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        1,
+        "sonnet",
+        "running",
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        0,
+        0,
+        None,
+        None,
+        0,
+        0,
+        None,
+        None,
     )
     .unwrap();
     persist_agent_run(
@@ -2254,8 +2424,16 @@ fn test_reconcile_orphaned_sessions_dead_pid() {
 fn test_delete_workflow_run_non_default_plugin() {
     let conn = create_test_db();
     // Create a non-default plugin and a skill in it.
-    ensure_plugin(&conn, "mkt-del", "Mkt Del", "marketplace", Some("https://example.com"), None, false)
-        .expect("ensure_plugin");
+    ensure_plugin(
+        &conn,
+        "mkt-del",
+        "Mkt Del",
+        "marketplace",
+        Some("https://example.com"),
+        None,
+        false,
+    )
+    .expect("ensure_plugin");
     upsert_skill_in_plugin(&conn, "mkt-skill-del", "marketplace", "domain", "mkt-del")
         .expect("upsert skill in non-default plugin");
     // Insert workflow_run directly — save_workflow_run would create a duplicate skill in the
@@ -2273,18 +2451,36 @@ fn test_delete_workflow_run_non_default_plugin() {
     assert!(get_workflow_run(&conn, "mkt-skill-del").unwrap().is_none());
     // Skill master row should be soft-deleted
     let row_exists: bool = conn
-        .query_row("SELECT COUNT(*) > 0 FROM skills WHERE name = 'mkt-skill-del'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM skills WHERE name = 'mkt-skill-del'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
-    assert!(row_exists, "soft-deleted row should still exist in the table");
+    assert!(
+        row_exists,
+        "soft-deleted row should still exist in the table"
+    );
     let listed = list_all_skills(&conn).unwrap();
-    assert!(!listed.iter().any(|s| s.name == "mkt-skill-del"), "soft-deleted skill should not appear in active list");
+    assert!(
+        !listed.iter().any(|s| s.name == "mkt-skill-del"),
+        "soft-deleted skill should not appear in active list"
+    );
 }
 
 #[test]
 fn test_delete_imported_skill_by_name_non_default_plugin() {
     let conn = create_test_db();
-    ensure_plugin(&conn, "mkt-imp", "Mkt Imp", "marketplace", Some("https://example.com"), None, false)
-        .expect("ensure_plugin");
+    ensure_plugin(
+        &conn,
+        "mkt-imp",
+        "Mkt Imp",
+        "marketplace",
+        Some("https://example.com"),
+        None,
+        false,
+    )
+    .expect("ensure_plugin");
     upsert_skill_in_plugin(&conn, "mkt-imp-skill", "marketplace", "domain", "mkt-imp")
         .expect("upsert skill");
     let skill = ImportedSkill {
@@ -2310,13 +2506,17 @@ fn test_delete_imported_skill_by_name_non_default_plugin() {
     test_insert_imported_skill(&conn, &skill).unwrap();
 
     // Verify it exists
-    assert!(get_imported_skill(&conn, "mkt-imp-skill", "mkt-imp").unwrap().is_some());
+    assert!(get_imported_skill(&conn, "mkt-imp-skill", "mkt-imp")
+        .unwrap()
+        .is_some());
 
     // Delete by name with correct plugin_slug
     delete_imported_skill_by_name(&conn, "mkt-imp-skill", "mkt-imp").unwrap();
 
     // Verify it's gone
-    assert!(get_imported_skill(&conn, "mkt-imp-skill", "mkt-imp").unwrap().is_none());
+    assert!(get_imported_skill(&conn, "mkt-imp-skill", "mkt-imp")
+        .unwrap()
+        .is_none());
 }
 
 #[test]
@@ -2953,16 +3153,30 @@ fn test_delete_imported_skill_by_name() {
     test_insert_imported_skill(&conn, &skill).unwrap();
 
     // Verify it exists
-    assert!(get_imported_skill(&conn, "delete-me", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().is_some());
+    assert!(
+        get_imported_skill(&conn, "delete-me", crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .is_some()
+    );
 
     // Delete by name
-    delete_imported_skill_by_name(&conn, "delete-me", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
+    delete_imported_skill_by_name(&conn, "delete-me", crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+        .unwrap();
 
     // Verify it's gone
-    assert!(get_imported_skill(&conn, "delete-me", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().is_none());
+    assert!(
+        get_imported_skill(&conn, "delete-me", crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .is_none()
+    );
 
     // Deleting non-existent name should not error
-    delete_imported_skill_by_name(&conn, "does-not-exist", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
+    delete_imported_skill_by_name(
+        &conn,
+        "does-not-exist",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -3374,10 +3588,15 @@ fn test_has_active_session_with_live_pid_uses_skill_id_fk() {
 fn test_migration_35_drops_workflow_runs_metadata_columns() {
     let conn = create_test_db();
     // After migration 35, these 6 columns must not exist in workflow_runs
-    let columns_removed = ["description", "version", "model", "argument_hint", "user_invocable", "disable_model_invocation"];
-    let mut stmt = conn
-        .prepare("PRAGMA table_info(workflow_runs)")
-        .unwrap();
+    let columns_removed = [
+        "description",
+        "version",
+        "model",
+        "argument_hint",
+        "user_invocable",
+        "disable_model_invocation",
+    ];
+    let mut stmt = conn.prepare("PRAGMA table_info(workflow_runs)").unwrap();
     let column_names: Vec<String> = stmt
         .query_map([], |row| row.get::<_, String>(1))
         .unwrap()
@@ -3403,7 +3622,10 @@ fn test_migration_36_drops_workspace_skills_table() {
             |row| row.get(0),
         )
         .unwrap();
-    assert!(!exists, "workspace_skills table should have been dropped by migration 36");
+    assert!(
+        !exists,
+        "workspace_skills table should have been dropped by migration 36"
+    );
 }
 
 #[test]
@@ -3419,7 +3641,10 @@ fn test_list_imported_skills_filtered() {
         skill_name: "test-skill".to_string(),
         library_key: Some("imported:imp-test-1".to_string()),
         is_active: true,
-        disk_path: std::env::temp_dir().join("test-skill").to_string_lossy().to_string(),
+        disk_path: std::env::temp_dir()
+            .join("test-skill")
+            .to_string_lossy()
+            .to_string(),
         imported_at: "2025-01-01T00:00:00Z".to_string(),
         is_bundled: false,
         description: None,
@@ -3450,10 +3675,12 @@ fn test_list_imported_skills_filtered() {
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].skill_name, "test-skill");
 
-    let filtered = list_imported_skills_filtered(&conn, Some("https://github.com/acme/skills")).unwrap();
+    let filtered =
+        list_imported_skills_filtered(&conn, Some("https://github.com/acme/skills")).unwrap();
     assert_eq!(filtered.len(), 1);
 
-    let no_match = list_imported_skills_filtered(&conn, Some("https://github.com/other/repo")).unwrap();
+    let no_match =
+        list_imported_skills_filtered(&conn, Some("https://github.com/other/repo")).unwrap();
     assert!(no_match.is_empty());
 }
 
@@ -3465,7 +3692,10 @@ fn test_get_imported_skill_by_id() {
         skill_name: "test-byid".to_string(),
         library_key: Some("imported:imp-test-byid".to_string()),
         is_active: true,
-        disk_path: std::env::temp_dir().join("test-byid").to_string_lossy().to_string(),
+        disk_path: std::env::temp_dir()
+            .join("test-byid")
+            .to_string_lossy()
+            .to_string(),
         imported_at: "2025-01-01T00:00:00Z".to_string(),
         is_bundled: false,
         description: None,
@@ -3498,7 +3728,10 @@ fn test_delete_imported_skill_by_skill_id() {
         skill_name: "test-del".to_string(),
         library_key: Some("imported:imp-test-del".to_string()),
         is_active: true,
-        disk_path: std::env::temp_dir().join("test-del").to_string_lossy().to_string(),
+        disk_path: std::env::temp_dir()
+            .join("test-del")
+            .to_string_lossy()
+            .to_string(),
         imported_at: "2025-01-01T00:00:00Z".to_string(),
         is_bundled: false,
         description: None,
@@ -3514,12 +3747,15 @@ fn test_delete_imported_skill_by_skill_id() {
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill).unwrap();
-    assert!(get_imported_skill_by_id(&conn, "imp-test-del").unwrap().is_some());
+    assert!(get_imported_skill_by_id(&conn, "imp-test-del")
+        .unwrap()
+        .is_some());
 
     delete_imported_skill_by_skill_id(&conn, "imp-test-del").unwrap();
-    assert!(get_imported_skill_by_id(&conn, "imp-test-del").unwrap().is_none());
+    assert!(get_imported_skill_by_id(&conn, "imp-test-del")
+        .unwrap()
+        .is_none());
 }
-
 
 #[test]
 fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
@@ -3586,7 +3822,8 @@ fn test_migration_34_converts_ghost_running_rows_to_shutdown() {
           total_cost, duration_ms, workflow_session_id)
          VALUES ('ghost-agent', 'my-skill', 1, 'haiku', 'running', 0, 0, 0.0, 0, 'session-abc')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Also insert a completed row — migration must not touch it
     conn.execute(
@@ -3646,7 +3883,10 @@ fn test_foreign_keys_enabled_after_init() {
     let fk_enabled: bool = conn
         .pragma_query_value(None, "foreign_keys", |row| row.get(0))
         .unwrap();
-    assert!(fk_enabled, "PRAGMA foreign_keys must be ON after init_db / create_test_db_for_tests");
+    assert!(
+        fk_enabled,
+        "PRAGMA foreign_keys must be ON after init_db / create_test_db_for_tests"
+    );
 }
 
 #[test]
@@ -3658,7 +3898,13 @@ fn test_fk_cascade_deletes_child_rows_when_skill_deleted() {
 
     // Add child rows in skill_tags and skill_locks
     let tags = vec!["tag1".to_string(), "tag2".to_string()];
-    set_skill_tags(&conn, "cascade-test", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &tags).unwrap();
+    set_skill_tags(
+        &conn,
+        "cascade-test",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &tags,
+    )
+    .unwrap();
     conn.execute(
         "INSERT INTO skill_locks (skill_name, instance_id, pid, skill_id)
          VALUES ('cascade-test', 'inst-1', 999,
@@ -3824,13 +4070,25 @@ fn test_workflow_runs_has_no_metadata_columns() {
 #[test]
 fn test_list_imported_skills_excludes_soft_deleted() {
     let conn = create_test_db();
-    ensure_plugin(&conn, "mkt-plugin", "Marketplace Plugin", "marketplace", None, None, false).unwrap();
+    ensure_plugin(
+        &conn,
+        "mkt-plugin",
+        "Marketplace Plugin",
+        "marketplace",
+        None,
+        None,
+        false,
+    )
+    .unwrap();
     let skill = ImportedSkill {
         skill_id: "mkt-soft-del".to_string(),
         skill_name: "soft-del-skill".to_string(),
         library_key: Some("imported:mkt-soft-del".to_string()),
         is_active: true,
-        disk_path: std::env::temp_dir().join("soft-del-skill").to_string_lossy().to_string(),
+        disk_path: std::env::temp_dir()
+            .join("soft-del-skill")
+            .to_string_lossy()
+            .to_string(),
         imported_at: "2025-01-01T00:00:00Z".to_string(),
         is_bundled: false,
         description: None,
@@ -3856,11 +4114,17 @@ fn test_list_imported_skills_excludes_soft_deleted() {
 
     // After soft-delete: skill must NOT appear in listing
     let after = list_imported_skills_filtered(&conn, None).unwrap();
-    assert!(after.is_empty(), "soft-deleted skill must not appear in imported skills listing");
+    assert!(
+        after.is_empty(),
+        "soft-deleted skill must not appear in imported skills listing"
+    );
 
     // Also verify get_imported_skill_by_id excludes it
     let by_id = get_imported_skill_by_id(&conn, "mkt-soft-del").unwrap();
-    assert!(by_id.is_none(), "soft-deleted skill must not be returned by get_imported_skill_by_id");
+    assert!(
+        by_id.is_none(),
+        "soft-deleted skill must not be returned by get_imported_skill_by_id"
+    );
 }
 
 /// VU-984: lock acquisition must succeed for skills whose master row is active.
@@ -3868,11 +4132,23 @@ fn test_list_imported_skills_excludes_soft_deleted() {
 #[test]
 fn test_acquire_lock_works_for_marketplace_skill() {
     let conn = create_test_db();
-    ensure_plugin(&conn, "mkt-lock", "Marketplace Lock Test", "marketplace", None, None, false).unwrap();
+    ensure_plugin(
+        &conn,
+        "mkt-lock",
+        "Marketplace Lock Test",
+        "marketplace",
+        None,
+        None,
+        false,
+    )
+    .unwrap();
     upsert_skill_in_plugin(&conn, "mkt-lockable", "marketplace", "domain", "mkt-lock").unwrap();
 
     let result = acquire_skill_lock(&conn, "mkt-lockable", "inst-1", std::process::id());
-    assert!(result.is_ok(), "acquire_skill_lock should succeed for marketplace skill with active master row");
+    assert!(
+        result.is_ok(),
+        "acquire_skill_lock should succeed for marketplace skill with active master row"
+    );
 
     release_skill_lock(&conn, "mkt-lockable", "inst-1").unwrap();
 }

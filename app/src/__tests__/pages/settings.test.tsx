@@ -188,7 +188,6 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
     extendedThinking: settings.extended_thinking,
     interleavedThinkingBeta: settings.interleaved_thinking_beta ?? true,
     sdkEffort: settings.sdk_effort,
-    fallbackModel: settings.fallback_model,
     refinePromptSuggestions: settings.refine_prompt_suggestions ?? true,
     maxDimensions: settings.max_dimensions ?? 5,
     industry: settings.industry,

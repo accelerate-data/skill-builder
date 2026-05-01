@@ -1,25 +1,25 @@
-use std::path::{Path, PathBuf};
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+use std::path::{Path, PathBuf};
 
 use super::deploy::{
     copy_agents_to_claude_dir, copy_directory_recursive, copy_managed_plugins_to_claude_dir,
-    workspace_already_copied, mark_workspace_copied, invalidate_workspace_cache,
+    invalidate_workspace_cache, mark_workspace_copied, workspace_already_copied,
+};
+use super::evaluation::get_step_output_files;
+use super::guards::{
+    make_agent_id, parse_decisions_guard, parse_scope_recommendation,
+    validate_decisions_exist_inner, workflow_step_runtime_label,
 };
 use super::output_format::{
     answer_evaluator_output_format, materialize_answer_evaluation_output_value,
     materialize_workflow_step_output_value, publish_commit_and_tag_generated_skill,
 };
-use super::guards::{
-    make_agent_id, parse_decisions_guard, parse_scope_recommendation,
-    validate_decisions_exist_inner, workflow_step_runtime_label,
-};
 use super::prompt::{build_prompt, PromptParams};
-use super::user_context::{format_user_context, write_user_context_file};
 use super::step_config::{
     build_betas, get_step_config, thinking_budget_for_step, workflow_output_format_for_agent,
     WORKFLOW_AGENT_IDENTITY,
 };
-use super::evaluation::get_step_output_files;
+use super::user_context::{format_user_context, write_user_context_file};
 
 fn valid_clarifications_value() -> serde_json::Value {
     serde_json::json!({
@@ -53,7 +53,6 @@ fn valid_clarifications_value() -> serde_json::Value {
         "notes": []
     })
 }
-
 
 #[test]
 fn test_get_step_config_valid_steps() {
@@ -99,11 +98,26 @@ fn test_get_step_output_files_unknown_step() {
 
 #[test]
 fn test_step_config_canonical_agent_names() {
-    assert_eq!(WORKFLOW_AGENT_IDENTITY, "skill-content-researcher:skill-builder");
-    assert_eq!(get_step_config(0).unwrap().agent_name, "skill-content-researcher:research-orchestrator");
-    assert_eq!(get_step_config(1).unwrap().agent_name, "skill-content-researcher:detailed-research");
-    assert_eq!(get_step_config(2).unwrap().agent_name, "skill-content-researcher:confirm-decisions");
-    assert_eq!(get_step_config(3).unwrap().agent_name, "skill-creator:generate-skill");
+    assert_eq!(
+        WORKFLOW_AGENT_IDENTITY,
+        "skill-content-researcher:skill-builder"
+    );
+    assert_eq!(
+        get_step_config(0).unwrap().agent_name,
+        "skill-content-researcher:research-orchestrator"
+    );
+    assert_eq!(
+        get_step_config(1).unwrap().agent_name,
+        "skill-content-researcher:detailed-research"
+    );
+    assert_eq!(
+        get_step_config(2).unwrap().agent_name,
+        "skill-content-researcher:confirm-decisions"
+    );
+    assert_eq!(
+        get_step_config(3).unwrap().agent_name,
+        "skill-creator:generate-skill"
+    );
 }
 
 #[test]
@@ -142,9 +156,16 @@ fn test_workflow_step_tools_are_one_shot_safe() {
 
 #[test]
 fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
-    assert!(workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").is_some());
-    assert!(workflow_output_format_for_agent("skill-content-researcher:detailed-research").is_some());
-    assert!(workflow_output_format_for_agent("skill-content-researcher:confirm-decisions").is_some());
+    assert!(
+        workflow_output_format_for_agent("skill-content-researcher:research-orchestrator")
+            .is_some()
+    );
+    assert!(
+        workflow_output_format_for_agent("skill-content-researcher:detailed-research").is_some()
+    );
+    assert!(
+        workflow_output_format_for_agent("skill-content-researcher:confirm-decisions").is_some()
+    );
     assert!(workflow_output_format_for_agent("skill-creator:generate-skill").is_some());
 }
 
@@ -182,7 +203,8 @@ fn assert_inline_schema_basics(schema: &serde_json::Value, label: &str) {
 
 #[test]
 fn test_research_step_schema_is_inline_with_all_required() {
-    let format = workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").unwrap();
+    let format =
+        workflow_output_format_for_agent("skill-content-researcher:research-orchestrator").unwrap();
     let schema = &format["schema"];
     assert_inline_schema_basics(schema, "research-step");
     let required = schema["required"].as_array().expect("required array");
@@ -200,7 +222,8 @@ fn test_research_step_schema_is_inline_with_all_required() {
 
 #[test]
 fn test_detailed_research_schema_is_inline_with_all_required() {
-    let format = workflow_output_format_for_agent("skill-content-researcher:detailed-research").unwrap();
+    let format =
+        workflow_output_format_for_agent("skill-content-researcher:detailed-research").unwrap();
     let schema = &format["schema"];
     assert_inline_schema_basics(schema, "detailed-research");
     let required = schema["required"].as_array().expect("required array");
@@ -218,7 +241,8 @@ fn test_detailed_research_schema_is_inline_with_all_required() {
 
 #[test]
 fn test_decisions_schema_is_inline_with_all_required() {
-    let format = workflow_output_format_for_agent("skill-content-researcher:confirm-decisions").unwrap();
+    let format =
+        workflow_output_format_for_agent("skill-content-researcher:confirm-decisions").unwrap();
     let schema = &format["schema"];
     assert_inline_schema_basics(schema, "decisions");
     let required = schema["required"].as_array().expect("required array");
@@ -237,8 +261,12 @@ fn test_decisions_schema_is_inline_with_all_required() {
         status.get("enum").is_some(),
         "Decision.status must have inlined enum values"
     );
-    let enum_vals: Vec<&str> = status["enum"].as_array().unwrap()
-        .iter().filter_map(|v| v.as_str()).collect();
+    let enum_vals: Vec<&str> = status["enum"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
     assert!(enum_vals.contains(&"resolved"));
     assert!(enum_vals.contains(&"conflict-resolved"));
     assert!(enum_vals.contains(&"needs-review"));
@@ -295,8 +323,7 @@ fn test_generated_schemas_are_sdk_compatible() {
 
         // Must be draft-07
         assert_eq!(
-            schema["$schema"],
-            "http://json-schema.org/draft-07/schema#",
+            schema["$schema"], "http://json-schema.org/draft-07/schema#",
             "{agent}: schema must be draft-07"
         );
 
@@ -385,8 +412,7 @@ fn test_materialize_answer_evaluation_rejects_invalid_payload() {
     });
 
     let err =
-        materialize_answer_evaluation_output_value(&workspace_dir, &invalid_payload)
-            .unwrap_err();
+        materialize_answer_evaluation_output_value(&workspace_dir, &invalid_payload).unwrap_err();
     assert!(err.contains("Invalid answer evaluation output"));
     assert!(!workspace_dir.join("answer-evaluation.json").exists());
 }
@@ -425,8 +451,7 @@ fn test_materialize_answer_evaluation_rejects_vague_without_reason() {
             {"question_id": "Q1", "verdict": "vague"}
         ]
     });
-    let err = materialize_answer_evaluation_output_value(&workspace_dir, &payload)
-        .unwrap_err();
+    let err = materialize_answer_evaluation_output_value(&workspace_dir, &payload).unwrap_err();
     assert!(err.contains("reason is required for vague verdict"));
 }
 
@@ -583,9 +608,8 @@ fn test_materialize_step1_writes_clarifications_only() {
 fn test_materialize_step0_rejects_non_object_payload() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 0, &serde_json::json!(null))
-            .unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 0, &serde_json::json!(null))
+        .unwrap_err();
     assert!(err.contains("structured_output must be a JSON object"));
 }
 
@@ -599,8 +623,7 @@ fn test_materialize_step0_rejects_wrong_status() {
         "question_count": 1,
         "research_output": valid_clarifications_value()
     });
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap_err();
     assert!(err.contains("structured_output.status must be 'research_complete'"));
 }
 
@@ -615,9 +638,12 @@ fn test_materialize_step0_rejects_missing_required_fields() {
         "question_count": 1,
         "research_output": valid_clarifications_value()
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 0, &missing_dimensions)
-        .unwrap_err();
-    assert!(err.contains("dimensions_selected"), "should mention missing field: {err}");
+    let err =
+        materialize_workflow_step_output_value(&skill_root, 0, &missing_dimensions).unwrap_err();
+    assert!(
+        err.contains("dimensions_selected"),
+        "should mention missing field: {err}"
+    );
 
     // Wrong type (string for integer) still errors
     let non_integer_question_count = serde_json::json!({
@@ -626,12 +652,8 @@ fn test_materialize_step0_rejects_missing_required_fields() {
         "question_count": "one",
         "research_output": valid_clarifications_value()
     });
-    let err = materialize_workflow_step_output_value(
-        &skill_root,
-        0,
-        &non_integer_question_count,
-    )
-    .unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 0, &non_integer_question_count)
+        .unwrap_err();
     assert!(err.contains("invalid research step output"));
 }
 
@@ -683,11 +705,16 @@ fn test_materialize_step0_rejects_missing_research_output() {
         }
     });
     let err_invalid_nested =
-        materialize_workflow_step_output_value(&skill_root, 0, &invalid_nested)
-            .unwrap_err();
+        materialize_workflow_step_output_value(&skill_root, 0, &invalid_nested).unwrap_err();
     // Typed deserialization still rejects Choice missing `is_other`
-    assert!(err_invalid_nested.contains("invalid research step output"), "unexpected error: {err_invalid_nested}");
-    assert!(err_invalid_nested.contains("is_other"), "should mention is_other: {err_invalid_nested}");
+    assert!(
+        err_invalid_nested.contains("invalid research step output"),
+        "unexpected error: {err_invalid_nested}"
+    );
+    assert!(
+        err_invalid_nested.contains("is_other"),
+        "should mention is_other: {err_invalid_nested}"
+    );
 }
 
 #[test]
@@ -700,8 +727,7 @@ fn test_materialize_step1_rejects_wrong_status() {
         "section_count": 1,
         "clarifications_json": valid_clarifications_value()
     });
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
     assert!(err.contains("structured_output.status must be 'detailed_research_complete'"));
 }
 
@@ -718,7 +744,10 @@ fn test_materialize_step1_rejects_missing_required_fields() {
     });
     let err = materialize_workflow_step_output_value(&skill_root, 1, &missing_refinement_count)
         .unwrap_err();
-    assert!(err.contains("refinement_count"), "should mention missing field: {err}");
+    assert!(
+        err.contains("refinement_count"),
+        "should mention missing field: {err}"
+    );
 
     // Wrong type (string for integer) still errors
     let non_integer_section_count = serde_json::json!({
@@ -727,12 +756,8 @@ fn test_materialize_step1_rejects_missing_required_fields() {
         "section_count": "one",
         "clarifications_json": valid_clarifications_value()
     });
-    let err = materialize_workflow_step_output_value(
-        &skill_root,
-        1,
-        &non_integer_section_count,
-    )
-    .unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 1, &non_integer_section_count)
+        .unwrap_err();
     assert!(err.contains("invalid detailed research output"));
 }
 
@@ -776,10 +801,12 @@ fn test_materialize_step1_validation_failure_keeps_existing_clarifications() {
             "notes": "not-an-array"
         }
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 1, &invalid_payload)
-        .unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 1, &invalid_payload).unwrap_err();
     // Typed deserialization catches notes type mismatch
-    assert!(err.contains("invalid detailed research output"), "unexpected error: {err}");
+    assert!(
+        err.contains("invalid detailed research output"),
+        "unexpected error: {err}"
+    );
     assert_eq!(
         std::fs::read_to_string(context_dir.join("clarifications.json")).unwrap(),
         "{\"old\":true}"
@@ -810,10 +837,12 @@ fn test_materialize_step1_rejects_invalid_answer_evaluator_notes_shape() {
         }
     });
 
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
     // Typed deserialization rejects non-array answer_evaluator_notes
-    assert!(err.contains("invalid detailed research output"), "unexpected error: {err}");
+    assert!(
+        err.contains("invalid detailed research output"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
@@ -832,10 +861,7 @@ fn test_validate_clarifications_rejects_string_section_id() {
     v["sections"][0]["id"] = serde_json::json!("S1");
     let err = super::step_config::validate_clarifications_json(&v).unwrap_err();
     // Typed deserialization rejects string where i64 is expected
-    assert!(
-        err.contains("invalid type"),
-        "unexpected error: {err}"
-    );
+    assert!(err.contains("invalid type"), "unexpected error: {err}");
 }
 
 #[test]
@@ -844,10 +870,7 @@ fn test_validate_clarifications_rejects_null_section_id() {
     v["sections"][0]["id"] = serde_json::json!(null);
     let err = super::step_config::validate_clarifications_json(&v).unwrap_err();
     // Typed deserialization rejects null where i64 is expected
-    assert!(
-        err.contains("invalid type"),
-        "unexpected error: {err}"
-    );
+    assert!(err.contains("invalid type"), "unexpected error: {err}");
 }
 
 #[test]
@@ -950,9 +973,8 @@ fn test_materialize_step2_revised_conflict_decisions_do_not_trigger_guard() {
 fn test_materialize_step2_rejects_null_payload() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
-            .unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
+        .unwrap_err();
     assert!(err.contains("structured_output must be a JSON object"));
 }
 
@@ -1133,8 +1155,7 @@ fn test_materialize_step3_rejects_wrong_status() {
     let payload = serde_json::json!({
         "status": "decisions_complete"
     });
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
     assert!(err.contains("must be 'generated', 'rewritten', or 'complete'|'partial'|'skipped'"));
 }
 
@@ -1151,13 +1172,16 @@ fn test_build_prompt_all_three_paths() {
         step_id: 1,
     });
     assert!(prompt.contains("my-skill"));
-    assert!(prompt
-        .contains("The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"));
+    assert!(prompt.contains(
+        "The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"
+    ));
     assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/skills/my-skill"));
     assert!(prompt.contains("This skill output directory is the configured Settings Skills Folder target for the shipped skill"));
     assert!(prompt.contains("shipped skill files must be written only to the skill output directory, never to the workspace directory or a workspace skill/ subdirectory"));
     assert!(prompt.contains("The user context file is at: /home/user/.vibedata/skill-builder/skills/my-skill/user-context.md"));
-    assert!(prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/skills/my-skill/context"));
+    assert!(prompt.contains(
+        "The context directory is: /home/user/.vibedata/skill-builder/skills/my-skill/context"
+    ));
 }
 
 #[test]
@@ -1215,23 +1239,53 @@ fn test_build_prompt_does_not_include_schema_file_path() {
     // use SDK outputFormat for structured contracts.
     for step_id in [1u32, 2, 3] {
         let prompt = build_prompt(&PromptParams {
-            skill_name: "s", workspace_path: "/ws", plugin_slug: DEFAULT_PLUGIN_SLUG,
-            skills_path: "/sk", author_login: None, created_at: None, subagent_directive: None, step_id,
+            skill_name: "s",
+            workspace_path: "/ws",
+            plugin_slug: DEFAULT_PLUGIN_SLUG,
+            skills_path: "/sk",
+            author_login: None,
+            created_at: None,
+            subagent_directive: None,
+            step_id,
         });
-        assert!(!prompt.contains("step-0-research.json"), "step {step_id}: schema file path must not be in prompt");
-        assert!(!prompt.contains("step-1-detailed-research.json"), "step {step_id}: schema file path must not be in prompt");
-        assert!(!prompt.contains("step-2-decisions.json"), "step {step_id}: schema file path must not be in prompt");
-        assert!(!prompt.contains("Do NOT read other step schema files"), "step {step_id}: old schema read directive must not be in prompt");
+        assert!(
+            !prompt.contains("step-0-research.json"),
+            "step {step_id}: schema file path must not be in prompt"
+        );
+        assert!(
+            !prompt.contains("step-1-detailed-research.json"),
+            "step {step_id}: schema file path must not be in prompt"
+        );
+        assert!(
+            !prompt.contains("step-2-decisions.json"),
+            "step {step_id}: schema file path must not be in prompt"
+        );
+        assert!(
+            !prompt.contains("Do NOT read other step schema files"),
+            "step {step_id}: old schema read directive must not be in prompt"
+        );
     }
     // Step-specific output-type hints are still present (from step_output_hint).
     let step1 = build_prompt(&PromptParams {
-        skill_name: "s", workspace_path: "/ws", plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: "/sk", author_login: None, created_at: None, subagent_directive: None, step_id: 1,
+        skill_name: "s",
+        workspace_path: "/ws",
+        plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: "/sk",
+        author_login: None,
+        created_at: None,
+        subagent_directive: None,
+        step_id: 1,
     });
     assert!(step1.contains("DetailedResearchOutput"));
     let step2 = build_prompt(&PromptParams {
-        skill_name: "s", workspace_path: "/ws", plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: "/sk", author_login: None, created_at: None, subagent_directive: None, step_id: 2,
+        skill_name: "s",
+        workspace_path: "/ws",
+        plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: "/sk",
+        author_login: None,
+        created_at: None,
+        subagent_directive: None,
+        step_id: 2,
     });
     assert!(step2.contains("DecisionsOutput"));
 }
@@ -1240,9 +1294,18 @@ fn test_build_prompt_does_not_include_schema_file_path() {
 fn test_output_format_contains_correct_inline_schema_per_workflow_step() {
     use crate::generated::schemas;
     let cases: &[(&str, &str)] = &[
-        ("skill-content-researcher:research-orchestrator", schemas::RESEARCH_STEP_INLINE_SCHEMA),
-        ("skill-content-researcher:detailed-research", schemas::DETAILED_RESEARCH_INLINE_SCHEMA),
-        ("skill-content-researcher:confirm-decisions", schemas::DECISIONS_INLINE_SCHEMA),
+        (
+            "skill-content-researcher:research-orchestrator",
+            schemas::RESEARCH_STEP_INLINE_SCHEMA,
+        ),
+        (
+            "skill-content-researcher:detailed-research",
+            schemas::DETAILED_RESEARCH_INLINE_SCHEMA,
+        ),
+        (
+            "skill-content-researcher:confirm-decisions",
+            schemas::DECISIONS_INLINE_SCHEMA,
+        ),
     ];
     for (agent, expected_schema) in cases {
         let format = workflow_output_format_for_agent(agent)
@@ -1252,7 +1315,10 @@ fn test_output_format_contains_correct_inline_schema_per_workflow_step() {
             .expect("outputFormat must contain schema");
         let expected_schema: serde_json::Value =
             serde_json::from_str(expected_schema).expect("generated schema must parse");
-        assert_eq!(*actual_schema, expected_schema, "{agent}: outputFormat must use the inline schema");
+        assert_eq!(
+            *actual_schema, expected_schema,
+            "{agent}: outputFormat must use the inline schema"
+        );
     }
 }
 
@@ -1261,7 +1327,9 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
     let workspace_path = "/home/user/.vibedata/skill-builder";
     let skill_name = "my-skill";
     let skills_path = "/home/user/my-skills";
-    let workspace_dir = std::path::Path::new(workspace_path).join(DEFAULT_PLUGIN_SLUG).join(skill_name);
+    let workspace_dir = std::path::Path::new(workspace_path)
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_dir = std::path::Path::new(skills_path)
         .join(DEFAULT_PLUGIN_SLUG)
@@ -1278,11 +1346,14 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
     );
 
     assert!(prompt.contains("The skill name is: my-skill"));
-    assert!(prompt
-        .contains("The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"));
+    assert!(prompt.contains(
+        "The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"
+    ));
     assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/skills/my-skill"));
     assert!(prompt.contains("The user context file is at: /home/user/.vibedata/skill-builder/skills/my-skill/user-context.md"));
-    assert!(prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/skills/my-skill/context"));
+    assert!(prompt.contains(
+        "The context directory is: /home/user/.vibedata/skill-builder/skills/my-skill/context"
+    ));
     assert!(prompt.contains("do not create any directories"));
 }
 
@@ -1331,7 +1402,10 @@ fn test_delete_step_output_files_from_step_onwards() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     // Context files live in workspace_path/{plugin_slug}/skill_name/context/
     let skill_dir = skills_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
-    let workspace_skill_dir = workspace_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
+    let workspace_skill_dir = workspace_tmp
+        .path()
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("my-skill");
     std::fs::create_dir_all(workspace_skill_dir.join("context")).unwrap();
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
@@ -1347,7 +1421,13 @@ fn test_delete_step_output_files_from_step_onwards() {
     std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
     // Reset from step 2 onwards — steps 0, 1 should be preserved
-    crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 2, skills_path);
+    crate::cleanup::delete_step_output_files(
+        workspace,
+        "my-skill",
+        DEFAULT_PLUGIN_SLUG,
+        2,
+        skills_path,
+    );
 
     // Steps 0, 1 output (unified clarifications.json) should still exist
     assert!(workspace_skill_dir
@@ -1387,7 +1467,13 @@ fn test_delete_step_output_files_nonexistent_dir_is_ok() {
     let tmp = tempfile::tempdir().unwrap();
     let skills_path = tmp.path().to_str().unwrap();
     let nonexistent = std::env::temp_dir().join("nonexistent");
-    crate::cleanup::delete_step_output_files(nonexistent.to_str().unwrap(), "no-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);
+    crate::cleanup::delete_step_output_files(
+        nonexistent.to_str().unwrap(),
+        "no-skill",
+        DEFAULT_PLUGIN_SLUG,
+        0,
+        skills_path,
+    );
 }
 
 #[test]
@@ -1397,14 +1483,23 @@ fn test_delete_step_output_files_cleans_last_steps() {
     let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
     let _skill_dir = skills_tmp.path().join("my-skill");
-    let workspace_skill_dir = workspace_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
+    let workspace_skill_dir = workspace_tmp
+        .path()
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("my-skill");
     std::fs::create_dir_all(workspace_skill_dir.join("context")).unwrap();
 
     // Create files for step 2 (decisions) in workspace context
     std::fs::write(workspace_skill_dir.join("context/decisions.json"), "{}").unwrap();
 
     // Reset from step 2 onwards should clean up step 2+3
-    crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 2, skills_path);
+    crate::cleanup::delete_step_output_files(
+        workspace,
+        "my-skill",
+        DEFAULT_PLUGIN_SLUG,
+        2,
+        skills_path,
+    );
 
     // Step 2 outputs should be deleted
     assert!(!workspace_skill_dir.join("context/decisions.json").exists());
@@ -1418,7 +1513,13 @@ fn test_delete_step_output_files_last_step() {
     let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
     std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
-    crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 3, skills_path);
+    crate::cleanup::delete_step_output_files(
+        workspace,
+        "my-skill",
+        DEFAULT_PLUGIN_SLUG,
+        3,
+        skills_path,
+    );
 }
 
 #[test]
@@ -1548,8 +1649,7 @@ fn test_copy_agents_to_claude_dir() {
     assert!(!claude_agents_dir.join("README.txt").exists());
 
     // Verify content
-    let content =
-        std::fs::read_to_string(claude_agents_dir.join("research-entities.md")).unwrap();
+    let content = std::fs::read_to_string(claude_agents_dir.join("research-entities.md")).unwrap();
     assert_eq!(content, "# Research Entities");
 }
 
@@ -1583,12 +1683,10 @@ fn test_copy_managed_plugins_replaces_managed_and_preserves_unmanaged() {
     std::fs::create_dir_all(&unmanaged).unwrap();
     std::fs::write(unmanaged.join("README.md"), "keep me").unwrap();
 
-    copy_managed_plugins_to_claude_dir(&src_plugins, workspace.path().to_str().unwrap())
-        .unwrap();
+    copy_managed_plugins_to_claude_dir(&src_plugins, workspace.path().to_str().unwrap()).unwrap();
 
     let replaced =
-        std::fs::read_to_string(claude_plugins_dir.join("skill-creator").join("SKILL.md"))
-            .unwrap();
+        std::fs::read_to_string(claude_plugins_dir.join("skill-creator").join("SKILL.md")).unwrap();
     assert_eq!(replaced, "new plugin content");
     assert!(claude_plugins_dir
         .join("skill-creator")
@@ -1596,8 +1694,7 @@ fn test_copy_managed_plugins_replaces_managed_and_preserves_unmanaged() {
         .exists());
 
     let preserved =
-        std::fs::read_to_string(claude_plugins_dir.join("user-plugin").join("README.md"))
-            .unwrap();
+        std::fs::read_to_string(claude_plugins_dir.join("user-plugin").join("README.md")).unwrap();
     assert_eq!(preserved, "keep me");
 }
 
@@ -1609,8 +1706,12 @@ fn test_validate_decisions_missing() {
     let workspace = tmp.path().join("workspace");
     std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
 
-    let result =
-        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, "/unused");
+    let result = validate_decisions_exist_inner(
+        "my-skill",
+        workspace.to_str().unwrap(),
+        DEFAULT_PLUGIN_SLUG,
+        "/unused",
+    );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("decisions.json was not found"));
 }
@@ -1619,7 +1720,13 @@ fn test_validate_decisions_missing() {
 fn test_validate_decisions_found_in_workspace_context() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().join("workspace");
-    std::fs::create_dir_all(workspace.join(DEFAULT_PLUGIN_SLUG).join("my-skill").join("context")).unwrap();
+    std::fs::create_dir_all(
+        workspace
+            .join(DEFAULT_PLUGIN_SLUG)
+            .join("my-skill")
+            .join("context"),
+    )
+    .unwrap();
     std::fs::write(
         workspace
             .join(DEFAULT_PLUGIN_SLUG)
@@ -1630,8 +1737,12 @@ fn test_validate_decisions_found_in_workspace_context() {
     )
     .unwrap();
 
-    let result =
-        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, "/unused");
+    let result = validate_decisions_exist_inner(
+        "my-skill",
+        workspace.to_str().unwrap(),
+        DEFAULT_PLUGIN_SLUG,
+        "/unused",
+    );
     assert!(result.is_ok());
 }
 
@@ -1639,7 +1750,13 @@ fn test_validate_decisions_found_in_workspace_context() {
 fn test_validate_decisions_rejects_empty_file() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().join("workspace");
-    std::fs::create_dir_all(workspace.join(DEFAULT_PLUGIN_SLUG).join("my-skill").join("context")).unwrap();
+    std::fs::create_dir_all(
+        workspace
+            .join(DEFAULT_PLUGIN_SLUG)
+            .join("my-skill")
+            .join("context"),
+    )
+    .unwrap();
     // Write an empty decisions file
     std::fs::write(
         workspace
@@ -1651,8 +1768,12 @@ fn test_validate_decisions_rejects_empty_file() {
     )
     .unwrap();
 
-    let result =
-        validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), DEFAULT_PLUGIN_SLUG, "/unused");
+    let result = validate_decisions_exist_inner(
+        "my-skill",
+        workspace.to_str().unwrap(),
+        DEFAULT_PLUGIN_SLUG,
+        "/unused",
+    );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("decisions.json was not found"));
 }
@@ -1725,7 +1846,8 @@ fn test_write_user_context_file_all_fields() {
     let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
     // Directory doesn't need to pre-exist — create_dir_all handles it
 
-    let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines"}"#;
+    let intake =
+        r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines"}"#;
     write_user_context_file(
         workspace_path,
         DEFAULT_PLUGIN_SLUG,
@@ -1742,7 +1864,7 @@ fn test_write_user_context_file_all_fields() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
 
     let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
@@ -1780,7 +1902,7 @@ fn test_write_user_context_file_partial_fields() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
 
     let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
@@ -1811,7 +1933,7 @@ fn test_write_user_context_file_empty_optional_fields_skipped() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
 
     // Skill name is always written; empty optional fields are omitted
@@ -1842,7 +1964,7 @@ fn test_write_user_context_file_always_writes_skill_name() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
 
     // Skill name alone is enough to produce a file
@@ -1874,7 +1996,7 @@ fn test_write_user_context_file_creates_missing_dir() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
 
     // Directory should have been created and file written
@@ -1894,8 +2016,8 @@ fn test_thinking_budget_for_step() {
 }
 
 #[test]
-fn test_build_betas_thinking_non_opus() {
-    let betas = build_betas(Some(32000), "claude-sonnet-4-5-20250929", true);
+fn test_build_betas_thinking_enabled() {
+    let betas = build_betas(Some(32000), "provider-model-id", true);
     assert_eq!(
         betas,
         Some(vec!["interleaved-thinking-2025-05-14".to_string()])
@@ -1903,28 +2025,38 @@ fn test_build_betas_thinking_non_opus() {
 }
 
 #[test]
-fn test_build_betas_thinking_opus() {
-    // Opus natively supports thinking — no interleaved-thinking beta needed
-    let betas = build_betas(Some(32000), "claude-opus-4-6", true);
-    assert_eq!(betas, None);
+fn test_build_betas_does_not_special_case_model_families() {
+    let betas = build_betas(Some(32000), "another-provider-model-id", true);
+    assert_eq!(
+        betas,
+        Some(vec!["interleaved-thinking-2025-05-14".to_string()])
+    );
 }
 
 #[test]
 fn test_build_betas_none() {
-    let betas = build_betas(None, "claude-sonnet-4-5-20250929", true);
+    let betas = build_betas(None, "provider-model-id", true);
     assert_eq!(betas, None);
 }
 
 #[test]
 fn test_workspace_already_copied_returns_false_for_unknown() {
     // Use a unique path to avoid interference from other tests
-    let path = format!("{}/test-workspace-unknown-{}", std::env::temp_dir().display(), std::process::id());
+    let path = format!(
+        "{}/test-workspace-unknown-{}",
+        std::env::temp_dir().display(),
+        std::process::id()
+    );
     assert!(!workspace_already_copied(&path));
 }
 
 #[test]
 fn test_mark_workspace_copied_then_already_copied() {
-    let path = format!("{}/test-workspace-mark-{}", std::env::temp_dir().display(), std::process::id());
+    let path = format!(
+        "{}/test-workspace-mark-{}",
+        std::env::temp_dir().display(),
+        std::process::id()
+    );
     assert!(!workspace_already_copied(&path));
     mark_workspace_copied(&path);
     assert!(workspace_already_copied(&path));
@@ -1932,8 +2064,16 @@ fn test_mark_workspace_copied_then_already_copied() {
 
 #[test]
 fn test_workspace_copy_cache_is_per_workspace() {
-    let path_a = format!("{}/test-ws-a-{}", std::env::temp_dir().display(), std::process::id());
-    let path_b = format!("{}/test-ws-b-{}", std::env::temp_dir().display(), std::process::id());
+    let path_a = format!(
+        "{}/test-ws-a-{}",
+        std::env::temp_dir().display(),
+        std::process::id()
+    );
+    let path_b = format!(
+        "{}/test-ws-b-{}",
+        std::env::temp_dir().display(),
+        std::process::id()
+    );
     mark_workspace_copied(&path_a);
     assert!(workspace_already_copied(&path_a));
     assert!(!workspace_already_copied(&path_b));
@@ -1941,7 +2081,11 @@ fn test_workspace_copy_cache_is_per_workspace() {
 
 #[test]
 fn test_invalidate_workspace_cache() {
-    let path = format!("{}/test-ws-invalidate-{}", std::env::temp_dir().display(), std::process::id());
+    let path = format!(
+        "{}/test-ws-invalidate-{}",
+        std::env::temp_dir().display(),
+        std::process::id()
+    );
     mark_workspace_copied(&path);
     assert!(workspace_already_copied(&path));
     invalidate_workspace_cache(&path);
@@ -1957,7 +2101,11 @@ fn test_reset_cleans_workspace_context_files() {
     let skills_path = skills_path_tmp.path().to_str().unwrap();
 
     // 2-3. Create workspace/{plugin_slug}/my-skill/context/ with all context files
-    let context_dir = workspace_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill").join("context");
+    let context_dir = workspace_tmp
+        .path()
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("my-skill")
+        .join("context");
     std::fs::create_dir_all(&context_dir).unwrap();
 
     let context_files = ["clarifications.json", "decisions.json"];
@@ -1966,10 +2114,22 @@ fn test_reset_cleans_workspace_context_files() {
     }
 
     // 4. Working dir must exist in workspace
-    std::fs::create_dir_all(workspace_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill")).unwrap();
+    std::fs::create_dir_all(
+        workspace_tmp
+            .path()
+            .join(DEFAULT_PLUGIN_SLUG)
+            .join("my-skill"),
+    )
+    .unwrap();
 
     // 5. Call delete_step_output_files from step 0
-    crate::cleanup::delete_step_output_files(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);
+    crate::cleanup::delete_step_output_files(
+        workspace,
+        "my-skill",
+        DEFAULT_PLUGIN_SLUG,
+        0,
+        skills_path,
+    );
 
     // 6. Assert ALL files in workspace/my-skill/context/ are gone
     let mut remaining: Vec<String> = Vec::new();
@@ -1991,7 +2151,11 @@ fn test_reset_cleans_workspace_context_files() {
 fn test_scope_recommendation_true() {
     let mut f = tempfile::NamedTempFile::new().unwrap();
     use std::io::Write as _;
-    write!(f, r#"{{"metadata":{{"scope_recommendation":true,"original_dimensions":8}},"sections":[]}}"#).unwrap();
+    write!(
+        f,
+        r#"{{"metadata":{{"scope_recommendation":true,"original_dimensions":8}},"sections":[]}}"#
+    )
+    .unwrap();
     assert!(parse_scope_recommendation(f.path()));
 }
 
@@ -2062,7 +2226,7 @@ fn test_format_user_context_all_fields() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
     let ctx = result.unwrap();
     assert!(ctx.starts_with("## User Context\n"));
@@ -2098,7 +2262,7 @@ fn test_format_user_context_partial_fields() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
     let ctx = result.unwrap();
     assert!(ctx.contains("**Industry**: Fintech"));
@@ -2121,7 +2285,7 @@ fn test_format_user_context_empty_strings_skipped() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
     assert!(result.is_none());
 }
@@ -2142,7 +2306,7 @@ fn test_format_user_context_all_none() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
     assert!(result.is_none());
 }
@@ -2163,7 +2327,7 @@ fn test_format_user_context_invalid_json_ignored() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
     let ctx = result.unwrap();
     assert!(ctx.contains("**Industry**: Tech"));
@@ -2187,7 +2351,7 @@ fn test_format_user_context_partial_intake() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
     let ctx = result.unwrap();
     assert!(ctx.contains("### Target Audience"));
@@ -2206,8 +2370,14 @@ fn test_build_prompt_includes_user_context_md_instruction() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
     let prompt = build_prompt(&PromptParams {
-        skill_name: "test-skill", workspace_path: ws.to_str().unwrap(), plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: skills.to_str().unwrap(), author_login: None, created_at: None, subagent_directive: None, step_id: 1,
+        skill_name: "test-skill",
+        workspace_path: ws.to_str().unwrap(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: skills.to_str().unwrap(),
+        author_login: None,
+        created_at: None,
+        subagent_directive: None,
+        step_id: 1,
     });
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
@@ -2218,8 +2388,14 @@ fn test_build_prompt_without_user_context() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
     let prompt = build_prompt(&PromptParams {
-        skill_name: "test-skill", workspace_path: ws.to_str().unwrap(), plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: skills.to_str().unwrap(), author_login: None, created_at: None, subagent_directive: None, step_id: 1,
+        skill_name: "test-skill",
+        workspace_path: ws.to_str().unwrap(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: skills.to_str().unwrap(),
+        author_login: None,
+        created_at: None,
+        subagent_directive: None,
+        step_id: 1,
     });
     assert!(prompt.contains("user-context.md"));
     assert!(prompt.contains("test-skill"));
@@ -2290,7 +2466,13 @@ fn test_save_clarifications_content_writes_pretty_json() {
     let workspace_str = workspace_path.to_string_lossy().to_string();
     let payload = valid_clarifications_value().to_string();
 
-    super::evaluation::save_clarifications_content_inner("my-skill", &workspace_str, payload, crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
+    super::evaluation::save_clarifications_content_inner(
+        "my-skill",
+        &workspace_str,
+        payload,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap();
     let saved = std::fs::read_to_string(
         workspace_path
             .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
@@ -2338,11 +2520,18 @@ fn test_save_clarifications_content_rejects_invalid_schema() {
         "notes": []
     });
 
-    let err =
-        super::evaluation::save_clarifications_content_inner("my-skill", &workspace_str, invalid.to_string(), crate::skill_paths::DEFAULT_PLUGIN_SLUG)
-            .unwrap_err();
+    let err = super::evaluation::save_clarifications_content_inner(
+        "my-skill",
+        &workspace_str,
+        invalid.to_string(),
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap_err();
     // Typed deserialization rejects non-array priority_questions
-    assert!(err.contains("Invalid clarifications JSON"), "unexpected error: {err}");
+    assert!(
+        err.contains("Invalid clarifications JSON"),
+        "unexpected error: {err}"
+    );
 }
 
 // =============================================================================
@@ -2351,67 +2540,173 @@ fn test_save_clarifications_content_rejects_invalid_schema() {
 
 #[test]
 fn test_format_user_context_returns_none_when_all_empty() {
-    let result =
-        format_user_context(None, &[], None, None, None, None, None, None, None, None, None, None, None,
-        &[]);
-    assert!(result.is_none(), "should return None when no fields are provided");
+    let result = format_user_context(
+        None,
+        &[],
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        &[],
+    );
+    assert!(
+        result.is_none(),
+        "should return None when no fields are provided"
+    );
 }
 
 #[test]
 fn test_format_user_context_includes_name_and_tags() {
     let tags = vec!["finance".to_string(), "analytics".to_string()];
     let result = format_user_context(
-        Some("my-skill"), &tags, None, None, None, None, None, None, None, None, None, None, None,
-        &[]
+        Some("my-skill"),
+        &tags,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        &[],
     );
     let text = result.unwrap();
     assert!(text.contains("## User Context"), "should have heading");
     assert!(text.contains("**Name**: my-skill"), "should include name");
-    assert!(text.contains("**Tags**: finance, analytics"), "should include tags");
+    assert!(
+        text.contains("**Tags**: finance, analytics"),
+        "should include tags"
+    );
 }
 
 #[test]
 fn test_format_user_context_includes_purpose_label_mapping() {
     let result = format_user_context(
-        None, &[], None, None, None, None, None, Some("domain"), None, None, None, None, None,
-        &[]
+        None,
+        &[],
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some("domain"),
+        None,
+        None,
+        None,
+        None,
+        None,
+        &[],
     );
     let text = result.unwrap();
-    assert!(text.contains("Business process knowledge"), "domain purpose should map to label");
+    assert!(
+        text.contains("Business process knowledge"),
+        "domain purpose should map to label"
+    );
 }
 
 #[test]
 fn test_format_user_context_includes_profile_section() {
     let result = format_user_context(
-        None, &[], None, Some("Healthcare"), Some("Data Engineer"), None, None, None, None, None, None, None, None,
-        &[]
+        None,
+        &[],
+        None,
+        Some("Healthcare"),
+        Some("Data Engineer"),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        &[],
     );
     let text = result.unwrap();
-    assert!(text.contains("### About You"), "should have profile heading");
-    assert!(text.contains("**Industry**: Healthcare"), "should include industry");
-    assert!(text.contains("**Function**: Data Engineer"), "should include function");
+    assert!(
+        text.contains("### About You"),
+        "should have profile heading"
+    );
+    assert!(
+        text.contains("**Industry**: Healthcare"),
+        "should include industry"
+    );
+    assert!(
+        text.contains("**Function**: Data Engineer"),
+        "should include function"
+    );
 }
 
 #[test]
 fn test_format_user_context_includes_configuration() {
     let result = format_user_context(
-        None, &[], None, None, None, None, None, None, Some("1.0"), Some("claude-sonnet-4-6"), Some("/ask"), Some(true), Some(false),
-        &[]
+        None,
+        &[],
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some("1.0"),
+        Some("claude-sonnet-4-6"),
+        Some("/ask"),
+        Some(true),
+        Some(false),
+        &[],
     );
     let text = result.unwrap();
-    assert!(text.contains("### Configuration"), "should have config heading");
+    assert!(
+        text.contains("### Configuration"),
+        "should have config heading"
+    );
     assert!(text.contains("**Version**: 1.0"), "should include version");
-    assert!(text.contains("**Preferred Model**: claude-sonnet-4-6"), "should include model");
-    assert!(text.contains("**Argument Hint**: /ask"), "should include argument hint");
-    assert!(text.contains("**User Invocable**: true"), "should include user_invocable");
-    assert!(text.contains("**Disable Model Invocation**: false"), "should include dmi");
+    assert!(
+        text.contains("**Preferred Model**: claude-sonnet-4-6"),
+        "should include model"
+    );
+    assert!(
+        text.contains("**Argument Hint**: /ask"),
+        "should include argument hint"
+    );
+    assert!(
+        text.contains("**User Invocable**: true"),
+        "should include user_invocable"
+    );
+    assert!(
+        text.contains("**Disable Model Invocation**: false"),
+        "should include dmi"
+    );
 }
 
 #[test]
 fn test_format_user_context_skips_inherit_model() {
     let result = format_user_context(
-        None, &[], None, None, None, None, None, None, None, Some("inherit"), None, None, None,
-        &[]
+        None,
+        &[],
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some("inherit"),
+        None,
+        None,
+        None,
+        &[],
     );
     // "inherit" model should be filtered out — if nothing else is set, result is None
     assert!(result.is_none(), "inherit model alone should produce None");
@@ -2421,12 +2716,30 @@ fn test_format_user_context_skips_inherit_model() {
 fn test_format_user_context_includes_intake_json_context() {
     let intake = r#"{"context": "We use Snowflake and dbt for data pipelines."}"#;
     let result = format_user_context(
-        None, &[], None, None, None, Some(intake), None, None, None, None, None, None, None,
-        &[]
+        None,
+        &[],
+        None,
+        None,
+        None,
+        Some(intake),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        &[],
     );
     let text = result.unwrap();
-    assert!(text.contains("### What Claude Needs to Know"), "should include intake context heading");
-    assert!(text.contains("Snowflake and dbt"), "should include intake content");
+    assert!(
+        text.contains("### What Claude Needs to Know"),
+        "should include intake context heading"
+    );
+    assert!(
+        text.contains("Snowflake and dbt"),
+        "should include intake content"
+    );
 }
 
 #[test]
@@ -2437,13 +2750,37 @@ fn test_write_user_context_file_creates_file() {
     let tags = vec!["tag1".to_string()];
 
     write_user_context_file(
-        workspace_path, DEFAULT_PLUGIN_SLUG, skill_name, &tags, None, Some("Tech"), None, None, Some("A test skill"), Some("domain"), None, None, None, None, None,
-        &[]
+        workspace_path,
+        DEFAULT_PLUGIN_SLUG,
+        skill_name,
+        &tags,
+        None,
+        Some("Tech"),
+        None,
+        None,
+        Some("A test skill"),
+        Some("domain"),
+        None,
+        None,
+        None,
+        None,
+        None,
+        &[],
     );
 
-    let ctx_path = tmp.path().join(DEFAULT_PLUGIN_SLUG).join(skill_name).join("user-context.md");
+    let ctx_path = tmp
+        .path()
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join(skill_name)
+        .join("user-context.md");
     assert!(ctx_path.exists(), "user-context.md should be created");
     let content = std::fs::read_to_string(&ctx_path).unwrap();
-    assert!(content.contains("# User Context"), "should contain user context heading");
-    assert!(content.contains("A test skill"), "should contain description");
+    assert!(
+        content.contains("# User Context"),
+        "should contain user context heading"
+    );
+    assert!(
+        content.contains("A test skill"),
+        "should contain description"
+    );
 }

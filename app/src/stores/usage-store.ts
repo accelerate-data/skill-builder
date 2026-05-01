@@ -23,7 +23,7 @@ interface UsageState {
   hideCancelled: boolean;
   dateRange: DateRange;
   skillFilter: string | null;
-  modelFamilyFilter: string | null;
+  modelFilter: string | null;
   skillNames: string[];
   loadGeneration: number;
 
@@ -33,7 +33,7 @@ interface UsageState {
   toggleHideCancelled: () => void;
   setDateRange: (range: DateRange) => void;
   setSkillFilter: (skill: string | null) => void;
-  setModelFamilyFilter: (family: string | null) => void;
+  setModelFilter: (family: string | null) => void;
 }
 
 export const useUsageStore = create<UsageState>((set, get) => ({
@@ -48,12 +48,12 @@ export const useUsageStore = create<UsageState>((set, get) => ({
   hideCancelled: false,
   dateRange: "all",
   skillFilter: null,
-  modelFamilyFilter: null,
+  modelFilter: null,
   skillNames: [],
   loadGeneration: 0,
 
   fetchUsage: async () => {
-    const { hideCancelled, dateRange, skillFilter, modelFamilyFilter } = get();
+    const { hideCancelled, dateRange, skillFilter, modelFilter } = get();
     const startDate = toStartDate(dateRange);
     const generation = get().loadGeneration + 1;
     set({ loading: true, error: null, loadGeneration: generation });
@@ -61,7 +61,7 @@ export const useUsageStore = create<UsageState>((set, get) => ({
       const [summary, recentSessions, agentRuns, byStep, byModel, byDay] = await Promise.all([
         getUsageSummary(hideCancelled, startDate, skillFilter),
         getRecentWorkflowSessions(50, hideCancelled, startDate, skillFilter),
-        getAgentRuns(hideCancelled, startDate, skillFilter, modelFamilyFilter),
+        getAgentRuns(hideCancelled, startDate, skillFilter, modelFilter),
         getUsageByStep(hideCancelled, startDate, skillFilter),
         getUsageByModel(hideCancelled, startDate, skillFilter),
         getUsageByDay(hideCancelled, startDate, skillFilter),
@@ -97,7 +97,7 @@ export const useUsageStore = create<UsageState>((set, get) => ({
         getUsageByModel(hideCancelled, startDate, null),
         getUsageByDay(hideCancelled, startDate, null),
       ]);
-      set({ summary, recentSessions, agentRuns, byStep, byModel, byDay, loading: false, skillFilter: null, modelFamilyFilter: null });
+      set({ summary, recentSessions, agentRuns, byStep, byModel, byDay, loading: false, skillFilter: null, modelFilter: null });
       await get().fetchSkillNames();
     } catch (err) {
       set({ error: String(err), loading: false });
@@ -119,8 +119,8 @@ export const useUsageStore = create<UsageState>((set, get) => ({
     get().fetchUsage();
   },
 
-  setModelFamilyFilter: (family: string | null) => {
-    set({ modelFamilyFilter: family });
+  setModelFilter: (family: string | null) => {
+    set({ modelFilter: family });
     get().fetchUsage();
   },
 }));

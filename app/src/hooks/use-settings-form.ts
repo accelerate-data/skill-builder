@@ -75,7 +75,6 @@ export function useSettingsForm() {
       extended_thinking: resolve("extendedThinking", extendedThinking),
       interleaved_thinking_beta: resolve("interleavedThinkingBeta", interleavedThinkingBeta),
       sdk_effort: resolve("sdkEffort", sdkEffort) || null,
-      fallback_model: resolve("preferredModel", preferredModel),
       refine_prompt_suggestions: resolve("refinePromptSuggestions", refinePromptSuggestions),
       max_dimensions: resolve("maxDimensions", maxDimensions),
       splash_shown: false,

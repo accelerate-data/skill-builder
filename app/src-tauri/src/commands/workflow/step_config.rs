@@ -6,13 +6,35 @@ pub(crate) const WORKFLOW_AGENT_IDENTITY: &str = "skill-content-researcher:skill
 /// Values must match the `tools:` frontmatter in the corresponding agent `.md` file.
 pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
     let tools: &[&str] = match agent_name {
-        WORKFLOW_AGENT_IDENTITY => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill"],
+        WORKFLOW_AGENT_IDENTITY => &[
+            "Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill",
+        ],
         "skill-content-researcher:research-orchestrator" => &["Read", "Skill", "AskUserQuestion"],
         "skill-content-researcher:detailed-research" => &["Read", "Agent", "AskUserQuestion"],
         "skill-content-researcher:confirm-decisions" => &["Read", "Agent", "AskUserQuestion"],
         "answer-evaluator" => &["Read", "Skill"],
-        "skill-creator:generate-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill", "AskUserQuestion"],
-        "skill-creator:rewrite-skill" => &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill", "AskUserQuestion"],
+        "skill-creator:generate-skill" => &[
+            "Read",
+            "Write",
+            "Edit",
+            "Glob",
+            "Grep",
+            "Bash",
+            "Agent",
+            "Skill",
+            "AskUserQuestion",
+        ],
+        "skill-creator:rewrite-skill" => &[
+            "Read",
+            "Write",
+            "Edit",
+            "Glob",
+            "Grep",
+            "Bash",
+            "Agent",
+            "Skill",
+            "AskUserQuestion",
+        ],
         "skill-creator:generate-skill-description-evals" => &["Read", "Skill"],
         _ => &["Read", "Glob", "Grep", "Agent", "Skill"],
     };
@@ -24,15 +46,6 @@ fn one_shot_tools_for_agent(agent_name: &str) -> Vec<String> {
         .into_iter()
         .filter(|tool| tool != "AskUserQuestion")
         .collect()
-}
-
-pub fn resolve_model_id(shorthand: &str) -> String {
-    match shorthand {
-        "sonnet" => "claude-sonnet-4-6".to_string(),
-        "haiku" => "claude-haiku-4-5".to_string(),
-        "opus" => "claude-opus-4-6".to_string(),
-        other => other.to_string(),
-    }
 }
 
 /// Canonical step configuration table.
@@ -112,10 +125,14 @@ pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde
 
     let schema_str = match agent_name {
         // Deep schema — all fields required per SKILL.md, nested ClarificationsFile enforced.
-        "skill-content-researcher:research-orchestrator" => Some(schemas::RESEARCH_STEP_INLINE_SCHEMA),
+        "skill-content-researcher:research-orchestrator" => {
+            Some(schemas::RESEARCH_STEP_INLINE_SCHEMA)
+        }
         // Step 1 runs the agent directly (no subagent relay) — use the full
         // nested schema so the SDK enforces the complete structure.
-        "skill-content-researcher:detailed-research" => Some(schemas::DETAILED_RESEARCH_INLINE_SCHEMA),
+        "skill-content-researcher:detailed-research" => {
+            Some(schemas::DETAILED_RESEARCH_INLINE_SCHEMA)
+        }
         // Step 2 runs the agent directly (no subagent relay) — use the full
         // nested schema so the SDK enforces Decision fields and DecisionStatus enum.
         "skill-content-researcher:confirm-decisions" => Some(schemas::DECISIONS_INLINE_SCHEMA),
@@ -176,7 +193,8 @@ pub fn build_betas(
     interleaved_thinking_beta: bool,
 ) -> Option<Vec<String>> {
     let mut betas = Vec::new();
-    if interleaved_thinking_beta && thinking_budget.is_some() && !model.contains("opus") {
+    let _ = model;
+    if interleaved_thinking_beta && thinking_budget.is_some() {
         betas.push("interleaved-thinking-2025-05-14".to_string());
     }
     if betas.is_empty() {

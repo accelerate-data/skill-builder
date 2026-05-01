@@ -5,18 +5,9 @@ pub async fn test_api_key(api_key: ApiKey) -> Result<bool, String> {
     log::info!("[test_api_key]");
     let client = reqwest::Client::new();
     let resp = client
-        .post("https://api.anthropic.com/v1/messages")
+        .get("https://api.anthropic.com/v1/models")
         .header("x-api-key", api_key.as_ref())
         .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .body(
-            serde_json::json!({
-                "model": "claude-haiku-4-5",
-                "max_tokens": 1,
-                "messages": [{"role": "user", "content": "hi"}]
-            })
-            .to_string(),
-        )
         .send()
         .await
         .map_err(|e| e.to_string())?;

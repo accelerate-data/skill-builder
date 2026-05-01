@@ -1,6 +1,8 @@
 use super::content::get_skill_content_inner;
-use super::diff::{get_refine_diff_inner};
-use super::output::{cleanup_skill_snapshot, finalize_refine_run_inner, finalize_refine_run_inner_for_plugin};
+use super::diff::get_refine_diff_inner;
+use super::output::{
+    cleanup_skill_snapshot, finalize_refine_run_inner, finalize_refine_run_inner_for_plugin,
+};
 use super::protocol::*;
 use super::*;
 use crate::commands::imported_skills::validate_skill_name;
@@ -259,7 +261,11 @@ fn test_session_not_found_returns_none() {
 // ===== build_refine_config tests =====
 
 fn test_workspace_path() -> String {
-    std::env::temp_dir().join("vibedata").join("skill-builder").to_string_lossy().to_string()
+    std::env::temp_dir()
+        .join("vibedata")
+        .join("skill-builder")
+        .to_string_lossy()
+        .to_string()
 }
 
 fn base_refine_config(prompt: &str) -> (crate::agents::sidecar::SidecarConfig, String) {
@@ -273,12 +279,10 @@ fn base_refine_config(prompt: &str) -> (crate::agents::sidecar::SidecarConfig, S
         false,
         true,
         None,
-        None,
         true,
         "skills",
     )
 }
-
 
 #[test]
 fn test_refine_config_has_no_agent() {
@@ -323,7 +327,6 @@ fn test_refine_config_cwd_points_to_workspace_root() {
         false,
         true,
         None,
-        None,
         true,
         "skills",
     );
@@ -367,7 +370,6 @@ fn test_refine_config_extended_thinking_sets_budget() {
         "sonnet".to_string(),
         true, // extended_thinking enabled
         true,
-        None,
         None,
         true,
         "skills",
@@ -457,8 +459,6 @@ fn test_refine_config_serialization_omits_none_fields() {
     assert!(parsed.get("permissionMode").is_none());
 }
 
-
-
 #[test]
 fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     let dir = tempdir().unwrap();
@@ -488,7 +488,10 @@ fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     assert!(result.commit_sha.is_some());
     assert_eq!(result.files.len(), 2);
     assert_eq!(result.diff.files.len(), 1);
-    assert_eq!(result.diff.files[0].path, "skills/my-skill/references/glossary.md");
+    assert_eq!(
+        result.diff.files[0].path,
+        "skills/my-skill/references/glossary.md"
+    );
     assert_eq!(result.diff.files[0].status, "added");
     assert!(result.diff.files[0].diff.contains("+# Glossary"));
 }
@@ -525,7 +528,11 @@ fn test_get_skill_content_excludes_context_artifacts() {
     std::fs::create_dir_all(skill_dir.join("context")).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
     std::fs::write(skill_dir.join("references/glossary.md"), "# Glossary\n").unwrap();
-    std::fs::write(skill_dir.join("context/agent-validation-log.md"), "# Validation\n").unwrap();
+    std::fs::write(
+        skill_dir.join("context/agent-validation-log.md"),
+        "# Validation\n",
+    )
+    .unwrap();
 
     let files = get_skill_content_inner("my-skill", dir.path().to_str().unwrap()).unwrap();
     let paths: Vec<_> = files.iter().map(|file| file.path.as_str()).collect();
@@ -579,7 +586,11 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
 
     let skill_dir = skills_dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
-    std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n\nMock rewrite output\n").unwrap();
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "# Skill\n\nMock rewrite output\n",
+    )
+    .unwrap();
     std::fs::write(
         skill_dir.join("references/checklist.md"),
         "# Checklist\n\n- Verify modified files UI\n",
@@ -621,19 +632,18 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
 #[test]
 fn test_refine_prompt_includes_all_three_paths() {
     let ws = test_workspace_path();
-    let skills = std::env::temp_dir().join("skills").to_string_lossy().to_string();
-    let system_prompt = build_refine_prompt(
-        "my-skill",
-        &ws,
-        &skills,
-        "Add metrics section",
-        None,
-    );
+    let skills = std::env::temp_dir()
+        .join("skills")
+        .to_string_lossy()
+        .to_string();
+    let system_prompt = build_refine_prompt("my-skill", &ws, &skills, "Add metrics section", None);
     // build_refine_prompt normalises backslashes to forward slashes
     let ws_fwd = ws.replace('\\', "/");
     let skills_fwd = skills.replace('\\', "/");
-    assert!(system_prompt
-        .contains(&format!("The workspace directory is: {}/skills/my-skill", ws_fwd)));
+    assert!(system_prompt.contains(&format!(
+        "The workspace directory is: {}/skills/my-skill",
+        ws_fwd
+    )));
     assert!(system_prompt.contains(&format!(
         "The skill directory is: {}/{}",
         skills_fwd,
@@ -650,17 +660,11 @@ fn test_refine_prompt_includes_metadata() {
     assert!(system_prompt.contains("The skill directory is:"));
 }
 
-
 #[test]
 fn test_refine_prompt_file_targeting() {
     let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
-    let system_prompt = build_refine_prompt(
-        "my-skill",
-        "/ws",
-        "/skills",
-        "update these",
-        Some(&files),
-    );
+    let system_prompt =
+        build_refine_prompt("my-skill", "/ws", "/skills", "update these", Some(&files));
     assert!(system_prompt
         .contains("IMPORTANT: Only edit these files (relative to skill output directory):"));
     assert!(system_prompt.contains("SKILL.md"));
@@ -675,13 +679,7 @@ fn test_refine_prompt_no_file_constraint_when_empty() {
 
 #[test]
 fn test_refine_prompt_includes_user_message() {
-    let prompt = build_refine_prompt(
-        "s",
-        "/ws",
-        "/sk",
-        "Add SLA metrics to the overview",
-        None,
-    );
+    let prompt = build_refine_prompt("s", "/ws", "/sk", "Add SLA metrics to the overview", None);
     assert!(prompt.contains("Add SLA metrics to the overview"));
 }
 
@@ -967,7 +965,7 @@ fn test_user_context_written_to_file() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
     assert!(ctx.is_some());
     let ctx = ctx.unwrap();
@@ -993,7 +991,7 @@ fn test_no_user_context_when_fields_empty() {
         None,
         None,
         None,
-        &[]
+        &[],
     );
     assert!(ctx.is_none());
 }
@@ -1035,7 +1033,11 @@ fn test_finalize_refine_run_cleans_up_snapshot_dir() {
     crate::git::commit_all(dir.path(), "initial").unwrap();
 
     // Create a stale snapshot in the workspace (under default plugin slug)
-    let snapshot_dir = workspace_dir.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill").join("skill-snapshot");
+    let snapshot_dir = workspace_dir
+        .path()
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("my-skill")
+        .join("skill-snapshot");
     std::fs::create_dir_all(&snapshot_dir).unwrap();
     std::fs::write(snapshot_dir.join("SKILL.md"), "# Old version\n").unwrap();
     assert!(snapshot_dir.exists());
@@ -1049,7 +1051,10 @@ fn test_finalize_refine_run_cleans_up_snapshot_dir() {
     )
     .unwrap();
 
-    assert!(!snapshot_dir.exists(), "skill-snapshot should be removed after finalize");
+    assert!(
+        !snapshot_dir.exists(),
+        "skill-snapshot should be removed after finalize"
+    );
 }
 
 // ===== finalize_refine_run version tagging tests =====
@@ -1065,7 +1070,9 @@ fn test_finalize_refine_tags_new_version_after_commit() {
     let skill_dir = dir.path().join(plugin).join("tag-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
-    let initial_sha = crate::git::commit_all(dir.path(), "tag-skill: initial").unwrap().unwrap();
+    let initial_sha = crate::git::commit_all(dir.path(), "tag-skill: initial")
+        .unwrap()
+        .unwrap();
     crate::git::create_skill_version_tag(dir.path(), plugin, "tag-skill", "1.0.0").unwrap();
 
     // Simulate agent commit (refine edit)
@@ -1098,7 +1105,9 @@ fn test_finalize_refine_tags_v0_0_1_when_no_prior_tags() {
     let skill_dir = dir.path().join(plugin).join("notag-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
-    let initial_sha = crate::git::commit_all(dir.path(), "notag-skill: initial").unwrap().unwrap();
+    let initial_sha = crate::git::commit_all(dir.path(), "notag-skill: initial")
+        .unwrap()
+        .unwrap();
 
     // Simulate agent commit
     std::fs::write(skill_dir.join("SKILL.md"), "# V1 refined\n").unwrap();
@@ -1116,7 +1125,10 @@ fn test_finalize_refine_tags_v0_0_1_when_no_prior_tags() {
 
     assert!(result.commit_sha.is_some());
     let version = crate::git::latest_skill_semver(dir.path(), plugin, "notag-skill").unwrap();
-    assert_eq!(version, "0.0.1", "first refine with no prior tags should create v0.0.1");
+    assert_eq!(
+        version, "0.0.1",
+        "first refine with no prior tags should create v0.0.1"
+    );
 }
 
 #[test]
@@ -1130,7 +1142,9 @@ fn test_finalize_refine_no_tag_when_head_unchanged() {
     let skill_dir = dir.path().join(plugin).join("noop-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
-    let sha = crate::git::commit_all(dir.path(), "noop-skill: initial").unwrap().unwrap();
+    let sha = crate::git::commit_all(dir.path(), "noop-skill: initial")
+        .unwrap()
+        .unwrap();
     crate::git::create_skill_version_tag(dir.path(), plugin, "noop-skill", "1.0.0").unwrap();
 
     // Call finalize with pre_run_sha == current HEAD (no agent commit)
@@ -1159,7 +1173,9 @@ fn test_finalize_refine_commits_dirty_skill_path_and_tags() {
     let skill_dir = dir.path().join(plugin).join("dirty-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
-    let initial_sha = crate::git::commit_all(dir.path(), "dirty-skill: initial").unwrap().unwrap();
+    let initial_sha = crate::git::commit_all(dir.path(), "dirty-skill: initial")
+        .unwrap()
+        .unwrap();
     crate::git::create_skill_version_tag(dir.path(), plugin, "dirty-skill", "1.0.0").unwrap();
 
     // Simulate rewrite-skill editing the configured skill directory but failing to commit.
@@ -1175,12 +1191,21 @@ fn test_finalize_refine_commits_dirty_skill_path_and_tags() {
     )
     .unwrap();
 
-    let new_sha = result.commit_sha.expect("finalize should commit dirty skill changes");
+    let new_sha = result
+        .commit_sha
+        .expect("finalize should commit dirty skill changes");
     assert_ne!(new_sha, initial_sha);
     let version = crate::git::latest_skill_semver(dir.path(), plugin, "dirty-skill").unwrap();
-    assert_eq!(version, "1.0.1", "backend refine commit should bump patch version");
+    assert_eq!(
+        version, "1.0.1",
+        "backend refine commit should bump patch version"
+    );
     assert!(
-        result.diff.files.iter().any(|file| file.path == "skills/dirty-skill/SKILL.md"),
+        result
+            .diff
+            .files
+            .iter()
+            .any(|file| file.path == "skills/dirty-skill/SKILL.md"),
         "refine diff should include the backend-committed skill file"
     );
 }
@@ -1203,7 +1228,11 @@ fn test_update_skill_name_replaces_existing() {
 fn test_update_skill_name_inserts_when_missing() {
     let content = "---\ndescription: A skill\n---\n# Body\n";
     let result = update_skill_name(content, "inserted-name").unwrap();
-    assert!(result.contains("name: \"inserted-name\""), "got: {}", result);
+    assert!(
+        result.contains("name: \"inserted-name\""),
+        "got: {}",
+        result
+    );
     assert!(result.contains("description: A skill"));
 }
 
@@ -1225,7 +1254,13 @@ fn test_finalize_restores_name_changed_by_agent() {
     // Capture pre-run SHA
     let pre_sha = {
         let repo = git2::Repository::open(dir.path()).unwrap();
-        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        let sha = repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id()
+            .to_string();
         sha
     };
 
@@ -1274,7 +1309,13 @@ fn test_finalize_restores_description_changed_by_agent() {
 
     let pre_sha = {
         let repo = git2::Repository::open(dir.path()).unwrap();
-        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        let sha = repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id()
+            .to_string();
         sha
     };
 
@@ -1322,7 +1363,13 @@ fn test_finalize_restores_both_name_and_description_changed_by_agent() {
 
     let pre_sha = {
         let repo = git2::Repository::open(dir.path()).unwrap();
-        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        let sha = repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id()
+            .to_string();
         sha
     };
 
@@ -1374,7 +1421,13 @@ fn test_finalize_no_fixup_when_frontmatter_unchanged() {
 
     let pre_sha = {
         let repo = git2::Repository::open(dir.path()).unwrap();
-        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        let sha = repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id()
+            .to_string();
         sha
     };
 
@@ -1388,7 +1441,13 @@ fn test_finalize_no_fixup_when_frontmatter_unchanged() {
 
     let agent_sha = {
         let repo = git2::Repository::open(dir.path()).unwrap();
-        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        let sha = repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id()
+            .to_string();
         sha
     };
 
@@ -1405,13 +1464,22 @@ fn test_finalize_no_fixup_when_frontmatter_unchanged() {
     // The commit_sha from result should exist and there should be no extra fixup commit
     let final_sha = {
         let repo = git2::Repository::open(dir.path()).unwrap();
-        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        let sha = repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id()
+            .to_string();
         sha
     };
 
     // The final SHA equals the agent SHA because no fixup was needed
     // (version tagging doesn't create a new commit, just a tag)
-    assert_eq!(final_sha, agent_sha, "no fixup commit should be created when frontmatter unchanged");
+    assert_eq!(
+        final_sha, agent_sha,
+        "no fixup commit should be created when frontmatter unchanged"
+    );
     assert!(result.commit_sha.is_some());
 }
 
@@ -1432,7 +1500,13 @@ fn test_finalize_diff_shows_full_changes_when_fixup_created() {
 
     let pre_sha = {
         let repo = git2::Repository::open(dir.path()).unwrap();
-        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        let sha = repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id()
+            .to_string();
         sha
     };
 
@@ -1458,7 +1532,11 @@ fn test_finalize_diff_shows_full_changes_when_fixup_created() {
         !result.diff.files.is_empty(),
         "diff should not be empty — agent made real content changes"
     );
-    let skill_diff = result.diff.files.iter().find(|f| f.path.ends_with("SKILL.md"));
+    let skill_diff = result
+        .diff
+        .files
+        .iter()
+        .find(|f| f.path.ends_with("SKILL.md"));
     assert!(skill_diff.is_some(), "SKILL.md should appear in diff");
     let patch = &skill_diff.unwrap().diff;
     // Body change should be visible (the actual refine work)
@@ -1493,7 +1571,13 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
 
     let pre_sha = {
         let repo = git2::Repository::open(dir.path()).unwrap();
-        let sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        let sha = repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id()
+            .to_string();
         sha
     };
 
@@ -1520,7 +1604,11 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
     let glob = crate::skill_paths::skill_tag_glob(plugin, "tag-fix-skill");
     let tags = repo.tag_names(Some(&glob)).unwrap();
     let tag_count = tags.iter().flatten().count();
-    assert_eq!(tag_count, 2, "should have exactly 2 tags (1.0.0 + 1.0.1), got {}", tag_count);
+    assert_eq!(
+        tag_count, 2,
+        "should have exactly 2 tags (1.0.0 + 1.0.1), got {}",
+        tag_count
+    );
 
     let version = crate::git::latest_skill_semver(dir.path(), plugin, "tag-fix-skill").unwrap();
     assert_eq!(version, "1.0.1", "fixup should not cause double-bump");

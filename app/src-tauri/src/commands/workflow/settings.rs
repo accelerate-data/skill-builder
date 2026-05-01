@@ -1,7 +1,6 @@
 use crate::db::Db;
 
 use super::guards::validate_decisions_exist_inner;
-use super::step_config::resolve_model_id;
 
 /// Shared settings extracted from the DB, used by `run_workflow_step`.
 pub(crate) struct WorkflowSettings {
@@ -49,7 +48,13 @@ pub(crate) fn read_workflow_settings(
         Some(k) => crate::types::SecretString::new(k),
         None => return Err("Anthropic API key not configured".to_string()),
     };
-    let preferred_model = resolve_model_id(settings.preferred_model.as_deref().unwrap_or("sonnet"));
+    let preferred_model = settings
+        .preferred_model
+        .filter(|model| !model.trim().is_empty())
+        .ok_or_else(|| {
+            "Model not configured. Select a model in Settings before running workflow steps."
+                .to_string()
+        })?;
     let extended_thinking = settings.extended_thinking;
     let interleaved_thinking_beta = settings.interleaved_thinking_beta;
     let sdk_effort = settings.sdk_effort.clone();
@@ -63,7 +68,9 @@ pub(crate) fn read_workflow_settings(
     // `workflow_runs` entirely. Never read metadata from `workflow_runs` or
     // from frontend-supplied payload — always call `get_skill_master_any_plugin` here.
     // Use any-plugin lookup so non-default-plugin skills are found correctly.
-    let master_row = crate::db::get_skill_master_any_plugin(&conn, skill_name).ok().flatten();
+    let master_row = crate::db::get_skill_master_any_plugin(&conn, skill_name)
+        .ok()
+        .flatten();
     let plugin_slug = master_row
         .as_ref()
         .map(|m| m.plugin_slug.clone())
@@ -104,7 +111,11 @@ pub(crate) fn read_workflow_settings(
         .map(|m| m.id)
         .map(|sid| {
             crate::db::db_documents_for_skill(&conn, sid).unwrap_or_else(|e| {
-                log::warn!("read_workflow_settings: failed to load documents for skill {}: {}", skill_name, e);
+                log::warn!(
+                    "read_workflow_settings: failed to load documents for skill {}: {}",
+                    skill_name,
+                    e
+                );
                 vec![]
             })
         })

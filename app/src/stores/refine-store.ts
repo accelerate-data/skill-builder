@@ -27,7 +27,6 @@ export interface RefineQuestionResponse {
 }
 
 export type RefineMessageRole = "user" | "agent" | "question";
-export type RefineCommand = "validate" | "benchmark";
 
 export interface RefineMessage {
   id: string;
@@ -35,7 +34,6 @@ export interface RefineMessage {
   agentId?: string; // set for "agent" role — links to agent-store run
   userText?: string; // set for "user" role
   targetFiles?: string[]; // files targeted with @mentions
-  command?: RefineCommand; // slash command used (e.g., /validate)
   toolUseId?: string;
   questions?: RefineQuestionPrompt[];
   pending?: boolean;
@@ -43,11 +41,6 @@ export interface RefineMessage {
   displayItemSplitIndex?: number; // display item count when question was asked — splits agent turn
   diff?: RefineDiff; // attached after agent turn completes with file changes
   timestamp: number;
-}
-
-interface RefineRedirectRequest {
-  command: RefineCommand;
-  text: string;
 }
 
 interface RefineState {
@@ -69,7 +62,7 @@ interface RefineState {
 
   // Chat messages
   messages: RefineMessage[];
-  pendingRedirect: RefineRedirectRequest | null;
+  pendingFollowupMessage: string | null;
 
   // Agent state
   activeAgentId: string | null;
@@ -92,11 +85,18 @@ interface RefineState {
   setActiveFileTab: (filename: string) => void;
   setSelectedModifiedFile: (filename: string | null) => void;
   setDiffMode: (v: boolean) => void;
-  addUserMessage: (text: string, targetFiles?: string[], command?: RefineCommand) => RefineMessage;
+  addUserMessage: (text: string, targetFiles?: string[]) => RefineMessage;
   addAgentTurn: (agentId: string) => RefineMessage;
   attachDiffToLastAgentTurn: (diff: RefineDiff) => void;
-  addQuestionMessage: (agentId: string, toolUseId: string, questions: RefineQuestionPrompt[]) => RefineMessage;
-  answerQuestionMessage: (messageId: string, response: RefineQuestionResponse) => void;
+  addQuestionMessage: (
+    agentId: string,
+    toolUseId: string,
+    questions: RefineQuestionPrompt[],
+  ) => RefineMessage;
+  answerQuestionMessage: (
+    messageId: string,
+    response: RefineQuestionResponse,
+  ) => void;
   updateSkillFiles: (files: SkillFile[]) => void;
   setGitDiff: (diff: RefineDiff | null) => void;
   setActiveAgentId: (id: string | null) => void;
@@ -104,7 +104,7 @@ interface RefineState {
   setSessionId: (id: string | null) => void;
   setSessionExhausted: (v: boolean) => void;
   setAvailableAgents: (agents: string[]) => void;
-  setPendingRedirect: (redirect: RefineRedirectRequest | null) => void;
+  setPendingFollowupMessage: (message: string | null) => void;
   clearSession: () => void;
 }
 
@@ -115,7 +115,7 @@ export function isAuthoredSkillFile(filename: string): boolean {
 /** Session state that resets when switching skills or clearing the session. */
 const SESSION_DEFAULTS = {
   messages: [] as RefineMessage[],
-  pendingRedirect: null as RefineRedirectRequest | null,
+  pendingFollowupMessage: null as string | null,
   activeAgentId: null as string | null,
   isRunning: false,
   sessionId: null as string | null,
@@ -147,8 +147,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   setRefinableSkills: (skills) => set({ refinableSkills: skills }),
   setLoadingSkills: (v) => set({ isLoadingSkills: v }),
 
-  selectSkill: (skill) =>
-    set({ selectedSkill: skill, ...SESSION_DEFAULTS }),
+  selectSkill: (skill) => set({ selectedSkill: skill, ...SESSION_DEFAULTS }),
 
   setSkillFiles: (files) =>
     set((state) => ({
@@ -158,16 +157,16 @@ export const useRefineStore = create<RefineState>((set, get) => ({
     })),
   setLoadingFiles: (v) => set({ isLoadingFiles: v }),
   setActiveFileTab: (filename) => set({ activeFileTab: filename }),
-  setSelectedModifiedFile: (filename) => set({ selectedModifiedFile: filename }),
+  setSelectedModifiedFile: (filename) =>
+    set({ selectedModifiedFile: filename }),
   setDiffMode: (v) => set({ diffMode: v }),
 
-  addUserMessage: (text, targetFiles, command) => {
+  addUserMessage: (text, targetFiles) => {
     const message: RefineMessage = {
       id: crypto.randomUUID(),
       role: "user",
       userText: text,
       targetFiles,
-      command,
       timestamp: Date.now(),
     };
     set((state) => ({ messages: [...state.messages, message] }));
@@ -187,7 +186,9 @@ export const useRefineStore = create<RefineState>((set, get) => ({
 
   attachDiffToLastAgentTurn: (diff) =>
     set((state) => {
-      const idx = [...state.messages].reverse().findIndex((m) => m.role === "agent");
+      const idx = [...state.messages]
+        .reverse()
+        .findIndex((m) => m.role === "agent");
       if (idx === -1) return {};
       const actualIdx = state.messages.length - 1 - idx;
       const updated = [...state.messages];
@@ -196,9 +197,10 @@ export const useRefineStore = create<RefineState>((set, get) => ({
     }),
 
   addQuestionMessage: (agentId, toolUseId, questions): RefineMessage => {
-    const existingMessage = get()
-      .messages
-      .find((message) => message.role === "question" && message.toolUseId === toolUseId);
+    const existingMessage = get().messages.find(
+      (message) =>
+        message.role === "question" && message.toolUseId === toolUseId,
+    );
     if (existingMessage) {
       return existingMessage;
     }
@@ -232,58 +234,74 @@ export const useRefineStore = create<RefineState>((set, get) => ({
       ),
     })),
 
-  updateSkillFiles: (files) => set((state) => {
-    const existingFiles = new Set(state.skillFiles.map((file) => file.filename));
-    const nextFileNames = new Set(files.map((file) => file.filename));
-    const firstNewAuthoredFile = files.find((file) =>
-      !existingFiles.has(file.filename) && isAuthoredSkillFile(file.filename)
-    )?.filename;
-    const activeStillExists = files.some((file) => file.filename === state.activeFileTab);
-    const activeStillEligible = isAuthoredSkillFile(state.activeFileTab);
-    const firstEligibleFile = files.find((file) => isAuthoredSkillFile(file.filename))?.filename;
-    const nextActive = firstNewAuthoredFile
-      ?? (activeStillExists && activeStillEligible
-        ? state.activeFileTab
-        : (firstEligibleFile ?? "SKILL.md"));
-    return {
-      skillFiles: files,
-      activeFileTab: nextActive,
-      selectedModifiedFile: state.selectedModifiedFile && nextFileNames.has(state.selectedModifiedFile)
-        ? state.selectedModifiedFile
-        : null,
-      previewRevision: state.previewRevision + 1,
-    };
-  }),
-
-  setGitDiff: (diff) => set((state) => {
-    if (!diff) {
+  updateSkillFiles: (files) =>
+    set((state) => {
+      const existingFiles = new Set(
+        state.skillFiles.map((file) => file.filename),
+      );
+      const nextFileNames = new Set(files.map((file) => file.filename));
+      const firstNewAuthoredFile = files.find(
+        (file) =>
+          !existingFiles.has(file.filename) &&
+          isAuthoredSkillFile(file.filename),
+      )?.filename;
+      const activeStillExists = files.some(
+        (file) => file.filename === state.activeFileTab,
+      );
+      const activeStillEligible = isAuthoredSkillFile(state.activeFileTab);
+      const firstEligibleFile = files.find((file) =>
+        isAuthoredSkillFile(file.filename),
+      )?.filename;
+      const nextActive =
+        firstNewAuthoredFile ??
+        (activeStillExists && activeStillEligible
+          ? state.activeFileTab
+          : (firstEligibleFile ?? "SKILL.md"));
       return {
-        gitDiff: null,
-        selectedModifiedFile: null,
+        skillFiles: files,
+        activeFileTab: nextActive,
+        selectedModifiedFile:
+          state.selectedModifiedFile &&
+          nextFileNames.has(state.selectedModifiedFile)
+            ? state.selectedModifiedFile
+            : null,
+        previewRevision: state.previewRevision + 1,
       };
-    }
-    const diffPaths = new Set(
-      diff.files
-        .map((file) => {
-          const parts = file.path.split("/");
-          return parts.length > 1 ? parts.slice(1).join("/") : file.path;
-        })
-        .filter((path) => isAuthoredSkillFile(path)),
-    );
-    return {
-      gitDiff: diff,
-      selectedModifiedFile: state.selectedModifiedFile && diffPaths.has(state.selectedModifiedFile)
-        ? state.selectedModifiedFile
-        : null,
-    };
-  }),
+    }),
+
+  setGitDiff: (diff) =>
+    set((state) => {
+      if (!diff) {
+        return {
+          gitDiff: null,
+          selectedModifiedFile: null,
+        };
+      }
+      const diffPaths = new Set(
+        diff.files
+          .map((file) => {
+            const parts = file.path.split("/");
+            return parts.length > 1 ? parts.slice(1).join("/") : file.path;
+          })
+          .filter((path) => isAuthoredSkillFile(path)),
+      );
+      return {
+        gitDiff: diff,
+        selectedModifiedFile:
+          state.selectedModifiedFile &&
+          diffPaths.has(state.selectedModifiedFile)
+            ? state.selectedModifiedFile
+            : null,
+      };
+    }),
 
   setActiveAgentId: (id) => set({ activeAgentId: id }),
   setRunning: (v) => set({ isRunning: v }),
   setSessionId: (id) => set({ sessionId: id }),
   setSessionExhausted: (v) => set({ sessionExhausted: v }),
   setAvailableAgents: (agents) => set({ availableAgents: agents }),
-  setPendingRedirect: (redirect) => set({ pendingRedirect: redirect }),
+  setPendingFollowupMessage: (message) =>
+    set({ pendingFollowupMessage: message }),
 
   clearSession: () => set(SESSION_DEFAULTS),
 }));

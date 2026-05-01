@@ -163,10 +163,10 @@ pub fn get_agent_runs(
     hide_cancelled: bool,
     start_date: Option<String>,
     skill_name: Option<String>,
-    model_family: Option<String>,
+    model_filter: Option<String>,
     limit: usize,
 ) -> Result<Vec<AgentRunRecord>, String> {
-    log::info!("[get_agent_runs] hide_cancelled={} start_date={:?} skill_name={:?} model_family={:?} limit={}", hide_cancelled, start_date, skill_name, model_family, limit);
+    log::info!("[get_agent_runs] hide_cancelled={} start_date={:?} skill_name={:?} model_filter={:?} limit={}", hide_cancelled, start_date, skill_name, model_filter, limit);
     let conn = db.0.lock().map_err(|e| {
         log::error!("[get_agent_runs] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -176,7 +176,7 @@ pub fn get_agent_runs(
         hide_cancelled,
         start_date.as_deref(),
         skill_name.as_deref(),
-        model_family.as_deref(),
+        model_filter.as_deref(),
         limit,
     )
 }
@@ -373,28 +373,90 @@ mod tests {
     fn test_get_usage_by_model_groups_correctly() {
         let conn = create_test_db_for_tests();
         crate::db::upsert_skill(&conn, "skill-a", "skill-builder", "test").unwrap();
-        // Insert two sonnet runs and one opus run
+        // Insert two model-a runs and one model-b run.
         crate::db::persist_agent_run(
-            &conn, "run-1", "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "claude-sonnet-4-6", "completed",
-            1000, 200, 0, 0, 0.10, 5000, 3, Some("end_turn"), None, 1, 0, None, Some("ws-1"),
-        ).unwrap();
+            &conn,
+            "run-1",
+            "skill-a",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            0,
+            "settings-model-a",
+            "completed",
+            1000,
+            200,
+            0,
+            0,
+            0.10,
+            5000,
+            3,
+            Some("end_turn"),
+            None,
+            1,
+            0,
+            None,
+            Some("ws-1"),
+        )
+        .unwrap();
         crate::db::persist_agent_run(
-            &conn, "run-2", "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 1, "claude-opus-4-6", "completed",
-            2000, 400, 0, 0, 0.50, 8000, 5, Some("end_turn"), None, 2, 0, None, Some("ws-2"),
-        ).unwrap();
+            &conn,
+            "run-2",
+            "skill-a",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            1,
+            "settings-model-b",
+            "completed",
+            2000,
+            400,
+            0,
+            0,
+            0.50,
+            8000,
+            5,
+            Some("end_turn"),
+            None,
+            2,
+            0,
+            None,
+            Some("ws-2"),
+        )
+        .unwrap();
         crate::db::persist_agent_run(
-            &conn, "run-3", "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "claude-sonnet-4-6", "completed",
-            500, 100, 0, 0, 0.05, 2000, 1, Some("end_turn"), None, 0, 0, None, Some("ws-3"),
-        ).unwrap();
+            &conn,
+            "run-3",
+            "skill-a",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            0,
+            "settings-model-a",
+            "completed",
+            500,
+            100,
+            0,
+            0,
+            0.05,
+            2000,
+            1,
+            Some("end_turn"),
+            None,
+            0,
+            0,
+            None,
+            Some("ws-3"),
+        )
+        .unwrap();
 
         let by_model = crate::db::get_usage_by_model(&conn, false, None, None).unwrap();
         assert_eq!(by_model.len(), 2);
-        // The query normalizes model names to "Sonnet", "Opus", "Haiku" families (capitalized)
-        let sonnet = by_model.iter().find(|m| m.model.to_lowercase().contains("sonnet")).unwrap();
-        assert_eq!(sonnet.run_count, 2);
-        assert!((sonnet.total_cost - 0.15).abs() < 0.001);
-        let opus = by_model.iter().find(|m| m.model.to_lowercase().contains("opus")).unwrap();
-        assert_eq!(opus.run_count, 1);
+        let model_a = by_model
+            .iter()
+            .find(|m| m.model == "settings-model-a")
+            .unwrap();
+        assert_eq!(model_a.run_count, 2);
+        assert!((model_a.total_cost - 0.15).abs() < 0.001);
+        let model_b = by_model
+            .iter()
+            .find(|m| m.model == "settings-model-b")
+            .unwrap();
+        assert_eq!(model_b.run_count, 1);
     }
 
     #[test]
@@ -435,8 +497,9 @@ mod tests {
              SET workflow_run_id = (
                  SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = agent_runs.skill_name
              )
-             WHERE workflow_run_id IS NULL;"
-        ).unwrap();
+             WHERE workflow_run_id IS NULL;",
+        )
+        .unwrap();
 
         let runs = crate::db::get_step_agent_runs(&conn, "skill-a", 0).unwrap();
         assert_eq!(runs.len(), 1);
@@ -449,7 +512,8 @@ mod tests {
         insert_session_run(&conn, "run-1", "skill-a", 0, "completed", 0.10, "ws-1");
         insert_session_run(&conn, "run-2", "skill-b", 0, "completed", 0.05, "ws-2");
 
-        let sessions = crate::db::get_recent_workflow_sessions(&conn, 10, false, None, None).unwrap();
+        let sessions =
+            crate::db::get_recent_workflow_sessions(&conn, 10, false, None, None).unwrap();
         assert_eq!(sessions.len(), 2);
     }
 
@@ -461,9 +525,28 @@ mod tests {
 
         // Attempt to overwrite with shutdown status (should be a no-op)
         crate::db::persist_agent_run(
-            &conn, "run-1", "skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "claude-sonnet-4-6", "shutdown",
-            0, 0, 0, 0, 0.0, 0, 0, None, None, 0, 0, None, None,
-        ).unwrap();
+            &conn,
+            "run-1",
+            "skill-a",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            0,
+            "claude-sonnet-4-6",
+            "shutdown",
+            0,
+            0,
+            0,
+            0,
+            0.0,
+            0,
+            0,
+            None,
+            None,
+            0,
+            0,
+            None,
+            None,
+        )
+        .unwrap();
 
         let runs = crate::db::get_recent_runs(&conn, 10).unwrap();
         assert_eq!(runs.len(), 1);

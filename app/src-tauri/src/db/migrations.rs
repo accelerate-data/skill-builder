@@ -34,12 +34,11 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (29, run_marketplace_source_url_migration),
     (30, run_skills_soft_delete_migration),
     (31, run_backfill_synthetic_sessions_migration),
-    (32, run_normalize_model_names_migration),
+    (32, run_reserved_model_settings_migration),
     (33, run_reconciliation_events_migration),
     (34, run_ghost_running_rows_migration),
     (35, run_drop_workflow_runs_metadata_migration),
     (36, run_consolidate_workspace_skills_migration),
-
     (37, run_fk_cascade_migration),
     (38, run_plugin_ownership_migration),
     (39, run_plugin_upgrade_locked_migration),
@@ -67,7 +66,10 @@ pub(super) fn migration_applied(conn: &Connection, version: u32) -> bool {
         > 0
 }
 
-pub(super) fn mark_migration_applied(conn: &Connection, version: u32) -> Result<(), rusqlite::Error> {
+pub(super) fn mark_migration_applied(
+    conn: &Connection,
+    version: u32,
+) -> Result<(), rusqlite::Error> {
     conn.execute(
         "INSERT OR IGNORE INTO schema_migrations (version) VALUES (?1)",
         rusqlite::params![version],
@@ -493,7 +495,9 @@ pub(super) fn run_bundled_skill_migration(conn: &Connection) -> Result<(), rusql
 /// Drop `trigger_text` and `description` columns from imported_skills.
 /// Skill metadata is now read from SKILL.md frontmatter on disk.
 /// SQLite < 3.35 doesn't support DROP COLUMN, so we recreate the table.
-pub(super) fn run_drop_trigger_description_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_drop_trigger_description_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     // Check if trigger_text column still exists (idempotent)
     let has_trigger_text = conn
         .prepare("PRAGMA table_info(imported_skills)")
@@ -557,7 +561,9 @@ pub(super) fn run_source_migration(conn: &Connection) -> Result<(), rusqlite::Er
 }
 
 /// Migration 15: Add extended metadata columns to imported_skills.
-pub(super) fn run_imported_skills_extended_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_imported_skills_extended_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     let columns: Vec<String> = conn
         .prepare("PRAGMA table_info(imported_skills)")
         .and_then(|mut stmt| {
@@ -590,7 +596,9 @@ pub(super) fn run_imported_skills_extended_migration(conn: &Connection) -> Resul
 }
 
 /// Migration 17: Clean up stale running rows left by crashed sessions.
-pub(super) fn run_cleanup_stale_running_rows_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_cleanup_stale_running_rows_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         "UPDATE agent_runs
          SET status = 'shutdown', completed_at = datetime('now') || 'Z'
@@ -599,7 +607,9 @@ pub(super) fn run_cleanup_stale_running_rows_migration(conn: &Connection) -> Res
 }
 
 /// Migration 16: Add extended metadata columns to workflow_runs.
-pub(super) fn run_workflow_runs_extended_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_workflow_runs_extended_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     // Add description, version, model, argument_hint, user_invocable, disable_model_invocation
     // to workflow_runs. Check each column before adding (idempotent).
     let existing: Vec<String> = conn
@@ -625,7 +635,6 @@ pub(super) fn run_workflow_runs_extended_migration(conn: &Connection) -> Result<
     }
     Ok(())
 }
-
 
 /// Migration 18: Create the `skills` master table — the single catalog backing
 /// the skills library, test tab, and reconciliation.
@@ -661,7 +670,9 @@ pub(super) fn run_skills_soft_delete_migration(conn: &Connection) -> Result<(), 
 
 /// Migration 31: Backfill missing workflow_sessions rows for historical synthetic
 /// refine/test usage runs written before synthetic session persistence.
-pub(super) fn run_backfill_synthetic_sessions_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_backfill_synthetic_sessions_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     conn.execute(
         "INSERT INTO workflow_sessions (session_id, skill_name, skill_id, pid, started_at, ended_at)
          SELECT
@@ -684,43 +695,21 @@ pub(super) fn run_backfill_synthetic_sessions_migration(conn: &Connection) -> Re
     Ok(())
 }
 
-/// Migration 32: Normalize historical short-form model aliases in agent_runs to
-/// canonical full IDs so model filtering is deterministic.  Aliases that were stored
-/// as "sonnet"/"Sonnet", "haiku"/"Haiku", or "opus"/"Opus" are mapped to the
-/// current canonical ID for each family.
-pub(super) fn run_normalize_model_names_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
-    let mappings = [
-        ("haiku", "claude-haiku-4-5-20251001"),
-        ("Haiku", "claude-haiku-4-5-20251001"),
-        ("claude-haiku-4-5", "claude-haiku-4-5-20251001"),
-        ("sonnet", "claude-sonnet-4-6"),
-        ("Sonnet", "claude-sonnet-4-6"),
-        ("opus", "claude-opus-4-6"),
-        ("Opus", "claude-opus-4-6"),
-    ];
-    for (alias, canonical) in &mappings {
-        // If both the alias row and a canonical row exist for the same agent_id,
-        // the alias row is a duplicate. Delete it so the UPDATE doesn't hit the
-        // composite PK constraint (agent_id, model).
-        conn.execute(
-            "DELETE FROM agent_runs
-             WHERE model = ?1
-               AND agent_id IN (
-                 SELECT agent_id FROM agent_runs WHERE model = ?2
-               )",
-            rusqlite::params![alias, canonical],
-        )?;
-        conn.execute(
-            "UPDATE agent_runs SET model = ?1 WHERE model = ?2",
-            rusqlite::params![canonical, alias],
-        )?;
-    }
-    log::info!("migration 32: normalized agent_runs model name aliases to canonical IDs");
+/// Migration 32: reserved historical migration slot.
+pub(super) fn run_reserved_model_settings_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    let _ = conn;
+    log::info!(
+        "migration 32: skipped model alias normalization; model IDs are stored exactly as emitted"
+    );
     Ok(())
 }
 
 /// Migration 33: Record startup reconciliation actions in an auditable table.
-pub(super) fn run_reconciliation_events_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_reconciliation_events_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS reconciliation_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -764,7 +753,9 @@ pub(super) fn run_ghost_running_rows_migration(conn: &Connection) -> Result<(), 
 ///
 /// Uses the SQLite table-rebuild pattern since ALTER TABLE DROP COLUMN is not
 /// widely supported.
-pub(super) fn run_drop_workflow_runs_metadata_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_drop_workflow_runs_metadata_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     // Idempotency: if a previous run left workflow_runs_new behind (e.g. the process
     // crashed before mark_migration_applied was called), drop it first.
     conn.execute_batch("DROP TABLE IF EXISTS workflow_runs_new;")?;
@@ -777,7 +768,9 @@ pub(super) fn run_drop_workflow_runs_metadata_migration(conn: &Connection) -> Re
         .filter_map(|r| r.ok())
         .any(|col| col == "description");
     if !has_deprecated {
-        log::info!("migration 35: workflow_runs already lacks deprecated columns, skipping rebuild");
+        log::info!(
+            "migration 35: workflow_runs already lacks deprecated columns, skipping rebuild"
+        );
         return Ok(());
     }
 
@@ -817,12 +810,13 @@ pub(super) fn run_drop_workflow_runs_metadata_migration(conn: &Connection) -> Re
 /// The workspace_skills concept is removed entirely; imported_skills is the sole import table.
 /// Data is not migrated — workspace_skills held transient bundled/toggle state that no longer
 /// maps to any feature.
-pub(super) fn run_consolidate_workspace_skills_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_consolidate_workspace_skills_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     conn.execute_batch("DROP TABLE IF EXISTS workspace_skills;")?;
     log::info!("migration 36: dropped workspace_skills table");
     Ok(())
 }
-
 
 /// Migration 19: Backfill `skills` from `workflow_runs`, add FK column, backfill FK,
 /// and remove marketplace rows from `workflow_runs` (now in skills master only).
@@ -912,7 +906,6 @@ pub(super) fn run_workspace_skills_migration(conn: &Connection) -> Result<(), ru
     Ok(())
 }
 
-
 /// Migration 22: Add integer primary key to `workflow_runs`.
 /// The table previously used `skill_name TEXT PRIMARY KEY`. We recreate it with
 /// `id INTEGER PRIMARY KEY AUTOINCREMENT` and `skill_name TEXT UNIQUE NOT NULL`.
@@ -978,7 +971,6 @@ pub(super) fn run_workflow_runs_id_migration(conn: &Connection) -> Result<(), ru
     log::info!("migration 21: added integer PK to workflow_runs");
     Ok(())
 }
-
 
 /// Migration 23: Add integer FK columns to child tables and backfill from skill_name.
 /// After this migration:
@@ -1105,7 +1097,9 @@ pub(super) fn run_fk_columns_migration(conn: &Connection) -> Result<(), rusqlite
 /// disable_model_invocation) apply to ALL skill sources and belong in the canonical
 /// `skills` table rather than per-source tables (workflow_runs / imported_skills).
 /// Backfills from workflow_runs (skill-builder) and imported_skills (marketplace/imported).
-pub(super) fn run_frontmatter_to_skills_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_frontmatter_to_skills_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     let existing_cols: Vec<String> = conn
         .prepare("PRAGMA table_info(skills)")?
         .query_map([], |r| r.get::<_, String>(1))?
@@ -1217,7 +1211,9 @@ pub(super) fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqli
                    SELECT imp.disable_model_invocation FROM imported_skills imp WHERE imp.skill_name = skills.name))
              WHERE skill_source IN ('marketplace', 'imported');"
         )?;
-        log::info!("repair_skills_table_schema: backfilled frontmatter fields from imported_skills");
+        log::info!(
+            "repair_skills_table_schema: backfilled frontmatter fields from imported_skills"
+        );
     }
 
     Ok(())
@@ -1271,7 +1267,9 @@ pub(super) fn repair_plugin_ownership_schema(conn: &Connection) -> Result<(), ru
     Ok(())
 }
 
-pub(super) fn run_workspace_skills_purpose_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_workspace_skills_purpose_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     let has_column = conn
         .prepare("PRAGMA table_info(workspace_skills)")
         .and_then(|mut stmt| {
@@ -1312,7 +1310,9 @@ pub(super) fn run_content_hash_migration(conn: &Connection) -> Result<(), rusqli
     Ok(())
 }
 
-pub(super) fn run_backfill_null_versions_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_backfill_null_versions_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     // One-time patch: set version = '1.0.0' wherever version is NULL in all three version-
     // tracking tables. Skills imported before version tracking was introduced had no version
     // recorded; this prevents them from showing false "Update available" badges.
@@ -1446,7 +1446,9 @@ pub(super) fn run_agent_stats_migration(conn: &Connection) -> Result<(), rusqlit
 
 /// Migration 28: Rename `skill_type` -> `purpose` and drop `domain` column from all 4 tables:
 /// skills, workflow_runs, imported_skills, workspace_skills.
-pub(super) fn run_rename_purpose_drop_domain_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_rename_purpose_drop_domain_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     // Wrap in a transaction so partial failure rolls back, preventing irrecoverable state.
     // FK checks disabled during table rebuilds, re-enabled after commit.
     conn.execute_batch("PRAGMA foreign_keys = OFF; BEGIN;")?;
@@ -1616,7 +1618,9 @@ pub(super) fn run_rename_purpose_drop_domain_migration(conn: &Connection) -> Res
 
 /// Migration 29: Add `marketplace_source_url TEXT` to workspace_skills and imported_skills.
 /// This column tracks which registry a skill was imported from (NULL for bundled/manually uploaded).
-pub(super) fn run_marketplace_source_url_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_marketplace_source_url_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     let check_col = |table: &str, col: &str| -> bool {
         conn.prepare(&format!("PRAGMA table_info({})", table))
             .and_then(|mut stmt| {
@@ -1634,7 +1638,8 @@ pub(super) fn run_marketplace_source_url_migration(conn: &Connection) -> Result<
         .unwrap_or(false)
     };
     let mut altered = false;
-    if table_exists("workspace_skills") && !check_col("workspace_skills", "marketplace_source_url") {
+    if table_exists("workspace_skills") && !check_col("workspace_skills", "marketplace_source_url")
+    {
         conn.execute_batch("ALTER TABLE workspace_skills ADD COLUMN marketplace_source_url TEXT;")?;
         altered = true;
     }
@@ -1649,7 +1654,6 @@ pub(super) fn run_marketplace_source_url_migration(conn: &Connection) -> Result<
     }
     Ok(())
 }
-
 
 /// Migration 37: Recreate 7 child tables to add ON DELETE CASCADE to FK columns.
 ///
@@ -1894,12 +1898,19 @@ pub(super) fn run_documents_migration(conn: &Connection) -> Result<(), rusqlite:
 pub(super) fn run_reset_legacy_tags_migrated(conn: &Connection) -> Result<(), rusqlite::Error> {
     // Settings are stored as JSON in a single row. Read, patch, write back.
     let json: Option<String> = conn
-        .query_row("SELECT value FROM settings WHERE key = 'app_settings'", [], |r| r.get(0))
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'app_settings'",
+            [],
+            |r| r.get(0),
+        )
         .ok();
     if let Some(json) = json {
         if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&json) {
             if let Some(obj) = val.as_object_mut() {
-                obj.insert("legacy_tags_migrated".to_string(), serde_json::Value::Bool(false));
+                obj.insert(
+                    "legacy_tags_migrated".to_string(),
+                    serde_json::Value::Bool(false),
+                );
                 let updated = serde_json::to_string(&val).unwrap_or(json.clone());
                 conn.execute(
                     "UPDATE settings SET value = ?1 WHERE key = 'app_settings'",
@@ -1929,7 +1940,9 @@ pub(super) fn run_performance_indexes_migration(conn: &Connection) -> Result<(),
     Ok(())
 }
 
-pub(super) fn run_plugin_upgrade_locked_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(super) fn run_plugin_upgrade_locked_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
     let has_upgrade_locked = conn
         .prepare("PRAGMA table_info(plugins)")
         .and_then(|mut stmt| {

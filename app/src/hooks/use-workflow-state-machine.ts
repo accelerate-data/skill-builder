@@ -12,7 +12,7 @@ import {
   endWorkflowSession,
   logFrontend,
 } from "@/lib/tauri";
-import { resolveModelId } from "@/lib/models";
+import { requireSettingsModel } from "@/lib/models";
 import { type StepConfig } from "@/lib/workflow-step-configs";
 import { toast } from "@/lib/toast";
 import { useWorkflowGate } from "@/hooks/use-workflow-gate";
@@ -85,14 +85,18 @@ export function useWorkflowStateMachine({
   const agentStartRun = useAgentStore((s) => s.startRun);
 
   // Step switch state (when user clicks sidebar while agent running)
-  const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
+  const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(
+    null,
+  );
 
   // Reset confirmation state
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetTarget, setResetTarget] = useState<number | null>(null);
 
   // Auto-start state
-  const [pendingAutoStartStep, setPendingAutoStartStep] = useState<number | null>(null);
+  const [pendingAutoStartStep, setPendingAutoStartStep] = useState<
+    number | null
+  >(null);
 
   // Refs for cross-effect communication
   const prevReviewModeRef = useRef<boolean | null>(null);
@@ -103,7 +107,8 @@ export function useWorkflowStateMachine({
   const isRunning = useWorkflowStore((s) => s.isRunning);
   const gateLoading = useWorkflowStore((s) => s.gateLoading);
 
-  const isAgentType = stepConfig?.type === "agent" || stepConfig?.type === "reasoning";
+  const isAgentType =
+    stepConfig?.type === "agent" || stepConfig?.type === "reasoning";
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
   const activeRunStatus = activeRun?.status;
 
@@ -112,23 +117,34 @@ export function useWorkflowStateMachine({
   const endActiveSession = useCallback(() => {
     const sessionId = useWorkflowStore.getState().workflowSessionId;
     if (sessionId) {
-      endWorkflowSession(sessionId).catch((e) => console.warn("[use-workflow-state-machine] non-fatal: op=endWorkflowSession err=%s", e));
+      endWorkflowSession(sessionId).catch((e) =>
+        console.warn(
+          "[use-workflow-state-machine] non-fatal: op=endWorkflowSession err=%s",
+          e,
+        ),
+      );
       useWorkflowStore.setState({ workflowSessionId: null });
     }
   }, []);
 
-  const extractStructuredResultPayload = useCallback((agentId: string): unknown | null => {
-    const run = useAgentStore.getState().runs[agentId];
-    if (!run) return null;
-    const resultItem = [...run.displayItems].reverse().find((di) => di.type === "result");
-    if (!resultItem?.structuredOutput) return null;
-    return resultItem.structuredOutput;
-  }, []);
+  const extractStructuredResultPayload = useCallback(
+    (agentId: string): unknown | null => {
+      const run = useAgentStore.getState().runs[agentId];
+      if (!run) return null;
+      const resultItem = [...run.displayItems]
+        .reverse()
+        .find((di) => di.type === "result");
+      if (!resultItem?.structuredOutput) return null;
+      return resultItem.structuredOutput;
+    },
+    [],
+  );
 
   // --- Auto-advance logic ---
 
   const advanceToNextStep = useCallback(() => {
-    const { gateLoading: gateLoadingNow, disabledSteps: disabled } = useWorkflowStore.getState();
+    const { gateLoading: gateLoadingNow, disabledSteps: disabled } =
+      useWorkflowStore.getState();
     if (gateLoadingNow || gate.gateAgentIdRef.current) return;
     if (currentStep >= steps.length - 1) return;
     const nextStep = currentStep + 1;
@@ -161,11 +177,17 @@ export function useWorkflowStateMachine({
     // after resetToStep() + autoStartAfterReset() in the same tick.
     const storeStep = useWorkflowStore.getState().currentStep;
     if (pendingAutoStartStep !== storeStep) {
-      logFrontend("warn", `[auto-start] BLOCKED: pendingAutoStartStep=${pendingAutoStartStep} !== storeStep=${storeStep} (selectorStep=${currentStep})`);
+      logFrontend(
+        "warn",
+        `[auto-start] BLOCKED: pendingAutoStartStep=${pendingAutoStartStep} !== storeStep=${storeStep} (selectorStep=${currentStep})`,
+      );
       return;
     }
     if (!isAgentType) {
-      logFrontend("warn", `[auto-start] BLOCKED: step ${currentStep} is not an agent type`);
+      logFrontend(
+        "warn",
+        `[auto-start] BLOCKED: step ${currentStep} is not an agent type`,
+      );
       return;
     }
     if (isRunning) {
@@ -173,12 +195,18 @@ export function useWorkflowStateMachine({
       return;
     }
     if (gateLoading || gate.gateAgentIdRef.current) {
-      logFrontend("warn", `[auto-start] BLOCKED: gateLoading=${gateLoading} gateAgentId=${gate.gateAgentIdRef.current}`);
+      logFrontend(
+        "warn",
+        `[auto-start] BLOCKED: gateLoading=${gateLoading} gateAgentId=${gate.gateAgentIdRef.current}`,
+      );
       return;
     }
     const storeSteps = useWorkflowStore.getState().steps;
     if (storeSteps[storeStep]?.status !== "pending") {
-      logFrontend("warn", `[auto-start] BLOCKED: step ${storeStep} status=${storeSteps[storeStep]?.status} (expected pending)`);
+      logFrontend(
+        "warn",
+        `[auto-start] BLOCKED: step ${storeStep} status=${storeSteps[storeStep]?.status} (expected pending)`,
+      );
       setPendingAutoStartStep(null);
       return;
     }
@@ -186,7 +214,14 @@ export function useWorkflowStateMachine({
     setPendingAutoStartStep(null);
     handleStartAgentStep();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingAutoStartStep, currentStep, steps, isRunning, isAgentType, gateLoading]);
+  }, [
+    pendingAutoStartStep,
+    currentStep,
+    steps,
+    isRunning,
+    isAgentType,
+    gateLoading,
+  ]);
 
   // Auto-start when switching from Review → Update mode on a pending agent step
   useEffect(() => {
@@ -205,12 +240,16 @@ export function useWorkflowStateMachine({
     // wasToggle sets pendingAutoStartStep=viewingStep, reposition moves currentStep
     // to firstIncompleteStep, and Effect A sees they differ and skips auto-start.
     const { disabledSteps: disabled } = useWorkflowStore.getState();
-    const first = steps.find((s) => s.status !== "completed" && !disabled.includes(s.id));
+    const first = steps.find(
+      (s) => s.status !== "completed" && !disabled.includes(s.id),
+    );
     const targetStep = first ? first.id : currentStep;
 
     const status = steps[targetStep]?.status;
     if (status && status !== "pending") return;
-    console.log(`[workflow] Auto-starting step ${targetStep} (review→update toggle)`);
+    console.log(
+      `[workflow] Auto-starting step ${targetStep} (review→update toggle)`,
+    );
     setPendingAutoStartStep(targetStep);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, reviewMode]);
@@ -219,11 +258,16 @@ export function useWorkflowStateMachine({
   useEffect(() => {
     if (!hydrated || reviewMode) return;
     const currentCfg = stepConfigs[currentStep];
-    if (currentCfg?.clarificationsEditable && steps[currentStep]?.status === "completed") {
+    if (
+      currentCfg?.clarificationsEditable &&
+      steps[currentStep]?.status === "completed"
+    ) {
       return;
     }
     const { disabledSteps: disabled } = useWorkflowStore.getState();
-    const first = steps.find((s) => s.status !== "completed" && !disabled.includes(s.id));
+    const first = steps.find(
+      (s) => s.status !== "completed" && !disabled.includes(s.id),
+    );
     const target = first ? first.id : currentStep;
     if (target !== currentStep) {
       setCurrentStep(target);
@@ -252,18 +296,29 @@ export function useWorkflowStateMachine({
         return;
       }
 
-      const structuredOutput = extractStructuredResultPayload(completedGateAgentId);
+      const structuredOutput =
+        extractStructuredResultPayload(completedGateAgentId);
       clearRuns();
       gate.finishGateEvaluation(structuredOutput);
     }
-  }, [activeRunStatus, activeAgentId, extractStructuredResultPayload, setGateLoading, updateStepStatus, advanceToNextStep, clearRuns, setActiveAgent]);
+  }, [
+    activeRunStatus,
+    activeAgentId,
+    extractStructuredResultPayload,
+    setGateLoading,
+    updateStepStatus,
+    advanceToNextStep,
+    clearRuns,
+    setActiveAgent,
+  ]);
 
   // Watch for workflow step agent completion
   useEffect(() => {
     if (!activeRunStatus || !activeAgentId) return;
     if (gate.gateAgentIdRef.current === activeAgentId) return;
 
-    const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
+    const { steps: currentSteps, currentStep: step } =
+      useWorkflowStore.getState();
     if (currentSteps[step]?.status !== "in_progress") return;
 
     if (activeRunStatus === "completed") {
@@ -273,8 +328,13 @@ export function useWorkflowStateMachine({
       const finish = async () => {
         const cfg = stepConfigs[step];
         if (cfg && completedAgentId) {
-          const structuredOutput = extractStructuredResultPayload(completedAgentId);
-          if (structuredOutput == null || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) {
+          const structuredOutput =
+            extractStructuredResultPayload(completedAgentId);
+          if (
+            structuredOutput == null ||
+            typeof structuredOutput !== "object" ||
+            Array.isArray(structuredOutput)
+          ) {
             if (cfg.requiresStructuredOutput) {
               updateStepStatus(step, "error");
               setRunning(false);
@@ -286,7 +346,11 @@ export function useWorkflowStateMachine({
             }
           } else {
             try {
-              await materializeWorkflowStepOutput(skillName, step as 0 | 1 | 2 | 3, structuredOutput as import("@/lib/types").WorkflowStepStructuredOutput);
+              await materializeWorkflowStepOutput(
+                skillName,
+                step as 0 | 1 | 2 | 3,
+                structuredOutput as import("@/lib/types").WorkflowStepStructuredOutput,
+              );
             } catch (err) {
               updateStepStatus(step, "error");
               setRunning(false);
@@ -296,17 +360,23 @@ export function useWorkflowStateMachine({
               );
               return;
             }
-
           }
         }
 
         if (workspacePath && skillName) {
           try {
-            const hasOutput = await verifyStepOutput(workspacePath, skillName, step);
+            const hasOutput = await verifyStepOutput(
+              workspacePath,
+              skillName,
+              step,
+            );
             if (!hasOutput) {
               updateStepStatus(step, "error");
               setRunning(false);
-              toast.error(`Step ${step + 1} completed but produced no output files`, { duration: Infinity });
+              toast.error(
+                `Step ${step + 1} completed but produced no output files`,
+                { duration: Infinity },
+              );
               return;
             }
           } catch {
@@ -326,7 +396,10 @@ export function useWorkflowStateMachine({
         // Guard against race with reset: if the step was reset while async operations
         // were in flight, abort rather than overwriting the reset state with "completed".
         if (useWorkflowStore.getState().steps[step]?.status !== "in_progress") {
-          console.warn("[workflow] finish() aborted for step %d — step was reset during async completion", step);
+          console.warn(
+            "[workflow] finish() aborted for step %d — step was reset during async completion",
+            step,
+          );
           return;
         }
 
@@ -358,61 +431,92 @@ export function useWorkflowStateMachine({
       updateStepStatus(step, "pending");
       toast.info("Step cancelled");
     }
-  }, [activeRunStatus, activeAgentId, extractStructuredResultPayload, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, clearInitializing]);
+  }, [
+    activeRunStatus,
+    activeAgentId,
+    extractStructuredResultPayload,
+    updateStepStatus,
+    setRunning,
+    setActiveAgent,
+    skillName,
+    workspacePath,
+    clearInitializing,
+  ]);
 
   // --- Step execution ---
 
-  const handleStartAgentStep = useCallback(async (overrideStep?: number) => {
-    // Guard: when passed directly to onClick, React sends a MouseEvent as the first arg.
-    const targetStep = typeof overrideStep === "number" ? overrideStep : currentStep;
-    if (!workspacePath) {
-      toast.error("Missing workspace path", { duration: Infinity });
-      return;
-    }
-    // Read state from the store directly — avoids stale closures when called
-    // from performStepReset before React re-renders with cleared state.
-    const storeState = useWorkflowStore.getState();
-    if (storeState.isRunning || storeState.gateLoading || gate.gateAgentIdRef.current) {
-      return;
-    }
+  const handleStartAgentStep = useCallback(
+    async (overrideStep?: number) => {
+      // Guard: when passed directly to onClick, React sends a MouseEvent as the first arg.
+      const targetStep =
+        typeof overrideStep === "number" ? overrideStep : currentStep;
+      if (!workspacePath) {
+        toast.error("Missing workspace path", { duration: Infinity });
+        return;
+      }
+      // Read state from the store directly — avoids stale closures when called
+      // from performStepReset before React re-renders with cleared state.
+      const storeState = useWorkflowStore.getState();
+      if (
+        storeState.isRunning ||
+        storeState.gateLoading ||
+        gate.gateAgentIdRef.current
+      ) {
+        return;
+      }
 
-    try {
-      clearRuns();
-      useWorkflowStore.getState().clearRuntimeError();
-      updateStepStatus(targetStep, "in_progress");
-      setRunning(true);
-      setInitializing();
+      try {
+        clearRuns();
+        useWorkflowStore.getState().clearRuntimeError();
+        updateStepStatus(targetStep, "in_progress");
+        setRunning(true);
+        setInitializing();
 
-      console.log(`[workflow] Starting step ${targetStep} for skill "${skillName}"`);
-      const sessionId = useWorkflowStore.getState().workflowSessionId;
-      const agentId = await runWorkflowStep(
-        skillName,
-        targetStep,
-        workspacePath,
-        sessionId ?? undefined,
-      );
-      const cfg = typeof overrideStep === "number" ? stepConfigs[overrideStep] : stepConfig;
-      agentStartRun(
-        agentId,
-        resolveModelId(
-          useSettingsStore.getState().preferredModel ?? cfg?.model ?? "sonnet"
-        )
-      );
-    } catch (err) {
-      updateStepStatus(targetStep, "error");
-      setRunning(false);
-      clearInitializing();
-      toast.error(
-        `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`,
-        { duration: Infinity },
-      );
-    }
-  }, [workspacePath, skillName, currentStep, stepConfig?.model, stepConfigs, gate, clearRuns, updateStepStatus, setRunning, setInitializing, clearInitializing, agentStartRun]);
+        console.log(
+          `[workflow] Starting step ${targetStep} for skill "${skillName}"`,
+        );
+        const sessionId = useWorkflowStore.getState().workflowSessionId;
+        const agentId = await runWorkflowStep(
+          skillName,
+          targetStep,
+          workspacePath,
+          sessionId ?? undefined,
+        );
+        agentStartRun(
+          agentId,
+          requireSettingsModel(useSettingsStore.getState().preferredModel),
+        );
+      } catch (err) {
+        updateStepStatus(targetStep, "error");
+        setRunning(false);
+        clearInitializing();
+        toast.error(
+          `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`,
+          { duration: Infinity },
+        );
+      }
+    },
+    [
+      workspacePath,
+      skillName,
+      currentStep,
+      gate,
+      clearRuns,
+      updateStepStatus,
+      setRunning,
+      setInitializing,
+      clearInitializing,
+      agentStartRun,
+    ],
+  );
 
   // --- Step reset ---
 
   const performStepReset = async (stepId: number) => {
-    logFrontend("info", `[performStepReset] resetting step ${stepId}, isRunning=${useWorkflowStore.getState().isRunning}, reviewMode=${useWorkflowStore.getState().reviewMode}`);
+    logFrontend(
+      "info",
+      `[performStepReset] resetting step ${stepId}, isRunning=${useWorkflowStore.getState().isRunning}, reviewMode=${useWorkflowStore.getState().reviewMode}`,
+    );
     endActiveSession();
     // Clear gate state so Effect A isn't blocked when auto-starting after reset.
     gate.gateAgentIdRef.current = null;
@@ -467,6 +571,5 @@ export function useWorkflowStateMachine({
     // Handlers
     handleStartAgentStep,
     performStepReset,
-
   };
 }

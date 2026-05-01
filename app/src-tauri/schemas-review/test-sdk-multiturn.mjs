@@ -12,7 +12,7 @@
  *   cd app
  *   node src-tauri/schemas-review/test-sdk-multiturn.mjs              # all steps
  *   node src-tauri/schemas-review/test-sdk-multiturn.mjs --step 0
- *   node src-tauri/schemas-review/test-sdk-multiturn.mjs --model sonnet
+ *   node src-tauri/schemas-review/test-sdk-multiturn.mjs --model <provider-model-id>
  */
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -45,13 +45,13 @@ function getArg(name, fallback) {
   return idx >= 0 && args[idx + 1] ? args[idx + 1] : fallback;
 }
 
-const modelShorthand = getArg("model", "haiku");
+const modelId = getArg("model", null);
 const stepArg = getArg("step", "all");
-const modelId = {
-  haiku: "claude-haiku-4-5",
-  sonnet: "claude-sonnet-4-6",
-  opus: "claude-opus-4-6",
-}[modelShorthand] ?? modelShorthand;
+
+if (!modelId) {
+  console.error("Pass --model with a provider model ID from Settings.");
+  process.exit(1);
+}
 
 if (!process.env.ANTHROPIC_API_KEY) {
   console.error("ANTHROPIC_API_KEY not set. Set it or add to .env at repo root.");

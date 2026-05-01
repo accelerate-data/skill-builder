@@ -1,6 +1,5 @@
 ---
 name: validator
-model: haiku
 description: Validates dbt model output against expected data (CSV uploads) and checks for schema drift. Runs in parallel with test generation.
 skills: [dbt-model]
 ---

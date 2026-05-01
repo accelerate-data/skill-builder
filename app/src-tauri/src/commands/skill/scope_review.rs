@@ -45,9 +45,13 @@ pub async fn review_skill_scope(
                 return Err("API key not configured".to_string());
             }
         };
-        let model = crate::commands::workflow::resolve_model_id(
-            settings.preferred_model.as_deref().filter(|s| !s.is_empty()).unwrap_or("sonnet"),
-        );
+        let model = settings
+            .preferred_model
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                "Model not configured. Select a model in Settings before reviewing scope."
+                    .to_string()
+            })?;
         let docs = crate::db::db_list_documents(&conn)
             .unwrap_or_default()
             .into_iter()
@@ -72,7 +76,10 @@ pub async fn review_skill_scope(
                 format!("### {}\n{}", name, snippet)
             })
             .collect();
-        format!("\n\n## Reference Documents\n\n{}", parts.join("\n\n---\n\n"))
+        format!(
+            "\n\n## Reference Documents\n\n{}",
+            parts.join("\n\n---\n\n")
+        )
     };
 
     let industry_context = industry
@@ -208,10 +215,7 @@ Use when the customer success team needs a prioritized list of at-risk accounts.
     }
 
     let body: serde_json::Value = resp.json().await.map_err(|e| {
-        log::error!(
-            "[review_skill_scope] Failed to parse response JSON: {}",
-            e
-        );
+        log::error!("[review_skill_scope] Failed to parse response JSON: {}", e);
         e.to_string()
     })?;
 
@@ -237,7 +241,13 @@ Use when the customer success team needs a prioritized list of at-risk accounts.
         format!("Failed to parse result: {}", e)
     })?;
 
-    let valid_statuses = ["focused", "too-broad", "name-needs-improvement", "description-needs-improvement", "both-need-improvement"];
+    let valid_statuses = [
+        "focused",
+        "too-broad",
+        "name-needs-improvement",
+        "description-needs-improvement",
+        "both-need-improvement",
+    ];
     let status = parsed["status"]
         .as_str()
         .filter(|s| valid_statuses.contains(s))

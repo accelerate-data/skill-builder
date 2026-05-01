@@ -825,8 +825,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Run the eval/improve loop and emit machine-readable JSON.",
         epilog=(
             "Examples:\n"
-            "  uv run scripts/run_loop.py --skill-path ./my-skill --eval-set ./evals.json --project-root /repo --model sonnet\n"
-            "  uv run scripts/run_loop.py --skill-path ./my-skill --eval-set ./evals.json --report ./report.html --open-report --model sonnet"
+            "  uv run scripts/run_loop.py --skill-path ./my-skill --eval-set ./evals.json --project-root /repo\n"
+            "  uv run scripts/run_loop.py --skill-path ./my-skill --eval-set ./evals.json --report ./report.html --open-report"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

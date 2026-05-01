@@ -13,8 +13,9 @@ import {
 } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
 
-
-function makeDisplayItem(overrides: Partial<DisplayItem> & { type: DisplayItem["type"] }): DisplayItem {
+function makeDisplayItem(
+  overrides: Partial<DisplayItem> & { type: DisplayItem["type"] },
+): DisplayItem {
   return {
     id: `di-${Math.random().toString(36).slice(2, 8)}`,
     timestamp: Date.now(),
@@ -138,7 +139,9 @@ describe("useAgentStore", () => {
     expect(useAgentStore.getState().runs["late-agent"]).toBeUndefined();
 
     // Registering the run should replay completion.
-    useAgentStore.getState().registerRun("late-agent", "sonnet", "my-skill", "refine");
+    useAgentStore
+      .getState()
+      .registerRun("late-agent", "sonnet", "my-skill", "refine");
     const run = useAgentStore.getState().runs["late-agent"];
     expect(run.status).toBe("completed");
   });
@@ -147,7 +150,9 @@ describe("useAgentStore", () => {
     useAgentStore.getState().shutdownRun("late-shutdown");
     expect(useAgentStore.getState().runs["late-shutdown"]).toBeUndefined();
 
-    useAgentStore.getState().registerRun("late-shutdown", "sonnet", "my-skill", "test");
+    useAgentStore
+      .getState()
+      .registerRun("late-shutdown", "sonnet", "my-skill", "test");
     const run = useAgentStore.getState().runs["late-shutdown"];
     expect(run.status).toBe("shutdown");
   });
@@ -163,10 +168,16 @@ describe("useAgentStore", () => {
     expect(useAgentStore.getState().runs["race-agent"].status).toBe("running");
 
     useAgentStore.getState().completeRun("race-agent", true);
-    expect(useAgentStore.getState().runs["race-agent"].status).toBe("completed");
+    expect(useAgentStore.getState().runs["race-agent"].status).toBe(
+      "completed",
+    );
 
-    useAgentStore.getState().registerRun("race-agent", "sonnet", "my-skill", "refine");
-    expect(useAgentStore.getState().runs["race-agent"].status).toBe("completed");
+    useAgentStore
+      .getState()
+      .registerRun("race-agent", "sonnet", "my-skill", "refine");
+    expect(useAgentStore.getState().runs["race-agent"].status).toBe(
+      "completed",
+    );
   });
 
   it("preserves completed status when startRun races with agent-exit after auto-create", () => {
@@ -175,32 +186,40 @@ describe("useAgentStore", () => {
     useAgentStore.getState().addDisplayItem("race-wf-agent", item);
     flushDisplayItems();
     useAgentStore.getState().completeRun("race-wf-agent", true);
-    expect(useAgentStore.getState().runs["race-wf-agent"].status).toBe("completed");
+    expect(useAgentStore.getState().runs["race-wf-agent"].status).toBe(
+      "completed",
+    );
 
     useAgentStore.getState().startRun("race-wf-agent", "sonnet");
-    expect(useAgentStore.getState().runs["race-wf-agent"].status).toBe("completed");
+    expect(useAgentStore.getState().runs["race-wf-agent"].status).toBe(
+      "completed",
+    );
   });
 
   it("uses provided refine usageSessionId for usage grouping", () => {
-    useAgentStore.getState().registerRun(
-      "refine-session-agent",
-      "sonnet",
-      "my-skill",
-      "refine",
-      "synthetic:refine:my-skill:session-123",
-    );
+    useAgentStore
+      .getState()
+      .registerRun(
+        "refine-session-agent",
+        "sonnet",
+        "my-skill",
+        "refine",
+        "synthetic:refine:my-skill:session-123",
+      );
     const run = useAgentStore.getState().runs["refine-session-agent"];
     expect(run.usageSessionId).toBe("synthetic:refine:my-skill:session-123");
   });
 
   it("uses provided test usageSessionId for usage grouping", () => {
-    useAgentStore.getState().registerRun(
-      "test-session-agent",
-      "sonnet",
-      "my-skill",
-      "test",
-      "synthetic:test:my-skill:test-456",
-    );
+    useAgentStore
+      .getState()
+      .registerRun(
+        "test-session-agent",
+        "sonnet",
+        "my-skill",
+        "test",
+        "synthetic:test:my-skill:test-456",
+      );
     const run = useAgentStore.getState().runs["test-session-agent"];
     expect(run.usageSessionId).toBe("synthetic:test:my-skill:test-456");
   });
@@ -209,7 +228,12 @@ describe("useAgentStore", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     useAgentStore.getState().startRun("agent-2", "opus");
 
-    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({ type: "output", outputText: "test" }));
+    useAgentStore
+      .getState()
+      .addDisplayItem(
+        "agent-1",
+        makeDisplayItem({ type: "output", outputText: "test" }),
+      );
     flushDisplayItems();
 
     useAgentStore.getState().clearRuns();
@@ -251,7 +275,12 @@ describe("useAgentStore", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     useAgentStore.getState().startRun("agent-2", "opus");
 
-    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({ type: "output", outputText: "only for agent-1" }));
+    useAgentStore
+      .getState()
+      .addDisplayItem(
+        "agent-1",
+        makeDisplayItem({ type: "output", outputText: "only for agent-1" }),
+      );
     flushDisplayItems();
     useAgentStore.getState().completeRun("agent-2", true);
 
@@ -497,18 +526,14 @@ describe("context helper functions", () => {
 });
 
 describe("formatModelName", () => {
-  it("maps full model IDs to friendly names with version", () => {
-    expect(formatModelName("claude-sonnet-4-5-20250929")).toBe("Sonnet 4.5");
-    expect(formatModelName("claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
-    expect(formatModelName("claude-opus-4-6")).toBe("Opus 4.6");
-    expect(formatModelName("claude-sonnet-4-6")).toBe("Sonnet 4.6");
-    expect(formatModelName("claude-haiku-4-5")).toBe("Haiku 4.5");
+  it("formats provider model IDs without family-specific aliases", () => {
+    expect(formatModelName("provider-model-4-5-20250929")).toBe(
+      "Provider Model 4 5 20250929",
+    );
   });
 
-  it("maps shorthand names to friendly names without version", () => {
-    expect(formatModelName("sonnet")).toBe("Sonnet");
-    expect(formatModelName("haiku")).toBe("Haiku");
-    expect(formatModelName("opus")).toBe("Opus");
+  it("formats short provider labels without special casing", () => {
+    expect(formatModelName("model")).toBe("Model");
   });
 
   it("capitalizes unknown model names", () => {
@@ -526,24 +551,32 @@ describe("displayItems management", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
     for (let i = 0; i < 5; i++) {
-      useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
-        id: `di-${i}`,
-        type: "output",
-        outputText: `msg-${i}`,
-      }));
+      useAgentStore.getState().addDisplayItem(
+        "agent-1",
+        makeDisplayItem({
+          id: `di-${i}`,
+          type: "output",
+          outputText: `msg-${i}`,
+        }),
+      );
     }
     flushDisplayItems();
 
-    expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(5);
+    expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(
+      5,
+    );
   });
 
   it("completeRun preserves displayItems added before status change", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
-      type: "output",
-      outputText: "buffered",
-    }));
+    useAgentStore.getState().addDisplayItem(
+      "agent-1",
+      makeDisplayItem({
+        type: "output",
+        outputText: "buffered",
+      }),
+    );
 
     useAgentStore.getState().completeRun("agent-1", true);
 
@@ -556,16 +589,22 @@ describe("displayItems management", () => {
   it("flushDisplayItems applies all buffered items in a single batch", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
-      id: "di-batch-1",
-      type: "output",
-      outputText: "first",
-    }));
-    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
-      id: "di-batch-2",
-      type: "output",
-      outputText: "second",
-    }));
+    useAgentStore.getState().addDisplayItem(
+      "agent-1",
+      makeDisplayItem({
+        id: "di-batch-1",
+        type: "output",
+        outputText: "first",
+      }),
+    );
+    useAgentStore.getState().addDisplayItem(
+      "agent-1",
+      makeDisplayItem({
+        id: "di-batch-2",
+        type: "output",
+        outputText: "second",
+      }),
+    );
 
     // Explicit flush ensures all items are applied
     flushDisplayItems();
@@ -579,18 +618,24 @@ describe("displayItems management", () => {
   it("update-by-id deduplicates within a single batch", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
-      id: "tool-batch",
-      type: "tool_call",
-      toolName: "Read",
-      toolStatus: "pending",
-    }));
-    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
-      id: "tool-batch",
-      type: "tool_call",
-      toolName: "Read",
-      toolStatus: "ok",
-    }));
+    useAgentStore.getState().addDisplayItem(
+      "agent-1",
+      makeDisplayItem({
+        id: "tool-batch",
+        type: "tool_call",
+        toolName: "Read",
+        toolStatus: "pending",
+      }),
+    );
+    useAgentStore.getState().addDisplayItem(
+      "agent-1",
+      makeDisplayItem({
+        id: "tool-batch",
+        type: "tool_call",
+        toolName: "Read",
+        toolStatus: "ok",
+      }),
+    );
     flushDisplayItems();
 
     const run = useAgentStore.getState().runs["agent-1"];
@@ -602,22 +647,30 @@ describe("displayItems management", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
     // First batch: add pending tool call
-    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
-      id: "tool-cross",
-      type: "tool_call",
-      toolName: "Read",
-      toolStatus: "pending",
-    }));
+    useAgentStore.getState().addDisplayItem(
+      "agent-1",
+      makeDisplayItem({
+        id: "tool-cross",
+        type: "tool_call",
+        toolName: "Read",
+        toolStatus: "pending",
+      }),
+    );
     flushDisplayItems();
-    expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(1);
+    expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(
+      1,
+    );
 
     // Second batch: update to ok
-    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
-      id: "tool-cross",
-      type: "tool_call",
-      toolName: "Read",
-      toolStatus: "ok",
-    }));
+    useAgentStore.getState().addDisplayItem(
+      "agent-1",
+      makeDisplayItem({
+        id: "tool-cross",
+        type: "tool_call",
+        toolName: "Read",
+        toolStatus: "ok",
+      }),
+    );
     flushDisplayItems();
 
     const run = useAgentStore.getState().runs["agent-1"];
@@ -628,16 +681,18 @@ describe("displayItems management", () => {
   it("clearRuns discards all displayItems", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
-    useAgentStore.getState().addDisplayItem("agent-1", makeDisplayItem({
-      type: "output",
-      outputText: "will be discarded",
-    }));
+    useAgentStore.getState().addDisplayItem(
+      "agent-1",
+      makeDisplayItem({
+        type: "output",
+        outputText: "will be discarded",
+      }),
+    );
 
     useAgentStore.getState().clearRuns();
 
     expect(useAgentStore.getState().runs).toEqual({});
   });
-
 });
 
 // =============================================================================
@@ -657,10 +712,13 @@ describe("phantom run reaper", () => {
 
   it("auto-created run is reaped after 30s if startRun never arrives", () => {
     // Simulate display items arriving before startRun
-    useAgentStore.getState().addDisplayItem("phantom-1", makeDisplayItem({
-      type: "output",
-      outputText: "early message",
-    }));
+    useAgentStore.getState().addDisplayItem(
+      "phantom-1",
+      makeDisplayItem({
+        type: "output",
+        outputText: "early message",
+      }),
+    );
     flushDisplayItems();
 
     const run = useAgentStore.getState().runs["phantom-1"];
@@ -679,10 +737,13 @@ describe("phantom run reaper", () => {
   });
 
   it("startRun cancels the phantom timer", () => {
-    useAgentStore.getState().addDisplayItem("phantom-2", makeDisplayItem({
-      type: "output",
-      outputText: "early",
-    }));
+    useAgentStore.getState().addDisplayItem(
+      "phantom-2",
+      makeDisplayItem({
+        type: "output",
+        outputText: "early",
+      }),
+    );
     flushDisplayItems();
     expect(getPhantomTimerCount()).toBe(1);
 
@@ -698,10 +759,13 @@ describe("phantom run reaper", () => {
   });
 
   it("completeRun cancels the phantom timer", () => {
-    useAgentStore.getState().addDisplayItem("phantom-3", makeDisplayItem({
-      type: "output",
-      outputText: "early",
-    }));
+    useAgentStore.getState().addDisplayItem(
+      "phantom-3",
+      makeDisplayItem({
+        type: "output",
+        outputText: "early",
+      }),
+    );
     flushDisplayItems();
     expect(getPhantomTimerCount()).toBe(1);
 
@@ -713,8 +777,18 @@ describe("phantom run reaper", () => {
   });
 
   it("clearRuns cancels all phantom timers", () => {
-    useAgentStore.getState().addDisplayItem("phantom-4", makeDisplayItem({ type: "output", outputText: "a" }));
-    useAgentStore.getState().addDisplayItem("phantom-5", makeDisplayItem({ type: "output", outputText: "b" }));
+    useAgentStore
+      .getState()
+      .addDisplayItem(
+        "phantom-4",
+        makeDisplayItem({ type: "output", outputText: "a" }),
+      );
+    useAgentStore
+      .getState()
+      .addDisplayItem(
+        "phantom-5",
+        makeDisplayItem({ type: "output", outputText: "b" }),
+      );
     flushDisplayItems();
     expect(getPhantomTimerCount()).toBe(2);
 
@@ -751,7 +825,9 @@ describe("agent event buffering", () => {
     expect(useAgentStore.getState().runs["agent-buf-2"]).toBeUndefined();
 
     useAgentStore.getState().startRun("agent-buf-2", "sonnet");
-    expect(useAgentStore.getState().runs["agent-buf-2"].sessionId).toBe("early-session");
+    expect(useAgentStore.getState().runs["agent-buf-2"].sessionId).toBe(
+      "early-session",
+    );
   });
 
   it("buffers run config arriving before registerRun and drains after", () => {
@@ -762,9 +838,15 @@ describe("agent event buffering", () => {
     });
     expect(useAgentStore.getState().runs["agent-buf-3"]).toBeUndefined();
 
-    useAgentStore.getState().registerRun("agent-buf-3", "sonnet", "my-skill", "refine");
-    expect(useAgentStore.getState().runs["agent-buf-3"].thinkingEnabled).toBe(true);
-    expect(useAgentStore.getState().runs["agent-buf-3"].agentName).toBe("researcher");
+    useAgentStore
+      .getState()
+      .registerRun("agent-buf-3", "sonnet", "my-skill", "refine");
+    expect(useAgentStore.getState().runs["agent-buf-3"].thinkingEnabled).toBe(
+      true,
+    );
+    expect(useAgentStore.getState().runs["agent-buf-3"].agentName).toBe(
+      "researcher",
+    );
   });
 
   it("drains multiple buffered events in order", () => {
@@ -795,9 +877,10 @@ describe("agent event buffering", () => {
     });
     useAgentStore.getState().clearRuns();
     useAgentStore.getState().startRun("agent-buf-5", "sonnet");
-    expect(useAgentStore.getState().runs["agent-buf-5"].sessionId).toBeUndefined();
+    expect(
+      useAgentStore.getState().runs["agent-buf-5"].sessionId,
+    ).toBeUndefined();
   });
-
 });
 
 describe("applyContextWindow behavior", () => {
@@ -825,26 +908,33 @@ describe("applyContextWindow behavior", () => {
       type: "context_window",
       contextWindow: 300_000,
     });
-    expect(useAgentStore.getState().runs["agent-cw2"].contextWindow).toBe(300_000);
+    expect(useAgentStore.getState().runs["agent-cw2"].contextWindow).toBe(
+      300_000,
+    );
 
     // Second event: smaller window — accepted unconditionally (model may shrink window)
     useAgentStore.getState().applyContextWindow("agent-cw2", {
       type: "context_window",
       contextWindow: 100_000,
     });
-    expect(useAgentStore.getState().runs["agent-cw2"].contextWindow).toBe(100_000);
+    expect(useAgentStore.getState().runs["agent-cw2"].contextWindow).toBe(
+      100_000,
+    );
   });
 
   it("ignores zero or negative contextWindow values", () => {
     useAgentStore.getState().startRun("agent-cw3", "sonnet");
-    const originalWindow = useAgentStore.getState().runs["agent-cw3"].contextWindow;
+    const originalWindow =
+      useAgentStore.getState().runs["agent-cw3"].contextWindow;
 
     useAgentStore.getState().applyContextWindow("agent-cw3", {
       type: "context_window",
       contextWindow: 0,
     });
 
-    expect(useAgentStore.getState().runs["agent-cw3"].contextWindow).toBe(originalWindow);
+    expect(useAgentStore.getState().runs["agent-cw3"].contextWindow).toBe(
+      originalWindow,
+    );
   });
 });
 
