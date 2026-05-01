@@ -83,8 +83,7 @@ pub(crate) fn build_prompt(p: &PromptParams<'_>) -> String {
         .replace("{{subagent_directive}}", &subagent_str)
 }
 
-/// Build the prompt for step 0 (research) — invokes the research skill directly
-/// so AskUserQuestion is one level deep and intercepted by the streaming session.
+/// Build the prompt for step 0 (research).
 pub(crate) fn build_step0_prompt(
     skill_name: &str,
     workspace_path: &str,
@@ -93,34 +92,21 @@ pub(crate) fn build_step0_prompt(
 ) -> String {
     let workspace_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let ws = workspace_path.replace('\\', "/");
-    let plugin_dir = format!(
-        "{}/.claude/plugins/skill-content-researcher",
-        ws,
-    );
-    let schemas_path = format!("{}/shared/schemas.md", plugin_dir);
-    let dimensions_dir = format!("{}/skills/research/references/dimensions", plugin_dir);
     format!(
         "EXECUTE IMMEDIATELY — do not ask questions, do not greet the user, do not offer options. \
-         Your ONLY task: invoke the Skill tool with exactly `skill-content-researcher:research` to produce clarification questions. \
-         Do NOT use `detailed-research` or any other agent/skill — ONLY `skill-content-researcher:research`. \
-         After the skill returns, return its payload as your own final response. Your final response MUST be ONLY a raw JSON object — no markdown, no code fences, no explanation. \
-         Context for the skill invocation: \
+         You are `research-agent`. Use your configured research instructions and reference materials to produce clarification questions. \
+         If a concrete reference path is needed, search from the workspace root for `shared/schemas.md` and `references/dimensions/*.md`; read only the specific files required for the selected research dimensions. \
+         Write the clarifications JSON to `context/clarifications.json`, then return a `ResearchStepOutput` as your final response. \
+         Your final response MUST be ONLY a raw JSON object — no markdown, no code fences, no explanation. \
+         Required final response shape: status `research_complete`, dimensions_selected, question_count, and research_output containing the clarifications JSON. \
+         Context for the research run: \
          The skill name is: {}. The workspace directory is: {}. \
          The user context file is at: {}/user-context.md. \
          The context directory is: {}/context. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. \
          Read only the specific files named in your instructions and write files directly. \
-         The clarifications schema reference is at: {}. \
-         The dimension reference files are in: {} (read individual .md files, not the directory itself). \
          The maximum research dimensions before scope warning is: {}.",
-        skill_name,
-        workspace_str,
-        workspace_str,
-        workspace_str,
-        schemas_path,
-        dimensions_dir,
-        max_dimensions,
+        skill_name, workspace_str, workspace_str, workspace_str, max_dimensions,
     )
 }
 
