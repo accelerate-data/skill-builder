@@ -137,7 +137,7 @@ describe("buildQueryOptions", () => {
     expect(opts).toHaveProperty("fallbackModel", "claude-sonnet-4-6");
   });
 
-  it("includes outputFormat when present", () => {
+  it("does not forward outputFormat to SDK (it stays as sidecar signal only)", () => {
     const opts = buildQueryOptions(
       makeConfig({
         outputFormat: {
@@ -148,7 +148,7 @@ describe("buildQueryOptions", () => {
       new AbortController(),
       []
     );
-    expect(opts).toHaveProperty("outputFormat");
+    expect(opts).not.toHaveProperty("outputFormat");
   });
 
   it("includes promptSuggestions when explicitly set", () => {

@@ -2,6 +2,7 @@ import { createInterface, type Interface } from "node:readline";
 import { type SidecarConfig, parseSidecarConfig } from "./config.js";
 import { StreamSession } from "./stream-session.js";
 import { ClaudeRuntime, toOneShotRunRequest } from "./runtime/claude-runtime.js";
+import { OpenHandsRuntime } from "./runtime/openhands-runtime.js";
 import { createRecordRuntimeSink } from "./runtime/sink.js";
 
 /** Incoming request envelope: run an agent. */
@@ -237,7 +238,6 @@ export async function runPersistent(
 
   // Active streaming sessions (refine chat uses these for multi-turn conversations)
   const activeSessions = new Map<string, StreamSession>();
-  const runtime = new ClaudeRuntime();
 
   for await (const line of rl) {
     const message = parseIncomingMessage(line);
@@ -456,6 +456,10 @@ export async function runPersistent(
 
       // Run the agent request without blocking the readline loop.
       // This lets ping/shutdown messages be processed while the agent runs.
+      const runtime =
+        config.runtimeProvider === "openhands"
+          ? new OpenHandsRuntime()
+          : new ClaudeRuntime();
       const requestPromise = (async () => {
         try {
           await runtime.runOnce(

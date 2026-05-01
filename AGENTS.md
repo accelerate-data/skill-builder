@@ -15,22 +15,11 @@ Use this precedence when maintaining agent guidance:
 
 Adapter files must not duplicate canonical policy unless they are adding agent-specific behavior.
 
-## Architecture
+## Repo Pointers
 
-| Layer | Technology |
-|---|---|
-| Desktop framework | Tauri v2 |
-| Frontend | React 19, TypeScript strict, Vite 8 |
-| Styling | Tailwind CSS 4, shadcn/ui |
-| State | Zustand, TanStack Router |
-| Icons | Lucide React |
-| Agent sidecar | Node.js + TypeScript + `@anthropic-ai/claude-agent-sdk` |
-| Database | SQLite (`rusqlite` bundled) |
-| Rust errors | `thiserror` |
-
-**Agent runtime:** No hot-reload — restart `npm run dev` after editing `app/sidecar/`. Requires Node.js 18+.
-
-**Key directories and paths:** See `repo-map.json` → `key_directories` and `notes_for_agents` (workspace path, DB location, module layout). Full storage layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md).
+- `repo-map.json` is the codebase map for structure, entrypoints, modules,
+  commands, and key references.
+- `docs/design/agent-specs/storage.md` documents the full storage layout.
 
 ## Dev Commands
 
@@ -53,7 +42,7 @@ Record only durable, non-obvious, cross-cutting facts here. Do not append releas
 Read these before starting any non-trivial task:
 
 - `repo-map.json` — structure, entrypoints, modules, commands. Schema: `.claude/repo-map.schema.json`. Skip repo-wide rediscovery if it covers the task.
-- `TEST_MANIFEST.md` — Rust → E2E tag mappings, shared infrastructure blast radius, cross-boundary format compliance. Read before choosing tests for Rust or cross-layer changes. Frontend mappings are handled automatically by `vitest --changed`.
+- `TEST_MAP.md` — changed-path → validation-command map, Rust → E2E tag mappings, shared infrastructure blast radius, cross-boundary format compliance, and live-eval boundaries. Read before choosing tests. Frontend mappings are also handled by `vitest --changed`.
 
 ### Maintenance Rules
 
@@ -62,13 +51,41 @@ Read these before starting any non-trivial task:
 | `AGENTS.md` | A fact is durable, non-obvious, and won't be obvious from code |
 | `repo-map.json` | Any file added, removed, or renamed inside `commands/`, `stores/`, `pages/`, `components/`, `lib/`, `hooks/` · sub-module directory added or restructured · new Tauri command file · entrypoint or package structure change |
 | `README.md` | User-facing installation, configuration, commands, or architecture overview changes |
-| `TEST_MANIFEST.md` | Rust command file added/removed · E2E spec added/removed · shared infra file added/removed · agent artifact format changes affecting a Rust or TS parser |
+| `TEST_MAP.md` | Test suite, test command, shared infra, Rust → E2E, or artifact-contract mapping changes |
+
+### Documentation Folder Rules
+
+Use these folder boundaries for documentation work:
+
+- `docs/user-guide/` is the published end-user help site. Put user-facing
+  feature help, workflow guidance, and help-link targets here.
+- `docs/.vitepress/`, `docs/package.json`, and `docs/package-lock.json` are
+  part of the published docs build system. Update them only when changing site
+  navigation, build dependencies, or VitePress configuration.
+- `docs/design/` is for developer-facing architecture and design records. Do
+  not put end-user help pages here.
+- `docs/plan/` and `docs/superpowers/plans/` are for implementation plans and
+  execution notes. Do not treat them as published help content unless the docs
+  workflows are changed.
+- `docs/references/` is for vendored or external reference material used by
+  implementation work. Do not route product help or design decisions there.
 
 ### Stable Repo Memory
 
 #### Skill Path Convention
 
 Read `app/plugin-paths.json` — it defines the canonical layout for all skill file paths.
+
+#### Data And Error Boundaries
+
+- SQLite mutations must use bound parameters, not string-concatenated SQL.
+- Usage and log snapshot records should stay immutable when parent entities are
+  renamed or deleted.
+- Persisted strings that may be empty need backend guards. Frontend `??`
+  defaults do not catch `""`, and empty model/config values can become
+  downstream API errors.
+- User input, Tauri IPC payloads, and external API responses must be validated
+  at the boundary.
 
 #### Frontend Server State
 
@@ -80,16 +97,13 @@ cache through explicit helpers.
 
 ## Testing
 
-### When to write tests
+Read `TEST_MAP.md` before choosing validation commands. It maps changed paths to
+required tests, Rust modules to E2E tags, artifact producers to parser tests,
+and app-local tests versus repo-level evals.
 
-- New state logic → store unit tests
-- New Rust command with logic → `#[cfg(test)]` tests
-- New UI interaction → component test
-- New page or major page logic → page unit test (mocked children + Tauri) + E2E test (happy path)
-- Bug fix → regression test
-- Cosmetic changes and simple wiring don't need tests
-
-Before writing tests, read existing ones for the files you changed: update broken tests, remove redundant ones, add only for genuinely new behavior.
+Before writing tests, read existing tests for the files you changed. Update
+broken tests, remove redundant ones, and add coverage only for genuinely new
+behavior or regressions.
 
 ### Which tests to run
 
@@ -110,7 +124,7 @@ Run these automatically before reporting completion when files match:
 
 For artifact format changes (agent output + app parser + mock templates): run `test:agents:structural`, `test:unit`, and the affected live eval package or smoke subset. The `canonical-format.test.ts` suite is the canary for format drift.
 
-For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct cargo filter and E2E tag. Unsure? `app/tests/run.sh` runs everything.
+For Rust and cross-layer changes, consult `TEST_MAP.md` for the correct cargo filter and E2E tag. Unsure? `app/tests/run.sh` runs everything.
 
 Live OpenCode evals are allowed when the issue calls for them. Choose the smallest useful scope: `cd tests/evals && npm run eval:smoke` before model/runtime changes, a targeted `npm run eval:<package>` for package-local work, or `npm run eval:regression` for broad model migrations. The deterministic harness contract test is `cd tests/evals && npm test`.
 
@@ -141,11 +155,13 @@ Update stale entries in the same commit that introduced the structural change, n
 
 ## Logging
 
-Every new feature must include logging. Canonical logging conventions and log-level guidance live in `.claude/rules/logging-policy.md`.
+Every new feature must include logging. Repo-specific logging requirements live
+in `.claude/rules/logging-policy.md`.
 
 ## Gotchas
 
 - **Parallel worktrees:** `npm run dev` auto-assigns a free port — safe to run multiple Tauri instances simultaneously.
+- **Sidecar edits:** There is no hot reload for `app/sidecar/`; restart `npm run dev` after sidecar changes. Requires Node.js 18+.
 - **Windows compatibility:** Path separators, CRLF line endings, env-var prefix syntax, and Rust toolchain selection are recurring sources of Windows CI failures. Follow `.claude/rules/windows-compat.md` before writing path assertions, regex, `package.json` scripts, or Rust CI config.
 - **Linear Markdown — no double-escaping:** The `description` and `body` fields in `save_issue`/`save_comment` accept raw Markdown. Write literal newlines, `*`, `-`, `[ ]` etc. directly. Never escape them (`\\n`, `\\*`, `\\[X\\]`) — double-escaped descriptions render as garbled text in Linear.
 - **State:** Component-local UI state must stay in `useState`, not Zustand. Use Zustand only for shared, cross-component, or navigation-persistent state. Full rules: `.claude/rules/state-management.md`.

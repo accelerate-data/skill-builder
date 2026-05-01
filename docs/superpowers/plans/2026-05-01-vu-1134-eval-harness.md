@@ -36,7 +36,7 @@ Live/model-backed smoke evals are automated OpenCode CLI scenarios, but they rem
 - Delete: `app/agent-tests/promptfoo/*`
 - Modify: `.gitignore`
 - Modify: `repo-map.json`
-- Modify: `TEST_MANIFEST.md`
+- Modify: `TEST_MAP.md`
 - Modify: `AGENTS.md`
 
 ## Tasks
@@ -69,7 +69,7 @@ Live/model-backed smoke evals are automated OpenCode CLI scenarios, but they rem
 
 - [ ] Update `app/package.json` so `test:agents:smoke` and `test:scope-advisor:smoke` delegate to `tests/evals`.
 - [ ] Add root eval scripts if needed for convenient direct execution.
-- [ ] Update `.gitignore`, `repo-map.json`, `TEST_MANIFEST.md`, and `AGENTS.md` with the new harness path, commands, and manual live-smoke policy.
+- [ ] Update `.gitignore`, `repo-map.json`, `TEST_MAP.md`, and `AGENTS.md` with the new harness path, commands, and manual live-smoke policy.
 - [ ] Run `cd app && npm run test:agents:structural`.
 - [ ] Run `cd tests/evals && npm test`.
 - [ ] Commit script and docs wiring.

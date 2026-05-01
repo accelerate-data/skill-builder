@@ -38,7 +38,7 @@
   - Deterministic eval-harness check that validates the typed IPC convention from source.
 - Modify `.claude/rules/codegen.md`
   - Documents the command wrapper convention beside the existing generated contract rule.
-- Modify `TEST_MANIFEST.md`
+- Modify `TEST_MAP.md`
   - Adds the typed command contract guard and eval-harness check to the shared infrastructure map.
 
 ---
@@ -244,7 +244,7 @@ git commit -m "VU-927: add typed Tauri command surface"
 
 - Create: `app/src/__tests__/guards/tauri-command-policy.test.ts`
 - Create: `tests/evals/assertions/tauri-command-contract.test.js`
-- Modify: `TEST_MANIFEST.md`
+- Modify: `TEST_MAP.md`
 
 - [x] **Step 1: Add a Vitest guard for raw invoke centralization**
 
@@ -341,9 +341,9 @@ test("typed Tauri command contract is the only non-test command policy", () => {
 });
 ```
 
-- [x] **Step 3: Update TEST_MANIFEST**
+- [x] **Step 3: Update TEST_MAP**
 
-In `TEST_MANIFEST.md`, add `src/lib/tauri-command-types.ts` and `src/lib/tauri-command-types.typecheck.ts` to Shared Infrastructure and add a quick-reference command:
+In `TEST_MAP.md`, add `src/lib/tauri-command-types.ts` and `src/lib/tauri-command-types.typecheck.ts` to Shared Infrastructure and add a quick-reference command:
 
 ```md
 - `src/lib/tauri-command-types.ts` — typed Tauri command name/args/result contract
@@ -371,7 +371,7 @@ Expected: both PASS.
 - [x] **Step 5: Commit Task 2**
 
 ```bash
-git add app/src/__tests__/guards/tauri-command-policy.test.ts tests/evals/assertions/tauri-command-contract.test.js TEST_MANIFEST.md
+git add app/src/__tests__/guards/tauri-command-policy.test.ts tests/evals/assertions/tauri-command-contract.test.js TEST_MAP.md
 git commit -m "VU-927: guard typed Tauri command policy"
 ```
 
@@ -434,7 +434,7 @@ Expected: no `repo-map.json` update needed because this issue adds no stores, pa
 Run:
 
 ```bash
-npx markdownlint-cli2 ".claude/rules/codegen.md" "TEST_MANIFEST.md" "docs/superpowers/plans/2026-05-01-vu-927-typed-tauri-commands.md"
+npx markdownlint-cli2 ".claude/rules/codegen.md" "TEST_MAP.md" "docs/superpowers/plans/2026-05-01-vu-927-typed-tauri-commands.md"
 bash app/scripts/lint-agent-docs.sh
 ```
 
@@ -487,7 +487,7 @@ git commit -m "VU-927: document typed command workflow"
 - `cd app && npm run test:unit`
 - `cd app && npm run test:guard`
 - `cd tests/evals && npm test`
-- `npx markdownlint-cli2 ".claude/rules/codegen.md" "TEST_MANIFEST.md" "docs/superpowers/plans/2026-05-01-vu-927-typed-tauri-commands.md"`
+- `npx markdownlint-cli2 ".claude/rules/codegen.md" "TEST_MAP.md" "docs/superpowers/plans/2026-05-01-vu-927-typed-tauri-commands.md"`
 - `bash app/scripts/lint-agent-docs.sh`
 
 No live Promptfoo smoke evals and no manual tests are required for this issue.

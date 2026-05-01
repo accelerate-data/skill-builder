@@ -339,7 +339,6 @@ pub async fn send_refine_message(
         let prompt = build_followup_prompt_with_output_dir(
             &user_message,
             &skill_output_dir,
-            &skill_name,
             target_files.as_deref(),
         );
         log::debug!(

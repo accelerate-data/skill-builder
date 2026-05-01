@@ -21,7 +21,7 @@ export interface RequestContext {
   stepId?: number;
   workflowSessionId?: string;
   usageSessionId?: string;
-  runSource?: "workflow" | "refine" | "test";
+  runSource?: "workflow" | "refine" | "test" | "gate-eval";
   workspaceSkillDir?: string;
   pluginSlug: string;
   /** Whether this processor is being used in a streaming session (refine chat).

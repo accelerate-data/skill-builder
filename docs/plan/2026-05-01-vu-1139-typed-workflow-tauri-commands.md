@@ -184,7 +184,7 @@ cd app && npm run test:unit
 
 Expected: PASS.
 
-- [x] **Step 2: Run Rust mapped tests from TEST_MANIFEST**
+- [x] **Step 2: Run Rust mapped tests from TEST_MAP**
 
 Run:
 

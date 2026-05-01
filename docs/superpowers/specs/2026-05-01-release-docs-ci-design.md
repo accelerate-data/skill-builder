@@ -79,7 +79,7 @@ GitHub PR CI should move toward fast policy and freshness checks:
 - Expand repo-map audit path coverage for structural areas introduced in this
   branch, including `.github/**`, `scripts/**`, and `tests/evals/**` where
   relevant.
-- Keep test-manifest audit focused on Rust command and E2E surface changes.
+- Keep test-map audit focused on Rust command and E2E surface changes.
 
 The expensive multi-platform `cargo test`, `clippy`, full frontend unit tests,
 and integration tests should not be mandatory for every PR when the changed area

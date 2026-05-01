@@ -7,6 +7,7 @@ import {
   selectPluginPaths,
   toOneShotRunRequest,
 } from "./runtime/claude-runtime.js";
+import { OpenHandsRuntime } from "./runtime/openhands-runtime.js";
 import { createRecordRuntimeSink } from "./runtime/sink.js";
 
 export { discoverInstalledPlugins, emitSystemEvent, selectPluginPaths };
@@ -58,7 +59,10 @@ export async function runAgentRequest(
   onMessage: (message: Record<string, unknown>) => void,
   externalSignal?: AbortSignal,
 ): Promise<void> {
-  const runtime = new ClaudeRuntime();
+  const runtime =
+    config.runtimeProvider === "openhands"
+      ? new OpenHandsRuntime()
+      : new ClaudeRuntime();
   const sink = createRecordRuntimeSink(onMessage);
 
   try {

@@ -166,6 +166,7 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            runtime_provider: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"apiKey\""));

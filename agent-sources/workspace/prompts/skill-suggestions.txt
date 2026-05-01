@@ -1,4 +1,4 @@
-{{framing}}
+{{framing}} These skills target OLAP systems (data warehouses and lakehouses), not OLTP.
 
 Given a Claude skill named "{{readable_name}}" of type "{{purpose}}".{{context}}{{detail_context}}
 

@@ -80,7 +80,7 @@ cd tests/evals && npm run eval:harness-smoke
 
 - Start with [`AGENTS.md`](AGENTS.md) for repository conventions, testing policy, and worktree setup.
 - See [`repo-map.json`](repo-map.json) for the current code map and command reference.
-- See [`TEST_MANIFEST.md`](TEST_MANIFEST.md) for test-selection guidance.
+- See [`TEST_MAP.md`](TEST_MAP.md) for test-selection guidance.
 - See [`docs/design/`](docs/design/) for design notes and architecture details.
 
 ## License

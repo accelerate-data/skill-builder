@@ -1,0 +1,1 @@
+{"type":"openhands_result","status":"error","result_text":null,"structured_output":null,"error_message":"OpenHands SDK not installed or no usable entry point found. Install dev dependencies from app/sidecar/openhands/requirements.txt","timestamp":1714550403000}

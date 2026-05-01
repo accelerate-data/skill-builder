@@ -214,6 +214,18 @@ describe("parseSidecarConfig", () => {
     ).toThrow("thinking.budgetTokens must be a number");
   });
 
+  it("accepts openhands as a valid runtimeProvider", () => {
+    const baseConfig = { prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD };
+    expect(parseSidecarConfig({ ...baseConfig, runtimeProvider: "openhands" }).runtimeProvider).toBe("openhands");
+  });
+
+  it("throws when runtimeProvider is invalid", () => {
+    const baseConfig = { prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD };
+    expect(() => parseSidecarConfig({ ...baseConfig, runtimeProvider: "bad" })).toThrow(
+      "Invalid SidecarConfig: runtimeProvider must be one of claude, openhands",
+    );
+  });
+
   it("accepts valid config with all optional fields", () => {
     const result = parseSidecarConfig({
       prompt: "hello",

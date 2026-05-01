@@ -10,9 +10,10 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-const DESC_EVALS_PROMPT_TEMPLATE: &str = include_str!(
-    "../../../../../agent-sources/workspace/prompts/skill-description-evals-generator.md"
-);
+const DESC_EVALS_PROMPT_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/workspace/prompts/skill-description-evals-generator.md"
+));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalQuery {
@@ -526,6 +527,7 @@ pub async fn start_generate_desc_evals(
         run_source: Some("workflow".to_string()),
         plugin_slug,
         transcript_log_dir: Some(desc_opt_log_dir.clone()),
+        runtime_provider: None,
     };
 
     sidecar::spawn_sidecar(

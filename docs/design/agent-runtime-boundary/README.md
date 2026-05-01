@@ -243,6 +243,55 @@ Claude-only fields such as `pathToClaudeCodeExecutable`, Claude betas, and
 Claude-specific permission modes belong in the Claude adapter config, not in
 the common request shape.
 
+## Structured Output Contract
+
+`outputFormat` in `SidecarConfig` is the app-owned signal that a one-shot run
+must return parseable JSON. It is **not** a provider instruction and must not be
+forwarded to any runtime SDK.
+
+### Signal only, not a provider instruction
+
+When `outputFormat` is present in a `SidecarConfig`, the sidecar interprets it
+as: "I expect the result text to contain valid JSON." The runtime adapter runs
+the agent normally — no schema or format hint is sent to the underlying model or
+SDK. The app already instructs the agent to produce JSON through its system
+prompt and agent instructions.
+
+The `outputFormat` field was previously forwarded to the Claude SDK
+(`options.ts`) to request native structured output. That forwarding is removed.
+The Claude SDK's native structured-output feature is unreliable and the app
+already uses text-based JSON extraction as the de facto path. Making text
+extraction the explicit primary mechanism removes the divergence.
+
+### Extraction responsibility
+
+Each runtime adapter's event processor is responsible for JSON extraction from
+result text when `outputFormat` is set:
+
+- **Claude adapter**: `MessageProcessor.processResultMessage` calls
+  `extractJsonFromText` on `raw.result` and `this.lastOutputText` when
+  `requireStructuredOutput` is true. This is gated on `hasOutputFormat` in the
+  constructor.
+- **OpenHands adapter**: `OpenHandsEventProcessor` applies the same
+  `extractJsonFromText` logic to `openhands_result.result_text` when
+  `hasOutputFormat` is true. The Python runner always returns plain text —
+  structured output extraction is not the runner's responsibility.
+
+### Failure contract
+
+If `outputFormat` is set and no parseable JSON is found in the result text after
+all extraction attempts, the adapter emits a `run_result` with
+`status: "error"` and `resultSubtype: "structured_output_missing"`. This
+contract is the same across both adapters and is unchanged by this design.
+
+### What this means for callers
+
+Rust callers that set `outputFormat` in `SidecarConfig` do not need to change.
+The field continues to travel through the Rust → Node boundary. The sidecar
+uses it as the extraction signal and discards it before building any provider
+request. Callers must not expect the model to receive schema constraints from
+this field.
+
 ## State And Transitions
 
 One-shot run states:
@@ -284,9 +333,12 @@ created -> active -> closed
 | `app/sidecar/runtime/claude-runtime.ts` | Claude runtime adapter for one-shot execution behind the boundary. |
 | `app/sidecar/run-agent.ts` | Compatibility wrapper for existing one-shot callers. |
 | `app/sidecar/stream-session.ts` | Streaming Claude SDK session path, runtime session methods, and `AskUserQuestion` bridge. |
-| `app/sidecar/options.ts` | Claude SDK option builder. |
-| `app/sidecar/config.ts` | Sidecar request validation shape, including optional runtime mode. |
-| `app/sidecar/message-processor.ts` | Current SDK-message to app-protocol mapper. |
+| `app/sidecar/options.ts` | Claude SDK option builder. Does not forward `outputFormat` to the SDK. |
+| `app/sidecar/config.ts` | Sidecar request validation shape, including optional runtime mode and `outputFormat` signal. |
+| `app/sidecar/message-processor.ts` | Claude SDK-message to app-protocol mapper. Extracts JSON from result text when `outputFormat` is set. |
+| `app/sidecar/openhands/runner.py` | Python spike runner — reads one JSON request from stdin, emits raw JSONL events on stdout. |
+| `app/sidecar/openhands-event-processor.ts` | OpenHands event-to-sidecar-envelope mapper. Extracts JSON from result text when `outputFormat` is set, matching `MessageProcessor` behavior. |
+| `app/sidecar/runtime/openhands-runtime.ts` | OpenHands one-shot runtime adapter behind `AgentRuntime`. |
 | `app/sidecar/run-metadata-accumulator.ts` | Current `run_result` summary construction. |
 | `app/sidecar/persistent-mode.ts` | Sidecar request demultiplexer that rejects mode mismatches and routes one-shot requests through the runtime boundary. |
 | `app/src-tauri/src/agents/sidecar.rs` | Rust `SidecarConfig`, runtime mode serialization, and sidecar spawn path. |

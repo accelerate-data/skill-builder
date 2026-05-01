@@ -17,7 +17,7 @@ This keeps fast feedback cheap and continuous while preserving real behavior cov
 | E2E | End-to-end UI flows with Playwright | `cd app && npm run test:e2e` |
 | Agent structural | Prompt/frontmatter/format anti-pattern checks (no API) | `cd app && npm run test:agents:structural` |
 | Agent smoke (Promptfoo) | Live agent behavior regression scenarios via Claude CLI | `cd app && npm run test:agents:smoke` |
-| Harness self-tests | Test harness and manifest integrity | `cd app && ./tests/harness-test.sh && ./tests/manifest-scenarios.sh` |
+| Harness self-tests | Test harness and test-map integrity | `cd app && ./tests/harness-test.sh && ./tests/test-map-scenarios.sh` |
 
 ## Promptfoo Harness Structure
 

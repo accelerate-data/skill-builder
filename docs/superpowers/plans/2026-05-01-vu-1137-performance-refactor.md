@@ -49,7 +49,7 @@ Live agent smoke evals are not required because this refactor does not change ag
 - Modify: `app/src/components/step-complete/file-content-renderer.tsx`
 - Modify: `app/src/components/workspace/benchmark-overview-card.tsx`
 - Modify: `app/src/__tests__/guards/markdown-link-guard.test.ts`
-- Modify: `TEST_MANIFEST.md` only if E2E mappings change.
+- Modify: `TEST_MAP.md` only if E2E mappings change.
 
 ## Tasks
 

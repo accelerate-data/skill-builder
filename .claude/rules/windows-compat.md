@@ -1,70 +1,27 @@
 # Windows Compatibility Rules
 
-Cross-platform code must avoid patterns that have caused Windows CI regressions in this repo. This file codifies the fixes from VU-453, VU-455, VU-477, VU-479, and VU-551.
+These repo rules come from prior Windows CI regressions. Read before writing
+path assertions, path construction, regexes over file content, `package.json`
+scripts, shell invocations, or Rust CI configuration.
 
 ## Path Handling
 
-Always use `path.join()` or `path.normalize()` to construct and compare file paths. Never use hardcoded forward-slash strings or Unix-style literals (`/tmp/...`) in test assertions or path construction.
+- Use `path.join()` or `path.normalize()` in TypeScript tests and sidecar code.
+- Do not assert hardcoded Unix paths such as `/tmp/...`.
+- Rust string assertions that include paths must tolerate platform separators.
 
-**Wrong:**
+## Line Endings
 
-```ts
-expect(result).toBe("/tmp/skill-builder/workspace");
-const file = workspaceDir + "/output.json";
-```
+- Regexes and frontmatter parsers that read files must tolerate CRLF.
+- Prefer `split(/\r?\n/)`, `\r?\n`, or `[\r\n]+` when matching line boundaries.
 
-**Right:**
+## Package Scripts
 
-```ts
-import path from "path";
-expect(result).toBe(path.join(os.tmpdir(), "skill-builder", "workspace"));
-const file = path.join(workspaceDir, "output.json");
-```
-
-This applies everywhere: test assertions, sidecar code, Rust string literals compared against paths, and Tauri command outputs.
-
-## CRLF Safety
-
-Regex patterns and frontmatter parsers must tolerate `\r\n` line endings. Windows git checkouts and cross-platform file reads may produce CRLF even when the repo uses LF.
-
-**Pattern:**
-
-- Replace `\n` anchors with `[\r\n]+` where line endings may vary.
-- Strip `\r` before feeding content into parsers that only handle `\n`.
-- Use `\r?\n` in regex literals that match end-of-line.
-
-**Wrong:**
-
-```ts
-const lines = content.split("\n");
-const match = content.match(/^---\n/m);
-```
-
-**Right:**
-
-```ts
-const lines = content.split(/\r?\n/);
-const match = content.match(/^---\r?\n/m);
-```
-
-## Environment-Variable Injection
-
-Do not use Unix prefix syntax (`VAR=value command`) in `package.json` scripts or shell invocations — `cmd.exe` does not recognise it. Use `cross-env` instead.
-
-**Wrong (package.json):**
-
-```json
-"test:unit": "NODE_ENV=test vitest run"
-```
-
-**Right (package.json):**
-
-```json
-"test:unit": "cross-env NODE_ENV=test vitest run"
-```
-
-`cross-env` is already a dev dependency in `app/`. Add it to `app/sidecar/` if needed.
+- Do not use Unix env-prefix syntax in `package.json` scripts.
+- Use `cross-env`; it is already available in `app/`.
 
 ## Rust Toolchain
 
-Do not set `RUSTUP_TOOLCHAIN` to a GNU target (`*-windows-gnu`) on Windows. GNU-compiled binaries crash at runtime with `STATUS_ENTRYPOINT_NOT_FOUND` because the MSVC C runtime is required on Windows. Always default to the MSVC toolchain for Windows test runs. Use `dtolnay/rust-toolchain@stable` without overriding the target unless explicitly required.
+- Do not set `RUSTUP_TOOLCHAIN` to a GNU target on Windows.
+- Let Windows CI use the MSVC toolchain unless a task explicitly requires
+  otherwise.

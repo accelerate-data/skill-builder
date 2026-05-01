@@ -209,6 +209,7 @@ async fn run_workflow_step_inner(
             .to_string_lossy()
             .into_owned(),
         ),
+        runtime_provider: None,
     };
 
     // Resolve SDK cli.js path (same as spawn_sidecar does internally)
@@ -586,6 +587,7 @@ pub async fn run_answer_evaluator(
             .to_string_lossy()
             .into_owned(),
         ),
+        runtime_provider: None,
     };
 
     // Resolve SDK cli.js path (same as run_workflow_step_inner does)

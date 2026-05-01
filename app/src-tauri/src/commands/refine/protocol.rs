@@ -224,6 +224,7 @@ pub(super) fn build_refine_config(
         run_source: Some("refine".to_string()),
         plugin_slug: plugin_slug.to_string(),
         transcript_log_dir: None,
+        runtime_provider: None,
     };
 
     (config, agent_id)
@@ -255,30 +256,20 @@ pub(super) fn build_followup_prompt_for_plugin(
     skill_name: &str,
     target_files: Option<&[String]>,
 ) -> String {
-    let mut prompt = String::new();
-
-    if let Some(files) = target_files {
-        if !files.is_empty() {
-            let skill_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
-            let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
-            let abs_files: Vec<String> = files
-                .iter()
-                .map(|f| format!("{}/{}", skill_dir_str, f))
-                .collect();
-            prompt.push_str(&format!(
-                "IMPORTANT: Only edit these files: {}. Do not modify any other files.\n\n",
-                abs_files.join(", ")
-            ));
-        }
-    }
-
-    prompt.push_str(user_message);
-    prompt
+    let skill_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
+    build_followup_prompt_with_output_dir(user_message, &skill_dir, target_files)
 }
 
 /// The refine-initial.txt template, embedded at compile time.
-const REFINE_PROMPT_TEMPLATE: &str =
-    include_str!("../../../../../agent-sources/workspace/prompts/refine-initial.txt");
+const REFINE_PROMPT_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/workspace/prompts/refine-initial.txt"
+));
+
+const REFINE_FOLLOWUP_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/workspace/prompts/refine-followup.txt"
+));
 
 /// Build the initial refine prompt using a pre-resolved skill output directory.
 /// Uses the refine-initial.txt template with variable substitution.
@@ -318,28 +309,26 @@ pub(super) fn build_refine_prompt_with_output_dir(
 pub(super) fn build_followup_prompt_with_output_dir(
     user_message: &str,
     skill_output_dir: &std::path::Path,
-    skill_name: &str,
     target_files: Option<&[String]>,
 ) -> String {
-    let _ = skill_name; // used only for future context; kept for API symmetry
-    let mut prompt = String::new();
-
-    if let Some(files) = target_files {
-        if !files.is_empty() {
+    let target_files_clause = match target_files {
+        Some(files) if !files.is_empty() => {
             let skill_dir_str = skill_output_dir.to_string_lossy().replace('\\', "/");
             let abs_files: Vec<String> = files
                 .iter()
                 .map(|f| format!("{}/{}", skill_dir_str, f))
                 .collect();
-            prompt.push_str(&format!(
+            format!(
                 "IMPORTANT: Only edit these files: {}. Do not modify any other files.\n\n",
                 abs_files.join(", ")
-            ));
+            )
         }
-    }
-
-    prompt.push_str(user_message);
-    prompt
+        _ => String::new(),
+    };
+    REFINE_FOLLOWUP_TEMPLATE
+        .trim_end_matches('\n')
+        .replace("{{target_files_clause}}", &target_files_clause)
+        .replace("{{user_message}}", user_message)
 }
 
 /// Build the refine prompt. Sends workspace context + the user's message.

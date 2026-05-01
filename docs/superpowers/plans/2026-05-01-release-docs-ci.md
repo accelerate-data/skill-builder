@@ -604,7 +604,7 @@ git commit -m "VU-1134: keep PR CI cheap and targeted"
 **Files:**
 
 - Verify: all changed files
-- Modify only if required by verification: `AGENTS.md`, `repo-map.json`, `TEST_MANIFEST.md`
+- Modify only if required by verification: `AGENTS.md`, `repo-map.json`, `TEST_MAP.md`
 
 - [ ] **Step 1: Run all deterministic checks for this implementation**
 
@@ -642,7 +642,7 @@ Run:
 git diff --name-status origin/main...HEAD
 ```
 
-If files were added or removed under `app/src-tauri/src/commands/`, `app/src/stores/`, `app/src/pages/`, `app/src/components/`, `app/src/lib/`, `app/src/hooks/`, `.github/`, `scripts/`, or `tests/evals/`, update `repo-map.json` in the same branch before final push. If Rust command files or E2E specs changed, update `TEST_MANIFEST.md`.
+If files were added or removed under `app/src-tauri/src/commands/`, `app/src/stores/`, `app/src/pages/`, `app/src/components/`, `app/src/lib/`, `app/src/hooks/`, `.github/`, `scripts/`, or `tests/evals/`, update `repo-map.json` in the same branch before final push. If Rust command files or E2E specs changed, update `TEST_MAP.md`.
 
 - [ ] **Step 3: Review final diff**
 
@@ -660,7 +660,7 @@ Expected: diff is scoped to release/docs/CI planning and implementation, and `gi
 If Step 2 required metadata updates, run:
 
 ```bash
-git add AGENTS.md repo-map.json TEST_MANIFEST.md
+git add AGENTS.md repo-map.json TEST_MAP.md
 git commit -m "VU-1134: update repository metadata for CI checks"
 ```
 

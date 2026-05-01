@@ -197,6 +197,7 @@ pub async fn start_agent(
         run_source,
         plugin_slug,
         transcript_log_dir: None,
+        runtime_provider: None,
     };
 
     sidecar::spawn_sidecar(
