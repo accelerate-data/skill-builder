@@ -47,4 +47,11 @@ describe("runtime API contract", () => {
     expect(source).not.toContain("answerWorkflowStepQuestion");
     expect(source).not.toContain("RefineQuestionInline");
   });
+
+  it("keeps the workflow page subscribed to active run data instead of the full runs map", () => {
+    const source = readSource("pages/workflow.tsx");
+
+    expect(source).not.toContain("const runs = useAgentStore((s) => s.runs)");
+    expect(source).toContain("activeRunDisplayItemCount");
+  });
 });

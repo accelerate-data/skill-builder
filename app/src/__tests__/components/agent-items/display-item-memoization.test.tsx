@@ -83,4 +83,25 @@ describe("DisplayItemList memoization", () => {
     rerender(<DisplayItemList items={[...items]} />);
     expect(bareOutputRenderCount).toHaveBeenCalledTimes(4);
   });
+
+  it("renders only the newest 100 visual groups for large lists", () => {
+    const items: DisplayItem[] = Array.from({ length: 125 }, (_, index) =>
+      makeItem({
+        id: `o-${index}`,
+        type: "output",
+        outputText: `output ${index}`,
+      }),
+    );
+
+    bareOutputRenderCount.mockClear();
+
+    const { getByTestId, queryByTestId } = render(<DisplayItemList items={items} />);
+
+    expect(getByTestId("display-item-window-indicator")).toHaveTextContent(
+      "25 older items hidden",
+    );
+    expect(queryByTestId("output-o-0")).not.toBeInTheDocument();
+    expect(getByTestId("output-o-124")).toBeInTheDocument();
+    expect(bareOutputRenderCount).toHaveBeenCalledTimes(100);
+  });
 });

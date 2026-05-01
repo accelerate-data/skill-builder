@@ -1,4 +1,8 @@
-use super::crud::{create_skill_inner, delete_skill_inner, list_refinable_skills_inner, list_skills_inner};
+use super::crud::{
+    create_skill_db_records_inner, create_skill_filesystem_inner, create_skill_inner,
+    delete_skill_db_records_inner, delete_skill_filesystem_inner, delete_skill_inner,
+    list_refinable_skills_inner, list_skills_inner,
+};
 use super::metadata::{is_valid_kebab, rename_skill_inner, sync_user_context_file};
 use crate::commands::test_utils::create_test_db;
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
@@ -154,6 +158,53 @@ fn test_create_and_list_skills_db_primary() {
 }
 
 #[test]
+fn test_create_skill_filesystem_phase_does_not_write_db_records() {
+    let dir = tempdir().unwrap();
+    let workspace = dir.path().join("workspace");
+    let skills = dir.path().join("skills");
+    let workspace_path = workspace.to_str().unwrap();
+    let skills_path = skills.to_str().unwrap();
+    let conn = create_test_db();
+
+    create_skill_filesystem_inner(workspace_path, "fs-only-skill", Some(skills_path)).unwrap();
+
+    assert!(flat_skill(workspace_path, "fs-only-skill").join("context").is_dir());
+    assert!(nested_skill(skills_path, "fs-only-skill").join("references").is_dir());
+    assert!(crate::db::get_workflow_run(&conn, "fs-only-skill").unwrap().is_none());
+}
+
+#[test]
+fn test_create_skill_db_phase_does_not_create_filesystem_dirs() {
+    let dir = tempdir().unwrap();
+    let workspace = dir.path().join("workspace");
+    let skills = dir.path().join("skills");
+    let workspace_path = workspace.to_str().unwrap();
+    let skills_path = skills.to_str().unwrap();
+    let conn = create_test_db();
+
+    create_skill_db_records_inner(
+        &conn,
+        "db-only-skill",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    assert!(crate::db::get_workflow_run(&conn, "db-only-skill").unwrap().is_some());
+    assert!(!flat_skill(workspace_path, "db-only-skill").exists());
+    assert!(!nested_skill(skills_path, "db-only-skill").exists());
+}
+
+#[test]
 fn test_create_duplicate_skill() {
     let dir = tempdir().unwrap();
     let workspace = dir.path().to_str().unwrap();
@@ -195,6 +246,82 @@ fn test_create_duplicate_skill() {
     );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("already exists"));
+}
+
+#[test]
+fn test_delete_skill_filesystem_phase_does_not_delete_db_records() {
+    let dir = tempdir().unwrap();
+    let workspace = dir.path().join("workspace");
+    let skills = dir.path().join("skills");
+    let workspace_path = workspace.to_str().unwrap();
+    let skills_path = skills.to_str().unwrap();
+    let conn = create_test_db();
+
+    create_skill_inner(
+        workspace_path,
+        "delete-fs-only",
+        None,
+        None,
+        Some(&conn),
+        Some(skills_path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    delete_skill_filesystem_inner(
+        workspace_path,
+        "delete-fs-only",
+        DEFAULT_PLUGIN_SLUG,
+        Some(skills_path),
+    )
+    .unwrap();
+
+    assert!(crate::db::get_workflow_run(&conn, "delete-fs-only").unwrap().is_some());
+    assert!(!flat_skill(workspace_path, "delete-fs-only").exists());
+    assert!(!nested_skill(skills_path, "delete-fs-only").exists());
+}
+
+#[test]
+fn test_delete_skill_db_phase_does_not_delete_filesystem_dirs() {
+    let dir = tempdir().unwrap();
+    let workspace = dir.path().join("workspace");
+    let skills = dir.path().join("skills");
+    let workspace_path = workspace.to_str().unwrap();
+    let skills_path = skills.to_str().unwrap();
+    let conn = create_test_db();
+
+    create_skill_inner(
+        workspace_path,
+        "delete-db-only",
+        None,
+        None,
+        Some(&conn),
+        Some(skills_path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    delete_skill_db_records_inner(&conn, "delete-db-only", DEFAULT_PLUGIN_SLUG).unwrap();
+
+    assert!(crate::db::get_workflow_run(&conn, "delete-db-only").unwrap().is_none());
+    assert!(flat_skill(workspace_path, "delete-db-only").exists());
+    assert!(nested_skill(skills_path, "delete-db-only").exists());
 }
 
 #[test]

@@ -238,4 +238,24 @@ describe("AgentOutputPanel", () => {
     // Second group shows tool count
     expect(screen.getByText("1 tool (1 Read)")).toBeInTheDocument();
   });
+
+  it("windows large agent output lists while keeping the newest output visible", () => {
+    useAgentStore.getState().startRun("large-agent", "sonnet");
+    const items = Array.from({ length: 120 }, (_, index) =>
+      makeDisplayItem({
+        id: `large-output-${index}`,
+        type: "output" as const,
+        outputText: `large output ${index}`,
+      }),
+    );
+
+    addDisplayItems("large-agent", items);
+    render(<AgentOutputPanel agentId="large-agent" />);
+
+    expect(screen.getByTestId("display-item-window-indicator")).toHaveTextContent(
+      "20 older items hidden",
+    );
+    expect(screen.queryByText("large output 0")).not.toBeInTheDocument();
+    expect(screen.getAllByText("large output 119").length).toBeGreaterThanOrEqual(1);
+  });
 });

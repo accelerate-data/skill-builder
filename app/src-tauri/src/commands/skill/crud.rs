@@ -211,12 +211,13 @@ pub fn create_skill(
         description.is_some()
     );
     super::super::imported_skills::validate_skill_name(&name)?;
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[create_skill] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    // Read settings from DB
-    let settings = crate::db::read_settings(&conn).ok();
+    let settings = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[create_skill] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        crate::db::read_settings(&conn).ok()
+    };
     let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
 
     // Require skills_path to be configured
@@ -229,26 +230,37 @@ pub fn create_skill(
 
     let author_login = settings.as_ref().and_then(|s| s.github_user_login.clone());
     let author_avatar = settings.as_ref().and_then(|s| s.github_user_avatar.clone());
-    create_skill_inner(
-        &workspace_path,
-        &name,
-        tags.as_deref(),
-        purpose.as_deref(),
-        Some(&*conn),
-        skills_path.as_deref(),
-        author_login.as_deref(),
-        author_avatar.as_deref(),
-        intake_json.as_deref(),
-        description.as_deref(),
-        version.as_deref(),
-        model.as_deref(),
-        argument_hint.as_deref(),
-        user_invocable,
-        disable_model_invocation,
-    )
+
+    create_skill_filesystem_inner(&workspace_path, &name, skills_path.as_deref())?;
+
+    {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[create_skill] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        create_skill_db_records_inner(
+            &conn,
+            &name,
+            tags.as_deref(),
+            purpose.as_deref(),
+            author_login.as_deref(),
+            author_avatar.as_deref(),
+            intake_json.as_deref(),
+            description.as_deref(),
+            version.as_deref(),
+            model.as_deref(),
+            argument_hint.as_deref(),
+            user_invocable,
+            disable_model_invocation,
+        )?;
+    }
+
+    post_create_skill_filesystem_inner(&name, skills_path.as_deref());
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub(crate) fn create_skill_inner(
     workspace_path: &str,
     name: &str,
@@ -267,10 +279,39 @@ pub(crate) fn create_skill_inner(
     disable_model_invocation: Option<bool>,
 ) -> Result<(), String> {
     super::super::imported_skills::validate_skill_name(name)?;
+    create_skill_filesystem_inner(workspace_path, name, skills_path)?;
+    if let Some(conn) = conn {
+        create_skill_db_records_inner(
+            conn,
+            name,
+            tags,
+            purpose,
+            author_login,
+            author_avatar,
+            intake_json,
+            description,
+            version,
+            model,
+            argument_hint,
+            user_invocable,
+            disable_model_invocation,
+        )?;
+    }
+    post_create_skill_filesystem_inner(name, skills_path);
+    Ok(())
+}
+
+pub(crate) fn create_skill_filesystem_inner(
+    workspace_path: &str,
+    name: &str,
+    skills_path: Option<&str>,
+) -> Result<(), String> {
+    super::super::imported_skills::validate_skill_name(name)?;
     // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
     // New skills are always created in the default plugin.
     let workspace_root = Path::new(workspace_path);
-    let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name);
+    let workspace_skill_dir =
+        crate::skill_paths::workspace_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name);
     if workspace_skill_dir.exists() {
         return Err(format!(
             "Skill '{}' already exists in workspace directory ({})",
@@ -282,7 +323,8 @@ pub(crate) fn create_skill_inner(
     // Check for collision in skills_path (skill output directory).
     // Skills library IS organized by plugin (default plugin: skills/{name}).
     if let Some(sp) = skills_path {
-        let skill_output = crate::skill_paths::resolve_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name);
+        let skill_output =
+            crate::skill_paths::resolve_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name);
         if skill_output.exists() {
             return Err(format!(
                 "Skill '{}' already exists in skills output directory ({})",
@@ -301,64 +343,102 @@ pub(crate) fn create_skill_inner(
         fs::create_dir_all(skill_output.join("references")).map_err(|e| e.to_string())?;
     }
 
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn create_skill_db_records_inner(
+    conn: &rusqlite::Connection,
+    name: &str,
+    tags: Option<&[String]>,
+    purpose: Option<&str>,
+    author_login: Option<&str>,
+    author_avatar: Option<&str>,
+    intake_json: Option<&str>,
+    description: Option<&str>,
+    version: Option<&str>,
+    model: Option<&str>,
+    argument_hint: Option<&str>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
+) -> Result<(), String> {
     let purpose = purpose.unwrap_or("domain");
 
-    if let Some(conn) = conn {
-        conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-        let result = (|| -> Result<(), String> {
-            crate::db::save_workflow_run(conn, name, 0, "pending", purpose)?;
+    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
+    let result = (|| -> Result<(), String> {
+        crate::db::save_workflow_run(conn, name, 0, "pending", purpose)?;
 
-            if let Some(tags) = tags {
-                if !tags.is_empty() {
-                    crate::db::set_skill_tags(conn, name, crate::skill_paths::DEFAULT_PLUGIN_SLUG, tags)?;
-                }
-            }
-
-            if let Some(login) = author_login {
-                crate::db::set_skill_author(conn, name, login, author_avatar).map_err(|e| {
-                    log::warn!("[create_skill_inner] set_skill_author failed for {}: {}", name, e);
-                    e
-                })?;
-            }
-
-            if let Some(ij) = intake_json {
-                crate::db::set_skill_intake(conn, name, Some(ij)).map_err(|e| {
-                    log::warn!("[create_skill_inner] set_skill_intake failed for {}: {}", name, e);
-                    e
-                })?;
-            }
-
-            if description.is_some()
-                || version.is_some()
-                || model.is_some()
-                || argument_hint.is_some()
-                || user_invocable.is_some()
-                || disable_model_invocation.is_some()
-            {
-                crate::db::set_skill_behaviour(
+        if let Some(tags) = tags {
+            if !tags.is_empty() {
+                crate::db::set_skill_tags(
                     conn,
                     name,
-                    description,
-                    version,
-                    model,
-                    argument_hint,
-                    user_invocable,
-                    disable_model_invocation,
-                ).map_err(|e| {
-                    log::warn!("[create_skill_inner] set_skill_behaviour failed for {}: {}", name, e);
-                    e
-                })?;
+                    crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+                    tags,
+                )?;
             }
-
-            Ok(())
-        })();
-        if let Err(e) = result {
-            let _ = conn.execute_batch("ROLLBACK");
-            return Err(e);
         }
-        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-    }
 
+        if let Some(login) = author_login {
+            crate::db::set_skill_author(conn, name, login, author_avatar).map_err(|e| {
+                log::warn!(
+                    "[create_skill_inner] set_skill_author failed for {}: {}",
+                    name,
+                    e
+                );
+                e
+            })?;
+        }
+
+        if let Some(ij) = intake_json {
+            crate::db::set_skill_intake(conn, name, Some(ij)).map_err(|e| {
+                log::warn!(
+                    "[create_skill_inner] set_skill_intake failed for {}: {}",
+                    name,
+                    e
+                );
+                e
+            })?;
+        }
+
+        if description.is_some()
+            || version.is_some()
+            || model.is_some()
+            || argument_hint.is_some()
+            || user_invocable.is_some()
+            || disable_model_invocation.is_some()
+        {
+            crate::db::set_skill_behaviour(
+                conn,
+                name,
+                description,
+                version,
+                model,
+                argument_hint,
+                user_invocable,
+                disable_model_invocation,
+            )
+            .map_err(|e| {
+                log::warn!(
+                    "[create_skill_inner] set_skill_behaviour failed for {}: {}",
+                    name,
+                    e
+                );
+                e
+            })?;
+        }
+
+        Ok(())
+    })();
+    if let Err(e) = result {
+        let _ = conn.execute_batch("ROLLBACK");
+        return Err(e);
+    }
+    conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn post_create_skill_filesystem_inner(name: &str, skills_path: Option<&str>) {
     // INTENTIONAL: DB committed first; git commit may fail.
     // Reconciler corrects disk/DB divergence on next startup.
     if let Some(sp) = skills_path {
@@ -371,8 +451,6 @@ pub(crate) fn create_skill_inner(
             log::warn!("Git auto-commit failed ({}): {}", msg, e);
         }
     }
-
-    Ok(())
 }
 
 #[tauri::command]
@@ -382,13 +460,20 @@ pub fn delete_skill(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!("[delete_skill] name={}", name);
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[delete_skill] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    // Read skills_path from settings DB — may be None
-    let settings = crate::db::read_settings(&conn).ok();
-    let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
+    let (skills_path, plugin_slug) = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[delete_skill] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        let settings = crate::db::read_settings(&conn).ok();
+        let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
+        let plugin_slug = crate::db::get_skill_master_any_plugin(&conn, &name)
+            .ok()
+            .flatten()
+            .map(|m| m.plugin_slug)
+            .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string());
+        (skills_path, plugin_slug)
+    };
 
     // DB cleanup works even without skills_path; only filesystem cleanup needs it
     if skills_path.is_none() {
@@ -398,21 +483,38 @@ pub fn delete_skill(
         );
     }
 
-    // Look up plugin slug so we clean the right workspace dir.
-    let plugin_slug = crate::db::get_skill_master_any_plugin(&conn, &name)
-        .ok()
-        .flatten()
-        .map(|m| m.plugin_slug)
-        .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string());
-
-    delete_skill_inner(&workspace_path, &name, &plugin_slug, Some(&conn), skills_path.as_deref())
+    delete_skill_filesystem_inner(&workspace_path, &name, &plugin_slug, skills_path.as_deref())?;
+    post_delete_skill_filesystem_inner(&name, skills_path.as_deref());
+    {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[delete_skill] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        delete_skill_db_records_inner(&conn, &name, &plugin_slug)?;
+    }
+    Ok(())
 }
 
+#[allow(dead_code)]
 pub(crate) fn delete_skill_inner(
     workspace_path: &str,
     name: &str,
     plugin_slug: &str,
     conn: Option<&rusqlite::Connection>,
+    skills_path: Option<&str>,
+) -> Result<(), String> {
+    delete_skill_filesystem_inner(workspace_path, name, plugin_slug, skills_path)?;
+    post_delete_skill_filesystem_inner(name, skills_path);
+    if let Some(conn) = conn {
+        delete_skill_db_records_inner(conn, name, plugin_slug)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn delete_skill_filesystem_inner(
+    workspace_path: &str,
+    name: &str,
+    plugin_slug: &str,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
     log::info!(
@@ -422,7 +524,11 @@ pub(crate) fn delete_skill_inner(
         skills_path
     );
 
-    let base = crate::skill_paths::resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, name);
+    let base = crate::skill_paths::resolve_workspace_skill_dir(
+        Path::new(workspace_path),
+        plugin_slug,
+        name,
+    );
 
     // Delete workspace working directory if it exists
     if base.exists() {
@@ -467,6 +573,10 @@ pub(crate) fn delete_skill_inner(
         log::info!("[delete_skill] no skills_path configured, skipping output dir cleanup");
     }
 
+    Ok(())
+}
+
+fn post_delete_skill_filesystem_inner(name: &str, skills_path: Option<&str>) {
     // Auto-commit: record the deletion in git
     if let Some(sp) = skills_path {
         // Regenerate marketplace manifests
@@ -478,27 +588,31 @@ pub(crate) fn delete_skill_inner(
             log::warn!("Git auto-commit failed ({}): {}", msg, e);
         }
     }
+}
 
+pub(crate) fn delete_skill_db_records_inner(
+    conn: &rusqlite::Connection,
+    name: &str,
+    plugin_slug: &str,
+) -> Result<(), String> {
     // Full DB cleanup: route to the right delete based on what's in the DB.
     // Skill-builder skills have a workflow_run; marketplace/imported skills do not.
-    if let Some(conn) = conn {
-        let has_workflow_run = crate::db::get_workflow_run_id(conn, name)
-            .unwrap_or(None)
-            .is_some();
-        if has_workflow_run {
-            crate::db::delete_workflow_run(conn, name, plugin_slug)?;
-            log::info!(
-                "[delete_skill] workflow run DB records cleaned for {}",
-                name
-            );
-        } else {
-            crate::db::delete_imported_skill_by_name(conn, name, plugin_slug)?;
-            crate::db::delete_skill_in_plugin(conn, name, plugin_slug)?;
-            log::info!(
-                "[delete_skill] imported skill DB records cleaned for {}",
-                name
-            );
-        }
+    let has_workflow_run = crate::db::get_workflow_run_id(conn, name)
+        .unwrap_or(None)
+        .is_some();
+    if has_workflow_run {
+        crate::db::delete_workflow_run(conn, name, plugin_slug)?;
+        log::info!(
+            "[delete_skill] workflow run DB records cleaned for {}",
+            name
+        );
+    } else {
+        crate::db::delete_imported_skill_by_name(conn, name, plugin_slug)?;
+        crate::db::delete_skill_in_plugin(conn, name, plugin_slug)?;
+        log::info!(
+            "[delete_skill] imported skill DB records cleaned for {}",
+            name
+        );
     }
 
     Ok(())

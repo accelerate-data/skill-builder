@@ -120,7 +120,9 @@ export default function WorkflowPage() {
   } = useWorkflowStore();
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
-  const runs = useAgentStore((s) => s.runs);
+  const activeRunDisplayItemCount = useAgentStore((s) =>
+    s.activeAgentId ? (s.runs[s.activeAgentId]?.displayItems.length ?? 0) : 0
+  );
   const pluginSlug = useSkillStore((s) => s.skills.find((sk) => sk.name === skillName)?.plugin_slug);
   const skillLibraryKey = useSkillStore((s) => s.skills.find((sk) => sk.name === skillName)?.library_key);
 
@@ -266,7 +268,7 @@ export default function WorkflowPage() {
   const renderContent = () => {
     // 1. Agent running — show streaming output or init spinner
     if (activeAgentId) {
-      if (isInitializing && !runs[activeAgentId]?.displayItems.length) {
+      if (isInitializing && activeRunDisplayItemCount === 0) {
         return <AgentInitializingIndicator />;
       }
       return <AgentOutputPanel agentId={activeAgentId} />;
