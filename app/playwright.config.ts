@@ -12,7 +12,7 @@ export default defineConfig({
     ["junit", { outputFile: "./test-results/playwright-results.xml" }],
   ],
   use: {
-    baseURL: "http://localhost:1420",
+    baseURL: "http://127.0.0.1:1420",
     screenshot: "only-on-failure",
     trace: "on-first-retry",
   },
@@ -32,7 +32,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run dev:test",
-    url: "http://localhost:1420",
+    url: "http://127.0.0.1:1420",
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
   },

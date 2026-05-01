@@ -43,8 +43,8 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
 
     const invokes = await getTrackedInvokes(page, "send_refine_message");
     expect(invokes).toHaveLength(1);
-    expect(invokes[0]?.args.command).toBeNull();
     expect(invokes[0]?.args.userMessage).toBe("Validate this skill");
+    expect(invokes[0]?.args.targetFiles).toBeNull();
 
     // Read agentId and simulate agent
     const agentId = await getAgentId(page);
@@ -338,9 +338,9 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     }).toBe(2);
 
     const sendCalls = await getTrackedInvokes(page, "send_refine_message");
-    expect(sendCalls[0]?.args.command).toBeNull();
-    expect(sendCalls[1]?.args.command).toBeNull();
     expect(sendCalls[1]?.args.userMessage).toBe("validate this skill: can you review this skill for issues?");
+    expect(sendCalls[0]?.args.targetFiles).toBeNull();
+    expect(sendCalls[1]?.args.targetFiles).toBeNull();
   });
 
   test("tab-switch guard blocks leaving refine while agent is running", async ({ page }) => {

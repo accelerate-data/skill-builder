@@ -653,42 +653,48 @@ export function WorkspaceEvals({
   async function handleRunSelected() {
     if (!workspacePath || selectedRunIds.size === 0 || isRunningEvals) return;
     const evalIds = [...selectedRunIds].sort((a, b) => a - b);
+    let model: string;
+    try {
+      model = requireSettingsModel(preferredModel);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return;
+    }
 
     setIsRunningEvals(true);
     setBenchmark(null);
     // analystNotes removed
 
-    const agentId = crypto.randomUUID();
-    const model = requireSettingsModel(preferredModel);
-    // Create the iteration directory in Rust before the agent starts.
-    // This is the source of truth — the agent writes into a pre-existing directory
-    // and cannot accidentally reuse an existing iteration.
-    const [iterNum, iterDir] = await createNextIterationDir(
-      skillName,
-      workspacePath!,
-      pluginSlug,
-    );
-    evalRunParamsRef.current = {
-      iterDir,
-      iteration: iterNum,
-      evalIds,
-      runCount,
-      comparisonMode,
-    };
-    const skillPath = workspaceSkillDir(skillsPath, pluginSlug, skillName);
-    const [evalSystemPrompt, evalUserPrompt] = await buildEvalPrompt(
-      skillName,
-      pluginSlug,
-      workspacePath!,
-      skillPath,
-      evalIds,
-      runCount,
-      iterNum,
-      iterDir,
-      comparisonMode,
-    );
-
     try {
+      const agentId = crypto.randomUUID();
+      // Create the iteration directory in Rust before the agent starts.
+      // This is the source of truth — the agent writes into a pre-existing directory
+      // and cannot accidentally reuse an existing iteration.
+      const [iterNum, iterDir] = await createNextIterationDir(
+        skillName,
+        workspacePath!,
+        pluginSlug,
+      );
+      evalRunParamsRef.current = {
+        iterDir,
+        iteration: iterNum,
+        evalIds,
+        runCount,
+        comparisonMode,
+      };
+      const skillPath = workspaceSkillDir(skillsPath, pluginSlug, skillName);
+      const [evalSystemPrompt, evalUserPrompt] = await buildEvalPrompt(
+        skillName,
+        pluginSlug,
+        workspacePath!,
+        skillPath,
+        evalIds,
+        runCount,
+        iterNum,
+        iterDir,
+        comparisonMode,
+      );
+
       await startOneShotAgent(
         agentId,
         evalUserPrompt,

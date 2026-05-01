@@ -1,12 +1,17 @@
 import { test, expect } from "@playwright/test";
 import { reloadWithOverrides } from "../helpers/app-helpers";
-import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "../helpers/test-paths";
+import {
+  E2E_PREFERRED_MODEL,
+  E2E_SKILLS_PATH,
+  E2E_WORKSPACE_PATH,
+} from "../helpers/test-paths";
 
 const WORKSPACE_OVERRIDES = {
   get_settings: {
     anthropic_api_key: "sk-ant-test",
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
+    preferred_model: E2E_PREFERRED_MODEL,
   },
   check_workspace_path: true,
   list_skills: [],
@@ -35,6 +40,7 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
         anthropic_api_key: "sk-ant-test",
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
+        preferred_model: E2E_PREFERRED_MODEL,
       },
       check_workspace_path: true,
       list_skills: [
@@ -53,7 +59,7 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
     });
 
     // Click the skill in the sidebar
-    await page.getByText("my-skill").click();
+    await page.getByRole("button", { name: /my-skill/ }).click();
     await expect(page).toHaveURL(/\/skill\/my-skill/);
   });
 

@@ -14,13 +14,18 @@ import { waitForAppReady } from "../helpers/app-helpers";
 import { navigateToWorkflowUpdateMode, WORKFLOW_OVERRIDES } from "../helpers/workflow-helpers";
 import { navigateToRefineWithSkill, REFINE_OVERRIDES } from "../helpers/refine-helpers";
 import { createSidecarBridge } from "../helpers/sidecar-bridge.js";
-import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "../helpers/test-paths";
+import {
+  E2E_PREFERRED_MODEL,
+  E2E_SKILLS_PATH,
+  E2E_WORKSPACE_PATH,
+} from "../helpers/test-paths";
 
 const BASE_OVERRIDES = {
   get_settings: {
     anthropic_api_key: "sk-ant-test",
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
+    preferred_model: E2E_PREFERRED_MODEL,
   },
   check_workspace_path: true,
   list_skills: [],

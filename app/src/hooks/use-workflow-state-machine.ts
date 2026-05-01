@@ -465,6 +465,19 @@ export function useWorkflowStateMachine({
         return;
       }
 
+      let model: string;
+      try {
+        model = requireSettingsModel(
+          useSettingsStore.getState().preferredModel,
+        );
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : String(err),
+          { duration: Infinity },
+        );
+        return;
+      }
+
       try {
         clearRuns();
         useWorkflowStore.getState().clearRuntimeError();
@@ -482,10 +495,7 @@ export function useWorkflowStateMachine({
           workspacePath,
           sessionId ?? undefined,
         );
-        agentStartRun(
-          agentId,
-          requireSettingsModel(useSettingsStore.getState().preferredModel),
-        );
+        agentStartRun(agentId, model);
       } catch (err) {
         updateStepStatus(targetStep, "error");
         setRunning(false);

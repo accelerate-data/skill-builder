@@ -6,7 +6,11 @@
  */
 import type { Page } from "@playwright/test";
 import { waitForAppReady } from "./app-helpers";
-import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "./test-paths";
+import {
+  E2E_PREFERRED_MODEL,
+  E2E_SKILLS_PATH,
+  E2E_WORKSPACE_PATH,
+} from "./test-paths";
 
 /**
  * Common mock overrides for the Evals tab.
@@ -17,7 +21,7 @@ export const EVALS_OVERRIDES: Record<string, unknown> = {
     anthropic_api_key: "sk-ant-test",
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
-    preferred_model: "sonnet",
+    preferred_model: E2E_PREFERRED_MODEL,
   },
   check_workspace_path: true,
   list_skills: [

@@ -198,6 +198,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       anthropicApiKey: "sk-test",
+      preferredModel: "claude-sonnet-4-6",
     });
 
     mockToast.success.mockClear();
@@ -575,6 +576,7 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
+      preferredModel: "claude-sonnet-4-6",
     });
 
     mockToast.success.mockClear();
@@ -672,6 +674,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
+      preferredModel: "claude-sonnet-4-6",
     });
 
     mockToast.success.mockClear();
@@ -1572,6 +1575,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
+      preferredModel: "claude-sonnet-4-6",
     });
 
     mockToast.success.mockClear();
@@ -1777,6 +1781,7 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
+      preferredModel: "claude-sonnet-4-6",
     });
 
     mockToast.success.mockClear();
@@ -1873,6 +1878,7 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
+      preferredModel: "claude-sonnet-4-6",
     });
 
     mockToast.success.mockClear();
@@ -2001,6 +2007,7 @@ describe("WorkflowPage — review mode default state", () => {
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       anthropicApiKey: "sk-test",
+      preferredModel: "claude-sonnet-4-6",
     });
 
     mockToast.success.mockClear();
@@ -2071,6 +2078,7 @@ describe("step reset behavior regressions", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
+      preferredModel: "claude-sonnet-4-6",
     });
 
     mockToast.success.mockClear();
@@ -2414,6 +2422,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       anthropicApiKey: "sk-test",
+      preferredModel: "claude-sonnet-4-6",
     });
 
     mockToast.success.mockClear();
@@ -2830,6 +2839,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       anthropicApiKey: "sk-test",
+      preferredModel: "claude-sonnet-4-6",
     });
 
     mockToast.success.mockClear();
@@ -2911,6 +2921,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
+      preferredModel: "claude-sonnet-4-6",
     });
 
     mockToast.success.mockClear();
@@ -3548,6 +3559,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
+      preferredModel: "claude-sonnet-4-6",
     });
 
     mockToast.success.mockClear();

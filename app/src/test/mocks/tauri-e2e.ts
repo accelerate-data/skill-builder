@@ -14,12 +14,13 @@ import descriptionOptimizationResult from "../../../sidecar/mock-templates/outpu
 const E2E_ROOT = "/e2e-test";
 const E2E_SKILLS_PATH = `${E2E_ROOT}/skills`;
 const E2E_DEFAULT_SKILLS_PATH = `${E2E_ROOT}/default-skills`;
+const E2E_PREFERRED_MODEL = "claude-sonnet-4-6";
 
 const defaultSettings = {
   anthropic_api_key: "sk-ant-test-e2e",
   workspace_path: null,
   skills_path: E2E_SKILLS_PATH,
-  preferred_model: null,
+  preferred_model: E2E_PREFERRED_MODEL,
   log_level: "info",
 };
 

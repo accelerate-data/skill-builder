@@ -7,7 +7,7 @@
     "devtools": "react-devtools",
     "dev": "node scripts/dev.mjs",
     "dev:frontend": "vite",
-    "dev:test": "cross-env TAURI_E2E=true vite",
+    "dev:test": "cross-env TAURI_E2E=true TAURI_DEV_HOST=127.0.0.1 vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
