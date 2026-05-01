@@ -28,28 +28,6 @@ jobs:
         with:
           fail-on-severity: high
 
-  codeql:
-    name: codeql
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: javascript-typescript
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
-
-      - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v4
-
   cargo-audit:
     name: cargo-audit
     runs-on: ubuntu-latest

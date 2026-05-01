@@ -48,11 +48,9 @@
         ".github/workflows/pr-policy.yml",
         ".github/workflows/security.yml",
         ".github/workflows/docs.yml",
-        ".github/workflows/release.yml",
-        ".github/workflows/sync-skill-creator.yml",
-        ".github/workflows/sync-vd-agent.yml"
+        ".github/workflows/release.yml"
       ],
-      "notes": "pr-ci.yml: heavy platform CI (Linux/Windows/macOS) + frontend unit/integration on main push or manual dispatch. pr-policy.yml: cheap PR checks for docs build/help links, script tests, agents-structural, eval-harness, instruction-docs-lint, repo-map-audit, test-manifest-audit. security.yml: dependency-review, CodeQL, cargo-audit. docs.yml: deterministic VitePress GitHub Pages deploy. release.yml: multi-platform Tauri build, release-stage verification, and publish."
+      "notes": "pr-ci.yml: heavy platform CI (Linux/Windows/macOS) + frontend unit/integration on main push or manual dispatch. pr-policy.yml: cheap PR checks for docs build/help links, script tests, agents-structural, eval-harness, instruction-docs-lint, repo-map-audit, test-manifest-audit. security.yml: dependency-review and cargo-audit; GitHub code scanning provides the CodeQL PR check. docs.yml: deterministic VitePress GitHub Pages deploy. release.yml: multi-platform Tauri build, release-stage verification, and publish."
     }
   ],
   "test_frameworks": [
