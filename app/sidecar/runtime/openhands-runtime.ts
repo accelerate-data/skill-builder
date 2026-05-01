@@ -59,6 +59,27 @@ function buildRunnerEnv(request: OneShotRunRequest): Record<string, string> {
   return env;
 }
 
+function redactApiKey(text: string, apiKey: string): string {
+  if (apiKey.length === 0) return text;
+  return text.replaceAll(apiKey, "[REDACTED]");
+}
+
+function buildRunnerRequest(request: OneShotRunRequest): Record<string, unknown> {
+  return {
+    mode: request.mode,
+    prompt: request.prompt,
+    systemPrompt: request.systemPrompt,
+    model: request.model,
+    modelBaseUrl: request.modelBaseUrl,
+    agentName: request.agentName,
+    apiKey: request.apiKey,
+    workspaceRootDir: request.workspaceRootDir,
+    workspaceSkillDir: request.workspaceSkillDir,
+    maxTurns: request.maxTurns ?? 50,
+    outputFormat: request.outputFormat,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // OpenHandsRuntime
 // ---------------------------------------------------------------------------
@@ -114,7 +135,7 @@ export class OpenHandsRuntime implements AgentRuntime {
       child.stdin.on("error", () => undefined);
 
       // Write the request to stdin then close stdin
-      const requestJson = JSON.stringify(request);
+      const requestJson = JSON.stringify(buildRunnerRequest(request));
       child.stdin.write(requestJson + "\n");
       child.stdin.end();
 
@@ -126,10 +147,11 @@ export class OpenHandsRuntime implements AgentRuntime {
         stderrBuffer = lines.pop() ?? "";
         for (const line of lines) {
           if (line.length > 0) {
+            const redactedLine = redactApiKey(line, request.apiKey);
             sink.emitRaw({
               type: "system",
               subtype: "sdk_stderr",
-              data: line,
+              data: redactedLine,
               timestamp: Date.now(),
             });
           }
@@ -163,7 +185,7 @@ export class OpenHandsRuntime implements AgentRuntime {
           sink.emitRaw({
             type: "system",
             subtype: "sdk_stderr",
-            data: stderrBuffer,
+            data: redactApiKey(stderrBuffer, request.apiKey),
             timestamp: Date.now(),
           });
           stderrBuffer = "";
@@ -210,15 +232,16 @@ export class OpenHandsRuntime implements AgentRuntime {
       });
 
       child.on("error", (err: Error) => {
-        process.stderr.write(`[openhands-runtime] event=spawn_error message=${err.message}\n`);
+        const redactedMessage = redactApiKey(err.message, request.apiKey);
+        process.stderr.write(`[openhands-runtime] event=spawn_error message=${redactedMessage}\n`);
         sink.emitRaw({
           type: "system",
           subtype: "sdk_stderr",
-          data: `openhands-runtime: spawn error: ${err.message}`,
+          data: `openhands-runtime: spawn error: ${redactedMessage}`,
           timestamp: Date.now(),
         });
         if (!processor.hasEmittedResult()) {
-          const errorResult = processor.buildErrorResult(`Failed to spawn OpenHands runner: ${err.message}`);
+          const errorResult = processor.buildErrorResult(`Failed to spawn OpenHands runner: ${redactedMessage}`);
           sink.emitAgentEvent(errorResult);
         }
         resolve();

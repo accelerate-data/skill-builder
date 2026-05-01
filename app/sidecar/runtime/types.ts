@@ -17,6 +17,7 @@ export interface RuntimeRequestBase {
   prompt: string;
   systemPrompt?: string;
   model?: string;
+  modelBaseUrl?: string;
   agentName?: string;
   apiKey: string;
   workspaceRootDir: string;

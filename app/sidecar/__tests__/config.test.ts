@@ -123,6 +123,18 @@ describe("parseSidecarConfig", () => {
     ).toThrow("model must be a string");
   });
 
+  it("throws when modelBaseUrl is not a string", () => {
+    expect(() =>
+      parseSidecarConfig({
+        prompt: "hello",
+        apiKey: "key",
+        workspaceRootDir: TEST_CWD,
+        workspaceSkillDir: TEST_CWD,
+        modelBaseUrl: 123,
+      }),
+    ).toThrow("modelBaseUrl must be a string");
+  });
+
   it("throws when maxTurns is not a positive integer", () => {
     expect(() =>
 
@@ -233,6 +245,7 @@ describe("parseSidecarConfig", () => {
 
       workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD,
       model: "claude-sonnet-4-6",
+      modelBaseUrl: "https://models.example.com/v1",
       agentName: "my-agent",
       maxTurns: 50,
       permissionMode: "bypassPermissions",
@@ -249,6 +262,7 @@ describe("parseSidecarConfig", () => {
       usageSessionId: "usage-456",
     });
     expect(result.model).toBe("claude-sonnet-4-6");
+    expect(result.modelBaseUrl).toBe("https://models.example.com/v1");
     expect(result.maxTurns).toBe(50);
   });
 });

@@ -134,7 +134,13 @@ describe("OpenHandsRuntime.runOnce", () => {
   });
 
   it("writes serialized request to stdin and closes it", async () => {
-    const request = makeRequest();
+    const request = makeRequest({
+      agentName: "skill-writer-agent",
+      model: "anthropic/claude-sonnet-4-6",
+      modelBaseUrl: "https://models.example.com/v1",
+      workspaceRootDir: "/tmp/workspace-root",
+      workspaceSkillDir: "/tmp/workspace-root/plugin/skill",
+    });
     let stdinWritten = "";
 
     const stdout = new PassThrough();
@@ -178,8 +184,61 @@ describe("OpenHandsRuntime.runOnce", () => {
     await runtime.runOnce(request, sink);
 
     // Should have written the request JSON to stdin
-    expect(stdinWritten).toContain('"prompt":"test prompt"');
-    expect(stdinWritten).toContain('"mode":"one-shot"');
+    const serialized = JSON.parse(stdinWritten) as Record<string, unknown>;
+    expect(serialized.prompt).toBe("test prompt");
+    expect(serialized.mode).toBe("one-shot");
+    expect(serialized.agentName).toBe("skill-writer-agent");
+    expect(serialized.modelBaseUrl).toBe("https://models.example.com/v1");
+    expect(serialized.maxTurns).toBe(50);
+    expect(serialized.workspaceRootDir).toBe("/tmp/workspace-root");
+    expect(serialized.workspaceSkillDir).toBe("/tmp/workspace-root/plugin/skill");
+  });
+
+  it("serializes explicit maxTurns into the runner request", async () => {
+    const request = makeRequest({ maxTurns: 12 });
+    let stdinWritten = "";
+
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const stdin = new PassThrough();
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: typeof stdout;
+      stderr: typeof stderr;
+      stdin: typeof stdin;
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.stdout = stdout;
+    child.stderr = stderr;
+    child.stdin = stdin;
+    child.kill = vi.fn();
+
+    stdin.on("data", (chunk: Buffer) => {
+      stdinWritten += chunk.toString();
+    });
+
+    setImmediate(() => {
+      stdout.write(
+        JSON.stringify({
+          type: "openhands_result",
+          status: "success",
+          result_text: "done",
+          structured_output: null,
+          timestamp: Date.now(),
+        }) + "\n",
+      );
+      stdout.end();
+      stderr.end();
+      child.emit("close", 0);
+    });
+
+    mockSpawn.mockReturnValue(child as unknown as ReturnType<typeof childProcess.spawn>);
+
+    const runtime = new OpenHandsRuntime();
+    const { sink } = makeSink();
+    await runtime.runOnce(request, sink);
+
+    const serialized = JSON.parse(stdinWritten) as Record<string, unknown>;
+    expect(serialized.maxTurns).toBe(12);
   });
 
   it("emits run_result with status completed on successful stdout lines", async () => {
@@ -337,6 +396,50 @@ describe("OpenHandsRuntime.runOnce", () => {
       (m) => m.type === "system" && m.subtype === "sdk_stderr" && typeof m.data === "string" && (m.data as string).includes("python error"),
     );
     expect(stderrMsg).toBeDefined();
+  });
+
+  it("redacts the API key from child stderr system events", async () => {
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const stdin = new PassThrough();
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: typeof stdout;
+      stderr: typeof stderr;
+      stdin: typeof stdin;
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.stdout = stdout;
+    child.stderr = stderr;
+    child.stdin = stdin;
+    child.kill = vi.fn();
+
+    setImmediate(() => {
+      stderr.write("request failed for sk-test\n");
+      stderr.end();
+      stdout.write(
+        JSON.stringify({
+          type: "openhands_result",
+          status: "success",
+          result_text: "ok",
+          structured_output: null,
+          timestamp: Date.now(),
+        }) + "\n",
+      );
+      stdout.end();
+      child.emit("close", 0);
+    });
+
+    mockSpawn.mockReturnValue(child as unknown as ReturnType<typeof childProcess.spawn>);
+
+    const runtime = new OpenHandsRuntime();
+    const { messages, sink } = makeSink();
+    await runtime.runOnce(makeRequest(), sink);
+
+    const stderrMessages = messages.filter(
+      (m) => m.type === "system" && m.subtype === "sdk_stderr",
+    );
+    expect(JSON.stringify(stderrMessages)).not.toContain("sk-test");
+    expect(JSON.stringify(stderrMessages)).toContain("[REDACTED]");
   });
 });
 

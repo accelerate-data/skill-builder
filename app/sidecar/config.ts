@@ -3,6 +3,7 @@ export interface SidecarConfig {
   prompt: string;
   systemPrompt?: string;
   model?: string;
+  modelBaseUrl?: string;
   agentName?: string;
   apiKey: string;
   /** Workspace root directory ({data_dir}/workspace). Used for plugin discovery and SDK settings. */
@@ -103,6 +104,7 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
 
   // Optional string fields
   assertOptString(c, "model");
+  assertOptString(c, "modelBaseUrl");
   assertOptString(c, "agentName");
   assertOptString(c, "fallbackModel");
   assertOptString(c, "skillName");
