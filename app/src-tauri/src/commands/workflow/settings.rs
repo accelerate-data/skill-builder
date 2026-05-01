@@ -8,6 +8,7 @@ pub(crate) struct WorkflowSettings {
     pub skills_path: String,
     pub api_key: crate::types::SecretString,
     pub preferred_model: String,
+    pub model_base_url: Option<String>,
     pub extended_thinking: bool,
     pub interleaved_thinking_beta: bool,
     pub sdk_effort: Option<String>,
@@ -40,21 +41,12 @@ pub(crate) fn read_workflow_settings(
 
     // Read all settings in one pass
     let settings = crate::db::read_settings(&conn)?;
-    let skills_path = settings.skills_path.ok_or_else(|| {
+    let skills_path = settings.skills_path.clone().ok_or_else(|| {
         "Skills path not configured. Please set it in Settings before running workflow steps."
             .to_string()
     })?;
-    let api_key = match settings.anthropic_api_key {
-        Some(k) => crate::types::SecretString::new(k),
-        None => return Err("Anthropic API key not configured".to_string()),
-    };
-    let preferred_model = settings
-        .preferred_model
-        .filter(|model| !model.trim().is_empty())
-        .ok_or_else(|| {
-            "Model not configured. Select a model in Settings before running workflow steps."
-                .to_string()
-        })?;
+    let (preferred_model, api_key, model_base_url) =
+        crate::db::selected_openhands_runtime(&settings)?;
     let extended_thinking = settings.extended_thinking;
     let interleaved_thinking_beta = settings.interleaved_thinking_beta;
     let sdk_effort = settings.sdk_effort.clone();
@@ -126,6 +118,7 @@ pub(crate) fn read_workflow_settings(
         skills_path,
         api_key,
         preferred_model,
+        model_base_url,
         extended_thinking,
         interleaved_thinking_beta,
         sdk_effort,
@@ -145,4 +138,98 @@ pub(crate) fn read_workflow_settings(
         disable_model_invocation,
         documents,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{create_test_db_for_tests, upsert_skill, write_settings, Db};
+    use crate::types::AppSettings;
+    use std::sync::Mutex;
+
+    fn workflow_settings_for(app_settings: AppSettings) -> Result<WorkflowSettings, String> {
+        let conn = create_test_db_for_tests();
+        upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
+        write_settings(&conn, &app_settings).unwrap();
+        let db = Db(Mutex::new(conn));
+        read_workflow_settings(&db, "test-skill", 0, "/tmp/workspace")
+    }
+
+    fn configured_settings(provider: &str, model: &str, api_key: Option<&str>) -> AppSettings {
+        AppSettings {
+            skills_path: Some("/tmp/skills".to_string()),
+            openhands_provider: Some(provider.to_string()),
+            openhands_model: Some(model.to_string()),
+            openhands_api_key: api_key.map(str::to_string),
+            ..AppSettings::default()
+        }
+    }
+
+    #[test]
+    fn read_workflow_settings_prefixes_cloud_provider_models() {
+        for (provider, model, expected) in [
+            (
+                "anthropic",
+                "claude-sonnet-4-6",
+                "anthropic/claude-sonnet-4-6",
+            ),
+            ("openai", "gpt-4o", "openai/gpt-4o"),
+            ("google", "gemini-2.5-pro", "gemini/gemini-2.5-pro"),
+        ] {
+            let settings =
+                workflow_settings_for(configured_settings(provider, model, Some("sk-test")))
+                    .expect(provider);
+            assert_eq!(settings.preferred_model, expected);
+            assert_eq!(settings.api_key.expose(), "sk-test");
+        }
+    }
+
+    #[test]
+    fn read_workflow_settings_preserves_provider_prefixed_model() {
+        let settings = workflow_settings_for(configured_settings(
+            "openai",
+            "openai/gpt-4.1",
+            Some("sk-openai"),
+        ))
+        .unwrap();
+        assert_eq!(settings.preferred_model, "openai/gpt-4.1");
+    }
+
+    #[test]
+    fn read_workflow_settings_allows_ollama_without_api_key_and_keeps_base_url() {
+        let mut app_settings = configured_settings("ollama", "llama3.1", None);
+        app_settings.openhands_base_url = Some("http://localhost:11434".to_string());
+
+        let settings = workflow_settings_for(app_settings).unwrap();
+
+        assert_eq!(settings.preferred_model, "ollama/llama3.1");
+        assert_eq!(settings.api_key.expose(), "ollama");
+        assert_eq!(
+            settings.model_base_url.as_deref(),
+            Some("http://localhost:11434")
+        );
+    }
+
+    #[test]
+    fn read_workflow_settings_migrates_legacy_anthropic_preferred_model() {
+        let mut app_settings = AppSettings::default();
+        app_settings.skills_path = Some("/tmp/skills".to_string());
+        app_settings.anthropic_api_key = Some("sk-legacy".to_string());
+        app_settings.preferred_model = Some("claude-sonnet-4-6".to_string());
+
+        let settings = workflow_settings_for(app_settings).unwrap();
+
+        assert_eq!(settings.preferred_model, "anthropic/claude-sonnet-4-6");
+        assert_eq!(settings.api_key.expose(), "sk-legacy");
+    }
+
+    #[test]
+    fn read_workflow_settings_requires_key_for_cloud_providers() {
+        let err = match workflow_settings_for(configured_settings("openai", "gpt-4o", None)) {
+            Ok(_) => panic!("expected missing OpenAI key error"),
+            Err(err) => err,
+        };
+
+        assert!(err.contains("OpenAI API key not configured"), "{err}");
+    }
 }

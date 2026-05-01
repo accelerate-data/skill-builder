@@ -25,6 +25,14 @@ import { listModels, testApiKey } from "@/lib/tauri";
 interface SdkSectionProps {
   apiKey: string | null;
   setApiKey: (v: string | null) => void;
+  openhandsProvider: string;
+  setOpenhandsProvider: (v: string) => void;
+  openhandsApiKey: string | null;
+  setOpenhandsApiKey: (v: string | null) => void;
+  openhandsModel: string;
+  setOpenhandsModel: (v: string) => void;
+  openhandsBaseUrl: string | null;
+  setOpenhandsBaseUrl: (v: string | null) => void;
   preferredModel: string;
   setPreferredModel: (v: string) => void;
   extendedThinking: boolean;
@@ -43,6 +51,14 @@ interface SdkSectionProps {
 export function SdkSection({
   apiKey,
   setApiKey,
+  openhandsProvider,
+  setOpenhandsProvider,
+  openhandsApiKey,
+  setOpenhandsApiKey,
+  openhandsModel,
+  setOpenhandsModel,
+  openhandsBaseUrl,
+  setOpenhandsBaseUrl,
   preferredModel,
   setPreferredModel,
   extendedThinking,
@@ -62,6 +78,7 @@ export function SdkSection({
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null);
   const availableModels = useSettingsStore((s) => s.availableModels);
   const setStoreSettings = useSettingsStore((s) => s.setSettings);
+  const apiKeyRequired = openhandsProvider !== "ollama";
 
   const fetchModels = async (key: string) => {
     try {
@@ -77,17 +94,19 @@ export function SdkSection({
   };
 
   const handleTestApiKey = async () => {
-    if (!apiKey) {
+    if (!openhandsApiKey) {
       toast.error("Enter an API key first", { duration: Infinity });
       return;
     }
     setTesting(true);
     setApiKeyValid(null);
     try {
-      await testApiKey(apiKey);
+      await testApiKey(openhandsApiKey);
       setApiKeyValid(true);
       toast.success("API key is valid");
-      fetchModels(apiKey);
+      if (openhandsProvider === "anthropic") {
+        fetchModels(openhandsApiKey);
+      }
     } catch (err) {
       console.error("settings: API key test failed", err);
       setApiKeyValid(false);
@@ -105,21 +124,55 @@ export function SdkSection({
         <CardHeader>
           <CardTitle>API Configuration</CardTitle>
           <CardDescription>
-            Configure your Anthropic API key for skill building.
+            Configure the LiteLLM provider used by OpenHands workflow agents.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="openhands-provider">Provider</Label>
+            <Select
+              value={openhandsProvider || "anthropic"}
+              onValueChange={(val) => {
+                setOpenhandsProvider(val);
+                autoSave({ openhandsProvider: val });
+              }}
+            >
+              <SelectTrigger id="openhands-provider" className="w-64">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="anthropic">Anthropic</SelectItem>
+                <SelectItem value="openai">OpenAI</SelectItem>
+                <SelectItem value="google">Google</SelectItem>
+                <SelectItem value="ollama">Ollama</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="flex flex-col gap-2">
-            <Label htmlFor="api-key">Anthropic API Key</Label>
+            <Label htmlFor="api-key">API Key</Label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Input
                   id="api-key"
                   type={showApiKey ? "text" : "password"}
-                  placeholder="sk-ant-..."
-                  value={apiKey || ""}
-                  onChange={(e) => setApiKey(e.target.value || null)}
-                  onBlur={(e) => autoSave({ apiKey: e.target.value || null })}
+                  placeholder={openhandsProvider === "anthropic" ? "sk-ant-..." : "Provider API key"}
+                  value={openhandsApiKey || ""}
+                  required={apiKeyRequired}
+                  onChange={(e) => {
+                    const value = e.target.value || null;
+                    setOpenhandsApiKey(value);
+                    if (openhandsProvider === "anthropic") {
+                      setApiKey(value);
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const value = e.target.value || null;
+                    autoSave({
+                      openhandsApiKey: value,
+                      apiKey: openhandsProvider === "anthropic" ? value : apiKey,
+                    });
+                  }}
                 />
                 <Button
                   type="button"
@@ -139,7 +192,7 @@ export function SdkSection({
                 variant={apiKeyValid ? "default" : "outline"}
                 size="sm"
                 onClick={handleTestApiKey}
-                disabled={testing || !apiKey}
+                disabled={testing || !openhandsApiKey || openhandsProvider !== "anthropic"}
                 className={apiKeyValid ? "text-white" : ""}
                 style={
                   apiKeyValid
@@ -156,15 +209,45 @@ export function SdkSection({
               </Button>
             </div>
           </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="openhands-model">Model</Label>
+            <Input
+              id="openhands-model"
+              placeholder={
+                openhandsProvider === "ollama"
+                  ? "llama3.1"
+                  : openhandsProvider === "openai"
+                    ? "gpt-4o"
+                    : openhandsProvider === "google"
+                      ? "gemini-2.5-pro"
+                      : "anthropic/claude-sonnet-4-6"
+              }
+              value={openhandsModel || ""}
+              onChange={(e) => setOpenhandsModel(e.target.value)}
+              onBlur={(e) => autoSave({ openhandsModel: e.target.value || null })}
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="openhands-base-url">Base URL</Label>
+            <Input
+              id="openhands-base-url"
+              placeholder={openhandsProvider === "ollama" ? "http://localhost:11434" : "Optional"}
+              value={openhandsBaseUrl || ""}
+              onChange={(e) => setOpenhandsBaseUrl(e.target.value || null)}
+              onBlur={(e) => autoSave({ openhandsBaseUrl: e.target.value || null })}
+            />
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Model</CardTitle>
+          <CardTitle>Anthropic Model List</CardTitle>
           <CardDescription>
-            The Claude model used for all agents — skill building, refining, and
-            testing.
+            Optional legacy Anthropic model picker. OpenHands uses the model
+            field above.
           </CardDescription>
         </CardHeader>
         <CardContent>

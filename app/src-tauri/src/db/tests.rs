@@ -19,6 +19,10 @@ fn test_write_and_read_settings() {
     let conn = create_test_db();
     let settings = AppSettings {
         anthropic_api_key: Some("sk-test-key".to_string()),
+        openhands_provider: Some("anthropic".to_string()),
+        openhands_api_key: Some("sk-test-key".to_string()),
+        openhands_model: Some("anthropic/sonnet".to_string()),
+        openhands_base_url: None,
         workspace_path: Some("/home/user/skills".to_string()),
         skills_path: None,
         preferred_model: Some("sonnet".to_string()),
@@ -57,6 +61,10 @@ fn test_write_and_read_settings_with_skills_path() {
     let conn = create_test_db();
     let settings = AppSettings {
         anthropic_api_key: Some("sk-test".to_string()),
+        openhands_provider: Some("anthropic".to_string()),
+        openhands_api_key: Some("sk-test".to_string()),
+        openhands_model: None,
+        openhands_base_url: None,
         workspace_path: Some("/workspace".to_string()),
         skills_path: Some("/home/user/my-skills".to_string()),
         preferred_model: None,
@@ -94,6 +102,10 @@ fn test_overwrite_settings() {
     let conn = create_test_db();
     let v1 = AppSettings {
         anthropic_api_key: Some("key-1".to_string()),
+        openhands_provider: Some("anthropic".to_string()),
+        openhands_api_key: Some("key-1".to_string()),
+        openhands_model: None,
+        openhands_base_url: None,
         workspace_path: None,
         skills_path: None,
         preferred_model: None,
@@ -124,6 +136,10 @@ fn test_overwrite_settings() {
 
     let v2 = AppSettings {
         anthropic_api_key: Some("key-2".to_string()),
+        openhands_provider: Some("anthropic".to_string()),
+        openhands_api_key: Some("key-2".to_string()),
+        openhands_model: Some("anthropic/opus".to_string()),
+        openhands_base_url: None,
         workspace_path: Some("/new/path".to_string()),
         skills_path: None,
         preferred_model: Some("opus".to_string()),
@@ -165,6 +181,28 @@ fn test_migration_is_idempotent() {
 
     let settings = read_settings(&conn).unwrap();
     assert!(settings.anthropic_api_key.is_none());
+}
+
+#[test]
+fn test_openhands_settings_migration_backfills_legacy_anthropic_model() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    run_migrations(&conn).unwrap();
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('app_settings', ?1)",
+        [r#"{"anthropic_api_key":"sk-legacy","preferred_model":"claude-sonnet-4-6"}"#],
+    )
+    .unwrap();
+
+    run_openhands_settings_migration(&conn).unwrap();
+
+    let settings = read_settings(&conn).unwrap();
+    assert_eq!(settings.openhands_provider.as_deref(), Some("anthropic"));
+    assert_eq!(
+        settings.openhands_model.as_deref(),
+        Some("anthropic/claude-sonnet-4-6")
+    );
+    assert_eq!(settings.anthropic_api_key.as_deref(), Some("sk-legacy"));
 }
 
 #[test]

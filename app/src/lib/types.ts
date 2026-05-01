@@ -35,6 +35,10 @@ export interface MarketplaceRegistry {
 
 export interface AppSettings {
   anthropic_api_key: string | null
+  openhands_provider?: string | null
+  openhands_api_key?: string | null
+  openhands_model?: string | null
+  openhands_base_url?: string | null
   workspace_path: string | null
   skills_path: string | null
   preferred_model: string | null

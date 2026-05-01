@@ -5,6 +5,10 @@ export type { ModelInfo };
 
 interface SettingsState {
   anthropicApiKey: string | null;
+  openhandsProvider: string | null;
+  openhandsApiKey: string | null;
+  openhandsModel: string | null;
+  openhandsBaseUrl: string | null;
   workspacePath: string | null;
   skillsPath: string | null;
   preferredModel: string | null;
@@ -34,6 +38,10 @@ interface SettingsState {
 
 const initialState = {
   anthropicApiKey: null,
+  openhandsProvider: "anthropic",
+  openhandsApiKey: null,
+  openhandsModel: null,
+  openhandsBaseUrl: null,
   workspacePath: null,
   skillsPath: null,
   preferredModel: null,
@@ -63,9 +71,12 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setSettings: (settings) =>
     set((state) => {
       const next = { ...state, ...settings };
+      const cloudProviderRequiresKey = next.openhandsProvider !== "ollama";
+      const hasRuntimeConfig =
+        !!next.openhandsModel && (!cloudProviderRequiresKey || !!next.openhandsApiKey || !!next.anthropicApiKey);
       return {
         ...next,
-        isConfigured: !!next.anthropicApiKey && !!next.skillsPath,
+        isConfigured: !!next.skillsPath && hasRuntimeConfig,
       };
     }),
   setPendingUpgradeOpen: (value) => set({ pendingUpgradeOpen: value }),

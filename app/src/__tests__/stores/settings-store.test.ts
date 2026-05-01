@@ -18,6 +18,7 @@ describe("useSettingsStore", () => {
   it("setSettings with apiKey and skillsPath sets isConfigured to true", () => {
     useSettingsStore.getState().setSettings({
       anthropicApiKey: "sk-ant-test-key",
+      openhandsModel: "anthropic/claude-sonnet-4-6",
       skillsPath: "/some/skills",
     });
     const state = useSettingsStore.getState();
@@ -29,6 +30,7 @@ describe("useSettingsStore", () => {
   it("setSettings with apiKey only keeps isConfigured false (skillsPath required)", () => {
     useSettingsStore.getState().setSettings({
       anthropicApiKey: "sk-ant-test-key",
+      openhandsModel: "anthropic/claude-sonnet-4-6",
     });
     const state = useSettingsStore.getState();
     expect(state.anthropicApiKey).toBe("sk-ant-test-key");
@@ -47,6 +49,7 @@ describe("useSettingsStore", () => {
   it("setSettings preserves existing fields not included in update", () => {
     useSettingsStore.getState().setSettings({
       anthropicApiKey: "sk-ant-test-key",
+      openhandsModel: "anthropic/claude-sonnet-4-6",
       skillsPath: "/some/skills",
     });
     useSettingsStore.getState().setSettings({
@@ -74,6 +77,7 @@ describe("useSettingsStore", () => {
   it("reset returns to initial state", () => {
     useSettingsStore.getState().setSettings({
       anthropicApiKey: "sk-ant-test-key",
+      openhandsModel: "anthropic/claude-sonnet-4-6",
       workspacePath: "/some/path",
       skillsPath: "/some/skills",
     });

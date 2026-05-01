@@ -103,6 +103,14 @@ fn default_true() -> bool {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub anthropic_api_key: Option<String>,
+    #[serde(default)]
+    pub openhands_provider: Option<String>,
+    #[serde(default)]
+    pub openhands_api_key: Option<String>,
+    #[serde(default)]
+    pub openhands_model: Option<String>,
+    #[serde(default)]
+    pub openhands_base_url: Option<String>,
     pub workspace_path: Option<String>,
     #[serde(default)]
     pub skills_path: Option<String>,
@@ -162,6 +170,10 @@ impl std::fmt::Debug for AppSettings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppSettings")
             .field("anthropic_api_key", &"[REDACTED]")
+            .field("openhands_provider", &self.openhands_provider)
+            .field("openhands_api_key", &"[REDACTED]")
+            .field("openhands_model", &self.openhands_model)
+            .field("openhands_base_url", &self.openhands_base_url)
             .field("workspace_path", &self.workspace_path)
             .field("skills_path", &self.skills_path)
             .field("preferred_model", &self.preferred_model)
@@ -195,6 +207,10 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             anthropic_api_key: None,
+            openhands_provider: Some("anthropic".to_string()),
+            openhands_api_key: None,
+            openhands_model: None,
+            openhands_base_url: None,
             workspace_path: None,
             skills_path: None,
             preferred_model: None,
