@@ -224,6 +224,7 @@ pub(super) fn build_refine_config(
         run_source: Some("refine".to_string()),
         plugin_slug: plugin_slug.to_string(),
         transcript_log_dir: None,
+        runtime_provider: None,
     };
 
     (config, agent_id)

@@ -1245,6 +1245,7 @@ mod tests {
             run_source: Some("workflow".to_string()),
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            runtime_provider: None,
         }
     }
 

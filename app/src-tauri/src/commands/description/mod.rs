@@ -526,6 +526,7 @@ pub async fn start_generate_desc_evals(
         run_source: Some("workflow".to_string()),
         plugin_slug,
         transcript_log_dir: Some(desc_opt_log_dir.clone()),
+        runtime_provider: None,
     };
 
     sidecar::spawn_sidecar(
