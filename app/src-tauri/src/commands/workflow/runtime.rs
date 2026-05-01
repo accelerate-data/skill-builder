@@ -101,7 +101,6 @@ async fn run_workflow_step_inner(
             skills_path: &settings.skills_path,
             author_login: settings.author_login.as_deref(),
             created_at: settings.created_at.as_deref(),
-            subagent_directive: None,
             step_id,
         })
     };
@@ -133,10 +132,9 @@ async fn run_workflow_step_inner(
     let config = SidecarConfig {
         mode: Some("one-shot".to_string()),
         prompt,
-        // Do not set a string systemPrompt for workflow steps. The SDK treats
-        // that as a custom system prompt, which can replace the configured
-        // agent identity's instructions. Structured contracts are enforced via
-        // output_format below.
+        // Do not set a string systemPrompt for workflow steps. Agent identity
+        // comes from the OpenHands agent name; structured contracts are
+        // enforced via output_format below.
         system_prompt: None,
         model: Some(settings.preferred_model.clone()),
         model_base_url: settings.model_base_url.clone(),
@@ -151,8 +149,8 @@ async fn run_workflow_step_inner(
         .replace('\\', "/"),
         allowed_tools: Some(step.allowed_tools),
         max_turns: Some(step.max_turns),
-        // Compatibility field retained while non-workflow Claude runtime paths
-        // still share SidecarConfig; OpenHands one-shot workflow ignores it.
+        // Compatibility field retained while other runtime paths still share
+        // SidecarConfig; OpenHands one-shot workflow ignores it.
         permission_mode: None,
         betas: build_betas(
             thinking_budget,
@@ -173,8 +171,8 @@ async fn run_workflow_step_inner(
         path_to_claude_code_executable: None,
         path_to_openhands_runner: None,
         agent_name: Some(agent_name),
-        // Compatibility field retained until Slice 4 moves workflow discovery
-        // fully to `.agents`; OpenHands ignores Claude plugin loading.
+        // Retained so existing sidecar config parsing accepts workflow runs;
+        // OpenHands resolves workflow instructions from the `.agents` layout.
         required_plugins: Some(required_plugins),
         setting_sources: None,
         conversation_history: None,
@@ -288,8 +286,7 @@ pub async fn run_workflow_step(
         }
     }
 
-    // Ensure prompt files exist in workspace before running.
-    // This deploys agents to .claude/agents/ and plugins to .claude/plugins/.
+    // Ensure OpenHands agent files exist in the workspace skill directory.
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
     let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
@@ -409,7 +406,7 @@ pub async fn run_workflow_step(
 
 // ─── answer_workflow_step_question ───────────────────────────────────────────
 
-/// Workflow steps are one-shot runs. They do not support AskUserQuestion.
+/// Workflow steps are one-shot runs. They do not support interactive questions.
 #[tauri::command]
 pub async fn answer_workflow_step_question(
     agent_id: String,
@@ -541,8 +538,8 @@ pub async fn run_answer_evaluator(
         .replace('\\', "/"),
         allowed_tools: Some(tools_for_agent("answer-evaluator")),
         max_turns: Some(20),
-        // Compatibility field retained while non-workflow Claude runtime paths
-        // still share SidecarConfig; OpenHands one-shot workflow ignores it.
+        // Compatibility field retained while other runtime paths still share
+        // SidecarConfig; OpenHands one-shot workflow ignores it.
         permission_mode: None,
         betas: None,
         thinking: None,
@@ -554,8 +551,8 @@ pub async fn run_answer_evaluator(
         path_to_claude_code_executable: None,
         path_to_openhands_runner: None,
         agent_name: Some("answer-evaluator".to_string()),
-        // Compatibility field retained until Slice 4 moves workflow discovery
-        // fully to `.agents`; OpenHands ignores Claude plugin loading.
+        // Retained so existing sidecar config parsing accepts gate runs;
+        // OpenHands resolves workflow instructions from the `.agents` layout.
         required_plugins: Some(vec!["skill-content-researcher".to_string()]),
         setting_sources: None,
         conversation_history: None,

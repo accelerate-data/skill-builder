@@ -1,5 +1,5 @@
 {
-  "description": "skill-content-researcher:detailed-research workflow JSON output.",
+  "description": "OpenHands research-agent step 1 workflow JSON output.",
   "metadata": {
     "eval_tier": "standard"
   },

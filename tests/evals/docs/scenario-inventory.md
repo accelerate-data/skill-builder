@@ -9,12 +9,12 @@ artifact changes, run and update the matching package.
 | Package | Scenario | Decision | Rationale |
 |---|---|---|---|
 | `harness-smoke` | OpenCode provider reachability | Keep | Proves the tiered OpenCode provider can execute a minimal Promptfoo request. |
-| `skill-content-researcher-skill-builder` | Wrapper routing | Rewrite | Covers the one-shot wrapper agent that routes workflow steps and forbids user questions. |
-| `skill-content-researcher-research` | Research output | Rewrite | Covers canonical `clarifications_json`, scope recommendation output, and research metadata. |
-| `skill-content-researcher-answer-evaluator` | Gate verdict | Rewrite | Covers answer classification and `gate_decision` JSON. |
-| `skill-content-researcher-detailed-research` | Refinement merge | Rewrite | Covers verdict-driven refinement subagents and additive-only merge behavior. |
-| `skill-content-researcher-confirm-decisions` | Decisions output | Rewrite | Covers direct decisions analysis and canonical decisions JSON. |
-| `skill-creator-generate-skill` | Generated skill output | Rewrite | Covers `{skill_output_dir}/SKILL.md`, references, generated evals, and no benchmark execution. |
+| `skill-content-researcher-skill-builder` | Legacy wrapper regression | Rewrite | Preserves the old wrapper contract while active workflow routing uses OpenHands-native agents. |
+| `skill-content-researcher-research` | Research output | Rewrite | Covers OpenHands `research-agent` step 0 output, canonical `clarifications_json`, scope recommendation output, and research metadata. |
+| `skill-content-researcher-answer-evaluator` | Gate verdict | Rewrite | Covers OpenHands `answer-evaluator` answer classification and `gate_decision` JSON. |
+| `skill-content-researcher-detailed-research` | Refinement merge | Rewrite | Covers OpenHands `research-agent` step 1 refinement merge behavior. |
+| `skill-content-researcher-confirm-decisions` | Decisions output | Rewrite | Covers OpenHands `skill-writer-agent` step 2 decisions analysis and canonical decisions JSON. |
+| `skill-creator-generate-skill` | Generated skill output | Rewrite | Covers OpenHands `skill-writer-agent` step 3 `{skill_output_dir}/SKILL.md`, references, generated evals, and no benchmark execution. |
 | `skill-creator-rewrite-skill` | Refine rewrite | Add | Covers the rewrite agent contract used by refine sessions. |
 | `skill-creator-grader` | Eval grading | Add | Covers strict grading and `grading.json` output used by app eval runs. |
 | `workspace-test-evaluator-prompt` | Skill tester plan comparison | Add | Replaces the stale bundled-skill meta eval with the app-used tester evaluator prompt behavior. |
@@ -65,3 +65,5 @@ targeted package script when the issue only touches one package's contract.
 
 No manual validation is required for this suite. A failing live eval should be
 triaged against this inventory before a scenario is dropped or rewritten.
+Live eval scripts are skipped unless an issue explicitly requests model-backed
+validation; `npm test` provides the deterministic static and harness gate.

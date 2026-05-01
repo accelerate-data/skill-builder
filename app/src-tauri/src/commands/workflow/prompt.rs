@@ -19,14 +19,11 @@ pub(crate) struct PromptParams<'a> {
     pub skills_path: &'a str,
     pub author_login: Option<&'a str>,
     pub created_at: Option<&'a str>,
-    pub subagent_directive: Option<&'a str>,
     pub step_id: u32,
 }
 
 /// Construct the agent prompt string injected into every `SidecarConfig`.
 /// Embeds workspace path, skills output path, author, and date.
-/// `subagent_directive` is appended as the final sentence — use it to instruct
-/// the model to launch a named subagent (steps 1–3).
 pub(crate) fn build_prompt(p: &PromptParams<'_>) -> String {
     let skill_name = p.skill_name;
     let workspace_path = p.workspace_path;
@@ -34,7 +31,6 @@ pub(crate) fn build_prompt(p: &PromptParams<'_>) -> String {
     let skills_path = p.skills_path;
     let author_login = p.author_login;
     let created_at = p.created_at;
-    let subagent_directive = p.subagent_directive;
     let step_id = p.step_id;
     let workspace_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
@@ -62,16 +58,6 @@ pub(crate) fn build_prompt(p: &PromptParams<'_>) -> String {
         None => String::new(),
     };
 
-    let ws = workspace_path.replace('\\', "/");
-    let schemas_path = format!(
-        "{}/.claude/plugins/skill-content-researcher/shared/schemas.md",
-        ws,
-    );
-
-    let subagent_str = subagent_directive
-        .map(|d| format!(" {}", d))
-        .unwrap_or_default();
-
     WORKFLOW_STEP_TEMPLATE
         .trim_end_matches('\n')
         .replace("{{step_output_hint}}", step_output_hint)
@@ -79,8 +65,6 @@ pub(crate) fn build_prompt(p: &PromptParams<'_>) -> String {
         .replace("{{workspace_dir}}", &workspace_str)
         .replace("{{skill_output_dir}}", &skill_output_str)
         .replace("{{author_sentence}}", &author_sentence)
-        .replace("{{schemas_path}}", &schemas_path)
-        .replace("{{subagent_directive}}", &subagent_str)
 }
 
 /// Build the prompt for step 0 (research).
