@@ -15,7 +15,8 @@
   "dependencies": {
     "js-yaml": "^4.1.1",
     "promptfoo": "0.121.9",
-    "smol-toml": "^1.6.1"
+    "smol-toml": "^1.6.1",
+    "typescript": "~6.0.2"
   },
   "overrides": {
     "@anthropic-ai/sdk": ">=0.91.1",

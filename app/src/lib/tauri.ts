@@ -16,6 +16,7 @@ export const logFrontend = (level: "info" | "warn" | "error" | "debug", message:
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
 export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry, Document } from "@/lib/types";
+export type { FieldSuggestions, ScopeReviewResult, ScopeReviewSuggestion } from "@/lib/tauri-command-types";
 
 // --- Settings ---
 
@@ -86,17 +87,6 @@ export const exportSkillAsFile = (
   destPath: string,
 ) => invokeCommand("export_skill_as_file", { skillName, pluginSlug, destPath });
 
-export interface FieldSuggestions {
-  description: string;
-  domain: string;
-  audience: string;
-  challenges: string;
-  scope: string;
-  unique_setup: string;
-  claude_mistakes: string;
-  context_questions: string;
-}
-
 export const generateSuggestions = (
   skillName: string,
   purpose: string,
@@ -109,7 +99,7 @@ export const generateSuggestions = (
     challenges?: string;
     fields?: string[];
   },
-) => invokeCommand("generate_suggestions", {
+): Promise<TauriCommandResult<"generate_suggestions">> => invokeCommand("generate_suggestions", {
   skillName,
   purpose,
   industry: opts?.industry ?? null,
@@ -120,17 +110,6 @@ export const generateSuggestions = (
   challenges: opts?.challenges ?? null,
   fields: opts?.fields ?? null,
 });
-
-export interface ScopeReviewSuggestion {
-  name: string
-  description: string
-}
-
-export interface ScopeReviewResult {
-  status: string
-  reason: string
-  suggested_skills: ScopeReviewSuggestion[]
-}
 
 export const reviewSkillScope = (
   skillName: string,
