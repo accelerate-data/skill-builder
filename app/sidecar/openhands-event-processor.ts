@@ -152,6 +152,7 @@ export class OpenHandsEventProcessor {
   }
 
   private processResult(result: OpenHandsResult, sink: RuntimeSink): void {
+    if (this.resultEmitted) return;
     const timestamp = result.timestamp ?? Date.now();
     const status = result.status;
     const errorMessage = result.error_message ?? undefined;

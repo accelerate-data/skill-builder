@@ -261,7 +261,9 @@ def run_via_llm_direct(request: dict[str, Any]) -> str:
 
 
 def run(request: dict[str, Any]) -> None:
-    # Attempt the full agent path first, fall back to direct LLM call
+    # Use full agent loop when available, otherwise fall back to direct LLM call.
+    # This is an import-time availability check only — if openhands fails at
+    # runtime the error is surfaced directly; the LLM fallback is not retried.
     result_text: str = ""
     run_error: str | None = None
 

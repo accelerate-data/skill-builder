@@ -90,6 +90,8 @@ export class OpenHandsRuntime implements AgentRuntime {
     });
 
     return new Promise<void>((resolve) => {
+      // "python3" is correct for macOS/Linux dev environments.
+      // Production will use the PyInstaller binary path via resolve_openhands_runner_path.
       const child = child_process.spawn("python3", [runnerPath], {
         env,
         stdio: ["pipe", "pipe", "pipe"],
