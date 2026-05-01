@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { Trash2, Link, FolderOpen, Upload, Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -6,18 +6,18 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { useDocumentStore } from "@/stores/document-store"
-import {
-  addDocumentFile,
-  addDocumentUrl,
-  addDocumentFolder,
-  updateDocument,
-  deleteDocument,
-  listSkillsForDocuments,
-  type SkillIdName,
-} from "@/lib/tauri"
+import type { SkillIdName } from "@/lib/tauri"
 import type { Document } from "@/lib/types"
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog"
+import {
+  useAddDocumentFileMutation,
+  useAddDocumentFolderMutation,
+  useAddDocumentUrlMutation,
+  useDeleteDocumentMutation,
+  useDocumentsQuery,
+  useDocumentSkillOptionsQuery,
+  useUpdateDocumentMutation,
+} from "@/lib/queries/documents"
 
 // ---------------------------------------------------------------------------
 // Add URL dialog
@@ -25,17 +25,17 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog"
 
 interface AddUrlDialogProps {
   skills: SkillIdName[]
-  onAdd: (doc: Document) => void
   onClose: () => void
 }
 
-function AddUrlDialog({ skills, onAdd, onClose }: AddUrlDialogProps) {
+function AddUrlDialog({ skills, onClose }: AddUrlDialogProps) {
   const [name, setName] = useState("")
   const [url, setUrl] = useState("")
   const [scope, setScope] = useState<"all" | "skill">("all")
   const [selectedSkillIds, setSelectedSkillIds] = useState<number[]>([])
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const addDocumentUrlMutation = useAddDocumentUrlMutation()
+  const loading = addDocumentUrlMutation.isPending
 
   const toggle = (id: number) =>
     setSelectedSkillIds((prev) =>
@@ -44,21 +44,17 @@ function AddUrlDialog({ skills, onAdd, onClose }: AddUrlDialogProps) {
 
   const handleSubmit = async () => {
     if (!name.trim() || !url.trim()) return
-    setLoading(true)
     setError(null)
     try {
-      const doc = await addDocumentUrl(
-        name.trim(),
-        url.trim(),
+      await addDocumentUrlMutation.mutateAsync({
+        name: name.trim(),
+        url: url.trim(),
         scope,
-        scope === "skill" ? selectedSkillIds : [],
-      )
-      onAdd(doc)
+        skillIds: scope === "skill" ? selectedSkillIds : [],
+      })
       onClose()
     } catch (e) {
       setError(String(e))
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -186,14 +182,14 @@ function AssignmentPicker({ scope, setScope, selectedSkillIds, toggle, skills, i
 interface AssignmentCellProps {
   doc: Document
   skills: SkillIdName[]
-  onChange: (updated: Document) => void
 }
 
-function AssignmentCell({ doc, skills, onChange }: AssignmentCellProps) {
+function AssignmentCell({ doc, skills }: AssignmentCellProps) {
   const [open, setOpen] = useState(false)
   const [scope, setScope] = useState<"all" | "skill">(doc.scope)
   const [selectedSkillIds, setSelectedSkillIds] = useState<number[]>(doc.skill_ids)
-  const [saving, setSaving] = useState(false)
+  const updateDocumentMutation = useUpdateDocumentMutation()
+  const saving = updateDocumentMutation.isPending
 
   const toggle = (id: number) =>
     setSelectedSkillIds((prev) =>
@@ -201,15 +197,15 @@ function AssignmentCell({ doc, skills, onChange }: AssignmentCellProps) {
     )
 
   const save = async () => {
-    setSaving(true)
     try {
-      const updated = await updateDocument(doc.id, scope, scope === "skill" ? selectedSkillIds : [])
-      onChange(updated)
+      await updateDocumentMutation.mutateAsync({
+        id: doc.id,
+        scope,
+        skillIds: scope === "skill" ? selectedSkillIds : [],
+      })
       setOpen(false)
     } catch (e) {
       console.error("event=update_document_failed error=%s", e)
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -255,18 +251,17 @@ function AssignmentCell({ doc, skills, onChange }: AssignmentCellProps) {
 // ---------------------------------------------------------------------------
 
 export function DocumentsTab() {
-  const { documents, isLoading, fetchDocuments, removeDocument, upsertDocument } = useDocumentStore()
-  const [skills, setSkills] = useState<SkillIdName[]>([])
+  const documentsQuery = useDocumentsQuery()
+  const skillOptionsQuery = useDocumentSkillOptionsQuery()
+  const addDocumentFileMutation = useAddDocumentFileMutation()
+  const addDocumentFolderMutation = useAddDocumentFolderMutation()
+  const deleteDocumentMutation = useDeleteDocumentMutation()
+  const documents = documentsQuery.data ?? []
+  const skills = skillOptionsQuery.data ?? []
+  const isLoading = documentsQuery.isLoading || skillOptionsQuery.isLoading
   const [showUrlDialog, setShowUrlDialog] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    fetchDocuments()
-    listSkillsForDocuments()
-      .then(setSkills)
-      .catch((e) => console.error("event=list_skills_for_documents_failed error=%s", e))
-  }, [fetchDocuments])
 
   // ---------------------------------------------------------------------------
   // Upload file
@@ -278,8 +273,7 @@ export function DocumentsTab() {
     try {
       const content = await file.text()
       const name = file.name.replace(/\.(md|txt|pdf)$/i, "")
-      const doc = await addDocumentFile(name, content, "all", [])
-      upsertDocument(doc)
+      await addDocumentFileMutation.mutateAsync({ name, content, scope: "all", skillIds: [] })
     } catch (err) {
       console.error("event=add_document_file_failed error=%s", err)
     } finally {
@@ -296,9 +290,12 @@ export function DocumentsTab() {
       const selected = await openFileDialog({ directory: true, multiple: false })
       if (!selected || typeof selected !== "string") return
       const folderName = selected.split("/").pop() ?? "Folder"
-      const docs = await addDocumentFolder(folderName, selected, "all", [])
-      docs.forEach(upsertDocument)
-      await fetchDocuments()
+      await addDocumentFolderMutation.mutateAsync({
+        name: folderName,
+        folderPath: selected,
+        scope: "all",
+        skillIds: [],
+      })
     } catch (err) {
       console.error("event=add_document_folder_failed error=%s", err)
     }
@@ -309,8 +306,7 @@ export function DocumentsTab() {
   // ---------------------------------------------------------------------------
   const handleDelete = async (id: number) => {
     try {
-      await deleteDocument(id)
-      removeDocument(id)
+      await deleteDocumentMutation.mutateAsync(id)
     } catch (err) {
       console.error("event=delete_document_failed error=%s", err)
     }
@@ -395,7 +391,7 @@ export function DocumentsTab() {
                   <td className="px-4 py-2.5 font-medium truncate max-w-xs">{doc.name}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{sourceLabel(doc)}</td>
                   <td className="px-4 py-2.5">
-                    <AssignmentCell doc={doc} skills={skills} onChange={upsertDocument} />
+                    <AssignmentCell doc={doc} skills={skills} />
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground text-xs">{formatDate(doc.created_at)}</td>
                   <td className="px-2 py-2.5">
@@ -418,7 +414,6 @@ export function DocumentsTab() {
       {showUrlDialog && (
         <AddUrlDialog
           skills={skills}
-          onAdd={upsertDocument}
           onClose={() => setShowUrlDialog(false)}
         />
       )}

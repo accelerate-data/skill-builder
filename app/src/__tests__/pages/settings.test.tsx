@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor, act } from "@testing-library/react";
+import { renderWithQueryClient } from "@/test/query-test-utils";
 import userEvent from "@testing-library/user-event";
 import { mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
@@ -122,7 +123,11 @@ vi.mock("@/components/feedback-dialog", () => ({
 // Import after mocks are set up
 import SettingsPage from "@/pages/settings";
 import { useSettingsStore } from "@/stores/settings-store";
-import { updateUserSettings as _updateUserSettings } from "@/lib/tauri";
+import {
+  githubGetUser as _githubGetUser,
+  updateGithubIdentity as _updateGithubIdentity,
+  updateUserSettings as _updateUserSettings,
+} from "@/lib/tauri";
 
 const defaultSettings: AppSettings = {
   anthropic_api_key: null,
@@ -217,6 +222,8 @@ describe("SettingsPage", () => {
     mockNavigate.mockClear();
     // Reset module-level mocks so test-specific overrides don't leak
     vi.mocked(_updateUserSettings).mockReset().mockResolvedValue(undefined);
+    vi.mocked(_githubGetUser).mockReset().mockResolvedValue(null);
+    vi.mocked(_updateGithubIdentity).mockReset().mockResolvedValue(undefined);
     // Default to logged-out state
     useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: false });
     useSettingsStore.getState().reset();
@@ -226,7 +233,7 @@ describe("SettingsPage", () => {
 
   it("back button navigates to dashboard", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -239,7 +246,7 @@ describe("SettingsPage", () => {
 
   it("renders all 6 sections in left nav", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -255,7 +262,7 @@ describe("SettingsPage", () => {
 
   it("renders General section card sections by default", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -274,7 +281,7 @@ describe("SettingsPage", () => {
       log_level: "debug",
     };
     setupDefaultMocks(testSettings);
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     // The page should load synchronously with no loading state,
     // since settings are initialized from the store snapshot
@@ -283,7 +290,7 @@ describe("SettingsPage", () => {
 
   it("populates API key after settings load", async () => {
     setupDefaultMocks(populatedSettings);
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -298,7 +305,7 @@ describe("SettingsPage", () => {
 
   it("shows 'Not configured' when no skills folder path", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -311,7 +318,7 @@ describe("SettingsPage", () => {
   it("calls invoke with test_api_key when Test button is clicked", async () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     // Wait for loading to finish
     await waitFor(() => {
@@ -333,7 +340,7 @@ describe("SettingsPage", () => {
   it("auto-saves when Extended Thinking toggle is changed", async () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -355,7 +362,7 @@ describe("SettingsPage", () => {
   it("auto-saves on API key blur", async () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -379,7 +386,7 @@ describe("SettingsPage", () => {
   it("shows Saved indicator after auto-save", async () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -402,7 +409,7 @@ describe("SettingsPage", () => {
     setupDefaultMocks(populatedSettings);
     // Override updateUserSettings to fail
     vi.mocked(updateUserSettings).mockRejectedValue("DB error");
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -423,7 +430,7 @@ describe("SettingsPage", () => {
 
   it("displays the app version from Tauri", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       const matches = screen.getAllByText("v0.1.0");
@@ -435,7 +442,7 @@ describe("SettingsPage", () => {
     const { mockGetVersion } = await import("@/test/mocks/tauri");
     mockGetVersion.mockRejectedValueOnce(new Error("not available"));
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       const matches = screen.getAllByText("vdev");
@@ -445,7 +452,7 @@ describe("SettingsPage", () => {
 
   it("renders Skills Folder row with Browse button in Storage card", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -461,7 +468,7 @@ describe("SettingsPage", () => {
 
   it("renders Skills Folder path when configured", async () => {
     setupDefaultMocks({ skills_path: "/home/user/my-skills" });
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -474,7 +481,7 @@ describe("SettingsPage", () => {
 
   it("does not render workspace folder controls in Storage card", async () => {
     setupDefaultMocks(populatedSettings);
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -489,7 +496,7 @@ describe("SettingsPage", () => {
 
   it("does not render Clear button when workspace path is not set", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -504,7 +511,7 @@ describe("SettingsPage", () => {
     const user = userEvent.setup();
     setupDefaultMocks({ ...populatedSettings, skills_path: "/output" });
     vi.mocked(mockOpen).mockResolvedValueOnce("/new/skills/path");
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -528,7 +535,7 @@ describe("SettingsPage", () => {
     setupDefaultMocks(populatedSettings);
     // Simulate macOS dialog returning a doubled path
     vi.mocked(mockOpen).mockResolvedValueOnce("/Users/me/Skills/Skills");
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -549,7 +556,7 @@ describe("SettingsPage", () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
     vi.mocked(mockOpen).mockResolvedValueOnce("C:\\Users\\me\\Skill Builder\\Skill Builder\\");
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -573,7 +580,7 @@ describe("SettingsPage", () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
     vi.mocked(mockOpen).mockResolvedValueOnce("/Users/me/Skills/");
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -593,7 +600,7 @@ describe("SettingsPage", () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
     vi.mocked(mockOpen).mockResolvedValueOnce("/Users/me/Skills");
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -611,7 +618,7 @@ describe("SettingsPage", () => {
 
   it("renders Data Directory path in Storage card", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -629,7 +636,7 @@ describe("SettingsPage", () => {
     const { getDataDir } = await import("@/lib/tauri");
     vi.mocked(getDataDir).mockRejectedValueOnce(new Error("no dir"));
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -642,7 +649,7 @@ describe("SettingsPage", () => {
 
   it("renders Log Level select in Logging card", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -657,7 +664,7 @@ describe("SettingsPage", () => {
   it("calls set_log_level when log level is changed", async () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -677,7 +684,7 @@ describe("SettingsPage", () => {
   it("auto-saves log_level when log level select is changed", async () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -698,7 +705,7 @@ describe("SettingsPage", () => {
 
   it("renders logging helper text in Logging card", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -714,7 +721,7 @@ describe("SettingsPage", () => {
 
   it("does not show a log file path fallback message", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -727,7 +734,7 @@ describe("SettingsPage", () => {
 
   it("renders Appearance card with theme buttons", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -742,7 +749,7 @@ describe("SettingsPage", () => {
   it("calls setTheme when a theme button is clicked", async () => {
     const user = userEvent.setup();
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -754,7 +761,7 @@ describe("SettingsPage", () => {
 
   it("shows sign in button when not logged in", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -768,9 +775,9 @@ describe("SettingsPage", () => {
   });
 
   it("shows checking state while auth status is loading", async () => {
-    useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: true, lastCheckedAt: null });
+    vi.mocked(_githubGetUser).mockReturnValue(new Promise(() => {}));
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -784,14 +791,14 @@ describe("SettingsPage", () => {
   });
 
   it("shows user info when logged in", async () => {
-    useAuthStore.setState({
-      user: { login: "octocat", avatar_url: "https://github.com/octocat.png", email: "octocat@github.com" },
-      isLoggedIn: true,
-      isLoading: false,
-      lastCheckedAt: "2026-01-01T00:00:00.000Z",
+    vi.mocked(_githubGetUser).mockResolvedValue({
+      login: "octocat",
+      avatar_url: "https://github.com/octocat.png",
+      email: "octocat@github.com",
     });
+    useAuthStore.setState({ lastCheckedAt: "2026-01-01T00:00:00.000Z" });
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -811,7 +818,7 @@ describe("SettingsPage", () => {
 
   it("auto-switches to skills section when pendingUpgradeOpen is set", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -830,7 +837,7 @@ describe("SettingsPage", () => {
 
   it("shows Registries section in Marketplace tab", async () => {
     setupDefaultMocks();
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Settings")).toBeInTheDocument();

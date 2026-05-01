@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "@/lib/toast";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { getVersion } from "@tauri-apps/api/app";
-import { Bug, Lightbulb, Loader2, MessageSquarePlus } from "lucide-react";
-import { Github } from "@/components/icons/github";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { useCallback, useEffect, useRef, useState } from "react"
+import { toast } from "@/lib/toast"
+import { openUrl } from "@tauri-apps/plugin-opener"
+import { getVersion } from "@tauri-apps/api/app"
+import { Bug, Lightbulb, Loader2, MessageSquarePlus } from "lucide-react"
+import { Github } from "@/components/icons/github"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -14,37 +14,33 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  startOneShotAgent,
-  getWorkspacePath,
-  createGithubIssue,
-} from "@/lib/tauri";
-import { useAgentStore } from "@/stores/agent-store";
-import { useAuthStore } from "@/stores/auth-store";
-import { useSettingsStore } from "@/stores/settings-store";
-import { requireSettingsModel } from "@/lib/models";
-import { GitHubLoginDialog } from "@/components/github-login-dialog";
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
+import { Textarea } from "@/components/ui/textarea"
+import { startOneShotAgent, getWorkspacePath, createGithubIssue } from "@/lib/tauri"
+import { useAgentStore } from "@/stores/agent-store"
+import { useGithubUserQuery } from "@/lib/queries/auth"
+import { useSettingsStore } from "@/stores/settings-store"
+import { requireSettingsModel } from "@/lib/models"
+import { GitHubLoginDialog } from "@/components/github-login-dialog"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface EnrichedIssue {
-  type: "bug" | "feature";
-  title: string;
-  body: string; // structured markdown (problem/expectation or requirement/AC)
-  labels: string[];
-  version: string;
+  type: "bug" | "feature"
+  title: string
+  body: string     // structured markdown (problem/expectation or requirement/AC)
+  labels: string[]
+  version: string
 }
 
-type DialogStep = "input" | "enriching" | "review" | "submitting";
+type DialogStep = "input" | "enriching" | "review" | "submitting"
 
 // ---------------------------------------------------------------------------
 // Prompt builders
@@ -98,7 +94,7 @@ Respond with ONLY a JSON object (no markdown fencing, no explanation):
   "title": "refined title",
   "body": "the full structured markdown body",
   "labels": "comma, separated, labels"
-}`;
+}`
 }
 
 // ---------------------------------------------------------------------------
@@ -107,9 +103,9 @@ Respond with ONLY a JSON object (no markdown fencing, no explanation):
 
 export function parseEnrichmentResponse(content: string): EnrichedIssue | null {
   try {
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) return null
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
     return {
       type: parsed.type === "feature" ? "feature" : "bug",
       title: String(parsed.title || ""),
@@ -124,9 +120,9 @@ export function parseEnrichmentResponse(content: string): EnrichedIssue | null {
             ? (parsed.labels as string[])
             : [],
       version: "",
-    };
+    }
   } catch {
-    return null;
+    return null
   }
 }
 
@@ -135,175 +131,163 @@ export function parseEnrichmentResponse(content: string): EnrichedIssue | null {
 // ---------------------------------------------------------------------------
 
 export function FeedbackDialog() {
-  const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const preferredModel = useSettingsStore((s) => s.preferredModel)
+
   // --- App version ---
-  const [appVersion, setAppVersion] = useState("unknown");
+  const [appVersion, setAppVersion] = useState("unknown")
   useEffect(() => {
-    getVersion()
-      .then(setAppVersion)
-      .catch(() => setAppVersion("unknown"));
-  }, []);
+    getVersion().then(setAppVersion).catch(() => setAppVersion("unknown"))
+  }, [])
 
   // --- Auth state ---
-  const { isLoggedIn } = useAuthStore();
-  const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+  const githubUserQuery = useGithubUserQuery()
+  const isLoggedIn = Boolean(githubUserQuery.data)
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
 
   // --- Dialog & step state ---
-  const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<DialogStep>("input");
+  const [open, setOpen] = useState(false)
+  const [step, setStep] = useState<DialogStep>("input")
 
   // --- Input fields ---
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
 
   // --- Enrichment result ---
-  const [enriched, setEnriched] = useState<EnrichedIssue | null>(null);
+  const [enriched, setEnriched] = useState<EnrichedIssue | null>(null)
 
   // --- Agent tracking ---
-  const [pendingAgentId, setPendingAgentId] = useState<string | null>(null);
+  const [pendingAgentId, setPendingAgentId] = useState<string | null>(null)
 
   const resetForm = () => {
-    setTitle("");
-    setDescription("");
-    setEnriched(null);
-    setStep("input");
-    setPendingAgentId(null);
-  };
+    setTitle("")
+    setDescription("")
+    setEnriched(null)
+    setStep("input")
+    setPendingAgentId(null)
+  }
 
   // -----------------------------------------------------------------------
   // Agent completion watcher (granular selector)
   // -----------------------------------------------------------------------
-  const currentRun = useAgentStore((s) =>
-    pendingAgentId ? s.runs[pendingAgentId] : undefined,
-  );
-  const processedRunRef = useRef<string | null>(null);
+  const currentRun = useAgentStore((s) => pendingAgentId ? s.runs[pendingAgentId] : undefined)
+  const processedRunRef = useRef<string | null>(null)
 
   const handleAgentComplete = useCallback(() => {
-    if (!currentRun || !pendingAgentId) return;
-    if (currentRun.status !== "completed" && currentRun.status !== "error")
-      return;
-    if (processedRunRef.current === pendingAgentId) return;
-    processedRunRef.current = pendingAgentId;
+    if (!currentRun || !pendingAgentId) return
+    if (currentRun.status !== "completed" && currentRun.status !== "error") return
+    if (processedRunRef.current === pendingAgentId) return
+    processedRunRef.current = pendingAgentId
 
     if (step === "enriching") {
       if (currentRun.status === "completed") {
-        const resultItem = currentRun.displayItems.find(
-          (di) => di.type === "result",
-        );
+        const resultItem = currentRun.displayItems.find((di) => di.type === "result")
         const content =
           resultItem?.outputText_result ??
-          currentRun.displayItems.filter((di) => di.type === "output").pop()
-            ?.outputText ??
-          "";
-        const parsed = parseEnrichmentResponse(content);
+          currentRun.displayItems.filter((di) => di.type === "output").pop()?.outputText ??
+          ""
+        const parsed = parseEnrichmentResponse(content)
         if (parsed) {
-          parsed.version = appVersion;
-          setEnriched(parsed);
-          setStep("review");
+          parsed.version = appVersion
+          setEnriched(parsed)
+          setStep("review")
         } else {
-          toast.error("Failed to parse enrichment response", {
-            duration: Infinity,
-          });
-          setStep("input");
+          toast.error("Failed to parse enrichment response", { duration: Infinity })
+          setStep("input")
         }
       } else {
-        toast.error("Failed to analyze feedback", { duration: Infinity });
-        setStep("input");
+        toast.error("Failed to analyze feedback", { duration: Infinity })
+        setStep("input")
       }
-      setPendingAgentId(null);
+      setPendingAgentId(null)
     }
-  }, [currentRun, pendingAgentId, step, appVersion]);
+  }, [currentRun, pendingAgentId, step, appVersion])
 
   useEffect(() => {
-    handleAgentComplete();
-  }, [handleAgentComplete]);
+    handleAgentComplete()
+  }, [handleAgentComplete])
 
   // -----------------------------------------------------------------------
   // Handlers
   // -----------------------------------------------------------------------
 
   const handleAnalyze = async () => {
-    if (!title.trim()) return;
-    setStep("enriching");
+    if (!title.trim()) return
+    setStep("enriching")
 
-    const agentId = `feedback-enrich-${Date.now()}`;
-    const prompt = buildEnrichmentPrompt(title, description, appVersion);
+    const agentId = `feedback-enrich-${Date.now()}`
+    const prompt = buildEnrichmentPrompt(title, description, appVersion)
 
     try {
-      const cwd = await getWorkspacePath();
+      const cwd = await getWorkspacePath()
       await startOneShotAgent(
         agentId,
         prompt,
         requireSettingsModel(preferredModel),
         cwd,
-        [], // No tools — pure text analysis
+        [],           // No tools — pure text analysis
         3,
         undefined,
         "_feedback",
         "Enrich Feedback",
         undefined,
-      );
-      setPendingAgentId(agentId);
+      )
+      setPendingAgentId(agentId)
     } catch (err) {
       toast.error(
         `Failed to analyze feedback: ${err instanceof Error ? err.message : String(err)}`,
         { duration: Infinity },
-      );
-      setStep("input");
+      )
+      setStep("input")
     }
-  };
+  }
 
   const handleSubmit = async () => {
-    if (!enriched) return;
-    setStep("submitting");
+    if (!enriched) return
+    setStep("submitting")
 
     try {
       // Auto-add type and version labels
-      const typeLabel = enriched.type === "bug" ? "bug" : "enhancement";
-      const versionLabel = `v${enriched.version}`;
-      const allLabels = [
-        typeLabel,
-        versionLabel,
-        ...enriched.labels.filter((l) => l !== typeLabel && l !== versionLabel),
-      ];
+      const typeLabel = enriched.type === "bug" ? "bug" : "enhancement"
+      const versionLabel = `v${enriched.version}`
+      const allLabels = [typeLabel, versionLabel, ...enriched.labels.filter(
+        (l) => l !== typeLabel && l !== versionLabel,
+      )]
 
       const result = await createGithubIssue({
         title: enriched.title,
         body: enriched.body,
         labels: allLabels,
-      });
+      })
 
       toast.success(`Issue #${result.number} created`, {
         action: {
           label: "Open",
-          onClick: () => {
-            openUrl(result.url);
-          },
+          onClick: () => { openUrl(result.url) },
         },
         duration: Infinity,
-      });
+      })
 
-      resetForm();
-      setOpen(false);
+      resetForm()
+      setOpen(false)
     } catch (err) {
       toast.error(
         `Failed to submit: ${err instanceof Error ? err.message : String(err)}`,
         { duration: Infinity },
-      );
-      setStep("review");
+      )
+      setStep("review")
     }
-  };
+  }
 
   const handleBack = () => {
-    setStep("input");
-  };
+    setStep("input")
+  }
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
-      resetForm();
+      resetForm()
     }
-    setOpen(next);
-  };
+    setOpen(next)
+  }
 
   // -----------------------------------------------------------------------
   // Render helpers
@@ -343,17 +327,17 @@ export function FeedbackDialog() {
         </Button>
       </DialogFooter>
     </>
-  );
+  )
 
   const renderLoadingStep = (message: string) => (
     <div className="flex flex-col items-center justify-center gap-3 py-8">
       <Loader2 className="size-6 animate-spin text-muted-foreground" />
       <p className="text-sm text-muted-foreground">{message}</p>
     </div>
-  );
+  )
 
   const renderReviewStep = () => {
-    if (!enriched) return null;
+    if (!enriched) return null
 
     return (
       <>
@@ -361,22 +345,13 @@ export function FeedbackDialog() {
           <div className="space-y-5 py-2 pr-4">
             {/* ── Summary bar ── */}
             <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                variant={enriched.type === "bug" ? "destructive" : "default"}
-                className="gap-1"
-              >
-                {enriched.type === "bug" ? (
-                  <Bug className="size-3" />
-                ) : (
-                  <Lightbulb className="size-3" />
-                )}
+              <Badge variant={enriched.type === "bug" ? "destructive" : "default"} className="gap-1">
+                {enriched.type === "bug" ? <Bug className="size-3" /> : <Lightbulb className="size-3" />}
                 {enriched.type === "bug" ? "Bug" : "Feature"}
               </Badge>
               <Badge variant="secondary">v{enriched.version}</Badge>
               {enriched.labels.map((l) => (
-                <Badge key={l} variant="outline" className="text-xs">
-                  {l}
-                </Badge>
+                <Badge key={l} variant="outline" className="text-xs">{l}</Badge>
               ))}
             </div>
 
@@ -390,15 +365,11 @@ export function FeedbackDialog() {
             >
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="bug" id="review-type-bug" />
-                <Label htmlFor="review-type-bug" className="font-normal">
-                  Bug
-                </Label>
+                <Label htmlFor="review-type-bug" className="font-normal">Bug</Label>
               </div>
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="feature" id="review-type-feature" />
-                <Label htmlFor="review-type-feature" className="font-normal">
-                  Feature
-                </Label>
+                <Label htmlFor="review-type-feature" className="font-normal">Feature</Label>
               </div>
             </RadioGroup>
 
@@ -419,9 +390,7 @@ export function FeedbackDialog() {
             {/* ── Body (structured markdown) ── */}
             <div className="grid gap-1.5">
               <Label htmlFor="review-body">
-                {enriched.type === "bug"
-                  ? "Problem & Expected Behavior"
-                  : "Requirement & Acceptance Criteria"}
+                {enriched.type === "bug" ? "Problem & Expected Behavior" : "Requirement & Acceptance Criteria"}
               </Label>
               <Textarea
                 id="review-body"
@@ -454,6 +423,7 @@ export function FeedbackDialog() {
                 placeholder="comma, separated, labels"
               />
             </div>
+
           </div>
         </ScrollArea>
 
@@ -461,16 +431,13 @@ export function FeedbackDialog() {
           <Button variant="outline" onClick={handleBack}>
             Back
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!enriched.title.trim() || !enriched.body.trim()}
-          >
+          <Button onClick={handleSubmit} disabled={!enriched.title.trim() || !enriched.body.trim()}>
             Create GitHub Issue
           </Button>
         </DialogFooter>
       </>
-    );
-  };
+    )
+  }
 
   // -----------------------------------------------------------------------
   // Main render
@@ -495,7 +462,9 @@ export function FeedbackDialog() {
             </DialogDescription>
           </DialogHeader>
 
-          {!isLoggedIn ? (
+          {githubUserQuery.isLoading ? (
+            renderLoadingStep("Checking GitHub connection...")
+          ) : !isLoggedIn ? (
             <div className="flex flex-col items-center gap-4 py-8">
               <Github className="size-10 text-muted-foreground" />
               <p className="text-sm text-muted-foreground text-center">
@@ -509,20 +478,15 @@ export function FeedbackDialog() {
           ) : (
             <>
               {step === "input" && renderInputStep()}
-              {step === "enriching" &&
-                renderLoadingStep("Analyzing your feedback...")}
+              {step === "enriching" && renderLoadingStep("Analyzing your feedback...")}
               {step === "review" && renderReviewStep()}
-              {step === "submitting" &&
-                renderLoadingStep("Creating GitHub issue...")}
+              {step === "submitting" && renderLoadingStep("Creating GitHub issue...")}
             </>
           )}
         </DialogContent>
       </Dialog>
 
-      <GitHubLoginDialog
-        open={loginDialogOpen}
-        onOpenChange={setLoginDialogOpen}
-      />
+      <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </>
-  );
+  )
 }

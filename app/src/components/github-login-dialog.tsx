@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { githubStartDeviceFlow, githubPollForToken } from "@/lib/tauri"
 import type { DeviceFlowResponse } from "@/lib/types"
+import { useGithubSetUserMutation } from "@/lib/queries/auth"
 import { useAuthStore } from "@/stores/auth-store"
 
 interface GitHubLoginDialogProps {
@@ -33,6 +34,7 @@ export function GitHubLoginDialog({ open, onOpenChange }: GitHubLoginDialogProps
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const intervalRef = useRef(5)
   const mountedRef = useRef(true)
+  const setGithubUserMutation = useGithubSetUserMutation()
 
   // Track mounted state for cleanup
   useEffect(() => {
@@ -121,6 +123,7 @@ export function GitHubLoginDialog({ open, onOpenChange }: GitHubLoginDialogProps
           intervalRef.current += 5
           pollingRef.current = setTimeout(poll, intervalRef.current * 1000)
         } else if (result.status === "success") {
+          await setGithubUserMutation.mutateAsync(result.user)
           useAuthStore.getState().setUser(result.user)
           setState({ step: "success", login: result.user.login })
           // Auto-close after a brief success display
@@ -141,7 +144,7 @@ export function GitHubLoginDialog({ open, onOpenChange }: GitHubLoginDialogProps
     }
 
     pollingRef.current = setTimeout(poll, intervalRef.current * 1000)
-  }, [onOpenChange])
+  }, [onOpenChange, setGithubUserMutation])
 
   const handleOpenGitHub = async () => {
     if (state.step !== "code") return

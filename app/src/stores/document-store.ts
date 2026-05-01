@@ -1,8 +1,10 @@
-import { create } from "zustand";
-import { listDocuments } from "@/lib/tauri";
+import { useQueryClient } from "@tanstack/react-query";
+import { appQueryClient } from "@/lib/query-client";
+import { useDocumentsQuery } from "@/lib/queries/documents";
+import { queryKeys } from "@/lib/queries/query-keys";
 import type { Document } from "@/lib/types";
 
-interface DocumentState {
+interface DocumentCompatState {
   documents: Document[];
   isLoading: boolean;
   fetchDocuments: () => Promise<void>;
@@ -10,32 +12,31 @@ interface DocumentState {
   upsertDocument: (doc: Document) => void;
 }
 
-export const useDocumentStore = create<DocumentState>((set) => ({
-  documents: [],
-  isLoading: false,
+function setDocuments(updater: (documents: Document[]) => Document[]) {
+  appQueryClient.setQueryData<Document[]>(queryKeys.documents.list, (current = []) =>
+    updater(current),
+  );
+}
 
-  fetchDocuments: async () => {
-    set({ isLoading: true });
-    try {
-      const documents = await listDocuments();
-      set({ documents, isLoading: false });
-    } catch (err) {
-      console.error("event=fetch_documents_failed error=%s", err);
-      set({ isLoading: false });
-    }
-  },
+export function useDocumentStore<T>(selector: (state: DocumentCompatState) => T): T {
+  const documentsQuery = useDocumentsQuery();
+  const queryClient = useQueryClient();
+  const state: DocumentCompatState = {
+    documents: documentsQuery.data ?? [],
+    isLoading: documentsQuery.isLoading,
+    fetchDocuments: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
+    },
+    removeDocument: (id) => setDocuments((documents) => documents.filter((doc) => doc.id !== id)),
+    upsertDocument: (doc) =>
+      setDocuments((documents) => {
+        const index = documents.findIndex((existing) => existing.id === doc.id);
+        if (index === -1) return [doc, ...documents];
+        const updated = [...documents];
+        updated[index] = doc;
+        return updated;
+      }),
+  };
 
-  removeDocument: (id) =>
-    set((state) => ({ documents: state.documents.filter((d) => d.id !== id) })),
-
-  upsertDocument: (doc) =>
-    set((state) => {
-      const idx = state.documents.findIndex((d) => d.id === doc.id);
-      if (idx >= 0) {
-        const updated = [...state.documents];
-        updated[idx] = doc;
-        return { documents: updated };
-      }
-      return { documents: [doc, ...state.documents] };
-    }),
-}));
+  return selector(state);
+}
