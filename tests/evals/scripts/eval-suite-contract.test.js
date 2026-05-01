@@ -213,7 +213,7 @@ test('suite OpenCode config defines primary eval agents with enforceable fields'
     assert.ok(agent, `missing OpenCode eval agent: ${agentName}`);
     assert.equal(agent.description.length > 0, true);
     assert.equal(agent.mode, 'primary');
-    assert.equal(agent.model, 'opencode/qwen3.6-plus');
+    assert.equal(agent.model, 'opencode-go/minimax-m2.7');
     if (agent.temperature !== undefined) {
       assert.equal(agent.temperature, 0.1);
     }

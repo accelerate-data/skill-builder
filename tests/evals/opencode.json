@@ -11,7 +11,7 @@
     "eval_light": {
       "description": "Promptfoo eval agent for light-cost scenarios.",
       "mode": "primary",
-      "model": "opencode/qwen3.6-plus",
+      "model": "opencode-go/minimax-m2.7",
       "temperature": 0.1,
       "steps": 60,
       "permission": {
@@ -28,7 +28,7 @@
     "eval_standard": {
       "description": "Promptfoo eval agent for standard scenarios.",
       "mode": "primary",
-      "model": "opencode/qwen3.6-plus",
+      "model": "opencode-go/minimax-m2.7",
       "temperature": 0.1,
       "steps": 100,
       "permission": {
@@ -45,7 +45,7 @@
     "eval_high": {
       "description": "Promptfoo eval agent for high-cost scenarios.",
       "mode": "primary",
-      "model": "opencode/qwen3.6-plus",
+      "model": "opencode-go/minimax-m2.7",
       "temperature": 0.1,
       "steps": 120,
       "permission": {
@@ -62,7 +62,7 @@
     "eval_x_high": {
       "description": "Promptfoo eval agent for extra-high-cost scenarios.",
       "mode": "primary",
-      "model": "opencode/qwen3.6-plus",
+      "model": "opencode-go/minimax-m2.7",
       "temperature": 0.1,
       "steps": 200,
       "permission": {
