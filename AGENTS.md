@@ -111,11 +111,10 @@ For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct car
 - **PR title format:** `VU-XXX: short description`
 - **PR body link:** `Fixes VU-XXX`
 - **Linear project:** All issues created for this repository must be created under **Skill Builder**.
-- **Worktrees:** `../worktrees/<branchName>` relative to repo root, preserving the full branch name including the `feature/` prefix. Pre-create the parent directory before adding:
+- **Worktrees:** Use `./scripts/worktree.sh <branch-name>` as the canonical maintainer workflow for creating or attaching a repo worktree and bootstrapping it. It preserves the full branch name under `../worktrees/<branchName>` and symlinks each worktree's `tests/evals/.promptfoo` back to the source checkout so Promptfoo history/database state stays out of feature worktrees.
 
   ```bash
-  mkdir -p ../worktrees/feature
-  git worktree add ../worktrees/feature/<branch-name> <branch-name>
+  ./scripts/worktree.sh feature/<branch-name>
   ```
 
 **Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/` · `cd app && npm run test:unit` when changing event types in `app/src/lib/` or `app/sidecar/`.
