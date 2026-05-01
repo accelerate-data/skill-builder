@@ -1,0 +1,20 @@
+{
+  "description": "Workspace workflow-step prompt rendered JSON output.",
+  "metadata": {
+    "eval_tier": "light"
+  },
+  "prompts": [
+    "file://prompt.txt"
+  ],
+  "tests": [
+    {
+      "description": "[smoke] workflow-step prompt passes app paths",
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); data.status === 'research_complete' && Number.isInteger(data.dimensions_selected) && Number.isInteger(data.question_count) && data.research_output && data.research_output.version === '1' && data.research_output.metadata && Array.isArray(data.research_output.sections)"
+        }
+      ]
+    }
+  ]
+}

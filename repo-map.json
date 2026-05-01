@@ -66,7 +66,7 @@
     },
     {
       "name": "Promptfoo",
-      "scope": "Agent smoke tests via the root tests/evals OpenCode harness (live model calls — manual unless explicitly requested)"
+      "scope": "Agent smoke and regression tests via the root tests/evals OpenCode harness (live model calls; issue scope decides what to run)"
     },
     {
       "name": "cargo test",
@@ -175,7 +175,7 @@
     "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, SDK invocation, mock mode)",
     "app/sidecar/__tests__/": "Sidecar unit tests (one test file per sidecar module)",
     "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, description, evals, settings, usage, skill-tester, skills-library, integration, desktop-smoke, fixtures, helpers, setup",
-    "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains suite-owned tier config, OpenCode provider config, package-level eval configs, deterministic harness tests, static assertions for code contracts including shared Tauri command policy analysis, repo-local Promptfoo state ignores, and live model smoke commands.",
+    "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains suite-owned tier config, OpenCode provider config, package-level eval configs, deterministic harness tests, static assertions for code contracts including shared Tauri command policy analysis, repo-local Promptfoo state ignores, one-scenario-per-package smoke, and live model regression commands.",
     "agent-sources/workspace/": "Workspace agent instructions: CLAUDE.md (full), CLAUDE-MINIMAL.md (lightweight), prompts/ (shared fragments). Deployed to workspace .claude/ at app startup.",
     "agent-sources/plugins/": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent",
     "docs/design/": "Architecture decision records and design specs: agent-specs, backend-design, startup-recon, workflow-state, clarifications-rendering, skill-tester, skills-marketplace, and more. Primary reference for non-obvious design decisions.",
@@ -204,7 +204,7 @@
       "vite": "Vite 8 + @vitejs/plugin-react",
       "vitest": "Vitest (unit + structural agent tests)",
       "playwright": "Playwright (E2E)",
-      "promptfoo": "Promptfoo (agent smoke tests, manual only)",
+      "promptfoo": "Promptfoo (agent smoke and regression tests)",
       "esbuild": "esbuild (sidecar compilation)",
       "markdownlint": "markdownlint-cli (all .md files)"
     }
@@ -220,7 +220,8 @@
     "test_agents_structural": "cd app && npm run test:agents:structural",
     "test_agents_smoke": "cd app && npm run test:agents:smoke  # live OpenCode/Promptfoo model call",
     "test_eval_harness": "cd tests/evals && npm test",
-    "test_eval_harness_smoke": "cd tests/evals && npm run eval:harness-smoke  # live OpenCode/Promptfoo model call",
+    "test_eval_harness_smoke": "cd tests/evals && npm run eval:smoke  # one live OpenCode/Promptfoo smoke scenario per package",
+    "test_eval_harness_regression": "cd tests/evals && npm run eval:regression  # live OpenCode/Promptfoo package regression suite",
     "test_release_docs_ci_scripts": "node --test scripts/*.test.mjs",
     "check_help_docs": "node scripts/check-help-docs.mjs",
     "verify_release_stage": "node scripts/verify-release-stage.mjs <stage-dir> <windows|macos>",
@@ -265,7 +266,7 @@
   },
   "notes_for_agents": {
     "startup": "Read this file before exploring code. It is the primary startup context for structure, entrypoints, modules, and commands. Skip repo-wide rediscovery if it covers your task.",
-    "test_autonomy": "`cd tests/evals && npm test` and `test:agents:structural` are deterministic. `test:agents:smoke` and `tests/evals` eval scripts make live model calls; run them only when explicitly requested.",
+    "test_autonomy": "`cd tests/evals && npm test` and `test:agents:structural` are deterministic. `test:agents:smoke` and `tests/evals` eval scripts make live model calls; run the smallest relevant live eval scope when an issue changes model, runtime, or eval behavior.",
     "db_location": "Database is at Tauri app_data_dir()/skill-builder.db. macOS: ~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db",
     "migrations": "DB migrations are code-only in db/migrations.rs NUMBERED_MIGRATIONS constant — no separate migration files directory.",
     "workspace_path": "Workspace: <app_local_data_dir>/workspace (not user-configurable). Resolved from Tauri app_local_data_dir() by resolve_workspace_path() in commands/workspace.rs. Legacy ~/.vibedata/ path is cleaned up automatically on startup.",

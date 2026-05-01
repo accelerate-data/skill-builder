@@ -1,0 +1,20 @@
+{
+  "description": "skill-content-researcher:confirm-decisions workflow JSON output.",
+  "metadata": {
+    "eval_tier": "standard"
+  },
+  "prompts": [
+    "file://prompt.txt"
+  ],
+  "tests": [
+    {
+      "description": "[smoke] confirm decisions canonical output",
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); const statuses = ['resolved','conflict-resolved','needs-review']; data.version === '1' && data.metadata && Number.isInteger(data.metadata.decision_count) && data.metadata.decision_count > 0 && Number.isInteger(data.metadata.conflicts_resolved) && data.metadata.round === 1 && Array.isArray(data.decisions) && data.decisions.length === data.metadata.decision_count && data.decisions.every((d) => typeof d.id === 'string' && typeof d.title === 'string' && typeof d.original_question === 'string' && typeof d.decision === 'string' && typeof d.implication === 'string' && statuses.includes(d.status))"
+        }
+      ]
+    }
+  ]
+}

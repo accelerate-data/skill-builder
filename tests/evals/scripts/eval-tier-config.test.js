@@ -37,7 +37,7 @@ test('loadEvalTierConfig returns required suite tiers and OpenCode agents', () =
   );
   assert.deepEqual(config.tiers.light, { agent: 'eval_light' });
   assert.deepEqual(config.tiers.standard, { agent: 'eval_standard' });
-  assert.equal(config.agents.eval_light.model, 'opencode/qwen3.6-plus');
+  assert.equal(config.agents.eval_light.model, 'opencode-go/minimax-m2.7');
   assert.equal(config.agents.eval_light.temperature, 0.1);
   assert.equal(config.agents.eval_light.steps, 60);
   assert.deepEqual(config.agents.eval_light.permission, AGENT_PERMISSION);
@@ -69,7 +69,7 @@ test('loadEvalTierConfig rejects missing runtime and tier fields', () => {
       eval_light: {
         description: 'Light eval agent.',
         mode: 'primary',
-        model: 'opencode/qwen3.6-plus',
+        model: 'opencode-go/minimax-m2.7',
         temperature: 0.1,
         steps: 60,
         permission: AGENT_PERMISSION,
@@ -77,7 +77,7 @@ test('loadEvalTierConfig rejects missing runtime and tier fields', () => {
       eval_standard: {
         description: 'Standard eval agent.',
         mode: 'primary',
-        model: 'opencode/qwen3.6-plus',
+        model: 'opencode-go/minimax-m2.7',
         temperature: 0.1,
         steps: 100,
         permission: AGENT_PERMISSION,
@@ -85,7 +85,7 @@ test('loadEvalTierConfig rejects missing runtime and tier fields', () => {
       eval_high: {
         description: 'High eval agent.',
         mode: 'primary',
-        model: 'opencode/qwen3.6-plus',
+        model: 'opencode-go/minimax-m2.7',
         temperature: 0.1,
         steps: 120,
         permission: AGENT_PERMISSION,
@@ -93,7 +93,7 @@ test('loadEvalTierConfig rejects missing runtime and tier fields', () => {
       eval_x_high: {
         description: 'Extra high eval agent.',
         mode: 'primary',
-        model: 'opencode/qwen3.6-plus',
+        model: 'opencode-go/minimax-m2.7',
         temperature: 0.1,
         steps: 200,
         permission: AGENT_PERMISSION,
@@ -191,7 +191,7 @@ ${validTiers}
       eval_light: {
         description: 'Light eval agent.',
         mode: 'primary',
-        model: 'opencode/qwen3.6-plus',
+        model: 'opencode-go/minimax-m2.7',
         temperature: 0.1,
         steps: 'sixty',
         permission: AGENT_PERMISSION,
@@ -208,7 +208,7 @@ ${validTiers}
       eval_light: {
         description: 'Light eval agent.',
         mode: 'primary',
-        model: 'opencode/qwen3.6-plus',
+        model: 'opencode-go/minimax-m2.7',
         steps: 60,
         permission: AGENT_PERMISSION,
       },
@@ -248,7 +248,7 @@ agent = "eval_x_high"
       eval_light: {
         description: 'Light eval agent.',
         mode: 'primary',
-        model: 'opencode/qwen3.6-plus',
+        model: 'opencode-go/minimax-m2.7',
         temperature: 0.1,
         steps: 60,
         permission: {
@@ -268,7 +268,7 @@ agent = "eval_x_high"
       eval_light: {
         description: 'Light eval agent.',
         mode: 'primary',
-        model: 'opencode/qwen3.6-plus',
+        model: 'opencode-go/minimax-m2.7',
         temperature: 0.1,
         steps: 60,
         tools: AGENT_PERMISSION,

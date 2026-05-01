@@ -1,0 +1,20 @@
+{
+  "description": "skill-creator:generate-skill workflow JSON output.",
+  "metadata": {
+    "eval_tier": "standard"
+  },
+  "prompts": [
+    "file://prompt.txt"
+  ],
+  "tests": [
+    {
+      "description": "[smoke] generate skill output path and eval creation",
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); const trace = Array.isArray(data.call_trace) ? data.call_trace.join(' ') : ''; data.status === 'generated' && data.skipped !== true && typeof data.commit_summary === 'string' && data.commit_summary.length > 20 && data.version_bump === 'minor' && Array.isArray(data.call_trace) && data.call_trace.length >= 5 && /read-user-context/.test(trace) && /read-decisions/.test(trace) && /use-skill-creator-skill/.test(trace) && /write-skill/.test(trace) && /write-references/.test(trace) && /write-evals/.test(trace)"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "description": "skill-content-researcher:answer-evaluator app gate JSON output.",
+  "metadata": {
+    "eval_tier": "standard"
+  },
+  "prompts": [
+    "file://prompt.txt"
+  ],
+  "tests": [
+    {
+      "description": "[smoke] answer evaluator gate contract",
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); ['sufficient','mixed','insufficient'].includes(data.verdict) && data.answered_count === 2 && data.vague_count >= 1 && data.total_count === 3 && ['run_research','revise'].includes(data.gate_decision) && Array.isArray(data.per_question) && data.per_question.length === 3 && data.per_question.some((q) => q.question_id === 'Q3' && q.verdict === 'vague')"
+        }
+      ]
+    }
+  ]
+}
