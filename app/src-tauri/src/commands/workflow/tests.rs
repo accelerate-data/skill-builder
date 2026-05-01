@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::deploy::{
     copy_agents_to_claude_dir, copy_directory_recursive, copy_managed_plugins_to_claude_dir,
-    invalidate_workspace_cache, mark_workspace_copied, workspace_already_copied,
+    copy_prompts_sync, invalidate_workspace_cache, mark_workspace_copied, workspace_already_copied,
 };
 use super::evaluation::get_step_output_files;
 use super::guards::{
@@ -1424,8 +1424,8 @@ fn test_resolve_prompts_dir_dev_mode() {
         .join("agents");
     // Verify flat agent files exist (no subdirectories)
     assert!(
-        plugin_agents_dir.join("confirm-decisions.md").exists(),
-        "agent-sources/plugins/skill-content-researcher/agents/confirm-decisions.md should exist"
+        plugin_agents_dir.join("research-agent.md").exists(),
+        "agent-sources/plugins/skill-content-researcher/agents/research-agent.md should exist"
     );
 }
 
@@ -1690,6 +1690,94 @@ fn test_copy_agents_to_claude_dir() {
     // Verify content
     let content = std::fs::read_to_string(claude_agents_dir.join("research-entities.md")).unwrap();
     assert_eq!(content, "# Research Entities");
+}
+
+#[test]
+fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
+    let plugins_src = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
+        workspace.path(),
+        DEFAULT_PLUGIN_SLUG,
+        "test-skill",
+    );
+    std::fs::create_dir_all(&workspace_skill_dir).unwrap();
+
+    let researcher = plugins_src.path().join("skill-content-researcher");
+    std::fs::create_dir_all(researcher.join("agents")).unwrap();
+    std::fs::create_dir_all(researcher.join("skills").join("research")).unwrap();
+    std::fs::write(
+        researcher.join("agents").join("research-agent.md"),
+        "# Research Agent",
+    )
+    .unwrap();
+    std::fs::write(
+        researcher.join("skills").join("research").join("SKILL.md"),
+        "# Research",
+    )
+    .unwrap();
+    std::fs::create_dir_all(researcher.join(".claude-plugin")).unwrap();
+    std::fs::write(
+        researcher.join(".claude-plugin").join("plugin.json"),
+        r#"{"name":"skill-content-researcher"}"#,
+    )
+    .unwrap();
+
+    let creator = plugins_src.path().join("skill-creator");
+    std::fs::create_dir_all(creator.join("agents")).unwrap();
+    std::fs::create_dir_all(creator.join("skills").join("skill-creator")).unwrap();
+    std::fs::write(
+        creator.join("agents").join("skill-writer-agent.md"),
+        "# Skill Writer Agent",
+    )
+    .unwrap();
+    std::fs::write(
+        creator
+            .join("skills")
+            .join("skill-creator")
+            .join("SKILL.md"),
+        "# Skill Creator",
+    )
+    .unwrap();
+    std::fs::create_dir_all(creator.join(".claude-plugin")).unwrap();
+    std::fs::write(
+        creator.join(".claude-plugin").join("plugin.json"),
+        r#"{"name":"skill-creator"}"#,
+    )
+    .unwrap();
+
+    let claude_template = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(claude_template.path(), "# Claude").unwrap();
+
+    copy_prompts_sync(
+        Path::new("/missing/flat-agents"),
+        plugins_src.path(),
+        claude_template.path(),
+        workspace.path().to_str().unwrap(),
+    )
+    .unwrap();
+
+    assert!(
+        workspace_skill_dir
+            .join(".agents/agents/research-agent.md")
+            .is_file()
+    );
+    assert!(
+        workspace_skill_dir
+            .join(".agents/agents/skill-writer-agent.md")
+            .is_file()
+    );
+    assert!(
+        workspace_skill_dir
+            .join(".agents/skills/research/SKILL.md")
+            .is_file()
+    );
+    assert!(
+        !workspace_skill_dir
+            .join(".claude/plugins/skill-content-researcher/.claude-plugin/plugin.json")
+            .exists()
+    );
+    assert!(!workspace_skill_dir.join("CLAUDE.md").exists());
 }
 
 #[test]

@@ -129,7 +129,7 @@ pub fn invalidate_workspace_cache(workspace_path: &str) {
     }
 }
 
-/// Copy bundled agent .md files and workspace CLAUDE.md into workspace.
+/// Copy bundled workflow agent artifacts into workspace skill directories.
 /// Creates the directories if they don't exist. Overwrites existing files
 /// to keep them in sync with the app version.
 ///
@@ -174,13 +174,17 @@ pub async fn ensure_workspace_prompts(
     let plugins = plugins_dir.clone();
     let cmd = claude_md.clone();
 
-    let result = tokio::task::spawn_blocking(move || copy_prompts_sync(&agents, &plugins, &cmd, &workspace))
-        .await
-        .map_err(|e| format!("Prompt copy task failed: {}", e))?;
+    let result =
+        tokio::task::spawn_blocking(move || copy_prompts_sync(&agents, &plugins, &cmd, &workspace))
+            .await
+            .map_err(|e| format!("Prompt copy task failed: {}", e))?;
 
     if let Err(ref e) = result {
         // Copy failed — clear the optimistic flag so a retry will re-attempt.
-        log::error!("[ensure_workspace_prompts] copy failed, clearing cache: {}", e);
+        log::error!(
+            "[ensure_workspace_prompts] copy failed, clearing cache: {}",
+            e
+        );
         invalidate_workspace_cache(workspace_path);
     }
 
@@ -188,18 +192,17 @@ pub async fn ensure_workspace_prompts(
 }
 
 /// Synchronous inner copy logic shared by async and sync entry points.
-/// Only copies agents — CLAUDE.md is rebuilt separately via `rebuild_claude_md`.
+/// Workflow agents use OpenHands' `.agents/` layout under each workspace skill
+/// directory. Workspace `CLAUDE.md` and Claude plugin manifests are maintained
+/// by non-workflow import/marketplace paths.
 pub(crate) fn copy_prompts_sync(
-    agents_dir: &Path,
+    _agents_dir: &Path,
     plugins_dir: &Path,
     _claude_md: &Path,
     workspace_path: &str,
 ) -> Result<(), String> {
-    if agents_dir.is_dir() {
-        copy_agents_to_claude_dir(agents_dir, workspace_path)?;
-    }
     if plugins_dir.is_dir() {
-        copy_managed_plugins_to_claude_dir(plugins_dir, workspace_path)?;
+        copy_workflow_plugins_to_openhands_layout(plugins_dir, Path::new(workspace_path))?;
     }
     Ok(())
 }
@@ -227,16 +230,141 @@ pub fn ensure_workspace_prompts_sync(
     Ok(())
 }
 
-/// Re-deploy only the bundled agents/plugins under `.claude/`, preserving
-/// other contents of the `.claude/` directory (skills, custom agents, etc.).
+/// Re-deploy only the bundled workflow agents/skills under `.agents/`,
+/// preserving other workspace contents.
 pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> Result<(), String> {
-    let (agents_dir, _) = resolve_prompt_source_dirs(app_handle);
+    let (_agents_dir, _) = resolve_prompt_source_dirs(app_handle);
     let plugins_dir = resolve_bundled_plugins_dir(app_handle);
-    if agents_dir.is_dir() {
-        copy_agents_to_claude_dir(&agents_dir, workspace_path)?;
-    }
     if plugins_dir.is_dir() {
-        copy_managed_plugins_to_claude_dir(&plugins_dir, workspace_path)?;
+        copy_workflow_plugins_to_openhands_layout(&plugins_dir, Path::new(workspace_path))?;
+    }
+    Ok(())
+}
+
+fn copy_workflow_plugins_to_openhands_layout(
+    plugins_src: &Path,
+    workspace: &Path,
+) -> Result<(), String> {
+    for workspace_skill_dir in discover_workspace_skill_dirs(workspace)? {
+        copy_workflow_agents_to_openhands_layout(plugins_src, &workspace_skill_dir)?;
+        copy_workflow_agent_skills_to_openhands_layout(plugins_src, &workspace_skill_dir)?;
+    }
+    Ok(())
+}
+
+fn discover_workspace_skill_dirs(workspace: &Path) -> Result<Vec<PathBuf>, String> {
+    if !workspace.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut dirs = Vec::new();
+    for plugin_entry in
+        std::fs::read_dir(workspace).map_err(|e| format!("Failed to read workspace dir: {}", e))?
+    {
+        let plugin_entry =
+            plugin_entry.map_err(|e| format!("Failed to read workspace entry: {}", e))?;
+        let plugin_path = plugin_entry.path();
+        if !plugin_path.is_dir() || plugin_entry.file_name().to_string_lossy().starts_with('.') {
+            continue;
+        }
+
+        for skill_entry in std::fs::read_dir(&plugin_path).map_err(|e| {
+            format!(
+                "Failed to read workspace plugin dir {}: {}",
+                plugin_path.display(),
+                e
+            )
+        })? {
+            let skill_entry =
+                skill_entry.map_err(|e| format!("Failed to read workspace skill entry: {}", e))?;
+            let skill_path = skill_entry.path();
+            if skill_path.is_dir() && !skill_entry.file_name().to_string_lossy().starts_with('.') {
+                dirs.push(skill_path);
+            }
+        }
+    }
+
+    dirs.sort();
+    Ok(dirs)
+}
+
+fn copy_workflow_agents_to_openhands_layout(
+    plugins_src: &Path,
+    workspace_skill_dir: &Path,
+) -> Result<(), String> {
+    let agents_dir = crate::skill_paths::workspace_agent_files_dir(workspace_skill_dir);
+    if agents_dir.is_dir() {
+        std::fs::remove_dir_all(&agents_dir)
+            .map_err(|e| format!("Failed to clear .agents/agents dir: {}", e))?;
+    }
+    std::fs::create_dir_all(&agents_dir)
+        .map_err(|e| format!("Failed to create .agents/agents dir: {}", e))?;
+
+    for plugin_entry in
+        std::fs::read_dir(plugins_src).map_err(|e| format!("Failed to read plugins dir: {}", e))?
+    {
+        let plugin_entry =
+            plugin_entry.map_err(|e| format!("Failed to read plugins entry: {}", e))?;
+        let plugin_agents = plugin_entry.path().join("agents");
+        if !plugin_agents.is_dir() {
+            continue;
+        }
+
+        for agent_entry in std::fs::read_dir(&plugin_agents)
+            .map_err(|e| format!("Failed to read plugin agents dir: {}", e))?
+        {
+            let agent_entry =
+                agent_entry.map_err(|e| format!("Failed to read plugin agent entry: {}", e))?;
+            let agent_path = agent_entry.path();
+            if agent_path.extension().and_then(|e| e.to_str()) != Some("md") {
+                continue;
+            }
+            let dest = agents_dir.join(agent_entry.file_name());
+            std::fs::copy(&agent_path, &dest).map_err(|e| {
+                format!(
+                    "Failed to copy {} to .agents/agents: {}",
+                    agent_path.display(),
+                    e
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_workflow_agent_skills_to_openhands_layout(
+    plugins_src: &Path,
+    workspace_skill_dir: &Path,
+) -> Result<(), String> {
+    let skills_dir = crate::skill_paths::workspace_agent_skills_dir(workspace_skill_dir);
+    if skills_dir.is_dir() {
+        std::fs::remove_dir_all(&skills_dir)
+            .map_err(|e| format!("Failed to clear .agents/skills dir: {}", e))?;
+    }
+    std::fs::create_dir_all(&skills_dir)
+        .map_err(|e| format!("Failed to create .agents/skills dir: {}", e))?;
+
+    for plugin_entry in
+        std::fs::read_dir(plugins_src).map_err(|e| format!("Failed to read plugins dir: {}", e))?
+    {
+        let plugin_entry =
+            plugin_entry.map_err(|e| format!("Failed to read plugins entry: {}", e))?;
+        let plugin_skills = plugin_entry.path().join("skills");
+        if !plugin_skills.is_dir() {
+            continue;
+        }
+
+        for skill_entry in std::fs::read_dir(&plugin_skills)
+            .map_err(|e| format!("Failed to read plugin skills dir: {}", e))?
+        {
+            let skill_entry =
+                skill_entry.map_err(|e| format!("Failed to read plugin skill entry: {}", e))?;
+            let skill_path = skill_entry.path();
+            if !skill_path.is_dir() {
+                continue;
+            }
+            copy_directory_recursive(&skill_path, &skills_dir.join(skill_entry.file_name()))?;
+        }
     }
     Ok(())
 }
@@ -244,7 +372,11 @@ pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> R
 /// Copy top-level agent .md files from flat bundled agent source to
 /// <workspace>/.claude/agents/.
 /// agent-sources/agents/{name}.md → .claude/agents/{name}.md
-pub(crate) fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<(), String> {
+#[allow(dead_code)]
+pub(crate) fn copy_agents_to_claude_dir(
+    agents_src: &Path,
+    workspace_path: &str,
+) -> Result<(), String> {
     let claude_agents_dir = Path::new(workspace_path).join(".claude").join("agents");
     if claude_agents_dir.is_dir() {
         std::fs::remove_dir_all(&claude_agents_dir)
@@ -270,6 +402,7 @@ pub(crate) fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str)
 
 /// Replace only app-managed plugins in `.claude/plugins` from bundled source.
 /// User-added plugins are preserved when they do not have the managed marker.
+#[allow(dead_code)]
 pub(crate) fn copy_managed_plugins_to_claude_dir(
     plugins_src: &Path,
     workspace_path: &str,
