@@ -73,6 +73,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 |---|---|
 | `agent-sources/agents/*.md` | `test:agents:structural`, `test:agents:smoke` (Promptfoo) |
 | `agent-sources/workspace/CLAUDE.md` | `test:agents:structural` |
+| `tests/evals/**` | `cd tests/evals && npm test`; live smoke via `cd tests/evals && npm run eval:harness-smoke` only when explicitly requested |
 
 ## E2E Spec Files
 
@@ -135,8 +136,12 @@ cargo test --manifest-path src-tauri/Cargo.toml commands::workflow
 
 # Agents
 npm run test:agents:structural                 # Quick structural check (free)
-npm run test:agents:smoke                      # Promptfoo behavior evals (requires API key)
+npm run test:agents:smoke                      # OpenCode/Promptfoo smoke evals (live model call)
 npm run test:agents                            # All agent tests (structural + smoke)
+
+# Eval harness
+cd ../tests/evals && npm test                  # Deterministic harness contracts
+cd ../tests/evals && npm run eval:harness-smoke # Live OpenCode harness smoke
 
 # Full suite (shared infrastructure changes)
 ./tests/run.sh

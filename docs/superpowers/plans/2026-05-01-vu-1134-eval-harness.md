@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the app-local Promptfoo harness with a root `tests/evals` harness patterned after Migration Utility's tiered runner.
+**Goal:** Replace the app-local Promptfoo harness with a root `tests/evals` harness patterned after Migration Utility's tiered runner, and prove it with one OpenCode-backed smoke eval.
 
 **Architecture:** The new harness owns its own npm package, repo-local Promptfoo state, config-resolution scripts, tier config, OpenCode provider config, and package-level eval configs. Skill Builder eval packages run through the Migration Utility-style `opencode-cli-provider.js` and suite-level OpenCode agents; deterministic Node tests validate the harness itself without calling an LLM.
 
@@ -31,8 +31,7 @@ Live/model-backed smoke evals are automated OpenCode CLI scenarios, but they rem
 - Create: `tests/evals/scripts/*.test.js`
 - Create: `tests/evals/assertions/check-json-contract.js`
 - Create: `tests/evals/assertions/check-scope-advisor-contract.js`
-- Create: `tests/evals/packages/agent-contracts/promptfooconfig.json`
-- Create: `tests/evals/packages/scope-advisor/promptfooconfig.json`
+- Create: `tests/evals/packages/harness-smoke/promptfooconfig.json`
 - Modify: `app/package.json`
 - Delete: `app/agent-tests/promptfoo/*`
 - Modify: `.gitignore`
@@ -57,12 +56,11 @@ Live/model-backed smoke evals are automated OpenCode CLI scenarios, but they rem
 - [ ] Run `cd tests/evals && npm test` and verify deterministic harness tests pass.
 - [ ] Commit the harness infrastructure.
 
-### Task 3: Move Eval Packages To OpenCode
+### Task 3: Add One OpenCode Harness Smoke Eval
 
-- [ ] Convert the two existing YAML config surfaces into package-level JSON configs with `metadata.eval_tier` and no package-local providers.
-- [ ] Use prompts that instruct OpenCode to run the relevant Skill Builder agent/scope-advisor contract scenario and emit JSON only.
-- [ ] Add assertion helpers that validate JSON shape and scenario contract booleans without exact model wording.
-- [ ] Ensure package configs receive their provider only from the resolver.
+- [ ] Add one minimal package-level JSON config with `metadata.eval_tier` and no package-local providers.
+- [ ] Use a prompt that asks OpenCode to return a tiny JSON payload proving the provider ran.
+- [ ] Keep real agent and scope-advisor scenario conversion out of this issue; VU-1135 owns eval content repair.
 - [ ] Delete the old `app/agent-tests/promptfoo` directory.
 - [ ] Run `cd tests/evals && npm test`.
 - [ ] Commit the package migration.
@@ -88,6 +86,6 @@ Live/model-backed smoke evals are automated OpenCode CLI scenarios, but they rem
 
 ## Self-Review
 
-- The plan covers the VU-1134 harness acceptance criteria and leaves eval scenario redesign to VU-1135.
+- The plan covers the VU-1134 harness acceptance criteria and leaves real eval scenario migration/redesign to VU-1135.
 - The only human-triggered step is live/model-backed OpenCode smoke execution; the scenarios themselves are automated CLI runs.
 - The plan keeps deterministic harness validation separate from live eval behavior.

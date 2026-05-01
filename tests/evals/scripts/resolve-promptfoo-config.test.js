@@ -10,7 +10,7 @@ const {
 } = require('./resolve-promptfoo-config');
 
 test('resolveConfigFile materializes an opencode provider from metadata.eval_tier', () => {
-  const resolved = resolveConfigFile('packages/agent-contracts/promptfooconfig.json');
+  const resolved = resolveConfigFile('packages/harness-smoke/promptfooconfig.json');
 
   assert.equal(
     resolved.providers[0].id,
@@ -27,7 +27,7 @@ test('resolveConfigFile materializes an opencode provider from metadata.eval_tie
   assert.equal('model' in resolved.providers[0].config, false);
   assert.equal('provider_id' in resolved.providers[0].config, false);
   assert.equal('tools' in resolved.providers[0].config, false);
-  assert.match(resolved.prompts[0], /Skill Builder agent contract regression/);
+  assert.match(resolved.prompts[0], /harness-smoke/);
 });
 
 test('resolveConfigFile rejects configs missing metadata.eval_tier', () => {
@@ -49,7 +49,7 @@ test('resolveConfigFile rejects traversal outside the eval root', () => {
 test('writeResolvedConfig writes suite-owned resolved configs only under .tmp', () => {
   const calls = [];
   const relativePath = writeResolvedConfig(
-    'packages/agent-contracts/promptfooconfig.json',
+    'packages/harness-smoke/promptfooconfig.json',
     {
       fsImpl: {
         mkdirSync: (targetPath, options) => {
@@ -62,15 +62,15 @@ test('writeResolvedConfig writes suite-owned resolved configs only under .tmp', 
     },
   );
 
-  assert.match(relativePath, /^\.tmp\/resolved-configs\/packages\/agent-contracts\/promptfooconfig\.json$/);
+  assert.match(relativePath, /^\.tmp\/resolved-configs\/packages\/harness-smoke\/promptfooconfig\.json$/);
   assert.deepEqual(calls[0], ['mkdir', TMP_ROOT, { recursive: true }]);
   assert.deepEqual(calls[1], [
     'mkdir',
-    path.join(TMP_ROOT, 'packages', 'agent-contracts'),
+    path.join(TMP_ROOT, 'packages', 'harness-smoke'),
     { recursive: true },
   ]);
   assert.equal(calls[2][0], 'write');
-  assert.equal(calls[2][1], path.join(TMP_ROOT, 'packages', 'agent-contracts', 'promptfooconfig.json'));
+  assert.equal(calls[2][1], path.join(TMP_ROOT, 'packages', 'harness-smoke', 'promptfooconfig.json'));
   assert.match(calls[2][2], /file:\/\/.*\/scripts\/opencode-cli-provider\.js/);
   assert.equal(calls[2][3], 'utf8');
 });
@@ -86,7 +86,7 @@ test('resolveProviderId makes local file providers stable from materialized conf
 test('writeResolvedConfig rejects traversal outside the resolved-config output root', () => {
   assert.throws(
     () => writeResolvedConfig(
-      'packages/agent-contracts/promptfooconfig.json',
+      'packages/harness-smoke/promptfooconfig.json',
       {
         fsImpl: {
           mkdirSync: () => {

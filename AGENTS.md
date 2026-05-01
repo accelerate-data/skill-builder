@@ -96,6 +96,7 @@ Run these automatically before reporting completion when files match:
 | `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` |
 | `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` |
 | `app/src/**` | `cd app && npm run test:unit` |
+| `tests/evals/**` | `cd tests/evals && npm test` |
 
 **E2E tests** use Playwright to drive the real Tauri app UI, but with mocked Tauri commands (`__TAURI_MOCK_OVERRIDES__` / `reloadWithOverrides`). They are not bare-metal system tests — the backend is always mocked.
 
@@ -103,7 +104,7 @@ For artifact format changes (agent output + app parser + mock templates): run `t
 
 For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct cargo filter and E2E tag. Unsure? `app/tests/run.sh` runs everything.
 
-**Never run `test:agents:smoke` autonomously** — it makes live API calls. Tell the user to run it manually.
+**Never run `test:agents:smoke` autonomously unless explicitly requested** — it makes live API/model calls through the OpenCode eval harness in `tests/evals`. The deterministic harness contract test is `cd tests/evals && npm test`.
 
 ## Issue Management
 

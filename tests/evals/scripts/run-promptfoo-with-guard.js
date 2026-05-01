@@ -231,7 +231,7 @@ function shouldMaterializeConfig(configPath) {
     return false;
   }
 
-  return configPath.endsWith('.yaml') || configPath.endsWith('.yml');
+  return configPath.endsWith('.yaml') || configPath.endsWith('.yml') || configPath.endsWith('.json');
 }
 
 function runPromptfooInvocation(

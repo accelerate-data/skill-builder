@@ -21,7 +21,7 @@ test('detectCleanupViolations ignores new files under approved eval artifact dir
   const after = {
     tracked: new Set(),
     untracked: new Set([
-      'tests/evals/output/runs/listing-objects/run-1/transcript.txt',
+      'tests/evals/output/runs/harness-smoke/run-1/transcript.txt',
       'tests/evals/results/logs/promptfoo.log',
       'tests/evals/.tmp/trace.json',
       'tests/evals/.cache/promptfoo/cache.db',
@@ -42,7 +42,7 @@ test('detectCleanupViolations reports newly dirtied tracked files outside approv
   const after = {
     tracked: new Set([
       'tests/evals/package.json',
-      'tests/evals/fixtures/analyzing-table/truncate-insert/catalog/tables/silver.dimcustomer.json',
+      'tests/evals/fixtures/harness-smoke/catalog.json',
       'tests/evals/package-lock.json',
     ]),
     untracked: new Set(),
@@ -51,7 +51,7 @@ test('detectCleanupViolations reports newly dirtied tracked files outside approv
   const violations = detectCleanupViolations(before, after);
 
   assert.deepEqual(violations, [
-    'tests/evals/fixtures/analyzing-table/truncate-insert/catalog/tables/silver.dimcustomer.json',
+    'tests/evals/fixtures/harness-smoke/catalog.json',
     'tests/evals/package-lock.json',
   ]);
 });
@@ -166,9 +166,9 @@ test('splitPromptfooInvocations preserves shared args and runs each config separ
     '--filter-pattern',
     '^\\[smoke\\]',
     '-c',
-    'packages/analyzing-table/skill-analyzing-table.yaml',
+    'packages/harness-smoke/promptfooconfig.json',
     '-c',
-    'packages/cmd-profile/cmd-profile.yaml',
+    'packages/harness-smoke/promptfooconfig.json',
   ]);
 
   assert.deepEqual(invocations, [
@@ -180,7 +180,7 @@ test('splitPromptfooInvocations preserves shared args and runs each config separ
       '--filter-pattern',
       '^\\[smoke\\]',
       '-c',
-      'packages/analyzing-table/skill-analyzing-table.yaml',
+      'packages/harness-smoke/promptfooconfig.json',
     ],
     [
       'eval',
@@ -190,7 +190,7 @@ test('splitPromptfooInvocations preserves shared args and runs each config separ
       '--filter-pattern',
       '^\\[smoke\\]',
       '-c',
-      'packages/cmd-profile/cmd-profile.yaml',
+      'packages/harness-smoke/promptfooconfig.json',
     ],
   ]);
 });
@@ -200,12 +200,12 @@ test('splitPromptfooInvocations keeps single-config and no-config argv unchanged
     splitPromptfooInvocations([
       'view',
       '-c',
-      'packages/listing-objects/skill-listing-objects.yaml',
+      'packages/harness-smoke/promptfooconfig.json',
     ]),
     [[
       'view',
       '-c',
-      'packages/listing-objects/skill-listing-objects.yaml',
+      'packages/harness-smoke/promptfooconfig.json',
     ]],
   );
 
@@ -222,9 +222,9 @@ test('splitPromptfooInvocations rejects a dangling -c flag', () => {
   );
 });
 
-test('materializeInvocation resolves suite-local yaml configs into tests/evals/.tmp', () => {
+test('materializeInvocation resolves suite-local package configs into tests/evals/.tmp', () => {
   const materialized = materializeInvocation(
-    ['eval', '-c', 'packages/listing-objects/skill-listing-objects.yaml', '-c', 'oracle-live/promptfooconfig.yaml'],
+    ['eval', '-c', 'packages/harness-smoke/promptfooconfig.json', '-c', 'packages/harness-smoke/promptfooconfig.json'],
     {
       writeResolvedConfig: (configPath) => `.tmp/resolved-configs/${configPath}`,
     },
@@ -233,16 +233,17 @@ test('materializeInvocation resolves suite-local yaml configs into tests/evals/.
   assert.deepEqual(materialized, [
     'eval',
     '-c',
-    '.tmp/resolved-configs/packages/listing-objects/skill-listing-objects.yaml',
+    '.tmp/resolved-configs/packages/harness-smoke/promptfooconfig.json',
     '-c',
-    '.tmp/resolved-configs/oracle-live/promptfooconfig.yaml',
+    '.tmp/resolved-configs/packages/harness-smoke/promptfooconfig.json',
   ]);
 });
 
-test('shouldMaterializeConfig skips already resolved configs and non-yaml args', () => {
+test('shouldMaterializeConfig skips already resolved configs and non-config args', () => {
   assert.equal(shouldMaterializeConfig('.tmp/resolved-configs/packages/foo.yaml'), false);
   assert.equal(shouldMaterializeConfig('packages/foo.yaml'), true);
-  assert.equal(shouldMaterializeConfig('oracle-live/promptfooconfig.yaml'), true);
+  assert.equal(shouldMaterializeConfig('packages/foo.json'), true);
+  assert.equal(shouldMaterializeConfig('packages/harness-smoke/promptfooconfig.json'), true);
   assert.equal(shouldMaterializeConfig('--no-cache'), false);
 });
 
@@ -271,9 +272,9 @@ test('applyDefaultEvalConcurrency runs four eval cases unless caller overrides c
 test('runPromptfooInvocation never passes unresolved package configs to promptfoo', () => {
   const spawns = [];
   const status = runPromptfooInvocation(
-    ['eval', '-c', 'packages/listing-objects/skill-listing-objects.yaml'],
+    ['eval', '-c', 'packages/harness-smoke/promptfooconfig.json'],
     {
-      materializeInvocation: () => ['eval', '-c', '.tmp/resolved-configs/packages/listing-objects/skill-listing-objects.yaml'],
+      materializeInvocation: () => ['eval', '-c', '.tmp/resolved-configs/packages/harness-smoke/promptfooconfig.json'],
       spawnSync: (command, args) => {
         spawns.push([command, args]);
         return { status: 0 };
@@ -297,7 +298,7 @@ test('runPromptfooInvocation never passes unresolved package configs to promptfo
       '--max-concurrency',
       '4',
       '-c',
-      '.tmp/resolved-configs/packages/listing-objects/skill-listing-objects.yaml',
+      '.tmp/resolved-configs/packages/harness-smoke/promptfooconfig.json',
     ],
   ]]);
 });
@@ -575,7 +576,7 @@ test('main still fails for dirty paths outside allowed roots after config materi
   const invocations = [];
   const snapshots = [
     { tracked: new Set(), untracked: new Set() },
-    { tracked: new Set(['tests/evals/packages/listing-objects/skill-listing-objects.yaml']), untracked: new Set() },
+    { tracked: new Set(['tests/evals/packages/harness-smoke/promptfooconfig.json']), untracked: new Set() },
   ];
 
   console.error = (message) => {
@@ -584,10 +585,10 @@ test('main still fails for dirty paths outside allowed roots after config materi
 
   try {
     const status = main(
-      ['eval', '-c', 'packages/listing-objects/skill-listing-objects.yaml'],
+      ['eval', '-c', 'packages/harness-smoke/promptfooconfig.json'],
       {
         collectGitSnapshot: () => snapshots.shift(),
-        detectCleanupViolations: () => ['tests/evals/packages/listing-objects/skill-listing-objects.yaml'],
+        detectCleanupViolations: () => ['tests/evals/packages/harness-smoke/promptfooconfig.json'],
         formatViolationMessage: (paths) => `violations:${paths.join(',')}`,
         restoreCleanupViolations: (paths) => {
           restored.push(...paths);
@@ -600,9 +601,9 @@ test('main still fails for dirty paths outside allowed roots after config materi
     );
 
     assert.equal(status, 1);
-    assert.deepEqual(invocations, [['eval', '-c', 'packages/listing-objects/skill-listing-objects.yaml']]);
-    assert.deepEqual(errors, ['violations:tests/evals/packages/listing-objects/skill-listing-objects.yaml']);
-    assert.deepEqual(restored, ['tests/evals/packages/listing-objects/skill-listing-objects.yaml']);
+    assert.deepEqual(invocations, [['eval', '-c', 'packages/harness-smoke/promptfooconfig.json']]);
+    assert.deepEqual(errors, ['violations:tests/evals/packages/harness-smoke/promptfooconfig.json']);
+    assert.deepEqual(restored, ['tests/evals/packages/harness-smoke/promptfooconfig.json']);
   } finally {
     console.error = originalError;
   }

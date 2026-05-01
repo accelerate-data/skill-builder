@@ -3,9 +3,10 @@
   "private": true,
   "description": "Promptfoo eval harness for Skill Builder agent behavior",
   "scripts": {
-    "eval:agents": "./scripts/promptfoo.sh eval --no-cache -c packages/agent-contracts/promptfooconfig.json",
-    "eval:scope-advisor": "./scripts/promptfoo.sh eval --no-cache -c packages/scope-advisor/promptfooconfig.json",
-    "eval:smoke": "./scripts/promptfoo.sh eval --no-cache --filter-pattern '^\\[smoke\\]' -c packages/agent-contracts/promptfooconfig.json -c packages/scope-advisor/promptfooconfig.json",
+    "eval:harness-smoke": "./scripts/promptfoo.sh eval --no-cache -c packages/harness-smoke/promptfooconfig.json",
+    "eval:agents": "npm run eval:harness-smoke",
+    "eval:scope-advisor": "npm run eval:harness-smoke",
+    "eval:smoke": "./scripts/promptfoo.sh eval --no-cache --filter-pattern '^\\[smoke\\]' -c packages/harness-smoke/promptfooconfig.json",
     "test": "node --test scripts/*.test.js assertions/*.test.js",
     "test:harness": "node --test scripts/*.test.js",
     "test:assertions": "node --test assertions/*.test.js",
