@@ -21,6 +21,7 @@ vi.mock("@/components/skill-dialog", () => ({
 }));
 
 import { WorkspaceOverview } from "@/components/workspace/workspace-overview";
+import { getSkillHistory } from "@/lib/tauri";
 
 const baseSkill: SkillSummary = {
   name: "sales-pipeline",
@@ -122,5 +123,34 @@ describe("WorkspaceOverview", () => {
     const dialog = screen.getByTestId("skill-dialog");
     expect(dialog).toBeInTheDocument();
     expect(dialog).toHaveAttribute("data-open", "true");
+  });
+
+  it("renders version history without selectable checkboxes", async () => {
+    vi.mocked(getSkillHistory).mockResolvedValueOnce([
+      {
+        sha: "1b66e7d8",
+        message: "Update analyzing-leads description via optimization",
+        timestamp: new Date().toISOString(),
+        version: "0.0.3",
+      },
+      {
+        sha: "0ae7c6ee",
+        message: "generated skill",
+        timestamp: new Date(Date.now() - 60_000).toISOString(),
+        version: null,
+      },
+    ]);
+
+    render(
+      <WorkspaceOverview
+        skill={baseSkill}
+        skillType="builder"
+      />,
+    );
+
+    expect(await screen.findByText("v0.0.3")).toBeInTheDocument();
+    expect(screen.getByText("generated skill")).toBeInTheDocument();
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /compare/i })).not.toBeInTheDocument();
   });
 });
