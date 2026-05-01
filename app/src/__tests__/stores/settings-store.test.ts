@@ -62,6 +62,30 @@ describe("useSettingsStore", () => {
     expect(state.isConfigured).toBe(true);
   });
 
+  it("does not treat a legacy Anthropic key as OpenAI provider configuration", () => {
+    useSettingsStore.getState().setSettings({
+      anthropicApiKey: "sk-ant-test-key",
+      openhandsProvider: "openai",
+      openhandsApiKey: null,
+      openhandsModel: "openai/gpt-4o",
+      skillsPath: "/some/skills",
+    });
+
+    expect(useSettingsStore.getState().isConfigured).toBe(false);
+  });
+
+  it("allows a legacy Anthropic key for Anthropic provider configuration", () => {
+    useSettingsStore.getState().setSettings({
+      anthropicApiKey: "sk-ant-test-key",
+      openhandsProvider: "anthropic",
+      openhandsApiKey: null,
+      openhandsModel: "anthropic/claude-sonnet-4-6",
+      skillsPath: "/some/skills",
+    });
+
+    expect(useSettingsStore.getState().isConfigured).toBe(true);
+  });
+
   it("setSettings stores dashboardViewMode", () => {
     useSettingsStore.getState().setSettings({
       dashboardViewMode: "list",
