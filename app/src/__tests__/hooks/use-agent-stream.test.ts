@@ -5,6 +5,11 @@ import { useRefineStore } from "@/stores/refine-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { mockListen } from "@/test/mocks/tauri";
 
+vi.mock("@/lib/queries/agent-stream-cache", () => ({
+  invalidateUsageDataAfterAgentRun: vi.fn().mockResolvedValue(undefined),
+  invalidateSkillDataAfterWorkflow: vi.fn().mockResolvedValue(undefined),
+}));
+
 type ListenCallback = (event: { payload: unknown }) => void;
 
 describe("initAgentStream", () => {
@@ -341,6 +346,18 @@ describe("initAgentStream", () => {
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.status).toBe("completed");
     expect(run.endTime).toBeDefined();
+  });
+
+  it("invalidates usage query data after agent exit", async () => {
+    const { invalidateUsageDataAfterAgentRun } = await import("@/lib/queries/agent-stream-cache");
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    await initAgentStream();
+
+    listeners["agent-exit"]({
+      payload: { agent_id: "agent-1", success: true },
+    });
+
+    expect(invalidateUsageDataAfterAgentRun).toHaveBeenCalled();
   });
 
   it("sets error status on agent-exit with success=false", async () => {
