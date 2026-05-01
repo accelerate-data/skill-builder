@@ -160,6 +160,7 @@ async fn run_workflow_step_inner(
         // output_format below.
         system_prompt: None,
         model: Some(settings.preferred_model.clone()),
+        model_base_url: None,
         api_key: settings.api_key.clone(),
         workspace_root_dir: workspace_path.replace('\\', "/"),
         workspace_skill_dir: resolve_workspace_skill_dir(
@@ -547,6 +548,7 @@ pub async fn run_answer_evaluator(
         prompt,
         system_prompt: None,
         model: Some(preferred_model),
+        model_base_url: None,
         api_key,
         workspace_root_dir: workspace_path.replace('\\', "/"),
         workspace_skill_dir: resolve_workspace_skill_dir(

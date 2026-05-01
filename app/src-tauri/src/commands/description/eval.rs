@@ -233,6 +233,7 @@ async fn run_single_eval_query(
         prompt: query.clone(),
         system_prompt: None,
         model: Some(model.to_string()),
+        model_base_url: None,
         api_key,
         // Base workspace: sidecar finds .claude/plugins/vd-agent/ here
         workspace_root_dir: workspace_root_str,
