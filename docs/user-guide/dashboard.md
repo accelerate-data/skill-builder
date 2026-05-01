@@ -38,7 +38,7 @@ When you select a skill on the dashboard route, the main area becomes a workspac
 - **Overview**
 - **Refine**
 - **Evals**
-- **Description** (currently disabled)
+- **Optimize Description**
 
 Imported skills can be viewed in the workspace shell, but builder-only actions such as Refine are not always available.
 
@@ -69,7 +69,7 @@ There is no grid/list toggle or multi-filter bar in the current dashboard UI.
 - Click an in-progress builder skill to open its [workflow](workflow/overview.md).
 - Click a completed skill to open its workspace shell on the dashboard route.
 
-The workspace shell is the current home for **Overview**, **Refine**, and **Evals**.
+The workspace shell is the current home for **Overview**, **Refine**, **Evals**, and **Optimize Description**.
 
 ---
 
@@ -89,8 +89,10 @@ The menu is grouped into sections:
 **Skill**
 
 - **Overview** — open the workspace Overview tab
+- **Eval** — open the workspace Evals tab
 - **Refine** — open the workspace Refine tab
 - **Restore version** — restore an earlier saved version
+- **Export as .skill** — save the skill as a `.skill` package
 
 **Plugin** (hidden for marketplace skills)
 
@@ -114,8 +116,10 @@ These show:
 Uploaded skills use the same workspace shell. Their menu can include:
 
 - **Overview**
-- **Refine** (opens the tab, but Refine itself is not available for uploaded skills)
+- **Refine**
+- **Eval**
 - **Restore version**
+- **Export as .skill**
 - **Create plugin** when the skill is still in the default **Skills** plugin
 - **Remove from plugin** when the skill is in a non-default plugin
 - **Move to plugin** when another eligible plugin exists
@@ -126,7 +130,8 @@ Uploaded skills use the same workspace shell. Their menu can include:
 Marketplace skills also use the workspace shell. Their menu can include:
 
 - **Overview**
-- **Refine** (opens the tab, but Refine itself is not available for marketplace skills)
+- **Refine**
+- **Eval**
 - **Restore version**
 - **Delete** when the skill is in the default plugin
 
@@ -147,6 +152,12 @@ For builder skills, it can include:
 For marketplace skills, the source appears as the marketplace URL when one is recorded.
 
 For uploaded skills, the source appears as **Uploaded**.
+
+## Evals and Optimize Description tabs
+
+Use **Evals** to define test scenarios, run selected evals, review benchmark results, and send failing results to Refine.
+
+Use **Optimize Description** to tune the skill description that controls when Claude should trigger the skill. See [Evals](test.md) and [Optimize Description](optimize-description.md) for the full workflows.
 
 ---
 

@@ -31,4 +31,4 @@ The action bar can show:
 | **Eval** | Opens the workspace **Evals** tab for this skill |
 | **Done** | Returns to the [Dashboard](../dashboard.md) |
 
-The current **Evals** tab is placeholder-only. See [Evals](../test.md).
+Use **Evals** to create scenarios, run selected evals, review benchmark results, and send failures to Refine. See [Evals](../test.md).

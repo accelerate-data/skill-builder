@@ -10,6 +10,7 @@ The current sections are:
 - **Marketplace**
 - **GitHub**
 - **Advanced**
+- **Documents**
 - **Usage**
 
 Most changes save immediately.
@@ -128,6 +129,10 @@ The current Advanced section exposes:
 The current Settings UI does not expose a workspace-folder reset control here.
 
 ---
+
+## Documents
+
+Documents is a Settings section for adding files, URLs, and folders as reference context for skill workflows. See [Documents](documents.md).
 
 ## Usage
 
