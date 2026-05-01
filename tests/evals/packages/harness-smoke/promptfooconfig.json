@@ -1,0 +1,28 @@
+{
+  "description": "OpenCode harness smoke test.",
+  "metadata": {
+    "eval_tier": "light"
+  },
+  "prompts": [
+    "Return JSON only: {\"scenario\":\"harness-smoke\",\"ok\":true,\"failures\":[]}"
+  ],
+  "tests": [
+    {
+      "description": "[smoke] harness-smoke",
+      "assert": [
+        {
+          "type": "contains",
+          "value": "\"scenario\":\"harness-smoke\""
+        },
+        {
+          "type": "contains",
+          "value": "\"ok\":true"
+        },
+        {
+          "type": "contains",
+          "value": "\"failures\":[]"
+        }
+      ]
+    }
+  ]
+}

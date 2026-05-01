@@ -1,6 +1,6 @@
 # Skill Builder
 
-Multi-agent workflow for creating domain-specific Claude skills. Tauri desktop app (React + Rust) orchestrates agents via a Node.js sidecar.
+Desktop app for creating domain-specific Claude Code-compatible skills. Tauri desktop app (React + Rust) orchestrates agents via a Node.js sidecar.
 
 **Maintenance rule:** This file contains architecture, conventions, and guidelines — not product details. Do not add counts, feature descriptions, or any fact that can be discovered by reading code. If it will go stale when the code changes, it doesn't belong here — point to the source file instead.
 
@@ -10,7 +10,7 @@ Use this precedence when maintaining agent guidance:
 
 1. `AGENTS.md` (canonical, cross-agent source of truth)
 2. `.claude/rules/*.md` (shared detailed rules; agent-agnostic content)
-3. `.claude/skills/*/SKILL.md` (workflow playbooks)
+3. `agent-sources/**` (runtime agent, plugin, skill, and workspace instructions)
 4. Agent-specific adapter files (for example `CLAUDE.md`) that reference canonical docs
 
 Adapter files must not duplicate canonical policy unless they are adding agent-specific behavior.
@@ -20,7 +20,7 @@ Adapter files must not duplicate canonical policy unless they are adding agent-s
 | Layer | Technology |
 |---|---|
 | Desktop framework | Tauri v2 |
-| Frontend | React 19, TypeScript strict, Vite 7 |
+| Frontend | React 19, TypeScript strict, Vite 8 |
 | Styling | Tailwind CSS 4, shadcn/ui |
 | State | Zustand, TanStack Router |
 | Icons | Lucide React |
@@ -59,7 +59,7 @@ Read these before starting any non-trivial task:
 
 | Artifact | Update when |
 |---|---|
-| `AGENTS.md` | A fact is durable, non-obvious, and won't be obvious from code · a skill is added to `.claude/skills/` |
+| `AGENTS.md` | A fact is durable, non-obvious, and won't be obvious from code |
 | `repo-map.json` | Any file added, removed, or renamed inside `commands/`, `stores/`, `pages/`, `components/`, `lib/`, `hooks/` · sub-module directory added or restructured · new Tauri command file · entrypoint or package structure change |
 | `README.md` | User-facing installation, configuration, commands, or architecture overview changes |
 | `TEST_MANIFEST.md` | Rust command file added/removed · E2E spec added/removed · shared infra file added/removed · agent artifact format changes affecting a Rust or TS parser |
@@ -96,6 +96,7 @@ Run these automatically before reporting completion when files match:
 | `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` |
 | `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` |
 | `app/src/**` | `cd app && npm run test:unit` |
+| `tests/evals/**` | `cd tests/evals && npm test` |
 
 **E2E tests** use Playwright to drive the real Tauri app UI, but with mocked Tauri commands (`__TAURI_MOCK_OVERRIDES__` / `reloadWithOverrides`). They are not bare-metal system tests — the backend is always mocked.
 
@@ -103,21 +104,20 @@ For artifact format changes (agent output + app parser + mock templates): run `t
 
 For Rust and cross-layer changes, consult `TEST_MANIFEST.md` for the correct cargo filter and E2E tag. Unsure? `app/tests/run.sh` runs everything.
 
-**Never run `test:agents:smoke` autonomously** — it makes live API calls. Tell the user to run it manually.
+**Never run `test:agents:smoke` autonomously unless explicitly requested** — it makes live API/model calls through the OpenCode eval harness in `tests/evals`. The deterministic harness contract test is `cd tests/evals && npm test`.
 
 ## Issue Management
 
 - **PR title format:** `VU-XXX: short description`
 - **PR body link:** `Fixes VU-XXX`
 - **Linear project:** All issues created for this repository must be created under **Skill Builder**.
-- **Worktrees:** `../worktrees/<branchName>` relative to repo root, preserving the full branch name including the `feature/` prefix. Pre-create the parent directory before adding:
+- **Worktrees:** Use `./scripts/worktree.sh <branch-name>` as the canonical maintainer workflow for creating or attaching a repo worktree and bootstrapping it. It preserves the full branch name under `../worktrees/<branchName>` and symlinks each worktree's `tests/evals/.promptfoo` back to the source checkout so Promptfoo history/database state stays out of feature worktrees.
 
   ```bash
-  mkdir -p ../worktrees/feature
-  git worktree add ../worktrees/feature/<branch-name> <branch-name>
+  ./scripts/worktree.sh feature/<branch-name>
   ```
 
-**Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/` · `cd app && npm run test:unit` when changing event types in `app/src/lib/` or `app/sidecar/`.
+**Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, or `.claude/rules/` · `cd app && npm run test:unit` when changing event types in `app/src/lib/` or `app/sidecar/`.
 
 **Pre-PR `repo-map.json` audit (required):** Before opening or updating a PR, verify `repo-map.json` reflects the current codebase. Check:
 

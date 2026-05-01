@@ -18,7 +18,7 @@ You get a file viewer that renders the generated markdown.
 
 1. Review `SKILL.md` — this is the main skill file. It contains the instructions Claude will follow.
 2. If a dropdown is shown, open each reference file to review supplementary content.
-3. If something looks wrong, go back to an earlier step and correct your answers. See [How to reset a step](overview.md#how-to-reset-a-step).
+3. If something looks wrong, go back to an earlier step and correct your answers. See [Reset a step](overview.md#reset-a-step).
 
 ---
 

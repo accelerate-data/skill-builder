@@ -101,6 +101,7 @@ jobs:
           open -n "$DIR/Skill Builder.app"
           SCRIPT
           chmod +x "$STAGE/run.sh"
+          node scripts/verify-release-stage.mjs "$STAGE" macos
           zip -r "${STAGE}.zip" "$STAGE"
 
       - name: Package Windows release
@@ -113,26 +114,24 @@ jobs:
           mkdir -p "$STAGE"
           cp "app/src-tauri/target/release/skill-builder.exe" "$STAGE/"
 
-          # Copy sidecar JS files (bootstrap + agent-runner + SDK)
-          # The Rust exe-relative fallback looks for {exe_dir}/sidecar/dist/...
+          # Copy sidecar JS files. The Rust exe-relative fallback looks for
+          # {exe_dir}/sidecar/dist/...
           mkdir -p "$STAGE/sidecar/dist/sdk"
           cp "app/sidecar/dist/package.json" "$STAGE/sidecar/dist/"
           cp "app/sidecar/dist/bootstrap.js" "$STAGE/sidecar/dist/"
           cp "app/sidecar/dist/agent-runner.js" "$STAGE/sidecar/dist/"
-          cp "app/sidecar/dist/sdk/cli.js" "$STAGE/sidecar/dist/sdk/"
-          cp "app/sidecar/dist/sdk/manifest.json" "$STAGE/sidecar/dist/sdk/"
+          cp "app/sidecar/dist/sdk/claude.exe" "$STAGE/sidecar/dist/sdk/"
           cp app/sidecar/dist/sdk/*.wasm "$STAGE/sidecar/dist/sdk/" 2>/dev/null || true
           if [ -d "app/sidecar/dist/sdk/vendor" ]; then
             cp -r "app/sidecar/dist/sdk/vendor" "$STAGE/sidecar/dist/sdk/"
           fi
 
-          # Copy agents and references (used by the sidecar at runtime)
-          if [ -d "agents" ]; then
-            cp -r "agents" "$STAGE/agents"
-          fi
-          if [ -d "references" ]; then
-            cp -r "references" "$STAGE/references"
-          fi
+          mkdir -p "$STAGE/agent-sources" "$STAGE/workspace"
+          cp -r "agent-sources/plugins" "$STAGE/agent-sources/plugins"
+          cp -r "agent-sources/skills" "$STAGE/agent-sources/skills"
+          cp -r "agent-sources/workspace/." "$STAGE/workspace/"
+
+          node scripts/verify-release-stage.mjs "$STAGE" windows
 
           7z a "${STAGE}.zip" "$STAGE"
 

@@ -46,4 +46,4 @@ When a decision needs review, the card is editable in update mode and changes au
 
 Click **Next Step** at the bottom right. You can continue regardless of decision status.
 
-> To change your original answers instead of editing decisions here, go back to an earlier step via the sidebar. See [How to reset a step](overview.md#how-to-reset-a-step).
+> To change your original answers instead of editing decisions here, go back to an earlier step via the sidebar. See [Reset a step](overview.md#reset-a-step).

@@ -15,6 +15,11 @@
       "manifest": "app/sidecar/package.json"
     },
     {
+      "name": "npm (evals)",
+      "lockfile": "tests/evals/package-lock.json",
+      "manifest": "tests/evals/package.json"
+    },
+    {
       "name": "cargo",
       "lockfile": "app/src-tauri/Cargo.lock",
       "manifest": "app/src-tauri/Cargo.toml"
@@ -27,7 +32,7 @@
       "notes": "Bundles frontend (Vite), Rust backend, sidecar dist, and agent-sources as app resources. Identifier: com.vibedata.skill-builder. CSP allows Anthropic API + GitHub API. Dev port: DEV_PORT (default 1420), HMR on DEV_PORT+1."
     },
     {
-      "name": "Vite 7",
+      "name": "Vite 8",
       "config_files": ["app/vite.config.ts", "app/tsconfig.json"],
       "notes": "React + Tailwind plugin. Path alias `@/` → `./src/`. E2E mock path alias via TAURI_E2E env var."
     },
@@ -47,7 +52,7 @@
         ".github/workflows/sync-skill-creator.yml",
         ".github/workflows/sync-vd-agent.yml"
       ],
-      "notes": "pr-ci.yml: platform CI (Linux/Windows/macOS) + frontend unit/integration. pr-policy.yml: docs build, agents-structural, instruction-docs-lint, repo-map-audit, test-manifest-audit. security.yml: dependency-review, CodeQL, cargo-audit. docs.yml: VitePress GitHub Pages deploy. release.yml: multi-platform Tauri build + publish."
+      "notes": "pr-ci.yml: heavy platform CI (Linux/Windows/macOS) + frontend unit/integration on main push or manual dispatch. pr-policy.yml: cheap PR checks for docs build/help links, script tests, agents-structural, eval-harness, instruction-docs-lint, repo-map-audit, test-manifest-audit. security.yml: dependency-review, CodeQL, cargo-audit. docs.yml: deterministic VitePress GitHub Pages deploy. release.yml: multi-platform Tauri build, release-stage verification, and publish."
     }
   ],
   "test_frameworks": [
@@ -63,7 +68,7 @@
     },
     {
       "name": "Promptfoo",
-      "scope": "Agent smoke tests (live API calls — manual only, do not run autonomously)"
+      "scope": "Agent smoke tests via the root tests/evals OpenCode harness (live model calls — manual unless explicitly requested)"
     },
     {
       "name": "cargo test",
@@ -74,7 +79,7 @@
     {
       "name": "Skill Builder Desktop",
       "type": "Tauri v2 desktop app",
-      "description": "Multi-agent workflow for creating domain-specific Claude skills. React frontend + Rust backend + Node.js agent sidecar.",
+      "description": "Desktop workflow for creating domain-specific Claude Code-compatible skills. React frontend + Rust backend + Node.js agent sidecar.",
       "identifier": "com.vibedata.skill-builder"
     }
   ],
@@ -135,8 +140,8 @@
       "description": "Mock mode: replays bundled templates with no API calls. Activated via MOCK_AGENTS=true."
     },
     "agent_prompts": {
-      "path": "agent-sources/agents/",
-      "description": "Flat directory of .md agent prompts: answer-evaluator. Plugin-hosted agents: generate-skill and rewrite-skill under agent-sources/plugins/skill-creator/agents/; skill-builder, research-orchestrator, detailed-research, and confirm-decisions under agent-sources/plugins/skill-content-researcher/agents/. Plugin-hosted skills: skill-evaluator and skill-validator under agent-sources/plugins/skill-creator/skills/"
+      "path": "agent-sources/plugins/*/agents/",
+      "description": "Plugin-hosted agent prompts: generate-skill and rewrite-skill under agent-sources/plugins/skill-creator/agents/; skill-builder, research-orchestrator, detailed-research, confirm-decisions, and answer-evaluator under agent-sources/plugins/skill-content-researcher/agents/. Plugin-hosted skills include skill-evaluator and skill-validator under agent-sources/plugins/skill-creator/skills/"
     },
     "agent_plugins": {
       "path": "agent-sources/plugins/",
@@ -172,15 +177,15 @@
     "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, SDK invocation, mock mode)",
     "app/sidecar/__tests__/": "Sidecar unit tests (one test file per sidecar module)",
     "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, evals, settings, usage, skill-tester, skills-library, integration, desktop-smoke, fixtures, helpers, setup",
-    "agent-sources/agents/": "Agent prompt .md files — flat directory, structurally validated by test:agents:structural",
+    "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains suite-owned tier config, OpenCode provider config, package-level eval configs, deterministic harness tests, repo-local Promptfoo state ignores, and live model smoke commands.",
     "agent-sources/workspace/": "Workspace agent instructions: CLAUDE.md (full), CLAUDE-MINIMAL.md (lightweight), prompts/ (shared fragments). Deployed to workspace .claude/ at app startup.",
     "agent-sources/plugins/": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent",
     "docs/design/": "Architecture decision records and design specs: agent-specs, backend-design, startup-recon, workflow-state, clarifications-rendering, skill-tester, skills-marketplace, and more. Primary reference for non-obvious design decisions.",
     "docs/user-guide/": "VitePress user documentation, deployed via docs.yml to GitHub Pages",
     "docs/references/": "Vendored external reference docs (e.g. Anthropic API snapshots)",
     ".claude/rules/": "Shared agent rules (agent-agnostic, detailed policy). Referenced from AGENTS.md.",
-    ".claude/skills/": "Workflow playbooks for Claude Code CLI skills",
-    "scripts/": "Developer and automation scripts"
+    ".claude/repo-map.schema.json": "Schema for repo-map.json",
+    "scripts/": "Developer and automation scripts. worktree.sh is the canonical maintainer helper for creating development worktrees; it bootstraps app/eval dependencies and symlinks worktree Promptfoo state back to the source checkout. check-help-docs.mjs verifies app/VitePress help links against docs/user-guide. verify-release-stage.mjs verifies staged release archives include required runtime resources."
   },
   "dependencies_internal": {
     "frontend → rust": "Via Tauri IPC (`invoke()` from @tauri-apps/api/core)",
@@ -198,7 +203,7 @@
       "db": "rusqlite (bundled SQLite)"
     },
     "dev": {
-      "vite": "Vite 7 + @vitejs/plugin-react",
+      "vite": "Vite 8 + @vitejs/plugin-react",
       "vitest": "Vitest (unit + structural agent tests)",
       "playwright": "Playwright (E2E)",
       "promptfoo": "Promptfoo (agent smoke tests, manual only)",
@@ -215,7 +220,13 @@
     "test_unit": "cd app && npm run test:unit",
     "test_changed": "cd app && npm run test:changed",
     "test_agents_structural": "cd app && npm run test:agents:structural",
-    "test_agents_smoke": "cd app && npm run test:agents:smoke  # MANUAL ONLY — makes live API calls",
+    "test_agents_smoke": "cd app && npm run test:agents:smoke  # live OpenCode/Promptfoo model call",
+    "test_eval_harness": "cd tests/evals && npm test",
+    "test_eval_harness_smoke": "cd tests/evals && npm run eval:harness-smoke  # live OpenCode/Promptfoo model call",
+    "test_release_docs_ci_scripts": "node --test scripts/*.test.mjs",
+    "check_help_docs": "node scripts/check-help-docs.mjs",
+    "verify_release_stage": "node scripts/verify-release-stage.mjs <stage-dir> <windows|macos>",
+    "create_worktree": "./scripts/worktree.sh feature/<branch-name>",
     "test_sidecar": "cd app/sidecar && npx vitest run",
     "test_e2e": "cd app && npm run test:e2e",
     "test_all": "cd app && bash tests/run.sh",
@@ -236,7 +247,7 @@
     "commits": "Granular — one concern per commit. Stage specific files (`git add <file>`, not `git add .`).",
     "pr_title": "VU-XXX: short description",
     "pr_body": "Fixes VU-XXX",
-    "worktrees": "../worktrees/<branchName> relative to repo root",
+    "worktrees": "Use ./scripts/worktree.sh <branchName>; worktrees live at ../worktrees/<branchName> relative to repo root and share Promptfoo DB/state through a tests/evals/.promptfoo symlink to the source checkout",
     "linear_project": "All issues for this repo go under Skill Builder",
     "file_size_and_responsibility": "Keep files focused on one concern. Split when a file exceeds ~300 lines (frontend TS/TSX) or ~400 lines (Rust command file). Rust: extract sub-module directories when a command group combines API surface, orchestration, persistence, and filesystem ops. Frontend: extract sub-components, custom hooks, or lib utilities rather than growing a component or page inline.",
     "no_monoliths": "A Tauri command file should define commands and delegate to helpers — not own query logic, filesystem ops, and business rules simultaneously. A React component should render — not own a state machine, data fetching, and complex transformations inline. When in doubt, split."
@@ -247,16 +258,16 @@
     "startup_recon_design": "docs/design/startup-recon/ — reconciliation scenario matrix (scenarios 1–12), used by reconciliation/",
     "coding_conventions": ".claude/rules/coding-conventions.md — naming, error handling",
     "frontend_rules": ".claude/rules/frontend-design.md — AD brand, component constraints, state indicators",
-    "rust_rules": ".claude/rules/rust-backend.md — command conventions, error types, Rust testing",
-    "sidecar_rules": ".claude/rules/agent-sidecar.md — JSONL protocol, sidecar constraints",
-    "db_change_protocol": ".claude/rules/db-schema-change.md — mandatory protocol for any schema, migration, or persistence change",
+    "codegen_rules": ".claude/rules/codegen.md — generated contract freshness requirements",
+    "path_conventions": ".claude/rules/path-conventions.md — skill builder path vs workspace path rules",
+    "state_management": ".claude/rules/state-management.md — frontend local-state vs Zustand boundaries",
     "windows_compat": ".claude/rules/windows-compat.md — path separators, CRLF, env-var syntax, Rust toolchain. Read before writing path assertions, regex, package.json scripts, or CI config.",
     "logging_policy": ".claude/rules/logging-policy.md — log levels, sensitive data redaction, structured logging, correlation IDs",
     "test_manifest": "TEST_MANIFEST.md — Rust command → E2E tag mappings, shared infra blast radius, cross-boundary format compliance. Read before choosing tests for Rust or cross-layer changes."
   },
   "notes_for_agents": {
     "startup": "Read this file before exploring code. It is the primary startup context for structure, entrypoints, modules, and commands. Skip repo-wide rediscovery if it covers your task.",
-    "test_autonomy": "Only `test:agents:structural` may be run autonomously — no API calls. Never run `test:agents:smoke` autonomously.",
+    "test_autonomy": "`cd tests/evals && npm test` and `test:agents:structural` are deterministic. `test:agents:smoke` and `tests/evals` eval scripts make live model calls; run them only when explicitly requested.",
     "db_location": "Database is at Tauri app_data_dir()/skill-builder.db. macOS: ~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db",
     "migrations": "DB migrations are code-only in db/migrations.rs NUMBERED_MIGRATIONS constant — no separate migration files directory.",
     "workspace_path": "Workspace: <app_local_data_dir>/workspace (not user-configurable). Resolved from Tauri app_local_data_dir() by resolve_workspace_path() in commands/workspace.rs. Legacy ~/.vibedata/ path is cleaned up automatically on startup.",

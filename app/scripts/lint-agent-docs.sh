@@ -9,8 +9,11 @@ check_paths=(
   "AGENTS.md"
   "CLAUDE.md"
   ".claude/rules"
-  ".claude/skills"
 )
+
+if [[ -d ".claude/skills" ]]; then
+  check_paths+=(".claude/skills")
+fi
 
 legacy_patterns=(
   "linear-server:"

@@ -17,7 +17,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Detect relevant changes
+        id: changes
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            docs:
+              - 'docs/user-guide/**'
+              - 'docs/.vitepress/**'
+              - 'docs/package.json'
+              - 'docs/package-lock.json'
+              - 'scripts/check-help-docs.mjs'
+              - 'app/src/lib/help-urls.ts'
+
       - name: Setup Node.js
+        if: steps.changes.outputs.docs == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: "20"
@@ -25,12 +39,22 @@ jobs:
           cache-dependency-path: docs/package-lock.json
 
       - name: Install docs dependencies
+        if: steps.changes.outputs.docs == 'true'
         working-directory: docs
-        run: npm install
+        run: npm ci
+
+      - name: Check help documentation links
+        if: steps.changes.outputs.docs == 'true'
+        run: node scripts/check-help-docs.mjs
 
       - name: Build user-guide site
+        if: steps.changes.outputs.docs == 'true'
         working-directory: docs
         run: npm run build
+
+      - name: Skip (no docs changes)
+        if: steps.changes.outputs.docs != 'true'
+        run: echo "No docs changes detected — skipping."
 
   agents-structural:
     name: agents-structural
@@ -99,13 +123,6 @@ jobs:
           npx markdownlint-cli2
           "AGENTS.md" "CLAUDE.md" "README.md" "TEST_MANIFEST.md"
           ".claude/rules/**/*.md"
-          ".claude/skills/close-linear-issue/SKILL.md"
-          ".claude/skills/create-linear-issue/SKILL.md"
-          ".claude/skills/explaining-code/SKILL.md"
-          ".claude/skills/front-end-design/SKILL.md"
-          ".claude/skills/implement-linear-issue/SKILL.md"
-          ".claude/skills/implement-linear-issue/references/*.md"
-          ".claude/skills/playwright/SKILL.md"
           "agent-sources/**/*.md"
           "#agent-sources/plugins/vd-agent/**"
           "#agent-sources/plugins/skill-creator/skills/skill-creator/**"
@@ -115,6 +132,66 @@ jobs:
       - name: Skip (no relevant changes)
         if: steps.changes.outputs.docs != 'true'
         run: echo "No markdown/instruction-doc changes detected — skipping."
+
+  eval-harness:
+    name: eval-harness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect relevant changes
+        id: changes
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            evals:
+              - 'tests/evals/**'
+
+      - name: Setup Node.js
+        if: steps.changes.outputs.evals == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "lts/*"
+          cache: "npm"
+          cache-dependency-path: tests/evals/package-lock.json
+
+      - name: Install eval harness dependencies
+        if: steps.changes.outputs.evals == 'true'
+        working-directory: tests/evals
+        run: npm ci --prefer-offline
+
+      - name: Run deterministic eval harness tests
+        if: steps.changes.outputs.evals == 'true'
+        working-directory: tests/evals
+        run: npm test
+
+      - name: Skip (no eval harness changes)
+        if: steps.changes.outputs.evals != 'true'
+        run: echo "No eval harness changes detected — skipping."
+
+  script-tests:
+    name: script-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect relevant changes
+        id: changes
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            scripts:
+              - 'scripts/*.mjs'
+
+      - name: Run script tests
+        if: steps.changes.outputs.scripts == 'true'
+        run: node --test scripts/*.test.mjs
+
+      - name: Skip (no script changes)
+        if: steps.changes.outputs.scripts != 'true'
+        run: echo "No script changes detected — skipping."
 
   repo-map-audit:
     name: repo-map-audit
@@ -131,6 +208,9 @@ jobs:
           HEAD_SHA="${{ github.event.pull_request.head.sha }}"
 
           STRUCTURAL_DIRS=(
+            ".github/"
+            "scripts/"
+            "tests/evals/"
             "app/src-tauri/src/commands/"
             "app/src/stores/"
             "app/src/pages/"
