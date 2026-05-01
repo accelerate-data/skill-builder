@@ -373,19 +373,19 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await getAgentId(page);
 
     await page.getByRole("tab", { name: "Overview" }).click();
-    await expect(page.getByRole("heading", { name: "Agent Running" })).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("An agent is still running. Switching tabs will abandon the session.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Process Running" })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("A process is still running. Switching tabs will abandon the session.")).toBeVisible();
 
     await page.getByRole("button", { name: "Stay" }).click();
-    await expect(page.getByRole("heading", { name: "Agent Running" })).not.toBeVisible();
+    await expect(page.getByRole("heading", { name: "Process Running" })).not.toBeVisible();
     await expect(page.getByRole("tab", { name: "Refine", exact: true })).toHaveAttribute("data-state", "active");
     await expect(page.getByTestId("refine-chat-input")).toBeVisible();
 
     await page.getByRole("tab", { name: "Overview" }).click();
-    await expect(page.getByRole("heading", { name: "Agent Running" })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("heading", { name: "Process Running" })).toBeVisible({ timeout: 5_000 });
     await page.getByRole("button", { name: "Leave" }).click();
 
-    await expect(page.getByRole("heading", { name: "Agent Running" })).not.toBeVisible();
+    await expect(page.getByRole("heading", { name: "Process Running" })).not.toBeVisible();
     await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("data-state", "active");
   });
 
