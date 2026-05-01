@@ -201,16 +201,16 @@ All dimension reference files (`references/dimensions/*.md`), `references/scorin
 
 ## Multi-Model Support
 
-OpenHands routes all LLM calls through LiteLLM. The `model` field in `SidecarConfig` accepts a LiteLLM provider string. The runner passes it directly to the OpenHands `LLMConfig`.
+OpenHands routes all LLM calls through LiteLLM. The `model` field in `SidecarConfig` always carries a full LiteLLM provider string. The runner passes it directly to `LLMConfig` with no inference — bare model names are not accepted. The Settings UI assembles the string from a provider dropdown and model picker so users never write it manually.
 
-| Provider | Model string example | API key env var |
+| Provider | Model string | API key env var |
 |---|---|---|
 | Anthropic | `anthropic/claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
 | OpenAI | `openai/gpt-4o` | `OPENAI_API_KEY` |
 | Google | `google/gemini-2.0-flash` | `GEMINI_API_KEY` |
 | Ollama (local) | `ollama/llama3.2` | None (base URL) |
 
-Settings UI adds a provider dropdown and per-provider API key field. The `apiKey` field in `SidecarConfig` carries the selected provider's key. A `modelBaseUrl` field is added for local/custom endpoints. Rust emits the appropriate env var to the runner based on the provider prefix.
+The `apiKey` field in `SidecarConfig` carries the selected provider's key. A `modelBaseUrl` field is added for local/custom endpoints. Rust derives the correct env var from the provider prefix in the model string.
 
 ## Runtime Packaging
 
@@ -233,16 +233,16 @@ If startup latency from PyInstaller initialization is unacceptable in testing, t
 
 ## Output Layout
 
-Generated skill artifacts move from `.claude/plugins/<plugin-slug>/` to `.agents/`:
+The workspace directory path is unchanged. Agent and skill artifacts move from `.claude/plugins/<plugin-slug>/` to `.agents/` within the same workspace directory:
 
-| Current path | Target path |
+| Current path (relative to workspace dir) | Target path (relative to workspace dir) |
 |---|---|
 | `.claude/plugins/<slug>/agents/*.md` | `.agents/agents/*.md` |
 | `.claude/plugins/<slug>/skills/*/SKILL.md` | `.agents/skills/*/SKILL.md` |
 | `.claude/plugins/<slug>/.claude-plugin/plugin.json` | Not needed — agents and skills are discovered directly |
-| `CLAUDE.md` | `AGENTS.md` (already generated; OpenHands and Claude Code both read it) |
+| `CLAUDE.md` | Not generated — `AGENTS.md` is the only always-on context file |
 
-`plugin.json` and the `.claude-plugin/` directory are eliminated. Plugin identity is carried by agent and skill frontmatter names.
+`plugin.json` and the `.claude-plugin/` directory are eliminated. Plugin identity is carried by agent and skill frontmatter names. This binary ships OpenHands only — `CLAUDE.md` generation is removed with no compatibility shim.
 
 ## AskUserQuestion Gap
 
@@ -268,6 +268,7 @@ Refine streaming remains broken until a custom `AskUserQuestion` tool is impleme
 | Parallel sub-agent spawning instructions | Replaced by inline sequential execution |
 | Sub-agent merge and deduplication logic | Not needed with inline execution |
 | `options.ts` Claude SDK option builder | Runner builds OpenHands config directly |
+| `CLAUDE.md` generation | Clean break — `AGENTS.md` is the only always-on context file; no compatibility shim |
 
 ## Key Source Files
 
@@ -292,9 +293,3 @@ Refine streaming remains broken until a custom `AskUserQuestion` tool is impleme
 | PyInstaller binary size and startup time | Measure at CI build time. If startup latency is unacceptable, switch to a `uv`-managed venv with a first-launch install step instead. |
 | Inline research quality vs parallel sub-agents | The agent has full cross-dimension context in one pass, which may improve coherence. Run a side-by-side eval on 3–5 representative skill topics before shipping. |
 | `AskUserQuestion` gap affects refine UX | Clearly communicated in release notes. Refine returns an explicit error message directing users to use workflow mode. |
-
-## Open Questions
-
-1. Should `.agents/` be generated into the user's skills repository or into the app workspace? The current `.claude/plugins/` layout goes into the skills repo so users can version-control agent files. The same should apply to `.agents/`.
-2. Should Skill Builder continue generating `CLAUDE.md` alongside `AGENTS.md` during the transition period, or is `AGENTS.md` sufficient?
-3. Should the `model` field accept a bare model name (e.g. `claude-sonnet-4-6`) and have the runner infer the provider prefix, or should the Settings UI always emit full LiteLLM provider strings?
