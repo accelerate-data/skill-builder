@@ -15,6 +15,7 @@ const defaultProps = {
   onSend: vi.fn(),
   onCancel: vi.fn(),
   isRunning: false,
+  waitingForQuestion: false,
   availableFiles: ["SKILL.md", "references/glossary.md"],
   availableAgents: ["skill-creator:rewrite-skill", "skill-creator:generate-skill"],
 };
@@ -53,6 +54,12 @@ describe("ChatInputBar", () => {
 
     expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
     expect(defaultProps.onSend).not.toHaveBeenCalled();
+  });
+
+  it("shows pending question status while the agent is waiting for an answer", () => {
+    renderBar({ isRunning: true, waitingForQuestion: true });
+
+    expect(screen.getByText("Answer the pending question above to continue.")).toBeInTheDocument();
   });
 
   it("does not show command buttons", () => {

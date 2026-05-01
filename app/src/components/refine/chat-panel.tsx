@@ -29,6 +29,7 @@ export function ChatPanel({
   const messages = useRefineStore((s) => s.messages);
   const sessionExhausted = useRefineStore((s) => s.sessionExhausted);
   const pendingInitialMessage = useRefineStore((s) => s.pendingInitialMessage);
+  const waitingForQuestion = messages.some((message) => message.role === "question" && message.pending);
 
   // Suggestion chip click — inject text into the input via the store's
   // pendingInitialMessage mechanism (same as cross-page navigation).
@@ -68,6 +69,7 @@ export function ChatPanel({
         onSend={onSend}
         onCancel={onCancel}
         isRunning={isRunning || sessionExhausted || !!scopeBlocked}
+        waitingForQuestion={waitingForQuestion}
         availableFiles={availableFiles}
         availableAgents={availableAgents}
         prefilledValue={pendingInitialMessage ?? undefined}

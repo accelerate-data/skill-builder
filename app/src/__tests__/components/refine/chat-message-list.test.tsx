@@ -80,6 +80,47 @@ describe("ChatMessageList", () => {
     expect(onQuestionSubmit).toHaveBeenCalled();
   });
 
+  it("submits multi-select question answers as a comma-separated string", async () => {
+    const user = userEvent.setup();
+    const onQuestionSubmit = vi.fn().mockResolvedValue(undefined);
+    const messages: RefineMessage[] = [
+      {
+        id: "q1",
+        role: "question",
+        agentId: "agent-1",
+        toolUseId: "toolu_1",
+        pending: true,
+        questions: [{
+          header: "Deal Type",
+          question: "Which deal types need more detail?",
+          multiSelect: true,
+          options: [
+            { label: "Staffing", description: "Short-cycle services." },
+            { label: "Transformation", description: "Long-cycle projects." },
+            { label: "Managed Services", description: "Recurring services." },
+          ],
+        }],
+        timestamp: 1,
+      },
+    ];
+
+    render(<ChatMessageList messages={messages} isRunning={false} onQuestionSubmit={onQuestionSubmit} />);
+
+    await user.click(screen.getByRole("button", { name: /staffing/i }));
+    await user.click(screen.getByRole("button", { name: /managed services/i }));
+    await user.click(screen.getByTestId("refine-question-submit"));
+
+    expect(onQuestionSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "q1" }),
+      expect.objectContaining({
+        answers: {
+          "Which deal types need more detail?": "Staffing, Managed Services",
+        },
+        selectedLabels: ["Staffing", "Managed Services"],
+      }),
+    );
+  });
+
   it("renders multi-question as wizard with step-through navigation", async () => {
     const user = userEvent.setup();
     const onQuestionSubmit = vi.fn().mockResolvedValue(undefined);
