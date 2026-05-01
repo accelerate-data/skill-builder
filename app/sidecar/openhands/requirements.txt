@@ -1,0 +1,7 @@
+# OpenHands Python runner — dev-only spike dependencies
+# Install with: pip install -r app/sidecar/openhands/requirements.txt
+#
+# The correct package name is openhands-ai (PyPI).
+# The import path inside the package is `openhands.*`.
+
+openhands-ai>=0.38.0
