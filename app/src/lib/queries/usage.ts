@@ -68,7 +68,7 @@ export function useUsageSkillNamesQuery() {
   return useQuery({
     queryKey: queryKeys.usage.skillNames,
     queryFn: getWorkflowSkillNames,
-    initialData: [],
+    placeholderData: [],
   });
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   mockInvoke,
@@ -8,6 +8,7 @@ import {
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { AppSettings, LibraryPlugin } from "@/lib/types";
+import { renderWithQueryClient as render } from "@/test/query-test-utils";
 
 vi.mock("@/lib/toast", () => ({
   toast: {
@@ -35,6 +36,7 @@ vi.mock("remark-gfm", () => ({
 
 import { ImportedSkillsTab } from "@/components/imported-skills-tab";
 import { toast } from "@/lib/toast";
+import { queryKeys } from "@/lib/queries/query-keys";
 
 const defaultSettings: AppSettings = {
   anthropic_api_key: "sk-test",
@@ -211,7 +213,8 @@ describe("ImportedSkillsTab", () => {
   it("delete plugin shows success toast and refreshes list", async () => {
     const user = userEvent.setup();
     setupMocks();
-    render(<ImportedSkillsTab />);
+    const { queryClient } = render(<ImportedSkillsTab />);
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Delete Analytics Pack")).toBeInTheDocument();
@@ -226,6 +229,7 @@ describe("ImportedSkillsTab", () => {
       'Deleted plugin "Analytics Pack"',
       expect.anything(),
     );
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.skills.all });
   });
 
   it("shows source URL when available", async () => {

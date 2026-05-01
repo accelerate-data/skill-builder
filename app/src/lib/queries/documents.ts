@@ -8,6 +8,7 @@ import {
   listSkillsForDocuments,
   updateDocument,
 } from "@/lib/tauri";
+import type { Document } from "@/lib/types";
 import { queryKeys } from "./query-keys";
 
 interface AddDocumentFileInput {
@@ -41,7 +42,7 @@ export function useDocumentsQuery() {
   return useQuery({
     queryKey: queryKeys.documents.list,
     queryFn: listDocuments,
-    initialData: [],
+    placeholderData: [],
   });
 }
 
@@ -49,60 +50,73 @@ export function useDocumentSkillOptionsQuery() {
   return useQuery({
     queryKey: queryKeys.documents.skills,
     queryFn: listSkillsForDocuments,
-    initialData: [],
+    placeholderData: [],
   });
 }
 
-export function useInvalidateDocuments() {
+function useDocumentCacheUpdates() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: queryKeys.documents.all });
-}
-
-function useInvalidateDocumentsOnSuccess() {
-  const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: queryKeys.documents.all });
+  return {
+    append: (documents: Document | Document[]) => {
+      const nextDocuments = Array.isArray(documents) ? documents : [documents];
+      queryClient.setQueryData<Document[]>(queryKeys.documents.list, (current = []) => [
+        ...current.filter((doc) => !nextDocuments.some((next) => next.id === doc.id)),
+        ...nextDocuments,
+      ]);
+    },
+    update: (document: Document) => {
+      queryClient.setQueryData<Document[]>(queryKeys.documents.list, (current = []) =>
+        current.map((doc) => (doc.id === document.id ? document : doc)),
+      );
+    },
+    remove: (id: number) => {
+      queryClient.setQueryData<Document[]>(queryKeys.documents.list, (current = []) =>
+        current.filter((doc) => doc.id !== id),
+      );
+    },
+  };
 }
 
 export function useAddDocumentFileMutation() {
-  const invalidateDocuments = useInvalidateDocumentsOnSuccess();
+  const documentsCache = useDocumentCacheUpdates();
   return useMutation({
     mutationFn: ({ name, content, scope, skillIds }: AddDocumentFileInput) =>
       addDocumentFile(name, content, scope, skillIds),
-    onSuccess: invalidateDocuments,
+    onSuccess: documentsCache.append,
   });
 }
 
 export function useAddDocumentUrlMutation() {
-  const invalidateDocuments = useInvalidateDocumentsOnSuccess();
+  const documentsCache = useDocumentCacheUpdates();
   return useMutation({
     mutationFn: ({ name, url, scope, skillIds }: AddDocumentUrlInput) =>
       addDocumentUrl(name, url, scope, skillIds),
-    onSuccess: invalidateDocuments,
+    onSuccess: documentsCache.append,
   });
 }
 
 export function useAddDocumentFolderMutation() {
-  const invalidateDocuments = useInvalidateDocumentsOnSuccess();
+  const documentsCache = useDocumentCacheUpdates();
   return useMutation({
     mutationFn: ({ name, folderPath, scope, skillIds }: AddDocumentFolderInput) =>
       addDocumentFolder(name, folderPath, scope, skillIds),
-    onSuccess: invalidateDocuments,
+    onSuccess: documentsCache.append,
   });
 }
 
 export function useUpdateDocumentMutation() {
-  const invalidateDocuments = useInvalidateDocumentsOnSuccess();
+  const documentsCache = useDocumentCacheUpdates();
   return useMutation({
     mutationFn: ({ id, scope, skillIds }: UpdateDocumentInput) =>
       updateDocument(id, scope, skillIds),
-    onSuccess: invalidateDocuments,
+    onSuccess: documentsCache.update,
   });
 }
 
 export function useDeleteDocumentMutation() {
-  const invalidateDocuments = useInvalidateDocumentsOnSuccess();
+  const documentsCache = useDocumentCacheUpdates();
   return useMutation({
     mutationFn: deleteDocument,
-    onSuccess: invalidateDocuments,
+    onSuccess: (_result, id) => documentsCache.remove(id),
   });
 }

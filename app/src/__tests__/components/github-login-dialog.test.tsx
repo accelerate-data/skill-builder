@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useAuthStore } from "@/stores/auth-store";
 import type { DeviceFlowResponse } from "@/lib/types";
 import { renderWithQueryClient } from "@/test/query-test-utils";
 
@@ -41,7 +40,6 @@ const MOCK_DEVICE_RESPONSE: DeviceFlowResponse = {
 
 describe("GitHubLoginDialog", () => {
   beforeEach(() => {
-    useAuthStore.getState().reset();
     mockGithubStartDeviceFlow.mockReset().mockResolvedValue(MOCK_DEVICE_RESPONSE);
     mockGithubPollForToken.mockReset().mockResolvedValue({ status: "pending" });
     mockUpdateGithubIdentity.mockReset().mockResolvedValue(undefined);

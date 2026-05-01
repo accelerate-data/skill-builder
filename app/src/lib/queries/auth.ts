@@ -69,7 +69,6 @@ export function useGithubLogoutMutation() {
     },
     onSettled: () => {
       queryClient.setQueryData(queryKeys.auth.githubUser, null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
     },
   });
 }

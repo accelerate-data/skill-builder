@@ -1,11 +1,12 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@/lib/toast";
 import SkillDialog from "@/components/skill-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { SkillSummary } from "@/lib/types";
+import { renderWithQueryClient as render } from "@/test/query-test-utils";
 
 vi.mock("@/lib/toast", () => ({
   toast: {

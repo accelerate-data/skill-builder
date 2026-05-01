@@ -99,7 +99,7 @@
     },
     "frontend_stores": {
       "path": "app/src/stores/",
-      "description": "Zustand state stores: agent (+ agent-display-buffer), auth, document, imported-skills, plugin, refine, settings, skill, test, usage, workflow"
+      "description": "Zustand state stores for UI/runtime state: agent (+ agent-display-buffer), refine, settings, skill, test, usage, workflow. Server state lives under app/src/lib/queries/."
     },
     "frontend_hooks": {
       "path": "app/src/hooks/",
@@ -107,7 +107,7 @@
     },
     "frontend_lib": {
       "path": "app/src/lib/",
-      "description": "Utilities and shared types: tauri.ts (typed Tauri command wrappers), tauri-command-types.ts (central typed command map), tauri-command-types.typecheck.ts (compile-time command contract assertions), types.ts (shared TS types), agent-events.ts (frontend AgentEvent types), display-types.ts (DisplayItem types), agent-results.ts (result parsing), eval-run.ts (pure calculation helpers for evaluate-skill runs: prompt builder, refine prefill builder, structuredOutput parser, progress percent), description-optimization.ts (pure helpers for description optimization: parseProgressEvent, scoreRate, scoreDelta, findBestIteration, etc.), description-opt-running-state.ts (module-scoped pub/sub for description optimization running state — used by app-layout to gate skill switches), models.ts (model list), workflow-steps.ts + workflow-step-configs.ts (step definitions), workflow-teardown.ts (shared workflow session teardown helper), clarifications-types.ts, path-utils.ts, app-log.ts, help-urls.ts, toast.ts, utils.ts"
+      "description": "Utilities, shared types, and server-state queries: tauri.ts (typed Tauri command wrappers), tauri-command-types.ts (central typed command map), tauri-command-types.typecheck.ts (compile-time command contract assertions), query-client.ts (TanStack Query client defaults), queries/ (query keys, skills, usage, documents, plugins, auth, agent stream cache invalidation), types.ts (shared TS types), agent-events.ts (frontend AgentEvent types), display-types.ts (DisplayItem types), agent-results.ts (result parsing), eval-run.ts (pure calculation helpers for evaluate-skill runs: prompt builder, refine prefill builder, structuredOutput parser, progress percent), description-optimization.ts (pure helpers for description optimization: parseProgressEvent, scoreRate, scoreDelta, findBestIteration, etc.), description-opt-running-state.ts (module-scoped pub/sub for description optimization running state — used by app-layout to gate skill switches), models.ts (model list), workflow-steps.ts + workflow-step-configs.ts (step definitions), workflow-teardown.ts (shared workflow session teardown helper), clarifications-types.ts, path-utils.ts, app-log.ts, help-urls.ts, toast.ts, utils.ts"
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
@@ -163,7 +163,7 @@
     },
     "frontend_test_utils": {
       "path": "app/src/test/",
-      "description": "Frontend test infrastructure: setup.ts (global Vitest setup), fixtures.ts (shared test data factories), mocks/ (Tauri invoke mocks, store mocks, router mocks used across unit and component tests)."
+      "description": "Frontend test infrastructure: setup.ts (global Vitest setup), fixtures.ts (shared test data factories), query-test-utils.tsx (TanStack Query render helper), mocks/ (Tauri invoke mocks, store mocks, router mocks used across unit and component tests)."
     }
   },
   "key_directories": {

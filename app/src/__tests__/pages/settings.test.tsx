@@ -5,7 +5,6 @@ import { renderWithQueryClient } from "@/test/query-test-utils";
 import userEvent from "@testing-library/user-event";
 import { mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
-import { useAuthStore } from "@/stores/auth-store";
 
 import type { AppSettings } from "@/lib/types";
 
@@ -224,8 +223,6 @@ describe("SettingsPage", () => {
     vi.mocked(_updateUserSettings).mockReset().mockResolvedValue(undefined);
     vi.mocked(_githubGetUser).mockReset().mockResolvedValue(null);
     vi.mocked(_updateGithubIdentity).mockReset().mockResolvedValue(undefined);
-    // Default to logged-out state
-    useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: false });
     useSettingsStore.getState().reset();
     // Reset URL search params so tab defaults to "general"
     window.history.replaceState({}, "", window.location.pathname);
@@ -796,7 +793,6 @@ describe("SettingsPage", () => {
       avatar_url: "https://github.com/octocat.png",
       email: "octocat@github.com",
     });
-    useAuthStore.setState({ lastCheckedAt: "2026-01-01T00:00:00.000Z" });
     setupDefaultMocks();
     renderWithQueryClient(<SettingsPage />);
 

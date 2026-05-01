@@ -16,7 +16,7 @@ export function useBuilderSkillsQuery(
     queryKey: queryKeys.skills.builder(workspacePath, sourceUrl),
     enabled: !!workspacePath,
     queryFn: () => listSkills(workspacePath!, sourceUrl),
-    initialData: [],
+    placeholderData: [],
   });
 }
 
@@ -24,7 +24,7 @@ export function useImportedSkillsQuery(sourceUrl: string | null = null) {
   return useQuery<ImportedSkill[]>({
     queryKey: queryKeys.skills.imported(sourceUrl),
     queryFn: () => listImportedSkills(sourceUrl),
-    initialData: [],
+    placeholderData: [],
   });
 }
 

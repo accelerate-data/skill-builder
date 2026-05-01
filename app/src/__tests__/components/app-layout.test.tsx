@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   mockInvoke,
@@ -9,11 +9,17 @@ import {
 import { toast } from "@/lib/toast";
 import type { AppSettings, ReconciliationResult } from "@/lib/types";
 
+const mockNavigate = vi.fn();
+const mockRouter = { navigate: vi.fn() };
+
 // Mock @tanstack/react-router
 vi.mock("@tanstack/react-router", () => ({
-  useNavigate: () => vi.fn(),
-  useRouter: () => ({ navigate: vi.fn() }),
-  useRouterState: () => ({ location: { pathname: "/" } }),
+  useNavigate: () => mockNavigate,
+  useRouter: () => mockRouter,
+  useRouterState: ({ select }: { select?: (state: { location: { pathname: string; search: Record<string, string> } }) => unknown } = {}) => {
+    const state = { location: { pathname: "/", search: {} } };
+    return select ? select(state) : state;
+  },
   Outlet: () => <div data-testid="outlet">Dashboard Content</div>,
   Link: ({
     children,
@@ -82,6 +88,7 @@ vi.mock("@/lib/toast", () => ({
 // Must import after mocks are set up
 import { AppLayout } from "@/components/layout/app-layout";
 import { useSettingsStore } from "@/stores/settings-store";
+import { renderWithQueryClient as render } from "@/test/query-test-utils";
 
 const defaultSettings: AppSettings = {
   anthropic_api_key: "sk-ant-test",

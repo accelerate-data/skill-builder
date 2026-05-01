@@ -3,11 +3,11 @@ import { useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useAuthStore } from "@/stores/auth-store";
 import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, listModels } from "@/lib/tauri";
 import type { DiscoveredSkill, OrphanSkill } from "@/lib/types";
 import { checkForMarketplaceUpdates } from "./use-marketplace-updates";
 import { queryKeys } from "@/lib/queries/query-keys";
+import { fetchGithubUser } from "@/lib/queries/auth";
 
 interface StartupState {
   settingsLoaded: boolean;
@@ -155,8 +155,12 @@ export function useAppStartup(): UseAppStartupReturn {
         if (!cancelledRef.current) setReconciled(true);
       });
 
-    // Load GitHub auth state
-    useAuthStore.getState().loadUser();
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.auth.githubUser,
+      queryFn: fetchGithubUser,
+    }).catch((err: unknown) => {
+      console.warn("[app-layout] op=prefetch_github_user status=failure err=%s", err);
+    });
 
     return () => { cancelledRef.current = true; };
   }, [queryClient, router, setSettings]);

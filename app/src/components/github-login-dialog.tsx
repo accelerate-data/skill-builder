@@ -13,7 +13,6 @@ import {
 import { githubStartDeviceFlow, githubPollForToken } from "@/lib/tauri"
 import type { DeviceFlowResponse } from "@/lib/types"
 import { useGithubSetUserMutation } from "@/lib/queries/auth"
-import { useAuthStore } from "@/stores/auth-store"
 
 interface GitHubLoginDialogProps {
   open: boolean
@@ -124,7 +123,6 @@ export function GitHubLoginDialog({ open, onOpenChange }: GitHubLoginDialogProps
           pollingRef.current = setTimeout(poll, intervalRef.current * 1000)
         } else if (result.status === "success") {
           await setGithubUserMutation.mutateAsync(result.user)
-          useAuthStore.getState().setUser(result.user)
           setState({ step: "success", login: result.user.login })
           // Auto-close after a brief success display
           successTimeoutRef.current = setTimeout(() => {

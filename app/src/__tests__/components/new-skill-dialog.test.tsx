@@ -1,9 +1,10 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
 import { toast } from "@/lib/toast";
+import { renderWithQueryClient as render } from "@/test/query-test-utils";
 
 // Mock toast wrapper
 vi.mock("@/lib/toast", () => ({

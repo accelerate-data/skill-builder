@@ -11,7 +11,7 @@ export function usePluginsQuery() {
   return useQuery({
     queryKey: queryKeys.plugins.list,
     queryFn: listPlugins,
-    initialData: [],
+    placeholderData: [],
   });
 }
 
