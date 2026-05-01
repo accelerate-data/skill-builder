@@ -14,7 +14,7 @@ use super::output_format::{
     answer_evaluator_output_format, materialize_answer_evaluation_output_value,
     materialize_workflow_step_output_value, publish_commit_and_tag_generated_skill,
 };
-use super::prompt::{PromptParams, build_prompt};
+use super::prompt::{PromptParams, build_prompt, build_step0_prompt};
 use super::runtime::workflow_one_shot_runtime_provider;
 use super::step_config::{
     build_betas, get_step_config, thinking_budget_for_step, tools_for_agent,
@@ -1304,6 +1304,34 @@ fn test_build_prompt_does_not_include_schema_file_path() {
         step_id: 2,
     });
     assert!(step2.contains("DecisionsOutput"));
+}
+
+#[test]
+fn test_build_step0_prompt_uses_openhands_native_research_routing() {
+    let prompt = build_step0_prompt(
+        "my-skill",
+        "/home/user/.vibedata/skill-builder",
+        DEFAULT_PLUGIN_SLUG,
+        4,
+    );
+
+    assert!(prompt.contains("research-agent"));
+    assert!(prompt.contains("ResearchStepOutput"));
+    assert!(prompt.contains("context/clarifications.json"));
+
+    for forbidden in [
+        "Skill",
+        "Agent",
+        "Task",
+        "AskUserQuestion",
+        ".claude/plugins",
+        "skill-content-researcher:research",
+    ] {
+        assert!(
+            !prompt.contains(forbidden),
+            "step 0 prompt must not contain Claude routing term: {forbidden}"
+        );
+    }
 }
 
 #[test]
