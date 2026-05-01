@@ -2,6 +2,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const {
+  analyzeTauriCommandPolicy,
+} = require("./tauri-command-policy.js");
 
 const repoRoot = path.resolve(__dirname, "../../..");
 
@@ -106,30 +109,16 @@ test("typed Tauri command contract is the only non-test command policy", () => {
 });
 
 test("direct invokeUnsafe imports stay out of application code", () => {
-  const sourceRoot = path.join(repoRoot, "app/src");
-  const offenders = [];
+  const policy = analyzeTauriCommandPolicy({ repoRoot });
 
-  function walk(dir) {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (["__tests__", "node_modules", "test"].includes(entry.name)) continue;
-        walk(fullPath);
-        continue;
-      }
-      if (!entry.name.endsWith(".ts") && !entry.name.endsWith(".tsx")) continue;
-
-      const relPath = path.relative(sourceRoot, fullPath).replace(/\\/g, "/");
-      if (relPath === "lib/tauri.ts") continue;
-
-      if (fs.readFileSync(fullPath, "utf8").includes("invokeUnsafe")) {
-        offenders.push(relPath);
-      }
-    }
-  }
-
-  walk(sourceRoot);
-  assert.deepEqual(offenders, []);
+  assert.deepEqual(policy.rawTauriImportOffenders, []);
+  assert.deepEqual(policy.rawInvokeCallOffenders, []);
+  assert.deepEqual(policy.wrapperRawInvokeCallOffenders, []);
+  assert.deepEqual(policy.unsafeCallOffenders, []);
+  assert.deepEqual(policy.wrapperUnsafeCommandOffenders, []);
+  assert.deepEqual(policy.wrapperNonLiteralUnsafeCalls, []);
+  assert.equal(policy.invokeCommandExportCount, 1);
+  assert.equal(policy.invokeUnsafeExportCount, 1);
 });
 
 test("VU-1140 scoped commands stay on the typed invokeCommand path", () => {

@@ -1,8 +1,33 @@
 import fs from "fs";
+import { createRequire } from "module";
+import os from "os";
 import path from "path";
 import { describe, expect, it } from "vitest";
 
+const require = createRequire(import.meta.url);
+const {
+  analyzeTauriCommandPolicy,
+}: {
+  analyzeTauriCommandPolicy: (options: {
+    repoRoot: string;
+    sourceRoot?: string;
+    wrapperRelativePath?: string;
+    unsafeWrapperCommandAllowlist?: string[];
+  }) => {
+    rawTauriImportOffenders: string[];
+    rawInvokeCallOffenders: string[];
+    wrapperRawInvokeCallOffenders: string[];
+    unsafeCallOffenders: string[];
+    wrapperUnsafeCommandOffenders: string[];
+    wrapperNonLiteralUnsafeCalls: string[];
+    wrapperAllowedUnsafeCommands: string[];
+    invokeCommandExportCount: number;
+    invokeUnsafeExportCount: number;
+  };
+} = require("../../../../tests/evals/assertions/tauri-command-policy.js");
+
 const sourceRoot = path.resolve(__dirname, "../../");
+const repoRoot = path.resolve(sourceRoot, "../..");
 const tauriWrapperPath = path.join(sourceRoot, "lib/tauri.ts");
 const tauriCommandTypesPath = path.join(sourceRoot, "lib/tauri-command-types.ts");
 
@@ -31,24 +56,21 @@ const vu1140Commands = [
   "log_gate_decision",
 ] as const;
 
-function walkSourceFiles(dir: string): string[] {
-  const files: string[] = [];
+function withTempSource(files: Record<string, string>, run: (tempSourceRoot: string) => void) {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tauri-policy-"));
+  const tempSourceRoot = path.join(tempRoot, "src");
 
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const fullPath = path.join(dir, entry.name);
-
-    if (entry.isDirectory()) {
-      if (entry.name === "__tests__" || entry.name === "node_modules" || entry.name === "test") continue;
-      files.push(...walkSourceFiles(fullPath));
-      continue;
+  try {
+    for (const [relativePath, source] of Object.entries(files)) {
+      const filePath = path.join(tempSourceRoot, relativePath);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, source);
     }
 
-    if ((entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) && !entry.name.endsWith(".d.ts")) {
-      files.push(fullPath);
-    }
+    run(tempSourceRoot);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
   }
-
-  return files;
 }
 
 describe("Tauri command policy", () => {
@@ -81,72 +103,32 @@ describe("Tauri command policy", () => {
     "import_skill_from_file",
   ];
 
-  it("centralizes raw Tauri invoke access in lib/tauri.ts", () => {
-    const offenders: string[] = [];
+  it("detects raw Tauri command bypasses by AST structure", () => {
+    const policy = analyzeTauriCommandPolicy({
+      repoRoot,
+      sourceRoot,
+    });
 
-    for (const filePath of walkSourceFiles(sourceRoot)) {
-      const relPath = path.relative(sourceRoot, filePath).replace(/\\/g, "/");
-      const source = fs.readFileSync(filePath, "utf8");
-
-      if (source.includes("@tauri-apps/api/core") && relPath !== "lib/tauri.ts") {
-        offenders.push(relPath);
-      }
-    }
-
-    expect(offenders).toEqual([]);
+    expect(policy.rawTauriImportOffenders).toEqual([]);
+    expect(policy.rawInvokeCallOffenders).toEqual([]);
+    expect(policy.wrapperRawInvokeCallOffenders).toEqual([]);
+    expect(policy.unsafeCallOffenders).toEqual([]);
+    expect(policy.wrapperUnsafeCommandOffenders).toEqual([]);
+    expect(policy.wrapperNonLiteralUnsafeCalls).toEqual([]);
   });
 
-  it("keeps invokeUnsafe private to the wrapper module", () => {
-    const offenders: string[] = [];
-
-    for (const filePath of walkSourceFiles(sourceRoot)) {
-      const relPath = path.relative(sourceRoot, filePath).replace(/\\/g, "/");
-      if (relPath === "lib/tauri.ts") continue;
-
-      const source = fs.readFileSync(filePath, "utf8");
-      if (source.includes("invokeUnsafe")) offenders.push(relPath);
-    }
-
-    expect(offenders).toEqual([]);
-  });
-
-  it("requires wrapper commands to use invokeCommand unless explicitly allowlisted", () => {
-    const source = fs.readFileSync(path.join(sourceRoot, "lib/tauri.ts"), "utf8");
-    const allowedUnsafeCommands: Record<string, string> = {};
-    const unsafeCommands = Array.from(
-      source.matchAll(/invokeUnsafe(?:<[^)]*>)?\(\s*"([^"]+)"/g),
-      (match) => match[1],
-    );
-
-    const undocumentedCommands = unsafeCommands.filter(
-      (command) => !allowedUnsafeCommands[command],
-    );
-
-    expect(undocumentedCommands).toEqual([]);
-  });
-
-  it("rejects any invokeUnsafe call expression outside documented exceptions", () => {
-    const source = fs.readFileSync(path.join(sourceRoot, "lib/tauri.ts"), "utf8");
-
-    expect(source).not.toMatch(/\binvokeUnsafe\s*\(/);
-  });
-
-  it("keeps raw invoke calls behind the typed invokeCommand gateway", () => {
-    const source = fs.readFileSync(path.join(sourceRoot, "lib/tauri.ts"), "utf8");
-    const sourceWithoutGateway = source.replace(
-      /export const invokeCommand = <Invocation extends TauriCommandInvocation>\(\n\s+\.\.\.\[command, args\]: Invocation\n\) => invoke<TauriCommandResult<Invocation\[0\]>>\(command, args\);/,
-      "",
-    );
-
-    expect(sourceWithoutGateway).not.toMatch(/\binvoke(?:<[^)]*>)?\(/);
-  });
-
-  it("exposes typed invokeCommand and names the raw escape hatch explicitly", () => {
+  it("exposes exactly one typed invokeCommand gateway and one explicit raw escape hatch", () => {
     const source = fs.readFileSync(tauriWrapperPath, "utf8");
+    const policy = analyzeTauriCommandPolicy({
+      repoRoot,
+      sourceRoot,
+    });
 
     expect(source).toContain("export const invokeCommand");
     expect(source).toContain("export const invokeUnsafe");
     expect(source).not.toContain("export { invoke }");
+    expect(policy.invokeCommandExportCount).toBe(1);
+    expect(policy.invokeUnsafeExportCount).toBe(1);
   });
 
   it("keeps VU-1138 skill library and marketplace commands off invokeUnsafe", () => {
@@ -180,5 +162,98 @@ describe("Tauri command policy", () => {
     expect(missingMapEntries).toEqual([]);
     expect(missingTypedWrappers).toEqual([]);
     expect(unsafeWrappers).toEqual([]);
+  });
+
+  it("catches aliased raw invoke and aliased invokeUnsafe calls", () => {
+    withTempSource(
+      {
+        "lib/tauri.ts":
+          'import { invoke } from "@tauri-apps/api/core";\nexport const invokeCommand = () => null;\nexport const invokeUnsafe = invoke;\n',
+        "feature.ts":
+          'import { invoke as rawInvoke } from "@tauri-apps/api/core";\nconst aliasedInvoke = rawInvoke;\naliasedInvoke("raw_command", {});\n',
+        "unsafe.ts":
+          'import { invokeUnsafe as raw } from "@/lib/tauri";\nconst run = raw;\nrun("unsafe_command", {});\n',
+        "relative-unsafe.ts":
+          'import { invokeUnsafe as raw } from "./lib/tauri";\nraw("relative_command", {});\n',
+        "namespace-unsafe.ts":
+          'import * as tauri from "@/lib/tauri";\ntauri.invokeUnsafe("namespace_command", {});\n',
+      },
+      (tempSourceRoot) => {
+        const policy = analyzeTauriCommandPolicy({
+          repoRoot,
+          sourceRoot: tempSourceRoot,
+          unsafeWrapperCommandAllowlist: [],
+        });
+
+        expect(policy.rawTauriImportOffenders).toEqual(["feature.ts"]);
+        expect(policy.rawInvokeCallOffenders).toHaveLength(1);
+        expect(policy.unsafeCallOffenders).toHaveLength(3);
+      },
+    );
+  });
+
+  it("catches direct raw invoke command calls in the wrapper outside invokeCommand", () => {
+    withTempSource(
+      {
+        "lib/tauri.ts": [
+          'import { invoke } from "@tauri-apps/api/core";',
+          "export const invokeCommand = () => invoke('typed_gateway', {});",
+          "export const invokeUnsafe = invoke;",
+          'export const bypass = () => invoke("raw_wrapper_command", {});',
+        ].join("\n"),
+      },
+      (tempSourceRoot) => {
+        const policy = analyzeTauriCommandPolicy({
+          repoRoot,
+          sourceRoot: tempSourceRoot,
+          unsafeWrapperCommandAllowlist: [],
+        });
+
+        expect(policy.wrapperRawInvokeCallOffenders).toHaveLength(1);
+      },
+    );
+  });
+
+  it("normalizes configured wrapper paths before comparing source files", () => {
+    withTempSource(
+      {
+        "lib/tauri.ts":
+          'import { invoke } from "@tauri-apps/api/core";\nexport const invokeCommand = () => invoke("typed_gateway", {});\nexport const invokeUnsafe = invoke;\n',
+      },
+      (tempSourceRoot) => {
+        const policy = analyzeTauriCommandPolicy({
+          repoRoot,
+          sourceRoot: tempSourceRoot,
+          wrapperRelativePath: "lib\\tauri.ts",
+          unsafeWrapperCommandAllowlist: [],
+        });
+
+        expect(policy.invokeCommandExportCount).toBe(1);
+        expect(policy.wrapperRawInvokeCallOffenders).toEqual([]);
+      },
+    );
+  });
+
+  it("catches non-literal invokeUnsafe command expressions in the wrapper", () => {
+    withTempSource(
+      {
+        "lib/tauri.ts": [
+          'import { invoke } from "@tauri-apps/api/core";',
+          "export const invokeCommand = () => null;",
+          "export const invokeUnsafe = invoke;",
+          'const command = "dynamic_command";',
+          "invokeUnsafe(command, {});",
+        ].join("\n"),
+      },
+      (tempSourceRoot) => {
+        const policy = analyzeTauriCommandPolicy({
+          repoRoot,
+          sourceRoot: tempSourceRoot,
+          unsafeWrapperCommandAllowlist: [],
+        });
+
+        expect(policy.wrapperNonLiteralUnsafeCalls).toHaveLength(1);
+      },
+    );
   });
 });
