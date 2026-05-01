@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, Document } from "@/lib/types";
+import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase } from "@/lib/types";
 import type { EvalQuery } from "@/lib/description-optimization";
-import type { FieldSuggestions, TauriCommandInvocation, TauriCommandResult } from "@/lib/tauri-command-types";
+import type { TauriCommandInvocation, TauriCommandResult } from "@/lib/tauri-command-types";
 
 export const invokeCommand = <Invocation extends TauriCommandInvocation>(
   ...[command, args]: Invocation
@@ -12,11 +12,10 @@ export const invokeUnsafe = invoke;
 
 /** Write a log message to the Rust app.log file from the frontend. */
 export const logFrontend = (level: "info" | "warn" | "error" | "debug", message: string) =>
-  invokeUnsafe<void>("log_frontend", { level, message }).catch(() => {});
+  invokeCommand("log_frontend", { level, message }).catch(() => {});
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
 export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry, Document } from "@/lib/types";
-export type { FieldSuggestions, ScopeReviewResult, ScopeReviewSuggestion } from "@/lib/tauri-command-types";
 
 // --- Settings ---
 
@@ -87,6 +86,17 @@ export const exportSkillAsFile = (
   destPath: string,
 ) => invokeCommand("export_skill_as_file", { skillName, pluginSlug, destPath });
 
+export interface FieldSuggestions {
+  description: string;
+  domain: string;
+  audience: string;
+  challenges: string;
+  scope: string;
+  unique_setup: string;
+  claude_mistakes: string;
+  context_questions: string;
+}
+
 export const generateSuggestions = (
   skillName: string,
   purpose: string,
@@ -99,7 +109,7 @@ export const generateSuggestions = (
     challenges?: string;
     fields?: string[];
   },
-): Promise<FieldSuggestions> => invokeCommand("generate_suggestions", {
+) => invokeCommand("generate_suggestions", {
   skillName,
   purpose,
   industry: opts?.industry ?? null,
@@ -110,6 +120,17 @@ export const generateSuggestions = (
   challenges: opts?.challenges ?? null,
   fields: opts?.fields ?? null,
 });
+
+export interface ScopeReviewSuggestion {
+  name: string
+  description: string
+}
+
+export interface ScopeReviewResult {
+  status: string
+  reason: string
+  suggested_skills: ScopeReviewSuggestion[]
+}
 
 export const reviewSkillScope = (
   skillName: string,
@@ -140,7 +161,7 @@ export const startOneShotAgent = (
   runSource?: string,
   systemPrompt?: string,
   pluginSlug?: string,
-) => invokeUnsafe<string>("start_agent", {
+) => invokeCommand("start_agent", {
   agentId, prompt, systemPrompt: systemPrompt ?? null, model, cwd, allowedTools, maxTurns,
   permissionMode: permissionMode ?? null, sessionId,
   skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown",
@@ -159,13 +180,13 @@ export const runWorkflowStep = (
   stepId: number,
   workspacePath: string,
   workflowSessionId?: string,
-) => invokeUnsafe<string>("run_workflow_step", { skillName, stepId, workspacePath, workflowSessionId: workflowSessionId ?? null });
+) => invokeCommand("run_workflow_step", { skillName, stepId, workspacePath, workflowSessionId: workflowSessionId ?? null });
 
 export const materializeWorkflowStepOutput = (
   skillName: string,
   stepId: 0 | 1 | 2 | 3,
   structuredOutput: ResearchStepOutput | DetailedResearchOutput | DecisionsOutput | GenerateSkillOutput,
-) => invokeUnsafe<void>("materialize_workflow_step_output", {
+) => invokeCommand("materialize_workflow_step_output", {
   skillName,
   stepId,
   structuredOutput,
@@ -175,7 +196,7 @@ export const resetWorkflowStep = (
   workspacePath: string,
   skillName: string,
   fromStepId: number,
-) => invokeUnsafe("reset_workflow_step", { workspacePath, skillName, fromStepId });
+) => invokeCommand("reset_workflow_step", { workspacePath, skillName, fromStepId });
 
 /** Navigate back to a completed step: preserves target step's output files,
  *  resets only subsequent steps in DB, and sets current_step = targetStepId.
@@ -184,7 +205,7 @@ export const navigateBackToStepDb = (
   workspacePath: string,
   skillName: string,
   targetStepId: number,
-): Promise<void> => invokeUnsafe<void>("navigate_back_to_step", { workspacePath, skillName, targetStepId });
+): Promise<void> => invokeCommand("navigate_back_to_step", { workspacePath, skillName, targetStepId });
 
 export interface StepResetPreview {
   step_id: number;
@@ -196,20 +217,20 @@ export const previewStepReset = (
   workspacePath: string,
   skillName: string,
   fromStepId: number,
-) => invokeUnsafe<StepResetPreview[]>("preview_step_reset", { workspacePath, skillName, fromStepId });
+) => invokeCommand("preview_step_reset", { workspacePath, skillName, fromStepId });
 
 export const verifyStepOutput = (
   workspacePath: string,
   skillName: string,
   stepId: number,
-) => invokeUnsafe<boolean>("verify_step_output", { workspacePath, skillName, stepId });
+) => invokeCommand("verify_step_output", { workspacePath, skillName, stepId });
 
 export const getDisabledSteps = (skillName: string) =>
-  invokeUnsafe<number[]>("get_disabled_steps", { skillName });
+  invokeCommand("get_disabled_steps", { skillName });
 
 // --- Workflow State (SQLite) ---
 
-interface WorkflowRunRow {
+export interface WorkflowRunRow {
   skill_name: string;
   current_step: number;
   status: string;
@@ -218,7 +239,7 @@ interface WorkflowRunRow {
   updated_at: string;
 }
 
-interface WorkflowStepRow {
+export interface WorkflowStepRow {
   skill_name: string;
   step_id: number;
   status: string;
@@ -226,18 +247,18 @@ interface WorkflowStepRow {
   completed_at: string | null;
 }
 
-interface WorkflowStateResponse {
+export interface WorkflowStateResponse {
   run: WorkflowRunRow | null;
   steps: WorkflowStepRow[];
 }
 
-interface StepStatusUpdate {
+export interface StepStatusUpdate {
   step_id: number;
   status: string;
 }
 
 export const getWorkflowState = (skillName: string) =>
-  invokeUnsafe<WorkflowStateResponse>("get_workflow_state", { skillName });
+  invokeCommand("get_workflow_state", { skillName });
 
 export const saveWorkflowState = (
   skillName: string,
@@ -245,43 +266,43 @@ export const saveWorkflowState = (
   status: string,
   stepStatuses: StepStatusUpdate[],
   purpose?: string,
-) => invokeUnsafe("save_workflow_state", { skillName, currentStep, status, stepStatuses, purpose: purpose ?? "domain" });
+) => invokeCommand("save_workflow_state", { skillName, currentStep, status, stepStatuses, purpose: purpose ?? "domain" });
 
 // --- Files ---
 
 export const readFile = (filePath: string) =>
-  invokeUnsafe<string>("read_file", { filePath });
+  invokeCommand("read_file", { filePath });
 
 export const writeFile = (path: string, content: string) =>
-  invokeUnsafe<void>("write_file", { path, content });
+  invokeCommand("write_file", { path, content });
 
 export const listSkillFiles = (workspacePath: string, skillName: string) =>
-  invokeUnsafe<import("./types").SkillFileEntry[]>("list_skill_files", { workspacePath, skillName });
+  invokeCommand("list_skill_files", { workspacePath, skillName });
 
 // --- Lifecycle ---
 
 export const getWorkspacePath = () =>
-  invokeUnsafe<string>("get_workspace_path");
+  invokeCommand("get_workspace_path", {});
 
 /** Shut down the persistent sidecar process for a skill (fire-and-forget). */
 export const cleanupSkillSidecar = (skillName: string) =>
-  invokeUnsafe<void>("cleanup_skill_sidecar", { skillName });
+  invokeCommand("cleanup_skill_sidecar", { skillName });
 
 /** Graceful shutdown: stop all sidecars, release locks, end sessions. */
 export const gracefulShutdown = () =>
-  invokeUnsafe<void>("graceful_shutdown");
+  invokeCommand("graceful_shutdown", {});
 
 /** Mark the next app/window close as user-confirmed so Tauri lets it exit. */
 export const allowAppExit = () =>
-  invokeUnsafe<void>("allow_app_exit");
+  invokeCommand("allow_app_exit", {});
 
 // --- Workflow Sessions ---
 
 export const createWorkflowSession = (sessionId: string, skillName: string) =>
-  invokeUnsafe<void>("create_workflow_session", { sessionId, skillName });
+  invokeCommand("create_workflow_session", { sessionId, skillName });
 
 export const endWorkflowSession = (sessionId: string) =>
-  invokeUnsafe<void>("end_workflow_session", { sessionId });
+  invokeCommand("end_workflow_session", { sessionId });
 
 // --- Reconciliation ---
 
@@ -300,10 +321,10 @@ export const recordReconciliationCancel = (
   });
 
 export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
-  invokeUnsafe("resolve_orphan", { skillName, action });
+  invokeCommand("resolve_orphan", { skillName, action });
 
 export const resolveDiscovery = (skillName: string, action: string, pluginSlug?: string | null) =>
-  invokeUnsafe<void>("resolve_discovery", { skillName, action, pluginSlug: pluginSlug ?? null });
+  invokeCommand("resolve_discovery", { skillName, action, pluginSlug: pluginSlug ?? null });
 
 // --- Feedback ---
 
@@ -313,13 +334,13 @@ interface CreateGithubIssueRequest {
   labels: string[];
 }
 
-interface CreateGithubIssueResponse {
+export interface CreateGithubIssueResponse {
   url: string;
   number: number;
 }
 
 export const createGithubIssue = (request: CreateGithubIssueRequest) =>
-  invokeUnsafe<CreateGithubIssueResponse>("create_github_issue", { request });
+  invokeCommand("create_github_issue", { request });
 
 // --- GitHub OAuth ---
 
@@ -336,24 +357,24 @@ export const githubLogout = () =>
   invokeCommand("github_logout", {});
 
 export const acquireLock = (skillName: string) =>
-  invokeUnsafe<void>("acquire_lock", { skillName });
+  invokeCommand("acquire_lock", { skillName });
 
 export const releaseLock = (skillName: string) =>
-  invokeUnsafe<void>("release_lock", { skillName });
+  invokeCommand("release_lock", { skillName });
 
 export const getExternallyLockedSkills = () =>
-  invokeUnsafe<string[]>("get_externally_locked_skills");
+  invokeCommand("get_externally_locked_skills", {});
 
 // --- Usage Tracking ---
 
 export const getUsageSummary = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
-  invokeUnsafe<UsageSummary>("get_usage_summary", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
+  invokeCommand("get_usage_summary", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
 
 export const getRecentWorkflowSessions = (limit: number = 50, hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
-  invokeUnsafe<WorkflowSessionRecord[]>("get_recent_workflow_sessions", { limit, hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
+  invokeCommand("get_recent_workflow_sessions", { limit, hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
 
 export const getStepAgentRuns = (skillName: string, stepId: number) =>
-  invokeUnsafe<AgentRunRecord[]>("get_step_agent_runs", { skillName, stepId });
+  invokeCommand("get_step_agent_runs", { skillName, stepId });
 
 export const getAgentRuns = (
   hideCancelled: boolean = false,
@@ -362,7 +383,7 @@ export const getAgentRuns = (
   modelFilter?: string | null,
   limit: number = 500,
 ) =>
-  invokeUnsafe<AgentRunRecord[]>("get_agent_runs", {
+  invokeCommand("get_agent_runs", {
     hideCancelled,
     startDate: startDate ?? null,
     skillName: skillName ?? null,
@@ -371,19 +392,19 @@ export const getAgentRuns = (
   });
 
 export const getUsageByStep = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
-  invokeUnsafe<UsageByStep[]>("get_usage_by_step", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
+  invokeCommand("get_usage_by_step", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
 
 export const getUsageByModel = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
-  invokeUnsafe<UsageByModel[]>("get_usage_by_model", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
+  invokeCommand("get_usage_by_model", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
 
 export const getUsageByDay = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
-  invokeUnsafe<UsageByDay[]>("get_usage_by_day", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
+  invokeCommand("get_usage_by_day", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
 
 export const getWorkflowSkillNames = () =>
-  invokeUnsafe<string[]>("get_workflow_skill_names");
+  invokeCommand("get_workflow_skill_names", {});
 
 export const resetUsage = () =>
-  invokeUnsafe<void>("reset_usage");
+  invokeCommand("reset_usage", {});
 
 // --- Imported Skills ---
 
@@ -658,7 +679,7 @@ export const createSkill = (params: {
   argumentHint?: string | null;
   userInvocable?: boolean | null;
   disableModelInvocation?: boolean | null;
-}) => invokeUnsafe<void>("create_skill", {
+}) => invokeCommand("create_skill", {
   workspacePath: params.workspacePath,
   name: params.name,
   tags: params.tags ?? null,
@@ -679,7 +700,7 @@ export const checkStartupDeps = () =>
   invokeCommand("check_startup_deps", {});
 
 export const getAllTags = () =>
-  invokeUnsafe<string[]>("get_all_tags");
+  invokeCommand("get_all_tags", {});
 
 // --- Description Optimization ---
 
@@ -748,8 +769,18 @@ export const writeDescOptLog = (
   message: string,
 ) => invokeCommand("write_desc_opt_log", { skillName, pluginSlug, workspacePath, message });
 
+// --- Benchmark ---
+
+export interface LatestBenchmarkResult {
+  iteration: number;
+  data: import("@/lib/types").BenchmarkData;
+}
+
 export const readLatestBenchmark = (skillName: string, workspacePath: string) =>
-  invokeCommand("read_latest_benchmark", { skillName, workspacePath });
+  invokeCommand(
+    "read_latest_benchmark",
+    { skillName, workspacePath },
+  );
 
 // --- Test case management (Evals tab) ---
 
@@ -859,37 +890,37 @@ export interface SkillIdName {
 }
 
 export const listDocuments = () =>
-  invokeUnsafe<Document[]>("list_documents");
+  invokeCommand("list_documents", {});
 
 export const listSkillsForDocuments = () =>
-  invokeUnsafe<SkillIdName[]>("list_skills_for_documents");
+  invokeCommand("list_skills_for_documents", {});
 
 export const addDocumentFile = (
   name: string,
   content: string,
   scope: "all" | "skill",
   skillIds: number[],
-) => invokeUnsafe<Document>("add_document_file", { name, content, scope, skillIds });
+) => invokeCommand("add_document_file", { name, content, scope, skillIds });
 
 export const addDocumentUrl = (
   name: string,
   url: string,
   scope: "all" | "skill",
   skillIds: number[],
-) => invokeUnsafe<Document>("add_document_url", { name, url, scope, skillIds });
+) => invokeCommand("add_document_url", { name, url, scope, skillIds });
 
 export const addDocumentFolder = (
   name: string,
   folderPath: string,
   scope: "all" | "skill",
   skillIds: number[],
-) => invokeUnsafe<Document[]>("add_document_folder", { name, folderPath, scope, skillIds });
+) => invokeCommand("add_document_folder", { name, folderPath, scope, skillIds });
 
 export const updateDocument = (
   id: number,
   scope: "all" | "skill",
   skillIds: number[],
-) => invokeUnsafe<Document>("update_document", { id, scope, skillIds });
+) => invokeCommand("update_document", { id, scope, skillIds });
 
 export const deleteDocument = (id: number) =>
-  invokeUnsafe<void>("delete_document", { id });
+  invokeCommand("delete_document", { id });

@@ -181,13 +181,6 @@ function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): Clarif
   };
 }
 
-function resetWorkflowTestSettings() {
-  useSettingsStore.getState().reset();
-  useSettingsStore.getState().setSettings({
-    preferredModel: "claude-sonnet-4-5-20250929",
-  });
-}
-
 // Global reset: ensure location state doesn't leak between describe blocks.
 // Each describe's beforeEach may set mockLocation.state; this outer reset guarantees
 // every test starts with a clean slate regardless of describe-level setup order.
@@ -200,13 +193,13 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
 
     // Hydrate settings so workflow handlers don't bail
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       anthropicApiKey: "sk-test",
-      preferredModel: "claude-sonnet-4-6",
+      preferredModel: "sonnet",
     });
 
     mockToast.success.mockClear();
@@ -229,7 +222,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
   });
 
   it("stays on completion screen after agent step 0 completes (clarificationsEditable)", async () => {
@@ -578,13 +571,13 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
-      preferredModel: "claude-sonnet-4-6",
+      preferredModel: "sonnet",
     });
 
     mockToast.success.mockClear();
@@ -602,7 +595,7 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
   });
 
   it("loads clarifications from skillsPath when step 0 is completed", async () => {
@@ -676,13 +669,13 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
-      preferredModel: "claude-sonnet-4-6",
+      preferredModel: "sonnet",
     });
 
     mockToast.success.mockClear();
@@ -703,7 +696,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
   });
 
   it("step 0 completes and stays on completion screen with editable clarifications", async () => {
@@ -1577,13 +1570,13 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
-      preferredModel: "claude-sonnet-4-6",
+      preferredModel: "sonnet",
     });
 
     mockToast.success.mockClear();
@@ -1609,7 +1602,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
     mockLocation.state = {};
     // Restore the default sidebar mock in case a test overrode it
     vi.mocked(WorkflowSidebar).mockImplementation(() => <div data-testid="workflow-sidebar" />);
@@ -1783,13 +1776,13 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
-      preferredModel: "claude-sonnet-4-6",
+      preferredModel: "sonnet",
     });
 
     mockToast.success.mockClear();
@@ -1810,7 +1803,7 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
   });
 
   /** Helper: set up step 0 completed with clarifications loaded (clarificationsEditable step).
@@ -1880,13 +1873,13 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
-      preferredModel: "claude-sonnet-4-6",
+      preferredModel: "sonnet",
     });
 
     mockToast.success.mockClear();
@@ -1907,7 +1900,7 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
   });
 
   afterEach(() => {
@@ -2010,12 +2003,12 @@ describe("WorkflowPage — review mode default state", () => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       anthropicApiKey: "sk-test",
-      preferredModel: "claude-sonnet-4-6",
+      preferredModel: "sonnet",
     });
 
     mockToast.success.mockClear();
@@ -2029,7 +2022,7 @@ describe("WorkflowPage — review mode default state", () => {
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
   });
 
   it("shows 'Switch to Update mode' message in review mode on pending agent step", async () => {
@@ -2080,13 +2073,13 @@ describe("step reset behavior regressions", () => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
-      preferredModel: "claude-sonnet-4-6",
+      preferredModel: "sonnet",
     });
 
     mockToast.success.mockClear();
@@ -2112,7 +2105,7 @@ describe("step reset behavior regressions", () => {
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
     mockLocation.state = {};
     // Restore default mocks in case a test overrode them
     vi.mocked(WorkflowSidebar).mockImplementation(() => <div data-testid="workflow-sidebar" />);
@@ -2425,12 +2418,12 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       anthropicApiKey: "sk-test",
-      preferredModel: "claude-sonnet-4-6",
+      preferredModel: "sonnet",
     });
 
     mockToast.success.mockClear();
@@ -2460,7 +2453,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
   });
 
   // --- Scenario 1: getDisabledSteps called after step 2 (contradictions guard) ---
@@ -2842,12 +2835,12 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       anthropicApiKey: "sk-test",
-      preferredModel: "claude-sonnet-4-6",
+      preferredModel: "sonnet",
     });
 
     mockToast.success.mockClear();
@@ -2865,7 +2858,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
   });
 
   it("pauses on completion screen after step 3 (generate)", async () => {
@@ -2923,13 +2916,13 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
-      preferredModel: "claude-sonnet-4-6",
+      preferredModel: "sonnet",
     });
 
     mockToast.success.mockClear();
@@ -2954,7 +2947,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
     vi.mocked(WorkflowSidebar).mockImplementation(() => <div data-testid="workflow-sidebar" />);
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
@@ -3561,13 +3554,13 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       anthropicApiKey: "sk-test",
-      preferredModel: "claude-sonnet-4-6",
+      preferredModel: "sonnet",
     });
 
     mockToast.success.mockClear();
@@ -3591,7 +3584,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    resetWorkflowTestSettings();
+    useSettingsStore.getState().reset();
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
 

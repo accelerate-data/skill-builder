@@ -1,13 +1,17 @@
 import type {
+  AgentRunRecord,
+  AnswerEvaluationOutput,
   AppSettings,
   AvailablePlugin,
   AvailableSkill,
-  AnswerEvaluationOutput,
-  BenchmarkData,
+  DetailedResearchOutput,
+  DecisionsOutput,
   DeviceFlowResponse,
+  Document,
   EvalBenchmark,
-  GitHubRepoInfo,
+  GenerateSkillOutput,
   GitHubAuthResult,
+  GitHubRepoInfo,
   GitHubUser,
   ImportedSkill,
   IterationMeta,
@@ -16,17 +20,24 @@ import type {
   MarketplaceUpdateResult,
   ModelInfo,
   PendingEval,
+  ResearchStepOutput,
+  ReconciliationResult,
   RefineFinalizeResult,
   RefineSessionInfo,
-  ReconciliationResult,
   SkillCommit,
   SkillEvalContext,
   SkillFileContent,
+  SkillFileEntry,
   SkillFileMeta,
   SkillMetadataOverride,
   SkillSummary,
   StartupDeps,
   TestCase,
+  UsageByDay,
+  UsageByModel,
+  UsageByStep,
+  UsageSummary,
+  WorkflowSessionRecord,
 } from "@/lib/types";
 import type { EvalQuery, OptimizationResult } from "@/lib/description-optimization";
 
@@ -54,7 +65,110 @@ export interface ScopeReviewResult {
   suggested_skills: ScopeReviewSuggestion[];
 }
 
+export interface StepResetPreview {
+  step_id: number;
+  step_name: string;
+  files: string[];
+}
+
+interface WorkflowRunRow {
+  skill_name: string;
+  current_step: number;
+  status: string;
+  purpose: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface WorkflowStepRow {
+  skill_name: string;
+  step_id: number;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface WorkflowStateResponse {
+  run: WorkflowRunRow | null;
+  steps: WorkflowStepRow[];
+}
+
+export interface StepStatusUpdate {
+  step_id: number;
+  status: string;
+}
+
+export interface CreateGithubIssueRequest {
+  title: string;
+  body: string;
+  labels: string[];
+}
+
+export interface CreateGithubIssueResponse {
+  url: string;
+  number: number;
+}
+
+export interface LatestBenchmarkResult {
+  iteration: number;
+  data: import("@/lib/types").BenchmarkData;
+}
+
+export interface SkillIdName {
+  id: number;
+  name: string;
+  plugin_slug: string;
+  plugin_display_name: string;
+  is_default_plugin: boolean;
+}
+
+type SkillPurpose = string | null;
+type DocumentScope = "all" | "skill";
+type WorkflowStepStructuredOutput =
+  | ResearchStepOutput
+  | DetailedResearchOutput
+  | DecisionsOutput
+  | GenerateSkillOutput;
+
+type SkillMetadataArgs = {
+  skillName: string;
+  pluginSlug: string;
+  purpose: SkillPurpose;
+  tags: string[] | null;
+  intakeJson: string | null;
+  description: string | null;
+  version: string | null;
+  model: string | null;
+  argumentHint: string | null;
+  userInvocable: boolean | null;
+  disableModelInvocation: boolean | null;
+};
+
+type AgentStartArgs = {
+  agentId: string;
+  prompt: string;
+  systemPrompt: string | null;
+  model: string;
+  cwd: string;
+  allowedTools?: string[];
+  maxTurns?: number;
+  permissionMode: string | null;
+  sessionId?: string;
+  skillName: string;
+  stepLabel: string;
+  agentName: string | null;
+  transcriptLogDir: string | null;
+  stepId: number | null;
+  workflowSessionId: string | null;
+  usageSessionId: string | null;
+  runSource: string | null;
+  pluginSlug: string;
+};
+
+type EvalQueryPayload = Pick<EvalQuery, "query" | "should_trigger">;
+
 export interface TauriCommandMap {
+  log_frontend: { args: { level: "info" | "warn" | "error" | "debug"; message: string }; result: void };
   get_settings: { args: NoArgs; result: AppSettings };
   save_settings: { args: { settings: AppSettings }; result: void };
   update_user_settings: { args: { settings: AppSettings }; result: void };
@@ -78,35 +192,10 @@ export interface TauriCommandMap {
     args: { notificationCount: number; discoveredCount: number };
     result: void;
   };
-  github_start_device_flow: { args: NoArgs; result: DeviceFlowResponse };
-  github_poll_for_token: { args: { deviceCode: string }; result: GitHubAuthResult };
-  github_get_user: { args: NoArgs; result: GitHubUser | null };
-  github_logout: { args: NoArgs; result: void };
   delete_skill: { args: { workspacePath: string; name: string }; result: void };
-  update_skill_metadata: {
-    args: {
-      skillName: string;
-      pluginSlug: string;
-      purpose: string | null;
-      tags: string[] | null;
-      intakeJson: string | null;
-      description: string | null;
-      version: string | null;
-      model: string | null;
-      argumentHint: string | null;
-      userInvocable: boolean | null;
-      disableModelInvocation: boolean | null;
-    };
-    result: void;
-  };
-  rename_skill: {
-    args: { oldName: string; newName: string; workspacePath: string };
-    result: void;
-  };
-  export_skill_as_file: {
-    args: { skillName: string; pluginSlug: string; destPath: string };
-    result: void;
-  };
+  update_skill_metadata: { args: SkillMetadataArgs; result: void };
+  rename_skill: { args: { oldName: string; newName: string; workspacePath: string }; result: void };
+  export_skill_as_file: { args: { skillName: string; pluginSlug: string; destPath: string }; result: void };
   generate_suggestions: {
     args: {
       skillName: string;
@@ -131,30 +220,101 @@ export interface TauriCommandMap {
     };
     result: ScopeReviewResult;
   };
+  start_agent: { args: AgentStartArgs; result: string };
+  run_workflow_step: {
+    args: { skillName: string; stepId: number; workspacePath: string; workflowSessionId: string | null };
+    result: string;
+  };
+  materialize_workflow_step_output: {
+    args: { skillName: string; stepId: 0 | 1 | 2 | 3; structuredOutput: WorkflowStepStructuredOutput };
+    result: void;
+  };
+  reset_workflow_step: { args: { workspacePath: string; skillName: string; fromStepId: number }; result: void };
+  navigate_back_to_step: {
+    args: { workspacePath: string; skillName: string; targetStepId: number };
+    result: void;
+  };
+  preview_step_reset: {
+    args: { workspacePath: string; skillName: string; fromStepId: number };
+    result: StepResetPreview[];
+  };
+  verify_step_output: { args: { workspacePath: string; skillName: string; stepId: number }; result: boolean };
+  get_disabled_steps: { args: { skillName: string }; result: number[] };
+  get_workflow_state: { args: { skillName: string }; result: WorkflowStateResponse };
+  save_workflow_state: {
+    args: {
+      skillName: string;
+      currentStep: number;
+      status: string;
+      stepStatuses: StepStatusUpdate[];
+      purpose: string;
+    };
+    result: void;
+  };
+  read_file: { args: { filePath: string }; result: string };
+  write_file: { args: { path: string; content: string }; result: void };
+  list_skill_files: { args: { workspacePath: string; skillName: string }; result: SkillFileEntry[] };
+  get_workspace_path: { args: NoArgs; result: string };
+  cleanup_skill_sidecar: { args: { skillName: string }; result: void };
+  graceful_shutdown: { args: NoArgs; result: void };
+  allow_app_exit: { args: NoArgs; result: void };
+  create_workflow_session: { args: { sessionId: string; skillName: string }; result: void };
+  end_workflow_session: { args: { sessionId: string }; result: void };
+  resolve_orphan: { args: { skillName: string; action: "delete" | "keep" }; result: void };
+  resolve_discovery: {
+    args: { skillName: string; action: string; pluginSlug: string | null };
+    result: void;
+  };
+  create_github_issue: { args: { request: CreateGithubIssueRequest }; result: CreateGithubIssueResponse };
+  github_start_device_flow: { args: NoArgs; result: DeviceFlowResponse };
+  github_poll_for_token: { args: { deviceCode: string }; result: GitHubAuthResult };
+  github_get_user: { args: NoArgs; result: GitHubUser | null };
+  github_logout: { args: NoArgs; result: void };
+  acquire_lock: { args: { skillName: string }; result: void };
+  release_lock: { args: { skillName: string }; result: void };
+  get_externally_locked_skills: { args: NoArgs; result: string[] };
+  get_usage_summary: {
+    args: { hideCancelled: boolean; startDate: string | null; skillName: string | null };
+    result: UsageSummary;
+  };
+  get_recent_workflow_sessions: {
+    args: { limit: number; hideCancelled: boolean; startDate: string | null; skillName: string | null };
+    result: WorkflowSessionRecord[];
+  };
+  get_step_agent_runs: { args: { skillName: string; stepId: number }; result: AgentRunRecord[] };
+  get_agent_runs: {
+    args: {
+      hideCancelled: boolean;
+      startDate: string | null;
+      skillName: string | null;
+      modelFilter: string | null;
+      limit: number;
+    };
+    result: AgentRunRecord[];
+  };
+  get_usage_by_step: {
+    args: { hideCancelled: boolean; startDate: string | null; skillName: string | null };
+    result: UsageByStep[];
+  };
+  get_usage_by_model: {
+    args: { hideCancelled: boolean; startDate: string | null; skillName: string | null };
+    result: UsageByModel[];
+  };
+  get_usage_by_day: {
+    args: { hideCancelled: boolean; startDate: string | null; skillName: string | null };
+    result: UsageByDay[];
+  };
+  get_workflow_skill_names: { args: NoArgs; result: string[] };
+  reset_usage: { args: NoArgs; result: void };
   get_dashboard_skill_names: { args: NoArgs; result: string[] };
-  list_skills: {
-    args: { workspacePath: string; sourceUrl: string | null };
-    result: SkillSummary[];
-  };
-  list_imported_skills: {
-    args: { sourceUrl: string | null };
-    result: ImportedSkill[];
-  };
+  list_skills: { args: { workspacePath: string; sourceUrl: string | null }; result: SkillSummary[] };
+  list_imported_skills: { args: { sourceUrl: string | null }; result: ImportedSkill[] };
   delete_imported_skill: { args: { skillId: string }; result: void };
   list_plugins: { args: NoArgs; result: LibraryPlugin[] };
   delete_plugin: { args: { pluginSlug: string }; result: void };
-  set_plugin_upgrade_lock: {
-    args: { pluginSlug: string; locked: boolean };
-    result: void;
-  };
-  create_plugin_from_skills: {
-    args: { pluginName: string; skillKeys: string[] };
-    result: string;
-  };
-  move_skill_to_plugin: {
-    args: { skillKey: string; pluginSlug: string };
-    result: void;
-  };
+  set_plugin_upgrade_lock: { args: { pluginSlug: string; locked: boolean }; result: void };
+  create_plugin_from_skills: { args: { pluginName: string; skillKeys: string[] }; result: string };
+  move_skill_to_plugin: { args: { skillKey: string; pluginSlug: string }; result: void };
   remove_skill_from_plugin: { args: { skillKey: string }; result: void };
   parse_github_url: { args: { url: string }; result: GitHubRepoInfo };
   check_marketplace_url: { args: { url: string }; result: string };
@@ -180,6 +340,88 @@ export interface TauriCommandMap {
   };
   check_marketplace_updates: { args: NoArgs; result: MarketplaceUpdateResult };
   check_skill_customized: { args: { skillName: string }; result: boolean };
+  get_skill_content_at_path: { args: { path: string }; result: SkillFileContent[] };
+  get_skill_content_for_refine: {
+    args: { skillName: string; workspacePath: string; pluginSlug: string };
+    result: SkillFileContent[];
+  };
+  start_refine_session: {
+    args: { skillName: string; pluginSlug: string; workspacePath: string };
+    result: RefineSessionInfo;
+  };
+  close_refine_session: { args: { sessionId: string }; result: void };
+  cancel_refine_turn: { args: { sessionId: string }; result: void };
+  cancel_agent_run: { args: { skillName: string; agentId: string }; result: void };
+  cancel_workflow_step: { args: { agentId: string }; result: void };
+  answer_refine_question: {
+    args: {
+      sessionId: string;
+      agentId: string;
+      toolUseId: string;
+      questions: unknown;
+      answers: Record<string, unknown>;
+    };
+    result: void;
+  };
+  send_refine_message: {
+    args: {
+      sessionId: string;
+      userMessage: string;
+      pluginSlug: string;
+      workspacePath: string;
+      targetFiles: string[] | null;
+      command: null;
+    };
+    result: string;
+  };
+  finalize_refine_run: {
+    args: {
+      skillName: string;
+      workspacePath: string;
+      pluginSlug: string;
+      structuredOutput: unknown;
+    };
+    result: RefineFinalizeResult;
+  };
+  clean_benchmark_snapshot: {
+    args: { skillName: string; workspacePath: string; pluginSlug: string };
+    result: void;
+  };
+  get_skill_history: {
+    args: { workspacePath: string; skillName: string; pluginSlug: string; limit: number | null };
+    result: SkillCommit[];
+  };
+  restore_skill_version: {
+    args: { workspacePath: string; skillName: string; pluginSlug: string; sha: string };
+    result: string;
+  };
+  get_skill_files_at_sha: {
+    args: { workspacePath: string; skillName: string; pluginSlug: string; sha: string };
+    result: SkillFileContent[];
+  };
+  run_answer_evaluator: { args: { skillName: string; workspacePath: string }; result: string };
+  materialize_answer_evaluation_output: {
+    args: { skillName: string; workspacePath: string; structuredOutput: AnswerEvaluationOutput };
+    result: void;
+  };
+  get_clarifications_content: { args: { skillName: string; workspacePath: string }; result: string };
+  save_clarifications_content: {
+    args: { skillName: string; workspacePath: string; content: string };
+    result: void;
+  };
+  get_decisions_content: { args: { skillName: string; workspacePath: string }; result: string };
+  save_decisions_content: {
+    args: { skillName: string; workspacePath: string; content: string };
+    result: void;
+  };
+  get_context_file_content: {
+    args: { skillName: string; workspacePath: string; fileName: string };
+    result: string;
+  };
+  log_gate_decision: {
+    args: { skillName: string; verdict: string; decision: string };
+    result: void;
+  };
   parse_skill_file: { args: { filePath: string }; result: SkillFileMeta };
   import_skill_from_file: {
     args: {
@@ -194,6 +436,23 @@ export interface TauriCommandMap {
     };
     result: string;
   };
+  create_skill: {
+    args: {
+      workspacePath: string;
+      name: string;
+      tags: string[] | null;
+      purpose: SkillPurpose;
+      intakeJson: string | null;
+      description: string | null;
+      version: string | null;
+      model: string | null;
+      argumentHint: string | null;
+      userInvocable: boolean | null;
+      disableModelInvocation: boolean | null;
+    };
+    result: void;
+  };
+  get_all_tags: { args: NoArgs; result: string[] };
   run_optimization_loop: {
     args: {
       skillName: string;
@@ -206,12 +465,7 @@ export interface TauriCommandMap {
   };
   cancel_description_optimization: { args: NoArgs; result: void };
   apply_description: {
-    args: {
-      skillName: string;
-      pluginSlug: string;
-      workspacePath: string;
-      description: string;
-    };
+    args: { skillName: string; pluginSlug: string; workspacePath: string; description: string };
     result: string;
   };
   save_eval_queries: {
@@ -219,7 +473,7 @@ export interface TauriCommandMap {
       skillName: string;
       pluginSlug: string;
       workspacePath: string;
-      evalQueries: Array<Pick<EvalQuery, "query" | "should_trigger">>;
+      evalQueries: EvalQueryPayload[];
     };
     result: void;
   };
@@ -244,7 +498,7 @@ export interface TauriCommandMap {
   };
   read_latest_benchmark: {
     args: { skillName: string; workspacePath: string };
-    result: { iteration: number; data: BenchmarkData } | null;
+    result: LatestBenchmarkResult | null;
   };
   list_test_cases: {
     args: { skillName: string; workspacePath: string; pluginSlug: string };
@@ -325,88 +579,22 @@ export interface TauriCommandMap {
     };
     result: [string, string];
   };
-  get_skill_content_at_path: { args: { path: string }; result: SkillFileContent[] };
-  get_skill_content_for_refine: {
-    args: { skillName: string; workspacePath: string; pluginSlug: string };
-    result: SkillFileContent[];
+  list_documents: { args: NoArgs; result: Document[] };
+  list_skills_for_documents: { args: NoArgs; result: SkillIdName[] };
+  add_document_file: {
+    args: { name: string; content: string; scope: DocumentScope; skillIds: number[] };
+    result: Document;
   };
-  start_refine_session: {
-    args: { skillName: string; pluginSlug: string; workspacePath: string };
-    result: RefineSessionInfo;
+  add_document_url: {
+    args: { name: string; url: string; scope: DocumentScope; skillIds: number[] };
+    result: Document;
   };
-  close_refine_session: { args: { sessionId: string }; result: void };
-  cancel_refine_turn: { args: { sessionId: string }; result: void };
-  cancel_agent_run: { args: { skillName: string; agentId: string }; result: void };
-  cancel_workflow_step: { args: { agentId: string }; result: void };
-  answer_refine_question: {
-    args: {
-      sessionId: string;
-      agentId: string;
-      toolUseId: string;
-      questions: unknown;
-      answers: Record<string, unknown>;
-    };
-    result: void;
+  add_document_folder: {
+    args: { name: string; folderPath: string; scope: DocumentScope; skillIds: number[] };
+    result: Document[];
   };
-  send_refine_message: {
-    args: {
-      sessionId: string;
-      userMessage: string;
-      pluginSlug: string;
-      workspacePath: string;
-      targetFiles: string[] | null;
-      command: string | null;
-    };
-    result: string;
-  };
-  finalize_refine_run: {
-    args: {
-      skillName: string;
-      workspacePath: string;
-      pluginSlug: string;
-      structuredOutput: unknown | null;
-    };
-    result: RefineFinalizeResult;
-  };
-  clean_benchmark_snapshot: {
-    args: { skillName: string; workspacePath: string; pluginSlug: string };
-    result: void;
-  };
-  get_skill_history: {
-    args: { workspacePath: string; skillName: string; pluginSlug: string; limit: number | null };
-    result: SkillCommit[];
-  };
-  restore_skill_version: {
-    args: { workspacePath: string; skillName: string; pluginSlug: string; sha: string };
-    result: string;
-  };
-  get_skill_files_at_sha: {
-    args: { workspacePath: string; skillName: string; pluginSlug: string; sha: string };
-    result: SkillFileContent[];
-  };
-  run_answer_evaluator: { args: { skillName: string; workspacePath: string }; result: string };
-  materialize_answer_evaluation_output: {
-    args: { skillName: string; workspacePath: string; structuredOutput: AnswerEvaluationOutput };
-    result: void;
-  };
-  get_clarifications_content: { args: { skillName: string; workspacePath: string }; result: string };
-  save_clarifications_content: {
-    args: { skillName: string; workspacePath: string; content: string };
-    result: void;
-  };
-  get_decisions_content: { args: { skillName: string; workspacePath: string }; result: string };
-  save_decisions_content: {
-    args: { skillName: string; workspacePath: string; content: string };
-    result: void;
-  };
-  get_context_file_content: {
-    args: { skillName: string; workspacePath: string; fileName: string };
-    result: string;
-  };
-  log_gate_decision: {
-    args: { skillName: string; verdict: string; decision: string };
-    result: void;
-  };
+  update_document: { args: { id: number; scope: DocumentScope; skillIds: number[] }; result: Document };
+  delete_document: { args: { id: number }; result: void };
 }
 
 export type TauriCommandName = keyof TauriCommandMap;

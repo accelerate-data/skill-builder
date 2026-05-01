@@ -125,3 +125,34 @@ test("VU-1140 scoped commands stay on the typed invokeCommand path", () => {
   assert.deepEqual(missingTypedWrappers, []);
   assert.deepEqual(unsafeWrappers, []);
 });
+
+test("wrapper commands use invokeCommand unless explicitly allowlisted", () => {
+  const tauriSource = read("app/src/lib/tauri.ts");
+  const allowedUnsafeCommands = {};
+  const unsafeCommands = Array.from(
+    tauriSource.matchAll(/invokeUnsafe(?:<[^)]*>)?\(\s*"([^"]+)"/g),
+    (match) => match[1],
+  );
+
+  const undocumentedCommands = unsafeCommands.filter(
+    (command) => !allowedUnsafeCommands[command],
+  );
+
+  assert.deepEqual(undocumentedCommands, []);
+});
+
+test("invokeUnsafe call expressions are rejected outside documented exceptions", () => {
+  const tauriSource = read("app/src/lib/tauri.ts");
+
+  assert.doesNotMatch(tauriSource, /\binvokeUnsafe\s*\(/);
+});
+
+test("raw invoke calls stay behind the typed invokeCommand gateway", () => {
+  const tauriSource = read("app/src/lib/tauri.ts");
+  const sourceWithoutGateway = tauriSource.replace(
+    /export const invokeCommand = <Invocation extends TauriCommandInvocation>\(\n\s+\.\.\.\[command, args\]: Invocation\n\) => invoke<TauriCommandResult<Invocation\[0\]>>\(command, args\);/,
+    "",
+  );
+
+  assert.doesNotMatch(sourceWithoutGateway, /\binvoke(?:<[^)]*>)?\(/);
+});
