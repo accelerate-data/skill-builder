@@ -1,3 +1,1 @@
-{"type":"openhands_event","event_kind":"message","text":"Starting OpenHands agent with prompt: Analyze the codebase and return a JSON summary","timestamp":1714550400000}
-{"type":"openhands_event","event_kind":"tool_call","tool_name":"BashTool","summary":"Executing: find . -name '*.ts' | wc -l","timestamp":1714550401500}
-{"type":"openhands_result","status":"error","result_text":"The codebase has 42 TypeScript files. Here is a brief summary of the architecture...","structured_output":null,"error_subtype":"structured_output_missing","error_message":"Agent did not produce valid JSON output matching the requested schema.","timestamp":1714550403000}
+{"type":"openhands_result","status":"error","result_text":null,"structured_output":null,"error_message":"OpenHands SDK not installed or no usable entry point found. Install dev dependencies from app/sidecar/openhands/requirements.txt","timestamp":1714550403000}

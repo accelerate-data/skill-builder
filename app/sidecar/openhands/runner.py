@@ -80,18 +80,6 @@ try:
             LLM = None  # type: ignore[assignment]
 
     try:
-        from openhands.controller.agent import Agent  # type: ignore[import]
-
-        def _get_default_agent() -> Any:
-            return Agent.get_cls("CodeActAgent")
-
-    except ImportError:
-        try:
-            from openhands.core.agent import get_default_agent as _get_default_agent  # type: ignore[import]
-        except ImportError:
-            _get_default_agent = None  # type: ignore[assignment]
-
-    try:
         from openhands.core.config import AppConfig  # type: ignore[import]
     except ImportError:
         AppConfig = None  # type: ignore[assignment]
@@ -101,7 +89,7 @@ try:
     except ImportError:
         MessageAction = None  # type: ignore[assignment]
 
-    if all(x is None for x in [_openhands_main, LLM, _get_default_agent]):
+    if all(x is None for x in [_openhands_main, LLM]):
         _OPENHANDS_IMPORT_ERROR = (
             "OpenHands SDK not installed or no usable entry point found. "
             "Install dev dependencies from app/sidecar/openhands/requirements.txt"
@@ -114,7 +102,6 @@ except ImportError as exc:
     )
     _openhands_main = None  # type: ignore[assignment]
     LLM = None  # type: ignore[assignment]
-    _get_default_agent = None  # type: ignore[assignment]
     AppConfig = None  # type: ignore[assignment]
     MessageAction = None  # type: ignore[assignment]
 
@@ -133,49 +120,10 @@ def parse_request(raw: str) -> dict[str, Any]:
         raise ValueError("Request must be a JSON object")
     if data.get("mode") != "one-shot":
         raise ValueError(f"Unsupported mode: {data.get('mode')!r} (only 'one-shot' is supported)")
+    for required in ("prompt", "apiKey"):
+        if required not in data:
+            raise ValueError(f"Missing required field: {required!r}")
     return data
-
-
-# ---------------------------------------------------------------------------
-# Structured output extraction
-# ---------------------------------------------------------------------------
-
-
-def extract_structured_output(
-    text: str, schema: dict[str, Any]
-) -> dict[str, Any] | None:
-    """
-    Attempt to locate and parse a JSON block in *text* that matches the
-    top-level shape of *schema*.
-
-    Returns the parsed object on success, or None if no valid JSON is found.
-    """
-    import re
-
-    # Try full text first (model may output only JSON)
-    stripped = text.strip()
-    if stripped.startswith("{") or stripped.startswith("["):
-        try:
-            return json.loads(stripped)
-        except json.JSONDecodeError:
-            pass
-
-    # Try fenced code blocks: ```json ... ``` or ``` ... ```
-    for block in re.finditer(r"```(?:json)?\s*([\s\S]*?)```", text):
-        candidate = block.group(1).strip()
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-
-    # Try any top-level {...} span
-    for match in re.finditer(r"\{[\s\S]*?\}", text):
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError:
-            continue
-
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -310,8 +258,6 @@ def run_via_llm_direct(request: dict[str, Any]) -> str:
 
 
 def run(request: dict[str, Any]) -> None:
-    output_format: dict[str, Any] | None = request.get("outputFormat")
-
     # Attempt the full agent path first, fall back to direct LLM call
     result_text: str = ""
     run_error: str | None = None
@@ -357,29 +303,7 @@ def run(request: dict[str, Any]) -> None:
         emit_result(status="error", error_message=run_error)
         return
 
-    # Handle structured output requirement
-    if output_format is not None and output_format.get("type") == "json_schema":
-        schema = output_format.get("schema") or {}
-        structured = extract_structured_output(result_text, schema)
-        if structured is None:
-            emit_result(
-                status="error",
-                result_text=result_text,
-                structured_output=None,
-                error_subtype="structured_output_missing",
-                error_message=(
-                    "Agent did not produce valid JSON output matching the requested schema."
-                ),
-            )
-            return
-        emit_result(
-            status="success",
-            result_text=result_text,
-            structured_output=structured,
-        )
-        return
-
-    emit_result(status="success", result_text=result_text)
+    emit_result(status="success", result_text=result_text, structured_output=None)
 
 
 def main() -> None:
