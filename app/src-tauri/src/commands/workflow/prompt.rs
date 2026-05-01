@@ -27,7 +27,6 @@ pub(crate) struct PromptParams<'a> {
 /// Embeds workspace path, skills output path, author, and date.
 /// `subagent_directive` is appended as the final sentence — use it to instruct
 /// the model to launch a named subagent (steps 1–3).
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_prompt(p: &PromptParams<'_>) -> String {
     let skill_name = p.skill_name;
     let workspace_path = p.workspace_path;

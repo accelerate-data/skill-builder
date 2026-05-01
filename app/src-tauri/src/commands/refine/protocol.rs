@@ -257,7 +257,7 @@ pub(super) fn build_followup_prompt_for_plugin(
     target_files: Option<&[String]>,
 ) -> String {
     let skill_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
-    build_followup_prompt_with_output_dir(user_message, &skill_dir, skill_name, target_files)
+    build_followup_prompt_with_output_dir(user_message, &skill_dir, target_files)
 }
 
 /// The refine-initial.txt template, embedded at compile time.
@@ -309,10 +309,8 @@ pub(super) fn build_refine_prompt_with_output_dir(
 pub(super) fn build_followup_prompt_with_output_dir(
     user_message: &str,
     skill_output_dir: &std::path::Path,
-    skill_name: &str,
     target_files: Option<&[String]>,
 ) -> String {
-    let _ = skill_name;
     let target_files_clause = match target_files {
         Some(files) if !files.is_empty() => {
             let skill_dir_str = skill_output_dir.to_string_lossy().replace('\\', "/");

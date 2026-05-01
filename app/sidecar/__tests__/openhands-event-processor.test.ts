@@ -258,4 +258,26 @@ describe("OpenHandsEventProcessor — edge cases", () => {
     const processor = new OpenHandsEventProcessor(makeContext());
     expect(processor.hasEmittedResult()).toBe(false);
   });
+
+  it("ignores a second openhands_result line (processResult idempotency guard)", () => {
+    const processor = new OpenHandsEventProcessor(makeContext());
+    const { messages, sink } = makeSink();
+
+    const resultLine = JSON.stringify({
+      type: "openhands_result",
+      status: "success",
+      result_text: "done",
+      timestamp: Date.now(),
+    });
+
+    processor.processLine(resultLine, sink);
+    processor.processLine(resultLine, sink);
+
+    const runResults = messages.filter(
+      (m) =>
+        m.type === "agent_event" &&
+        (m.event as Record<string, unknown>)?.type === "run_result",
+    );
+    expect(runResults).toHaveLength(1);
+  });
 });

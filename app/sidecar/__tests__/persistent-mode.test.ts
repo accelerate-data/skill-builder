@@ -7,7 +7,14 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn(),
 }));
 
+// Mock child_process so OpenHandsRuntime can be exercised without Python
+vi.mock("node:child_process", () => ({
+  spawn: vi.fn(),
+}));
+
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import * as childProcess from "node:child_process";
+import { EventEmitter, PassThrough } from "node:stream";
 import {
   parseIncomingMessage,
   wrapWithRequestId,
@@ -15,6 +22,7 @@ import {
 } from "../persistent-mode.js";
 
 const mockQuery = vi.mocked(query);
+const mockSpawn = vi.mocked(childProcess.spawn);
 
 // =====================================================================
 // Unit tests: parseIncomingMessage
@@ -1192,5 +1200,49 @@ describe("runPersistent", () => {
           && String(parsed.item?.outputText ?? "").includes("Answer:Launch validate");
       }),
     ).toBe(true);
+  });
+
+  it("routes agent_request with runtimeProvider openhands to OpenHandsRuntime (spawn, not query)", async () => {
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const stdin = new PassThrough();
+    const mockChild = Object.assign(new EventEmitter(), { stdout, stderr, stdin, kill: vi.fn() });
+    mockSpawn.mockReturnValueOnce(mockChild as ReturnType<typeof childProcess.spawn>);
+
+    // Close the child after it is spawned so the request completes and shutdown can drain
+    setImmediate(() => {
+      stdout.push(
+        JSON.stringify({ type: "openhands_result", status: "success", result_text: "{}" }) + "\n",
+      );
+      stdout.push(null);
+      stderr.push(null);
+      mockChild.emit("close", 0);
+    });
+
+    const input = createInputStream([
+      JSON.stringify({
+        type: "agent_request",
+        request_id: "req_oh",
+        config: {
+          prompt: "test",
+          apiKey: "sk-test",
+          workspaceRootDir: os.tmpdir(),
+          workspaceSkillDir: os.tmpdir(),
+          runtimeProvider: "openhands",
+        },
+      }),
+      JSON.stringify({ type: "shutdown" }),
+    ]);
+
+    const exitFn = vi.fn();
+    const capture = captureStdout();
+    try {
+      await runPersistent(input, exitFn);
+    } finally {
+      capture.restore();
+    }
+
+    expect(mockSpawn).toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
