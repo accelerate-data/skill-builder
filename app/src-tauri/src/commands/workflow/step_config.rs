@@ -93,11 +93,9 @@ pub(crate) fn workflow_output_format_for_step(step_id: u32) -> Option<serde_json
     let schema_str = match step_id {
         // Deep schema — all fields required per SKILL.md, nested ClarificationsFile enforced.
         0 => Some(schemas::RESEARCH_STEP_INLINE_SCHEMA),
-        // Step 1 runs the agent directly (no subagent relay) — use the full
-        // nested schema so the SDK enforces the complete structure.
+        // Step 1 reuses research-agent with the detailed research schema.
         1 => Some(schemas::DETAILED_RESEARCH_INLINE_SCHEMA),
-        // Step 2 runs the agent directly (no subagent relay) — use the full
-        // nested schema so the SDK enforces Decision fields and DecisionStatus enum.
+        // Step 2 reuses skill-writer-agent with the decisions schema.
         2 => Some(schemas::DECISIONS_INLINE_SCHEMA),
         3 => Some(schemas::GENERATE_SKILL_SCHEMA),
         _ => None,
@@ -115,9 +113,9 @@ pub(crate) fn workflow_output_format_for_step(step_id: u32) -> Option<serde_json
 pub(crate) fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
     match step_id {
         0 => Some(8_000),  // research
-        1 => Some(8_000),  // detailed-research
-        2 => Some(32_000), // confirm-decisions — highest priority
-        3 => Some(16_000), // generate-skill — complex synthesis
+        1 => Some(8_000),  // research-agent detailed research
+        2 => Some(32_000), // skill-writer-agent decisions pass
+        3 => Some(16_000), // skill-writer-agent skill generation
         _ => None,
     }
 }

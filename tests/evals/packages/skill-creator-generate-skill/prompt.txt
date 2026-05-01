@@ -1,4 +1,4 @@
-This is the workflow step 3 prompt that launches the skill-creator:generate-skill subagent in the app. In this eval harness, do not actually launch tools or write files; synthesize the same final status JSON the app expects after the subagent completes.
+This is the workflow step 3 prompt for the OpenHands `skill-writer-agent` generation pass. In this eval harness, do not actually launch tools or write files; synthesize the same final status JSON the app expects after the agent completes.
 Your final response MUST be ONLY a raw JSON object - no markdown, no explanation, no wrapping.
 
 App-provided run context:
@@ -6,7 +6,7 @@ App-provided run context:
 - workspace_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
 - context_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context
 - skill_output_dir: /tmp/skill-builder/skills/skill-builder/fabric-dbt-standards
-- user-context.md describes a Claude Code skill for dbt-Fabric modeling standards
+- user-context.md describes a Claude-compatible skill for dbt-Fabric modeling standards
 - decisions.json contains accepted decisions for layer naming, incremental models, snapshots, semantic handoff, and CI review
 
 Generate the final structured status JSON that workflow step 3 returns after creating SKILL.md, references, and evals.json. Do not include file contents.

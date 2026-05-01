@@ -1,6 +1,6 @@
 EXECUTE IMMEDIATELY - do not greet the user, do not ask questions, do not offer options.
 
-This is the workflow step 1 prompt for skill-content-researcher:detailed-research. Use the inline app context as if it came from the workspace files.
+This is the workflow step 1 prompt for the OpenHands `research-agent` detailed-research pass. Use the inline app context as if it came from the workspace files.
 
 Skill: fabric-dbt-standards
 Workspace directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards

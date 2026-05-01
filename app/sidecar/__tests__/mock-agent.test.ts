@@ -34,14 +34,27 @@ describe("resolveStepTemplate", () => {
     );
   });
 
-  it("maps research agents to step0-research", () => {
-    expect(resolveStepTemplate("research-orchestrator")).toBe("step0-research");
+  it("maps OpenHands research-agent by workflow step", () => {
+    expect(resolveStepTemplate("research-agent", { stepId: 0 })).toBe("step0-research");
+    expect(resolveStepTemplate("research-agent", { stepId: 1 })).toBe("step1-detailed-research");
+    expect(resolveStepTemplate("skill-content-researcher:research-agent", { stepId: 0 })).toBe("step0-research");
+    expect(resolveStepTemplate("skill-content-researcher:research-agent", { stepId: 1 })).toBe("step1-detailed-research");
+  });
+
+  it("maps OpenHands skill-writer-agent by workflow step", () => {
+    expect(resolveStepTemplate("skill-writer-agent", { stepId: 2 })).toBe("step2-confirm-decisions");
+    expect(resolveStepTemplate("skill-writer-agent", { stepId: 3 })).toBe("step3-generate-skill");
+    expect(resolveStepTemplate("skill-creator:skill-writer-agent", { stepId: 2 })).toBe("step2-confirm-decisions");
+    expect(resolveStepTemplate("skill-creator:skill-writer-agent", { stepId: 3 })).toBe("step3-generate-skill");
+  });
+
+  it("keeps legacy research mock aliases on step0-research", () => {
     expect(resolveStepTemplate("research-planner")).toBe("step0-research");
     expect(resolveStepTemplate("consolidate-research")).toBe("step0-research");
     expect(resolveStepTemplate("research-entities")).toBe("step0-research");
   });
 
-  it("maps workflow step agents correctly", () => {
+  it("keeps legacy workflow step agent aliases mapped", () => {
     expect(resolveStepTemplate("skill-content-researcher:skill-builder")).toBe(
       "step0-research",
     );

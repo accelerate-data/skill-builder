@@ -1,5 +1,5 @@
 {
-  "description": "skill-creator:generate-skill workflow JSON output.",
+  "description": "OpenHands skill-writer-agent step 3 workflow JSON output.",
   "metadata": {
     "eval_tier": "standard"
   },

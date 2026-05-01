@@ -15,10 +15,8 @@ const MOCK_SCENARIO = process.env.MOCK_SCENARIO ?? "default";
 /**
  * Map agent names to step template files.
  *
- * Plugin-hosted agents use qualified names (e.g., `skill-creator:generate-skill`,
- * `skill-content-researcher:research-orchestrator`,
- * `skill-content-researcher:detailed-research`,
- * `skill-content-researcher:confirm-decisions`).
+ * Workflow agents use OpenHands-native names. Step id disambiguates the shared
+ * research and skill-writer agents.
  */
 /** @internal Exported for testing only. */
 export function resolveStepTemplate(
@@ -38,6 +36,18 @@ export function resolveStepTemplate(
   }
 
   // Exact matches first
+  if (
+    agentName === "research-agent" ||
+    agentName === "skill-content-researcher:research-agent"
+  ) {
+    return config?.stepId === 1 ? "step1-detailed-research" : "step0-research";
+  }
+  if (
+    agentName === "skill-writer-agent" ||
+    agentName === "skill-creator:skill-writer-agent"
+  ) {
+    return config?.stepId === 3 ? "step3-generate-skill" : "step2-confirm-decisions";
+  }
   if (agentName === "skill-content-researcher:skill-builder") {
     if (config?.stepId === 1) return "step1-detailed-research";
     if (config?.stepId === 2) return "step2-confirm-decisions";

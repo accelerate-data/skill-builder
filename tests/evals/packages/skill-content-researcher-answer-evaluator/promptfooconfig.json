@@ -1,5 +1,5 @@
 {
-  "description": "skill-content-researcher:answer-evaluator app gate JSON output.",
+  "description": "OpenHands answer-evaluator app gate JSON output.",
   "metadata": {
     "eval_tier": "standard"
   },

@@ -1,6 +1,6 @@
 EXECUTE IMMEDIATELY - do not greet the user, do not ask questions, do not offer options.
 
-This is the skill-content-researcher:skill-builder one-shot workflow wrapper for the research step. Use the same final response contract the app captures from structured output.
+This is the legacy workflow wrapper regression package. The active workflow path now runs OpenHands `research-agent`; use the same final response contract the app captures from structured output.
 
 Skill name: fabric-dbt-standards
 Workspace directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards

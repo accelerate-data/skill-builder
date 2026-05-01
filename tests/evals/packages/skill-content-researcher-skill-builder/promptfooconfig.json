@@ -1,5 +1,5 @@
 {
-  "description": "skill-content-researcher:skill-builder workflow wrapper JSON output.",
+  "description": "Legacy workflow wrapper regression JSON output.",
   "metadata": {
     "eval_tier": "standard"
   },

@@ -1184,7 +1184,6 @@ fn test_build_prompt_all_three_paths() {
         skills_path: "/home/user/my-skills",
         author_login: None,
         created_at: None,
-        subagent_directive: None,
         step_id: 1,
     });
     assert!(prompt.contains("my-skill"));
@@ -1209,7 +1208,6 @@ fn test_build_prompt_with_skill_type() {
         skills_path: "/home/user/my-skills",
         author_login: None,
         created_at: None,
-        subagent_directive: None,
         step_id: 1,
     });
     // Purpose is now in user-context.md, read by the agent
@@ -1225,7 +1223,6 @@ fn test_build_prompt_with_author_info() {
         skills_path: "/home/user/my-skills",
         author_login: Some("octocat"),
         created_at: Some("2025-06-15T12:00:00Z"),
-        subagent_directive: None,
         step_id: 1,
     });
     assert!(prompt.contains("The author of this skill is: octocat."));
@@ -1242,7 +1239,6 @@ fn test_build_prompt_without_author_info() {
         skills_path: "/home/user/my-skills",
         author_login: None,
         created_at: None,
-        subagent_directive: None,
         step_id: 1,
     });
     assert!(!prompt.contains("The author of this skill is:"));
@@ -1261,7 +1257,6 @@ fn test_build_prompt_does_not_include_schema_file_path() {
             skills_path: "/sk",
             author_login: None,
             created_at: None,
-            subagent_directive: None,
             step_id,
         });
         assert!(
@@ -1289,7 +1284,6 @@ fn test_build_prompt_does_not_include_schema_file_path() {
         skills_path: "/sk",
         author_login: None,
         created_at: None,
-        subagent_directive: None,
         step_id: 1,
     });
     assert!(step1.contains("DetailedResearchOutput"));
@@ -1300,10 +1294,51 @@ fn test_build_prompt_does_not_include_schema_file_path() {
         skills_path: "/sk",
         author_login: None,
         created_at: None,
-        subagent_directive: None,
         step_id: 2,
     });
     assert!(step2.contains("DecisionsOutput"));
+}
+
+#[test]
+fn test_active_workflow_prompts_do_not_reintroduce_claude_routing() {
+    let workflow_prompt = build_prompt(&PromptParams {
+        skill_name: "s",
+        workspace_path: "/ws",
+        plugin_slug: DEFAULT_PLUGIN_SLUG,
+        skills_path: "/sk",
+        author_login: None,
+        created_at: None,
+        step_id: 2,
+    });
+    let evaluator_prompt = super::prompt::build_evaluator_prompt(
+        "s",
+        "/ws",
+        DEFAULT_PLUGIN_SLUG,
+        "/sk",
+    );
+    let prompts = [
+        ("workflow", workflow_prompt),
+        ("answer evaluator", evaluator_prompt),
+    ];
+
+    for (label, prompt) in prompts {
+        for forbidden in [
+            ".claude/plugins",
+            "skill-content-researcher:",
+            "skill-creator:",
+            "AskUserQuestion",
+            "Agent tool",
+            "Skill tool",
+            "subagent_directive",
+            "pathToClaudeCodeExecutable",
+            "permissionMode",
+        ] {
+            assert!(
+                !prompt.contains(forbidden),
+                "{label} prompt must not contain stale routing token: {forbidden}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -2518,7 +2553,6 @@ fn test_build_prompt_includes_user_context_md_instruction() {
         skills_path: skills.to_str().unwrap(),
         author_login: None,
         created_at: None,
-        subagent_directive: None,
         step_id: 1,
     });
     assert!(prompt.contains("user-context.md"));
@@ -2536,7 +2570,6 @@ fn test_build_prompt_without_user_context() {
         skills_path: skills.to_str().unwrap(),
         author_login: None,
         created_at: None,
-        subagent_directive: None,
         step_id: 1,
     });
     assert!(prompt.contains("user-context.md"));

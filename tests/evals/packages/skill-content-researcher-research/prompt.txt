@@ -1,6 +1,6 @@
 EXECUTE IMMEDIATELY - do not ask questions, do not greet the user, do not offer options.
 
-This is the app step-0 research prompt for skill-content-researcher:research. Use the inline context as if it came from user-context.md and return the same structured output the app captures.
+This is the app step-0 research prompt for the OpenHands `research-agent`. Use the inline context as if it came from user-context.md and return the same structured output the app captures.
 
 Skill name: fabric-dbt-standards
 Workspace directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards

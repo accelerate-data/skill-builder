@@ -1,6 +1,6 @@
 EXECUTE IMMEDIATELY - do not greet the user, do not ask questions, do not offer options.
 
-This is the workflow step 2 prompt for skill-content-researcher:confirm-decisions.
+This is the workflow step 2 prompt for the OpenHands `skill-writer-agent` decisions pass.
 
 Skill: fabric-dbt-standards
 Workspace directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
