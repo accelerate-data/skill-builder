@@ -98,6 +98,21 @@ pub fn resolve_workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_na
     workspace_skill_dir(workspace, plugin_slug, skill_name)
 }
 
+/// OpenHands agent root inside a workflow workspace skill directory.
+pub fn workspace_agents_dir(workspace_skill_dir: &Path) -> PathBuf {
+    workspace_skill_dir.join(".agents")
+}
+
+/// OpenHands agent definition files inside a workflow workspace skill directory.
+pub fn workspace_agent_files_dir(workspace_skill_dir: &Path) -> PathBuf {
+    workspace_agents_dir(workspace_skill_dir).join("agents")
+}
+
+/// OpenHands AgentSkills inside a workflow workspace skill directory.
+pub fn workspace_agent_skills_dir(workspace_skill_dir: &Path) -> PathBuf {
+    workspace_agents_dir(workspace_skill_dir).join("skills")
+}
+
 /// Returns the canonical plugin-layout skill directory path
 /// (`{root}/{plugin_slug}/{skill_name}`). Does not check existence.
 pub fn resolve_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
@@ -294,6 +309,22 @@ mod tests {
         assert_eq!(
             resolve_skill_dir(root, "analytics", "weekly-report"),
             root.join("analytics").join("weekly-report")
+        );
+    }
+
+    #[test]
+    fn workspace_agent_dirs_are_under_workspace_skill_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_skill = workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "weekly-report");
+
+        assert_eq!(workspace_agents_dir(&workspace_skill), workspace_skill.join(".agents"));
+        assert_eq!(
+            workspace_agent_files_dir(&workspace_skill),
+            workspace_skill.join(".agents").join("agents")
+        );
+        assert_eq!(
+            workspace_agent_skills_dir(&workspace_skill),
+            workspace_skill.join(".agents").join("skills")
         );
     }
 
