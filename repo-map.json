@@ -50,7 +50,7 @@
         ".github/workflows/docs.yml",
         ".github/workflows/release.yml"
       ],
-      "notes": "pr-ci.yml: heavy platform CI (Linux/Windows/macOS) + frontend unit/integration on main push or manual dispatch. pr-policy.yml: cheap PR checks for docs build/help links, script tests, agents-structural, eval-harness, instruction-docs-lint, repo-map-audit, test-manifest-audit. security.yml: dependency-review and cargo-audit; GitHub code scanning provides the CodeQL PR check. docs.yml: deterministic VitePress GitHub Pages deploy. release.yml: multi-platform Tauri build, release-stage verification, and publish."
+      "notes": "pr-ci.yml: heavy platform CI (Linux/Windows/macOS) + frontend unit/integration on main push or manual dispatch. pr-policy.yml: cheap PR checks for docs build/help links, script tests, agents-structural, eval-harness, instruction-docs-lint, repo-map-audit, test-map-audit. security.yml: dependency-review and cargo-audit; GitHub code scanning provides the CodeQL PR check. docs.yml: deterministic VitePress GitHub Pages deploy. release.yml: multi-platform Tauri build, release-stage verification, and publish."
     }
   ],
   "test_frameworks": [
@@ -261,7 +261,7 @@
     "state_management": ".claude/rules/state-management.md — frontend local-state vs Zustand boundaries",
     "windows_compat": ".claude/rules/windows-compat.md — path separators, CRLF, env-var syntax, Rust toolchain. Read before writing path assertions, regex, package.json scripts, or CI config.",
     "logging_policy": ".claude/rules/logging-policy.md — log levels, sensitive data redaction, structured logging, correlation IDs",
-    "test_manifest": "TEST_MANIFEST.md — Rust command → E2E tag mappings, shared infra blast radius, cross-boundary format compliance. Read before choosing tests for Rust or cross-layer changes."
+    "test_map": "TEST_MAP.md — changed-path validation map, Rust command → E2E tag mappings, shared infra blast radius, cross-boundary format compliance, and live-eval boundaries."
   },
   "notes_for_agents": {
     "startup": "Read this file before exploring code. It is the primary startup context for structure, entrypoints, modules, and commands. Skip repo-wide rediscovery if it covers your task.",
@@ -273,7 +273,7 @@
     "agent_tests_changed": "When agents/*.md or agent-sources/workspace/** changes, run `cd app && npm run test:agents:structural` before reporting completion.",
     "sdk_limitations": "See AGENTS.md Gotchas — SDK has no team tools (no TeamCreate/TaskCreate/SendMessage). Use the Task tool for sub-agents; multiple Task calls in the same turn run in parallel.",
     "pre_commit_checks": "See AGENTS.md Issue Management for the full pre-commit checklist (markdownlint, tsc, cargo check, lint-agent-docs).",
-    "test_selection": "For Rust or cross-layer changes, read TEST_MANIFEST.md to find the correct cargo filter and E2E tag before running tests. Frontend test selection is handled automatically by `vitest --changed`.",
+    "test_selection": "For Rust or cross-layer changes, read TEST_MAP.md to find the correct cargo filter and E2E tag before running tests. Frontend test selection is handled automatically by `vitest --changed`.",
     "path_safety": "All filesystem operations on user-supplied skill names must call validate_skill_name() and use fs::canonicalize + starts_with before any remove_dir_all or rename. See commands/skill/crud.rs delete_skill_inner for the canonical pattern.",
     "update_repo_map": "Refresh this file whenever you change architecture, entrypoints, commands, modules, or package structure."
   }

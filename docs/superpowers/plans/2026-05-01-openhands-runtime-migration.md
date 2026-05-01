@@ -180,7 +180,7 @@ const runtime = config.runtimeProvider === "openhands"
 - [ ] Run: `cd app/sidecar && npx vitest run`
 - [ ] Run: `cd app && npm run test:agents:structural`
 - [ ] Run: `cd app && npm run test:unit`
-- [ ] Run Rust/cross-layer tests selected from `TEST_MANIFEST.md`.
+- [ ] Run Rust/cross-layer tests selected from `TEST_MAP.md`.
 - [ ] Commit: `git commit -m "Switch default agent runtime to OpenHands"`
 
 ## Acceptance Criteria
@@ -197,7 +197,7 @@ const runtime = config.runtimeProvider === "openhands"
 - Sidecar adapter tests: `cd app/sidecar && npx vitest run`
 - Agent structural tests: `cd app && npm run test:agents:structural`
 - Frontend/unit contract tests: `cd app && npm run test:unit`
-- Rust/cross-layer tests: read `TEST_MANIFEST.md` and run the mapped cargo filters for changed Rust command/agent files
+- Rust/cross-layer tests: read `TEST_MAP.md` and run the mapped cargo filters for changed Rust command/agent files
 - Manual smoke: run `cd app && MOCK_AGENTS=true npm run dev` for baseline UI and a real OpenHands workflow step only after API keys/runtime dependencies are configured
 
 ## Key Risks

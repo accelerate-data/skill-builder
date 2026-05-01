@@ -6,7 +6,7 @@
 
 **Architecture:** Keep Playwright at the existing browser-mocked Tauri boundary. Add one focused `@description` spec that drives the real workspace tab UI with deterministic command/event mocks, and keep broader surface decisions in this durable plan instead of expanding CI with low-value duplicates.
 
-**Tech Stack:** Playwright, React workspace tabs, Tauri E2E command mocks, sidecar mock templates, Markdown test manifest.
+**Tech Stack:** Playwright, React workspace tabs, Tauri E2E command mocks, sidecar mock templates, Markdown test map.
 
 ---
 
@@ -75,7 +75,7 @@ The describe block uses `{ tag: "@description" }` so it can run via `./tests/run
 
 **Files:**
 
-- Modify: `TEST_MANIFEST.md`
+- Modify: `TEST_MAP.md`
 - Modify: `app/playwright.config.ts`
 - Modify: `app/tests/run.sh`
 - Modify: `repo-map.json`

@@ -31,7 +31,7 @@
 - Modify: `app/src/__tests__/guards/tauri-command-policy.test.ts` to enforce that the scoped commands no longer use `invokeUnsafe`.
 - Modify: `app/e2e/helpers/workflow-helpers.ts` to keep mocked workflow automation aligned with required model settings.
 - Modify: `tests/evals/assertions/tauri-command-contract.test.js` to mirror the static guard in the eval assertion suite.
-- Leave unchanged unless verification proves otherwise: Rust command implementations, existing UI tests, `repo-map.json`, and `TEST_MANIFEST.md`.
+- Leave unchanged unless verification proves otherwise: Rust command implementations, existing UI tests, `repo-map.json`, and `TEST_MAP.md`.
 
 ## Task 1: RED Guards For Scoped Escape-Hatch Removal
 
