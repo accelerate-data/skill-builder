@@ -8,14 +8,25 @@ const EXPECTED_AGENTS: string[] = [];
 
 /** Plugin-hosted agents: agent name → plugin path relative to PLUGINS_DIR */
 const PLUGIN_AGENTS: Record<string, string> = {
-  "skill-builder": "skill-content-researcher/agents/skill-builder.md",
-  "generate-skill": "skill-creator/agents/generate-skill.md",
+  "research-agent": "skill-content-researcher/agents/research-agent.md",
+  "answer-evaluator": "skill-content-researcher/agents/answer-evaluator.md",
+  "skill-writer-agent": "skill-creator/agents/skill-writer-agent.md",
   "rewrite-skill": "skill-creator/agents/rewrite-skill.md",
-  "detailed-research": "skill-content-researcher/agents/detailed-research.md",
-  "confirm-decisions": "skill-content-researcher/agents/confirm-decisions.md",
-  "answer-evaluator":
-    "skill-content-researcher/skills/answer-evaluator/SKILL.md",
+  grader: "skill-creator/agents/grader.md",
 };
+
+const OPENHANDS_WORKFLOW_AGENTS = [
+  "research-agent",
+  "answer-evaluator",
+  "skill-writer-agent",
+] as const;
+
+const OBSOLETE_WORKFLOW_AGENT_PATHS = [
+  "skill-content-researcher/agents/skill-builder.md",
+  "skill-content-researcher/agents/detailed-research.md",
+  "skill-content-researcher/agents/confirm-decisions.md",
+  "skill-creator/agents/generate-skill.md",
+] as const;
 
 /** Resolve the .md file path for any agent (top-level or plugin). */
 function resolveAgentPath(agentName: string): string {
@@ -39,6 +50,16 @@ function frontmatter(filePath: string): Record<string, string> {
     if (key && rest.length) fm[key.trim()] = rest.join(":").trim();
   });
   return fm;
+}
+
+function fileContent(agentName: string): string {
+  return fs.readFileSync(resolveAgentPath(agentName), "utf8");
+}
+
+function frontmatterBlock(filePath: string): string {
+  const content = fs.readFileSync(filePath, "utf8");
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  return match?.[1] ?? "";
 }
 
 // ── Agent files ────────────────────────────────────────────────────────────
@@ -76,6 +97,31 @@ describe("agent files", () => {
       expect(fm.model).toBeUndefined();
     },
   );
+
+  it.each(OPENHANDS_WORKFLOW_AGENTS)(
+    "OpenHands workflow agent has file-agent frontmatter: %s",
+    (agent) => {
+      const file = resolveAgentPath(agent);
+      const fm = frontmatter(file);
+      const raw = frontmatterBlock(file);
+
+      expect(fm.name).toBe(agent);
+      expect(raw).toMatch(/tools:\s*\n(?:\s+-\s+(?:file_editor|terminal)\s*\n?)+/);
+      expect(raw).not.toMatch(/\b(Read|Write|Edit|Glob|Grep|Bash|Agent|Skill|AskUserQuestion|Task|TaskOutput)\b/);
+    },
+  );
+
+  it("only OpenHands workflow agents remain for the workflow topology", () => {
+    const missing = OPENHANDS_WORKFLOW_AGENTS.filter(
+      (agent) => !fs.existsSync(resolveAgentPath(agent)),
+    );
+    const obsolete = OBSOLETE_WORKFLOW_AGENT_PATHS.filter((relPath) =>
+      fs.existsSync(path.join(PLUGINS_DIR, relPath)),
+    );
+
+    expect(missing).toEqual([]);
+    expect(obsolete).toEqual([]);
+  });
 });
 
 // ── Canonical format compliance ────────────────────────────────────────────
@@ -111,7 +157,7 @@ describe("read directive compliance", () => {
   );
 
   const TARGET_FILES = [
-    resolveAgentPath("generate-skill"),
+    resolveAgentPath("skill-writer-agent"),
     SKILL_VALIDATOR_PATH,
   ];
 
@@ -176,25 +222,18 @@ describe("Research scope guard contract prompts", () => {
     );
   });
 
-  it("detailed-research includes scope recommendation short-circuit contract", () => {
-    const content = fs.readFileSync(
-      resolveAgentPath("detailed-research"),
-      "utf8",
-    );
+  it("research-agent includes scope recommendation short-circuit contract", () => {
+    const content = fileContent("research-agent");
     expect(content).toMatch(
       /Scope (Recommendation )?[Gg]uard|scope_recommendation/,
     );
-    expect(content).toMatch(/status": "detailed_research_complete"/);
-    expect(content).toMatch(/refinement_count": 0/);
-    expect(content).toMatch(/section_count": 0/);
-    expect(content).toMatch(/canonical clarifications object \(unchanged\)/i);
+    expect(content).toMatch(/status": "research_complete"/);
+    expect(content).toMatch(/dimensions_selected": 0/);
+    expect(content).toMatch(/question_count": 0/);
   });
 
-  it("detailed-research preserves original questions and canonical metadata", () => {
-    const content = fs.readFileSync(
-      resolveAgentPath("detailed-research"),
-      "utf8",
-    );
+  it("research-agent refinement pass preserves original questions and canonical metadata", () => {
+    const content = fileContent("research-agent");
     expect(content).toMatch(/strictly additive/i);
     expect(content).toMatch(
       /do \*\*not\*\* delete any existing `sections\[\]\.questions\[\]` item/i,
@@ -204,7 +243,7 @@ describe("Research scope guard contract prompts", () => {
     );
     expect(content).toMatch(/metadata\.priority_questions/);
     expect(content).toMatch(/metadata\.duplicates_removed/);
-    expect(content).toMatch(/remove transient merge-helper fields/i);
+    expect(content).toMatch(/remove transient fields/i);
   });
 });
 
@@ -217,26 +256,16 @@ describe("Research scope guard contract prompts", () => {
 //   - materialize_answer_evaluation_output_value() → answer-evaluator path
 
 describe("Agent output contracts (backend protocol alignment)", () => {
-  it("skill-builder is the one-shot workflow identity and returns delegated JSON as final output", () => {
-    const content = fs.readFileSync(resolveAgentPath("skill-builder"), "utf8");
-    expect(content).toMatch(
-      /focused on building skills for use in Claude Code/i,
-    );
-    expect(content).toMatch(/workflow step instruction/i);
-    expect(content).toMatch(
-      /return the final payload required by the configured SDK `outputFormat`/i,
-    );
-    expect(content).toMatch(
-      /convert that returned payload into your own final response/i,
-    );
-    expect(content).toMatch(/Do not use `AskUserQuestion`/i);
+  it("research-agent returns initial and refinement research payloads", () => {
+    const content = fileContent("research-agent");
+    expect(content).toMatch(/answer-evaluation\.json/);
+    expect(content).toMatch(/"status": "research_complete"/);
+    expect(content).toMatch(/"research_output"/);
+    expect(content).toMatch(/"refinements"/);
   });
 
-  it("confirm-decisions returns version/metadata/decisions shape", () => {
-    const content = fs.readFileSync(
-      resolveAgentPath("confirm-decisions"),
-      "utf8",
-    );
+  it("skill-writer-agent decision phase returns version/metadata/decisions shape", () => {
+    const content = fileContent("skill-writer-agent");
     // Backend uses additionalProperties: false — only version, metadata, decisions allowed at top level
     expect(content).toMatch(/"version"/);
     expect(content).toMatch(/"metadata"/);
@@ -245,8 +274,8 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/Top-level keys|version.*metadata.*decisions/i);
   });
 
-  it("generate-skill returns generated status", () => {
-    const content = fs.readFileSync(resolveAgentPath("generate-skill"), "utf8");
+  it("skill-writer-agent generation phase returns generated status", () => {
+    const content = fileContent("skill-writer-agent");
     expect(content).toMatch(/status.*generated/);
     expect(content).toMatch(/call_trace/);
   });
@@ -258,10 +287,7 @@ describe("Agent output contracts (backend protocol alignment)", () => {
   });
 
   it("answer-evaluator returns verdict enum and per_question array", () => {
-    const content = fs.readFileSync(
-      resolveAgentPath("answer-evaluator"),
-      "utf8",
-    );
+    const content = fileContent("answer-evaluator");
     expect(content).toMatch(/"verdict"/);
     expect(content).toMatch(/sufficient|mixed|insufficient/);
     expect(content).toMatch(/"per_question"/);
@@ -340,6 +366,31 @@ describe("skill-content-researcher plugin structure", () => {
     const fm = frontmatter(researchPath);
     expect(fm.user_invocable).toBe("false");
   });
+
+  it("active workflow prompts avoid Claude routing mechanics", () => {
+    const activeFiles = [
+      resolveAgentPath("research-agent"),
+      resolveAgentPath("answer-evaluator"),
+      resolveAgentPath("skill-writer-agent"),
+      path.join(pluginRoot, "skills", "research", "SKILL.md"),
+    ];
+    const forbiddenPatterns: Array<[string, RegExp]> = [
+      ["Claude Code routing", /Claude Code/i],
+      ["Claude tool names", /\b(?:AskUserQuestion|TaskOutput|TaskStop|bypassPermissions)\b/],
+      ["Agent tool routing", /(?:\bAgent\b|\bSkill\b)\s+tool/i],
+      ["sub-agent fan-out", /sub-?agents?|fan-?out|spawn .*parallel/i],
+      ["wait/merge mechanics", /wait for all|merge helper|merge-helper/i],
+    ];
+
+    const failures = activeFiles.flatMap((file) => {
+      const content = fs.readFileSync(file, "utf8");
+      return forbiddenPatterns
+        .filter(([, pattern]) => pattern.test(content))
+        .map(([label]) => `${path.relative(REPO_ROOT, file)}: ${label}`);
+    });
+
+    expect(failures).toEqual([]);
+  });
 });
 
 describe("skill-creator plugin structure", () => {
@@ -392,8 +443,8 @@ describe("skill-creator plugin structure", () => {
     );
     const content = fs.readFileSync(skillPath, "utf8");
     const schemaContent = fs.readFileSync(schemaPath, "utf8");
-    const generateSkillContent = fs.readFileSync(
-      resolveAgentPath("generate-skill"),
+    const skillWriterContent = fs.readFileSync(
+      resolveAgentPath("skill-writer-agent"),
       "utf8",
     );
     expect(content).toMatch(
@@ -406,7 +457,7 @@ describe("skill-creator plugin structure", () => {
     expect(content).toMatch(
       /Do not rewrite `evals\/evals\.json` or `eval_metadata\.json` during the run/i,
     );
-    expect(generateSkillContent).toMatch(
+    expect(skillWriterContent).toMatch(
       /must include a human-readable `eval_name`, a deterministic `slug`, and its fixed `expectations` at creation time/i,
     );
     expect(schemaContent).toMatch(/evals\[\]\.eval_name/);
