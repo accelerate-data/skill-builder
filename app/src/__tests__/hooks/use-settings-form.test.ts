@@ -94,6 +94,25 @@ describe("useSettingsForm", () => {
     expect(useSettingsStore.getState().openhandsBaseUrl).toBe("http://localhost:11434");
   });
 
+  it("redacts API keys in successful auto-save logs", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { result } = renderHook(() => useSettingsForm());
+
+    await act(async () => {
+      await result.current.autoSave({
+        apiKey: "sk-ant-secret",
+        openhandsApiKey: "sk-openai-secret",
+      });
+    });
+
+    expect(logSpy).toHaveBeenCalledWith(
+      "[settings] Saved: apiKey=[redacted], openhandsApiKey=[redacted]",
+    );
+    expect(logSpy.mock.calls.join("\n")).not.toContain("sk-ant-secret");
+    expect(logSpy.mock.calls.join("\n")).not.toContain("sk-openai-secret");
+    logSpy.mockRestore();
+  });
+
   it("autoSave sets saved indicator", async () => {
     const { result } = renderHook(() => useSettingsForm());
 

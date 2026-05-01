@@ -28,6 +28,15 @@ export type AutoSaveOverrides = Partial<
   SettingsFormFields & { marketplaceRegistries: MarketplaceRegistry[] }
 >
 
+const SECRET_OVERRIDE_KEYS = new Set(["apiKey", "openhandsApiKey"])
+
+function formatSavedOverride(key: string, value: unknown): string {
+  if (SECRET_OVERRIDE_KEYS.has(key)) {
+    return `${key}=${value ? "[redacted]" : "null"}`
+  }
+  return `${key}=${value}`
+}
+
 export function useSettingsForm() {
   const store = useSettingsStore.getState()
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
@@ -128,7 +137,7 @@ export function useSettingsForm() {
       })
       const changed = Object.entries(overrides)
         .filter(([, v]) => v !== undefined)
-        .map(([k, v]) => `${k}=${v}`)
+        .map(([k, v]) => formatSavedOverride(k, v))
         .join(", ")
       console.log(`[settings] Saved: ${changed}`)
       setSaved(true)

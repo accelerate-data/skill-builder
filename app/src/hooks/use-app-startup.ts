@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, listModels } from "@/lib/tauri";
-import type { DiscoveredSkill, OrphanSkill } from "@/lib/types";
+import type { AppSettings, DiscoveredSkill, OrphanSkill } from "@/lib/types";
 import { checkForMarketplaceUpdates } from "./use-marketplace-updates";
 import { queryKeys } from "@/lib/queries/query-keys";
 import { fetchGithubUser } from "@/lib/queries/auth";
@@ -31,6 +31,39 @@ export interface UseAppStartupReturn extends StartupState {
   handleCancelReconciliation: () => void;
 }
 
+export function settingsToStorePatch(s: AppSettings) {
+  const openhandsProvider = s.openhands_provider ?? "anthropic";
+  const legacyAnthropicKey =
+    openhandsProvider === "anthropic" ? s.anthropic_api_key : null;
+
+  return {
+    anthropicApiKey: s.anthropic_api_key,
+    openhandsProvider,
+    openhandsApiKey: s.openhands_api_key ?? legacyAnthropicKey,
+    openhandsModel: s.openhands_model ?? s.preferred_model,
+    openhandsBaseUrl: s.openhands_base_url ?? null,
+    workspacePath: s.workspace_path,
+    skillsPath: s.skills_path,
+    preferredModel: s.preferred_model,
+    logLevel: s.log_level,
+    extendedThinking: s.extended_thinking,
+    interleavedThinkingBeta: s.interleaved_thinking_beta ?? true,
+    sdkEffort: s.sdk_effort,
+    refinePromptSuggestions: s.refine_prompt_suggestions ?? true,
+    maxDimensions: s.max_dimensions ?? 5,
+    industry: s.industry,
+    functionRole: s.function_role,
+    autoUpdate: s.auto_update ?? false,
+    githubOauthToken: s.github_oauth_token,
+    githubUserLogin: s.github_user_login,
+    githubUserAvatar: s.github_user_avatar,
+    githubUserEmail: s.github_user_email,
+    marketplaceRegistries: s.marketplace_registries ?? [],
+    marketplaceInitialized: s.marketplace_initialized ?? false,
+    dashboardViewMode: s.dashboard_view_mode,
+  };
+}
+
 export function useAppStartup(): UseAppStartupReturn {
   const setSettings = useSettingsStore((s) => s.setSettings);
   const router = useRouter();
@@ -53,32 +86,7 @@ export function useAppStartup(): UseAppStartupReturn {
     // Settings load
     getSettings().then((s) => {
       if (cancelledRef.current) return;
-      setSettings({
-        anthropicApiKey: s.anthropic_api_key,
-        openhandsProvider: s.openhands_provider ?? "anthropic",
-        openhandsApiKey: s.openhands_api_key ?? s.anthropic_api_key,
-        openhandsModel: s.openhands_model ?? s.preferred_model,
-        openhandsBaseUrl: s.openhands_base_url ?? null,
-        workspacePath: s.workspace_path,
-        skillsPath: s.skills_path,
-        preferredModel: s.preferred_model,
-        logLevel: s.log_level,
-        extendedThinking: s.extended_thinking,
-        interleavedThinkingBeta: s.interleaved_thinking_beta ?? true,
-        sdkEffort: s.sdk_effort,
-        refinePromptSuggestions: s.refine_prompt_suggestions ?? true,
-        maxDimensions: s.max_dimensions ?? 5,
-        industry: s.industry,
-        functionRole: s.function_role,
-        autoUpdate: s.auto_update ?? false,
-        githubOauthToken: s.github_oauth_token,
-        githubUserLogin: s.github_user_login,
-        githubUserAvatar: s.github_user_avatar,
-        githubUserEmail: s.github_user_email,
-        marketplaceRegistries: s.marketplace_registries ?? [],
-        marketplaceInitialized: s.marketplace_initialized ?? false,
-        dashboardViewMode: s.dashboard_view_mode,
-      });
+      setSettings(settingsToStorePatch(s));
       setSettingsLoaded(true);
       // Fetch available models in the background — no need to await
       if (s.anthropic_api_key) {

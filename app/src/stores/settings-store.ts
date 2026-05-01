@@ -71,9 +71,12 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setSettings: (settings) =>
     set((state) => {
       const next = { ...state, ...settings };
-      const cloudProviderRequiresKey = next.openhandsProvider !== "ollama";
+      const provider = next.openhandsProvider ?? "anthropic";
+      const cloudProviderRequiresKey = provider !== "ollama";
+      const hasProviderKey =
+        !!next.openhandsApiKey || (provider === "anthropic" && !!next.anthropicApiKey);
       const hasRuntimeConfig =
-        !!next.openhandsModel && (!cloudProviderRequiresKey || !!next.openhandsApiKey || !!next.anthropicApiKey);
+        !!next.openhandsModel && (!cloudProviderRequiresKey || hasProviderKey);
       return {
         ...next,
         isConfigured: !!next.skillsPath && hasRuntimeConfig,
