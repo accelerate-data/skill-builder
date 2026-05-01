@@ -217,7 +217,7 @@ fn apply_description_inner(
         return Ok(current_version);
     }
 
-    let updated = update_skill_description(&content, &description)?;
+    let updated = update_skill_description(&content, description)?;
 
     std::fs::write(&skill_md_path, updated).map_err(|e| {
         log::error!("[apply_description] failed to write SKILL.md: {}", e);
