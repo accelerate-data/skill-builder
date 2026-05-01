@@ -1,72 +1,39 @@
 use crate::types::StepConfig;
 
-pub(crate) const WORKFLOW_AGENT_IDENTITY: &str = "skill-content-researcher:skill-builder";
-
 /// Canonical allowed-tools lookup keyed by agent name.
 /// Values must match the `tools:` frontmatter in the corresponding agent `.md` file.
 pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
     let tools: &[&str] = match agent_name {
-        WORKFLOW_AGENT_IDENTITY => &[
-            "Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "Skill",
-        ],
-        "skill-content-researcher:research-orchestrator" => &["Read", "Skill", "AskUserQuestion"],
-        "skill-content-researcher:detailed-research" => &["Read", "Agent", "AskUserQuestion"],
-        "skill-content-researcher:confirm-decisions" => &["Read", "Agent", "AskUserQuestion"],
-        "answer-evaluator" => &["Read", "Skill"],
-        "skill-creator:generate-skill" => &[
-            "Read",
-            "Write",
-            "Edit",
-            "Glob",
-            "Grep",
-            "Bash",
-            "Agent",
-            "Skill",
-            "AskUserQuestion",
-        ],
-        "skill-creator:rewrite-skill" => &[
-            "Read",
-            "Write",
-            "Edit",
-            "Glob",
-            "Grep",
-            "Bash",
-            "Agent",
-            "Skill",
-            "AskUserQuestion",
-        ],
-        "skill-creator:generate-skill-description-evals" => &["Read", "Skill"],
-        _ => &["Read", "Glob", "Grep", "Agent", "Skill"],
+        "research-agent" | "skill-writer-agent" => &["file_editor", "terminal"],
+        "answer-evaluator" => &["file_editor"],
+        _ => &["file_editor", "terminal"],
     };
     tools.iter().map(|s| s.to_string()).collect()
 }
 
 fn one_shot_tools_for_agent(agent_name: &str) -> Vec<String> {
     tools_for_agent(agent_name)
-        .into_iter()
-        .filter(|tool| tool != "AskUserQuestion")
-        .collect()
 }
 
 /// Canonical step configuration table.
 ///
 /// `agent_name` identifies the step capability used for tools, output schema,
-/// and logging. The SDK agent identity is `WORKFLOW_AGENT_IDENTITY`.
+/// and logging.
 ///
 /// | Step | Capability | Plugins |
 /// |------|------------|---------|
-/// | 0 | skill-content-researcher:research-orchestrator | skill-content-researcher |
-/// | 1 | skill-content-researcher:detailed-research | skill-content-researcher |
-/// | 2 | skill-content-researcher:confirm-decisions | skill-content-researcher |
-/// | 3 | skill-creator:generate-skill | skill-content-researcher, skill-creator |
+/// | 0 | research-agent | skill-content-researcher |
+/// | 1 | research-agent | skill-content-researcher |
+/// | 2 | skill-writer-agent | skill-content-researcher |
+/// | 3 | skill-writer-agent | skill-content-researcher, skill-creator |
 pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => {
-            let agent = "skill-content-researcher:research-orchestrator";
+            let agent = "research-agent";
             Ok(StepConfig {
                 step_id: 0,
                 name: "Research".to_string(),
-                prompt_template: "research-orchestrator.md".to_string(),
+                prompt_template: "research-agent.md".to_string(),
                 output_file: "context/clarifications.json".to_string(),
                 allowed_tools: one_shot_tools_for_agent(agent),
                 max_turns: 50,
@@ -75,11 +42,11 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             })
         }
         1 => {
-            let agent = "skill-content-researcher:detailed-research";
+            let agent = "research-agent";
             Ok(StepConfig {
                 step_id: 1,
                 name: "Detailed Research".to_string(),
-                prompt_template: "detailed-research.md".to_string(),
+                prompt_template: "research-agent.md".to_string(),
                 output_file: "context/clarifications.json".to_string(),
                 allowed_tools: one_shot_tools_for_agent(agent),
                 max_turns: 50,
@@ -88,11 +55,11 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             })
         }
         2 => {
-            let agent = "skill-content-researcher:confirm-decisions";
+            let agent = "skill-writer-agent";
             Ok(StepConfig {
                 step_id: 2,
                 name: "Confirm Decisions".to_string(),
-                prompt_template: "confirm-decisions.md".to_string(),
+                prompt_template: "skill-writer-agent.md".to_string(),
                 output_file: "context/decisions.json".to_string(),
                 allowed_tools: one_shot_tools_for_agent(agent),
                 max_turns: 100,
@@ -101,11 +68,11 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             })
         }
         3 => {
-            let agent = "skill-creator:generate-skill";
+            let agent = "skill-writer-agent";
             Ok(StepConfig {
                 step_id: 3,
                 name: "Generate Skill".to_string(),
-                prompt_template: "generate-skill.md".to_string(),
+                prompt_template: "skill-writer-agent.md".to_string(),
                 output_file: "skill/SKILL.md".to_string(),
                 allowed_tools: one_shot_tools_for_agent(agent),
                 max_turns: 500,
@@ -120,51 +87,19 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     }
 }
 
-pub(crate) fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Value> {
+pub(crate) fn workflow_output_format_for_step(step_id: u32) -> Option<serde_json::Value> {
     use crate::generated::schemas;
 
-    let schema_str = match agent_name {
+    let schema_str = match step_id {
         // Deep schema — all fields required per SKILL.md, nested ClarificationsFile enforced.
-        "skill-content-researcher:research-orchestrator" => {
-            Some(schemas::RESEARCH_STEP_INLINE_SCHEMA)
-        }
+        0 => Some(schemas::RESEARCH_STEP_INLINE_SCHEMA),
         // Step 1 runs the agent directly (no subagent relay) — use the full
         // nested schema so the SDK enforces the complete structure.
-        "skill-content-researcher:detailed-research" => {
-            Some(schemas::DETAILED_RESEARCH_INLINE_SCHEMA)
-        }
+        1 => Some(schemas::DETAILED_RESEARCH_INLINE_SCHEMA),
         // Step 2 runs the agent directly (no subagent relay) — use the full
         // nested schema so the SDK enforces Decision fields and DecisionStatus enum.
-        "skill-content-researcher:confirm-decisions" => Some(schemas::DECISIONS_INLINE_SCHEMA),
-        "skill-creator:generate-skill" | "skill-creator:rewrite-skill" => {
-            Some(schemas::GENERATE_SKILL_SCHEMA)
-        }
-        // No generated contract type — keep hand-crafted schema
-        "skill-creator:generate-skill-description-evals" => {
-            return Some(serde_json::json!({
-                "type": "json_schema",
-                "schema": {
-                    "type": "object",
-                    "required": ["status", "queries"],
-                    "properties": {
-                        "status": { "type": "string", "const": "generated" },
-                        "queries": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "required": ["query", "should_trigger"],
-                                "properties": {
-                                    "query": { "type": "string" },
-                                    "should_trigger": { "type": "boolean" }
-                                },
-                                "additionalProperties": false
-                            }
-                        }
-                    },
-                    "additionalProperties": false
-                }
-            }));
-        }
+        2 => Some(schemas::DECISIONS_INLINE_SCHEMA),
+        3 => Some(schemas::GENERATE_SKILL_SCHEMA),
         _ => None,
     };
     schema_str.map(|s| {
@@ -197,11 +132,7 @@ pub fn build_betas(
     if interleaved_thinking_beta && thinking_budget.is_some() {
         betas.push("interleaved-thinking-2025-05-14".to_string());
     }
-    if betas.is_empty() {
-        None
-    } else {
-        Some(betas)
-    }
+    if betas.is_empty() { None } else { Some(betas) }
 }
 
 /// Validate a clarifications JSON payload by deserializing into the typed contract.
