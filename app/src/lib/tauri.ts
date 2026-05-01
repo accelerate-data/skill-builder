@@ -769,13 +769,6 @@ export const writeDescOptLog = (
   message: string,
 ) => invokeCommand("write_desc_opt_log", { skillName, pluginSlug, workspacePath, message });
 
-// --- Benchmark ---
-
-export interface LatestBenchmarkResult {
-  iteration: number;
-  data: import("@/lib/types").BenchmarkData;
-}
-
 export const readLatestBenchmark = (skillName: string, workspacePath: string) =>
   invokeCommand("read_latest_benchmark", { skillName, workspacePath });
 
