@@ -28,6 +28,7 @@ jobs:
               - 'docs/package.json'
               - 'docs/package-lock.json'
               - 'scripts/check-help-docs.mjs'
+              - 'app/src/lib/help-urls.ts'
 
       - name: Setup Node.js
         if: steps.changes.outputs.docs == 'true'

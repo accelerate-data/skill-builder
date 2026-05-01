@@ -9,13 +9,24 @@ const REQUIRED_BY_PLATFORM = {
     "sidecar/dist/package.json",
     "sidecar/dist/bootstrap.js",
     "sidecar/dist/agent-runner.js",
-    "sidecar/dist/sdk/manifest.json",
+    "sidecar/dist/sdk/claude.exe",
     "agent-sources/plugins/skill-creator/LICENSE.txt",
     "agent-sources/skills/skill-test/SKILL.md",
     "workspace/CLAUDE.md",
     "workspace/prompts/workflow-step.txt",
   ],
-  macos: ["Skill Builder.app", "run.sh"],
+  macos: [
+    "Skill Builder.app",
+    "run.sh",
+    "Skill Builder.app/Contents/Resources/sidecar/dist/package.json",
+    "Skill Builder.app/Contents/Resources/sidecar/dist/bootstrap.js",
+    "Skill Builder.app/Contents/Resources/sidecar/dist/agent-runner.js",
+    "Skill Builder.app/Contents/Resources/sidecar/dist/sdk/claude",
+    "Skill Builder.app/Contents/Resources/agent-sources/plugins/skill-creator/LICENSE.txt",
+    "Skill Builder.app/Contents/Resources/agent-sources/skills/skill-test/SKILL.md",
+    "Skill Builder.app/Contents/Resources/workspace/CLAUDE.md",
+    "Skill Builder.app/Contents/Resources/workspace/prompts/workflow-step.txt",
+  ],
 };
 
 export function verifyReleaseStage(stageDir, platform) {
