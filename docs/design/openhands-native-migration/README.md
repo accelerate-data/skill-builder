@@ -40,7 +40,7 @@ The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary
 | OpenHands file-based agents in `.agents/agents/` and AgentSkills in `.agents/skills/`. | OpenHands natively discovers these directories. `SKILL.md` is already in the AgentSkills standard format — no conversion needed. |
 | Tool availability moves from `allowedTools` to agent frontmatter `tools:`. | The per-agent tool constraint is preserved — it moves from Rust configuration into the agent file. `allowedTools` is not dropped; it is replaced by the OpenHands-native equivalent. |
 | Inline research replaces parallel sub-agent fan-out. | OpenHands action-observation loop is sequential. Inline research in one context is simpler, has better cross-dimension coherence, and produces equivalent quality output. The parallel spawning machinery and merge/deduplication logic are removed. |
-| Four named agents replace six. | `skill-builder` (router), `research-orchestrator`, `detailed-research`, and `confirm-decisions` are eliminated. `research-agent` and `skill-writer-agent` absorb their responsibilities. |
+| Three named agents replace six. | `research-agent` and `skill-writer-agent` replace the router, orchestrator, detailed-research, confirm-decisions, and generate-skill agents. `answer-evaluator` remains a discrete named agent between workflow steps. |
 | Confirm-decisions logic moves into `skill-writer-agent` base instructions. | Step 2 and step 3 are both one-shot calls to `skill-writer-agent`. The step number in the prompt distinguishes the phase. No separate agent file needed. |
 | LiteLLM provider strings for multi-model support. | OpenHands routes all LLM calls through LiteLLM. Any provider string (`anthropic/claude-sonnet-4-6`, `openai/gpt-4o`, `google/gemini-2.0-flash`, `ollama/llama3.2`) works without runner changes. Settings adds a provider picker and per-provider API key. |
 | `AGENTS.md` is the always-on context file. | Both Claude Code and OpenHands read `AGENTS.md` natively. No change to the always-on instruction layer. |
@@ -92,7 +92,7 @@ The sidecar boundary, JSONL protocol, and `run_result`/`display_item` envelope s
 
 ## Agent Model
 
-OpenHands file-based agents live in `.agents/agents/*.md`. Each file has YAML frontmatter and a Markdown body that becomes the system prompt. Agents are registered automatically from that directory at runtime via `register_file_agents()`.
+OpenHands file-based agents live in `<workspace-dir>/.agents/agents/*.md`. Each file has YAML frontmatter and a Markdown body that becomes the system prompt. The runner treats the current workspace directory as the project root and registers agents from that workspace's `.agents/agents/` directory at runtime via `register_file_agents()`.
 
 ### `research-agent.md`
 
@@ -201,7 +201,7 @@ All dimension reference files (`references/dimensions/*.md`), `references/scorin
 
 ## Multi-Model Support
 
-OpenHands routes all LLM calls through LiteLLM. The `model` field in `SidecarConfig` always carries a full LiteLLM provider string. The runner passes it directly to `LLMConfig` with no inference — bare model names are not accepted. The Settings UI assembles the string from a provider dropdown and model picker so users never write it manually.
+OpenHands routes all LLM calls through LiteLLM. The `model` field in `SidecarConfig` always carries a full LiteLLM provider string. Bare model names are not accepted. The Settings UI assembles the string from a provider dropdown and model picker so users never write it manually.
 
 | Provider | Model string | API key env var |
 |---|---|---|
@@ -210,7 +210,7 @@ OpenHands routes all LLM calls through LiteLLM. The `model` field in `SidecarCon
 | Google | `google/gemini-2.0-flash` | `GEMINI_API_KEY` |
 | Ollama (local) | `ollama/llama3.2` | None (base URL) |
 
-The `apiKey` field in `SidecarConfig` carries the selected provider's key. A `modelBaseUrl` field is added for local/custom endpoints. Rust derives the correct env var from the provider prefix in the model string.
+The `apiKey` field in `SidecarConfig` carries the selected provider's key. A `modelBaseUrl` field is added for local/custom endpoints. The sidecar passes `model`, `apiKey`, and `modelBaseUrl` to `openhands-runner`; the runner builds the OpenHands `LLMConfig` directly from those fields. Provider-specific storage can remain a Settings UI concern, but the runner contract is model string plus key plus optional base URL.
 
 ## Runtime Packaging
 
