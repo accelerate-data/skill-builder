@@ -28,7 +28,7 @@ There is no standalone Refine route with a top-bar skill picker in the current a
 
 `Shift+Enter` inserts a newline.
 
-When the agent is running, the send button turns into a square **Cancel** button.
+When the agent is running, the send button turns into a cancel icon button.
 
 ---
 

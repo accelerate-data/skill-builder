@@ -43,37 +43,25 @@ Some questions have nested **Refinements** — follow-up sub-questions inside th
 
 1. Answer all questions marked **must**.
 2. Click **Continue** at the bottom right. The button shows **Evaluating answers...** while the gate check runs.
-3. A transition gate dialog appears — see [Gate 1](#gate-1-transition-dialog) below.
+3. The screen shows **Analyzing Responses** while the app evaluates answer quality.
+4. If the answers are strong enough, the workflow advances. If anything needs attention, the editor stays open with review feedback and the app shows a toast.
 
 ---
 
-## Gate 1 transition dialog
+## Answer review
 
-After you click Continue, the app evaluates your answers and shows one of these dialogs:
+After you click Continue, the app evaluates answer completeness, specificity, and consistency.
 
-**"Skip Detailed Research?"** — your answers are thorough
+Possible outcomes:
 
-- **Run Research Anyway** — proceeds to Step 2 (Detailed Research)
-- **Skip to Decisions** — skips Step 2 and jumps directly to Step 3
+- Step 2 runs when more detailed research is useful.
+- Step 2 is skipped when the Step 1 answers are already strong enough for decisions.
+- The editor remains open when required answers are missing, vague, or contradictory.
 
-**"Some Answers Need Deeper Research"** — a few answers need more detail
-
-- **Let Me Revise** — returns to the editor so you can improve your answers
-- **Continue to Research** — proceeds to Step 2 anyway
-
-**"Review Answer Quality"** — some answers are missing or too vague
-
-- **Let Me Answer** — returns to the editor
-- **Continue Anyway** — proceeds to Step 2 despite incomplete answers
-
-**"Contradictory Answers"** — some answers conflict with each other
-
-- **Let Me Answer** — returns to the editor (the only option; you must resolve the contradiction before continuing)
-
-Each dialog shows a per-question breakdown: OK, Missing, Vague, Needs refinement, and Contradictory counts.
+Use the highlighted feedback to revise answers before continuing again.
 
 ---
 
 ## Re-run Step 1
 
-Click **Re-run** at the bottom left of the editor. This opens the Reset Step dialog, which shows which files will be deleted. Click **Delete & Reset** to confirm. The agent re-runs from the beginning.
+Click **Re-run** at the bottom left of the editor. This opens the Reset Step dialog, which shows which files will be deleted. Click **Delete N files & Reset** to confirm. The agent re-runs from the beginning.

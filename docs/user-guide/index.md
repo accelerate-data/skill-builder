@@ -52,7 +52,7 @@ The app has three primary surfaces:
 |---|---|
 | [Dashboard](dashboard.md) | Shows the skill list and, when a skill is selected, its workspace tabs |
 | [Workflow](workflow/overview.md) | Runs the 4-step builder flow for Skill Builder skills |
-| [Settings](settings.md) | Holds app configuration, plugins, marketplace settings, GitHub, and usage |
+| [Settings](settings.md) | Holds app configuration, plugins, marketplace settings, GitHub, documents, and usage |
 
 Two important areas are embedded inside those surfaces rather than being standalone routes:
 

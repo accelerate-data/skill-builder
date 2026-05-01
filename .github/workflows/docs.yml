@@ -8,6 +8,7 @@ on:
       - "docs/user-guide/**"
       - "docs/.vitepress/**"
       - "docs/package.json"
+      - "docs/package-lock.json"
   workflow_dispatch:
 
 permissions:
@@ -32,8 +33,11 @@ jobs:
           cache-dependency-path: docs/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
         working-directory: docs
+
+      - name: Check help documentation links
+        run: node scripts/check-help-docs.mjs
 
       - name: Build
         run: npm run build

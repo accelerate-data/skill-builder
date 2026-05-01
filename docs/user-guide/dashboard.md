@@ -89,8 +89,9 @@ The menu is grouped into sections:
 **Skill**
 
 - **Overview** — open the workspace Overview tab
-- **Eval** — open the workspace Evals tab
 - **Refine** — open the workspace Refine tab
+- **Eval** — open the workspace Evals tab
+- **Optimize Description** — update the skill's displayed description
 - **Restore version** — restore an earlier saved version
 - **Export as .skill** — save the skill as a `.skill` package
 
@@ -118,6 +119,7 @@ Uploaded skills use the same workspace shell. Their menu can include:
 - **Overview**
 - **Refine**
 - **Eval**
+- **Optimize Description**
 - **Restore version**
 - **Export as .skill**
 - **Create plugin** when the skill is still in the default **Skills** plugin
@@ -132,6 +134,7 @@ Marketplace skills also use the workspace shell. Their menu can include:
 - **Overview**
 - **Refine**
 - **Eval**
+- **Optimize Description**
 - **Restore version**
 - **Delete** when the skill is in the default plugin
 

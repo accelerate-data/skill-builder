@@ -66,7 +66,7 @@ Use this when you want to re-run a step from scratch.
 
 1. Click a completed step in the sidebar (in update mode) **or** click **Re-run** at the bottom of the clarifications editor.
 2. The **Reset to Earlier Step** dialog appears. It lists every file that will be deleted from that step onward.
-3. Click **Delete N file(s) & Reset** to confirm. All steps from that point forward reset to Pending.
+3. Click **Delete N files & Reset** to confirm. All steps from that point forward reset to Pending.
 
 > Resetting Step 2 (Detailed Research) also resets Step 1 (Research) because they share the same clarifications file.
 
@@ -102,5 +102,5 @@ The toggle is disabled while an agent is running or a gate evaluation is in prog
 ## Navigation guard
 
 If you try to leave the workflow while an agent is running, a dialog appears:
-*"An agent is still running. Leaving will stop the agent and you may lose progress."*
+*"An agent is still running. Leaving will abandon it and you may lose progress."*
 Click **Stay** to remain, or **Leave** to exit.

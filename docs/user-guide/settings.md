@@ -72,7 +72,7 @@ The action bar provides:
 - **Marketplace** — browse and install plugins from configured registries (disabled until at least one enabled registry exists in **Marketplace**)
 - **Upload** — import a skill package from a `.skill` or `.zip` file
 
-Below the actions, a table lists installed non-default plugins with their display name, slug, version, and source. Click the trash icon on a row to delete a plugin.
+Below the actions, a table lists installed non-default plugins with their display name, slug, version, source, status, and whether upgrades are locked. Click the trash icon on a row to delete a plugin.
 
 The default **Skills** plugin is managed automatically and does not appear as a row in this table.
 
