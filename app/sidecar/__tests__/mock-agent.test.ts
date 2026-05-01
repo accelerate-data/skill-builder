@@ -78,6 +78,12 @@ describe("resolveStepTemplate", () => {
     expect(resolveStepTemplate(undefined, { skillName: "skill-evals-generator", runSource: "test" })).toBe("eval-generator");
   });
 
+  it("maps description optimization eval-query generation to its structured mock template", () => {
+    expect(resolveStepTemplate(undefined, { skillName: "test-skill", stepId: -12 })).toBe(
+      "description-evals-generator",
+    );
+  });
+
   it("returns null for undefined agentName without runSource=test", () => {
     expect(resolveStepTemplate(undefined, { runSource: "workflow" })).toBeNull();
     expect(resolveStepTemplate(undefined, { runSource: undefined })).toBeNull();

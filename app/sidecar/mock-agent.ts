@@ -26,6 +26,8 @@ export function resolveStepTemplate(
   config?: { skillName?: string; runSource?: string; stepId?: number },
 ): string | null {
   if (!agentName) {
+    // Description optimization eval-query generator: one-shot outputFormat path.
+    if (config?.stepId === -12) return "description-evals-generator";
     // Eval generator: invoked without a plugin agentName; identified by skillName.
     if (config?.skillName === "skill-evals-generator" || config?.skillName === "eval-generator") return "eval-generator";
     // Test evaluator: invoked without a plugin agentName; identified by runSource="test".
@@ -592,6 +594,12 @@ export async function buildStructuredMockResult(
       type: "complete",
       iteration: iterNum,
     };
+  }
+
+  if (stepTemplate === "description-evals-generator") {
+    return readJsonIfExists(
+      path.join(outputsRoot, "description-evals-generator", "description-evals-result.json"),
+    );
   }
 
   return null;
