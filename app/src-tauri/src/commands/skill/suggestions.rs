@@ -13,7 +13,7 @@ pub struct FieldSuggestions {
     pub context_questions: String,
 }
 
-/// Call Haiku to generate field suggestions in cascading groups.
+/// Call the configured Settings model to generate field suggestions in cascading groups.
 /// The `fields` param controls which fields to generate; context params provide
 /// prior field values so each group builds on the last.
 #[allow(clippy::too_many_arguments)]
@@ -37,7 +37,7 @@ pub async fn generate_suggestions(
         fields
     );
 
-    let api_key = {
+    let (api_key, model) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[generate_suggestions] Failed to acquire DB lock: {}", e);
             e.to_string()
@@ -46,13 +46,20 @@ pub async fn generate_suggestions(
             log::error!("[generate_suggestions] Failed to read settings: {}", e);
             e
         })?;
-        match settings.anthropic_api_key {
+        let api_key = match settings.anthropic_api_key {
             Some(k) => crate::types::SecretString::new(k),
             None => {
                 log::error!("[generate_suggestions] API key not configured");
                 return Err("API key not configured".to_string());
             }
-        }
+        };
+        (
+            api_key,
+            settings
+                .preferred_model
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| "Model not configured. Select a model in Settings before generating suggestions.".to_string())?,
+        )
     };
 
     let readable_name = skill_name.replace('-', " ");
@@ -199,7 +206,7 @@ Max 2 sentences. Topic: {}.>\"",
         .header("content-type", "application/json")
         .body(
             serde_json::json!({
-                "model": "claude-haiku-4-5",
+                "model": model,
                 "max_tokens": 500,
                 "messages": [{"role": "user", "content": prompt}]
             })

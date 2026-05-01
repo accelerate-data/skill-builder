@@ -104,7 +104,7 @@ describe("useUsageStore", () => {
       hideCancelled: false,
       dateRange: "all",
       skillFilter: null,
-      modelFamilyFilter: null,
+      modelFilter: null,
       skillNames: [],
       loadGeneration: 0,
     });
@@ -347,22 +347,22 @@ describe("useUsageStore", () => {
       expect(useUsageStore.getState().skillFilter).toBe("my-skill");
     });
 
-    it("setModelFamilyFilter triggers fetchUsage", async () => {
+    it("setModelFilter triggers fetchUsage", async () => {
       setupInvokeMock();
 
-      await useUsageStore.getState().setModelFamilyFilter("sonnet");
+      await useUsageStore.getState().setModelFilter("sonnet");
 
       expect(mockInvoke).toHaveBeenCalled();
       const calledCommands = mockInvoke.mock.calls.map((c) => c[0]);
       expect(calledCommands).toContain("get_usage_summary");
     });
 
-    it("setModelFamilyFilter updates the modelFamilyFilter state", async () => {
+    it("setModelFilter updates the modelFilter state", async () => {
       setupInvokeMock();
 
-      await useUsageStore.getState().setModelFamilyFilter("sonnet");
+      await useUsageStore.getState().setModelFilter("sonnet");
 
-      expect(useUsageStore.getState().modelFamilyFilter).toBe("sonnet");
+      expect(useUsageStore.getState().modelFilter).toBe("sonnet");
     });
 
     it("toggleHideCancelled triggers fetchUsage", async () => {
@@ -393,14 +393,14 @@ describe("useUsageStore", () => {
       expect(summaryCall![1].skillName).toBe("target-skill");
     });
 
-    it("setModelFamilyFilter passes modelFamily to get_agent_runs", async () => {
+    it("setModelFilter passes modelFilter to get_agent_runs", async () => {
       setupInvokeMock();
 
-      await useUsageStore.getState().setModelFamilyFilter("haiku");
+      await useUsageStore.getState().setModelFilter("haiku");
 
       const agentRunsCall = mockInvoke.mock.calls.find((c) => c[0] === "get_agent_runs");
       expect(agentRunsCall).toBeDefined();
-      expect(agentRunsCall![1].modelFamily).toBe("haiku");
+      expect(agentRunsCall![1].modelFilter).toBe("haiku");
     });
   });
 
@@ -446,7 +446,7 @@ describe("useUsageStore", () => {
       expect(state.loading).toBe(false);
     });
 
-    it("passes modelFamily: null to get_agent_runs even when modelFamilyFilter is set before reset", async () => {
+    it("passes modelFilter: null to get_agent_runs even when modelFilter is set before reset", async () => {
       mockInvoke.mockImplementation((cmd: string) => {
         switch (cmd) {
           case "get_usage_summary":
@@ -470,14 +470,14 @@ describe("useUsageStore", () => {
         }
       });
 
-      // Set modelFamilyFilter before reset
-      useUsageStore.setState({ modelFamilyFilter: "claude-haiku-4-5" });
+      // Set modelFilter before reset
+      useUsageStore.setState({ modelFilter: "claude-haiku-4-5" });
 
       await useUsageStore.getState().resetCounter();
 
       const agentRunsCall = mockInvoke.mock.calls.find((c) => c[0] === "get_agent_runs");
       expect(agentRunsCall).toBeDefined();
-      expect(agentRunsCall![1].modelFamily).toBeNull();
+      expect(agentRunsCall![1].modelFilter).toBeNull();
     });
 
     it("refetches skill names after reset", async () => {
@@ -509,7 +509,7 @@ describe("useUsageStore", () => {
       const state = useUsageStore.getState();
       expect(state.skillNames).toEqual(["skill-a", "skill-b"]);
       expect(state.skillFilter).toBeNull();
-      expect(state.modelFamilyFilter).toBeNull();
+      expect(state.modelFilter).toBeNull();
 
       // Verify get_workflow_skill_names was called
       const calledCommands = mockInvoke.mock.calls.map((c) => c[0]);

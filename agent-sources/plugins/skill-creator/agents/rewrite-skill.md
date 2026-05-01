@@ -1,7 +1,6 @@
 ---
 name: rewrite-skill
 description: Rewrites or refines an existing skill based on decisions and user request. Handles both full rewrites and targeted streaming edits.
-model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent, AskUserQuestion
 ---
 

@@ -1,10 +1,9 @@
 use std::path::Path;
 
 use crate::agents::sidecar::SidecarConfig;
-use crate::commands::workflow::resolve_model_id;
 use crate::db::{self, Db};
-use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use crate::skill_paths::resolve_skill_dir;
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use crate::types::SecretString;
 
 /// Max agentic turns for the entire streaming session. Each user message may
@@ -18,25 +17,24 @@ pub(super) struct RefineRuntimeSettings {
     pub extended_thinking: bool,
     pub interleaved_thinking_beta: bool,
     pub sdk_effort: Option<String>,
-    pub fallback_model: Option<String>,
     pub refine_prompt_suggestions: bool,
     pub model: String,
     pub skills_path: String,
     pub plugin_slug: String,
 }
 
-
 pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
 }
 
-pub(super) fn ensure_skill_workspace_dir(workspace_path: &str, plugin_slug: &str, skill_name: &str) {
+pub(super) fn ensure_skill_workspace_dir(
+    workspace_path: &str,
+    plugin_slug: &str,
+    skill_name: &str,
+) {
     // Workspace is plugin-organised: workspace_path/{plugin_slug}/skill_name/
-    let skill_workspace_dir = crate::skill_paths::workspace_skill_dir(
-        Path::new(workspace_path),
-        plugin_slug,
-        skill_name,
-    );
+    let skill_workspace_dir =
+        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     if !skill_workspace_dir.exists() {
         if let Err(e) = std::fs::create_dir_all(&skill_workspace_dir) {
             log::warn!(
@@ -74,7 +72,12 @@ pub(super) fn load_refine_runtime_settings(
         .anthropic_api_key
         .map(SecretString::new)
         .ok_or_else(|| "Anthropic API key not configured".to_string())?;
-    let model = resolve_model_id(settings.preferred_model.as_deref().unwrap_or("sonnet"));
+    let model = settings
+        .preferred_model
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            "Model not configured. Select a model in Settings before refining skills.".to_string()
+        })?;
     let skills_path = settings
         .skills_path
         .unwrap_or_else(|| workspace_path.to_string());
@@ -85,7 +88,8 @@ pub(super) fn load_refine_runtime_settings(
 
     let run_row = db::get_workflow_run(&conn, skill_name).ok().flatten();
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-    let skill_md_path = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, skill_name).join("SKILL.md");
+    let skill_md_path =
+        resolve_skill_dir(Path::new(&skills_path), &plugin_slug, skill_name).join("SKILL.md");
     let frontmatter = std::fs::read_to_string(&skill_md_path)
         .ok()
         .map(|content| crate::commands::imported_skills::parse_frontmatter_full(&content))
@@ -102,7 +106,8 @@ pub(super) fn load_refine_runtime_settings(
     let author_for_context = if is_imported {
         frontmatter.author.clone()
     } else {
-        frontmatter.author
+        frontmatter
+            .author
             .or_else(|| run_row.as_ref().and_then(|r| r.author_login.clone()))
             .or(settings_author)
     };
@@ -131,7 +136,6 @@ pub(super) fn load_refine_runtime_settings(
         extended_thinking: settings.extended_thinking,
         interleaved_thinking_beta: settings.interleaved_thinking_beta,
         sdk_effort: settings.sdk_effort.clone(),
-        fallback_model: Some(model.clone()),
         refine_prompt_suggestions: settings.refine_prompt_suggestions,
         model,
         skills_path,
@@ -153,7 +157,6 @@ pub(super) fn build_refine_config(
     extended_thinking: bool,
     interleaved_thinking_beta: bool,
     sdk_effort: Option<String>,
-    fallback_model: Option<String>,
     refine_prompt_suggestions: bool,
     plugin_slug: &str,
 ) -> (SidecarConfig, String) {
@@ -169,9 +172,6 @@ pub(super) fn build_refine_config(
         chrono::Utc::now().timestamp_millis()
     );
 
-    // When model is set explicitly (no agent), fallbackModel must differ.
-    let effective_fallback = fallback_model.filter(|fm| fm != &model);
-
     let config = SidecarConfig {
         mode: Some("streaming".to_string()),
         prompt,
@@ -186,9 +186,15 @@ pub(super) fn build_refine_config(
         workspace_root_dir: cwd.clone(),
         workspace_skill_dir: cwd,
         allowed_tools: Some(vec![
-            "Read".into(), "Write".into(), "Edit".into(),
-            "Glob".into(), "Grep".into(), "Bash".into(),
-            "Agent".into(), "Skill".into(), "Task".into(),
+            "Read".into(),
+            "Write".into(),
+            "Edit".into(),
+            "Glob".into(),
+            "Grep".into(),
+            "Bash".into(),
+            "Agent".into(),
+            "Skill".into(),
+            "Task".into(),
             "AskUserQuestion".into(),
         ]),
         max_turns: Some(REFINE_STREAM_MAX_TURNS),
@@ -199,7 +205,7 @@ pub(super) fn build_refine_config(
                 "budgetTokens": budget
             })
         }),
-        fallback_model: effective_fallback,
+        fallback_model: None,
         effort: sdk_effort,
         output_format: None,
         prompt_suggestions: Some(refine_prompt_suggestions),
@@ -271,7 +277,8 @@ pub(super) fn build_followup_prompt_for_plugin(
 }
 
 /// The refine-initial.txt template, embedded at compile time.
-const REFINE_PROMPT_TEMPLATE: &str = include_str!("../../../../../agent-sources/workspace/prompts/refine-initial.txt");
+const REFINE_PROMPT_TEMPLATE: &str =
+    include_str!("../../../../../agent-sources/workspace/prompts/refine-initial.txt");
 
 /// Build the initial refine prompt using a pre-resolved skill output directory.
 /// Uses the refine-initial.txt template with variable substitution.
@@ -283,11 +290,8 @@ pub(super) fn build_refine_prompt_with_output_dir(
     user_message: &str,
     target_files: Option<&[String]>,
 ) -> String {
-    let workspace_dir = crate::skill_paths::workspace_skill_dir(
-        Path::new(workspace_path),
-        plugin_slug,
-        skill_name,
-    );
+    let workspace_dir =
+        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
     let context_str = format!("{}/context", workspace_str);

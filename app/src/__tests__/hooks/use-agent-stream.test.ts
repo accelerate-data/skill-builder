@@ -15,7 +15,7 @@ describe("initAgentStream", () => {
     useRefineStore.setState({
       messages: [],
       activeAgentId: null,
-      pendingRedirect: null,
+      pendingFollowupMessage: null,
       sessionId: null,
       sessionExhausted: false,
     });
@@ -25,26 +25,58 @@ describe("initAgentStream", () => {
 
     mockListen.mockReset();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mockListen as any).mockImplementation((event: string, callback: ListenCallback) => {
-      listeners[event] = callback;
-      return Promise.resolve(vi.fn());
-    });
+    (mockListen as any).mockImplementation(
+      (event: string, callback: ListenCallback) => {
+        listeners[event] = callback;
+        return Promise.resolve(vi.fn());
+      },
+    );
   });
 
   it("subscribes to display and discrete agent event channels", async () => {
     await initAgentStream();
 
-    expect(mockListen).toHaveBeenCalledWith("agent-init-progress", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("agent-init-error", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("agent-run-config", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("agent-run-init", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("agent-turn-usage", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("agent-compaction", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("agent-context-window", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("agent-session-exhausted", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("agent-message", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith(
+      "agent-init-progress",
+      expect.any(Function),
+    );
+    expect(mockListen).toHaveBeenCalledWith(
+      "agent-init-error",
+      expect.any(Function),
+    );
+    expect(mockListen).toHaveBeenCalledWith(
+      "agent-run-config",
+      expect.any(Function),
+    );
+    expect(mockListen).toHaveBeenCalledWith(
+      "agent-run-init",
+      expect.any(Function),
+    );
+    expect(mockListen).toHaveBeenCalledWith(
+      "agent-turn-usage",
+      expect.any(Function),
+    );
+    expect(mockListen).toHaveBeenCalledWith(
+      "agent-compaction",
+      expect.any(Function),
+    );
+    expect(mockListen).toHaveBeenCalledWith(
+      "agent-context-window",
+      expect.any(Function),
+    );
+    expect(mockListen).toHaveBeenCalledWith(
+      "agent-session-exhausted",
+      expect.any(Function),
+    );
+    expect(mockListen).toHaveBeenCalledWith(
+      "agent-message",
+      expect.any(Function),
+    );
     expect(mockListen).toHaveBeenCalledWith("agent-exit", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("agent-shutdown", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith(
+      "agent-shutdown",
+      expect.any(Function),
+    );
   });
 
   it("adds display_item message to agent store", async () => {
@@ -422,7 +454,12 @@ describe("initAgentStream", () => {
         agent_id: "agent-1",
         message: {
           type: "display_item",
-          item: { id: "di-1", type: "output", timestamp: Date.now(), outputText: "First" },
+          item: {
+            id: "di-1",
+            type: "output",
+            timestamp: Date.now(),
+            outputText: "First",
+          },
         },
       },
     });
@@ -435,14 +472,21 @@ describe("initAgentStream", () => {
         agent_id: "agent-1",
         message: {
           type: "display_item",
-          item: { id: "di-2", type: "output", timestamp: Date.now(), outputText: "Second" },
+          item: {
+            id: "di-2",
+            type: "output",
+            timestamp: Date.now(),
+            outputText: "Second",
+          },
         },
       },
     });
 
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
     flushDisplayItems();
-    expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(2);
+    expect(useAgentStore.getState().runs["agent-1"].displayItems).toHaveLength(
+      2,
+    );
   });
 
   it("does not clear initializing when it was not set", async () => {
@@ -457,7 +501,12 @@ describe("initAgentStream", () => {
         agent_id: "agent-1",
         message: {
           type: "display_item",
-          item: { id: "di-1", type: "output", timestamp: Date.now(), outputText: "Hello" },
+          item: {
+            id: "di-1",
+            type: "output",
+            timestamp: Date.now(),
+            outputText: "Hello",
+          },
         },
       },
     });
@@ -534,7 +583,9 @@ describe("initAgentStream", () => {
     });
 
     // Message should not have changed
-    expect(useWorkflowStore.getState().initProgressMessage).toBe(initialMessage);
+    expect(useWorkflowStore.getState().initProgressMessage).toBe(
+      initialMessage,
+    );
   });
 
   it("clears progress message when initializing is cleared", async () => {
@@ -560,7 +611,12 @@ describe("initAgentStream", () => {
         agent_id: "agent-1",
         message: {
           type: "display_item",
-          item: { id: "di-1", type: "output", timestamp: Date.now(), outputText: "Hello" },
+          item: {
+            id: "di-1",
+            type: "output",
+            timestamp: Date.now(),
+            outputText: "Hello",
+          },
         },
       },
     });
@@ -611,7 +667,12 @@ describe("initAgentStream", () => {
         agent_id: "agent-1",
         message: {
           type: "display_item",
-          item: { id: "di-1", type: "output", timestamp: Date.now(), outputText: "Processing..." },
+          item: {
+            id: "di-1",
+            type: "output",
+            timestamp: Date.now(),
+            outputText: "Processing...",
+          },
         },
       },
     });
@@ -642,7 +703,11 @@ describe("initAgentStream", () => {
 
   it("imports toast from @/lib/toast, not directly from sonner", async () => {
     // Read the source file and verify the import uses the app wrapper
-    const source = await import.meta.glob("/src/hooks/use-agent-stream.ts", { query: "?raw", import: "default", eager: true });
+    const source = await import.meta.glob("/src/hooks/use-agent-stream.ts", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    });
     const content = Object.values(source)[0] as string;
     expect(content).toContain('from "@/lib/toast"');
     expect(content).not.toMatch(/from ["']sonner["']/);

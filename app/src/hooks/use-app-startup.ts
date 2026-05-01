@@ -60,7 +60,6 @@ export function useAppStartup(): UseAppStartupReturn {
         extendedThinking: s.extended_thinking,
         interleavedThinkingBeta: s.interleaved_thinking_beta ?? true,
         sdkEffort: s.sdk_effort,
-        fallbackModel: s.fallback_model,
         refinePromptSuggestions: s.refine_prompt_suggestions ?? true,
         maxDimensions: s.max_dimensions ?? 5,
         industry: s.industry,

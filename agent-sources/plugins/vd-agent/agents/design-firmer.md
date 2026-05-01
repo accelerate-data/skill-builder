@@ -1,6 +1,5 @@
 ---
 name: design-firmer
-model: sonnet
 description: Profiles source schemas, validates design.md against source reality, and produces firmed design artifacts. Spawned by orchestrator after user approves initial design.
 skills: [dbt-model]
 ---

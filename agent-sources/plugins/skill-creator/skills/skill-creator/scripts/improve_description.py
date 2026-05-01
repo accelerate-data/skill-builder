@@ -257,8 +257,8 @@ def main():
         description="Improve a skill description based on eval results.",
         epilog=(
             "Examples:\n"
-            "  uv run scripts/improve_description.py --skill-path ./my-skill --eval-results ./eval.json --model sonnet\n"
-            "  uv run scripts/improve_description.py --skill-path ./my-skill --eval-results ./eval.json --history ./history.json --model sonnet"
+            "  uv run scripts/improve_description.py --skill-path ./my-skill --eval-results ./eval.json\n"
+            "  uv run scripts/improve_description.py --skill-path ./my-skill --eval-results ./eval.json --history ./history.json"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

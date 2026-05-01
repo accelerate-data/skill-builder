@@ -1,7 +1,6 @@
 ---
 name: skill-builder
 description: Executes one-shot workflow steps for building Claude Code skills and returns schema-conformant structured output.
-model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill
 ---
 

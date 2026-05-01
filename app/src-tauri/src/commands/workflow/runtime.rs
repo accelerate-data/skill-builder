@@ -10,15 +10,14 @@ use crate::skill_paths::resolve_workspace_skill_dir;
 use super::deploy::ensure_workspace_prompts;
 use super::evaluation::workflow_step_log_name;
 use super::guards::{
-    make_agent_id, parse_decisions_guard, parse_scope_recommendation,
-    workflow_step_runtime_label,
+    make_agent_id, parse_decisions_guard, parse_scope_recommendation, workflow_step_runtime_label,
 };
+use super::output_format::answer_evaluator_output_format;
 use super::prompt::{build_evaluator_prompt, build_prompt, build_step0_prompt};
 use super::settings::{read_workflow_settings, WorkflowSettings};
-use super::output_format::answer_evaluator_output_format;
 use super::step_config::{
-    build_betas, get_step_config, resolve_model_id, thinking_budget_for_step,
-    tools_for_agent, workflow_output_format_for_agent, WORKFLOW_AGENT_IDENTITY,
+    build_betas, get_step_config, thinking_budget_for_step, tools_for_agent,
+    workflow_output_format_for_agent, WORKFLOW_AGENT_IDENTITY,
 };
 use super::user_context::write_user_context_file;
 
@@ -105,7 +104,6 @@ async fn run_workflow_step_inner(
         _ => None,
     };
 
-
     let prompt = if step_id == 0 {
         build_step0_prompt(
             skill_name,
@@ -164,9 +162,13 @@ async fn run_workflow_step_inner(
         model: Some(settings.preferred_model.clone()),
         api_key: settings.api_key.clone(),
         workspace_root_dir: workspace_path.replace('\\', "/"),
-        workspace_skill_dir: resolve_workspace_skill_dir(Path::new(workspace_path), &settings.plugin_slug, skill_name)
-            .to_string_lossy()
-            .replace('\\', "/"),
+        workspace_skill_dir: resolve_workspace_skill_dir(
+            Path::new(workspace_path),
+            &settings.plugin_slug,
+            skill_name,
+        )
+        .to_string_lossy()
+        .replace('\\', "/"),
         allowed_tools: Some(step.allowed_tools),
         max_turns: Some(step.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
@@ -230,15 +232,15 @@ async fn run_workflow_step_inner(
         app,
         transcript_log_dir.as_deref(),
     )
-        .await
-        .map_err(|e| {
-            log::error!(
-                "[run_workflow_step] Failed to start one-shot request for agent={}: {}",
-                agent_id,
-                e
-            );
+    .await
+    .map_err(|e| {
+        log::error!(
+            "[run_workflow_step] Failed to start one-shot request for agent={}: {}",
+            agent_id,
             e
-        })?;
+        );
+        e
+    })?;
 
     // Register active one-shot run so cancel_workflow_step can route cancel.
     {
@@ -271,7 +273,11 @@ pub async fn run_workflow_step(
         skill_name,
         workflow_step_log_name(step_id as i32),
         step_id,
-        if workflow_session_id.is_some() { "[present]" } else { "[none]" }
+        if workflow_session_id.is_some() {
+            "[present]"
+        } else {
+            "[none]"
+        }
     );
     crate::commands::workflow_lifecycle::validate_run_request(
         &skill_name,
@@ -461,7 +467,7 @@ pub async fn run_answer_evaluator(
 
     // Read settings from DB — same pattern as read_workflow_settings but without
     // step-specific validation (this is a gate, not a workflow step).
-    let (api_key, skills_path, plugin_slug, industry, function_role, intake_json) = {
+    let (api_key, skills_path, plugin_slug, industry, function_role, intake_json, preferred_model) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
@@ -498,6 +504,10 @@ pub async fn run_answer_evaluator(
             settings.industry,
             settings.function_role,
             ij,
+            settings
+                .preferred_model
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| "Model not configured. Select a model in Settings before running the answer evaluator.".to_string())?,
         )
     };
 
@@ -524,7 +534,10 @@ pub async fn run_answer_evaluator(
     let prompt = build_evaluator_prompt(&skill_name, &workspace_path, &plugin_slug, &skills_path);
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
-    log::info!("run_answer_evaluator: skill={} agent=answer-evaluator", skill_name);
+    log::info!(
+        "run_answer_evaluator: skill={} agent=answer-evaluator",
+        skill_name
+    );
 
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
@@ -532,13 +545,16 @@ pub async fn run_answer_evaluator(
         mode: Some("one-shot".to_string()),
         prompt,
         system_prompt: None,
-        // Answer evaluator uses Sonnet for reliable skill invocation.
-        model: Some(resolve_model_id("sonnet")),
+        model: Some(preferred_model),
         api_key,
         workspace_root_dir: workspace_path.replace('\\', "/"),
-        workspace_skill_dir: resolve_workspace_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name)
-            .to_string_lossy()
-            .replace('\\', "/"),
+        workspace_skill_dir: resolve_workspace_skill_dir(
+            Path::new(&workspace_path),
+            &plugin_slug,
+            &skill_name,
+        )
+        .to_string_lossy()
+        .replace('\\', "/"),
         allowed_tools: Some(tools_for_agent("answer-evaluator")),
         max_turns: Some(20),
         permission_mode: Some("bypassPermissions".to_string()),
@@ -593,25 +609,20 @@ pub async fn run_answer_evaluator(
         &app,
         transcript_log_dir.as_deref(),
     )
-        .await
-        .map_err(|e| {
-            log::error!(
-                "[run_answer_evaluator] Failed to start one-shot request for agent={}: {}",
-                agent_id,
-                e
-            );
+    .await
+    .map_err(|e| {
+        log::error!(
+            "[run_answer_evaluator] Failed to start one-shot request for agent={}: {}",
+            agent_id,
             e
-        })?;
+        );
+        e
+    })?;
 
     // Register active one-shot run so cancel_workflow_step can route cancel.
     {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;
-        map.insert(
-            agent_id.clone(),
-            WorkflowStepRun {
-                skill_name,
-            },
-        );
+        map.insert(agent_id.clone(), WorkflowStepRun { skill_name });
     }
 
     Ok(agent_id)
@@ -630,7 +641,10 @@ pub async fn cancel_workflow_step(
     log::info!("[cancel_workflow_step] agent={}", agent_id);
     let skill_name = {
         let map = runs.0.lock().map_err(|e| {
-            log::error!("[cancel_workflow_step] Failed to acquire session lock: {}", e);
+            log::error!(
+                "[cancel_workflow_step] Failed to acquire session lock: {}",
+                e
+            );
             e.to_string()
         })?;
         let session = map.get(&agent_id).ok_or_else(|| {
@@ -640,16 +654,14 @@ pub async fn cancel_workflow_step(
         })?;
         session.skill_name.clone()
     };
-    pool.send_cancel(&skill_name, &agent_id)
-        .await
-        .map_err(|e| {
-            log::warn!(
-                "[cancel_workflow_step] Failed to send cancel for agent={}: {}",
-                agent_id,
-                e
-            );
+    pool.send_cancel(&skill_name, &agent_id).await.map_err(|e| {
+        log::warn!(
+            "[cancel_workflow_step] Failed to send cancel for agent={}: {}",
+            agent_id,
             e
-        })
+        );
+        e
+    })
 }
 
 /// Log the user's gate decision so it appears in the backend log stream.

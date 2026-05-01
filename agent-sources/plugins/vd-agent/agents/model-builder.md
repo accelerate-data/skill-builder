@@ -1,6 +1,5 @@
 ---
 name: model-builder
-model: sonnet
 description: Generate ONE dbt model (staging or mart) with inline compilation check. Spawn one instance per model for parallel generation.
 skills: [dbt-model]
 ---

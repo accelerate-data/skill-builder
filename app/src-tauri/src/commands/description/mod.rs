@@ -62,11 +62,8 @@ pub async fn run_optimization_loop(
 
     // Resolve skill path
     let skills_path = super::refine::resolve_skills_path(&db)?;
-    let skill_path = crate::skill_paths::resolve_skill_dir(
-        Path::new(&skills_path),
-        &plugin_slug,
-        &skill_name,
-    );
+    let skill_path =
+        crate::skill_paths::resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
 
     // Create cancel flag and store in managed state
     let cancel = Arc::new(AtomicBool::new(false));
@@ -75,10 +72,14 @@ pub async fn run_optimization_loop(
         *guard = Some(cancel.clone());
     }
 
-    // Resolve short model name (e.g. "sonnet") → full API ID (e.g. "claude-sonnet-4-6")
-    // Fall back to sonnet if model is empty (frontend sends "" when skill.model is unset)
-    let effective_model = if model.trim().is_empty() { "sonnet" } else { &model };
-    let resolved_model = crate::commands::workflow::step_config::resolve_model_id(effective_model);
+    let resolved_model = if model.trim().is_empty() {
+        return Err(
+            "Model not configured. Select a model in Settings before optimizing descriptions."
+                .to_string(),
+        );
+    } else {
+        model
+    };
 
     // Build log directory for file-based logging
     let log_dir = crate::skill_paths::workspace_skill_dir(
@@ -116,13 +117,14 @@ pub async fn run_optimization_loop(
 
 /// Atomically write eval queries to `path` (tmp + rename).
 /// Pure function — no DB access. Callers resolve the target path.
-pub(crate) fn write_eval_queries_to_file(
-    path: &Path,
-    queries: &[EvalQuery],
-) -> Result<(), String> {
+pub(crate) fn write_eval_queries_to_file(path: &Path, queries: &[EvalQuery]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory for description-evals.json: {}", e))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create directory for description-evals.json: {}",
+                e
+            )
+        })?;
     }
     let json = serde_json::to_string_pretty(queries)
         .map_err(|e| format!("Failed to serialize eval queries: {}", e))?;
@@ -143,12 +145,17 @@ pub fn save_eval_queries(
 ) -> Result<(), String> {
     log::info!(
         "[save_eval_queries] skill={} plugin={} count={}",
-        skill_name, plugin_slug,
+        skill_name,
+        plugin_slug,
         eval_queries.len()
     );
     let path = crate::skill_paths::workspace_skill_dir(
-        Path::new(&workspace_path), &plugin_slug, &skill_name,
-    ).join("description-optimization").join("description-evals.json");
+        Path::new(&workspace_path),
+        &plugin_slug,
+        &skill_name,
+    )
+    .join("description-optimization")
+    .join("description-evals.json");
     write_eval_queries_to_file(&path, &eval_queries)
 }
 
@@ -170,10 +177,18 @@ pub fn load_eval_queries(
     plugin_slug: String,
     workspace_path: String,
 ) -> Result<Vec<EvalQuery>, String> {
-    log::info!("[load_eval_queries] skill={} plugin={}", skill_name, plugin_slug);
+    log::info!(
+        "[load_eval_queries] skill={} plugin={}",
+        skill_name,
+        plugin_slug
+    );
     let path = crate::skill_paths::workspace_skill_dir(
-        Path::new(&workspace_path), &plugin_slug, &skill_name,
-    ).join("description-optimization").join("description-evals.json");
+        Path::new(&workspace_path),
+        &plugin_slug,
+        &skill_name,
+    )
+    .join("description-optimization")
+    .join("description-evals.json");
     read_eval_queries_from_file(&path)
 }
 
@@ -187,7 +202,11 @@ pub async fn apply_description(
     description: String,
     db: tauri::State<'_, crate::db::Db>,
 ) -> Result<String, String> {
-    log::info!("[apply_description] skill={} plugin={}", skill_name, plugin_slug);
+    log::info!(
+        "[apply_description] skill={} plugin={}",
+        skill_name,
+        plugin_slug
+    );
 
     let skills_path = super::refine::resolve_skills_path(&db)?;
     apply_description_inner(&skill_name, &plugin_slug, &skills_path, &description)
@@ -200,9 +219,8 @@ fn apply_description_inner(
     description: &str,
 ) -> Result<String, String> {
     let skills_root = Path::new(skills_path);
-    let skill_md_path = crate::skill_paths::resolve_skill_dir(
-        skills_root, plugin_slug, skill_name,
-    ).join("SKILL.md");
+    let skill_md_path = crate::skill_paths::resolve_skill_dir(skills_root, plugin_slug, skill_name)
+        .join("SKILL.md");
 
     let content = std::fs::read_to_string(&skill_md_path).map_err(|e| {
         log::error!("[apply_description] failed to read SKILL.md: {}", e);
@@ -211,9 +229,13 @@ fn apply_description_inner(
 
     let current_version = crate::git::latest_skill_semver(skills_root, plugin_slug, skill_name)
         .unwrap_or_else(|_| "0.0.0".to_string());
-    let current_description = crate::commands::imported_skills::parse_frontmatter_full(&content).description;
+    let current_description =
+        crate::commands::imported_skills::parse_frontmatter_full(&content).description;
     if current_description.as_deref() == Some(description) {
-        log::info!("[apply_description] description unchanged for skill={}", skill_name);
+        log::info!(
+            "[apply_description] description unchanged for skill={}",
+            skill_name
+        );
         return Ok(current_version);
     }
 
@@ -229,14 +251,25 @@ fn apply_description_inner(
     let relative_skill_path = Path::new(plugin_slug).join(skill_name);
     match crate::git::commit_path(skills_root, &relative_skill_path, &commit_msg) {
         Ok(Some(sha)) => {
-            log::info!("[apply_description] committed skill={} sha={}", skill_name, &sha[..8.min(sha.len())]);
+            log::info!(
+                "[apply_description] committed skill={} sha={}",
+                skill_name,
+                &sha[..8.min(sha.len())]
+            );
         }
         Ok(None) => {
-            log::info!("[apply_description] nothing to commit for skill={}", skill_name);
+            log::info!(
+                "[apply_description] nothing to commit for skill={}",
+                skill_name
+            );
             return Ok(current_version);
         }
         Err(e) => {
-            log::error!("[apply_description] commit failed skill={} error={}", skill_name, e);
+            log::error!(
+                "[apply_description] commit failed skill={} error={}",
+                skill_name,
+                e
+            );
             return Err(format!("Failed to commit description update: {}", e));
         }
     }
@@ -244,9 +277,17 @@ fn apply_description_inner(
     // Tag the new commit with the next patch version.
     let new_version = crate::git::bump_patch(&current_version);
     match crate::git::create_skill_version_tag(skills_root, plugin_slug, skill_name, &new_version) {
-        Ok(tag) => log::info!("[apply_description] tagged skill={} tag={}", skill_name, tag),
+        Ok(tag) => log::info!(
+            "[apply_description] tagged skill={} tag={}",
+            skill_name,
+            tag
+        ),
         Err(e) => {
-            log::error!("[apply_description] tag failed skill={} error={}", skill_name, e);
+            log::error!(
+                "[apply_description] tag failed skill={} error={}",
+                skill_name,
+                e
+            );
             return Err(format!("Failed to tag description update: {}", e));
         }
     }
@@ -363,7 +404,10 @@ pub async fn start_generate_desc_evals(
 ) -> Result<String, String> {
     log::info!(
         "[start_generate_desc_evals] agent_id={} skill={} plugin={} num_queries={}",
-        agent_id, skill_name, plugin_slug, num_eval_queries
+        agent_id,
+        skill_name,
+        plugin_slug,
+        num_eval_queries
     );
 
     let skills_path = super::refine::resolve_skills_path(&db)?;
@@ -382,7 +426,11 @@ pub async fn start_generate_desc_evals(
     );
     let ws_skill_dir_fwd = ws_skill_dir.to_string_lossy().replace('\\', "/");
     // Transcript logs go into description-optimization/logs/ for easy investigation
-    let desc_opt_log_dir = ws_skill_dir.join("description-optimization").join("logs").to_string_lossy().into_owned();
+    let desc_opt_log_dir = ws_skill_dir
+        .join("description-optimization")
+        .join("logs")
+        .to_string_lossy()
+        .into_owned();
     let system_prompt = DESC_EVALS_PROMPT_TEMPLATE
         .replace("{{skill_name}}", &skill_name)
         .replace("{{skill_path}}", &skill_path_fwd)
@@ -393,9 +441,12 @@ pub async fn start_generate_desc_evals(
         num_eval_queries, skill_name
     );
 
-    let (api_key, extended_thinking, interleaved_thinking_beta, sdk_effort, fallback_model) = {
+    let (api_key, extended_thinking, interleaved_thinking_beta, sdk_effort) = {
         let conn = db.0.lock().map_err(|e| {
-            log::error!("[start_generate_desc_evals] Failed to acquire DB lock: {}", e);
+            log::error!(
+                "[start_generate_desc_evals] Failed to acquire DB lock: {}",
+                e
+            );
             e.to_string()
         })?;
         let settings = crate::db::read_settings(&conn)?;
@@ -408,15 +459,16 @@ pub async fn start_generate_desc_evals(
             settings.extended_thinking,
             settings.interleaved_thinking_beta,
             settings.sdk_effort.clone(),
-            settings.fallback_model.clone(),
         )
     };
 
-    let thinking_budget: Option<u32> = if extended_thinking { Some(16_000) } else { None };
-    let thinking = thinking_budget.map(|b| serde_json::json!({ "type": "enabled", "budgetTokens": b }));
-    let fallback_model =
-        crate::commands::agent::suppress_same_fallback_model(Some(&model), fallback_model);
-
+    let thinking_budget: Option<u32> = if extended_thinking {
+        Some(16_000)
+    } else {
+        None
+    };
+    let thinking =
+        thinking_budget.map(|b| serde_json::json!({ "type": "enabled", "budgetTokens": b }));
     let output_format = Some(serde_json::json!({
         "type": "json_schema",
         "schema": {
@@ -452,9 +504,13 @@ pub async fn start_generate_desc_evals(
         allowed_tools: Some(vec!["Read".to_string(), "Skill".to_string()]),
         max_turns: Some(50),
         permission_mode: None,
-        betas: crate::commands::workflow::build_betas(thinking_budget, &model, interleaved_thinking_beta),
+        betas: crate::commands::workflow::build_betas(
+            thinking_budget,
+            &model,
+            interleaved_thinking_beta,
+        ),
         thinking,
-        fallback_model,
+        fallback_model: None,
         effort: sdk_effort,
         output_format,
         prompt_suggestions: None,
@@ -529,8 +585,14 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("description-evals.json");
         let queries = vec![
-            EvalQuery { query: "help me with X".to_string(), should_trigger: true },
-            EvalQuery { query: "do something unrelated".to_string(), should_trigger: false },
+            EvalQuery {
+                query: "help me with X".to_string(),
+                should_trigger: true,
+            },
+            EvalQuery {
+                query: "do something unrelated".to_string(),
+                should_trigger: false,
+            },
         ];
         write_eval_queries_to_file(&path, &queries).unwrap();
         let loaded = read_eval_queries_from_file(&path).unwrap();
@@ -546,22 +608,39 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("nonexistent.json");
         let result = read_eval_queries_from_file(&path).unwrap();
-        assert!(result.is_empty(), "Expected empty vec for missing file, got {:?}", result);
+        assert!(
+            result.is_empty(),
+            "Expected empty vec for missing file, got {:?}",
+            result
+        );
     }
 
     #[test]
     fn save_overwrites_previous_queries() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("description-evals.json");
-        let first = vec![EvalQuery { query: "first".to_string(), should_trigger: true }];
+        let first = vec![EvalQuery {
+            query: "first".to_string(),
+            should_trigger: true,
+        }];
         let second = vec![
-            EvalQuery { query: "second-a".to_string(), should_trigger: false },
-            EvalQuery { query: "second-b".to_string(), should_trigger: true },
+            EvalQuery {
+                query: "second-a".to_string(),
+                should_trigger: false,
+            },
+            EvalQuery {
+                query: "second-b".to_string(),
+                should_trigger: true,
+            },
         ];
         write_eval_queries_to_file(&path, &first).unwrap();
         write_eval_queries_to_file(&path, &second).unwrap();
         let loaded = read_eval_queries_from_file(&path).unwrap();
-        assert_eq!(loaded.len(), 2, "Expected exactly 2 queries after overwrite");
+        assert_eq!(
+            loaded.len(),
+            2,
+            "Expected exactly 2 queries after overwrite"
+        );
         assert_eq!(loaded[0].query, "second-a");
         assert!(
             !loaded.iter().any(|q| q.query == "first"),
@@ -575,7 +654,10 @@ mod tests {
         let path = dir.path().join("description-evals.json");
 
         // Write initial valid data
-        let original = vec![EvalQuery { query: "original".to_string(), should_trigger: true }];
+        let original = vec![EvalQuery {
+            query: "original".to_string(),
+            should_trigger: true,
+        }];
         write_eval_queries_to_file(&path, &original).unwrap();
 
         // Block the .tmp path by creating a directory with that name so the write fails
@@ -583,9 +665,15 @@ mod tests {
         std::fs::create_dir(&tmp_path).unwrap();
 
         // Attempt a new write — must fail because .tmp is a directory
-        let replacement = vec![EvalQuery { query: "replacement".to_string(), should_trigger: false }];
+        let replacement = vec![EvalQuery {
+            query: "replacement".to_string(),
+            should_trigger: false,
+        }];
         let result = write_eval_queries_to_file(&path, &replacement);
-        assert!(result.is_err(), "Expected write to fail when .tmp path is a directory");
+        assert!(
+            result.is_err(),
+            "Expected write to fail when .tmp path is a directory"
+        );
 
         // Original file must be intact
         let loaded = read_eval_queries_from_file(&path).unwrap();
@@ -597,7 +685,8 @@ mod tests {
 
     #[test]
     fn update_skill_description_replaces_existing() {
-        let content = "---\nname: My Skill\ndescription: old description\nauthor: dev\n---\n# Body\n";
+        let content =
+            "---\nname: My Skill\ndescription: old description\nauthor: dev\n---\n# Body\n";
         let result = update_skill_description(content, "new description").unwrap();
         assert!(
             result.contains("description: \"new description\""),
@@ -660,7 +749,8 @@ mod tests {
         std::fs::write(
             skill_dir.join("SKILL.md"),
             "---\nname: desc-skill\ndescription: old\n---\n# Body\n",
-        ).unwrap();
+        )
+        .unwrap();
         crate::git::commit_all(dir.path(), "desc-skill: initial").unwrap();
         crate::git::create_skill_version_tag(dir.path(), plugin, "desc-skill", "1.0.0").unwrap();
 
@@ -669,7 +759,8 @@ mod tests {
             plugin,
             dir.path().to_str().unwrap(),
             "new optimized description",
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(new_version, "1.0.1");
         let content = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
@@ -681,7 +772,10 @@ mod tests {
 
         let history = crate::git::get_history(dir.path(), "desc-skill", plugin, 10).unwrap();
         assert_eq!(history[0].version.as_deref(), Some("1.0.1"));
-        assert_eq!(history[0].message, "Update desc-skill description via optimization");
+        assert_eq!(
+            history[0].message,
+            "Update desc-skill description via optimization"
+        );
     }
 
     #[test]
@@ -695,16 +789,14 @@ mod tests {
         std::fs::write(
             skill_dir.join("SKILL.md"),
             "---\nname: same-desc\ndescription: same\n---\n# Body\n",
-        ).unwrap();
+        )
+        .unwrap();
         crate::git::commit_all(dir.path(), "same-desc: initial").unwrap();
         crate::git::create_skill_version_tag(dir.path(), plugin, "same-desc", "1.0.0").unwrap();
 
-        let new_version = apply_description_inner(
-            "same-desc",
-            plugin,
-            dir.path().to_str().unwrap(),
-            "same",
-        ).unwrap();
+        let new_version =
+            apply_description_inner("same-desc", plugin, dir.path().to_str().unwrap(), "same")
+                .unwrap();
 
         assert_eq!(new_version, "1.0.0");
         let history = crate::git::get_history(dir.path(), "same-desc", plugin, 10).unwrap();

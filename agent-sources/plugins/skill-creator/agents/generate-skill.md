@@ -1,7 +1,6 @@
 ---
 name: generate-skill
 description: Plans skill structure, writes SKILL.md and all reference files. Called during Step 3 to create a new skill.
-model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent
 ---
 

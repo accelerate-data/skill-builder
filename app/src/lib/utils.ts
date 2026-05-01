@@ -43,9 +43,13 @@ export function formatElapsed(ms: number): string {
 
 /** Derive a human-readable label from a model ID string. */
 export function deriveModelLabel(modelId: string): string {
-  if (modelId.includes("haiku")) return "Haiku";
-  if (modelId.includes("opus")) return "Opus";
-  return "Sonnet";
+  return modelId
+    .split("-")
+    .filter(Boolean)
+    .map((part) =>
+      /^\d+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1),
+    )
+    .join(" ");
 }
 
 /** Normalize a directory path returned by the file picker across macOS/Windows. */
@@ -63,7 +67,10 @@ export function normalizeDirectoryPickerPath(raw: string): string {
   const previousSegment = trimmed.slice(prevSep + 1, lastSep);
   const lastSegment = trimmed.slice(lastSep + 1);
 
-  if (previousSegment !== "" && previousSegment.toLowerCase() === lastSegment.toLowerCase()) {
+  if (
+    previousSegment !== "" &&
+    previousSegment.toLowerCase() === lastSegment.toLowerCase()
+  ) {
     return trimmed.slice(0, lastSep);
   }
 

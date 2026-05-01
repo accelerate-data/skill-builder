@@ -12,13 +12,14 @@ import {
   saveClarificationsContent,
   writeFile,
 } from "@/lib/tauri";
-import { resolveModelId } from "@/lib/models";
+import { requireSettingsModel } from "@/lib/models";
 import { joinPath } from "@/lib/path-utils";
 import { parseClarifications } from "@/lib/clarifications-types";
 import { buildGateFeedbackNotes } from "@/lib/gate-feedback";
 import { toast } from "@/lib/toast";
 import { workspaceSkillDir } from "@/lib/evals";
 import pluginPaths from "../../plugin-paths.json";
+import { useSettingsStore } from "@/stores/settings-store";
 
 export interface UseWorkflowGateOptions {
   skillName: string;
@@ -66,6 +67,7 @@ export function useWorkflowGate({
   const setGateLoading = useWorkflowStore((s) => s.setGateLoading);
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   const agentStartRun = useAgentStore((s) => s.startRun);
+  const preferredModel = useSettingsStore((s) => s.preferredModel);
 
   const gateAgentIdRef = useRef<string | null>(null);
 
@@ -80,102 +82,178 @@ export function useWorkflowGate({
       const agentId = await runAnswerEvaluator(skillName, workspacePath);
       console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
       gateAgentIdRef.current = agentId;
-      agentStartRun(agentId, resolveModelId("haiku"));
+      agentStartRun(agentId, requireSettingsModel(preferredModel));
       setActiveAgent(agentId);
     } catch (err) {
       console.error("[workflow] Gate evaluation failed to start:", err);
       setGateLoading(false);
-      toast.warning("Answer evaluation skipped — proceeding to next step", { duration: Infinity });
+      toast.warning("Answer evaluation skipped — proceeding to next step", {
+        duration: Infinity,
+      });
       updateStepStatus(currentStep, "completed");
       advanceToNextStep();
     }
-  }, [workspacePath, skillName, currentStep, setGateLoading, agentStartRun, setActiveAgent, updateStepStatus, advanceToNextStep]);
+  }, [
+    workspacePath,
+    skillName,
+    preferredModel,
+    currentStep,
+    setGateLoading,
+    agentStartRun,
+    setActiveAgent,
+    updateStepStatus,
+    advanceToNextStep,
+  ]);
 
-  const finishGateEvaluation = useCallback(async (structuredOutput?: unknown) => {
-    const proceedNormally = () => {
-      setGateLoading(false);
-      updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
-      advanceToNextStep();
-    };
+  const finishGateEvaluation = useCallback(
+    async (structuredOutput?: unknown) => {
+      const proceedNormally = () => {
+        setGateLoading(false);
+        updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+        advanceToNextStep();
+      };
 
-    if (!workspacePath) {
-      proceedNormally();
-      return;
-    }
-
-    console.debug("[workflow] Gate structured output:", structuredOutput);
-
-    try {
-      if (structuredOutput != null) {
-        await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput as import("@/lib/types").AnswerEvaluationOutput);
-      }
-
-      const evalPath = joinPath(workspaceSkillDir(workspacePath, pluginSlug, skillName), "answer-evaluation.json");
-      const raw = await readFile(evalPath);
-      const evaluation: AnswerEvaluation = JSON.parse(raw);
-
-      if (!["sufficient", "mixed", "insufficient"].includes(evaluation.verdict)) {
-        console.warn("[workflow] Invalid gate verdict:", evaluation.verdict);
+      if (!workspacePath) {
         proceedNormally();
         return;
       }
 
-      if (workspacePath) {
-        try {
-          const clarificationsRaw = await getClarificationsContent(skillName, workspacePath);
-          const parsed = parseClarifications(clarificationsRaw);
-          if (parsed) {
-            const next: ClarificationsFile = {
-              ...parsed,
-              answer_evaluator_notes: buildGateFeedbackNotes(evaluation),
-            };
-            const serialized = JSON.stringify(next, null, 2);
-            await saveClarificationsContent(skillName, workspacePath, serialized);
-            onClarificationsUpdated?.(next, serialized);
-          }
-        } catch (err) {
-          console.warn("[workflow] Could not update clarifications notes from gate evaluation:", err);
+      console.debug("[workflow] Gate structured output:", structuredOutput);
+
+      try {
+        if (structuredOutput != null) {
+          await materializeAnswerEvaluationOutput(
+            skillName,
+            workspacePath,
+            structuredOutput as import("@/lib/types").AnswerEvaluationOutput,
+          );
         }
-      }
 
-      const gateDecision = evaluation.gate_decision ?? "run_research";
+        const evalPath = joinPath(
+          workspaceSkillDir(workspacePath, pluginSlug, skillName),
+          "answer-evaluation.json",
+        );
+        const raw = await readFile(evalPath);
+        const evaluation: AnswerEvaluation = JSON.parse(raw);
 
-      if (workspacePath) {
-        const gateLog = JSON.stringify({ ...evaluation, action: gateDecision, timestamp: new Date().toISOString() });
-        writeFile(joinPath(workspaceSkillDir(workspacePath, pluginSlug, skillName), "gate-result.json"), gateLog).catch((e) => console.warn("[use-workflow-gate] non-fatal: op=writeFile err=%s", e));
-      }
+        if (
+          !["sufficient", "mixed", "insufficient"].includes(evaluation.verdict)
+        ) {
+          console.warn("[workflow] Invalid gate verdict:", evaluation.verdict);
+          proceedNormally();
+          return;
+        }
 
-      logGateDecision(skillName, evaluation.verdict, gateDecision).catch((e) => console.warn("[use-workflow-gate] non-fatal: op=logGateDecision err=%s", e));
-
-      setGateLoading(false);
-
-      if (gateDecision === "revise") {
-        // Contradictions found or answers insufficient — stay on step 0 so the user can revise.
-        toast.info("Please review the feedback and revise your answers before continuing");
-        updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
-        // Refresh clarifications so the feedback notes are visible to the user.
         if (workspacePath) {
-          getClarificationsContent(skillName, workspacePath)
-            .then((content) => {
-              const parsed = parseClarifications(content ?? null);
-              if (parsed) {
-                onClarificationsUpdated?.(parsed, content ?? "");
-              }
-            })
-            .catch(() => {
-              console.warn("[use-workflow-gate] Could not refresh clarifications after revise decision");
-            });
+          try {
+            const clarificationsRaw = await getClarificationsContent(
+              skillName,
+              workspacePath,
+            );
+            const parsed = parseClarifications(clarificationsRaw);
+            if (parsed) {
+              const next: ClarificationsFile = {
+                ...parsed,
+                answer_evaluator_notes: buildGateFeedbackNotes(evaluation),
+              };
+              const serialized = JSON.stringify(next, null, 2);
+              await saveClarificationsContent(
+                skillName,
+                workspacePath,
+                serialized,
+              );
+              onClarificationsUpdated?.(next, serialized);
+            }
+          } catch (err) {
+            console.warn(
+              "[workflow] Could not update clarifications notes from gate evaluation:",
+              err,
+            );
+          }
         }
-      } else {
-        // "run_research" or unrecognized — advance to step 1.
-        updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
-        advanceToNextStep();
+
+        const gateDecision = evaluation.gate_decision ?? "run_research";
+
+        if (workspacePath) {
+          const gateLog = JSON.stringify({
+            ...evaluation,
+            action: gateDecision,
+            timestamp: new Date().toISOString(),
+          });
+          writeFile(
+            joinPath(
+              workspaceSkillDir(workspacePath, pluginSlug, skillName),
+              "gate-result.json",
+            ),
+            gateLog,
+          ).catch((e) =>
+            console.warn(
+              "[use-workflow-gate] non-fatal: op=writeFile err=%s",
+              e,
+            ),
+          );
+        }
+
+        logGateDecision(skillName, evaluation.verdict, gateDecision).catch(
+          (e) =>
+            console.warn(
+              "[use-workflow-gate] non-fatal: op=logGateDecision err=%s",
+              e,
+            ),
+        );
+
+        setGateLoading(false);
+
+        if (gateDecision === "revise") {
+          // Contradictions found or answers insufficient — stay on step 0 so the user can revise.
+          toast.info(
+            "Please review the feedback and revise your answers before continuing",
+          );
+          updateStepStatus(
+            useWorkflowStore.getState().currentStep,
+            "completed",
+          );
+          // Refresh clarifications so the feedback notes are visible to the user.
+          if (workspacePath) {
+            getClarificationsContent(skillName, workspacePath)
+              .then((content) => {
+                const parsed = parseClarifications(content ?? null);
+                if (parsed) {
+                  onClarificationsUpdated?.(parsed, content ?? "");
+                }
+              })
+              .catch(() => {
+                console.warn(
+                  "[use-workflow-gate] Could not refresh clarifications after revise decision",
+                );
+              });
+          }
+        } else {
+          // "run_research" or unrecognized — advance to step 1.
+          updateStepStatus(
+            useWorkflowStore.getState().currentStep,
+            "completed",
+          );
+          advanceToNextStep();
+        }
+      } catch (err) {
+        console.warn(
+          "[workflow] Gate evaluation materialization failed — proceeding normally:",
+          err,
+        );
+        proceedNormally();
       }
-    } catch (err) {
-      console.warn("[workflow] Gate evaluation materialization failed — proceeding normally:", err);
-      proceedNormally();
-    }
-  }, [workspacePath, skillName, purpose, setGateLoading, updateStepStatus, advanceToNextStep, onClarificationsUpdated]);
+    },
+    [
+      workspacePath,
+      skillName,
+      purpose,
+      setGateLoading,
+      updateStepStatus,
+      advanceToNextStep,
+      onClarificationsUpdated,
+    ],
+  );
 
   // --- Routing ---
 

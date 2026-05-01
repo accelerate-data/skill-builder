@@ -206,7 +206,9 @@ fn persist_description_evals(
         Path::new(workspace_path),
         &summary.plugin_slug,
         &summary.skill_name,
-    ).join("description-optimization").join("description-evals.json");
+    )
+    .join("description-optimization")
+    .join("description-evals.json");
     if let Err(e) = write_eval_queries_to_file(&eval_path, &queries) {
         log::error!(
             "[persist_description_evals] agent={} skill={} failed to write file: {}",
@@ -239,13 +241,12 @@ fn persist_description_evals(
             e,
         );
     }
-
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::event_types::SidecarModelUsageEntry;
+    use super::*;
 
     #[test]
     fn persist_run_summary_writes_aggregate_row_for_workflow_session() {
@@ -260,7 +261,7 @@ mod tests {
             usage_session_id: None,
             run_source: Some("workflow".to_string()),
             session_id: Some("sdk-session".to_string()),
-            model: "sonnet".to_string(),
+            model: "settings-model-a".to_string(),
             input_tokens: 120,
             output_tokens: 45,
             cache_read_tokens: 6,
@@ -290,7 +291,7 @@ mod tests {
         assert_eq!(run.agent_id, "agent-aggregate");
         assert_eq!(run.skill_name, "demo-skill");
         assert_eq!(run.step_id, 2);
-        assert_eq!(run.model, "claude-sonnet-4-6");
+        assert_eq!(run.model, "settings-model-a");
         assert_eq!(run.input_tokens, 120);
         assert_eq!(run.output_tokens, 45);
         assert_eq!(run.cache_read_tokens, 6);
@@ -319,7 +320,7 @@ mod tests {
             total_cost_usd: 0.0,
             model_usage_breakdown: vec![
                 SidecarModelUsageEntry {
-                    model: "sonnet".to_string(),
+                    model: "settings-model-a".to_string(),
                     input_tokens: 100,
                     output_tokens: 20,
                     cache_read_tokens: 5,
@@ -327,7 +328,7 @@ mod tests {
                     cost: 0.10,
                 },
                 SidecarModelUsageEntry {
-                    model: "opus".to_string(),
+                    model: "settings-model-b".to_string(),
                     input_tokens: 50,
                     output_tokens: 10,
                     cache_read_tokens: 0,
@@ -356,8 +357,8 @@ mod tests {
             crate::db::get_session_agent_runs(&conn, "synthetic:refine:demo-skill:sess-1").unwrap();
         assert_eq!(runs.len(), 2);
         let models: Vec<_> = runs.iter().map(|run| run.model.as_str()).collect();
-        assert!(models.contains(&"claude-sonnet-4-6"));
-        assert!(models.contains(&"claude-opus-4-6"));
+        assert!(models.contains(&"settings-model-a"));
+        assert!(models.contains(&"settings-model-b"));
         assert!(runs.iter().all(|run| run.skill_name == "demo-skill"));
         assert!(runs.iter().all(|run| run.step_id == -10));
     }

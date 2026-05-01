@@ -1,7 +1,6 @@
 ---
 name: detailed-research
 description: Reads answer-evaluation.json to skip clear items, spawns refinement sub-agents for non-clear and needs-refinement answers, and returns canonical clarifications payload with refinements merged. 
-model: sonnet
 tools: Read, Agent, AskUserQuestion
 ---
 

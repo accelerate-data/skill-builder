@@ -38,7 +38,7 @@ export function UsageSection() {
     hideCancelled, toggleHideCancelled,
     dateRange, setDateRange,
     skillFilter, skillNames, setSkillFilter, fetchSkillNames,
-    modelFamilyFilter, setModelFamilyFilter,
+    modelFilter, setModelFilter,
   } = useUsageStore()
   const [resetting, setResetting] = useState(false)
   const [stepFilter, setStepFilter] = useState<number | "all">("all")
@@ -172,8 +172,8 @@ export function UsageSection() {
       <SessionHistory
         agentRuns={agentRuns}
         byModel={byModel}
-        modelFamilyFilter={modelFamilyFilter}
-        setModelFamilyFilter={setModelFamilyFilter}
+        modelFilter={modelFilter}
+        setModelFilter={setModelFilter}
         stepFilter={stepFilter}
         setStepFilter={setStepFilter}
         sortCol={sortCol}

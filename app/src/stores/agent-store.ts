@@ -16,6 +16,7 @@ import type {
   RunInitEvent,
   TurnUsageEvent,
 } from "@/lib/agent-events";
+import { formatProviderModelId } from "@/lib/models";
 
 type PendingTerminalStatus = "completed" | "error" | "shutdown";
 
@@ -89,7 +90,6 @@ function drainPendingMetadata(agentId: string) {
   }
 }
 
-
 function queuePendingTerminal(agentId: string, status: PendingTerminalStatus) {
   const state = useAgentStore.getState();
   const existing = state.pendingTerminal[agentId];
@@ -137,7 +137,10 @@ export function resetAgentStoreInternals() {
 }
 
 // Re-export buffer utilities for external consumers
-export { flushDisplayItems, getPhantomTimerCount } from "./agent-display-buffer";
+export {
+  flushDisplayItems,
+  getPhantomTimerCount,
+} from "./agent-display-buffer";
 
 /** Returns the number of queued terminal-status events (for testing). */
 export function getPendingTerminalCount(): number {
@@ -153,21 +156,7 @@ const DEFAULT_CONTEXT_WINDOW = 200_000;
 
 /** Map model IDs and shorthands to human-readable display names with version. */
 export function formatModelName(model: string): string {
-  const lower = model.toLowerCase();
-  const families: [string, string][] = [
-    ["opus", "Opus"],
-    ["sonnet", "Sonnet"],
-    ["haiku", "Haiku"],
-  ];
-  for (const [key, label] of families) {
-    if (lower.includes(key)) {
-      const match = lower.match(new RegExp(`${key}-(\\d+)-(\\d+)`));
-      return match ? `${label} ${match[1]}.${match[2]}` : label;
-    }
-  }
-  // Already a readable name or unknown — capitalize first letter
-  if (model.length > 0) return model.charAt(0).toUpperCase() + model.slice(1);
-  return model;
+  return formatProviderModelId(model);
 }
 
 /** Format a token count as a compact string (e.g. 45000 -> "45K"). */
@@ -291,7 +280,11 @@ interface AgentState {
   applyCompaction: (agentId: string, event: CompactionEvent) => void;
   applyContextWindow: (agentId: string, event: ContextWindowEvent) => void;
   setPromptSuggestion: (agentId: string, suggestion: string) => void;
-  completeRun: (agentId: string, success: boolean, errorDetail?: string) => void;
+  completeRun: (
+    agentId: string,
+    success: boolean,
+    errorDetail?: string,
+  ) => void;
   shutdownRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
   clearRuns: () => void;
@@ -322,7 +315,9 @@ export const useAgentStore = create<AgentState>((set) => ({
                 ...existing,
                 model,
                 skillName,
-                status: (["completed", "error", "shutdown"] as string[]).includes(existing.status)
+                status: (
+                  ["completed", "error", "shutdown"] as string[]
+                ).includes(existing.status)
                   ? existing.status
                   : ("running" as const),
               }
@@ -348,7 +343,13 @@ export const useAgentStore = create<AgentState>((set) => ({
     drainPendingMetadata(agentId);
   },
 
-  registerRun: (agentId, model, skillName?, runSource = "refine", usageSessionId?) => {
+  registerRun: (
+    agentId,
+    model,
+    skillName?,
+    runSource = "refine",
+    usageSessionId?,
+  ) => {
     clearPhantomTimer(agentId);
     set((state) => {
       const existing = state.runs[agentId];
@@ -363,7 +364,9 @@ export const useAgentStore = create<AgentState>((set) => ({
                 // Preserve terminal status: if agent-exit already fired before registerRun
                 // (race on fast/mock agents), keep "completed"/"error"/"shutdown" so the
                 // completion effect fires correctly instead of reverting to "running".
-                status: (["completed", "error", "shutdown"] as string[]).includes(existing.status)
+                status: (
+                  ["completed", "error", "shutdown"] as string[]
+                ).includes(existing.status)
                   ? existing.status
                   : ("running" as const),
                 runSource,
@@ -405,12 +408,17 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, { _tag: "run_config", ...event });
+        return pendingMetadataUpdate(state, agentId, {
+          _tag: "run_config",
+          ...event,
+        });
       }
 
       console.debug(
         "[agent-store] event=run_config agent_id=%s thinking=%s agent=%s",
-        agentId, event.thinkingEnabled, event.agentName,
+        agentId,
+        event.thinkingEnabled,
+        event.agentName,
       );
 
       return {
@@ -429,12 +437,16 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, { _tag: "run_init", ...event });
+        return pendingMetadataUpdate(state, agentId, {
+          _tag: "run_init",
+          ...event,
+        });
       }
 
       console.debug(
         "[agent-store] event=run_init agent_id=%s model=%s",
-        agentId, event.model,
+        agentId,
+        event.model,
       );
 
       return {
@@ -453,12 +465,18 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, { _tag: "turn_usage", ...event });
+        return pendingMetadataUpdate(state, agentId, {
+          _tag: "turn_usage",
+          ...event,
+        });
       }
 
       console.debug(
         "[agent-store] event=turn_usage agent_id=%s turn=%d input=%d output=%d",
-        agentId, event.turn, event.inputTokens, event.outputTokens,
+        agentId,
+        event.turn,
+        event.inputTokens,
+        event.outputTokens,
       );
 
       return {
@@ -483,12 +501,17 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, { _tag: "compaction", ...event });
+        return pendingMetadataUpdate(state, agentId, {
+          _tag: "compaction",
+          ...event,
+        });
       }
 
       console.debug(
         "[agent-store] event=compaction agent_id=%s turn=%d pre_tokens=%d",
-        agentId, event.turn, event.preTokens,
+        agentId,
+        event.turn,
+        event.preTokens,
       );
 
       return {
@@ -513,7 +536,10 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((state) => {
       const run = state.runs[agentId];
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, { _tag: "context_window", ...event });
+        return pendingMetadataUpdate(state, agentId, {
+          _tag: "context_window",
+          ...event,
+        });
       }
 
       if (event.contextWindow <= 0) {
@@ -522,7 +548,8 @@ export const useAgentStore = create<AgentState>((set) => ({
 
       console.debug(
         "[agent-store] event=context_window agent_id=%s window=%d",
-        agentId, event.contextWindow,
+        agentId,
+        event.contextWindow,
       );
 
       return {
@@ -541,7 +568,10 @@ export const useAgentStore = create<AgentState>((set) => ({
       const run = state.runs[agentId];
       if (!run) return {};
       return {
-        runs: { ...state.runs, [agentId]: { ...run, promptSuggestion: suggestion } },
+        runs: {
+          ...state.runs,
+          [agentId]: { ...run, promptSuggestion: suggestion },
+        },
       };
     }),
 
@@ -585,7 +615,6 @@ export const useAgentStore = create<AgentState>((set) => ({
         },
       };
     });
-
   },
 
   shutdownRun: (agentId: string) => {
@@ -611,7 +640,6 @@ export const useAgentStore = create<AgentState>((set) => ({
         },
       };
     });
-
   },
 
   setActiveAgent: (agentId) => set({ activeAgentId: agentId }),
@@ -619,6 +647,11 @@ export const useAgentStore = create<AgentState>((set) => ({
   clearRuns: () => {
     clearDisplayItemBuffer();
     clearAllPhantomTimers();
-    set({ runs: {}, activeAgentId: null, pendingTerminal: {}, pendingMetadata: {} });
+    set({
+      runs: {},
+      activeAgentId: null,
+      pendingTerminal: {},
+      pendingMetadata: {},
+    });
   },
 }));

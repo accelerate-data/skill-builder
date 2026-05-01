@@ -1,43 +1,43 @@
-import { useState } from "react"
-import { toast } from "@/lib/toast"
-import { Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { useState } from "react";
+import { toast } from "@/lib/toast";
+import { Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { useSettingsStore } from "@/stores/settings-store"
-import { listModels, testApiKey } from "@/lib/tauri"
+} from "@/components/ui/select";
+import { useSettingsStore } from "@/stores/settings-store";
+import { listModels, testApiKey } from "@/lib/tauri";
 
 interface SdkSectionProps {
-  apiKey: string | null
-  setApiKey: (v: string | null) => void
-  preferredModel: string
-  setPreferredModel: (v: string) => void
-  extendedThinking: boolean
-  setExtendedThinking: (v: boolean) => void
-  interleavedThinkingBeta: boolean
-  setInterleavedThinkingBeta: (v: boolean) => void
-  sdkEffort: string
-  setSdkEffort: (v: string) => void
-  refinePromptSuggestions: boolean
-  setRefinePromptSuggestions: (v: boolean) => void
-  maxDimensions: number
-  setMaxDimensions: (v: number) => void
-  autoSave: (overrides: Record<string, unknown>) => void
+  apiKey: string | null;
+  setApiKey: (v: string | null) => void;
+  preferredModel: string;
+  setPreferredModel: (v: string) => void;
+  extendedThinking: boolean;
+  setExtendedThinking: (v: boolean) => void;
+  interleavedThinkingBeta: boolean;
+  setInterleavedThinkingBeta: (v: boolean) => void;
+  sdkEffort: string;
+  setSdkEffort: (v: string) => void;
+  refinePromptSuggestions: boolean;
+  setRefinePromptSuggestions: (v: boolean) => void;
+  maxDimensions: number;
+  setMaxDimensions: (v: number) => void;
+  autoSave: (overrides: Record<string, unknown>) => void;
 }
 
 export function SdkSection({
@@ -57,44 +57,47 @@ export function SdkSection({
   setMaxDimensions,
   autoSave,
 }: SdkSectionProps) {
-  const [showApiKey, setShowApiKey] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
-  const availableModels = useSettingsStore((s) => s.availableModels)
-  const setStoreSettings = useSettingsStore((s) => s.setSettings)
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null);
+  const availableModels = useSettingsStore((s) => s.availableModels);
+  const setStoreSettings = useSettingsStore((s) => s.setSettings);
 
   const fetchModels = async (key: string) => {
     try {
-      const models = await listModels(key)
-      setStoreSettings({ availableModels: models ?? [] })
+      const models = await listModels(key);
+      setStoreSettings({ availableModels: models ?? [] });
+      if (!preferredModel && models?.[0]?.id) {
+        setPreferredModel(models[0].id);
+        autoSave({ preferredModel: models[0].id });
+      }
     } catch (err) {
-      console.warn("[settings] Could not fetch model list:", err)
+      console.warn("[settings] Could not fetch model list:", err);
     }
-  }
+  };
 
   const handleTestApiKey = async () => {
     if (!apiKey) {
-      toast.error("Enter an API key first", { duration: Infinity })
-      return
+      toast.error("Enter an API key first", { duration: Infinity });
+      return;
     }
-    setTesting(true)
-    setApiKeyValid(null)
+    setTesting(true);
+    setApiKeyValid(null);
     try {
-      await testApiKey(apiKey)
-      setApiKeyValid(true)
-      toast.success("API key is valid")
-      fetchModels(apiKey)
+      await testApiKey(apiKey);
+      setApiKeyValid(true);
+      toast.success("API key is valid");
+      fetchModels(apiKey);
     } catch (err) {
-      console.error("settings: API key test failed", err)
-      setApiKeyValid(false)
-      toast.error(
-        err instanceof Error ? err.message : String(err),
-        { duration: Infinity },
-      )
+      console.error("settings: API key test failed", err);
+      setApiKeyValid(false);
+      toast.error(err instanceof Error ? err.message : String(err), {
+        duration: Infinity,
+      });
     } finally {
-      setTesting(false)
+      setTesting(false);
     }
-  }
+  };
 
   return (
     <div className="space-y-6 p-6">
@@ -138,7 +141,11 @@ export function SdkSection({
                 onClick={handleTestApiKey}
                 disabled={testing || !apiKey}
                 className={apiKeyValid ? "text-white" : ""}
-                style={apiKeyValid ? { background: "var(--color-seafoam)", color: "white" } : undefined}
+                style={
+                  apiKeyValid
+                    ? { background: "var(--color-seafoam)", color: "white" }
+                    : undefined
+                }
               >
                 {testing ? (
                   <Loader2 className="size-3.5 animate-spin" />
@@ -156,21 +163,30 @@ export function SdkSection({
         <CardHeader>
           <CardTitle>Model</CardTitle>
           <CardDescription>
-            The Claude model used for all agents — skill building, refining, and testing.
+            The Claude model used for all agents — skill building, refining, and
+            testing.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
             <Select
-              value={preferredModel || (availableModels.length > 0 ? availableModels[0].id : "")}
-              onValueChange={(val) => { setPreferredModel(val); autoSave({ preferredModel: val }); }}
+              value={
+                preferredModel ||
+                (availableModels.length > 0 ? availableModels[0].id : "")
+              }
+              onValueChange={(val) => {
+                setPreferredModel(val);
+                autoSave({ preferredModel: val });
+              }}
             >
               <SelectTrigger className="w-64">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {availableModels.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.displayName}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -188,25 +204,41 @@ export function SdkSection({
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-0.5">
-              <Label htmlFor="extended-thinking">Extended thinking (deeper reasoning)</Label>
-              <span className="text-sm text-muted-foreground">Enable deeper reasoning for agents. Increases cost by ~$1-2 per skill build.</span>
+              <Label htmlFor="extended-thinking">
+                Extended thinking (deeper reasoning)
+              </Label>
+              <span className="text-sm text-muted-foreground">
+                Enable deeper reasoning for agents. Increases cost by ~$1-2 per
+                skill build.
+              </span>
             </div>
             <Switch
               id="extended-thinking"
               checked={extendedThinking}
-              onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
+              onCheckedChange={(checked) => {
+                setExtendedThinking(checked);
+                autoSave({ extendedThinking: checked });
+              }}
             />
           </div>
 
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-0.5">
-              <Label htmlFor="interleaved-thinking-beta">Interleaved thinking beta</Label>
-              <span className="text-sm text-muted-foreground">Enable interleaved thinking beta when thinking is enabled on supported non-Opus models.</span>
+              <Label htmlFor="interleaved-thinking-beta">
+                Interleaved thinking beta
+              </Label>
+              <span className="text-sm text-muted-foreground">
+                Enable interleaved thinking beta when thinking is enabled on
+                supported non-Opus models.
+              </span>
             </div>
             <Switch
               id="interleaved-thinking-beta"
               checked={interleavedThinkingBeta}
-              onCheckedChange={(checked) => { setInterleavedThinkingBeta(checked); autoSave({ interleavedThinkingBeta: checked }); }}
+              onCheckedChange={(checked) => {
+                setInterleavedThinkingBeta(checked);
+                autoSave({ interleavedThinkingBeta: checked });
+              }}
             />
           </div>
 
@@ -215,9 +247,9 @@ export function SdkSection({
             <Select
               value={sdkEffort || "_default"}
               onValueChange={(val) => {
-                const effort = val === "_default" ? "" : val
-                setSdkEffort(effort)
-                autoSave({ sdkEffort: effort || null })
+                const effort = val === "_default" ? "" : val;
+                setSdkEffort(effort);
+                autoSave({ sdkEffort: effort || null });
               }}
             >
               <SelectTrigger className="w-64">
@@ -235,13 +267,20 @@ export function SdkSection({
 
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-0.5">
-              <Label htmlFor="refine-prompt-suggestions">Refine prompt suggestions</Label>
-              <span className="text-sm text-muted-foreground">Enable SDK prompt suggestions during refine chat sessions.</span>
+              <Label htmlFor="refine-prompt-suggestions">
+                Refine prompt suggestions
+              </Label>
+              <span className="text-sm text-muted-foreground">
+                Enable SDK prompt suggestions during refine chat sessions.
+              </span>
             </div>
             <Switch
               id="refine-prompt-suggestions"
               checked={refinePromptSuggestions}
-              onCheckedChange={(checked) => { setRefinePromptSuggestions(checked); autoSave({ refinePromptSuggestions: checked }); }}
+              onCheckedChange={(checked) => {
+                setRefinePromptSuggestions(checked);
+                autoSave({ refinePromptSuggestions: checked });
+              }}
             />
           </div>
         </CardContent>
@@ -251,7 +290,8 @@ export function SdkSection({
         <CardHeader>
           <CardTitle>Research Scope Limit</CardTitle>
           <CardDescription>
-            Maximum number of research dimensions before suggesting narrower skills. Lower values produce more focused skills.
+            Maximum number of research dimensions before suggesting narrower
+            skills. Lower values produce more focused skills.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -264,18 +304,27 @@ export function SdkSection({
               max={18}
               value={maxDimensions}
               onChange={(e) => {
-                const val = Math.max(1, Math.min(18, parseInt(e.target.value) || 5))
-                setMaxDimensions(val)
+                const val = Math.max(
+                  1,
+                  Math.min(18, parseInt(e.target.value) || 5),
+                );
+                setMaxDimensions(val);
               }}
               onBlur={() => autoSave({ maxDimensions })}
               className="w-20"
             />
             <span className="text-sm text-muted-foreground">
-              {maxDimensions <= 3 ? "Narrow focus" : maxDimensions <= 5 ? "Balanced (default)" : maxDimensions <= 8 ? "Broad research" : "Very broad"}
+              {maxDimensions <= 3
+                ? "Narrow focus"
+                : maxDimensions <= 5
+                  ? "Balanced (default)"
+                  : maxDimensions <= 8
+                    ? "Broad research"
+                    : "Very broad"}
             </span>
           </div>
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

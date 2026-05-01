@@ -12,13 +12,12 @@ pub mod user_context;
 // Re-export items used by callers outside this module via `commands::workflow::*`.
 
 // step_config
-pub(crate) use step_config::{build_betas, resolve_model_id};
+pub(crate) use step_config::build_betas;
 
 // deploy
 pub(crate) use deploy::{
-    ensure_workspace_prompts_sync, invalidate_workspace_cache,
-    redeploy_agents, resolve_bundled_skills_dir,
-    resolve_prompt_source_dirs_public,
+    ensure_workspace_prompts_sync, invalidate_workspace_cache, redeploy_agents,
+    resolve_bundled_skills_dir, resolve_prompt_source_dirs_public,
 };
 
 // claude_md

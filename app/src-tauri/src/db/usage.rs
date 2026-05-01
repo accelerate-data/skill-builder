@@ -1,4 +1,6 @@
-use crate::types::{AgentRunRecord, UsageByModel, UsageByStep, UsageSummary, WorkflowSessionRecord};
+use crate::types::{
+    AgentRunRecord, UsageByModel, UsageByStep, UsageSummary, WorkflowSessionRecord,
+};
 use rusqlite::Connection;
 
 use super::skills::get_skill_master_id_in_plugin;
@@ -15,24 +17,6 @@ pub(crate) fn step_name(step_id: i32) -> String {
         3 => "Generate Skill".to_string(),
         _ => format!("Step {}", step_id),
     }
-}
-
-/// Normalize model aliases to canonical full IDs so all storage is consistent.
-/// Short names ("sonnet", "Haiku") and bare partial IDs ("claude-haiku-4-5") are
-/// mapped to the current canonical ID for each model family.  Full IDs that are
-/// already canonical pass through unchanged.
-fn normalize_model_name(model: &str) -> String {
-    let lower = model.to_lowercase();
-    if lower == "haiku" || lower == "claude-haiku-4-5" {
-        return "claude-haiku-4-5-20251001".to_string();
-    }
-    if lower == "sonnet" || lower == "claude-sonnet-4-6" {
-        return "claude-sonnet-4-6".to_string();
-    }
-    if lower == "opus" || lower == "claude-opus-4-6" {
-        return "claude-opus-4-6".to_string();
-    }
-    model.to_string()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -58,9 +42,6 @@ pub fn persist_agent_run(
     session_id: Option<&str>,
     workflow_session_id: Option<&str>,
 ) -> Result<(), String> {
-    let model_owned = normalize_model_name(model);
-    let model = model_owned.as_str();
-
     // Don't overwrite a completed/error run with shutdown status — the completed
     // data is more valuable than the partial shutdown snapshot.
     if status == "shutdown" {
@@ -289,7 +270,7 @@ pub fn get_agent_runs(
     hide_cancelled: bool,
     start_date: Option<&str>,
     skill_name: Option<&str>,
-    model_family: Option<&str>,
+    model_filter: Option<&str>,
     limit: usize,
 ) -> Result<Vec<AgentRunRecord>, String> {
     let cost_clause = if hide_cancelled {
@@ -312,14 +293,8 @@ pub fn get_agent_runs(
     } else {
         String::new()
     };
-    let model_family_clause = if model_family.is_some() {
-        let s = format!(
-            " AND CASE \
-              WHEN lower(model) LIKE '%haiku%'  THEN 'Haiku' \
-              WHEN lower(model) LIKE '%opus%'   THEN 'Opus' \
-              WHEN lower(model) LIKE '%sonnet%' THEN 'Sonnet' \
-              ELSE model END = ?{p}"
-        );
+    let model_filter_clause = if model_filter.is_some() {
+        let s = format!(" AND model = ?{p}");
         p += 1;
         s
     } else {
@@ -335,7 +310,7 @@ pub fn get_agent_runs(
                 session_id, started_at, completed_at
          FROM agent_runs
          WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}{model_family_clause}
+           AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}{model_filter_clause}
          ORDER BY started_at DESC
          LIMIT ?{p}"
     );
@@ -371,7 +346,7 @@ pub fn get_agent_runs(
             .map_err(|e| e.to_string())
         };
     }
-    match (start_date, skill_name, model_family) {
+    match (start_date, skill_name, model_filter) {
         (Some(sd), Some(sn), Some(mf)) => collect_rows!(rusqlite::params![sd, sn, mf, limit_i64]),
         (Some(sd), Some(sn), None) => collect_rows!(rusqlite::params![sd, sn, limit_i64]),
         (Some(sd), None, Some(mf)) => collect_rows!(rusqlite::params![sd, mf, limit_i64]),
@@ -658,17 +633,12 @@ pub fn get_usage_by_model(
     };
     let sql = format!(
         "SELECT
-           CASE
-             WHEN lower(model) LIKE '%haiku%' THEN 'Haiku'
-             WHEN lower(model) LIKE '%opus%'  THEN 'Opus'
-             WHEN lower(model) LIKE '%sonnet%' THEN 'Sonnet'
-             ELSE model
-           END AS model_family,
+           model AS model_filter,
            COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
          WHERE reset_marker IS NULL
            AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}
-         GROUP BY model_family
+         GROUP BY model_filter
          ORDER BY SUM(total_cost) DESC"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
