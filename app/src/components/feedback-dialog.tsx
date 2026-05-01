@@ -21,7 +21,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { startAgent, getWorkspacePath, createGithubIssue } from "@/lib/tauri"
+import { startOneShotAgent, getWorkspacePath, createGithubIssue } from "@/lib/tauri"
 import { useAgentStore } from "@/stores/agent-store"
 import { useAuthStore } from "@/stores/auth-store"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
@@ -214,7 +214,7 @@ export function FeedbackDialog() {
 
     try {
       const cwd = await getWorkspacePath()
-      await startAgent(
+      await startOneShotAgent(
         agentId,
         prompt,
         "haiku",

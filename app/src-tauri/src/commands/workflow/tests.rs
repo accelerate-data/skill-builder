@@ -17,6 +17,7 @@ use super::prompt::{build_prompt, PromptParams};
 use super::user_context::{format_user_context, write_user_context_file};
 use super::step_config::{
     build_betas, get_step_config, thinking_budget_for_step, workflow_output_format_for_agent,
+    WORKFLOW_AGENT_IDENTITY,
 };
 use super::evaluation::get_step_output_files;
 
@@ -98,6 +99,7 @@ fn test_get_step_output_files_unknown_step() {
 
 #[test]
 fn test_step_config_canonical_agent_names() {
+    assert_eq!(WORKFLOW_AGENT_IDENTITY, "skill-content-researcher:skill-builder");
     assert_eq!(get_step_config(0).unwrap().agent_name, "skill-content-researcher:research-orchestrator");
     assert_eq!(get_step_config(1).unwrap().agent_name, "skill-content-researcher:detailed-research");
     assert_eq!(get_step_config(2).unwrap().agent_name, "skill-content-researcher:confirm-decisions");
@@ -120,8 +122,22 @@ fn test_step_config_canonical_required_plugins() {
     );
     assert_eq!(
         get_step_config(3).unwrap().required_plugins,
-        vec!["skill-creator"]
+        vec!["skill-content-researcher", "skill-creator"]
     );
+}
+
+#[test]
+fn test_workflow_step_tools_are_one_shot_safe() {
+    for step_id in 0..=3 {
+        let config = get_step_config(step_id).unwrap();
+        assert!(
+            !config
+                .allowed_tools
+                .iter()
+                .any(|tool| tool == "AskUserQuestion"),
+            "workflow step {step_id} must not allow AskUserQuestion in one-shot mode"
+        );
+    }
 }
 
 #[test]
@@ -440,6 +456,61 @@ fn test_materialize_step0_writes_research_and_clarifications() {
     materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
     assert!(skill_root.join("context/clarifications.json").exists());
     assert!(!skill_root.join("context/research-plan.md").exists());
+}
+
+#[test]
+fn test_materialize_step0_accepts_null_focus_in_unselected_dimension_scores() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    let payload = serde_json::json!({
+        "status": "research_complete",
+        "dimensions_selected": 1,
+        "question_count": 0,
+        "research_output": {
+            "version": "1",
+            "metadata": {
+                "title": "Test",
+                "question_count": 0,
+                "section_count": 0,
+                "refinement_count": 0,
+                "must_answer_count": 0,
+                "priority_questions": [],
+                "research_plan": {
+                    "purpose": "Analyze leads",
+                    "domain": "Cloud services",
+                    "topic_relevance": "High",
+                    "dimensions_evaluated": 2,
+                    "dimensions_selected": 1,
+                    "dimension_scores": [
+                        {
+                            "name": "entities",
+                            "score": 5.0,
+                            "reason": "Critical custom relationships.",
+                            "focus": "Lead to opportunity conversion"
+                        },
+                        {
+                            "name": "modeling-patterns",
+                            "score": 3.0,
+                            "reason": "Mostly standard.",
+                            "focus": null
+                        }
+                    ],
+                    "selected_dimensions": [
+                        {
+                            "name": "entities",
+                            "focus": "Lead to opportunity conversion"
+                        }
+                    ]
+                }
+            },
+            "sections": [],
+            "notes": []
+        }
+    });
+
+    materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
+    let written = std::fs::read_to_string(skill_root.join("context/clarifications.json")).unwrap();
+    assert!(written.contains("\"modeling-patterns\""));
 }
 
 #[test]
@@ -1011,6 +1082,8 @@ fn test_build_prompt_all_three_paths() {
     assert!(prompt
         .contains("The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"));
     assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/skills/my-skill"));
+    assert!(prompt.contains("This skill output directory is the configured Settings Skills Folder target for the shipped skill"));
+    assert!(prompt.contains("shipped skill files must be written only to the skill output directory, never to the workspace directory or a workspace skill/ subdirectory"));
     assert!(prompt.contains("The user context file is at: /home/user/.vibedata/skill-builder/skills/my-skill/user-context.md"));
     assert!(prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/skills/my-skill/context"));
 }
@@ -1066,8 +1139,8 @@ fn test_build_prompt_without_author_info() {
 
 #[test]
 fn test_build_prompt_does_not_include_schema_file_path() {
-    // Schema file paths are no longer injected into the prompt — they are
-    // injected into config.system_prompt instead (VU-1049).
+    // Schema file paths are no longer injected into the prompt. Workflow steps
+    // use SDK outputFormat for structured contracts.
     for step_id in [1u32, 2, 3] {
         let prompt = build_prompt(&PromptParams {
             skill_name: "s", workspace_path: "/ws", plugin_slug: DEFAULT_PLUGIN_SLUG,
@@ -1092,40 +1165,23 @@ fn test_build_prompt_does_not_include_schema_file_path() {
 }
 
 #[test]
-fn test_system_prompt_injects_correct_inline_schema_per_step() {
+fn test_output_format_contains_correct_inline_schema_per_workflow_step() {
     use crate::generated::schemas;
-    // Steps 0–2 must each produce a system_prompt containing the matching inline schema.
-    let cases: &[(u32, &str)] = &[
-        (0, schemas::RESEARCH_STEP_INLINE_SCHEMA),
-        (1, schemas::DETAILED_RESEARCH_INLINE_SCHEMA),
-        (2, schemas::DECISIONS_INLINE_SCHEMA),
+    let cases: &[(&str, &str)] = &[
+        ("skill-content-researcher:research-orchestrator", schemas::RESEARCH_STEP_INLINE_SCHEMA),
+        ("skill-content-researcher:detailed-research", schemas::DETAILED_RESEARCH_INLINE_SCHEMA),
+        ("skill-content-researcher:confirm-decisions", schemas::DECISIONS_INLINE_SCHEMA),
     ];
-    for (step_id, expected_schema) in cases {
-        let system_prompt: Option<String> = match step_id {
-            0 => Some(format!(
-                "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
-                schemas::RESEARCH_STEP_INLINE_SCHEMA
-            )),
-            1 => Some(format!(
-                "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
-                schemas::DETAILED_RESEARCH_INLINE_SCHEMA
-            )),
-            2 => Some(format!(
-                "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
-                schemas::DECISIONS_INLINE_SCHEMA
-            )),
-            _ => None,
-        };
-        let sp = system_prompt.expect(&format!("step {step_id} must have a system_prompt"));
-        assert!(sp.contains(expected_schema), "step {step_id}: system_prompt must contain the inline schema");
-        assert!(sp.contains("strictly conforms to the following schema"), "step {step_id}: system_prompt must include conformance directive");
+    for (agent, expected_schema) in cases {
+        let format = workflow_output_format_for_agent(agent)
+            .unwrap_or_else(|| panic!("{agent} must have workflow outputFormat"));
+        let actual_schema = format
+            .get("schema")
+            .expect("outputFormat must contain schema");
+        let expected_schema: serde_json::Value =
+            serde_json::from_str(expected_schema).expect("generated schema must parse");
+        assert_eq!(*actual_schema, expected_schema, "{agent}: outputFormat must use the inline schema");
     }
-    // Step 3 must produce no system_prompt.
-    let step3: Option<String> = match 3u32 {
-        0 | 1 | 2 => Some("would not happen".to_string()),
-        _ => None,
-    };
-    assert!(step3.is_none(), "step 3 must not have a system_prompt");
 }
 
 #[test]

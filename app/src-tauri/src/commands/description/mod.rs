@@ -190,9 +190,18 @@ pub async fn apply_description(
     log::info!("[apply_description] skill={} plugin={}", skill_name, plugin_slug);
 
     let skills_path = super::refine::resolve_skills_path(&db)?;
-    let skills_root = Path::new(&skills_path);
+    apply_description_inner(&skill_name, &plugin_slug, &skills_path, &description)
+}
+
+fn apply_description_inner(
+    skill_name: &str,
+    plugin_slug: &str,
+    skills_path: &str,
+    description: &str,
+) -> Result<String, String> {
+    let skills_root = Path::new(skills_path);
     let skill_md_path = crate::skill_paths::resolve_skill_dir(
-        skills_root, &plugin_slug, &skill_name,
+        skills_root, plugin_slug, skill_name,
     ).join("SKILL.md");
 
     let content = std::fs::read_to_string(&skill_md_path).map_err(|e| {
@@ -200,7 +209,15 @@ pub async fn apply_description(
         format!("Failed to read SKILL.md: {}", e)
     })?;
 
-    let updated = update_skill_description(&content, &description)?;
+    let current_version = crate::git::latest_skill_semver(skills_root, plugin_slug, skill_name)
+        .unwrap_or_else(|_| "0.0.0".to_string());
+    let current_description = crate::commands::imported_skills::parse_frontmatter_full(&content).description;
+    if current_description.as_deref() == Some(description) {
+        log::info!("[apply_description] description unchanged for skill={}", skill_name);
+        return Ok(current_version);
+    }
+
+    let updated = update_skill_description(&content, description)?;
 
     std::fs::write(&skill_md_path, updated).map_err(|e| {
         log::error!("[apply_description] failed to write SKILL.md: {}", e);
@@ -209,25 +226,29 @@ pub async fn apply_description(
 
     // Commit the description change so it appears in the git version history.
     let commit_msg = format!("Update {} description via optimization", skill_name);
-    match crate::git::commit_all(skills_root, &commit_msg) {
+    let relative_skill_path = Path::new(plugin_slug).join(skill_name);
+    match crate::git::commit_path(skills_root, &relative_skill_path, &commit_msg) {
         Ok(Some(sha)) => {
             log::info!("[apply_description] committed skill={} sha={}", skill_name, &sha[..8.min(sha.len())]);
         }
         Ok(None) => {
             log::info!("[apply_description] nothing to commit for skill={}", skill_name);
+            return Ok(current_version);
         }
         Err(e) => {
-            log::warn!("[apply_description] commit failed skill={} error={}", skill_name, e);
+            log::error!("[apply_description] commit failed skill={} error={}", skill_name, e);
+            return Err(format!("Failed to commit description update: {}", e));
         }
     }
 
     // Tag the new commit with the next patch version.
-    let current_version = crate::git::latest_skill_semver(skills_root, &plugin_slug, &skill_name)
-        .unwrap_or_else(|_| "0.0.0".to_string());
     let new_version = crate::git::bump_patch(&current_version);
-    match crate::git::create_skill_version_tag(skills_root, &plugin_slug, &skill_name, &new_version) {
+    match crate::git::create_skill_version_tag(skills_root, plugin_slug, skill_name, &new_version) {
         Ok(tag) => log::info!("[apply_description] tagged skill={} tag={}", skill_name, tag),
-        Err(e) => log::warn!("[apply_description] tag failed skill={} error={}", skill_name, e),
+        Err(e) => {
+            log::error!("[apply_description] tag failed skill={} error={}", skill_name, e);
+            return Err(format!("Failed to tag description update: {}", e));
+        }
     }
 
     Ok(new_version)
@@ -421,6 +442,7 @@ pub async fn start_generate_desc_evals(
     }));
 
     let config = SidecarConfig {
+        mode: Some("one-shot".to_string()),
         prompt: user_prompt,
         system_prompt: Some(system_prompt),
         model: Some(model.clone()),
@@ -625,5 +647,68 @@ mod tests {
             "description should be inserted after name"
         );
         assert!(result.contains("author: dev"), "author field preserved");
+    }
+
+    #[test]
+    fn apply_description_commits_skill_path_and_tags_new_version() {
+        let dir = TempDir::new().unwrap();
+        let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+        crate::git::ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join(plugin).join("desc-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: desc-skill\ndescription: old\n---\n# Body\n",
+        ).unwrap();
+        crate::git::commit_all(dir.path(), "desc-skill: initial").unwrap();
+        crate::git::create_skill_version_tag(dir.path(), plugin, "desc-skill", "1.0.0").unwrap();
+
+        let new_version = apply_description_inner(
+            "desc-skill",
+            plugin,
+            dir.path().to_str().unwrap(),
+            "new optimized description",
+        ).unwrap();
+
+        assert_eq!(new_version, "1.0.1");
+        let content = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+        assert!(content.contains("description: \"new optimized description\""));
+        assert_eq!(
+            crate::git::latest_skill_semver(dir.path(), plugin, "desc-skill").unwrap(),
+            "1.0.1"
+        );
+
+        let history = crate::git::get_history(dir.path(), "desc-skill", plugin, 10).unwrap();
+        assert_eq!(history[0].version.as_deref(), Some("1.0.1"));
+        assert_eq!(history[0].message, "Update desc-skill description via optimization");
+    }
+
+    #[test]
+    fn apply_description_does_not_tag_when_description_is_unchanged() {
+        let dir = TempDir::new().unwrap();
+        let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+        crate::git::ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join(plugin).join("same-desc");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: same-desc\ndescription: same\n---\n# Body\n",
+        ).unwrap();
+        crate::git::commit_all(dir.path(), "same-desc: initial").unwrap();
+        crate::git::create_skill_version_tag(dir.path(), plugin, "same-desc", "1.0.0").unwrap();
+
+        let new_version = apply_description_inner(
+            "same-desc",
+            plugin,
+            dir.path().to_str().unwrap(),
+            "same",
+        ).unwrap();
+
+        assert_eq!(new_version, "1.0.0");
+        let history = crate::git::get_history(dir.path(), "same-desc", plugin, 10).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].version.as_deref(), Some("1.0.0"));
     }
 }

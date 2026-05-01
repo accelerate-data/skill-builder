@@ -9,6 +9,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { MessageProcessor } from "./message-processor.js";
 import { ResultGate } from "./result-gate.js";
+import type { RuntimeSession } from "./runtime/types.js";
 
 /** Sentinel used to close the async generator cleanly. */
 const CLOSE_SENTINEL = Symbol("close");
@@ -32,7 +33,7 @@ interface PendingQuestion {
  * stopping the active turn. The session stays alive. The next `pushMessage()`
  * restarts `query()` with `resume: sdkSessionId` to continue the conversation.
  */
-export class StreamSession {
+export class StreamSession implements RuntimeSession {
   private currentRequestId: string;
   private pendingResolve: ((value: string | typeof CLOSE_SENTINEL) => void) | null = null;
   private messageQueue: string[] = [];
@@ -119,6 +120,10 @@ export class StreamSession {
     }
   }
 
+  sendUserMessage(requestId: string, message: string): void {
+    this.pushMessage(requestId, message);
+  }
+
   /**
    * Interrupt the current turn without closing the session.
    * Aborts the AbortController so the SDK stops the active turn.
@@ -177,6 +182,10 @@ export class StreamSession {
         }
       }, 5000);
     }
+  }
+
+  cancel(): void {
+    this.cancelTurn();
   }
 
   answerQuestion(

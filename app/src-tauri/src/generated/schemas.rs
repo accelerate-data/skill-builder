@@ -344,7 +344,10 @@ pub const RESEARCH_STEP_INLINE_SCHEMA: &str = r###"{
                         "description": "A scored dimension in the research plan.",
                         "properties": {
                           "focus": {
-                            "type": "string"
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           },
                           "name": {
                             "type": "string"
@@ -360,8 +363,7 @@ pub const RESEARCH_STEP_INLINE_SCHEMA: &str = r###"{
                         "required": [
                           "name",
                           "score",
-                          "reason",
-                          "focus"
+                          "reason"
                         ],
                         "type": "object"
                       },
@@ -749,7 +751,10 @@ pub const DETAILED_RESEARCH_INLINE_SCHEMA: &str = r###"{
                         "description": "A scored dimension in the research plan.",
                         "properties": {
                           "focus": {
-                            "type": "string"
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           },
                           "name": {
                             "type": "string"
@@ -765,8 +770,7 @@ pub const DETAILED_RESEARCH_INLINE_SCHEMA: &str = r###"{
                         "required": [
                           "name",
                           "score",
-                          "reason",
-                          "focus"
+                          "reason"
                         ],
                         "type": "object"
                       },

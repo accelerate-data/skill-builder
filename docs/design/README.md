@@ -3,6 +3,7 @@
 | Directory | What it covers |
 |---|---|
 | [agent-specs/](agent-specs/README.md) | Agent layer architecture: workflow steps, artifact contracts, infrastructure files, storage layout |
+| [agent-runtime-boundary/](agent-runtime-boundary/README.md) | Agent runtime boundary: one-shot runs, streaming sessions, runtime adapters, and OpenHands migration shape |
 | [backend-design/](backend-design/README.md) | Tauri/Rust backend: DB schema, API surface, key data flows, agent sidecar integration — see [database.md](backend-design/database.md) for full schema |
 | [clarifications-rendering/](clarifications-rendering/README.md) | Design exploration for the clarifications Q&A screen (VD-799/817) |
 | [skills/](skills/README.md) | Bundled skills: purpose slots, research skill, skill-test skill |

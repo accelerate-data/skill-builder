@@ -3,10 +3,9 @@ import type { AnswerEvaluationOutput } from "@/lib/types";
 
 /**
  * Build feedback notes from an answer evaluation's per-question verdicts.
- * Filters to actionable verdicts (vague, not_answered, needs_refinement)
+ * Filters to actionable verdicts (vague, not_answered, needs_refinement,
+ * contradictory)
  * and maps each to a typed Note for the clarifications editor.
- * Contradictions are resolved inline by the agent before returning,
- * so they are never present in the final evaluation output.
  *
  * Extracted from use-workflow-state-machine.ts for independent testability.
  */
@@ -22,9 +21,19 @@ export function buildGateFeedbackNotes(evaluation: AnswerEvaluationOutput): Note
       (q) =>
         q.verdict === "vague" ||
         q.verdict === "not_answered" ||
-        q.verdict === "needs_refinement"
+        q.verdict === "needs_refinement" ||
+        q.verdict === "contradictory"
     )
     .map((q) => {
+      if (q.verdict === "contradictory") {
+        const reason = optionalReason(q) || "This answer conflicts with another answer and must be resolved before continuing.";
+        const summary = evaluation.reasoning?.trim();
+        return {
+          type: "answer_feedback",
+          title: `Contradictory answer: ${q.question_id}`,
+          body: summary ? `${reason}\n\nEvaluator summary: ${summary}` : reason,
+        };
+      }
       if (q.verdict === "not_answered") {
         return {
           type: "answer_feedback",

@@ -1,223 +1,71 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
-import { runMockAgent } from "./mock-agent.js";
-import { buildQueryOptions } from "./options.js";
-import { createAbortState, linkExternalSignal } from "./shutdown.js";
-import { MessageProcessor } from "./message-processor.js";
-import { ResultGate } from "./result-gate.js";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
+import type { RunResultEvent } from "./agent-events.js";
+import {
+  ClaudeRuntime,
+  discoverInstalledPlugins,
+  emitSystemEvent,
+  selectPluginPaths,
+  toOneShotRunRequest,
+} from "./runtime/claude-runtime.js";
+import { createRecordRuntimeSink } from "./runtime/sink.js";
 
-/**
- * Discover all installed plugins under <rootDir>/.claude/plugins/.
- * Returns an absolute path for each subdirectory found there.
- */
-export async function discoverInstalledPlugins(rootDir: string): Promise<string[]> {
-  const pluginsDir = path.join(rootDir, ".claude", "plugins");
-  try {
-    const entries = await fs.readdir(pluginsDir, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => path.join(pluginsDir, entry.name));
-  } catch {
-    return [];
-  }
+export { discoverInstalledPlugins, emitSystemEvent, selectPluginPaths };
+
+function buildRuntimeValidationResult(
+  config: SidecarConfig,
+  message: string,
+): RunResultEvent {
+  return {
+    type: "run_result",
+    skillName: config.skillName ?? "unknown",
+    stepId: config.stepId ?? -1,
+    workflowSessionId: config.workflowSessionId,
+    usageSessionId: config.usageSessionId,
+    runSource: config.runSource,
+    sessionId: null,
+    model: config.model ?? "unknown",
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalCostUsd: 0,
+    modelUsageBreakdown: [],
+    contextWindow: 0,
+    resultSubtype: "runtime_validation",
+    resultErrors: [message],
+    stopReason: null,
+    numTurns: 0,
+    durationMs: 0,
+    durationApiMs: 0,
+    toolUseCount: 0,
+    compactionCount: 0,
+    status: "error",
+    resultText: message,
+    workspacePath: config.workspaceSkillDir,
+    pluginSlug: config.pluginSlug ?? "unknown",
+  };
 }
 
 /**
- * Filter discovered plugin directories to the explicit required set.
- * No fallback to "all plugins" is allowed; callers must request plugins intentionally.
- */
-export function selectPluginPaths(
-  discoveredPluginPaths: string[],
-  requiredPlugins?: string[],
-): string[] {
-  if (!requiredPlugins || requiredPlugins.length === 0) {
-    return [];
-  }
-
-  const discoveredByName = new Map(
-    discoveredPluginPaths.map((pluginPath) => [path.basename(pluginPath), pluginPath] as const),
-  );
-
-  return requiredPlugins
-    .map((pluginName) => discoveredByName.get(pluginName))
-    .filter((pluginPath): pluginPath is string => typeof pluginPath === "string");
-}
-
-/**
- * Emit a system-level progress event (not an SDK message).
- * These events let the UI show granular status during initialization.
- */
-export function emitSystemEvent(
-  onMessage: (message: Record<string, unknown>) => void,
-  subtype: string,
-): void {
-  onMessage({ type: "system", subtype, timestamp: Date.now() });
-}
-
-/**
- * Run a single agent request using the SDK.
+ * Compatibility entry point for existing one-shot sidecar callers.
  *
- * Streams each SDK message to the provided `onMessage` callback.
- * The callback receives raw SDK message objects (the caller is responsible
- * for any wrapping, e.g., adding `request_id`).
- *
- * @param config          The sidecar config for this request
- * @param onMessage       Called for each message from the SDK conversation
- * @param externalSignal  Optional AbortSignal to cancel from outside (e.g., when persistent-mode
- *                        aborts a stuck request to start a new one)
+ * New runtime code should use ClaudeRuntime directly. This wrapper preserves
+ * the historic function signature while routing through the one-shot runtime
+ * boundary.
  */
 export async function runAgentRequest(
   config: SidecarConfig,
   onMessage: (message: Record<string, unknown>) => void,
   externalSignal?: AbortSignal,
 ): Promise<void> {
-  if (process.env.MOCK_AGENTS === "true") {
-    process.stderr.write("[sidecar] Mock agent mode\n");
-    return runMockAgent(config, onMessage, externalSignal);
-  }
-
-  const state = createAbortState();
-  if (externalSignal) {
-    linkExternalSignal(state, externalSignal);
-  }
-
-  // Discover plugins from the workspace root where .claude/plugins/ lives.
-  const discoveredPluginPaths = await discoverInstalledPlugins(config.workspaceRootDir);
-  const pluginPaths = selectPluginPaths(discoveredPluginPaths, config.requiredPlugins);
-
-  // Route SDK subprocess stderr through onMessage so it gets wrapped with
-  // request_id and written to the JSONL transcript (not the app log).
-  const stderrHandler = (data: string) => {
-    onMessage({ type: "system", subtype: "sdk_stderr", data: data.trimEnd(), timestamp: Date.now() });
-  };
-
-  // Ref for the Stop hook — assigned after processor creation.
-  const processorRef: { current: MessageProcessor | null } = { current: null };
-
-
-  // Process raw SDK messages through MessageProcessor for structured display items
-  const processor = new MessageProcessor({
-    skillName: config.skillName,
-    stepId: config.stepId,
-    workflowSessionId: config.workflowSessionId,
-    usageSessionId: config.usageSessionId,
-    runSource: config.runSource,
-    workspaceSkillDir: config.workspaceSkillDir,
-    pluginSlug: config.pluginSlug,
-    hasOutputFormat: config.outputFormat != null,
-  });
-  processorRef.current = processor;
-
-  const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler, processorRef);
-
-  // Gate run_result emission until all subagents/background tasks finish.
-  const gate = new ResultGate(processor);
-
-  // Emit plugins passed to the SDK as a system event so it appears in the JSONL transcript.
-  const pluginsToLog = (options as Record<string, unknown>).plugins as unknown[] | undefined;
-  onMessage({
-    type: "system",
-    subtype: "sdk_plugins_debug",
-    plugins: pluginsToLog ?? [],
-    timestamp: Date.now(),
-  });
-
-  // Notify the UI that we're about to initialize the SDK
-  emitSystemEvent(onMessage, "init_start");
+  const runtime = new ClaudeRuntime();
+  const sink = createRecordRuntimeSink(onMessage);
 
   try {
-    process.stderr.write("[sidecar] Starting SDK query\n");
-    const conversation = query({
-      prompt: config.prompt,
-      options,
-    });
-
-    let sdkReadyEmitted = false;
-    for await (const message of conversation) {
-      if (state.abortController.signal.aborted) break;
-
-      // Emit sdk_ready on first actual message from the SDK so the
-      // "Connecting to API..." progress reflects real connection state.
-      if (!sdkReadyEmitted) {
-        emitSystemEvent(onMessage, "sdk_ready");
-        sdkReadyEmitted = true;
-      }
-
-      const raw = message as Record<string, unknown>;
-
-      // Forward prompt suggestions directly.
-      if (raw.type === "prompt_suggestion" && typeof raw.suggestion === "string") {
-        onMessage({
-          type: "agent_event",
-          event: {
-            type: "prompt_suggestion",
-            suggestion: raw.suggestion,
-          },
-          timestamp: Date.now(),
-        });
-        continue;
-      }
-
-      // Process into display items + pass-through messages
-      // Task events (task_started/task_progress/task_notification) are routed
-      // through the "task" classifier category → processTaskEvent.
-      const items = processor.process(raw);
-      for (const item of items) {
-        gate.emit(item as Record<string, unknown>, onMessage);
-      }
-      gate.tryFlush(onMessage);
-    }
-
-    // Safety net: emit any deferred run_result when the SDK loop exits.
-    gate.flush(onMessage);
+    await runtime.runOnce(toOneShotRunRequest(config), sink, externalSignal);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    if (state.abortController.signal.aborted) {
-      process.stderr.write("[sidecar] Query stream aborted during iteration\n");
-    } else {
-      process.stderr.write(`[sidecar] Query stream failed: ${errorMessage}\n`);
-
-      const errorItems = processor.process({
-        type: "error",
-        message: errorMessage,
-      });
-      for (const item of errorItems) {
-        onMessage(item as Record<string, unknown>);
-      }
-
-      const [errorSummary, orphanedErr] = processor.buildExecutionErrorSummary(errorMessage);
-      for (const item of orphanedErr) {
-        onMessage(item as Record<string, unknown>);
-      }
-      onMessage({ type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
-      return;
-    }
-  }
-
-  // Emit a shutdown run_result for aborted runs so Rust can persist partial data
-  if (state.abortController.signal.aborted) {
-    process.stderr.write("[sidecar] Run aborted — emitting shutdown run_result\n");
-    const [shutdownSummary, orphanedAbort] = processor.buildShutdownSummary();
-    for (const item of orphanedAbort) {
-      onMessage(item as Record<string, unknown>);
-    }
-    onMessage({ type: "agent_event", event: shutdownSummary, timestamp: Date.now() } as Record<string, unknown>);
-  }
-
-  // Guard: if the SDK iterator completed without emitting a result message
-  // (e.g. auth failure where the SDK yields error-bearing messages then exits
-  // without a result), emit an error run_result so Rust fires agent-exit and
-  // the frontend transitions out of "Running" state.
-  if (!processor.hasEmittedResult() && !state.abortController.signal.aborted) {
-    process.stderr.write("[sidecar] SDK completed without result — emitting error run_result\n");
-    const [errorSummary, orphanedNoResult] = processor.buildExecutionErrorSummary(
-      "Agent ended without producing a result",
-    );
-    for (const item of orphanedNoResult) {
-      onMessage(item as Record<string, unknown>);
-    }
-    onMessage({ type: "agent_event", event: errorSummary, timestamp: Date.now() } as Record<string, unknown>);
+    const message = error instanceof Error ? error.message : String(error);
+    sink.emitRaw({ type: "error", message });
+    sink.emitAgentEvent(buildRuntimeValidationResult(config, message));
   }
 }

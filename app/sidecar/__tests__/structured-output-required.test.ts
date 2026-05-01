@@ -2,18 +2,27 @@
  * Tests for VU-1015: SDK outputFormat should provide structured_output
  * for nested schemas (anthropics/claude-agent-sdk-typescript#277).
  *
- * When outputFormat is configured, MessageProcessor requires SDK
- * structured_output and hard-fails if it is missing. Text parsing fallback
- * belongs outside this path now that the SDK canary passes for nested schemas.
+ * When outputFormat is configured, MessageProcessor prefers SDK
+ * structured_output. If a runtime returns JSON as final text instead, the
+ * one-shot boundary extracts that JSON and lets Rust validate the typed
+ * workflow contract.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { MessageProcessor } from "../message-processor.js";
 import type { DisplayItem, DisplayItemEnvelope } from "../display-types.js";
+import type { AgentEventEnvelope, RunResultEvent } from "../agent-events.js";
 
 function extractDisplayItems(output: Record<string, unknown>[]): DisplayItem[] {
   return output
     .filter((o) => o.type === "display_item")
     .map((o) => (o as DisplayItemEnvelope).item);
+}
+
+function extractRunResult(output: Record<string, unknown>[]): RunResultEvent | undefined {
+  return output
+    .filter((o) => o.type === "agent_event")
+    .map((o) => (o as AgentEventEnvelope).event)
+    .find((event): event is RunResultEvent => event.type === "run_result");
 }
 
 describe("structured_output required outputFormat path (VU-1015)", () => {
@@ -42,7 +51,7 @@ describe("structured_output required outputFormat path (VU-1015)", () => {
       expect(result?.structuredOutput).toEqual(schema);
     });
 
-    it("hard-fails when SDK omits structured_output even if result text is JSON", () => {
+    it("recovers JSON when SDK omits structured_output but result text is JSON", () => {
       const schema = { step_summary: "Research complete", artifacts: ["plan.md"] };
       const raw = {
         type: "result",
@@ -56,12 +65,14 @@ describe("structured_output required outputFormat path (VU-1015)", () => {
       const items = extractDisplayItems(out);
       const result = items.find((i) => i.type === "result");
 
-      expect(result?.resultStatus).toBe("error");
-      expect(result?.errorSubtype).toBe("structured_output_missing");
-      expect(result?.structuredOutput).toBeUndefined();
+      expect(result?.resultStatus).toBe("success");
+      expect(result?.errorSubtype).toBeUndefined();
+      expect(result?.structuredOutput).toEqual(schema);
+      expect(extractRunResult(out)?.status).toBe("completed");
+      expect(JSON.parse(extractRunResult(out)?.resultText ?? "{}")).toEqual(schema);
     });
 
-    it("hard-fails when SDK returns structured_output: null even if result text is JSON", () => {
+    it("recovers JSON when SDK returns structured_output: null but result text is JSON", () => {
       const schema = { step_summary: "Done", next_steps: ["deploy"] };
       const raw = {
         type: "result",
@@ -75,12 +86,12 @@ describe("structured_output required outputFormat path (VU-1015)", () => {
       const items = extractDisplayItems(out);
       const result = items.find((i) => i.type === "result");
 
-      expect(result?.resultStatus).toBe("error");
-      expect(result?.errorSubtype).toBe("structured_output_missing");
-      expect(result?.structuredOutput).toBeUndefined();
+      expect(result?.resultStatus).toBe("success");
+      expect(result?.errorSubtype).toBeUndefined();
+      expect(result?.structuredOutput).toEqual(schema);
     });
 
-    it("hard-fails when SDK omits structured_output even if result is an object", () => {
+    it("recovers object result when SDK omits structured_output", () => {
       const raw = {
         type: "result",
         subtype: "success",
@@ -92,12 +103,12 @@ describe("structured_output required outputFormat path (VU-1015)", () => {
       const items = extractDisplayItems(out);
       const result = items.find((i) => i.type === "result");
 
-      expect(result?.resultStatus).toBe("error");
-      expect(result?.errorSubtype).toBe("structured_output_missing");
-      expect(result?.structuredOutput).toBeUndefined();
+      expect(result?.resultStatus).toBe("success");
+      expect(result?.errorSubtype).toBeUndefined();
+      expect(result?.structuredOutput).toEqual({ step_summary: "Done" });
     });
 
-    it("hard-fails instead of parsing last assistant JSON text", () => {
+    it("recovers JSON from last assistant text when result text is not JSON", () => {
       const schema = { step_summary: "Done", nested: { level: 2, items: [1, 2, 3] } };
 
       processor.process({
@@ -120,14 +131,14 @@ describe("structured_output required outputFormat path (VU-1015)", () => {
       const items = extractDisplayItems(out);
       const result = items.find((i) => i.type === "result");
 
-      expect(result?.resultStatus).toBe("error");
-      expect(result?.errorSubtype).toBe("structured_output_missing");
-      expect(result?.structuredOutput).toBeUndefined();
+      expect(result?.resultStatus).toBe("success");
+      expect(result?.errorSubtype).toBeUndefined();
+      expect(result?.structuredOutput).toEqual(schema);
     });
 
-    it("hard-fails instead of parsing fenced JSON from last assistant text", () => {
+    it("recovers fenced JSON with leading narrative from last assistant text", () => {
       const schema = { step_summary: "Done", code_files: ["lib/a.ts", "lib/b.ts"] };
-      const fencedJson = "```json\n" + JSON.stringify(schema) + "\n```";
+      const fencedJson = "Done. Here is the payload:\n\n```json\n" + JSON.stringify(schema) + "\n```";
 
       processor.process({
         type: "assistant",
@@ -149,9 +160,9 @@ describe("structured_output required outputFormat path (VU-1015)", () => {
       const items = extractDisplayItems(out);
       const result = items.find((i) => i.type === "result");
 
-      expect(result?.resultStatus).toBe("error");
-      expect(result?.errorSubtype).toBe("structured_output_missing");
-      expect(result?.structuredOutput).toBeUndefined();
+      expect(result?.resultStatus).toBe("success");
+      expect(result?.errorSubtype).toBeUndefined();
+      expect(result?.structuredOutput).toEqual(schema);
     });
 
     it("hard-fails with structured_output_missing when no JSON is recoverable", () => {

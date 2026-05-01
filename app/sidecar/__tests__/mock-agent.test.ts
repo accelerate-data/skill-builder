@@ -42,6 +42,18 @@ describe("resolveStepTemplate", () => {
   });
 
   it("maps workflow step agents correctly", () => {
+    expect(resolveStepTemplate("skill-content-researcher:skill-builder")).toBe(
+      "step0-research",
+    );
+    expect(resolveStepTemplate("skill-content-researcher:skill-builder", { stepId: 1 })).toBe(
+      "step1-detailed-research",
+    );
+    expect(resolveStepTemplate("skill-content-researcher:skill-builder", { stepId: 2 })).toBe(
+      "step2-confirm-decisions",
+    );
+    expect(resolveStepTemplate("skill-content-researcher:skill-builder", { stepId: 3 })).toBe(
+      "step3-generate-skill",
+    );
     expect(resolveStepTemplate("skill-content-researcher:detailed-research")).toBe(
       "step1-detailed-research",
     );

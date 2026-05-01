@@ -113,7 +113,7 @@ export type DetailedResearchOutput = { status: string; refinement_count: number;
 /**
  * A scored dimension in the research plan.
  */
-export type DimensionScore = { name: string; score: number; reason: string; focus: string }
+export type DimensionScore = { name: string; score: number; reason: string; focus?: string | null }
 
 /**
  * Structured output produced by the `generate-skill` agent (workflow step 3,

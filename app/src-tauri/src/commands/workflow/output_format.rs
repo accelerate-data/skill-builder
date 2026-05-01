@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::commands::workflow_artifacts::{
     AnswerEvaluationOutput, DecisionsOutput, DetailedResearchOutput, GenerateSkillOutput,
@@ -28,14 +28,15 @@ pub(crate) fn materialize_workflow_step_output_value(
         "[materialize_step] step_id={} skill_root={} output_keys={:?}",
         step_id,
         skill_root.display(),
-        structured_output.as_object().map(|o| o.keys().collect::<Vec<_>>())
+        structured_output
+            .as_object()
+            .map(|o| o.keys().collect::<Vec<_>>())
     );
 
     match step_id {
         0 => {
-            let parsed =
-                serde_json::from_value::<ResearchStepOutput>(structured_output.clone())
-                    .map_err(|e| format!("invalid research step output: {}", e))?;
+            let parsed = serde_json::from_value::<ResearchStepOutput>(structured_output.clone())
+                .map_err(|e| format!("invalid research step output: {}", e))?;
 
             if parsed.status != "research_complete" {
                 return Err(format!(
@@ -83,8 +84,9 @@ pub(crate) fn materialize_workflow_step_output_value(
 
             // Typed deserialization into ClarificationsFile already validated structure.
 
-            let clarifications_pretty = serde_json::to_string_pretty(&parsed.clarifications_json)
-                .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
+            let clarifications_pretty =
+                serde_json::to_string_pretty(&parsed.clarifications_json)
+                    .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
 
             let clarifications_path = context_dir.join("clarifications.json");
             std::fs::write(&clarifications_path, clarifications_pretty).map_err(|e| {
@@ -249,6 +251,56 @@ pub(crate) fn materialize_workflow_step_output_value(
     }
 }
 
+pub(crate) fn publish_generated_skill_output(
+    workspace_skill_root: &Path,
+    skills_path: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<PathBuf, String> {
+    let generated_dir = workspace_skill_root.join("skill");
+    let generated_skill_md = generated_dir.join("SKILL.md");
+    let published_dir = crate::skill_paths::resolve_skill_dir(skills_path, plugin_slug, skill_name);
+    let published_skill_md = published_dir.join("SKILL.md");
+
+    if !generated_skill_md.is_file() {
+        if published_skill_md.is_file() {
+            log::info!(
+                "[publish_generated_skill_output] skill={} plugin={} already published at {}",
+                skill_name,
+                plugin_slug,
+                published_skill_md.display()
+            );
+            return Ok(published_dir);
+        }
+
+        return Err(format!(
+            "Generated skill output missing: expected '{}' or '{}'",
+            generated_skill_md.display(),
+            published_skill_md.display()
+        ));
+    }
+
+    if let Some(parent) = published_dir.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create plugin directory '{}': {}",
+                parent.display(),
+                e
+            )
+        })?;
+    }
+
+    crate::fs_utils::copy_dir_recursive(&generated_dir, &published_dir)?;
+    log::info!(
+        "[publish_generated_skill_output] skill={} plugin={} source={} target={}",
+        skill_name,
+        plugin_slug,
+        generated_dir.display(),
+        published_dir.display()
+    );
+    Ok(published_dir)
+}
+
 #[tauri::command]
 pub fn materialize_workflow_step_output(
     skill_name: String,
@@ -273,18 +325,20 @@ pub fn materialize_workflow_step_output(
         &plugin_slug,
         &skill_name,
     );
-    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output).map_err(|e| {
-        log::error!(
-            "[materialize_workflow_step_output] skill={} step={} step_id={} failed: {}",
-            skill_name,
-            super::evaluation::workflow_step_log_name(step_id as i32),
-            step_id,
+    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output).map_err(
+        |e| {
+            log::error!(
+                "[materialize_workflow_step_output] skill={} step={} step_id={} failed: {}",
+                skill_name,
+                super::evaluation::workflow_step_log_name(step_id as i32),
+                step_id,
+                e
+            );
             e
-        );
-        e
-    })?;
+        },
+    )?;
 
-    // After successful generate materialization, commit and tag the skill.
+    // After successful generate materialization, publish and commit the skill.
     // Benchmark output does not trigger a commit (benchmark data is in workspace, not git).
     // Rewrite/refine commit+tag is handled by finalize_refine_run.
     if step_id == 3 {
@@ -305,16 +359,37 @@ pub fn materialize_workflow_step_output(
                 .unwrap_or_else(|| workspace_path.clone());
             drop(conn);
 
-            // Agent now handles commit+tag via shell git; read HEAD for logging
             let skills_dir = Path::new(&skills_path);
+            publish_generated_skill_output(&skill_root, skills_dir, &plugin_slug, &skill_name)?;
+
+            let commit_message = format!("{}: generated skill", skill_name);
+            match crate::git::commit_all(skills_dir, &commit_message) {
+                Ok(Some(sha)) => log::info!(
+                    "[materialize_workflow_step_output] committed generated skill={} sha={}",
+                    skill_name,
+                    &sha[..8.min(sha.len())]
+                ),
+                Ok(None) => log::info!(
+                    "[materialize_workflow_step_output] no generated skill changes to commit skill={}",
+                    skill_name
+                ),
+                Err(e) => log::warn!(
+                    "[materialize_workflow_step_output] generated skill publish commit failed skill={}: {}",
+                    skill_name,
+                    e
+                ),
+            }
+
             match git2::Repository::open(skills_dir) {
                 Ok(repo) => {
-                    if let Some(sha) = repo.head().ok()
+                    if let Some(sha) = repo
+                        .head()
+                        .ok()
                         .and_then(|h| h.peel_to_commit().ok())
                         .map(|c| c.id().to_string())
                     {
                         log::info!(
-                            "[materialize_workflow_step_output] agent committed skill={} sha={}",
+                            "[materialize_workflow_step_output] generated skill repo head skill={} sha={}",
                             skill_name, &sha[..8.min(sha.len())]
                         );
                     }
@@ -322,7 +397,8 @@ pub fn materialize_workflow_step_output(
                 Err(e) => {
                     log::warn!(
                         "[materialize_workflow_step_output] could not open repo for skill={}: {}",
-                        skill_name, e
+                        skill_name,
+                        e
                     );
                 }
             }
@@ -336,10 +412,9 @@ pub fn materialize_workflow_step_output(
 ///
 /// Uses the generated schema from `contracts::workflow_outputs::AnswerEvaluationOutput`.
 pub(crate) fn answer_evaluator_output_format() -> serde_json::Value {
-    let schema: serde_json::Value = serde_json::from_str(
-        crate::generated::schemas::ANSWER_EVALUATION_SCHEMA,
-    )
-    .expect("generated ANSWER_EVALUATION_SCHEMA must be valid JSON");
+    let schema: serde_json::Value =
+        serde_json::from_str(crate::generated::schemas::ANSWER_EVALUATION_SCHEMA)
+            .expect("generated ANSWER_EVALUATION_SCHEMA must be valid JSON");
     serde_json::json!({
         "type": "json_schema",
         "schema": schema
@@ -372,8 +447,14 @@ pub(crate) fn validate_answer_evaluation_json(
 
     // Semantic validation: vague/contradictory entries must have a reason
     for (idx, entry) in parsed.per_question.iter().enumerate() {
-        if !["clear", "needs_refinement", "not_answered", "vague", "contradictory"]
-            .contains(&entry.verdict.as_str())
+        if ![
+            "clear",
+            "needs_refinement",
+            "not_answered",
+            "vague",
+            "contradictory",
+        ]
+        .contains(&entry.verdict.as_str())
         {
             return Err(format!(
                 "answer_evaluation.per_question[{}].verdict is invalid",
@@ -467,4 +548,91 @@ pub fn materialize_answer_evaluation_output(
         );
         e
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn publish_generated_skill_output_copies_workspace_skill_to_library_layout() {
+        let workspace = tempfile::tempdir().unwrap();
+        let skills = tempfile::tempdir().unwrap();
+        let workspace_skill_root = workspace.path().join("skills").join("lead-routing");
+        let generated_refs = workspace_skill_root.join("skill").join("references");
+        fs::create_dir_all(&generated_refs).unwrap();
+        fs::write(
+            workspace_skill_root.join("skill").join("SKILL.md"),
+            "---\nname: lead-routing\n---\n# Lead Routing\n",
+        )
+        .unwrap();
+        fs::write(generated_refs.join("terms.md"), "# Terms\n").unwrap();
+
+        let published_dir = publish_generated_skill_output(
+            &workspace_skill_root,
+            skills.path(),
+            "skills",
+            "lead-routing",
+        )
+        .unwrap();
+
+        assert_eq!(
+            published_dir,
+            crate::skill_paths::resolve_skill_dir(skills.path(), "skills", "lead-routing")
+        );
+        assert_eq!(
+            fs::read_to_string(published_dir.join("SKILL.md")).unwrap(),
+            "---\nname: lead-routing\n---\n# Lead Routing\n"
+        );
+        assert_eq!(
+            fs::read_to_string(published_dir.join("references").join("terms.md")).unwrap(),
+            "# Terms\n"
+        );
+    }
+
+    #[test]
+    fn publish_generated_skill_output_errors_when_neither_workspace_nor_library_has_skill_md() {
+        let workspace = tempfile::tempdir().unwrap();
+        let skills = tempfile::tempdir().unwrap();
+        let workspace_skill_root = workspace.path().join("skills").join("missing-skill");
+
+        let err = publish_generated_skill_output(
+            &workspace_skill_root,
+            skills.path(),
+            "skills",
+            "missing-skill",
+        )
+        .unwrap_err();
+
+        assert!(
+            err.contains("Generated skill output missing"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn publish_generated_skill_output_accepts_directly_published_skill() {
+        let workspace = tempfile::tempdir().unwrap();
+        let skills = tempfile::tempdir().unwrap();
+        let workspace_skill_root = workspace.path().join("skills").join("direct-skill");
+        let published_dir =
+            crate::skill_paths::resolve_skill_dir(skills.path(), "skills", "direct-skill");
+        fs::create_dir_all(&published_dir).unwrap();
+        fs::write(published_dir.join("SKILL.md"), "# Direct\n").unwrap();
+
+        let result = publish_generated_skill_output(
+            &workspace_skill_root,
+            skills.path(),
+            "skills",
+            "direct-skill",
+        )
+        .unwrap();
+
+        assert_eq!(result, published_dir);
+        assert_eq!(
+            fs::read_to_string(result.join("SKILL.md")).unwrap(),
+            "# Direct\n"
+        );
+    }
 }

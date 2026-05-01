@@ -18,8 +18,8 @@ import { useAgentStore, formatTokenCount } from "@/stores/agent-store";
 import {
   getSkillContentForRefine,
   startRefineSession,
-  sendRefineMessage,
-  answerRefineQuestion,
+  sendStreamingRefineMessage,
+  answerStreamingRefineQuestion,
   cancelRefineTurn,
   closeRefineSession,
   finalizeRefineRun,
@@ -247,7 +247,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       store.setRunning(true);
 
       try {
-        const agentId = await sendRefineMessage(
+        const agentId = await sendStreamingRefineMessage(
           sessionId,
           text,
           workspacePath,
@@ -342,7 +342,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         store.setPendingRedirect(null);
       }
 
-      await answerRefineQuestion(
+      await answerStreamingRefineQuestion(
         sessionId,
         agentId,
         message.toolUseId,

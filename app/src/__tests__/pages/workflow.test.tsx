@@ -235,6 +235,31 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     // Agent completes — should stay on step 0 completion screen (clarifications editable)
     act(() => {
+      useAgentStore.getState().addDisplayItem("agent-1", {
+        id: "result-agent-1",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: "Agent completed",
+        structuredOutput: {
+          status: "research_complete",
+          dimensions_selected: 1,
+          question_count: 1,
+          research_plan_markdown: "# Research Plan",
+          clarifications_json: {
+            version: "1",
+            metadata: {
+              question_count: 0,
+              section_count: 0,
+              refinement_count: 0,
+              must_answer_count: 0,
+              priority_questions: [],
+            },
+            sections: [],
+            notes: [],
+          },
+        },
+        resultStatus: "success",
+      });
       useAgentStore.getState().completeRun("agent-1", true);
     });
 
@@ -682,6 +707,31 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
     // Agent completes step 0
     act(() => {
+      useAgentStore.getState().addDisplayItem("agent-1", {
+        id: "result-agent-1",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: "Agent completed",
+        structuredOutput: {
+          status: "research_complete",
+          dimensions_selected: 1,
+          question_count: 1,
+          research_plan_markdown: "# Research Plan",
+          clarifications_json: {
+            version: "1",
+            metadata: {
+              question_count: 0,
+              section_count: 0,
+              refinement_count: 0,
+              must_answer_count: 0,
+              priority_questions: [],
+            },
+            sections: [],
+            notes: [],
+          },
+        },
+        resultStatus: "success",
+      });
       useAgentStore.getState().completeRun("agent-1", true);
     });
 
@@ -903,7 +953,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(mockToast.error).toHaveBeenCalled();
   });
 
-  it("step 0 continues when structured output payload is missing", async () => {
+  it("step 0 errors when structured output payload is missing", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
@@ -917,9 +967,13 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+      expect(useWorkflowStore.getState().steps[0].status).toBe("error");
     });
     expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+    expect(mockToast.error).toHaveBeenCalledWith(
+      "Step 1 completed but produced no structured output",
+      { duration: Infinity },
+    );
   });
 
   it("step 0 errors when structured output fails backend materialization", async () => {
@@ -1166,7 +1220,9 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     const parsed = JSON.parse(serialized);
     expect(Array.isArray(parsed.answer_evaluator_notes)).toBe(true);
     expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Vague answer: Q1")).toBe(true);
-    // contradictory verdicts are resolved by the agent inline and not written to notes
+    expect(parsed.answer_evaluator_notes.some((n: { title: string; body: string }) =>
+      n.title === "Contradictory answer: Q2" && n.body.includes("One vague and one contradictory answer.")
+    )).toBe(true);
   });
 
   it("gate falls back when structured gate payload is missing", async () => {
@@ -3274,20 +3330,20 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     expect(useWorkflowStore.getState().gateLoading).toBe(false);
   });
 
-  it("buildGateFeedbackNotes maps three actionable verdict types with reasons", async () => {
-    // contradictory is resolved inline by the agent and is not written to notes
+  it("buildGateFeedbackNotes maps actionable verdict types with reasons", async () => {
     const evaluation = {
       verdict: "mixed",
       answered_count: 0,
       empty_count: 1,
       vague_count: 1,
-      contradictory_count: 0,
-      total_count: 3,
+      contradictory_count: 1,
+      total_count: 4,
       reasoning: "Multiple issues.",
       per_question: [
         { question_id: "Q1", verdict: "vague", reason: "Too general." },
         { question_id: "Q3", verdict: "not_answered", reason: "Skipped entirely." },
         { question_id: "Q4", verdict: "needs_refinement", reason: "Needs more constraints." },
+        { question_id: "Q5", verdict: "contradictory", reason: "Conflicts with Q1." },
       ],
     };
 
@@ -3337,10 +3393,11 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     const parsed = JSON.parse(serialized);
     const notes = parsed.answer_evaluator_notes as Array<{ type: string; title: string; body: string }>;
 
-    // Three actionable verdict types with custom reasons
+    // Actionable verdict types with custom reasons
     expect(notes.some((n) => n.title === "Vague answer: Q1" && n.body === "Too general.")).toBe(true);
     expect(notes.some((n) => n.title === "Not answered: Q3" && n.body === "Skipped entirely.")).toBe(true);
     expect(notes.some((n) => n.title === "Needs refinement: Q4" && n.body === "Needs more constraints.")).toBe(true);
+    expect(notes.some((n) => n.title === "Contradictory answer: Q5" && n.body.includes("Conflicts with Q1."))).toBe(true);
 
     // All should have type "answer_feedback"
     expect(notes.every((n) => n.type === "answer_feedback")).toBe(true);
@@ -3407,7 +3464,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     const parsed = JSON.parse(serialized);
     const notes = parsed.answer_evaluator_notes as Array<{ title: string; body: string }>;
 
-    // Fallback messages (contradictory is resolved by agent and not written to notes)
+    // Fallback messages
     expect(notes.some((n) => n.title === "Vague answer: Q1" && n.body === "Answer is too general and needs specific details.")).toBe(true);
     expect(notes.some((n) => n.title === "Not answered: Q3" && n.body.includes("still unanswered"))).toBe(true);
     expect(notes.some((n) => n.title === "Needs refinement: Q4" && n.body.includes("more concrete detail"))).toBe(true);
@@ -3518,7 +3575,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
 
-  it("step errors when verifyStepOutput returns false (no output files)", async () => {
+  it("step errors before file verification when structured output is missing", async () => {
     vi.mocked(verifyStepOutput).mockResolvedValue(false);
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -3529,7 +3586,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes with structured output (step 0 does not require it, so null is OK)
+    // Agent completes without structured output; step 0 now requires structured output.
     act(() => {
       useAgentStore.getState().completeRun("agent-no-output", true);
     });
@@ -3540,7 +3597,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
 
     expect(useWorkflowStore.getState().isRunning).toBe(false);
     expect(mockToast.error).toHaveBeenCalledWith(
-      "Step 1 completed but produced no output files",
+      "Step 1 completed but produced no structured output",
       { duration: Infinity },
     );
   });
@@ -3701,6 +3758,31 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     render(<WorkflowPage />);
 
     act(() => {
+      useAgentStore.getState().addDisplayItem("agent-verify-throw", {
+        id: "result-verify-throw",
+        type: "result",
+        timestamp: Date.now(),
+        outputText_result: "Agent completed",
+        structuredOutput: {
+          status: "research_complete",
+          dimensions_selected: 1,
+          question_count: 1,
+          research_plan_markdown: "# Research Plan",
+          clarifications_json: {
+            version: "1",
+            metadata: {
+              question_count: 0,
+              section_count: 0,
+              refinement_count: 0,
+              must_answer_count: 0,
+              priority_questions: [],
+            },
+            sections: [],
+            notes: [],
+          },
+        },
+        resultStatus: "success",
+      });
       useAgentStore.getState().completeRun("agent-verify-throw", true);
     });
 

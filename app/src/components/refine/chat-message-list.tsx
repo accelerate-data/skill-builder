@@ -42,7 +42,7 @@ export function ChatMessageList({
       if (questionRef.current) {
         questionRef.current.scrollIntoView({
           behavior: "smooth",
-          block: "nearest",
+          block: "center",
           inline: "nearest",
         });
       } else {

@@ -109,18 +109,6 @@ mod tests {
         Db(Mutex::new(conn))
     }
 
-    /// Build a temp git repo with one commit containing `skill_name/SKILL.md` at the repo root.
-    /// Used by restore tests that exercise `restore_version` directly.
-    fn init_skill_repo(dir: &std::path::Path, skill_name: &str, content: &str) -> String {
-        crate::git::ensure_repo(dir).unwrap();
-        let skill_dir = dir.join(skill_name);
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
-        crate::git::commit_all(dir, &format!("{}: initial", skill_name))
-            .unwrap()
-            .unwrap()
-    }
-
     /// Build a temp git repo with one commit at the plugin-aware path layout.
     /// Used by history tests that exercise `get_history` with a plugin_slug.
     fn init_skill_repo_plugin(

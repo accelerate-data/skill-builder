@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SendHorizontal, Square, X, Bot, FileText } from "lucide-react";
+import { SendHorizontal, Square, X, Bot, FileText, HelpCircle } from "lucide-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Mention from "@tiptap/extension-mention";
@@ -260,6 +260,7 @@ interface ChatInputBarProps {
   onSend: (text: string, targetFiles?: string[]) => void;
   onCancel?: () => void;
   isRunning: boolean;
+  waitingForQuestion?: boolean;
   availableFiles: string[];
   availableAgents: string[];
   prefilledValue?: string;
@@ -269,6 +270,7 @@ export function ChatInputBar({
   onSend,
   onCancel,
   isRunning,
+  waitingForQuestion = false,
   availableFiles,
   availableAgents,
   prefilledValue,
@@ -412,6 +414,12 @@ export function ChatInputBar({
 
   return (
     <div className="flex flex-col gap-2 border-t px-4 py-3">
+      {waitingForQuestion && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <HelpCircle className="size-3.5 shrink-0" />
+          <span>Answer the pending question above to continue.</span>
+        </div>
+      )}
       {hasBadges && (
         <div className="flex flex-wrap gap-1">
           {targetFiles.map((f) => (

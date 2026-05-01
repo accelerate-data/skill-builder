@@ -55,6 +55,20 @@ describe("buildGateFeedbackNotes", () => {
     expect(notes[0].body).toContain("more concrete detail");
   });
 
+  it("maps contradictory verdict with evaluator summary", () => {
+    const eval_ = {
+      ...makeEvaluation([
+        { question_id: "Q10", verdict: "contradictory", reason: "This answer conflicts with Q11." },
+      ]),
+      reasoning: "Q10 and Q11 form a contradiction cluster.",
+    };
+    const notes = buildGateFeedbackNotes(eval_);
+    expect(notes).toHaveLength(1);
+    expect(notes[0].title).toBe("Contradictory answer: Q10");
+    expect(notes[0].body).toContain("This answer conflicts with Q11.");
+    expect(notes[0].body).toContain("Evaluator summary: Q10 and Q11 form a contradiction cluster.");
+  });
+
   it("uses custom reason when provided", () => {
     const eval_ = makeEvaluation([
       { question_id: "q1", verdict: "vague", reason: "Be more specific about the data model." },
@@ -78,13 +92,15 @@ describe("buildGateFeedbackNotes", () => {
       { question_id: "q3", verdict: "clear" },
       { question_id: "q4", verdict: "not_answered" },
       { question_id: "q5", verdict: "needs_refinement" },
+      { question_id: "q6", verdict: "contradictory", reason: "Conflicts with q2." },
     ]);
     const notes = buildGateFeedbackNotes(eval_);
-    expect(notes).toHaveLength(3);
+    expect(notes).toHaveLength(4);
     expect(notes.map((n) => n.title)).toEqual([
       "Vague answer: q2",
       "Not answered: q4",
       "Needs refinement: q5",
+      "Contradictory answer: q6",
     ]);
   });
 

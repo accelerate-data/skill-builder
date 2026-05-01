@@ -1217,6 +1217,7 @@ mod tests {
 
     fn sample_config() -> SidecarConfig {
         SidecarConfig {
+            mode: Some("streaming".to_string()),
             prompt: "Top secret prompt".to_string(),
             system_prompt: None,
             model: Some("claude-sonnet-4".to_string()),

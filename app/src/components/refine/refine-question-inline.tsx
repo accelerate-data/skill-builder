@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, ChevronLeft, ChevronRight, HelpCircle } from "lucide-react";
+import { Check, CheckCircle2, ChevronLeft, ChevronRight, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { RefineMessage, RefineQuestionPrompt, RefineQuestionResponse } from "@/stores/refine-store";
@@ -15,11 +15,11 @@ function isClarifyLabel(label: string): boolean {
 
 function QuestionStep({
   question,
-  selectedAnswer,
+  selectedAnswers,
   onSelect,
 }: {
   question: RefineQuestionPrompt;
-  selectedAnswer: string | undefined;
+  selectedAnswers: string[];
   onSelect: (label: string) => void;
 }) {
   return (
@@ -34,7 +34,7 @@ function QuestionStep({
       </div>
       <div className="flex flex-col gap-2">
         {question.options.map((option) => {
-          const selected = selectedAnswer === option.label;
+          const selected = selectedAnswers.includes(option.label);
           return (
             <button
               key={option.label}
@@ -46,7 +46,19 @@ function QuestionStep({
               }`}
               onClick={() => onSelect(option.label)}
             >
-              <div className="text-sm font-medium text-foreground">{option.label}</div>
+              <div className="flex items-start gap-2 text-sm font-medium text-foreground">
+                {question.multiSelect && (
+                  <span
+                    className={`mt-0.5 flex size-3.5 shrink-0 items-center justify-center rounded-sm border ${
+                      selected ? "border-primary bg-primary text-primary-foreground" : "border-border"
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {selected && <Check className="size-3" />}
+                  </span>
+                )}
+                <span>{option.label}</span>
+              </div>
               <div className="mt-1 text-sm text-muted-foreground">{option.description}</div>
             </button>
           );
@@ -57,7 +69,7 @@ function QuestionStep({
 }
 
 export function RefineQuestionInline({ message, onSubmit }: RefineQuestionInlineProps) {
-  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string[]>>({});
   const [clarificationText, setClarificationText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
@@ -65,13 +77,13 @@ export function RefineQuestionInline({ message, onSubmit }: RefineQuestionInline
   const questions = message.questions ?? [];
   const isWizard = questions.length > 1;
   const clarifySelected = useMemo(
-    () => Object.values(selectedAnswers).some((answer) => isClarifyLabel(answer)),
+    () => Object.values(selectedAnswers).some((answers) => answers.some(isClarifyLabel)),
     [selectedAnswers],
   );
 
   const handleSubmit = async () => {
     if (questions.length === 0) return;
-    const unanswered = questions.some((question) => !selectedAnswers[question.question]);
+    const unanswered = questions.some((question) => (selectedAnswers[question.question] ?? []).length === 0);
     if (unanswered) return;
 
     const customText = clarifySelected ? clarificationText.trim() : undefined;
@@ -82,16 +94,18 @@ export function RefineQuestionInline({ message, onSubmit }: RefineQuestionInline
       await onSubmit(message, {
         answers: Object.fromEntries(
           questions.map((question) => {
-            const selected = selectedAnswers[question.question];
+            const selected = selectedAnswers[question.question] ?? [];
+            const answerValues = selected.map((label) =>
+              isClarifyLabel(label) && customText ? customText : label,
+            );
             return [
               question.question,
-              isClarifyLabel(selected) && customText ? customText : selected,
+              answerValues.join(", "),
             ];
           }),
         ),
         selectedLabels: questions
-          .map((question) => selectedAnswers[question.question])
-          .filter((answer): answer is string => typeof answer === "string"),
+          .flatMap((question) => selectedAnswers[question.question] ?? []),
         customText,
       });
     } finally {
@@ -128,10 +142,26 @@ export function RefineQuestionInline({ message, onSubmit }: RefineQuestionInline
 
   const currentQuestion = questions[currentStep];
   const isLastStep = currentStep === questions.length - 1;
-  const currentAnswer = currentQuestion ? selectedAnswers[currentQuestion.question] : undefined;
-  const currentAnswered = !!currentAnswer;
-  const currentNeedsClarifyText = currentAnswered && isClarifyLabel(currentAnswer!) && clarificationText.trim().length === 0;
-  const allAnswered = questions.every((q) => !!selectedAnswers[q.question]);
+  const currentAnswers = currentQuestion ? (selectedAnswers[currentQuestion.question] ?? []) : [];
+  const currentAnswered = currentAnswers.length > 0;
+  const currentNeedsClarifyText =
+    currentAnswered && currentAnswers.some(isClarifyLabel) && clarificationText.trim().length === 0;
+  const allAnswered = questions.every((q) => (selectedAnswers[q.question] ?? []).length > 0);
+
+  const updateSelectedAnswers = (question: RefineQuestionPrompt, label: string) => {
+    setSelectedAnswers((current) => {
+      const existing = current[question.question] ?? [];
+      const next = question.multiSelect
+        ? (existing.includes(label)
+            ? existing.filter((answer) => answer !== label)
+            : [...existing, label])
+        : [label];
+      return {
+        ...current,
+        [question.question]: next,
+      };
+    });
+  };
 
   return (
     <div
@@ -153,26 +183,16 @@ export function RefineQuestionInline({ message, onSubmit }: RefineQuestionInline
           <QuestionStep
             key={currentQuestion.question}
             question={currentQuestion}
-            selectedAnswer={selectedAnswers[currentQuestion.question]}
-            onSelect={(label) =>
-              setSelectedAnswers((current) => ({
-                ...current,
-                [currentQuestion.question]: label,
-              }))
-            }
+            selectedAnswers={selectedAnswers[currentQuestion.question] ?? []}
+            onSelect={(label) => updateSelectedAnswers(currentQuestion, label)}
           />
         ) : (
           questions.map((question: RefineQuestionPrompt) => (
             <QuestionStep
               key={question.question}
               question={question}
-              selectedAnswer={selectedAnswers[question.question]}
-              onSelect={(label) =>
-                setSelectedAnswers((current) => ({
-                  ...current,
-                  [question.question]: label,
-                }))
-              }
+              selectedAnswers={selectedAnswers[question.question] ?? []}
+              onSelect={(label) => updateSelectedAnswers(question, label)}
             />
           ))
         )}
@@ -235,7 +255,7 @@ export function RefineQuestionInline({ message, onSubmit }: RefineQuestionInline
                 data-testid="refine-question-submit"
                 disabled={
                   isSubmitting
-                  || questions.some((question) => !selectedAnswers[question.question])
+                  || questions.some((question) => (selectedAnswers[question.question] ?? []).length === 0)
                   || (clarifySelected && clarificationText.trim().length === 0)
                 }
                 onClick={() => void handleSubmit()}

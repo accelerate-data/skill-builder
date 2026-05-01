@@ -68,6 +68,32 @@ describe("parseSidecarConfig", () => {
     expect(result.requiredPlugins).toEqual(["computer", "bash"]);
   });
 
+  it("accepts explicit one-shot mode", () => {
+    const result = parseSidecarConfig({
+      prompt: "hello",
+      apiKey: "key",
+      workspaceRootDir: TEST_CWD,
+      workspaceSkillDir: TEST_CWD,
+      pluginSlug: "demo",
+      mode: "one-shot",
+    });
+
+    expect(result.mode).toBe("one-shot");
+  });
+
+  it("throws when mode is invalid", () => {
+    expect(() =>
+      parseSidecarConfig({
+        prompt: "hello",
+        apiKey: "key",
+        workspaceRootDir: TEST_CWD,
+        workspaceSkillDir: TEST_CWD,
+        pluginSlug: "demo",
+        mode: "interactive",
+      }),
+    ).toThrow("mode must be one of");
+  });
+
   it("accepts empty string workspace dirs (no strict validation)", () => {
     // workspace dirs are type-checked but not value-validated — empty string passes.
     // Callers are responsible for providing valid directories.

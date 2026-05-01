@@ -38,7 +38,7 @@ import {
   readPendingEval,
   readSkillContextForEvalGen,
   saveTestCase,
-  startAgent,
+  startOneShotAgent,
 } from "@/lib/tauri";
 import type { EvalBenchmark, IterationMeta, PendingEval, SkillSummary, ImportedSkill, TestCase } from "@/lib/types";
 import {
@@ -303,7 +303,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       const agentId = crypto.randomUUID();
       const cwd = skillWorkspace;
 
-      await startAgent(
+      await startOneShotAgent(
         agentId,
         genUserPrompt,
         preferredModel,
@@ -391,7 +391,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
       const agentId = crypto.randomUUID();
       const cwd = skillWorkspace;
 
-      await startAgent(
+      await startOneShotAgent(
         agentId,
         regenUserPrompt,
         preferredModel,
@@ -540,7 +540,7 @@ export function WorkspaceEvals({ skill, workspacePath, onNavigateToRefine, onRun
     );
 
     try {
-      await startAgent(
+      await startOneShotAgent(
         agentId,
         evalUserPrompt,
         preferredModel,

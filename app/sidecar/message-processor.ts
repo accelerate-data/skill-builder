@@ -25,7 +25,7 @@ import { truncate, computeToolSummary } from "./tool-summaries.js";
 import { RESULT_ERROR_LABELS, ASSISTANT_ERROR_LABELS } from "./error-labels.js";
 import { RunMetadataAccumulator } from "./run-metadata-accumulator.js";
 import type { RequestContext } from "./run-metadata-accumulator.js";
-import { extractResultMarkdown } from "./lib/result-extraction.js";
+import { extractJsonFromText, extractResultMarkdown } from "./lib/result-extraction.js";
 
 // ---------------------------------------------------------------------------
 // MessageProcessor
@@ -655,24 +655,28 @@ export class MessageProcessor {
     }
 
     // Extract structured output from SDK result for artifact materialization.
-    // When outputFormat is configured, the SDK returns the parsed JSON in
-    // structured_output and a text summary in result. Fall back to result
-    // if it's already an object (older SDK versions).
+    // Prefer provider-native structured output. If a runtime returns the JSON
+    // contract as text instead, parse it at this one-shot boundary and let Rust
+    // validate the typed workflow contract.
     let structuredOutput: unknown = undefined;
 
     if ("structured_output" in raw && raw.structured_output != null) {
       structuredOutput = raw.structured_output;
-    } else if (!this.requireStructuredOutput && "result" in raw && raw.result != null && typeof raw.result !== "string") {
+    } else if ("result" in raw && raw.result != null && typeof raw.result !== "string") {
       structuredOutput = raw.result;
+    } else if (this.requireStructuredOutput) {
+      const resultJson = typeof raw.result === "string"
+        ? extractJsonFromText(raw.result)
+        : undefined;
+      structuredOutput = resultJson ?? (this.lastOutputText ? extractJsonFromText(this.lastOutputText) : undefined);
     }
 
-    // outputFormat is an SDK contract: when configured, the SDK must provide
-    // structured_output. If it is absent, fail clearly instead of recovering
-    // from display text.
+    // outputFormat is the one-shot structured contract. If neither the
+    // provider nor the final text produced JSON, fail clearly.
     if (structuredOutput == null && this.requireStructuredOutput) {
       resultStatus = "error";
       errorSubtype = "structured_output_missing";
-      outputText = "Structured output missing — the agent did not return JSON matching the required schema. Retry the step.";
+      outputText = "Structured output missing — the agent did not return parseable JSON matching the required schema. Retry the step.";
       process.stderr.write(
         `[message-processor] event=structured_output_missing subtype=${subtype ?? "none"} ` +
         `result_type=${typeof raw.result} result_length=${typeof raw.result === "string" ? raw.result.length : 0}\n`
@@ -699,8 +703,18 @@ export class MessageProcessor {
       `[message-processor] event=emit_display_item item_type=result id=${item.id} status=${resultStatus} subtype=${subtype ?? "none"} orphaned_tools=${orphanedItems.length}\n`,
     );
 
+    const summaryRaw = errorSubtype === "structured_output_missing"
+      ? {
+          ...raw,
+          subtype: errorSubtype,
+          is_error: true,
+          errors: [outputText],
+          stop_reason: "error",
+        }
+      : raw;
+
     // Build run_result from accumulated state.
-    const runSummary = this.accumulator.buildRunSummary(raw);
+    const runSummary = this.accumulator.buildRunSummary(summaryRaw);
     // Attach the agent's final output text so Rust can parse structured results
     // (e.g. step_id=-12 generate-skill-description-evals) without a second IPC round-trip.
     if (structuredOutput != null) {

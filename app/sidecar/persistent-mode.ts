@@ -1,7 +1,8 @@
 import { createInterface, type Interface } from "node:readline";
 import { type SidecarConfig, parseSidecarConfig } from "./config.js";
-import { runAgentRequest } from "./run-agent.js";
 import { StreamSession } from "./stream-session.js";
+import { ClaudeRuntime, toOneShotRunRequest } from "./runtime/claude-runtime.js";
+import { createRecordRuntimeSink } from "./runtime/sink.js";
 
 /** Incoming request envelope: run an agent. */
 interface AgentRequest {
@@ -236,6 +237,7 @@ export async function runPersistent(
 
   // Active streaming sessions (refine chat uses these for multi-turn conversations)
   const activeSessions = new Map<string, StreamSession>();
+  const runtime = new ClaudeRuntime();
 
   for await (const line of rl) {
     const message = parseIncomingMessage(line);
@@ -306,6 +308,16 @@ export async function runPersistent(
       process.stderr.write(
         `[sidecar] Stream start: session=${session_id} request=${request_id}\n`,
       );
+
+      if (config.mode === "one-shot") {
+        writeLine(
+          wrapWithRequestId(request_id, {
+            type: "error",
+            message: "stream_start requires streaming mode",
+          }),
+        );
+        continue;
+      }
 
       if (activeSessions.has(session_id)) {
         writeLine(
@@ -427,6 +439,17 @@ export async function runPersistent(
 
       const { request_id, config } = message;
       process.stderr.write(`[sidecar] Agent request: ${request_id}\n`);
+
+      if (config.mode === "streaming") {
+        writeLine(
+          wrapWithRequestId(request_id, {
+            type: "error",
+            message: "agent_request requires one-shot mode",
+          }),
+        );
+        continue;
+      }
+
       const abortController = new AbortController();
       currentAbort = abortController;
       currentRequestId = request_id;
@@ -435,9 +458,13 @@ export async function runPersistent(
       // This lets ping/shutdown messages be processed while the agent runs.
       const requestPromise = (async () => {
         try {
-          await runAgentRequest(config, (msg) => {
-            writeLine(wrapWithRequestId(request_id, msg));
-          }, abortController.signal);
+          await runtime.runOnce(
+            toOneShotRunRequest({ ...config, mode: "one-shot" }),
+            createRecordRuntimeSink((msg) => {
+              writeLine(wrapWithRequestId(request_id, msg));
+            }),
+            abortController.signal,
+          );
         } catch (err) {
           const errorMessage =
             err instanceof Error ? err.message : String(err);

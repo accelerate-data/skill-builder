@@ -18,24 +18,23 @@ use super::settings::{read_workflow_settings, WorkflowSettings};
 use super::output_format::answer_evaluator_output_format;
 use super::step_config::{
     build_betas, get_step_config, resolve_model_id, thinking_budget_for_step,
-    tools_for_agent, workflow_output_format_for_agent,
+    tools_for_agent, workflow_output_format_for_agent, WORKFLOW_AGENT_IDENTITY,
 };
 use super::user_context::write_user_context_file;
 
 // ─── Session management ──────────────────────────────────────────────────────
 
-/// In-memory state for a single workflow step streaming session.
-/// Keyed by agent_id in WorkflowStepSessionManager.
-pub struct WorkflowStepSession {
+/// In-memory state for a single workflow one-shot run.
+/// Keyed by agent_id in WorkflowStepRunManager.
+pub struct WorkflowStepRun {
     pub skill_name: String,
-    pub session_id: String,
 }
 
-/// Manages active workflow step streaming sessions. Registered as Tauri managed state.
-/// Allows `answer_workflow_step_question` to look up the session for a given agent.
-pub struct WorkflowStepSessionManager(pub Mutex<HashMap<String, WorkflowStepSession>>);
+/// Manages active workflow step one-shot runs. Registered as Tauri managed state.
+/// Allows `cancel_workflow_step` to look up the skill sidecar for a given agent.
+pub struct WorkflowStepRunManager(pub Mutex<HashMap<String, WorkflowStepRun>>);
 
-impl WorkflowStepSessionManager {
+impl WorkflowStepRunManager {
     pub fn new() -> Self {
         Self(Mutex::new(HashMap::new()))
     }
@@ -43,16 +42,14 @@ impl WorkflowStepSessionManager {
 
 // ─── run_workflow_step_inner ─────────────────────────────────────────────────
 
-/// Core logic for launching a single workflow step via streaming. Builds the prompt,
-/// constructs the sidecar config, and starts a streaming session. Returns the agent_id.
-///
-/// Each step gets its own streaming session so AskUserQuestion callbacks can be
-/// routed back to the correct sidecar via send_stream_question_answer.
+/// Core logic for launching a single workflow step via one-shot execution. Builds
+/// the prompt, constructs the sidecar config, and sends an agent_request. Returns
+/// the agent_id, which is also the one-shot request_id.
 #[allow(clippy::too_many_arguments)]
 async fn run_workflow_step_inner(
     app: &tauri::AppHandle,
     pool: &SidecarPool,
-    sessions: &WorkflowStepSessionManager,
+    runs: &WorkflowStepRunManager,
     skill_name: &str,
     step_id: u32,
     workspace_path: &str,
@@ -88,12 +85,18 @@ async fn run_workflow_step_inner(
 
     const JSON_ONLY: &str = "Your final response MUST be ONLY a raw JSON object — no markdown, no explanation, no wrapping.";
 
-    // Steps 1–2 run the agent directly (no subagent relay) so outputFormat is
-    // enforced on the agent that actually produces the data. Step 3 still
-    // uses the prompt-directive approach (subagent relay) until proven stable.
+    // The SDK always runs the generic skill-builder agent identity. Step prompts
+    // still carry the existing workflow-specific instructions and, when needed,
+    // tell the agent which capability to invoke before returning structured JSON.
     let subagent_directive: Option<String> = match step_id {
-        // Steps 1–2: agent runs directly — no subagent directive needed.
-        1 | 2 => None,
+        1 => Some(format!(
+            "Invoke the `skill-content-researcher:detailed-research` agent to perform detailed research. \
+             Then return that payload as your own final response. {JSON_ONLY}"
+        )),
+        2 => Some(format!(
+            "Invoke the `skill-content-researcher:confirm-decisions` agent to confirm decisions. \
+             Then return that payload as your own final response. {JSON_ONLY}"
+        )),
         3 => Some(format!(
             "Launch the `skill-creator:generate-skill` subagent to generate the skill. \
              {JSON_ONLY} Required fields: \
@@ -141,42 +144,23 @@ async fn run_workflow_step_inner(
         required_plugins,
     );
 
-    // Steps 1–2 use the agent directly (agentName set) so the SDK's outputFormat
-    // constrains the agent that produces the data — no relay layer.
-    // Steps 0, 3 use the prompt-directive approach: model is set explicitly
-    // and the prompt instructs the model to launch a named subagent.
-    let direct_agent = match step_id {
-        1 | 2 => Some(agent_name.clone()),
-        _ => None,
-    };
+    let sdk_agent_identity = WORKFLOW_AGENT_IDENTITY.to_string();
 
-    // Inject output schema inline into system prompt for steps 0–2 so the model
-    // always sees the contract it must produce, regardless of whether
-    // structured_output is enforced by the SDK.
-    let system_prompt_for_step: Option<String> = match step_id {
-        0 => Some(format!(
-            "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
-            crate::generated::schemas::RESEARCH_STEP_INLINE_SCHEMA
-        )),
-        1 => Some(format!(
-            "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
-            crate::generated::schemas::DETAILED_RESEARCH_INLINE_SCHEMA
-        )),
-        2 => Some(format!(
-            "Your output MUST be a JSON object that strictly conforms to the following schema:\n\n{}",
-            crate::generated::schemas::DECISIONS_INLINE_SCHEMA
-        )),
-        _ => None,
-    };
     log::debug!(
-        "[run_workflow_step] system_prompt schema injected={} for step_id={}",
-        system_prompt_for_step.is_some(),
+        "[run_workflow_step] sdk_agent_identity={} output_format_configured={} step_id={}",
+        sdk_agent_identity,
+        workflow_output_format_for_agent(&agent_name).is_some(),
         step_id
     );
 
     let mut config = SidecarConfig {
+        mode: Some("one-shot".to_string()),
         prompt,
-        system_prompt: system_prompt_for_step,
+        // Do not set a string systemPrompt for workflow steps. The SDK treats
+        // that as a custom system prompt, which can replace the configured
+        // agent identity's instructions. Structured contracts are enforced via
+        // output_format below.
+        system_prompt: None,
         model: Some(settings.preferred_model.clone()),
         api_key: settings.api_key.clone(),
         workspace_root_dir: workspace_path.replace('\\', "/"),
@@ -203,7 +187,7 @@ async fn run_workflow_step_inner(
         output_format: workflow_output_format_for_agent(&agent_name),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
-        agent_name: direct_agent,
+        agent_name: Some(sdk_agent_identity),
         required_plugins: Some(required_plugins),
         setting_sources: None,
         conversation_history: None,
@@ -232,32 +216,37 @@ async fn run_workflow_step_inner(
         }
     }
 
-    let session_id = uuid::Uuid::new_v4().to_string();
     log::debug!(
-        "[run_workflow_step] starting stream session=[REDACTED] agent={} workspace_skill_dir={}",
+        "[run_workflow_step] starting one-shot request agent={} workspace_skill_dir={}",
         agent_id,
         config.workspace_skill_dir,
     );
 
-    pool.send_stream_start(skill_name, &session_id, &agent_id, config, app)
+    let transcript_log_dir = config.transcript_log_dir.clone();
+    pool.send_request(
+        skill_name,
+        &agent_id,
+        config,
+        app,
+        transcript_log_dir.as_deref(),
+    )
         .await
         .map_err(|e| {
             log::error!(
-                "[run_workflow_step] Failed to start stream for agent={}: {}",
+                "[run_workflow_step] Failed to start one-shot request for agent={}: {}",
                 agent_id,
                 e
             );
             e
         })?;
 
-    // Register session so answer_workflow_step_question can route answers
+    // Register active one-shot run so cancel_workflow_step can route cancel.
     {
-        let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
+        let mut map = runs.0.lock().map_err(|e| e.to_string())?;
         map.insert(
             agent_id.clone(),
-            WorkflowStepSession {
+            WorkflowStepRun {
                 skill_name: skill_name.to_string(),
-                session_id,
             },
         );
     }
@@ -271,7 +260,7 @@ pub async fn run_workflow_step(
     app: tauri::AppHandle,
     pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
-    sessions: tauri::State<'_, WorkflowStepSessionManager>,
+    runs: tauri::State<'_, WorkflowStepRunManager>,
     skill_name: String,
     step_id: u32,
     workspace_path: String,
@@ -290,29 +279,26 @@ pub async fn run_workflow_step(
         &workspace_path,
     )?;
 
-    // Close any stale streaming sessions for this skill before starting a new step.
-    // Uses stream_end (not stream_cancel) so the sidecar removes the session from
-    // activeSessions and releases SDK resources (including any cli.js child process).
-    // Without this, a reset + re-run hangs because the old session's SDK resources
-    // are still held when the new stream_start arrives.
-    let stale_sessions: Vec<(String, String)> = {
-        let map = sessions.0.lock().map_err(|e| e.to_string())?;
+    // Cancel any stale one-shot workflow requests for this skill before starting
+    // a new step. The sidecar treats agent_id as request_id for agent_request.
+    let stale_runs: Vec<String> = {
+        let map = runs.0.lock().map_err(|e| e.to_string())?;
         map.iter()
             .filter(|(_, s)| s.skill_name == skill_name)
-            .map(|(agent_id, s)| (agent_id.clone(), s.session_id.clone()))
+            .map(|(agent_id, _)| agent_id.clone())
             .collect()
     };
-    for (stale_agent_id, stale_session_id) in &stale_sessions {
+    for stale_agent_id in &stale_runs {
         log::info!(
-            "[run_workflow_step] closing stale session agent={} before starting step_id={}",
+            "[run_workflow_step] canceling stale one-shot run agent={} before starting step_id={}",
             stale_agent_id,
             step_id,
         );
-        let _ = pool.send_stream_end(&skill_name, stale_session_id).await;
+        let _ = pool.send_cancel(&skill_name, stale_agent_id).await;
     }
-    if !stale_sessions.is_empty() {
-        let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
-        for (stale_agent_id, _) in &stale_sessions {
+    if !stale_runs.is_empty() {
+        let mut map = runs.0.lock().map_err(|e| e.to_string())?;
+        for stale_agent_id in &stale_runs {
             map.remove(stale_agent_id);
         }
     }
@@ -414,7 +400,7 @@ pub async fn run_workflow_step(
     run_workflow_step_inner(
         &app,
         pool.inner(),
-        sessions.inner(),
+        runs.inner(),
         &skill_name,
         step_id,
         &workspace_path,
@@ -436,71 +422,27 @@ pub async fn run_workflow_step(
 
 // ─── answer_workflow_step_question ───────────────────────────────────────────
 
-/// Route an AskUserQuestion answer back to the active workflow step streaming session.
-///
-/// The frontend calls this when the user submits an answer to a question posed
-/// by a workflow step agent (step 0–3). The session is looked up by agent_id
-/// and the answer is forwarded to the sidecar via send_stream_question_answer.
+/// Workflow steps are one-shot runs. They do not support AskUserQuestion.
 #[tauri::command]
 pub async fn answer_workflow_step_question(
     agent_id: String,
     tool_use_id: String,
     questions: serde_json::Value,
     answers: serde_json::Value,
-    sessions: tauri::State<'_, WorkflowStepSessionManager>,
+    runs: tauri::State<'_, WorkflowStepRunManager>,
     pool: tauri::State<'_, SidecarPool>,
 ) -> Result<(), String> {
-    log::info!(
-        "[answer_workflow_step_question] agent={} tool={}",
-        agent_id,
-        tool_use_id
+    let _ = (tool_use_id, questions, answers, runs, pool);
+    log::warn!(
+        "[answer_workflow_step_question] rejected for one-shot workflow agent={}",
+        agent_id
     );
-
-    let (skill_name, session_id) = {
-        let map = sessions.0.lock().map_err(|e| {
-            log::error!(
-                "[answer_workflow_step_question] Failed to acquire session lock: {}",
-                e
-            );
-            e.to_string()
-        })?;
-        let session = map.get(&agent_id).ok_or_else(|| {
-            let msg = format!(
-                "No workflow step session found for agent_id={}",
-                agent_id
-            );
-            log::error!("[answer_workflow_step_question] {}", msg);
-            msg
-        })?;
-        (session.skill_name.clone(), session.session_id.clone())
-    };
-
-    pool.send_stream_question_answer(
-        &skill_name,
-        &session_id,
-        &agent_id,
-        &tool_use_id,
-        questions,
-        answers,
-    )
-    .await
-    .map_err(|e| {
-        log::error!(
-            "[answer_workflow_step_question] Failed to send answer for agent={}: {}",
-            agent_id,
-            e
-        );
-        e
-    })
+    Err("Workflow steps run in one-shot mode and cannot ask user questions".to_string())
 }
 
 // ─── run_answer_evaluator ────────────────────────────────────────────────────
 
-/// Run the answer-evaluator agent (Haiku) as a full streaming session.
-///
-/// The agent resolves contradictions and asks the gate decision question via
-/// AskUserQuestion. AskUserQuestion callbacks are routed back via
-/// `answer_workflow_step_question` using the registered WorkflowStepSession.
+/// Run the answer-evaluator agent as a one-shot request.
 ///
 /// Returns the agent ID for the frontend to subscribe to completion events.
 #[tauri::command]
@@ -508,7 +450,7 @@ pub async fn run_answer_evaluator(
     app: tauri::AppHandle,
     pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
-    sessions: tauri::State<'_, WorkflowStepSessionManager>,
+    runs: tauri::State<'_, WorkflowStepRunManager>,
     skill_name: String,
     workspace_path: String,
 ) -> Result<String, String> {
@@ -587,6 +529,7 @@ pub async fn run_answer_evaluator(
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
     let mut config = SidecarConfig {
+        mode: Some("one-shot".to_string()),
         prompt,
         system_prompt: None,
         // Answer evaluator uses Sonnet for reliable skill invocation.
@@ -636,33 +579,37 @@ pub async fn run_answer_evaluator(
         }
     }
 
-    let session_id = uuid::Uuid::new_v4().to_string();
-
     log::debug!(
-        "[run_answer_evaluator] starting stream session=[REDACTED] agent={} workspace_skill_dir={}",
+        "[run_answer_evaluator] starting one-shot request agent={} workspace_skill_dir={}",
         agent_id,
         config.workspace_skill_dir,
     );
 
-    pool.send_stream_start(&skill_name, &session_id, &agent_id, config, &app)
+    let transcript_log_dir = config.transcript_log_dir.clone();
+    pool.send_request(
+        &skill_name,
+        &agent_id,
+        config,
+        &app,
+        transcript_log_dir.as_deref(),
+    )
         .await
         .map_err(|e| {
             log::error!(
-                "[run_answer_evaluator] Failed to start stream for agent={}: {}",
+                "[run_answer_evaluator] Failed to start one-shot request for agent={}: {}",
                 agent_id,
                 e
             );
             e
         })?;
 
-    // Register session so answer_workflow_step_question can route AskUserQuestion answers back.
+    // Register active one-shot run so cancel_workflow_step can route cancel.
     {
-        let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
+        let mut map = runs.0.lock().map_err(|e| e.to_string())?;
         map.insert(
             agent_id.clone(),
-            WorkflowStepSession {
+            WorkflowStepRun {
                 skill_name,
-                session_id,
             },
         );
     }
@@ -670,20 +617,19 @@ pub async fn run_answer_evaluator(
     Ok(agent_id)
 }
 
-/// Cancel a running workflow step streaming session by agent_id.
+/// Cancel a running workflow step one-shot request by agent_id.
 ///
-/// Looks up the session_id from WorkflowStepSessionManager and sends
-/// a stream_cancel message to the sidecar so the AbortController fires.
-/// This is the correct cancel path for streaming workflow steps (VU-729+).
+/// Looks up the sidecar skill key and sends a cancel message to the sidecar so
+/// the current one-shot request AbortController fires.
 #[tauri::command]
 pub async fn cancel_workflow_step(
     agent_id: String,
-    sessions: tauri::State<'_, WorkflowStepSessionManager>,
+    runs: tauri::State<'_, WorkflowStepRunManager>,
     pool: tauri::State<'_, SidecarPool>,
 ) -> Result<(), String> {
     log::info!("[cancel_workflow_step] agent={}", agent_id);
-    let (skill_name, session_id) = {
-        let map = sessions.0.lock().map_err(|e| {
+    let skill_name = {
+        let map = runs.0.lock().map_err(|e| {
             log::error!("[cancel_workflow_step] Failed to acquire session lock: {}", e);
             e.to_string()
         })?;
@@ -692,13 +638,13 @@ pub async fn cancel_workflow_step(
             log::warn!("[cancel_workflow_step] {}", msg);
             msg
         })?;
-        (session.skill_name.clone(), session.session_id.clone())
+        session.skill_name.clone()
     };
-    pool.send_stream_end(&skill_name, &session_id)
+    pool.send_cancel(&skill_name, &agent_id)
         .await
         .map_err(|e| {
             log::warn!(
-                "[cancel_workflow_step] Failed to send stream_end for agent={}: {}",
+                "[cancel_workflow_step] Failed to send cancel for agent={}: {}",
                 agent_id,
                 e
             );

@@ -1,4 +1,5 @@
 export interface SidecarConfig {
+  mode?: "one-shot" | "streaming";
   prompt: string;
   systemPrompt?: string;
   model?: string;
@@ -108,6 +109,7 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   assertOptString(c, "pathToClaudeCodeExecutable");
 
   // Optional enum fields
+  assertOptStringIn(c, "mode", ["one-shot", "streaming"]);
   assertOptStringIn(c, "permissionMode", ["default", "acceptEdits", "bypassPermissions", "plan"]);
   assertOptStringIn(c, "effort", ["low", "medium", "high", "max"]);
   assertOptStringIn(c, "runSource", ["workflow", "refine", "test", "gate-eval"]);

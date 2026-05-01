@@ -8,6 +8,7 @@ const EXPECTED_AGENTS: string[] = [];
 
 /** Plugin-hosted agents: agent name → plugin path relative to PLUGINS_DIR */
 const PLUGIN_AGENTS: Record<string, string> = {
+  "skill-builder": "skill-content-researcher/agents/skill-builder.md",
   "generate-skill": "skill-creator/agents/generate-skill.md",
   "rewrite-skill": "skill-creator/agents/rewrite-skill.md",
   "detailed-research": "skill-content-researcher/agents/detailed-research.md",
@@ -196,6 +197,15 @@ describe("Research scope guard contract prompts", () => {
 //   - materialize_answer_evaluation_output_value() → answer-evaluator path
 
 describe("Agent output contracts (backend protocol alignment)", () => {
+  it("skill-builder is the one-shot workflow identity and returns delegated JSON as final output", () => {
+    const content = fs.readFileSync(resolveAgentPath("skill-builder"), "utf8");
+    expect(content).toMatch(/focused on building skills for use in Claude Code/i);
+    expect(content).toMatch(/workflow step instruction/i);
+    expect(content).toMatch(/return the final payload required by the configured SDK `outputFormat`/i);
+    expect(content).toMatch(/convert that returned payload into your own final response/i);
+    expect(content).toMatch(/Do not use `AskUserQuestion`/i);
+  });
+
   it("confirm-decisions returns version/metadata/decisions shape", () => {
     const content = fs.readFileSync(
       resolveAgentPath("confirm-decisions"),

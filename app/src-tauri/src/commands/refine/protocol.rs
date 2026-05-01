@@ -173,6 +173,7 @@ pub(super) fn build_refine_config(
     let effective_fallback = fallback_model.filter(|fm| fm != &model);
 
     let config = SidecarConfig {
+        mode: Some("streaming".to_string()),
         prompt,
         system_prompt: None,
         betas: crate::commands::workflow::build_betas(

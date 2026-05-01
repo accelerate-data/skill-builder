@@ -4,6 +4,8 @@ use crate::types::SecretString;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SidecarConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
     pub prompt: String,
     #[serde(rename = "systemPrompt", skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
@@ -82,6 +84,7 @@ pub struct SidecarConfig {
 impl std::fmt::Debug for SidecarConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SidecarConfig")
+            .field("mode", &self.mode)
             .field("prompt", &self.prompt)
             .field("model", &self.model)
             .field("api_key", &"[redacted]")
@@ -205,6 +208,7 @@ mod tests {
     #[test]
     fn test_sidecar_config_serialization() {
         let config = SidecarConfig {
+            mode: Some("one-shot".to_string()),
             prompt: "Analyze this codebase".to_string(),
             system_prompt: None,
             model: Some("sonnet".to_string()),
@@ -243,6 +247,7 @@ mod tests {
         assert_eq!(parsed["maxTurns"], 25);
         assert_eq!(parsed["permissionMode"], "bypassPermissions");
         assert_eq!(parsed["model"], "sonnet");
+        assert_eq!(parsed["mode"], "one-shot");
         assert_eq!(parsed["agentName"], "research-entities");
         // betas is None + skip_serializing_if — should be absent
         assert!(parsed.get("betas").is_none());
@@ -253,6 +258,7 @@ mod tests {
     #[test]
     fn test_sidecar_config_serialization_with_thinking() {
         let config = SidecarConfig {
+            mode: None,
             prompt: "Reason about this".to_string(),
             system_prompt: None,
             model: Some("opus".to_string()),
@@ -297,6 +303,7 @@ mod tests {
         // skill_name must serialize as "skillName" so the sidecar's
         // mock discriminator (config.skillName) receives the value correctly.
         let config = SidecarConfig {
+            mode: None,
             prompt: "test".to_string(),
             system_prompt: None,
             model: None,
@@ -341,6 +348,7 @@ mod tests {
     fn test_sidecar_config_skill_name_absent_when_none() {
         // When skill_name is None, it must be omitted (skip_serializing_if = "Option::is_none").
         let config = SidecarConfig {
+            mode: None,
             prompt: "test".to_string(),
             system_prompt: None,
             model: None,

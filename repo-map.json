@@ -120,7 +120,7 @@
     },
     "sidecar_runner": {
       "path": "app/sidecar/agent-runner.ts",
-      "description": "Entry point: reads stdin JSON config, calls SDK query(), streams JSONL events to stdout"
+      "description": "Entry point: reads stdin JSON config, starts persistent sidecar mode, streams JSONL events to stdout"
     },
     "sidecar_events": {
       "path": "app/sidecar/agent-events.ts",
@@ -128,7 +128,7 @@
     },
     "sidecar_core": {
       "path": "app/sidecar/",
-      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer, routes one-shot vs streaming requests), run-agent.ts (executes a single agent request), stream-session.ts (async generator push pattern for multi-turn streaming), message-processor.ts (transforms SDK messages into DisplayItems and AgentEvents), message-classifier.ts (classifies SDK message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts + options.ts (SDK config builders), error-labels.ts (user-facing error strings), shutdown.ts (graceful shutdown handler)"
+      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer, routes one-shot vs streaming requests), runtime/ (runtime boundary types, sink adapter, and Claude runtime adapter), run-agent.ts (one-shot compatibility wrapper), stream-session.ts (async generator push pattern for multi-turn streaming), message-processor.ts (transforms SDK messages into DisplayItems and AgentEvents), message-classifier.ts (classifies SDK message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts + options.ts (sidecar config validation and Claude SDK option builder), error-labels.ts (user-facing error strings), shutdown.ts (graceful shutdown handler)"
     },
     "sidecar_mock": {
       "path": "app/sidecar/mock-agent.ts",
@@ -136,7 +136,7 @@
     },
     "agent_prompts": {
       "path": "agent-sources/agents/",
-      "description": "Flat directory of .md agent prompts: answer-evaluator. Plugin-hosted agents: generate-skill and rewrite-skill under agent-sources/plugins/skill-creator/agents/; research-orchestrator, detailed-research, and confirm-decisions under agent-sources/plugins/skill-content-researcher/agents/. Plugin-hosted skills: skill-evaluator and skill-validator under agent-sources/plugins/skill-creator/skills/"
+      "description": "Flat directory of .md agent prompts: answer-evaluator. Plugin-hosted agents: generate-skill and rewrite-skill under agent-sources/plugins/skill-creator/agents/; skill-builder, research-orchestrator, detailed-research, and confirm-decisions under agent-sources/plugins/skill-content-researcher/agents/. Plugin-hosted skills: skill-evaluator and skill-validator under agent-sources/plugins/skill-creator/skills/"
     },
     "agent_plugins": {
       "path": "agent-sources/plugins/",
@@ -185,7 +185,7 @@
   "dependencies_internal": {
     "frontend → rust": "Via Tauri IPC (`invoke()` from @tauri-apps/api/core)",
     "rust → sidecar": "Node.js child process, stdin/stdout JSONL protocol",
-    "sidecar → anthropic": "Via @anthropic-ai/claude-agent-sdk (SDK query())",
+    "sidecar → anthropic": "Via runtime/claude-runtime.ts using @anthropic-ai/claude-agent-sdk (SDK query())",
     "frontend → sidecar_events": "Typed via agent-events.ts contract, received as Tauri events"
   },
   "dependencies_external": {
