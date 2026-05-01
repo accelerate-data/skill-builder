@@ -26,7 +26,8 @@ The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary
 **Does not cover**
 
 - Refine/streaming session migration (separate ticket — requires `AskUserQuestion` custom tool).
-- Eval harness changes beyond base eval generation in step 3.
+- Broad eval harness redesign; this migration still adds targeted automated
+  smoke/eval coverage for OpenHands workflow parity.
 - Skill import, marketplace, or GitHub-import flows.
 - Production sandboxing (Docker runtime) — local workspace runtime is used throughout.
 
