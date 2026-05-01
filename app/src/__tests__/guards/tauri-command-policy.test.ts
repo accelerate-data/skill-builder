@@ -25,6 +25,35 @@ function walkSourceFiles(dir: string): string[] {
 }
 
 describe("Tauri command policy", () => {
+  const vu1138CommandNames = [
+    "delete_skill",
+    "update_skill_metadata",
+    "rename_skill",
+    "export_skill_as_file",
+    "generate_suggestions",
+    "review_skill_scope",
+    "get_dashboard_skill_names",
+    "list_skills",
+    "list_imported_skills",
+    "delete_imported_skill",
+    "list_plugins",
+    "delete_plugin",
+    "set_plugin_upgrade_lock",
+    "create_plugin_from_skills",
+    "move_skill_to_plugin",
+    "remove_skill_from_plugin",
+    "parse_github_url",
+    "check_marketplace_url",
+    "list_github_skills",
+    "list_github_plugins",
+    "import_marketplace_to_library",
+    "import_marketplace_plugin_to_library",
+    "check_marketplace_updates",
+    "check_skill_customized",
+    "parse_skill_file",
+    "import_skill_from_file",
+  ];
+
   it("centralizes raw Tauri invoke access in lib/tauri.ts", () => {
     const offenders: string[] = [];
 
@@ -60,5 +89,14 @@ describe("Tauri command policy", () => {
     expect(source).toContain("export const invokeCommand");
     expect(source).toContain("export const invokeUnsafe");
     expect(source).not.toContain("export { invoke }");
+  });
+
+  it("keeps VU-1138 skill library and marketplace commands off invokeUnsafe", () => {
+    const source = fs.readFileSync(path.join(sourceRoot, "lib/tauri.ts"), "utf8");
+    const unsafeCommandPattern = /invokeUnsafe(?:<[^>]+>)?\("([^"]+)"/g;
+    const unsafeCommands = Array.from(source.matchAll(unsafeCommandPattern), (match) => match[1]);
+    const offenders = vu1138CommandNames.filter((command) => unsafeCommands.includes(command));
+
+    expect(offenders).toEqual([]);
   });
 });

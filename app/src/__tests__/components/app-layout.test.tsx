@@ -520,7 +520,7 @@ describe("AppLayout", () => {
       render(<AppLayout />);
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith("check_marketplace_updates");
+        expect(mockInvoke).toHaveBeenCalledWith("check_marketplace_updates", {});
       });
       expect(toast.info).not.toHaveBeenCalledWith(
         "Settings \u2192 Skills: update available for 1 skill: hr-skill",

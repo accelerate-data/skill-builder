@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, LibraryPlugin, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, Document } from "@/lib/types";
+import type { AppSettings, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, SkillFileContent, SkillSummary, SkillCommit, RefineFinalizeResult, RefineSessionInfo, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, Document } from "@/lib/types";
 import type { EvalQuery } from "@/lib/description-optimization";
-import type { TauriCommandInvocation, TauriCommandResult } from "@/lib/tauri-command-types";
+import type { FieldSuggestions, TauriCommandInvocation, TauriCommandResult } from "@/lib/tauri-command-types";
 
 export const invokeCommand = <Invocation extends TauriCommandInvocation>(
   ...[command, args]: Invocation
@@ -16,6 +16,7 @@ export const logFrontend = (level: "info" | "warn" | "error" | "debug", message:
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
 export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry, Document } from "@/lib/types";
+export type { FieldSuggestions, ScopeReviewResult, ScopeReviewSuggestion } from "@/lib/tauri-command-types";
 
 // --- Settings ---
 
@@ -46,7 +47,7 @@ export const getDefaultSkillsPath = () => invokeCommand("get_default_skills_path
 // --- Skills ---
 
 export const deleteSkill = (workspacePath: string, name: string) =>
-  invokeUnsafe("delete_skill", { workspacePath, name });
+  invokeCommand("delete_skill", { workspacePath, name });
 
 export const updateSkillMetadata = (
   skillName: string,
@@ -60,7 +61,7 @@ export const updateSkillMetadata = (
   argumentHint?: string | null,
   userInvocable?: boolean | null,
   disableModelInvocation?: boolean | null,
-) => invokeUnsafe("update_skill_metadata", {
+) => invokeCommand("update_skill_metadata", {
   skillName,
   pluginSlug,
   purpose,
@@ -78,24 +79,13 @@ export const renameSkill = (
   oldName: string,
   newName: string,
   workspacePath: string,
-) => invokeUnsafe("rename_skill", { oldName, newName, workspacePath });
+) => invokeCommand("rename_skill", { oldName, newName, workspacePath });
 
 export const exportSkillAsFile = (
   skillName: string,
   pluginSlug: string,
   destPath: string,
-) => invokeUnsafe<void>("export_skill_as_file", { skillName, pluginSlug, destPath });
-
-export interface FieldSuggestions {
-  description: string;
-  domain: string;
-  audience: string;
-  challenges: string;
-  scope: string;
-  unique_setup: string;
-  claude_mistakes: string;
-  context_questions: string;
-}
+) => invokeCommand("export_skill_as_file", { skillName, pluginSlug, destPath });
 
 export const generateSuggestions = (
   skillName: string,
@@ -109,7 +99,7 @@ export const generateSuggestions = (
     challenges?: string;
     fields?: string[];
   },
-) => invokeUnsafe<FieldSuggestions>("generate_suggestions", {
+): Promise<FieldSuggestions> => invokeCommand("generate_suggestions", {
   skillName,
   purpose,
   industry: opts?.industry ?? null,
@@ -121,24 +111,13 @@ export const generateSuggestions = (
   fields: opts?.fields ?? null,
 });
 
-export interface ScopeReviewSuggestion {
-  name: string
-  description: string
-}
-
-export interface ScopeReviewResult {
-  status: string
-  reason: string
-  suggested_skills: ScopeReviewSuggestion[]
-}
-
 export const reviewSkillScope = (
   skillName: string,
   description: string,
   purpose: string,
   contextQuestions: string | null,
   industry: string | null,
-) => invokeUnsafe<ScopeReviewResult>("review_skill_scope", { skillName, description, purpose, contextQuestions, industry })
+) => invokeCommand("review_skill_scope", { skillName, description, purpose, contextQuestions, industry })
 
 // --- Agent ---
 
@@ -409,33 +388,33 @@ export const resetUsage = () =>
 // --- Imported Skills ---
 
 export async function getDashboardSkillNames(): Promise<string[]> {
-  return invokeUnsafe<string[]>("get_dashboard_skill_names")
+  return invokeCommand("get_dashboard_skill_names", {})
 }
 
 export async function listSkills(workspacePath: string, sourceUrl?: string | null): Promise<SkillSummary[]> {
-  return invokeUnsafe<SkillSummary[]>("list_skills", {
+  return invokeCommand("list_skills", {
     workspacePath,
     sourceUrl: sourceUrl ?? null,
   })
 }
 
 export const listImportedSkills = (sourceUrl?: string | null) =>
-  invokeUnsafe<ImportedSkill[]>("list_imported_skills", { sourceUrl: sourceUrl ?? null })
+  invokeCommand("list_imported_skills", { sourceUrl: sourceUrl ?? null })
 
 export const deleteImportedSkill = (skillId: string) =>
-  invokeUnsafe<void>("delete_imported_skill", { skillId })
+  invokeCommand("delete_imported_skill", { skillId })
 
 export const listPlugins = () =>
-  invokeUnsafe<LibraryPlugin[]>("list_plugins")
+  invokeCommand("list_plugins", {})
 
 export const deletePlugin = (pluginSlug: string) =>
-  invokeUnsafe<void>("delete_plugin", { pluginSlug })
+  invokeCommand("delete_plugin", { pluginSlug })
 
 export const setPluginUpgradeLock = (pluginSlug: string, locked: boolean) =>
-  invokeUnsafe<void>("set_plugin_upgrade_lock", { pluginSlug, locked })
+  invokeCommand("set_plugin_upgrade_lock", { pluginSlug, locked })
 
 export const createPluginFromSkills = (pluginName: string, skillKeys: string[]) =>
-  invokeUnsafe<string>("create_plugin_from_skills", { pluginName, skillKeys })
+  invokeCommand("create_plugin_from_skills", { pluginName, skillKeys })
 
 /**
  * Move a skill to a different plugin.
@@ -444,7 +423,7 @@ export const createPluginFromSkills = (pluginName: string, skillKeys: string[]) 
  * @param pluginSlug - Target plugin slug
  */
 export const moveSkillToPlugin = (skillKey: string, pluginSlug: string) =>
-  invokeUnsafe<void>("move_skill_to_plugin", { skillKey, pluginSlug })
+  invokeCommand("move_skill_to_plugin", { skillKey, pluginSlug })
 
 /**
  * Remove a skill from its current plugin, returning it to the default plugin.
@@ -452,36 +431,36 @@ export const moveSkillToPlugin = (skillKey: string, pluginSlug: string) =>
  *                   "imported:{skillId}" for imported skills
  */
 export const removeSkillFromPlugin = (skillKey: string) =>
-  invokeUnsafe<void>("remove_skill_from_plugin", { skillKey })
+  invokeCommand("remove_skill_from_plugin", { skillKey })
 
 // --- GitHub Import ---
 
 export const parseGitHubUrl = (url: string) =>
-  invokeUnsafe<GitHubRepoInfo>("parse_github_url", { url });
+  invokeCommand("parse_github_url", { url });
 
 /** Validates the URL and returns the registry name from marketplace.json. */
 export const checkMarketplaceUrl = (url: string) =>
-  invokeUnsafe<string>("check_marketplace_url", { url });
+  invokeCommand("check_marketplace_url", { url });
 
 export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string) =>
-  invokeUnsafe<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
+  invokeCommand("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
 
 export const listGitHubPlugins = (owner: string, repo: string, branch: string, subpath?: string) =>
-  invokeUnsafe<AvailablePlugin[]>("list_github_plugins", { owner, repo, branch, subpath: subpath ?? null });
+  invokeCommand("list_github_plugins", { owner, repo, branch, subpath: subpath ?? null });
 
 // --- Marketplace Import ---
 
 export const importMarketplaceToLibrary = (skillPaths: string[], sourceUrl: string, metadataOverrides?: Record<string, SkillMetadataOverride>) =>
-  invokeUnsafe<MarketplaceImportResult[]>("import_marketplace_to_library", { sourceUrl, skillPaths, metadataOverrides: metadataOverrides ?? null })
+  invokeCommand("import_marketplace_to_library", { sourceUrl, skillPaths, metadataOverrides: metadataOverrides ?? null })
 
 export const importMarketplacePluginToLibrary = (pluginPath: string, pluginName: string, sourceUrl: string) =>
-  invokeUnsafe<MarketplaceImportResult[]>("import_marketplace_plugin_to_library", { sourceUrl, pluginPath, pluginName })
+  invokeCommand("import_marketplace_plugin_to_library", { sourceUrl, pluginPath, pluginName })
 
 export const checkMarketplaceUpdates = (): Promise<MarketplaceUpdateResult> =>
-  invokeUnsafe<MarketplaceUpdateResult>("check_marketplace_updates")
+  invokeCommand("check_marketplace_updates", {})
 
 export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
-  invokeUnsafe<boolean>("check_skill_customized", { skillName })
+  invokeCommand("check_skill_customized", { skillName })
 
 // --- Refine ---
 
@@ -639,7 +618,7 @@ export const logGateDecision = (
 // --- File Import ---
 
 export const parseSkillFile = (filePath: string): Promise<SkillFileMeta> =>
-  invokeUnsafe<SkillFileMeta>("parse_skill_file", { filePath })
+  invokeCommand("parse_skill_file", { filePath })
 
 export const importSkillFromFile = (params: {
   filePath: string
@@ -651,7 +630,7 @@ export const importSkillFromFile = (params: {
   userInvocable?: boolean | null
   disableModelInvocation?: boolean | null
 }): Promise<string> =>
-  invokeUnsafe<string>("import_skill_from_file", {
+  invokeCommand("import_skill_from_file", {
     filePath: params.filePath,
     name: params.name,
     description: params.description,
