@@ -38,11 +38,13 @@ function EventShell({
   icon,
   title,
   tone,
+  source,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
   tone?: "default" | "error";
+  source?: string;
   children: React.ReactNode;
 }) {
   const borderColor =
@@ -58,15 +60,30 @@ function EventShell({
       <div className="mb-1.5 flex min-w-0 items-center gap-2">
         <span className="shrink-0 text-muted-foreground">{icon}</span>
         <span className="truncate text-xs font-semibold">{title}</span>
+        {source && (
+          <Badge variant="outline" className="text-[10px]">
+            {source}
+          </Badge>
+        )}
       </div>
       <div className="min-w-0 space-y-2">{children}</div>
     </div>
   );
 }
 
+function getEventSource(event: OpenHandsConversationEvent): string | undefined {
+  return typeof event.event.source === "string"
+    ? event.event.source
+    : undefined;
+}
+
 function MarkdownText({ text }: { text: string }) {
   return (
-    <ErrorBoundary fallback={<pre className="whitespace-pre-wrap break-words text-sm">{text}</pre>}>
+    <ErrorBoundary
+      fallback={
+        <pre className="whitespace-pre-wrap break-words text-sm">{text}</pre>
+      }
+    >
       <MemoizedMarkdown content={text} />
     </ErrorBoundary>
   );
@@ -82,19 +99,18 @@ function PayloadBlock({ value }: { value: unknown }) {
 
 function MessageEventView({ event }: { event: OpenHandsConversationEvent }) {
   const text = getEventText(event);
-  const source = typeof event.event.source === "string" ? event.event.source : undefined;
 
   return (
     <EventShell
       icon={<MessageSquare className="size-3.5" />}
       title="Message"
+      source={getEventSource(event)}
     >
-      {source && (
-        <Badge variant="outline" className="text-[10px]">
-          {source}
-        </Badge>
+      {text ? (
+        <MarkdownText text={text} />
+      ) : (
+        <PayloadBlock value={event.event} />
       )}
-      {text ? <MarkdownText text={text} /> : <PayloadBlock value={event.event} />}
     </EventShell>
   );
 }
@@ -107,11 +123,20 @@ function ActionEventView({ event }: { event: OpenHandsConversationEvent }) {
   const command = getCommandText(event);
   const input = getToolInput(event);
   const hasReadableContent = Boolean(
-    reasoning || toolName || toolCallId || llmResponseId || command || input !== undefined,
+    reasoning ||
+    toolName ||
+    toolCallId ||
+    llmResponseId ||
+    command ||
+    input !== undefined,
   );
 
   return (
-    <EventShell icon={<Terminal className="size-3.5" />} title="Action">
+    <EventShell
+      icon={<Terminal className="size-3.5" />}
+      title="Action"
+      source={getEventSource(event)}
+    >
       {reasoning && <MarkdownText text={reasoning} />}
       {toolName && (
         <div className="flex flex-wrap items-center gap-2">
@@ -128,7 +153,11 @@ function ActionEventView({ event }: { event: OpenHandsConversationEvent }) {
               {llmResponseId}
             </Badge>
           )}
-          {command && <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{command}</code>}
+          {command && (
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              {command}
+            </code>
+          )}
         </div>
       )}
       {input !== undefined && <PayloadBlock value={input} />}
@@ -137,12 +166,24 @@ function ActionEventView({ event }: { event: OpenHandsConversationEvent }) {
   );
 }
 
-function ObservationEventView({ event }: { event: OpenHandsConversationEvent }) {
+function ObservationEventView({
+  event,
+}: {
+  event: OpenHandsConversationEvent;
+}) {
   const text = getObservationText(event);
 
   return (
-    <EventShell icon={<TextSearch className="size-3.5" />} title="Observation">
-      {text ? <MarkdownText text={text} /> : <PayloadBlock value={event.event} />}
+    <EventShell
+      icon={<TextSearch className="size-3.5" />}
+      title="Observation"
+      source={getEventSource(event)}
+    >
+      {text ? (
+        <MarkdownText text={text} />
+      ) : (
+        <PayloadBlock value={event.event} />
+      )}
     </EventShell>
   );
 }
@@ -158,13 +199,22 @@ function ErrorEventView({
   const toolName = getToolName(event);
 
   return (
-    <EventShell icon={<AlertTriangle className="size-3.5" />} title={title} tone="error">
+    <EventShell
+      icon={<AlertTriangle className="size-3.5" />}
+      title={title}
+      tone="error"
+      source={getEventSource(event)}
+    >
       {toolName && (
         <Badge variant="destructive" className="font-mono text-[10px]">
           {toolName}
         </Badge>
       )}
-      {text ? <MarkdownText text={text} /> : <PayloadBlock value={event.event} />}
+      {text ? (
+        <MarkdownText text={text} />
+      ) : (
+        <PayloadBlock value={event.event} />
+      )}
     </EventShell>
   );
 }
@@ -233,21 +283,34 @@ function InternalEventView({ event }: { event: OpenHandsConversationEvent }) {
     <EventShell
       icon={<Pause className="size-3.5" />}
       title={event.eventClass}
+      source={getEventSource(event)}
     >
-      {summary ? <MarkdownText text={summary} /> : <PayloadBlock value={event.event} />}
+      {summary ? (
+        <MarkdownText text={summary} />
+      ) : (
+        <PayloadBlock value={event.event} />
+      )}
     </EventShell>
   );
 }
 
 function UnknownEventView({ event }: { event: OpenHandsConversationEvent }) {
   return (
-    <EventShell icon={<Braces className="size-3.5" />} title={event.eventClass}>
+    <EventShell
+      icon={<Braces className="size-3.5" />}
+      title={event.eventClass}
+      source={getEventSource(event)}
+    >
       <PayloadBlock value={event.event} />
     </EventShell>
   );
 }
 
-function ConversationEventView({ event }: { event: OpenHandsConversationEvent }) {
+function ConversationEventView({
+  event,
+}: {
+  event: OpenHandsConversationEvent;
+}) {
   switch (event.eventClass) {
     case "MessageEvent":
       return <MessageEventView event={event} />;
@@ -271,7 +334,10 @@ function ConversationEventView({ event }: { event: OpenHandsConversationEvent })
 export const ConversationEventList = memo(function ConversationEventList({
   events,
 }: ConversationEventListProps) {
-  const hiddenEventCount = Math.max(0, events.length - CONVERSATION_EVENT_WINDOW_SIZE);
+  const hiddenEventCount = Math.max(
+    0,
+    events.length - CONVERSATION_EVENT_WINDOW_SIZE,
+  );
   const visibleEvents = useMemo(
     () =>
       hiddenEventCount > 0
@@ -296,7 +362,8 @@ export const ConversationEventList = memo(function ConversationEventList({
           data-testid="conversation-event-window-indicator"
           className="rounded border border-dashed border-muted-foreground/25 bg-muted/30 px-3 py-2 text-center text-xs text-muted-foreground"
         >
-          {hiddenEventCount} older {hiddenEventCount === 1 ? "event" : "events"} hidden
+          {hiddenEventCount} older {hiddenEventCount === 1 ? "event" : "events"}{" "}
+          hidden
         </div>
       )}
       {visibleEventItems.map((item, index) => (

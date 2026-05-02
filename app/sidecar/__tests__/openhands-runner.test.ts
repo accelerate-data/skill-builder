@@ -47,7 +47,9 @@ function parseJsonl(stdout: string): Record<string, unknown>[] {
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
-function expectOnlyOpenHandsProtocolRecords(records: Record<string, unknown>[]): void {
+function expectOnlyOpenHandsProtocolRecords(
+  records: Record<string, unknown>[],
+): void {
   expect(
     records.every(
       (record) =>
@@ -343,7 +345,8 @@ print(stdout.getvalue())
         source: "agent",
         llm_response_id: "resp_01JY",
         tool_call_id: "toolu_01JZ",
-        reasoning_content: "Need to inspect [REDACTED] before calling [REDACTED]",
+        reasoning_content:
+          "Need to inspect [REDACTED] before calling [REDACTED]",
         thinking_blocks: [
           {
             type: "thinking",
@@ -629,6 +632,43 @@ print(runner._extract_final_text(conversation))
     expect(result.stdout.trim()).toBe('{"status":"complete"}');
   }, 30_000);
 
+  it("requests an SDK user pause when SIGTERM interrupts the run", () => {
+    const result = runPython(
+      runnerImportScript(`
+class FakeConversation:
+    def __init__(self):
+        self.paused = False
+
+    def pause(self):
+        self.paused = True
+        runner.emit_conversation_event(
+            type("PauseEvent", (), {"model_dump": lambda self, mode="json": {"source": "user"}})(),
+            [],
+        )
+
+conversation = FakeConversation()
+runner._ACTIVE_CONVERSATION = conversation
+try:
+    runner._raise_keyboard_interrupt(None, None)
+except KeyboardInterrupt:
+    pass
+finally:
+    runner._ACTIVE_CONVERSATION = None
+
+print(json.dumps({"paused": conversation.paused}))
+`),
+    );
+
+    expect(result.status).toBe(0);
+    const records = parseJsonl(result.stdout);
+    expect(records[0]).toMatchObject({
+      type: "conversation_event",
+      event_class: "PauseEvent",
+      event: { source: "user" },
+    });
+    expect(records[1]).toEqual({ paused: true });
+  }, 30_000);
+
   it("uses explicit maxTurns as max_iterations", () => {
     const result = runPython(
       runnerImportScript(`
@@ -739,7 +779,9 @@ print(json.dumps({"stdout": stdout.getvalue(), "stderr": stderr.getvalue()}, sor
       "running",
       "error",
     ]);
-    expect(records.filter((record) => record.status === "error")).toHaveLength(1);
+    expect(records.filter((record) => record.status === "error")).toHaveLength(
+      1,
+    );
     expect(records.at(-1)).toMatchObject({
       type: "conversation_state",
       runtime: "openhands",
@@ -760,6 +802,8 @@ except ValueError as exc:
     );
 
     expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe("OpenHands runner request missing llm config");
+    expect(result.stdout.trim()).toBe(
+      "OpenHands runner request missing llm config",
+    );
   }, 30_000);
 });

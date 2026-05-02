@@ -38,14 +38,15 @@ vi.mock("remark-gfm", () => ({
   default: () => {},
 }));
 
-
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeDisplayItem(overrides: Partial<DisplayItem> & { type: DisplayItem["type"] }): DisplayItem {
+function makeDisplayItem(
+  overrides: Partial<DisplayItem> & { type: DisplayItem["type"] },
+): DisplayItem {
   return {
     id: `di-${Math.random().toString(36).slice(2, 8)}`,
     timestamp: Date.now(),
@@ -150,7 +151,9 @@ describe("AgentOutputPanel", () => {
     ]);
     render(<AgentOutputPanel agentId="test-agent" />);
     // Text appears in both summary and expanded body
-    expect(screen.getAllByText("Here is the analysis of the domain.").length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText("Here is the analysis of the domain.").length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("renders OpenHands conversation events instead of display items when present", () => {
@@ -274,15 +277,21 @@ describe("AgentOutputPanel", () => {
     expect(
       screen.getByText("I will inspect the current workflow files."),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Need the helper source before editing/)).toBeInTheDocument();
-    expect(screen.getByText(/Use a focused read before patching/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Need the helper source before editing/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Use a focused read before patching/),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("read_file").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("call-single")).toBeInTheDocument();
     expect(screen.getByText("resp-single")).toBeInTheDocument();
     expect(
       screen.getByText(/app\/src\/lib\/openhands-conversation-events\.ts/),
     ).toBeInTheDocument();
-    expect(screen.getByText("Read 140 lines from the helper.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Read 140 lines from the helper."),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("User rejected the proposed file edit."),
     ).toBeInTheDocument();
@@ -292,7 +301,9 @@ describe("AgentOutputPanel", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("System prompt prepared.")).toBeInTheDocument();
     expect(screen.getByText("CondensationStartEvent")).toBeInTheDocument();
-    expect(screen.getByText("Conversation context condensed.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Conversation context condensed."),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         "The conversation was condensed after reading helper files.",
@@ -301,7 +312,10 @@ describe("AgentOutputPanel", () => {
     expect(
       screen.getByText('State updated: {"phase":"running","iteration":2}'),
     ).toBeInTheDocument();
-    expect(screen.getByText("Paused: Waiting for user input.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Paused: Waiting for user input."),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("user").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("CustomSdkEvent")).toBeInTheDocument();
     expect(screen.getByText(/Preserve unknown payloads/)).toBeInTheDocument();
     expect(screen.getByText("RawFallbackEvent")).toBeInTheDocument();
@@ -318,7 +332,9 @@ describe("AgentOutputPanel", () => {
     render(<AgentOutputPanel agentId="openhands-agent" />);
 
     expect(screen.getByText("Parallel Actions (2)")).toBeInTheDocument();
-    expect(screen.getByText("Fetch the source and tests in parallel.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Fetch the source and tests in parallel."),
+    ).toBeInTheDocument();
     expect(screen.getByText("resp-parallel")).toBeInTheDocument();
     expect(screen.getByText("call-list")).toBeInTheDocument();
     expect(screen.getByText("call-read-tests")).toBeInTheDocument();
@@ -447,7 +463,9 @@ describe("AgentOutputPanel", () => {
     const groups = screen.getAllByTestId("tool-activity-group");
     expect(groups).toHaveLength(2);
     // Output text renders as bare markdown
-    expect(screen.getAllByText("Here is the plan.").length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText("Here is the plan.").length,
+    ).toBeGreaterThanOrEqual(1);
     // Second group shows tool count
     expect(screen.getByText("1 tool (1 Read)")).toBeInTheDocument();
   });
@@ -465,10 +483,12 @@ describe("AgentOutputPanel", () => {
     addDisplayItems("large-agent", items);
     render(<AgentOutputPanel agentId="large-agent" />);
 
-    expect(screen.getByTestId("display-item-window-indicator")).toHaveTextContent(
-      "20 older items hidden",
-    );
+    expect(
+      screen.getByTestId("display-item-window-indicator"),
+    ).toHaveTextContent("20 older items hidden");
     expect(screen.queryByText("large output 0")).not.toBeInTheDocument();
-    expect(screen.getAllByText("large output 119").length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText("large output 119").length,
+    ).toBeGreaterThanOrEqual(1);
   });
 });

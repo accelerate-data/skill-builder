@@ -219,6 +219,7 @@ export const openHandsPauseEventRecord = {
   event_class: "PauseEvent",
   timestamp: 1_778_000_012,
   event: {
+    source: "user",
     reason: "Waiting for user input.",
   },
 };
