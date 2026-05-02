@@ -12,7 +12,6 @@ Return raw JSON only. Use this exact envelope shape:
 
 {
   "status": "research_complete",
-  "dimensions_selected": 0,
   "question_count": 0,
   "research_output": {
     "version": "1",

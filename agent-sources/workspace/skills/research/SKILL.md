@@ -21,7 +21,6 @@ Return exactly one raw JSON object with this envelope:
 ```json
 {
   "status": "research_complete",
-  "dimensions_selected": 0,
   "question_count": 5,
   "research_output": {
     "version": "1",
@@ -42,11 +41,6 @@ Return exactly one raw JSON object with this envelope:
   }
 }
 ```
-
-`dimensions_selected` is retained only because the workflow envelope schema
-requires it. Set it to the number of relevant research lenses used to form the
-final questions, or `0` for scope/error outputs. Do not include selected lens or
-dimension names anywhere in the returned payload.
 
 The payload must follow `../shared/schemas.md`. In particular:
 
@@ -78,7 +72,6 @@ If `user-context.md` is missing, return the minimal error payload:
 ```json
 {
   "status": "research_complete",
-  "dimensions_selected": 0,
   "question_count": 0,
   "research_output": {
     "version": "1",
@@ -122,7 +115,6 @@ If the score is below `3`, return a minimal scope recommendation:
 ```json
 {
   "status": "research_complete",
-  "dimensions_selected": 0,
   "question_count": 0,
   "research_output": {
     "version": "1",

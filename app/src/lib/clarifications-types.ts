@@ -7,9 +7,6 @@
 export type {
   ClarificationsFile,
   ClarificationsMetadata,
-  ClarificationsResearchPlan,
-  DimensionScore,
-  SelectedDimension,
   ClarificationsWarning,
   ClarificationsError,
   Section,

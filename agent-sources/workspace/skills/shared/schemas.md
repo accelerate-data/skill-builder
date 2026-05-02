@@ -83,10 +83,6 @@ in JSON Schema alone.
 - `status` is always `"research_complete"` -- it signals phase
   completion, not outcome. Outcome is communicated via
   `research_output.metadata.*`.
-- `dimensions_selected` is a compatibility field required by the workflow
-  envelope schema. It counts relevant private lenses used to form the final
-  questions, or `0` for scope/error outputs. It must not be paired with
-  selected lens or dimension details in the returned payload.
 - `question_count` must equal
   `research_output.metadata.question_count`.
 
