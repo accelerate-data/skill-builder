@@ -429,12 +429,8 @@ mod tests {
         setup_skill_dir(dir.path());
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let entries = list_skill_files_with_roots(
-            dir.path().to_str().unwrap(),
-            "my-skill",
-            &roots,
-        )
-        .unwrap();
+        let entries =
+            list_skill_files_with_roots(dir.path().to_str().unwrap(), "my-skill", &roots).unwrap();
 
         // Should have: context/, context/clarifications.json,
         //              skill/, skill/SKILL.md, skill/references/, skill/references/ref1.md
@@ -455,12 +451,8 @@ mod tests {
         setup_skill_dir(dir.path());
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let entries = list_skill_files_with_roots(
-            dir.path().to_str().unwrap(),
-            "my-skill",
-            &roots,
-        )
-        .unwrap();
+        let entries =
+            list_skill_files_with_roots(dir.path().to_str().unwrap(), "my-skill", &roots).unwrap();
 
         let paths: Vec<&str> = entries.iter().map(|e| e.relative_path.as_str()).collect();
         let mut sorted = paths.clone();
@@ -474,12 +466,8 @@ mod tests {
         setup_skill_dir(dir.path());
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let entries = list_skill_files_with_roots(
-            dir.path().to_str().unwrap(),
-            "my-skill",
-            &roots,
-        )
-        .unwrap();
+        let entries =
+            list_skill_files_with_roots(dir.path().to_str().unwrap(), "my-skill", &roots).unwrap();
 
         for entry in &entries {
             assert!(
@@ -496,12 +484,8 @@ mod tests {
         setup_skill_dir(dir.path());
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let entries = list_skill_files_with_roots(
-            dir.path().to_str().unwrap(),
-            "my-skill",
-            &roots,
-        )
-        .unwrap();
+        let entries =
+            list_skill_files_with_roots(dir.path().to_str().unwrap(), "my-skill", &roots).unwrap();
 
         let context_entry = entries
             .iter()
@@ -522,12 +506,9 @@ mod tests {
     fn test_nonexistent_skill_returns_empty() {
         let dir = tempdir().unwrap();
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let entries = list_skill_files_with_roots(
-            dir.path().to_str().unwrap(),
-            "nonexistent",
-            &roots,
-        )
-        .unwrap();
+        let entries =
+            list_skill_files_with_roots(dir.path().to_str().unwrap(), "nonexistent", &roots)
+                .unwrap();
         assert!(entries.is_empty());
     }
 
@@ -538,11 +519,8 @@ mod tests {
         setup_skill_dir(outside.path());
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let result = list_skill_files_with_roots(
-            outside.path().to_str().unwrap(),
-            "my-skill",
-            &roots,
-        );
+        let result =
+            list_skill_files_with_roots(outside.path().to_str().unwrap(), "my-skill", &roots);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("outside allowed roots"));
     }
@@ -703,7 +681,11 @@ mod tests {
         let result = read_file_with_roots(big_file.to_str().unwrap(), &allowed);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("too large"), "expected 'too large' in error: {}", err);
+        assert!(
+            err.contains("too large"),
+            "expected 'too large' in error: {}",
+            err
+        );
     }
 
     #[test]
@@ -717,7 +699,11 @@ mod tests {
         }
         let allowed = vec![dir.path().canonicalize().unwrap()];
         let result = read_file_with_roots(file.to_str().unwrap(), &allowed);
-        assert!(result.is_ok(), "expected Ok for file at exactly 50MB: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "expected Ok for file at exactly 50MB: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -729,7 +715,10 @@ mod tests {
         let result = write_file_with_roots(target.to_str().unwrap(), &content, &allowed);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("too large"), "expected 'too large' in error: {}", err);
+        assert!(
+            err.contains("too large"),
+            "expected 'too large' in error: {}",
+            err
+        );
     }
-
 }

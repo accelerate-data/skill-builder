@@ -2,7 +2,7 @@ use crate::types::ImportedSkill;
 use rusqlite::{Connection, OptionalExtension};
 use std::fs;
 
-use super::skills::{get_skill_master_id_in_plugin, get_skill_master_id_any_plugin};
+use super::skills::{get_skill_master_id_any_plugin, get_skill_master_id_in_plugin};
 
 fn imported_skill_select(prefix: &str) -> String {
     format!(
@@ -56,7 +56,6 @@ pub fn hydrate_skill_metadata(skill: &mut ImportedSkill) {
     }
 }
 
-
 /// Hydrate description for a list of skills from their on-disk SKILL.md files.
 /// Convenience wrapper for batch hydration after releasing the DB lock.
 pub fn hydrate_skills_metadata(skills: &mut [ImportedSkill]) {
@@ -70,7 +69,11 @@ pub fn hydrate_skills_metadata(skills: &mut [ImportedSkill]) {
 ///
 /// The caller must have already created the skill master row and passes
 /// the resulting `skill_master_id`.
-pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill, skill_master_id: i64) -> Result<(), String> {
+pub fn insert_imported_skill(
+    conn: &Connection,
+    skill: &ImportedSkill,
+    skill_master_id: i64,
+) -> Result<(), String> {
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
              purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
@@ -107,7 +110,11 @@ pub fn insert_imported_skill(conn: &Connection, skill: &ImportedSkill, skill_mas
 /// The caller must have already created the skill master row (via `upsert_skill_in_plugin`)
 /// and passes the resulting `skill_master_id`. This function only writes to the
 /// `imported_skills` table and mirrors frontmatter fields back to the skill master.
-pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill, skill_master_id: i64) -> Result<(), String> {
+pub fn upsert_imported_skill(
+    conn: &Connection,
+    skill: &ImportedSkill,
+    skill_master_id: i64,
+) -> Result<(), String> {
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
              purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
@@ -169,8 +176,16 @@ pub fn upsert_imported_skill(conn: &Connection, skill: &ImportedSkill, skill_mas
     Ok(())
 }
 
-pub fn delete_imported_skill_by_name(conn: &Connection, name: &str, plugin_slug: &str) -> Result<(), String> {
-    log::debug!("delete_imported_skill_by_name: name={} plugin={}", name, plugin_slug);
+pub fn delete_imported_skill_by_name(
+    conn: &Connection,
+    name: &str,
+    plugin_slug: &str,
+) -> Result<(), String> {
+    log::debug!(
+        "delete_imported_skill_by_name: name={} plugin={}",
+        name,
+        plugin_slug
+    );
     let s_id = match get_skill_master_id_in_plugin(conn, name, plugin_slug)? {
         Some(id) => id,
         None => return Ok(()), // Skill not in library — nothing to delete
@@ -207,7 +222,6 @@ pub fn get_imported_skill(
     let result = stmt.query_row(rusqlite::params![s_id], row_to_imported_skill);
 
     match result {
-
         Ok(skill) => Ok(Some(skill)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
@@ -217,13 +231,15 @@ pub fn get_imported_skill(
 #[allow(dead_code)]
 pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
-        .prepare(&(imported_skill_select("i") + " WHERE i.is_active = 1 ORDER BY pl.display_name, i.skill_name"))
+        .prepare(
+            &(imported_skill_select("i")
+                + " WHERE i.is_active = 1 ORDER BY pl.display_name, i.skill_name"),
+        )
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
         .query_map([], row_to_imported_skill)
         .map_err(|e| e.to_string())?;
-
 
     let skills: Vec<ImportedSkill> = rows
         .collect::<Result<Vec<_>, _>>()
@@ -239,21 +255,21 @@ pub fn list_imported_skills_filtered(
 ) -> Result<Vec<ImportedSkill>, String> {
     let query = match source_url {
         Some(_) => {
-            imported_skill_select("i") + " WHERE i.marketplace_source_url = ?1 ORDER BY i.imported_at DESC"
+            imported_skill_select("i")
+                + " WHERE i.marketplace_source_url = ?1 ORDER BY i.imported_at DESC"
         }
-        None => {
-            imported_skill_select("i") + " ORDER BY i.imported_at DESC"
-        }
+        None => imported_skill_select("i") + " ORDER BY i.imported_at DESC",
     };
 
-    let mut stmt = conn.prepare(&query).map_err(|e| format!("list_imported_skills_filtered: {}", e))?;
+    let mut stmt = conn
+        .prepare(&query)
+        .map_err(|e| format!("list_imported_skills_filtered: {}", e))?;
 
     let results = match source_url {
         Some(url) => stmt.query_map(rusqlite::params![url], row_to_imported_skill),
         None => stmt.query_map([], row_to_imported_skill),
     }
     .map_err(|e| format!("list_imported_skills_filtered query: {}", e))?;
-
 
     let skills: Vec<ImportedSkill> = results
         .collect::<Result<Vec<_>, _>>()
@@ -274,7 +290,6 @@ pub fn get_imported_skill_by_id(
     let result = stmt.query_row(rusqlite::params![skill_id], row_to_imported_skill);
 
     match result {
-
         Ok(skill) => Ok(Some(skill)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(format!("get_imported_skill_by_id: {}", e)),
@@ -303,7 +318,6 @@ pub fn update_imported_skill_disk_path(
     .map_err(|e| format!("update_imported_skill_disk_path: {}", e))?;
     Ok(())
 }
-
 
 /// Update the content_hash for imported skill rows identified by skill_name.
 pub fn set_imported_skill_content_hash(
@@ -352,14 +366,18 @@ pub fn get_imported_skill_by_name_and_source(
     source_url: &str,
 ) -> Result<Option<ImportedSkill>, String> {
     let mut stmt = conn
-        .prepare(&(imported_skill_select("i")
-            + " WHERE i.skill_name = ?1 AND i.marketplace_source_url = ?2"))
+        .prepare(
+            &(imported_skill_select("i")
+                + " WHERE i.skill_name = ?1 AND i.marketplace_source_url = ?2"),
+        )
         .map_err(|e| format!("get_imported_skill_by_name_and_source: {}", e))?;
 
-    let result = stmt.query_row(rusqlite::params![skill_name, source_url], row_to_imported_skill);
+    let result = stmt.query_row(
+        rusqlite::params![skill_name, source_url],
+        row_to_imported_skill,
+    );
 
     match result {
-
         Ok(skill) => Ok(Some(skill)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(format!("get_imported_skill_by_name_and_source: {}", e)),
@@ -372,8 +390,15 @@ pub fn get_imported_skill_by_name_and_source(
 /// Production code must call `upsert_skill_in_plugin` + `insert_imported_skill` separately.
 #[cfg(test)]
 pub fn test_insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
-    let plugin_slug = skill.plugin_slug.as_deref().unwrap_or(crate::skill_paths::DEFAULT_PLUGIN_SLUG);
-    let source = if skill.marketplace_source_url.is_some() { "marketplace" } else { "imported" };
+    let plugin_slug = skill
+        .plugin_slug
+        .as_deref()
+        .unwrap_or(crate::skill_paths::DEFAULT_PLUGIN_SLUG);
+    let source = if skill.marketplace_source_url.is_some() {
+        "marketplace"
+    } else {
+        "imported"
+    };
     let skill_master_id = super::skills::upsert_skill_with_source_in_plugin(
         conn,
         &skill.skill_name,
@@ -387,7 +412,10 @@ pub fn test_insert_imported_skill(conn: &Connection, skill: &ImportedSkill) -> R
 /// Return the `disk_path` for an imported skill regardless of which plugin owns it.
 /// Returns `None` if the skill has no `imported_skills` row (i.e. it is a builder skill).
 #[allow(dead_code)]
-pub fn get_imported_skill_disk_path(conn: &Connection, skill_name: &str) -> Result<Option<String>, String> {
+pub fn get_imported_skill_disk_path(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<Option<String>, String> {
     let s_id = match get_skill_master_id_any_plugin(conn, skill_name)? {
         Some(id) => id,
         None => return Ok(None),

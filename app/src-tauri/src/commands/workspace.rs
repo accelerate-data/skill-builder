@@ -106,11 +106,17 @@ fn migrate_context_from_skills_path(workspace_path: &str, skills_path: &str) {
             for skill_entry in skill_entries.flatten() {
                 let skill_name = skill_entry.file_name();
                 let skill_name_str = skill_name.to_string_lossy();
-                if skill_name_str.starts_with('.') { continue; }
+                if skill_name_str.starts_with('.') {
+                    continue;
+                }
                 let skill_dir = skill_entry.path();
-                if !skill_dir.is_dir() { continue; }
+                if !skill_dir.is_dir() {
+                    continue;
+                }
                 let legacy_context = skill_dir.join("context");
-                if !legacy_context.is_dir() { continue; }
+                if !legacy_context.is_dir() {
+                    continue;
+                }
                 let target_context = Path::new(workspace_path)
                     .join(plugin_slug)
                     .join(skill_name_str.as_ref())
@@ -122,7 +128,9 @@ fn migrate_context_from_skills_path(workspace_path: &str, skills_path: &str) {
         if !found_child {
             // Legacy flat layout: {skill}/context/ — flat skills belonged to the default plugin
             let legacy_context = dir_path.join("context");
-            if !legacy_context.is_dir() { continue; }
+            if !legacy_context.is_dir() {
+                continue;
+            }
             let target_context = Path::new(workspace_path)
                 .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
                 .join(dir_name.as_ref())
@@ -210,7 +218,9 @@ fn move_context_files(legacy_context: &Path, target_context: &Path) {
 /// (`{workspace}/{plugin}/{skill}/skill-snapshot/`).
 fn cleanup_stale_snapshots(workspace_path: &str) {
     let base = Path::new(workspace_path);
-    let Ok(entries) = fs::read_dir(base) else { return };
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_dir() {
@@ -232,7 +242,9 @@ fn cleanup_stale_snapshots(workspace_path: &str) {
             }
         }
         // Plugin layout: {workspace}/{plugin}/{skill}/skill-snapshot/
-        let Ok(children) = fs::read_dir(&path) else { continue };
+        let Ok(children) = fs::read_dir(&path) else {
+            continue;
+        };
         for child in children.flatten() {
             let child_path = child.path();
             if !child_path.is_dir() {
@@ -279,7 +291,10 @@ fn migrate_to_marketplace_layout(skills_path: &str) {
     if locations.is_empty() {
         // Nothing to migrate — just write manifests
         if let Err(e) = crate::marketplace_manifest::write_marketplace_json(root) {
-            log::warn!("[migrate_marketplace] failed to write marketplace.json: {}", e);
+            log::warn!(
+                "[migrate_marketplace] failed to write marketplace.json: {}",
+                e
+            );
         }
         return;
     }
@@ -291,12 +306,14 @@ fn migrate_to_marketplace_layout(skills_path: &str) {
     );
 
     // Collect old plugin directory paths for cleanup
-    let mut old_plugin_dirs: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
+    let mut old_plugin_dirs: std::collections::HashSet<std::path::PathBuf> =
+        std::collections::HashSet::new();
 
     // Move each skill to the plugin layout using resolve_skill_dir
     // (default plugin: root/skills/{name}, others: root/{slug}/{name})
     for loc in &locations {
-        let new_dir = crate::skill_paths::resolve_skill_dir(root, &loc.plugin_slug, &loc.skill_name);
+        let new_dir =
+            crate::skill_paths::resolve_skill_dir(root, &loc.plugin_slug, &loc.skill_name);
 
         if new_dir.exists() {
             log::debug!(
@@ -406,10 +423,9 @@ pub fn init_workspace(
     // Purge stale bundled skills then seed current ones (filesystem-only, no DB)
     {
         let bundled_skills_dir = super::workflow::resolve_bundled_skills_dir(app);
-        if let Err(e) = super::imported_skills::purge_stale_bundled_skills(
-            &workspace_path,
-            &bundled_skills_dir,
-        ) {
+        if let Err(e) =
+            super::imported_skills::purge_stale_bundled_skills(&workspace_path, &bundled_skills_dir)
+        {
             log::warn!("purge_stale_bundled_skills: failed: {}", e);
         }
         if let Err(e) =
@@ -424,9 +440,7 @@ pub fn init_workspace(
         let _conn = db.0.lock().map_err(|e| e.to_string())?;
         let (_, claude_md_src) = super::workflow::resolve_prompt_source_dirs_public(app);
         if claude_md_src.is_file() {
-            if let Err(e) =
-                super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path)
-            {
+            if let Err(e) = super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path) {
                 log::warn!("Failed to rebuild CLAUDE.md on startup: {}", e);
             }
         } else {
@@ -510,9 +524,7 @@ pub fn clear_workspace(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Resul
         let _conn = db.0.lock().map_err(|e| e.to_string())?;
         let (_, claude_md_src) = super::workflow::resolve_prompt_source_dirs_public(&app);
         if claude_md_src.is_file() {
-            if let Err(e) =
-                super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path)
-            {
+            if let Err(e) = super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path) {
                 log::warn!("Failed to rebuild CLAUDE.md on clear: {}", e);
             }
         }
@@ -736,7 +748,10 @@ mod tests {
 
         cleanup_stale_snapshots(workspace.path().to_str().unwrap());
 
-        assert!(skill_dir.join("references").exists(), "non-snapshot dirs should remain");
+        assert!(
+            skill_dir.join("references").exists(),
+            "non-snapshot dirs should remain"
+        );
     }
 
     // --- migrate_to_marketplace_layout tests ---
@@ -758,8 +773,14 @@ mod tests {
         migrate_to_marketplace_layout(root.to_str().unwrap());
 
         // Skill should still be at the same path
-        assert!(skill.join("SKILL.md").is_file(), "SKILL.md should remain in place");
-        assert!(skill.join("references").is_dir(), "references/ should remain");
+        assert!(
+            skill.join("SKILL.md").is_file(),
+            "SKILL.md should remain in place"
+        );
+        assert!(
+            skill.join("references").is_dir(),
+            "references/ should remain"
+        );
         assert!(root.join("analytics").is_dir(), "plugin dir should exist");
     }
 
@@ -812,7 +833,10 @@ mod tests {
         migrate_to_marketplace_layout(root.to_str().unwrap());
 
         // Should create marketplace.json even with no skills
-        assert!(root.join(".claude-plugin").join("marketplace.json").is_file());
+        assert!(root
+            .join(".claude-plugin")
+            .join("marketplace.json")
+            .is_file());
     }
 
     #[test]
@@ -835,10 +859,18 @@ mod tests {
 
         // Flat skill should be under default plugin (directly, no inner skills/ nesting)
         let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-        assert!(root.join(default_slug).join("my-skill").join("SKILL.md").is_file());
+        assert!(root
+            .join(default_slug)
+            .join("my-skill")
+            .join("SKILL.md")
+            .is_file());
 
         // Nested skill should stay under its plugin (already at canonical path)
-        assert!(root.join("analytics").join("report").join("SKILL.md").is_file());
+        assert!(root
+            .join("analytics")
+            .join("report")
+            .join("SKILL.md")
+            .is_file());
 
         // Both should be discoverable
         let locations = crate::skill_paths::enumerate_skill_locations(root).unwrap();

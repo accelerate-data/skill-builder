@@ -18,6 +18,8 @@ export interface SidecarConfig {
   mode?: "one-shot" | "streaming";
   prompt: string;
   systemPrompt?: string;
+  taskKind?: string;
+  userMessageSuffix?: string;
   model?: string;
   modelBaseUrl?: string;
   llm?: OpenHandsLlmConfig;
@@ -182,6 +184,8 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   // Optional string fields
   assertOptString(c, "model");
   assertOptString(c, "modelBaseUrl");
+  assertOptString(c, "taskKind");
+  assertOptString(c, "userMessageSuffix");
   assertOptString(c, "agentName");
   assertOptString(c, "fallbackModel");
   assertOptString(c, "skillName");

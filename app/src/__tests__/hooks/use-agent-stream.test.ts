@@ -109,6 +109,114 @@ describe("initAgentStream", () => {
     expect(run.displayItems[0].outputText).toBe("Hello world");
   });
 
+  it("adds OpenHands conversation_event messages without requiring display items", async () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    await initAgentStream();
+
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "agent-1",
+        message: {
+          type: "conversation_event",
+          runtime: "openhands",
+          conversation_id: "conv-1",
+          event_class: "MessageEvent",
+          timestamp: 1234,
+          event: {
+            source: "assistant",
+            message: "Scope looks focused.",
+          },
+        },
+      },
+    });
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.displayItems).toHaveLength(0);
+    expect(run.conversationEvents).toHaveLength(1);
+    expect(run.conversationEvents[0]).toMatchObject({
+      type: "conversation_event",
+      runtime: "openhands",
+      conversationId: "conv-1",
+      eventClass: "MessageEvent",
+      timestamp: 1234,
+      event: {
+        source: "assistant",
+        message: "Scope looks focused.",
+      },
+    });
+  });
+
+  it("updates OpenHands run status from terminal conversation_state messages", async () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    await initAgentStream();
+
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "agent-1",
+        message: {
+          type: "conversation_state",
+          runtime: "openhands",
+          conversation_id: "conv-1",
+          status: "running",
+          timestamp: 1234,
+        },
+      },
+    });
+
+    expect(useAgentStore.getState().runs["agent-1"].status).toBe("running");
+
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "agent-1",
+        message: {
+          type: "conversation_state",
+          runtime: "openhands",
+          conversation_id: "conv-1",
+          status: "completed",
+          timestamp: 1235,
+        },
+      },
+    });
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.status).toBe("completed");
+    expect(run.endTime).toBeDefined();
+    expect(run.conversationState).toMatchObject({
+      type: "conversation_state",
+      runtime: "openhands",
+      conversationId: "conv-1",
+      status: "completed",
+      timestamp: 1235,
+    });
+  });
+
+  it("auto-creates runs for OpenHands conversation events arriving before startRun", async () => {
+    await initAgentStream();
+
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "early-openhands-agent",
+        message: {
+          type: "conversation_event",
+          runtime: "openhands",
+          conversation_id: "conv-early",
+          event_class: "ActionEvent",
+          event: {
+            tool_name: "terminal",
+            thought: "Checking repository state.",
+          },
+        },
+      },
+    });
+
+    useAgentStore.getState().startRun("early-openhands-agent", "sonnet");
+
+    const run = useAgentStore.getState().runs["early-openhands-agent"];
+    expect(run.model).toBe("sonnet");
+    expect(run.conversationEvents).toHaveLength(1);
+    expect(run.conversationEvents[0].eventClass).toBe("ActionEvent");
+  });
+
   it("adds refine question messages to the refine store", async () => {
     await initAgentStream();
 

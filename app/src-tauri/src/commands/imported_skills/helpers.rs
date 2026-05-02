@@ -92,10 +92,7 @@ pub(crate) fn find_skill_md(
 /// If SKILL.md is at "dirname/SKILL.md", the prefix is "dirname/".
 /// If at root, the prefix is empty.
 pub(crate) fn get_archive_prefix(skill_md_path: &str) -> String {
-    let parts: Vec<&str> = skill_md_path
-        .split('/')
-        .filter(|p| !p.is_empty())
-        .collect();
+    let parts: Vec<&str> = skill_md_path.split('/').filter(|p| !p.is_empty()).collect();
     if parts.len() == 2 {
         format!("{}/", parts[0])
     } else {
@@ -183,4 +180,3 @@ pub(crate) fn extract_archive(
     }
     Ok(())
 }
-

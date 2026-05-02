@@ -45,11 +45,8 @@ pub fn write_user_context_file(
         return;
     }
 
-    let workspace_dir = crate::skill_paths::workspace_skill_dir(
-        Path::new(workspace_path),
-        plugin_slug,
-        skill_name,
-    );
+    let workspace_dir =
+        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     // Safety net: create directory if missing
     if let Err(e) = std::fs::create_dir_all(&workspace_dir) {
         log::warn!(

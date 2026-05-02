@@ -1,5 +1,5 @@
 """
-OpenHands Python runner spike.
+OpenHands Python runner.
 
 Reads one JSON request object from stdin, runs the agent, emits JSONL events
 on stdout, then exits.
@@ -7,18 +7,21 @@ on stdout, then exits.
 stdout: JSONL protocol only (one JSON object per line)
 stderr: debug/progress output
 
-This is a dev-only spike — do not integrate into Tauri config or build scripts.
+Protocol records are OpenHands-native conversation records:
+conversation_state and conversation_event.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import signal
 import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 os.environ.setdefault("OPENHANDS_SUPPRESS_BANNER", "1")
 
@@ -26,10 +29,28 @@ os.environ.setdefault("OPENHANDS_SUPPRESS_BANNER", "1")
 # Protocol helpers
 # ---------------------------------------------------------------------------
 
+_PROTOCOL_STDOUT: TextIO | None = None
+_TERMINAL_STATUSES = {"completed", "error", "cancelled"}
+
+
+def _protocol_stream() -> TextIO:
+    return _PROTOCOL_STDOUT or sys.stdout
+
+
+@contextlib.contextmanager
+def _capture_protocol_stdout():
+    global _PROTOCOL_STDOUT
+    previous = _PROTOCOL_STDOUT
+    _PROTOCOL_STDOUT = sys.stdout
+    try:
+        yield
+    finally:
+        _PROTOCOL_STDOUT = previous
+
 
 def emit(obj: dict[str, Any]) -> None:
     """Emit one JSONL event to stdout. Never write anything else to stdout."""
-    print(json.dumps(obj, separators=(",", ":")), flush=True)
+    print(json.dumps(obj, separators=(",", ":")), file=_protocol_stream(), flush=True)
 
 
 def _redact(text: str, secrets: str | list[str]) -> str:
@@ -50,28 +71,73 @@ def now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def emit_openhands_event(event_kind: str, **kwargs: Any) -> None:
-    emit({"type": "openhands_event", "event_kind": event_kind, "timestamp": now_ms(), **kwargs})
+class _RedactingStderr:
+    def __init__(self, secrets: list[str]):
+        self.secrets = secrets
+
+    def write(self, text: str) -> int:
+        sys.stderr.write(_redact(str(text), self.secrets))
+        return len(text)
+
+    def flush(self) -> None:
+        sys.stderr.flush()
 
 
-def emit_result(
-    status: str,
-    result_text: str | None = None,
-    structured_output: Any = None,
-    error_message: str | None = None,
-    error_subtype: str | None = None,
-) -> None:
+def _redact_value(value: Any, secrets: list[str]) -> Any:
+    if isinstance(value, str):
+        return _redact(value, secrets)
+    if isinstance(value, list):
+        return [_redact_value(item, secrets) for item in value]
+    if isinstance(value, tuple):
+        return [_redact_value(item, secrets) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _redact_value(item, secrets) for key, item in value.items()}
+    return value
+
+
+def _json_serializable(value: Any) -> Any:
+    try:
+        return json.loads(json.dumps(value, default=str))
+    except Exception:
+        return str(value)
+
+
+def _serialize_sdk_event(event: Any) -> Any:
+    if hasattr(event, "model_dump"):
+        try:
+            return _json_serializable(event.model_dump(mode="json"))
+        except Exception:
+            pass
+    if hasattr(event, "dict"):
+        try:
+            return _json_serializable(event.dict())
+        except Exception:
+            pass
+    return str(event)
+
+
+def emit_conversation_event(event: Any, secrets: list[str]) -> None:
+    emit(
+        {
+            "type": "conversation_event",
+            "event_class": event.__class__.__name__,
+            "timestamp": now_ms(),
+            "event": _redact_value(_serialize_sdk_event(event), secrets),
+        }
+    )
+
+
+def emit_conversation_state(status: str, secrets: list[str], **kwargs: Any) -> None:
     payload: dict[str, Any] = {
-        "type": "openhands_result",
+        "type": "conversation_state",
+        "runtime": "openhands",
+        "agent_id": "skill-creator",
         "status": status,
-        "result_text": result_text,
-        "structured_output": structured_output,
         "timestamp": now_ms(),
     }
-    if error_message is not None:
-        payload["error_message"] = error_message
-    if error_subtype is not None:
-        payload["error_subtype"] = error_subtype
+    if status in _TERMINAL_STATUSES:
+        payload["error_detail"] = None
+    payload.update(_redact_value(kwargs, secrets))
     emit(payload)
 
 
@@ -84,7 +150,9 @@ _OPENHANDS_IMPORT_ERROR: str | None = None
 
 try:
     from openhands.sdk import Agent, AgentContext, Conversation, LLM, Tool  # type: ignore[import]
-    from openhands.sdk.skills import load_project_skills, load_skills_from_dir  # type: ignore[import]
+    from openhands.sdk.conversation.response_utils import get_agent_final_response  # type: ignore[import]
+    from openhands.sdk.skills import load_skills_from_dir  # type: ignore[import]
+    from openhands.sdk.workspace import LocalWorkspace  # type: ignore[import]
     from openhands.tools.file_editor import FileEditorTool  # type: ignore[import]
     from openhands.tools.task_tracker import TaskTrackerTool  # type: ignore[import]
     from openhands.tools.terminal import TerminalTool  # type: ignore[import]
@@ -95,7 +163,9 @@ except ImportError as exc:
         "Install dev dependencies from app/sidecar/openhands/requirements.txt"
     )
     Agent = AgentContext = Conversation = LLM = Tool = None  # type: ignore[assignment]
-    load_project_skills = load_skills_from_dir = None  # type: ignore[assignment]
+    get_agent_final_response = None  # type: ignore[assignment]
+    LocalWorkspace = None  # type: ignore[assignment]
+    load_skills_from_dir = None  # type: ignore[assignment]
     FileEditorTool = TaskTrackerTool = TerminalTool = None  # type: ignore[assignment]
 
 
@@ -121,6 +191,11 @@ def parse_request(raw: str) -> dict[str, Any]:
     mode = data.get("mode", "one-shot")
     if mode != "one-shot":
         raise ValueError(f"Unsupported mode: {mode!r} (only 'one-shot' is supported)")
+    agent_name = data.get("agentName", "skill-creator")
+    if agent_name != "skill-creator":
+        raise ValueError(
+            f"Unsupported agentName: {agent_name!r} (only 'skill-creator' is supported)"
+        )
     return data
 
 
@@ -150,13 +225,7 @@ def _redaction_secrets(request: dict[str, Any]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _read_agent_file(workspace_skill_dir: str, agent_name: str | None) -> str:
-    if not agent_name:
-        return ""
-    path = Path(workspace_skill_dir) / ".agents" / "agents" / f"{agent_name}.md"
-    if not path.is_file():
-        return ""
-    content = path.read_text(encoding="utf-8")
+def _strip_yaml_frontmatter(content: str) -> str:
     if content.startswith("---"):
         parts = content.split("---", 2)
         if len(parts) == 3:
@@ -164,21 +233,24 @@ def _read_agent_file(workspace_skill_dir: str, agent_name: str | None) -> str:
     return content.strip()
 
 
+def _read_skill_creator_agent_file(workspace_skill_dir: str) -> str:
+    path = Path(workspace_skill_dir) / ".agents" / "agents" / "skill-creator.md"
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing OpenHands agent file: {path}")
+    content = path.read_text(encoding="utf-8")
+    return _strip_yaml_frontmatter(content)
+
+
 def _load_agent_skills(workspace_skill_dir: str) -> list[Any]:
-    skills: list[Any] = []
-    if load_project_skills is not None:
-        try:
-            skills.extend(load_project_skills(workspace_dir=workspace_skill_dir))
-        except Exception as exc:
-            print(f"[openhands-runner] project skill load warning: {exc}", file=sys.stderr)
     skills_dir = Path(workspace_skill_dir) / ".agents" / "skills"
-    if skills_dir.is_dir() and load_skills_from_dir is not None:
-        try:
-            _, _, agent_skills = load_skills_from_dir(str(skills_dir))
-            skills.extend(agent_skills.values())
-        except Exception as exc:
-            print(f"[openhands-runner] AgentSkills load warning: {exc}", file=sys.stderr)
-    return skills
+    if load_skills_from_dir is None:
+        return []
+    try:
+        _, _, agent_skills = load_skills_from_dir(str(skills_dir))
+        return list(agent_skills.values())
+    except Exception as exc:
+        print(f"[openhands-runner] AgentSkills load warning: {exc}", file=sys.stderr)
+        return []
 
 
 def _normalize_tool_name(name: str) -> str:
@@ -227,52 +299,69 @@ def _build_llm_kwargs(request: dict[str, Any]) -> dict[str, Any]:
         for field, kwarg in field_map.items()
         if llm_config.get(field) is not None
     }
+    kwargs["model"] = _normalize_model_for_litellm(kwargs["model"], kwargs.get("base_url"))
     if kwargs.get("reasoning_effort") == "auto":
         del kwargs["reasoning_effort"]
     return kwargs
 
 
+def _normalize_model_for_litellm(model: str, base_url: Any) -> str:
+    """Map app catalog provider ids to LiteLLM provider ids."""
+    if model.startswith("opencode-go/") and isinstance(base_url, str) and base_url.strip():
+        return f"openai/{model.removeprefix('opencode-go/')}"
+    return model
+
+
 def run_via_openhands_sdk(request: dict[str, Any]) -> str:
-    if any(x is None for x in [Agent, AgentContext, Conversation, LLM, Tool]):
+    if any(x is None for x in [Agent, AgentContext, Conversation, LLM, Tool, LocalWorkspace]):
         raise RuntimeError(_OPENHANDS_IMPORT_ERROR or "OpenHands SDK not available")
 
     prompt: str = request["prompt"]
-    agent_name: str | None = request.get("agentName")
+    agent_name = "skill-creator"
     workspace_skill_dir: str = request.get("workspaceSkillDir") or request.get("workspaceRootDir") or "."
     llm_kwargs = _build_llm_kwargs(request)
+    secrets = _redaction_secrets(request)
 
     print(
         f"[openhands-runner] starting SDK conversation model={llm_kwargs['model']} agent={agent_name or 'default'}",
         file=sys.stderr,
     )
 
-    llm = LLM(**llm_kwargs)
+    with contextlib.redirect_stdout(_RedactingStderr(secrets)):
+        llm = LLM(**llm_kwargs)
 
-    agent_instructions = _read_agent_file(workspace_skill_dir, agent_name)
-    skills = _load_agent_skills(workspace_skill_dir)
-    agent_context = AgentContext(
-        skills=skills,
-        system_message_suffix=agent_instructions or None,
-    )
-    agent = Agent(
-        llm=llm,
-        tools=_build_tools(request),
-        agent_context=agent_context,
-    )
-    conversation = Conversation(agent=agent, workspace=workspace_skill_dir)
+        agent_instructions = _read_skill_creator_agent_file(workspace_skill_dir)
+        skills = _load_agent_skills(workspace_skill_dir)
+        agent_context = AgentContext(
+            skills=skills,
+            system_message_suffix=agent_instructions or None,
+            user_message_suffix=request.get("userMessageSuffix") or "",
+            load_public_skills=False,
+        )
+        agent = Agent(
+            llm=llm,
+            tools=_build_tools(request),
+            agent_context=agent_context,
+        )
+        workspace = LocalWorkspace(working_dir=workspace_skill_dir)
+        conversation = Conversation(
+            agent=agent,
+            workspace=workspace,
+            callbacks=[lambda event: emit_conversation_event(event, secrets)],
+            max_iteration_per_run=parse_max_iterations(request),
+            visualizer=None,
+            delete_on_close=False,
+        )
 
-    emit_openhands_event("message", text=f"Starting OpenHands agent: {agent_name or 'default'}")
-    conversation.send_message(prompt)
-    try:
-        result = conversation.run(max_iterations=parse_max_iterations(request))
-    except TypeError:
+    with contextlib.redirect_stdout(_RedactingStderr(secrets)):
+        conversation.send_message(prompt)
         result = conversation.run()
 
-    return _extract_final_text(result) or _extract_final_text(conversation)
+        return _extract_final_text(result) or _extract_final_text(conversation)
 
 
 def _extract_final_text(source: Any) -> str:
-    """Pull the final assistant message text from an OpenHands state/conversation object."""
+    """Pull the final assistant message text from the OpenHands typed event log."""
     if source is None:
         return ""
 
@@ -285,12 +374,17 @@ def _extract_final_text(source: Any) -> str:
         return ""
 
     events = list(events_source)
-    for event in reversed(events):
-        # AgentFinishAction / MessageAction both have a .message attribute
-        msg = getattr(event, "message", None) or getattr(event, "content", None)
-        if msg and isinstance(msg, str) and msg.strip():
-            return msg.strip()
+    if get_agent_final_response is None:
+        final_response = ""
+    else:
+        final_response = (get_agent_final_response(events) or "").strip()
+    if final_response:
+        return final_response
 
+    for event in reversed(events):
+        msg = getattr(event, "message", None) or getattr(event, "content", None)
+        if isinstance(msg, str) and msg.strip():
+            return msg.strip()
     return ""
 
 
@@ -300,54 +394,79 @@ def _extract_final_text(source: Any) -> str:
 
 
 def run(request: dict[str, Any]) -> None:
-    result_text: str = ""
-    run_error: str | None = None
     secrets = _redaction_secrets(request)
+    terminal_emitted = False
 
-    try:
-        result_text = run_via_openhands_sdk(request)
-        emit_openhands_event(
-            "tool_call",
-            tool_name="OpenHandsSDK",
-            summary="Agent run completed",
-        )
-    except Exception as exc:
-        print(
-            f"[openhands-runner] SDK run failed: {_redact(str(exc), secrets)}",
-            file=sys.stderr,
-        )
-        _print_redacted_exception(exc, secrets)
-        run_error = _redact(str(exc), secrets)
+    def emit_terminal(state: str, **kwargs: Any) -> None:
+        nonlocal terminal_emitted
+        if terminal_emitted:
+            return
+        terminal_emitted = True
+        emit_conversation_state(state, secrets, **kwargs)
 
-    if run_error is not None:
-        emit_result(status="error", error_message=run_error)
-        return
+    with _capture_protocol_stdout():
+        emit_conversation_state("starting", secrets)
+        try:
+            emit_conversation_state("running", secrets)
+            result_text = run_via_openhands_sdk(request)
+        except KeyboardInterrupt:
+            print("[openhands-runner] SDK run cancelled", file=sys.stderr)
+            emit_terminal("cancelled", error_detail="Run cancelled")
+            return
+        except Exception as exc:
+            print(
+                f"[openhands-runner] SDK run failed: {_redact(str(exc), secrets)}",
+                file=sys.stderr,
+            )
+            _print_redacted_exception(exc, secrets)
+            emit_terminal("error", error_detail=str(exc))
+            return
 
-    emit_result(status="success", result_text=result_text, structured_output=None)
+        emit_terminal("completed", result_text=result_text, structured_output=None)
+
+
+def _emit_startup_error(error_message: str, secrets: list[str] | None = None) -> None:
+    redaction_secrets = secrets or []
+    terminal_emitted = False
+
+    def emit_terminal(state: str, **kwargs: Any) -> None:
+        nonlocal terminal_emitted
+        if terminal_emitted:
+            return
+        terminal_emitted = True
+        emit_conversation_state(state, redaction_secrets, **kwargs)
+
+    with _capture_protocol_stdout():
+        emit_conversation_state("starting", redaction_secrets)
+        emit_terminal("error", error_detail=error_message)
+
+
+def _raise_keyboard_interrupt(_signum: int, _frame: Any) -> None:
+    raise KeyboardInterrupt
 
 
 def main() -> None:
     print("[openhands-runner] reading request from stdin", file=sys.stderr)
     raw = sys.stdin.read()
 
-    if _OPENHANDS_IMPORT_ERROR is not None:
-        print(
-            f"[openhands-runner] import error: {_OPENHANDS_IMPORT_ERROR}",
-            file=sys.stderr,
-        )
-        emit_result(
-            status="error",
-            error_message=_OPENHANDS_IMPORT_ERROR,
-        )
-        return
-
     try:
         request = parse_request(raw)
     except ValueError as exc:
-        emit_result(status="error", error_message=str(exc))
+        _emit_startup_error(str(exc))
+        return
+
+    if _OPENHANDS_IMPORT_ERROR is not None:
+        secrets = _redaction_secrets(request)
+        print(
+            f"[openhands-runner] import error: {_redact(_OPENHANDS_IMPORT_ERROR, secrets)}",
+            file=sys.stderr,
+        )
+        _emit_startup_error(_OPENHANDS_IMPORT_ERROR, secrets)
         return
 
     try:
+        previous_sigterm = signal.getsignal(signal.SIGTERM)
+        signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
         run(request)
     except Exception as exc:
         secrets = _redaction_secrets(request) if "request" in locals() else []
@@ -356,13 +475,10 @@ def main() -> None:
             file=sys.stderr,
         )
         _print_redacted_exception(exc, secrets)
-        emit_result(
-            status="error",
-            error_message=_redact(
-                str(exc),
-                secrets,
-            ),
-        )
+        _emit_startup_error(str(exc), secrets)
+    finally:
+        if "previous_sigterm" in locals():
+            signal.signal(signal.SIGTERM, previous_sigterm)
 
 
 if __name__ == "__main__":

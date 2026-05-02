@@ -3,7 +3,10 @@ use rusqlite::{Connection, OptionalExtension};
 use crate::types::{WorkflowRunRow, WorkflowStepRow};
 
 use super::locks::check_pid_alive;
-use super::skills::{delete_skill_in_plugin, get_skill_master_id_any_plugin, get_skill_master_id_in_plugin, upsert_skill};
+use super::skills::{
+    delete_skill_in_plugin, get_skill_master_id_any_plugin, get_skill_master_id_in_plugin,
+    upsert_skill,
+};
 
 // --- Workflow Run ---
 
@@ -166,12 +169,20 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
         .map_err(|e| e.to_string())
 }
 
-pub fn delete_workflow_run(conn: &Connection, skill_name: &str, plugin_slug: &str) -> Result<(), String> {
+pub fn delete_workflow_run(
+    conn: &Connection,
+    skill_name: &str,
+    plugin_slug: &str,
+) -> Result<(), String> {
     // Look up FK ids before deleting the parent rows
     let wr_id = get_workflow_run_id(conn, skill_name)?
         .ok_or_else(|| format!("Workflow run not found for skill '{}'", skill_name))?;
-    let s_id = get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)?
-        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
+    let s_id = get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)?.ok_or_else(|| {
+        format!(
+            "Skill '{}' not found in plugin '{}'",
+            skill_name, plugin_slug
+        )
+    })?;
 
     // Delete workflow-state child rows by FK columns only.
     // Usage history tables (agent_runs/workflow_sessions) are intentionally retained.

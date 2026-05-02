@@ -3,13 +3,16 @@ Eval mode: evaluate this create-skill form submission using the Skill Builder sc
 Skill name: {{skill_name}}
 Skill description: {{description}}
 Purpose: {{purpose}}
-What Claude needs to know: {{context_questions}}
+Additional context: {{context_questions}}
 Industry: {{industry}}
 
 Contract:
 - Broad recognizable business domains with multiple distinct processes are `too-broad`.
+- `too-broad` takes precedence over name repair when the name or description references a broad business function and the description spans multiple processes. Example: `sales-analysis` with revenue trends, pipeline health, rep performance, churn risk, and renewal pipeline health is `too-broad`, not `name-needs-improvement`.
+- For `too-broad`, return 3-5 suggested skills. Never return an empty `suggested_skills` array for `too-broad`.
 - Unclear domain is `both-need-improvement`.
-- Focused description with bad name is `name-needs-improvement`.
+- Focused description with bad name is `name-needs-improvement`, not `focused`. Bad names include names that do not start with a present-participle gerund. Example: `sales-report` is not a valid gerund name, even when the description is focused.
+- For `name-needs-improvement`, return exactly one suggested skill with a corrected gerund kebab-case name and the original focused description.
 - Context overrides breadth only when it explicitly establishes the listed activities as one company-specific workflow.
 - Focused submissions return no suggested skills.
 

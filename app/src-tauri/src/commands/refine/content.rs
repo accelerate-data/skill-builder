@@ -33,7 +33,11 @@ pub fn get_skill_content_for_refine(
     _workspace_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillFileContent>, String> {
-    log::info!("[get_skill_content_for_refine] skill={} plugin={}", skill_name, plugin_slug);
+    log::info!(
+        "[get_skill_content_for_refine] skill={} plugin={}",
+        skill_name,
+        plugin_slug
+    );
     validate_skill_name(&skill_name)?;
     let skills_path = resolve_skills_path(&db).map_err(|e| {
         log::error!(
@@ -43,7 +47,10 @@ pub fn get_skill_content_for_refine(
         e
     })?;
     let skill_root = resolve_skill_output_dir(&db, &skill_name, &skills_path).map_err(|e| {
-        log::error!("[get_skill_content_for_refine] Failed to resolve skill output dir: {}", e);
+        log::error!(
+            "[get_skill_content_for_refine] Failed to resolve skill output dir: {}",
+            e
+        );
         e
     })?;
     get_skill_content_from_dir(&skill_root).map_err(|e| {
@@ -69,9 +76,14 @@ pub(crate) fn get_skill_content_inner_for_plugin(
     get_skill_content_from_dir(&skill_root)
 }
 
-pub(crate) fn get_skill_content_from_dir(skill_root: &Path) -> Result<Vec<SkillFileContent>, String> {
+pub(crate) fn get_skill_content_from_dir(
+    skill_root: &Path,
+) -> Result<Vec<SkillFileContent>, String> {
     if !skill_root.exists() {
-        return Err(format!("Skill directory not found at {}", skill_root.display()));
+        return Err(format!(
+            "Skill directory not found at {}",
+            skill_root.display()
+        ));
     }
 
     log::debug!(

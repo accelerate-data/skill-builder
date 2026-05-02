@@ -81,6 +81,51 @@ describe("parseSidecarConfig", () => {
     expect(result.mode).toBe("one-shot");
   });
 
+  it("accepts scope review task metadata for OpenHands requests", () => {
+    const result = parseSidecarConfig({
+      prompt: "review this scope",
+      apiKey: "key",
+      workspaceRootDir: TEST_CWD,
+      workspaceSkillDir: TEST_CWD,
+      pluginSlug: "demo",
+      runtimeProvider: "openhands",
+      mode: "one-shot",
+      agentName: "skill-creator",
+      taskKind: "scope_review",
+      userMessageSuffix: "Follow the current user message exactly.",
+      llm: {
+        model: "claude-sonnet-4-5",
+      },
+    });
+
+    expect(result.taskKind).toBe("scope_review");
+    expect(result.userMessageSuffix).toBe(
+      "Follow the current user message exactly.",
+    );
+    expect(result.agentName).toBe("skill-creator");
+  });
+
+  it("validates taskKind and userMessageSuffix as optional strings", () => {
+    const baseConfig = {
+      prompt: "review this scope",
+      apiKey: "key",
+      workspaceRootDir: TEST_CWD,
+      workspaceSkillDir: TEST_CWD,
+      pluginSlug: "demo",
+      runtimeProvider: "openhands",
+      llm: {
+        model: "claude-sonnet-4-5",
+      },
+    };
+
+    expect(() =>
+      parseSidecarConfig({ ...baseConfig, taskKind: 42 }),
+    ).toThrow("taskKind must be a string");
+    expect(() =>
+      parseSidecarConfig({ ...baseConfig, userMessageSuffix: 42 }),
+    ).toThrow("userMessageSuffix must be a string");
+  });
+
   it("throws when mode is invalid", () => {
     expect(() =>
       parseSidecarConfig({

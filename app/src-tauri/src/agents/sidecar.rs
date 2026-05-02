@@ -1,4 +1,7 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::time::Duration;
+use tauri::Listener;
 
 use crate::types::SecretString;
 
@@ -21,8 +24,9 @@ pub struct SidecarConfig {
     /// discovery (`.claude/plugins/`) and SDK settings sources.
     #[serde(rename = "workspaceRootDir")]
     pub workspace_root_dir: String,
-    /// Skill-scoped workspace directory (`{workspace}/{plugin_slug}/{skill_name}`).
-    /// Used as the SDK `cwd` so agents resolve file paths relative to the skill workspace.
+    /// OpenHands local workspace for this run. Existing-skill workflows use the
+    /// skill-scoped directory (`{workspace}/{plugin_slug}/{skill_name}`), while
+    /// pre-create tasks such as scope validation use the initialized workspace root.
     #[serde(rename = "workspaceSkillDir")]
     pub workspace_skill_dir: String,
     #[serde(rename = "allowedTools", skip_serializing_if = "Option::is_none")]
@@ -91,6 +95,12 @@ pub struct SidecarConfig {
     /// Selects the agent runtime backend. Defaults to "claude" when absent.
     #[serde(rename = "runtimeProvider", skip_serializing_if = "Option::is_none")]
     pub runtime_provider: Option<String>,
+    /// Task discriminator for a shared runtime agent.
+    #[serde(rename = "taskKind", skip_serializing_if = "Option::is_none")]
+    pub task_kind: Option<String>,
+    /// Optional suffix appended by the runtime to every user message.
+    #[serde(rename = "userMessageSuffix", skip_serializing_if = "Option::is_none")]
+    pub user_message_suffix: Option<String>,
 }
 
 impl std::fmt::Debug for SidecarConfig {
@@ -117,8 +127,275 @@ impl std::fmt::Debug for SidecarConfig {
             .field("required_plugins", &self.required_plugins)
             .field("setting_sources", &self.setting_sources)
             .field("runtime_provider", &self.runtime_provider)
+            .field("task_kind", &self.task_kind)
+            .field(
+                "user_message_suffix",
+                &self.user_message_suffix.as_ref().map(|_| "[configured]"),
+            )
             .finish()
     }
+}
+
+pub struct OpenHandsOneShotConfigParams {
+    pub prompt: String,
+    pub llm: crate::types::WorkflowLlmConfig,
+    pub workspace_root_dir: String,
+    pub workspace_run_dir: String,
+    pub agent_name: String,
+    pub task_kind: Option<String>,
+    pub user_message_suffix: Option<String>,
+    pub allowed_tools: Vec<String>,
+    pub max_turns: u32,
+    pub output_format: Option<serde_json::Value>,
+    pub skill_name: Option<String>,
+    pub step_id: Option<i32>,
+    pub run_source: Option<String>,
+    pub plugin_slug: String,
+}
+
+/// Build the backend-owned OpenHands one-shot runtime request.
+///
+/// Feature commands supply only agent/task details. Initialized workspace and
+/// selected LLM must already have been resolved by the backend runtime context
+/// API before this helper is called.
+pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> SidecarConfig {
+    SidecarConfig {
+        mode: Some("one-shot".to_string()),
+        prompt: params.prompt,
+        system_prompt: None,
+        model: None,
+        llm: Some(params.llm),
+        model_base_url: None,
+        api_key: SecretString::new("openhands-llm-config".to_string()),
+        workspace_root_dir: params.workspace_root_dir.replace('\\', "/"),
+        workspace_skill_dir: params.workspace_run_dir.replace('\\', "/"),
+        allowed_tools: Some(params.allowed_tools),
+        max_turns: Some(params.max_turns),
+        permission_mode: None,
+        betas: None,
+        thinking: None,
+        fallback_model: None,
+        effort: None,
+        output_format: params.output_format,
+        prompt_suggestions: None,
+        path_to_claude_code_executable: None,
+        path_to_openhands_runner: None,
+        agent_name: Some(params.agent_name),
+        required_plugins: None,
+        setting_sources: None,
+        conversation_history: None,
+        skill_name: params.skill_name,
+        step_id: params.step_id,
+        workflow_session_id: None,
+        usage_session_id: None,
+        run_source: params.run_source,
+        plugin_slug: params.plugin_slug,
+        transcript_log_dir: None,
+        runtime_provider: Some("openhands".to_string()),
+        task_kind: params.task_kind,
+        user_message_suffix: params.user_message_suffix,
+    }
+}
+
+pub struct OpenHandsOneShotRunParams {
+    pub pool_key: String,
+    pub agent_id_prefix: String,
+    pub config: SidecarConfig,
+    pub timeout: Duration,
+}
+
+#[allow(dead_code)]
+pub struct OpenHandsOneShotRun {
+    pub transcript_dir: PathBuf,
+    pub conversation_state: serde_json::Value,
+}
+
+enum OpenHandsOneShotEvent {
+    TerminalState(Result<serde_json::Value, String>),
+    Lifecycle(Result<(), String>),
+}
+
+fn openhands_conversation_state_error_detail(
+    message: &serde_json::Value,
+    fallback: &str,
+) -> String {
+    message
+        .get("error_detail")
+        .or_else(|| message.get("errorDetail"))
+        .and_then(|v| v.as_str())
+        .filter(|detail| !detail.trim().is_empty())
+        .unwrap_or(fallback)
+        .to_string()
+}
+
+fn parse_openhands_one_shot_terminal_state(
+    payload: &str,
+    target_agent_id: &str,
+) -> Option<Result<serde_json::Value, String>> {
+    let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+    if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
+        return None;
+    }
+
+    let message = value.get("message")?;
+    if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+        return None;
+    }
+
+    match message.get("status").and_then(|v| v.as_str())? {
+        "completed" => Some(Ok(message.clone())),
+        "error" => Some(Err(openhands_conversation_state_error_detail(
+            message,
+            "OpenHands one-shot run failed",
+        ))),
+        "cancelled" | "canceled" => Some(Err(openhands_conversation_state_error_detail(
+            message,
+            "OpenHands one-shot run cancelled",
+        ))),
+        _ => None,
+    }
+}
+
+/// Dispatch a backend-owned OpenHands one-shot request through the persistent
+/// sidecar and wait for its terminal `conversation_state` payload.
+///
+/// Callers keep task-specific result parsing, but they should not duplicate the
+/// sidecar dispatch, transcript directory, runner path, or terminal wait
+/// mechanics for each migrated OpenHands feature.
+pub async fn run_openhands_one_shot(
+    app: &tauri::AppHandle,
+    pool: &crate::agents::sidecar_pool::SidecarPool,
+    params: OpenHandsOneShotRunParams,
+) -> Result<OpenHandsOneShotRun, String> {
+    let mut config = params.config;
+    let agent_id = format!("{}-{}", params.agent_id_prefix, uuid::Uuid::new_v4());
+    let transcript_dir = PathBuf::from(&config.workspace_skill_dir)
+        .join("logs")
+        .join(format!(
+            "{}-{}",
+            params.agent_id_prefix,
+            uuid::Uuid::new_v4()
+        ));
+    let transcript_dir_str = transcript_dir.to_string_lossy().into_owned();
+    config.transcript_log_dir = Some(transcript_dir_str.clone());
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsOneShotEvent>();
+    let target_agent_id = agent_id.clone();
+    let tx_message = tx.clone();
+    let message_listener = app.listen("agent-message", move |event| {
+        if let Some(result) =
+            parse_openhands_one_shot_terminal_state(event.payload(), target_agent_id.as_str())
+        {
+            let _ = tx_message.send(OpenHandsOneShotEvent::TerminalState(result));
+        }
+    });
+
+    let target_agent_id = agent_id.clone();
+    let tx_exit = tx.clone();
+    let exit_listener = app.listen("agent-exit", move |event| {
+        let payload = event.payload();
+        if !payload.contains(target_agent_id.as_str()) {
+            return;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
+            return;
+        };
+        if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id.as_str()) {
+            return;
+        }
+        let success = value
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let result = if success {
+            Ok(())
+        } else {
+            let detail = value
+                .get("error_detail")
+                .and_then(|v| v.as_str())
+                .unwrap_or("OpenHands one-shot run failed")
+                .to_string();
+            Err(detail)
+        };
+        let _ = tx_exit.send(OpenHandsOneShotEvent::Lifecycle(result));
+    });
+    let target_agent_id = agent_id.clone();
+    let tx_shutdown = tx.clone();
+    let shutdown_listener = app.listen("agent-shutdown", move |event| {
+        let payload = event.payload();
+        if !payload.contains(target_agent_id.as_str()) {
+            return;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
+            return;
+        };
+        if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id.as_str()) {
+            return;
+        }
+        let _ = tx_shutdown.send(OpenHandsOneShotEvent::Lifecycle(Err(
+            "OpenHands one-shot run cancelled".to_string(),
+        )));
+    });
+
+    pool.send_request(
+        &params.pool_key,
+        &agent_id,
+        config,
+        app,
+        Some(&transcript_dir_str),
+    )
+    .await
+    .inspect_err(|_| {
+        app.unlisten(message_listener);
+        app.unlisten(exit_listener);
+        app.unlisten(shutdown_listener);
+    })?;
+
+    let mut terminal_state: Option<Result<serde_json::Value, String>> = None;
+    let mut lifecycle_result: Option<Result<(), String>> = None;
+    let wait_result = tokio::time::timeout(params.timeout, async {
+        while terminal_state.is_none() || lifecycle_result.is_none() {
+            match rx.recv().await {
+                Some(OpenHandsOneShotEvent::TerminalState(result)) => {
+                    if terminal_state.is_none() {
+                        terminal_state = Some(result);
+                    }
+                }
+                Some(OpenHandsOneShotEvent::Lifecycle(result)) => {
+                    if lifecycle_result.is_none() {
+                        lifecycle_result = Some(result);
+                    }
+                }
+                None => {
+                    return Err("OpenHands one-shot listener closed unexpectedly".to_string());
+                }
+            }
+        }
+        Ok(())
+    })
+    .await;
+
+    app.unlisten(message_listener);
+    app.unlisten(exit_listener);
+    app.unlisten(shutdown_listener);
+
+    match wait_result {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => return Err(error),
+        Err(_) => return Err("OpenHands one-shot run timed out".to_string()),
+    };
+
+    let conversation_state = terminal_state.unwrap_or_else(|| {
+        Err("OpenHands one-shot run completed without conversation_state".into())
+    })?;
+    lifecycle_result.unwrap_or_else(|| {
+        Err("OpenHands one-shot lifecycle listener closed unexpectedly".to_string())
+    })?;
+
+    Ok(OpenHandsOneShotRun {
+        transcript_dir,
+        conversation_state,
+    })
 }
 
 /// Spawn an agent using the persistent sidecar pool, which reuses a long-lived
@@ -343,6 +620,8 @@ mod tests {
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
             runtime_provider: None,
+            task_kind: None,
+            user_message_suffix: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -401,6 +680,8 @@ mod tests {
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
             runtime_provider: None,
+            task_kind: None,
+            user_message_suffix: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -447,6 +728,8 @@ mod tests {
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
             runtime_provider: None,
+            task_kind: None,
+            user_message_suffix: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -496,6 +779,8 @@ mod tests {
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
             runtime_provider: None,
+            task_kind: None,
+            user_message_suffix: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -540,6 +825,8 @@ mod tests {
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
             runtime_provider: Some("openhands".to_string()),
+            task_kind: None,
+            user_message_suffix: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -573,5 +860,135 @@ mod tests {
             normalize_executable_path(r"\\?\C:\Skill Builder\openhands-runner.exe"),
             "C:/Skill Builder/openhands-runner.exe"
         );
+    }
+
+    #[test]
+    fn test_scope_review_config_serializes_user_suffix_and_task_kind() {
+        let config = SidecarConfig {
+            mode: Some("one-shot".to_string()),
+            prompt: "review scope".to_string(),
+            system_prompt: None,
+            model: None,
+            llm: Some(crate::types::WorkflowLlmConfig {
+                model: "anthropic/claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: Some("workflow".to_string()),
+            }),
+            model_base_url: None,
+            api_key: crate::types::SecretString::new("openhands-llm-config".to_string()),
+            workspace_root_dir: "/tmp/workspace".to_string(),
+            workspace_skill_dir: "/tmp/workspace/skills/new-skill".to_string(),
+            allowed_tools: Some(vec!["file_editor".to_string()]),
+            max_turns: Some(4),
+            permission_mode: None,
+            betas: None,
+            thinking: None,
+            fallback_model: None,
+            effort: None,
+            output_format: None,
+            prompt_suggestions: None,
+            path_to_claude_code_executable: None,
+            path_to_openhands_runner: None,
+            agent_name: Some("skill-creator".to_string()),
+            required_plugins: None,
+            setting_sources: None,
+            conversation_history: None,
+            skill_name: Some("new-skill".to_string()),
+            step_id: Some(-30),
+            workflow_session_id: None,
+            usage_session_id: None,
+            run_source: None,
+            plugin_slug: "skills".to_string(),
+            transcript_log_dir: None,
+            runtime_provider: Some("openhands".to_string()),
+            task_kind: Some("scope_review".to_string()),
+            user_message_suffix: Some(
+                "Follow the current user message exactly. Do not infer a different task than the one stated in the message.".to_string(),
+            ),
+        };
+
+        let json = serde_json::to_value(&config).unwrap();
+        assert_eq!(json["taskKind"], "scope_review");
+        assert_eq!(
+            json["userMessageSuffix"],
+            "Follow the current user message exactly. Do not infer a different task than the one stated in the message."
+        );
+    }
+
+    #[test]
+    fn test_openhands_one_shot_extracts_terminal_conversation_state_for_target_agent() {
+        let terminal_state = serde_json::json!({
+            "type": "conversation_state",
+            "runtime": "openhands",
+            "conversation_id": "scope-review-1",
+            "status": "completed",
+            "result": {
+                "status": "new"
+            }
+        });
+        let payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": terminal_state.clone()
+        })
+        .to_string();
+
+        let result =
+            parse_openhands_one_shot_terminal_state(&payload, "agent-1").expect("terminal state");
+
+        assert_eq!(result.unwrap(), terminal_state);
+    }
+
+    #[test]
+    fn test_openhands_one_shot_ignores_other_agents_and_running_state() {
+        let completed_payload = serde_json::json!({
+            "agent_id": "other-agent",
+            "message": {
+                "type": "conversation_state",
+                "runtime": "openhands",
+                "status": "completed"
+            }
+        })
+        .to_string();
+        let running_payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": {
+                "type": "conversation_state",
+                "runtime": "openhands",
+                "status": "running"
+            }
+        })
+        .to_string();
+
+        assert!(parse_openhands_one_shot_terminal_state(&completed_payload, "agent-1").is_none());
+        assert!(parse_openhands_one_shot_terminal_state(&running_payload, "agent-1").is_none());
+    }
+
+    #[test]
+    fn test_openhands_one_shot_terminal_error_carries_error_detail() {
+        let payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": {
+                "type": "conversation_state",
+                "runtime": "openhands",
+                "status": "error",
+                "error_detail": "scope validation failed"
+            }
+        })
+        .to_string();
+
+        let result =
+            parse_openhands_one_shot_terminal_state(&payload, "agent-1").expect("terminal state");
+
+        assert_eq!(result.unwrap_err(), "scope validation failed");
     }
 }

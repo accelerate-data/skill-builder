@@ -25,6 +25,51 @@ pub(crate) struct WorkflowSettings {
     pub documents: Vec<crate::db::DocumentContent>,
 }
 
+/// Backend-owned runtime context shared by OpenHands callers.
+///
+/// Startup owns workspace creation and prompt deployment. Runtime paths should
+/// read the initialized workspace path and selected LLM through this API instead
+/// of re-projecting raw settings fields.
+#[derive(Debug)]
+pub(crate) struct InitializedRuntimeContext {
+    pub workspace_path: String,
+    pub llm: crate::types::WorkflowLlmConfig,
+}
+
+pub(crate) fn read_initialized_runtime_context(
+    db: &Db,
+) -> Result<InitializedRuntimeContext, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = crate::db::read_settings(&conn)?;
+    let workspace_path = settings
+        .workspace_path
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "Workspace path not configured".to_string())?;
+    if !std::path::Path::new(&workspace_path).is_dir() {
+        return Err(format!(
+            "Workspace not initialized: {}. Restart Skill Builder to initialize the workspace.",
+            workspace_path
+        ));
+    }
+    let workspace = std::path::Path::new(&workspace_path);
+    let skill_creator_agent =
+        crate::skill_paths::workspace_agent_files_dir(workspace).join("skill-creator.md");
+    let skills_dir = crate::skill_paths::workspace_agent_skills_dir(workspace);
+    if !skill_creator_agent.is_file() || !skills_dir.is_dir() {
+        return Err(format!(
+            "Workspace runtime artifacts are not initialized for {}. Restart Skill Builder to initialize the workspace.",
+            workspace_path
+        ));
+    }
+    let llm = crate::db::selected_workflow_llm(&settings)?;
+
+    Ok(InitializedRuntimeContext {
+        workspace_path,
+        llm,
+    })
+}
+
 /// Read all workflow settings from the DB in a single lock acquisition.
 pub(crate) fn read_workflow_settings(
     db: &Db,
@@ -151,6 +196,51 @@ mod tests {
             },
             ..AppSettings::default()
         }
+    }
+
+    fn initialized_workspace(root: &std::path::Path) -> String {
+        let workspace = root.join("workspace");
+        std::fs::create_dir_all(workspace.join(".agents/agents")).unwrap();
+        std::fs::create_dir_all(workspace.join(".agents/skills")).unwrap();
+        std::fs::write(
+            workspace.join(".agents/agents/skill-creator.md"),
+            "# Skill Creator",
+        )
+        .unwrap();
+        workspace.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn read_initialized_runtime_context_returns_workspace_and_llm() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = initialized_workspace(tmp.path());
+        let conn = create_test_db_for_tests();
+        let mut settings = configured_settings("anthropic/claude-sonnet-4-5", Some("sk-test"));
+        settings.workspace_path = Some(workspace_path.clone());
+        write_settings(&conn, &settings).unwrap();
+        let db = Db(Mutex::new(conn));
+
+        let context = read_initialized_runtime_context(&db).unwrap();
+
+        assert_eq!(context.workspace_path, workspace_path);
+        assert_eq!(context.llm.model, "anthropic/claude-sonnet-4-5");
+        assert_eq!(context.llm.api_key.as_ref().unwrap().expose(), "sk-test");
+    }
+
+    #[test]
+    fn read_initialized_runtime_context_rejects_missing_runtime_artifacts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let conn = create_test_db_for_tests();
+        let mut settings = configured_settings("anthropic/claude-sonnet-4-5", Some("sk-test"));
+        settings.workspace_path = Some(workspace.to_string_lossy().into_owned());
+        write_settings(&conn, &settings).unwrap();
+        let db = Db(Mutex::new(conn));
+
+        let error = read_initialized_runtime_context(&db).unwrap_err();
+
+        assert!(error.contains("Workspace runtime artifacts are not initialized"));
     }
 
     #[test]

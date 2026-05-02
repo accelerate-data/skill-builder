@@ -1,7 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter, PassThrough } from "node:stream";
 
-// Mock child_process before importing the runtime
 vi.mock("node:child_process", () => ({
   spawn: vi.fn(),
 }));
@@ -9,10 +8,6 @@ vi.mock("node:child_process", () => ({
 import * as childProcess from "node:child_process";
 import { OpenHandsRuntime } from "../runtime/openhands-runtime.js";
 import type { OneShotRunRequest, RuntimeSink } from "../runtime/types.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeRequest(
   overrides: Partial<OneShotRunRequest> = {},
@@ -69,11 +64,11 @@ function makeSink() {
   return { messages, sink };
 }
 
-/**
- * Creates a mock child process that emits the given stdout lines (JSONL)
- * and exits with the given code.
- */
-function makeMockChild(stdoutLines: string[], exitCode = 0) {
+function makeMockChild(
+  stdoutLines: string[],
+  exitCode: number | null = 0,
+  stderrLines: string[] = [],
+) {
   const stdout = new PassThrough();
   const stderr = new PassThrough();
   const stdin = new PassThrough();
@@ -88,54 +83,88 @@ function makeMockChild(stdoutLines: string[], exitCode = 0) {
   child.stdin = stdin;
   child.kill = vi.fn();
 
-  // Emit lines after a tick so readline can attach
   setImmediate(() => {
+    for (const line of stderrLines) {
+      stderr.write(`${line}\n`);
+    }
+    stderr.end();
     for (const line of stdoutLines) {
-      stdout.write(line + "\n");
+      stdout.write(`${line}\n`);
     }
     stdout.end();
-    stderr.end();
     child.emit("close", exitCode);
   });
 
   return child;
 }
 
-const mockSpawn = vi.mocked(childProcess.spawn);
-
-function getRunResult(messages: Record<string, unknown>[]) {
-  return messages.find(
-    (m) =>
-      m.type === "agent_event" &&
-      (m.event as Record<string, unknown>)?.type === "run_result",
-  );
+function completedState(overrides: Record<string, unknown> = {}) {
+  return {
+    type: "conversation_state",
+    runtime: "openhands",
+    conversation_id: "scope-review-1",
+    agent_id: "skill-creator",
+    status: "completed",
+    error_detail: null,
+    timestamp: 1714550402000,
+    ...overrides,
+  };
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+function conversationEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    type: "conversation_event",
+    runtime: "openhands",
+    conversation_id: "scope-review-1",
+    agent_id: "skill-creator",
+    event_class: "MessageEvent",
+    event: {
+      source: "agent",
+      message: "I found the scope constraints.",
+    },
+    timestamp: 1714550400000,
+    ...overrides,
+  };
+}
+
+function expectNoLegacyMessages(messages: Record<string, unknown>[]): void {
+  expect(messages.some((message) => message.type === "openhands_event")).toBe(false);
+  expect(messages.some((message) => message.type === "openhands_result")).toBe(false);
+  expect(messages.some((message) => message.type === "display_item")).toBe(false);
+  expect(
+    messages.some(
+      (message) =>
+        message.type === "agent_event" &&
+        (message.event as Record<string, unknown> | undefined)?.type ===
+          "run_result",
+    ),
+  ).toBe(false);
+  expect(
+    messages.some(
+      (message) => message.type === "system" && message.subtype === "sdk_stderr",
+    ),
+  ).toBe(false);
+}
+
+const mockSpawn = vi.mocked(childProcess.spawn);
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("OpenHandsRuntime.runOnce", () => {
   it("spawns python3 with the runner path", async () => {
-    const child = makeMockChild([
-      JSON.stringify({
-        type: "openhands_result",
-        status: "success",
-        result_text: "done",
-        structured_output: null,
-        timestamp: Date.now(),
-      }),
-    ]);
+    const child = makeMockChild([JSON.stringify(completedState())]);
     mockSpawn.mockReturnValue(
       child as unknown as ReturnType<typeof childProcess.spawn>,
     );
 
     const runtime = new OpenHandsRuntime();
-    const { sink } = makeSink();
+    const { messages, sink } = makeSink();
     await runtime.runOnce(makeRequest(), sink);
 
     expect(mockSpawn).toHaveBeenCalledWith(
@@ -143,18 +172,12 @@ describe("OpenHandsRuntime.runOnce", () => {
       expect.arrayContaining([expect.stringContaining("runner.py")]),
       expect.objectContaining({ stdio: ["pipe", "pipe", "pipe"] }),
     );
+    expect(messages).toEqual([completedState()]);
+    expectNoLegacyMessages(messages);
   });
 
   it("spawns the packaged runner directly when pathToOpenHandsRunner is provided", async () => {
-    const child = makeMockChild([
-      JSON.stringify({
-        type: "openhands_result",
-        status: "success",
-        result_text: "done",
-        structured_output: null,
-        timestamp: Date.now(),
-      }),
-    ]);
+    const child = makeMockChild([JSON.stringify(completedState())]);
     mockSpawn.mockReturnValue(
       child as unknown as ReturnType<typeof childProcess.spawn>,
     );
@@ -177,7 +200,9 @@ describe("OpenHandsRuntime.runOnce", () => {
 
   it("writes serialized request to stdin and closes it", async () => {
     const request = makeRequest({
-      agentName: "skill-writer-agent",
+      agentName: "skill-creator",
+      taskKind: "scope_review",
+      userMessageSuffix: "Follow the current user message exactly.",
       model: "anthropic/claude-sonnet-4-6",
       apiKey: "sk-top-level",
       modelBaseUrl: "https://models.example.com/v1",
@@ -201,43 +226,23 @@ describe("OpenHandsRuntime.runOnce", () => {
       workspaceRootDir: "/tmp/workspace-root",
       workspaceSkillDir: "/tmp/workspace-root/plugin/skill",
       allowedTools: ["file_editor", "terminal"],
+      maxTurns: 8,
+      outputFormat: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          required: ["status"],
+          properties: {
+            status: { type: "string" },
+          },
+        },
+      },
     });
     let stdinWritten = "";
-
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-    const stdin = new PassThrough();
-    const child = new EventEmitter() as EventEmitter & {
-      stdout: typeof stdout;
-      stderr: typeof stderr;
-      stdin: typeof stdin;
-      kill: ReturnType<typeof vi.fn>;
-    };
-    child.stdout = stdout;
-    child.stderr = stderr;
-    child.stdin = stdin;
-    child.kill = vi.fn();
-
-    // Capture what gets written to stdin
-    stdin.on("data", (chunk: Buffer) => {
+    const child = makeMockChild([JSON.stringify(completedState())]);
+    child.stdin.on("data", (chunk: Buffer) => {
       stdinWritten += chunk.toString();
     });
-
-    setImmediate(() => {
-      stdout.write(
-        JSON.stringify({
-          type: "openhands_result",
-          status: "success",
-          result_text: "done",
-          structured_output: null,
-          timestamp: Date.now(),
-        }) + "\n",
-      );
-      stdout.end();
-      stderr.end();
-      child.emit("close", 0);
-    });
-
     mockSpawn.mockReturnValue(
       child as unknown as ReturnType<typeof childProcess.spawn>,
     );
@@ -246,11 +251,14 @@ describe("OpenHandsRuntime.runOnce", () => {
     const { sink } = makeSink();
     await runtime.runOnce(request, sink);
 
-    // Should have written the request JSON to stdin
     const serialized = JSON.parse(stdinWritten) as Record<string, unknown>;
     expect(serialized.prompt).toBe("test prompt");
     expect(serialized.mode).toBe("one-shot");
-    expect(serialized.agentName).toBe("skill-writer-agent");
+    expect(serialized.agentName).toBe("skill-creator");
+    expect(serialized.taskKind).toBe("scope_review");
+    expect(serialized.userMessageSuffix).toBe(
+      "Follow the current user message exactly.",
+    );
     expect(serialized).not.toHaveProperty("model");
     expect(serialized).not.toHaveProperty("apiKey");
     expect(serialized).not.toHaveProperty("modelBaseUrl");
@@ -271,77 +279,48 @@ describe("OpenHandsRuntime.runOnce", () => {
       outputCostPerToken: 0.000015,
       usageId: "workflow",
     });
-    expect(serialized.maxTurns).toBe(50);
+    expect(serialized.maxTurns).toBe(8);
     expect(serialized.allowedTools).toEqual(["file_editor", "terminal"]);
+    expect(serialized.outputFormat).toEqual(request.outputFormat);
     expect(serialized.workspaceRootDir).toBe("/tmp/workspace-root");
     expect(serialized.workspaceSkillDir).toBe(
       "/tmp/workspace-root/plugin/skill",
     );
   });
 
-  it("serializes explicit maxTurns into the runner request", async () => {
-    const request = makeRequest({ maxTurns: 12 });
-    let stdinWritten = "";
-
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-    const stdin = new PassThrough();
-    const child = new EventEmitter() as EventEmitter & {
-      stdout: typeof stdout;
-      stderr: typeof stderr;
-      stdin: typeof stdin;
-      kill: ReturnType<typeof vi.fn>;
-    };
-    child.stdout = stdout;
-    child.stderr = stderr;
-    child.stdin = stdin;
-    child.kill = vi.fn();
-
-    stdin.on("data", (chunk: Buffer) => {
-      stdinWritten += chunk.toString();
-    });
-
-    setImmediate(() => {
-      stdout.write(
-        JSON.stringify({
-          type: "openhands_result",
-          status: "success",
-          result_text: "done",
-          structured_output: null,
-          timestamp: Date.now(),
-        }) + "\n",
-      );
-      stdout.end();
-      stderr.end();
-      child.emit("close", 0);
-    });
-
+  it("forwards runner conversation records as raw messages without request_id", async () => {
+    const event = conversationEvent();
+    const running = completedState({ status: "running", timestamp: 1714550401000 });
+    const done = completedState();
+    const child = makeMockChild([
+      JSON.stringify(running),
+      JSON.stringify(event),
+      JSON.stringify(done),
+    ]);
     mockSpawn.mockReturnValue(
       child as unknown as ReturnType<typeof childProcess.spawn>,
     );
 
     const runtime = new OpenHandsRuntime();
-    const { sink } = makeSink();
-    await runtime.runOnce(request, sink);
+    const { messages, sink } = makeSink();
+    await runtime.runOnce(makeRequest(), sink);
 
-    const serialized = JSON.parse(stdinWritten) as Record<string, unknown>;
-    expect(serialized.maxTurns).toBe(12);
+    expect(messages).toEqual([running, event, done]);
+    expect(messages.every((message) => !("request_id" in message))).toBe(true);
+    expectNoLegacyMessages(messages);
   });
 
-  it("emits run_result with status completed on successful stdout lines", async () => {
+  it("drops transitional OpenHands records instead of mapping them", async () => {
     const child = makeMockChild([
       JSON.stringify({
         type: "openhands_event",
         event_kind: "message",
-        text: "Processing...",
-        timestamp: Date.now(),
+        text: "legacy progress",
       }),
       JSON.stringify({
         type: "openhands_result",
         status: "success",
-        result_text: "All done!",
-        structured_output: null,
-        timestamp: Date.now(),
+        result_text: "legacy result",
       }),
     ]);
     mockSpawn.mockReturnValue(
@@ -352,21 +331,20 @@ describe("OpenHandsRuntime.runOnce", () => {
     const { messages, sink } = makeSink();
     await runtime.runOnce(makeRequest(), sink);
 
-    const runResult = getRunResult(messages);
-    expect(runResult).toBeDefined();
-    const event = runResult!.event as Record<string, unknown>;
-    expect(event.status).toBe("completed");
-
-    // Should also have a display item for the message event
-    const displayItems = messages.filter((m) => m.type === "display_item");
-    const outputItem = displayItems.find(
-      (m) => (m.item as Record<string, unknown>).type === "output",
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      type: "conversation_state",
+      runtime: "openhands",
+      status: "error",
+    });
+    expect(JSON.stringify(messages)).toContain(
+      "OpenHands runner exited without producing a terminal conversation_state",
     );
-    expect(outputItem).toBeDefined();
+    expectNoLegacyMessages(messages);
   });
 
-  it("emits error run_result when process exits with non-zero code and no result", async () => {
-    const child = makeMockChild([], 1 /* non-zero exit code */);
+  it("emits conversation_state error when process exits non-zero without terminal state", async () => {
+    const child = makeMockChild([], 1);
     mockSpawn.mockReturnValue(
       child as unknown as ReturnType<typeof childProcess.spawn>,
     );
@@ -375,14 +353,17 @@ describe("OpenHandsRuntime.runOnce", () => {
     const { messages, sink } = makeSink();
     await runtime.runOnce(makeRequest(), sink);
 
-    const runResult = getRunResult(messages);
-    expect(runResult).toBeDefined();
-    const event = runResult!.event as Record<string, unknown>;
-    expect(event.status).toBe("error");
-    expect(JSON.stringify(event)).toContain("exit");
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      type: "conversation_state",
+      runtime: "openhands",
+      status: "error",
+    });
+    expect(JSON.stringify(messages[0])).toContain("exited with code 1");
+    expectNoLegacyMessages(messages);
   });
 
-  it("kills child process when abort signal fires", async () => {
+  it("emits conversation_state error when spawning the child fails", async () => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     const stdin = new PassThrough();
@@ -396,183 +377,40 @@ describe("OpenHandsRuntime.runOnce", () => {
     child.stderr = stderr;
     child.stdin = stdin;
     child.kill = vi.fn();
-
-    // Don't close the child immediately — let the abort trigger it
-    let closeTimer: ReturnType<typeof setTimeout> | null = null;
-    child.kill = vi.fn(() => {
-      // Simulate process being killed
-      if (closeTimer) clearTimeout(closeTimer);
-      setImmediate(() => {
-        stdout.end();
-        stderr.end();
-        child.emit("close", null);
-      });
-    });
-
     mockSpawn.mockReturnValue(
       child as unknown as ReturnType<typeof childProcess.spawn>,
     );
 
-    const controller = new AbortController();
-
-    // Abort after the spawn but before the process exits
     setImmediate(() => {
-      controller.abort();
-    });
-
-    const runtime = new OpenHandsRuntime();
-    const { messages, sink } = makeSink();
-    await runtime.runOnce(makeRequest(), sink, controller.signal);
-
-    expect(child.kill).toHaveBeenCalled();
-
-    // Should emit some form of terminal run_result
-    const runResult = getRunResult(messages);
-    expect(runResult).toBeDefined();
-  });
-
-  it("rejects one-shot requests that include AskUserQuestion", async () => {
-    const runtime = new OpenHandsRuntime();
-    const { messages, sink } = makeSink();
-
-    // Should throw synchronously before spawning
-    await expect(
-      runtime.runOnce(makeRequest({ allowedTools: ["AskUserQuestion"] }), sink),
-    ).rejects.toThrow(
-      "one-shot runtime requests cannot include user-question tools",
-    );
-
-    // Should not have spawned anything
-    expect(mockSpawn).not.toHaveBeenCalled();
-    expect(messages).toHaveLength(0);
-  });
-
-  it("forwards stderr from child process as sdk_stderr system events", async () => {
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-    const stdin = new PassThrough();
-    const child = new EventEmitter() as EventEmitter & {
-      stdout: typeof stdout;
-      stderr: typeof stderr;
-      stdin: typeof stdin;
-      kill: ReturnType<typeof vi.fn>;
-    };
-    child.stdout = stdout;
-    child.stderr = stderr;
-    child.stdin = stdin;
-    child.kill = vi.fn();
-
-    setImmediate(() => {
-      stderr.write("python error: something went wrong\n");
-      stderr.end();
-      stdout.write(
-        JSON.stringify({
-          type: "openhands_result",
-          status: "success",
-          result_text: "ok",
-          structured_output: null,
-          timestamp: Date.now(),
-        }) + "\n",
-      );
+      child.emit("error", new Error("spawn failed for sk-llm-test"));
       stdout.end();
-      child.emit("close", 0);
+      stderr.end();
     });
-
-    mockSpawn.mockReturnValue(
-      child as unknown as ReturnType<typeof childProcess.spawn>,
-    );
 
     const runtime = new OpenHandsRuntime();
     const { messages, sink } = makeSink();
     await runtime.runOnce(makeRequest(), sink);
 
-    const stderrMsg = messages.find(
-      (m) =>
-        m.type === "system" &&
-        m.subtype === "sdk_stderr" &&
-        typeof m.data === "string" &&
-        (m.data as string).includes("python error"),
-    );
-    expect(stderrMsg).toBeDefined();
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      type: "conversation_state",
+      runtime: "openhands",
+      status: "error",
+    });
+    expect(JSON.stringify(messages[0])).toContain("[REDACTED]");
+    expect(JSON.stringify(messages[0])).not.toContain("sk-llm-test");
+    expectNoLegacyMessages(messages);
   });
 
-  it("redacts the API key from child stderr system events", async () => {
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-    const stdin = new PassThrough();
-    const child = new EventEmitter() as EventEmitter & {
-      stdout: typeof stdout;
-      stderr: typeof stderr;
-      stdin: typeof stdin;
-      kill: ReturnType<typeof vi.fn>;
-    };
-    child.stdout = stdout;
-    child.stderr = stderr;
-    child.stdin = stdin;
-    child.kill = vi.fn();
-
-    setImmediate(() => {
-      stderr.write("request failed for sk-llm-test\n");
-      stderr.end();
-      stdout.write(
-        JSON.stringify({
-          type: "openhands_result",
-          status: "success",
-          result_text: "ok",
-          structured_output: null,
-          timestamp: Date.now(),
-        }) + "\n",
-      );
-      stdout.end();
-      child.emit("close", 0);
-    });
-
-    mockSpawn.mockReturnValue(
-      child as unknown as ReturnType<typeof childProcess.spawn>,
+  it("writes child stderr to process.stderr after redaction without sink events", async () => {
+    const stderrWrite = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    const child = makeMockChild(
+      [JSON.stringify(completedState())],
+      0,
+      ["request failed for sk-llm-test using secure-route"],
     );
-
-    const runtime = new OpenHandsRuntime();
-    const { messages, sink } = makeSink();
-    await runtime.runOnce(makeRequest(), sink);
-
-    const stderrMessages = messages.filter(
-      (m) => m.type === "system" && m.subtype === "sdk_stderr",
-    );
-    expect(JSON.stringify(stderrMessages)).not.toContain("sk-llm-test");
-    expect(JSON.stringify(stderrMessages)).toContain("[REDACTED]");
-  });
-
-  it("redacts llm extra header values from child stderr system events", async () => {
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-    const stdin = new PassThrough();
-    const child = new EventEmitter() as EventEmitter & {
-      stdout: typeof stdout;
-      stderr: typeof stderr;
-      stdin: typeof stdin;
-      kill: ReturnType<typeof vi.fn>;
-    };
-    child.stdout = stdout;
-    child.stderr = stderr;
-    child.stdin = stdin;
-    child.kill = vi.fn();
-
-    setImmediate(() => {
-      stderr.write("provider rejected secure-route\n");
-      stderr.end();
-      stdout.write(
-        JSON.stringify({
-          type: "openhands_result",
-          status: "success",
-          result_text: "ok",
-          structured_output: null,
-          timestamp: Date.now(),
-        }) + "\n",
-      );
-      stdout.end();
-      child.emit("close", 0);
-    });
-
     mockSpawn.mockReturnValue(
       child as unknown as ReturnType<typeof childProcess.spawn>,
     );
@@ -592,11 +430,70 @@ describe("OpenHandsRuntime.runOnce", () => {
       sink,
     );
 
-    const stderrMessages = messages.filter(
-      (m) => m.type === "system" && m.subtype === "sdk_stderr",
+    const stderrOutput = stderrWrite.mock.calls
+      .map((call) => String(call[0]))
+      .join("");
+    expect(stderrOutput).toContain("[REDACTED]");
+    expect(stderrOutput).not.toContain("sk-llm-test");
+    expect(stderrOutput).not.toContain("secure-route");
+    expectNoLegacyMessages(messages);
+  });
+
+  it("emits conversation_state cancelled when abort signal fires before terminal state", async () => {
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const stdin = new PassThrough();
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: typeof stdout;
+      stderr: typeof stderr;
+      stdin: typeof stdin;
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.stdout = stdout;
+    child.stderr = stderr;
+    child.stdin = stdin;
+    child.kill = vi.fn(() => {
+      setImmediate(() => {
+        stdout.end();
+        stderr.end();
+        child.emit("close", null);
+      });
+    });
+    mockSpawn.mockReturnValue(
+      child as unknown as ReturnType<typeof childProcess.spawn>,
     );
-    expect(JSON.stringify(stderrMessages)).not.toContain("secure-route");
-    expect(JSON.stringify(stderrMessages)).toContain("[REDACTED]");
+
+    const controller = new AbortController();
+    setImmediate(() => {
+      controller.abort();
+    });
+
+    const runtime = new OpenHandsRuntime();
+    const { messages, sink } = makeSink();
+    await runtime.runOnce(makeRequest(), sink, controller.signal);
+
+    expect(child.kill).toHaveBeenCalled();
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      type: "conversation_state",
+      runtime: "openhands",
+      status: "cancelled",
+    });
+    expectNoLegacyMessages(messages);
+  });
+
+  it("rejects one-shot requests that include AskUserQuestion before spawning", async () => {
+    const runtime = new OpenHandsRuntime();
+    const { messages, sink } = makeSink();
+
+    await expect(
+      runtime.runOnce(makeRequest({ allowedTools: ["AskUserQuestion"] }), sink),
+    ).rejects.toThrow(
+      "one-shot runtime requests cannot include user-question tools",
+    );
+
+    expect(mockSpawn).not.toHaveBeenCalled();
+    expect(messages).toEqual([]);
   });
 });
 

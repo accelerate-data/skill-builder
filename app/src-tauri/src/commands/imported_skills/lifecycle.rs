@@ -1,5 +1,7 @@
 use crate::db::Db;
-use crate::skill_paths::{ensure_nested_skill_dir, resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{
+    ensure_nested_skill_dir, resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG,
+};
 use std::fs;
 use std::path::Path;
 
@@ -50,11 +52,16 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
             .map_err(|e| format!("strip_prefix error: {}", e))?;
         let dest = target.join(rel);
         if entry.file_type().is_dir() {
-            fs::create_dir_all(&dest)
-                .map_err(|e| format!("mkdir '{}': {}", dest.display(), e))?;
+            fs::create_dir_all(&dest).map_err(|e| format!("mkdir '{}': {}", dest.display(), e))?;
         } else {
-            fs::copy(entry.path(), &dest)
-                .map_err(|e| format!("copy '{}' -> '{}': {}", entry.path().display(), dest.display(), e))?;
+            fs::copy(entry.path(), &dest).map_err(|e| {
+                format!(
+                    "copy '{}' -> '{}': {}",
+                    entry.path().display(),
+                    dest.display(),
+                    e
+                )
+            })?;
         }
     }
     Ok(())
@@ -70,11 +77,10 @@ pub(crate) fn delete_imported_skill_inner(
     workspace_path: &str,
 ) -> Result<(), String> {
     // Look up skill
-    let skill = crate::db::get_imported_skill_by_id(conn, skill_id)?
-        .ok_or_else(|| {
-            log::error!("[delete_imported_skill] skill_id={} not found", skill_id);
-            format!("Imported skill with id '{}' not found", skill_id)
-        })?;
+    let skill = crate::db::get_imported_skill_by_id(conn, skill_id)?.ok_or_else(|| {
+        log::error!("[delete_imported_skill] skill_id={} not found", skill_id);
+        format!("Imported skill with id '{}' not found", skill_id)
+    })?;
 
     let skill_name = skill.skill_name.clone();
     validate_skill_name(&skill_name)?;
@@ -142,7 +148,9 @@ fn resolve_skill_target(
             .ok_or_else(|| format!("Imported skill '{}' not found", skill_id))?;
         return Ok((
             imported.skill_name,
-            imported.plugin_slug.unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string()),
+            imported
+                .plugin_slug
+                .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string()),
             Some(skill_id.to_string()),
         ));
     }
@@ -171,11 +179,14 @@ fn move_skill_directories(
     let mut skills_target = None;
 
     if let Some(workspace_path) = workspace_path {
-        let source = resolve_workspace_skill_dir(Path::new(workspace_path), from_plugin_slug, skill_name);
+        let source =
+            resolve_workspace_skill_dir(Path::new(workspace_path), from_plugin_slug, skill_name);
         if source.exists() {
-            let target = ensure_nested_skill_dir(Path::new(workspace_path), to_plugin_slug, skill_name)?;
+            let target =
+                ensure_nested_skill_dir(Path::new(workspace_path), to_plugin_slug, skill_name)?;
             if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent).map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
             }
             move_dir_fallback(&source, &target)
                 .map_err(|e| format!("Failed to move workspace dir: {}", e))?;
@@ -186,9 +197,11 @@ fn move_skill_directories(
     if let Some(skills_path) = skills_path {
         let source = resolve_skill_dir(Path::new(skills_path), from_plugin_slug, skill_name);
         if source.exists() {
-            let target = ensure_nested_skill_dir(Path::new(skills_path), to_plugin_slug, skill_name)?;
+            let target =
+                ensure_nested_skill_dir(Path::new(skills_path), to_plugin_slug, skill_name)?;
             if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent).map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
             }
             move_dir_fallback(&source, &target)
                 .map_err(|e| format!("Failed to move skills dir: {}", e))?;
@@ -220,11 +233,16 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
             |row| row.get(0),
         )
         .unwrap_or(0);
-    log::info!("[delete_plugin] slug={} active_skills={}", plugin_slug, active_count);
+    log::info!(
+        "[delete_plugin] slug={} active_skills={}",
+        plugin_slug,
+        active_count
+    );
 
     // Wrap all deletes in a transaction — clean up all dependent rows before
     // removing the plugin row itself.
-    conn.execute_batch("BEGIN").map_err(|e| format!("Failed to begin transaction: {}", e))?;
+    conn.execute_batch("BEGIN")
+        .map_err(|e| format!("Failed to begin transaction: {}", e))?;
     let db_result = (|| -> Result<(), String> {
         // Remove child rows that reference workflow_runs (by workflow_run_id FK).
         conn.execute(
@@ -233,7 +251,8 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
               JOIN skills s ON wr.skill_name = s.name \
               JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
             rusqlite::params![&plugin_slug],
-        ).map_err(|e| format!("Failed to delete workflow_artifacts: {}", e))?;
+        )
+        .map_err(|e| format!("Failed to delete workflow_artifacts: {}", e))?;
 
         conn.execute(
             "DELETE FROM workflow_steps WHERE workflow_run_id IN \
@@ -241,45 +260,52 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
               JOIN skills s ON wr.skill_name = s.name \
               JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
             rusqlite::params![&plugin_slug],
-        ).map_err(|e| format!("Failed to delete workflow_steps: {}", e))?;
+        )
+        .map_err(|e| format!("Failed to delete workflow_steps: {}", e))?;
 
         // Remove child rows that reference skills (by skill_id FK).
         conn.execute(
             "DELETE FROM skill_locks WHERE skill_id IN \
              (SELECT s.id FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
             rusqlite::params![&plugin_slug],
-        ).map_err(|e| format!("Failed to delete skill_locks: {}", e))?;
+        )
+        .map_err(|e| format!("Failed to delete skill_locks: {}", e))?;
 
         conn.execute(
             "DELETE FROM skill_tags WHERE skill_id IN \
              (SELECT s.id FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
             rusqlite::params![&plugin_slug],
-        ).map_err(|e| format!("Failed to delete skill_tags: {}", e))?;
+        )
+        .map_err(|e| format!("Failed to delete skill_tags: {}", e))?;
 
         conn.execute(
             "DELETE FROM document_skills WHERE skill_id IN \
              (SELECT s.id FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
             rusqlite::params![&plugin_slug],
-        ).map_err(|e| format!("Failed to delete document_skills: {}", e))?;
+        )
+        .map_err(|e| format!("Failed to delete document_skills: {}", e))?;
 
         conn.execute(
             "DELETE FROM imported_skills WHERE skill_master_id IN \
              (SELECT s.id FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
             rusqlite::params![&plugin_slug],
-        ).map_err(|e| format!("Failed to delete imported_skills: {}", e))?;
+        )
+        .map_err(|e| format!("Failed to delete imported_skills: {}", e))?;
 
         // Remove workflow_runs (references skill_name, not skill_id).
         conn.execute(
             "DELETE FROM workflow_runs WHERE skill_name IN \
              (SELECT s.name FROM skills s JOIN plugins p ON s.plugin_id = p.id WHERE p.slug = ?1)",
             rusqlite::params![&plugin_slug],
-        ).map_err(|e| format!("Failed to delete workflow_runs: {}", e))?;
+        )
+        .map_err(|e| format!("Failed to delete workflow_runs: {}", e))?;
 
         // Hard-delete all skills (both active and soft-deleted) in this plugin.
         conn.execute(
             "DELETE FROM skills WHERE plugin_id = (SELECT id FROM plugins WHERE slug = ?1)",
             rusqlite::params![&plugin_slug],
-        ).map_err(|e| format!("Failed to delete skills: {}", e))?;
+        )
+        .map_err(|e| format!("Failed to delete skills: {}", e))?;
 
         // Delete the plugin row.
         crate::db::delete_plugin_by_slug(&conn, &plugin_slug)?;
@@ -289,14 +315,18 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
         let _ = conn.execute_batch("ROLLBACK");
         return Err(e.clone());
     }
-    conn.execute_batch("COMMIT").map_err(|e| format!("Failed to commit: {}", e))?;
+    conn.execute_batch("COMMIT")
+        .map_err(|e| format!("Failed to commit: {}", e))?;
 
     // Remove workspace plugin directory (non-fatal).
     if let Some(ref wp) = settings.workspace_path {
         let workspace_plugin_dir = std::path::Path::new(wp).join(&plugin_slug);
         if workspace_plugin_dir.exists() {
             if let Err(e) = std::fs::remove_dir_all(&workspace_plugin_dir) {
-                log::warn!("[delete_plugin] workspace dir removal failed (non-fatal): {}", e);
+                log::warn!(
+                    "[delete_plugin] workspace dir removal failed (non-fatal): {}",
+                    e
+                );
             }
         }
     }
@@ -306,7 +336,10 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
         let plugin_dir = std::path::Path::new(sp).join(&plugin_slug);
         if plugin_dir.exists() {
             if let Err(e) = std::fs::remove_dir_all(&plugin_dir) {
-                log::warn!("[delete_plugin] skills dir removal failed (non-fatal): {}", e);
+                log::warn!(
+                    "[delete_plugin] skills dir removal failed (non-fatal): {}",
+                    e
+                );
             }
         }
         let skills_root = std::path::Path::new(sp);
@@ -328,7 +361,11 @@ pub fn create_plugin_from_skills(
     skill_keys: Vec<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
-    log::info!("[create_plugin_from_skills] name={} skill_count={}", plugin_name, skill_keys.len());
+    log::info!(
+        "[create_plugin_from_skills] name={} skill_count={}",
+        plugin_name,
+        skill_keys.len()
+    );
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
 
@@ -346,8 +383,15 @@ pub fn create_plugin_from_skills(
         let skills_root = std::path::Path::new(sp);
         // Create the plugin dir with skills/ subfolder and plugin.json
         let plugin_skills_dir = skills_root.join(&plugin_slug).join("skills");
-        std::fs::create_dir_all(&plugin_skills_dir).map_err(|e| format!("Failed to create plugin directory: {}", e))?;
-        crate::marketplace_manifest::write_plugin_json(skills_root, &plugin_slug, &plugin_name, None, None)?;
+        std::fs::create_dir_all(&plugin_skills_dir)
+            .map_err(|e| format!("Failed to create plugin directory: {}", e))?;
+        crate::marketplace_manifest::write_plugin_json(
+            skills_root,
+            &plugin_slug,
+            &plugin_name,
+            None,
+            None,
+        )?;
         crate::marketplace_manifest::write_marketplace_json(skills_root)?;
         let msg = format!("{}: create plugin", plugin_slug);
         if let Err(e) = crate::git::commit_all(skills_root, &msg) {
@@ -356,7 +400,8 @@ pub fn create_plugin_from_skills(
     }
 
     for skill_key in skill_keys {
-        let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;
+        let (skill_name, current_plugin_slug, imported_skill_id) =
+            resolve_skill_target(&conn, &skill_key)?;
         let (_, skills_target) = move_skill_directories(
             settings.workspace_path.as_deref(),
             settings.skills_path.as_deref(),
@@ -365,7 +410,9 @@ pub fn create_plugin_from_skills(
             &plugin_slug,
         )?;
         crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)?;
-        if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
+        if let (Some(skill_id), Some(disk_path)) =
+            (imported_skill_id.as_deref(), skills_target.as_deref())
+        {
             crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
         }
     }
@@ -378,10 +425,15 @@ pub fn move_skill_to_plugin(
     plugin_slug: String,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[move_skill_to_plugin] skill_key={} plugin_slug={}", skill_key, plugin_slug);
+    log::info!(
+        "[move_skill_to_plugin] skill_key={} plugin_slug={}",
+        skill_key,
+        plugin_slug
+    );
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
-    let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;
+    let (skill_name, current_plugin_slug, imported_skill_id) =
+        resolve_skill_target(&conn, &skill_key)?;
     // DB first — if this fails, disk is unchanged and the user can retry
     crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)?;
     // Disk second — if this fails, reconciliation can recover from DB as authority
@@ -392,12 +444,16 @@ pub fn move_skill_to_plugin(
         &current_plugin_slug,
         &plugin_slug,
     )?;
-    if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
+    if let (Some(skill_id), Some(disk_path)) =
+        (imported_skill_id.as_deref(), skills_target.as_deref())
+    {
         crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
     }
     // Update marketplace.json to reflect the move
     if let Some(ref sp) = settings.skills_path {
-        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(std::path::Path::new(sp)) {
+        if let Err(e) =
+            crate::marketplace_manifest::regenerate_all_manifests(std::path::Path::new(sp))
+        {
             log::warn!("[move_skill_to_plugin] manifest update failed: {}", e);
         }
     }
@@ -405,17 +461,20 @@ pub fn move_skill_to_plugin(
 }
 
 #[tauri::command]
-pub fn remove_skill_from_plugin(
-    skill_key: String,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
+pub fn remove_skill_from_plugin(skill_key: String, db: tauri::State<'_, Db>) -> Result<(), String> {
     log::info!("[remove_skill_from_plugin] skill_key={}", skill_key);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
-    let (skill_name, current_plugin_slug, imported_skill_id) = resolve_skill_target(&conn, &skill_key)?;
+    let (skill_name, current_plugin_slug, imported_skill_id) =
+        resolve_skill_target(&conn, &skill_key)?;
     crate::db::ensure_default_plugin(&conn)?;
     // DB first — if this fails, disk is unchanged and the user can retry
-    crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, DEFAULT_PLUGIN_SLUG)?;
+    crate::db::move_skill_to_plugin(
+        &conn,
+        &skill_name,
+        &current_plugin_slug,
+        DEFAULT_PLUGIN_SLUG,
+    )?;
     // Disk second — if this fails, reconciliation can recover from DB as authority
     let (_, skills_target) = move_skill_directories(
         settings.workspace_path.as_deref(),
@@ -424,12 +483,16 @@ pub fn remove_skill_from_plugin(
         &current_plugin_slug,
         DEFAULT_PLUGIN_SLUG,
     )?;
-    if let (Some(skill_id), Some(disk_path)) = (imported_skill_id.as_deref(), skills_target.as_deref()) {
+    if let (Some(skill_id), Some(disk_path)) =
+        (imported_skill_id.as_deref(), skills_target.as_deref())
+    {
         crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
     }
     // Update marketplace.json to reflect the move
     if let Some(ref sp) = settings.skills_path {
-        if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(std::path::Path::new(sp)) {
+        if let Err(e) =
+            crate::marketplace_manifest::regenerate_all_manifests(std::path::Path::new(sp))
+        {
             log::warn!("[remove_skill_from_plugin] manifest update failed: {}", e);
         }
     }
@@ -444,7 +507,11 @@ pub fn set_plugin_upgrade_lock(
     locked: bool,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[set_plugin_upgrade_lock] slug={} locked={}", plugin_slug, locked);
+    log::info!(
+        "[set_plugin_upgrade_lock] slug={} locked={}",
+        plugin_slug,
+        locked
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[set_plugin_upgrade_lock] failed to acquire DB lock: {}", e);
         e.to_string()
@@ -468,7 +535,9 @@ pub fn delete_imported_skill(
     delete_imported_skill_inner(&conn, &skill_id, &workspace_path)?;
     let (_, claude_md_src) = crate::commands::workflow::resolve_prompt_source_dirs_public(&app);
     if claude_md_src.is_file() && !workspace_path.is_empty() {
-        if let Err(e) = crate::commands::workflow::rebuild_claude_md(&claude_md_src, &workspace_path) {
+        if let Err(e) =
+            crate::commands::workflow::rebuild_claude_md(&claude_md_src, &workspace_path)
+        {
             log::warn!("[delete_imported_skill] rebuild_claude_md failed: {}", e);
         }
     }
@@ -517,7 +586,10 @@ mod tests {
         let result = delete_imported_skill_inner(&conn, "del-happy-id", "");
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
         let after = crate::db::get_imported_skill_by_id(&conn, "del-happy-id").unwrap();
-        assert!(after.is_none(), "skill should have been removed from imported_skills");
+        assert!(
+            after.is_none(),
+            "skill should have been removed from imported_skills"
+        );
     }
 
     #[test]
@@ -527,15 +599,19 @@ mod tests {
         crate::db::create_plugin(&conn, "my-plugin", "local", None, None).unwrap();
         // Attempting to create with the same slug should fail
         let slug = crate::db::slugify_plugin_name("my-plugin");
-        assert!(crate::db::get_plugin_id_by_slug(&conn, &slug).unwrap().is_some());
+        assert!(crate::db::get_plugin_id_by_slug(&conn, &slug)
+            .unwrap()
+            .is_some());
     }
 
     #[test]
     fn test_delete_plugin_blocks_on_active_skills() {
         let conn = create_test_db_for_tests();
-        let (_, slug) = crate::db::create_plugin(&conn, "test-plugin", "local", None, None).unwrap();
+        let (_, slug) =
+            crate::db::create_plugin(&conn, "test-plugin", "local", None, None).unwrap();
         // Create an active skill in the plugin
-        crate::db::upsert_skill_in_plugin(&conn, "active-skill", "skill-builder", "domain", &slug).unwrap();
+        crate::db::upsert_skill_in_plugin(&conn, "active-skill", "skill-builder", "domain", &slug)
+            .unwrap();
 
         // Count active (non-deleted) skills
         let active_count: i64 = conn
@@ -545,37 +621,48 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(active_count, 1, "should have 1 active skill blocking delete");
+        assert_eq!(
+            active_count, 1,
+            "should have 1 active skill blocking delete"
+        );
     }
 
     #[test]
     fn test_delete_plugin_happy_path_removes_db_rows() {
         let conn = create_test_db_for_tests();
-        let (_, slug) = crate::db::create_plugin(&conn, "doomed-plugin", "local", None, None).unwrap();
+        let (_, slug) =
+            crate::db::create_plugin(&conn, "doomed-plugin", "local", None, None).unwrap();
         // Create and soft-delete a skill in this plugin
-        crate::db::upsert_skill_in_plugin(&conn, "old-skill", "skill-builder", "domain", &slug).unwrap();
+        crate::db::upsert_skill_in_plugin(&conn, "old-skill", "skill-builder", "domain", &slug)
+            .unwrap();
         conn.execute(
             "UPDATE skills SET deleted_at = datetime('now') WHERE name = 'old-skill'",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Wrap in transaction as the real delete_plugin does
         conn.execute_batch("BEGIN").unwrap();
         conn.execute(
             "DELETE FROM skills WHERE plugin_id = (SELECT id FROM plugins WHERE slug = ?1)",
             rusqlite::params![&slug],
-        ).unwrap();
+        )
+        .unwrap();
         crate::db::delete_plugin_by_slug(&conn, &slug).unwrap();
         conn.execute_batch("COMMIT").unwrap();
 
         // Verify plugin row is gone
-        assert!(crate::db::get_plugin_id_by_slug(&conn, &slug).unwrap().is_none());
+        assert!(crate::db::get_plugin_id_by_slug(&conn, &slug)
+            .unwrap()
+            .is_none());
         // Verify skill row is gone
-        let skill_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM skills WHERE name = 'old-skill'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let skill_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM skills WHERE name = 'old-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(skill_count, 0);
     }
 
@@ -584,15 +671,18 @@ mod tests {
         let conn = create_test_db_for_tests();
         // Create default plugin and a target plugin
         crate::db::ensure_default_plugin(&conn).unwrap();
-        let (_, target_slug) = crate::db::create_plugin(&conn, "target-plugin", "local", None, None).unwrap();
+        let (_, target_slug) =
+            crate::db::create_plugin(&conn, "target-plugin", "local", None, None).unwrap();
         // Create a skill in the default plugin
         crate::db::upsert_skill(&conn, "movable-skill", "skill-builder", "domain").unwrap();
 
         // Move it
-        crate::db::move_skill_to_plugin(&conn, "movable-skill", DEFAULT_PLUGIN_SLUG, &target_slug).unwrap();
+        crate::db::move_skill_to_plugin(&conn, "movable-skill", DEFAULT_PLUGIN_SLUG, &target_slug)
+            .unwrap();
 
         // Verify the skill is now in the target plugin
-        let skill = crate::db::get_skill_master_in_plugin(&conn, "movable-skill", &target_slug).unwrap();
+        let skill =
+            crate::db::get_skill_master_in_plugin(&conn, "movable-skill", &target_slug).unwrap();
         assert!(skill.is_some(), "skill should be in target plugin");
         assert_eq!(skill.unwrap().plugin_slug, target_slug);
     }
@@ -601,13 +691,24 @@ mod tests {
     fn test_remove_skill_from_plugin_moves_to_default() {
         let conn = create_test_db_for_tests();
         crate::db::ensure_default_plugin(&conn).unwrap();
-        let (_, source_slug) = crate::db::create_plugin(&conn, "source-plugin", "local", None, None).unwrap();
-        crate::db::upsert_skill_in_plugin(&conn, "my-skill", "skill-builder", "domain", &source_slug).unwrap();
+        let (_, source_slug) =
+            crate::db::create_plugin(&conn, "source-plugin", "local", None, None).unwrap();
+        crate::db::upsert_skill_in_plugin(
+            &conn,
+            "my-skill",
+            "skill-builder",
+            "domain",
+            &source_slug,
+        )
+        .unwrap();
 
         // Move to default
-        crate::db::move_skill_to_plugin(&conn, "my-skill", &source_slug, DEFAULT_PLUGIN_SLUG).unwrap();
+        crate::db::move_skill_to_plugin(&conn, "my-skill", &source_slug, DEFAULT_PLUGIN_SLUG)
+            .unwrap();
 
-        let skill = crate::db::get_skill_master(&conn, "my-skill").unwrap().unwrap();
+        let skill = crate::db::get_skill_master(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(skill.plugin_slug, DEFAULT_PLUGIN_SLUG);
     }
 
@@ -630,7 +731,8 @@ mod tests {
         // (the JOIN-derived value) reflects the destination plugin.
         let conn = create_test_db_for_tests();
         crate::db::ensure_default_plugin(&conn).unwrap();
-        let (_, target_slug) = crate::db::create_plugin(&conn, "dest-plugin", "local", None, None).unwrap();
+        let (_, target_slug) =
+            crate::db::create_plugin(&conn, "dest-plugin", "local", None, None).unwrap();
 
         // Create an imported skill in the default plugin
         let skill = make_test_skill("imp-skill-id", "imp-skill");
@@ -658,19 +760,30 @@ mod tests {
         // plugin from DB rather than trusting the plugin encoded in the key string.
         let conn = create_test_db_for_tests();
         crate::db::ensure_default_plugin(&conn).unwrap();
-        let (_, actual_slug) = crate::db::create_plugin(&conn, "actual-plugin", "local", None, None).unwrap();
+        let (_, actual_slug) =
+            crate::db::create_plugin(&conn, "actual-plugin", "local", None, None).unwrap();
 
         // Skill is in "actual-plugin" (DB)
-        crate::db::upsert_skill_in_plugin(&conn, "stale-skill", "skill-builder", "domain", &actual_slug).unwrap();
+        crate::db::upsert_skill_in_plugin(
+            &conn,
+            "stale-skill",
+            "skill-builder",
+            "domain",
+            &actual_slug,
+        )
+        .unwrap();
 
         // Key encodes the DEFAULT plugin (stale)
         let stale_key = format!("skill-builder:{}:stale-skill", DEFAULT_PLUGIN_SLUG);
-        let (name, plugin_slug, imported_id) = resolve_skill_target(&conn, &stale_key)
-            .expect("resolve_skill_target must succeed");
+        let (name, plugin_slug, imported_id) =
+            resolve_skill_target(&conn, &stale_key).expect("resolve_skill_target must succeed");
 
         assert_eq!(name, "stale-skill");
         // Must return the ACTUAL plugin from DB, not the stale one from the key
-        assert_eq!(plugin_slug, actual_slug, "must return actual plugin slug from DB, not stale key");
+        assert_eq!(
+            plugin_slug, actual_slug,
+            "must return actual plugin slug from DB, not stale key"
+        );
         assert!(imported_id.is_none());
     }
 }

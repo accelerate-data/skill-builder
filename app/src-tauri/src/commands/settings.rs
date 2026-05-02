@@ -107,7 +107,10 @@ fn migrate_legacy_skill_tags(skills_root: &Path) {
     let skills = match crate::skill_paths::enumerate_skill_locations(skills_root) {
         Ok(s) => s,
         Err(e) => {
-            log::warn!("[startup] enumerate_skill_locations failed during tag migration: {}", e);
+            log::warn!(
+                "[startup] enumerate_skill_locations failed during tag migration: {}",
+                e
+            );
             return;
         }
     };
@@ -168,11 +171,10 @@ fn backfill_missing_skill_versions(
             continue;
         }
 
-        let normalized = crate::commands::imported_skills::frontmatter::ensure_skill_frontmatter_metadata(
-            &skill_md,
-            None,
-            None,
-        )?;
+        let normalized =
+            crate::commands::imported_skills::frontmatter::ensure_skill_frontmatter_metadata(
+                &skill_md, None, None,
+            )?;
 
         if missing_version {
             if crate::git::skill_has_any_tag(skills_root, &skill.plugin_slug, &skill_name)? {
@@ -191,7 +193,12 @@ fn backfill_missing_skill_versions(
                     skills_root,
                     &format!("{}: backfill imported skill version", skill_name),
                 )?;
-                crate::git::create_skill_version_tag(skills_root, &skill.plugin_slug, &skill_name, &normalized.version)?;
+                crate::git::create_skill_version_tag(
+                    skills_root,
+                    &skill.plugin_slug,
+                    &skill_name,
+                    &normalized.version,
+                )?;
 
                 log::info!(
                     "[startup] backfilled missing version for '{}' with tag {}/{}/v{}",
@@ -206,10 +213,7 @@ fn backfill_missing_skill_versions(
                 skills_root,
                 &format!("{}: normalize skill frontmatter metadata", skill_name),
             )?;
-            log::info!(
-                "[startup] normalized metadata.version for '{}'",
-                skill_name
-            );
+            log::info!("[startup] normalized metadata.version for '{}'", skill_name);
         }
 
         crate::db::set_skill_behaviour(
@@ -386,13 +390,29 @@ fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
         || old.model_settings.timeout_seconds != new.model_settings.timeout_seconds
         || old.model_settings.num_retries != new.model_settings.num_retries
         || old.model_settings.reasoning_effort != new.model_settings.reasoning_effort
-        || old.model_settings.extra_headers.as_ref().map(|h| h.keys().collect::<Vec<_>>())
-            != new.model_settings.extra_headers.as_ref().map(|h| h.keys().collect::<Vec<_>>())
+        || old
+            .model_settings
+            .extra_headers
+            .as_ref()
+            .map(|h| h.keys().collect::<Vec<_>>())
+            != new
+                .model_settings
+                .extra_headers
+                .as_ref()
+                .map(|h| h.keys().collect::<Vec<_>>())
         || old.model_settings.input_cost_per_token != new.model_settings.input_cost_per_token
         || old.model_settings.output_cost_per_token != new.model_settings.output_cost_per_token
         || old.model_settings.usage_id != new.model_settings.usage_id
-        || old.model_settings.api_key.as_ref().map(|key| key.expose().is_empty())
-            != new.model_settings.api_key.as_ref().map(|key| key.expose().is_empty())
+        || old
+            .model_settings
+            .api_key
+            .as_ref()
+            .map(|key| key.expose().is_empty())
+            != new
+                .model_settings
+                .api_key
+                .as_ref()
+                .map(|key| key.expose().is_empty())
     {
         changes.push("model_settings=updated".to_string());
     }
@@ -604,16 +624,27 @@ mod tests {
         let mut settings = crate::types::AppSettings::default();
         settings.skills_path = Some(skills_path.to_str().unwrap().to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
-        crate::db::upsert_skill_with_source_in_plugin(&conn, "legacy-skill", "imported", "domain", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
+        crate::db::upsert_skill_with_source_in_plugin(
+            &conn,
+            "legacy-skill",
+            "imported",
+            "domain",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        )
+        .unwrap();
 
         run_settings_startup_migrations(&conn).unwrap();
 
         let updated =
             std::fs::read_to_string(skills_path.join("legacy-skill").join("SKILL.md")).unwrap();
         assert!(updated.contains("metadata:\n  version: \"1.0.0\""));
-        assert!(
-            crate::git::skill_version_tag_exists(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "legacy-skill", "1.0.0").unwrap()
-        );
+        assert!(crate::git::skill_version_tag_exists(
+            &skills_path,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "legacy-skill",
+            "1.0.0"
+        )
+        .unwrap());
         let skill = crate::db::list_all_skills(&conn)
             .unwrap()
             .into_iter()
@@ -636,7 +667,13 @@ mod tests {
         )
         .unwrap();
         crate::git::commit_all(&skills_path, "legacy-skill: seed").unwrap();
-        crate::git::create_skill_version_tag(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "legacy-skill", "1.0.0").unwrap();
+        crate::git::create_skill_version_tag(
+            &skills_path,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "legacy-skill",
+            "1.0.0",
+        )
+        .unwrap();
 
         let mut settings = crate::types::AppSettings::default();
         settings.skills_path = Some(skills_path.to_str().unwrap().to_string());
@@ -673,12 +710,14 @@ mod tests {
         {
             let repo = git2::Repository::open(&skills_path).unwrap();
             let head = repo.head().unwrap().peel(git2::ObjectType::Commit).unwrap();
-            repo.tag_lightweight("versioned-skill/v1.0.0", &head, false).unwrap();
+            repo.tag_lightweight("versioned-skill/v1.0.0", &head, false)
+                .unwrap();
         }
 
         // Confirm only the legacy tag exists before migration.
         assert!(
-            !crate::git::skill_version_tag_exists(&skills_path, plugin, "versioned-skill", "1.0.0").unwrap(),
+            !crate::git::skill_version_tag_exists(&skills_path, plugin, "versioned-skill", "1.0.0")
+                .unwrap(),
             "new-format tag should not exist yet"
         );
 
@@ -690,13 +729,15 @@ mod tests {
 
         // After startup, legacy tag must be renamed to the new format.
         assert!(
-            crate::git::skill_version_tag_exists(&skills_path, plugin, "versioned-skill", "1.0.0").unwrap(),
+            crate::git::skill_version_tag_exists(&skills_path, plugin, "versioned-skill", "1.0.0")
+                .unwrap(),
             "new-format tag should exist after migration"
         );
         // Legacy tag must be gone.
         let repo = git2::Repository::open(&skills_path).unwrap();
         assert!(
-            repo.find_reference("refs/tags/versioned-skill/v1.0.0").is_err(),
+            repo.find_reference("refs/tags/versioned-skill/v1.0.0")
+                .is_err(),
             "legacy tag should be deleted after migration"
         );
     }
@@ -821,7 +862,11 @@ mod tests {
         fs::create_dir_all(&old_path).unwrap();
         crate::git::ensure_repo(&old_path).unwrap();
         fs::create_dir_all(old_path.join(plugin).join("my-skill")).unwrap();
-        fs::write(old_path.join(plugin).join("my-skill").join("SKILL.md"), "# V1").unwrap();
+        fs::write(
+            old_path.join(plugin).join("my-skill").join("SKILL.md"),
+            "# V1",
+        )
+        .unwrap();
         crate::git::commit_all(&old_path, "v1").unwrap();
 
         handle_skills_path_change(

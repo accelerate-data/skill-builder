@@ -13,7 +13,9 @@ use crate::contracts::decisions::{Decision, DecisionsMetadata};
 ///
 /// Required fields: `status` (const `"research_complete"`), `dimensions_selected`,
 /// `question_count`, `research_output`.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct ResearchStepOutput {
     pub status: String,
     pub dimensions_selected: i64,
@@ -27,7 +29,9 @@ pub struct ResearchStepOutput {
 ///
 /// Required fields: `status` (const `"detailed_research_complete"`), `refinement_count`,
 /// `section_count`, `clarifications_json`.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct DetailedResearchOutput {
     pub status: String,
     pub refinement_count: i64,
@@ -41,7 +45,9 @@ pub struct DetailedResearchOutput {
 ///
 /// All fields are required per the agent SKILL.md contract.
 /// `version` is always `"1"`, `metadata` and `decisions` are always present.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct DecisionsOutput {
     pub version: String,
     pub metadata: DecisionsMetadata,
@@ -56,7 +62,9 @@ pub struct DecisionsOutput {
 /// generate-skill:  `{ status: "generated", skipped?: true, commit_summary?, version_bump?, call_trace }`
 /// rewrite-skill:   `{ status: "rewritten", skipped?: true, commit_summary?, version_bump?, call_trace }`
 /// benchmark-skill:  `{ status: "complete"|"partial"|"skipped", benchmark_path?, call_trace }`
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct GenerateSkillOutput {
     pub status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -72,7 +80,9 @@ pub struct GenerateSkillOutput {
 // ─── Answer Evaluator ────────────────────────────────────────────────────────
 
 /// Per-question verdict entry within an [`AnswerEvaluationOutput`].
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct PerQuestionEntry {
     pub question_id: String,
     pub verdict: String,
@@ -87,7 +97,9 @@ pub struct PerQuestionEntry {
 ///
 /// `gate_decision` is one of `"run_research"`, `"revise"` — set automatically by the agent
 /// based on verdict and contradictory_count (no user interaction required).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct AnswerEvaluationOutput {
     pub verdict: String,
     #[serde(default)]

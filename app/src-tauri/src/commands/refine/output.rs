@@ -28,7 +28,11 @@ fn build_mock_refine_patch(plugin_slug: &str, skill_name: &str, file: &SkillFile
     format!("{}{}", header, body)
 }
 
-fn build_mock_refine_diff(plugin_slug: &str, skill_name: &str, files: &[SkillFileContent]) -> RefineDiff {
+fn build_mock_refine_diff(
+    plugin_slug: &str,
+    skill_name: &str,
+    files: &[SkillFileContent],
+) -> RefineDiff {
     let diff_files = files
         .iter()
         .map(|file| RefineFileDiff {
@@ -38,7 +42,10 @@ fn build_mock_refine_diff(plugin_slug: &str, skill_name: &str, files: &[SkillFil
         })
         .collect::<Vec<_>>();
 
-    let insertions = files.iter().map(|file| file.content.lines().count()).sum::<usize>();
+    let insertions = files
+        .iter()
+        .map(|file| file.content.lines().count())
+        .sum::<usize>();
 
     RefineDiff {
         stat: format!(
@@ -133,9 +140,14 @@ fn read_file_at_commit(
     let tree = commit
         .tree()
         .map_err(|e| format!("Failed to get tree for '{}': {}", commit_sha, e))?;
-    let entry = tree
-        .get_path(Path::new(file_path))
-        .map_err(|e| format!("File '{}' not in commit '{}': {}", file_path, &commit_sha[..8.min(commit_sha.len())], e))?;
+    let entry = tree.get_path(Path::new(file_path)).map_err(|e| {
+        format!(
+            "File '{}' not in commit '{}': {}",
+            file_path,
+            &commit_sha[..8.min(commit_sha.len())],
+            e
+        )
+    })?;
     let blob = entry
         .to_object(repo)
         .and_then(|o| o.peel_to_blob())
@@ -254,7 +266,8 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
     pre_run_sha: Option<&str>,
 ) -> Result<RefineFinalizeResult, String> {
     let skill_root = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
-    let workspace_skill_root = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_skill_root =
+        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     if !skill_root.exists() {
         return Err(format!(
             "Skill '{}' not found at {}",
@@ -381,15 +394,24 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
         let current_version = crate::git::latest_skill_semver(skills_root, plugin_slug, skill_name)
             .unwrap_or_else(|_| "0.0.0".to_string());
         let new_version = crate::git::bump_patch(&current_version);
-        match crate::git::create_skill_version_tag(skills_root, plugin_slug, skill_name, &new_version) {
+        match crate::git::create_skill_version_tag(
+            skills_root,
+            plugin_slug,
+            skill_name,
+            &new_version,
+        ) {
             Ok(tag_name) => log::info!(
                 "[finalize_refine_run] tagged skill={} plugin={} tag={}",
-                skill_name, plugin_slug, tag_name
+                skill_name,
+                plugin_slug,
+                tag_name
             ),
-            Err(e) => log::warn!(
+            Err(e) => {
+                log::warn!(
                 "[finalize_refine_run] version tag failed skill={} plugin={} version={} error={}",
                 skill_name, plugin_slug, new_version, e
-            ),
+            )
+            }
         }
     }
 
@@ -411,7 +433,13 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
         };
 
         if let Some(base_sha) = base_sha {
-            get_refine_diff_for_commit_range_inner(skill_name, skills_path, plugin_slug, &base_sha, sha)?
+            get_refine_diff_for_commit_range_inner(
+                skill_name,
+                skills_path,
+                plugin_slug,
+                &base_sha,
+                sha,
+            )?
         } else {
             RefineDiff {
                 stat: "no changes".to_string(),
@@ -453,11 +481,16 @@ pub fn clean_benchmark_snapshot(
     workspace_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[clean_benchmark_snapshot] skill={} plugin={}", skill_name, plugin_slug);
+    log::info!(
+        "[clean_benchmark_snapshot] skill={} plugin={}",
+        skill_name,
+        plugin_slug
+    );
     validate_skill_name(&skill_name)?;
     let plugin_slug = super::resolve_skill_plugin_slug(&db, &skill_name)
         .unwrap_or_else(|_| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-    let workspace_skill_root = resolve_workspace_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name);
+    let workspace_skill_root =
+        resolve_workspace_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name);
     cleanup_skill_snapshot(&workspace_skill_root);
     Ok(())
 }
@@ -471,7 +504,11 @@ pub fn finalize_refine_run(
     db: tauri::State<'_, Db>,
     sessions: tauri::State<'_, super::RefineSessionManager>,
 ) -> Result<RefineFinalizeResult, String> {
-    log::info!("[finalize_refine_run] skill={} plugin={}", skill_name, plugin_slug);
+    log::info!(
+        "[finalize_refine_run] skill={} plugin={}",
+        skill_name,
+        plugin_slug
+    );
     validate_skill_name(&skill_name)?;
     let skills_path = resolve_skills_path(&db).map_err(|e| {
         log::error!("[finalize_refine_run] Failed to resolve skills path: {}", e);
@@ -483,15 +520,11 @@ pub fn finalize_refine_run(
     })?;
 
     // Look up the session's pre-run HEAD SHA to detect no-op turns.
-    let pre_run_sha = sessions
-        .0
-        .lock()
-        .ok()
-        .and_then(|map| {
-            map.values()
-                .find(|s| s.skill_name == skill_name)
-                .and_then(|s| s.head_sha_at_start.clone())
-        });
+    let pre_run_sha = sessions.0.lock().ok().and_then(|map| {
+        map.values()
+            .find(|s| s.skill_name == skill_name)
+            .and_then(|s| s.head_sha_at_start.clone())
+    });
 
     let result = finalize_refine_run_inner_for_plugin(
         &skill_name,

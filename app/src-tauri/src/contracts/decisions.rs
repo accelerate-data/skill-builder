@@ -5,7 +5,9 @@
 //! single source of truth for the decisions JSON schema.
 
 /// Union type for contradictory inputs: `true` (active) or `"revised"` (string).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(untagged)]
 pub enum ContradictoryInputs {
     Active(bool),
@@ -13,7 +15,9 @@ pub enum ContradictoryInputs {
 }
 
 /// Status of a single decision.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum DecisionStatus {
     Resolved,
@@ -23,7 +27,9 @@ pub enum DecisionStatus {
 }
 
 /// Top-level metadata block for a decisions file.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct DecisionsMetadata {
     #[serde(default)]
     pub decision_count: i64,
@@ -38,7 +44,9 @@ pub struct DecisionsMetadata {
 }
 
 /// A single decision entry.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct Decision {
     pub id: String,
     pub title: String,
@@ -82,8 +90,7 @@ mod tests {
             let json = serde_json::to_string(&status).expect("serialize");
             assert_eq!(json, expected, "status {:?} serialized wrong", status);
 
-            let deserialized: DecisionStatus =
-                serde_json::from_str(&json).expect("deserialize");
+            let deserialized: DecisionStatus = serde_json::from_str(&json).expect("deserialize");
             // Round-trip check: re-serialize should match
             assert_eq!(serde_json::to_string(&deserialized).unwrap(), expected);
         }

@@ -131,7 +131,11 @@ pub fn build_betas(
     if interleaved_thinking_beta && thinking_budget.is_some() {
         betas.push("interleaved-thinking-2025-05-14".to_string());
     }
-    if betas.is_empty() { None } else { Some(betas) }
+    if betas.is_empty() {
+        None
+    } else {
+        Some(betas)
+    }
 }
 
 /// Validate a clarifications JSON payload by deserializing into the typed contract.

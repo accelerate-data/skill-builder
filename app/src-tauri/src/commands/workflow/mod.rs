@@ -14,6 +14,9 @@ pub mod user_context;
 // step_config
 pub(crate) use step_config::build_betas;
 
+// settings
+pub(crate) use settings::read_initialized_runtime_context;
+
 // deploy
 pub(crate) use deploy::{
     ensure_workspace_prompts_sync, invalidate_workspace_cache, redeploy_agents,

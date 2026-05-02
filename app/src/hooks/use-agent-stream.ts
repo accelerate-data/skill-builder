@@ -6,6 +6,11 @@ import { useWorkflowStore } from "@/stores/workflow-store";
 import { invalidateUsageDataAfterAgentRun } from "@/lib/queries/agent-stream-cache";
 import type { DisplayItem } from "@/lib/display-types";
 import type { RefineQuestionPrompt } from "@/stores/refine-store";
+import {
+  isTerminalConversationStatus,
+  normalizeConversationEventMessage,
+  normalizeConversationStateMessage,
+} from "@/lib/openhands-conversation-events";
 import type {
   CompactionEvent,
   ContextWindowEvent,
@@ -182,6 +187,37 @@ export async function initAgentStream() {
         );
         agentStore.addDisplayItem(agent_id, message.item);
         return;
+      }
+
+      if (message.type === "conversation_event") {
+        const conversationEvent = normalizeConversationEventMessage(message);
+        if (conversationEvent) {
+          console.debug(
+            "[use-agent-stream] event=conversation_event agent_id=%s event_class=%s",
+            agent_id,
+            conversationEvent.eventClass,
+          );
+          agentStore.addConversationEvent(agent_id, conversationEvent);
+          return;
+        }
+      }
+
+      if (message.type === "conversation_state") {
+        const conversationState = normalizeConversationStateMessage(message);
+        if (conversationState) {
+          console.debug(
+            "[use-agent-stream] event=conversation_state agent_id=%s status=%s",
+            agent_id,
+            conversationState.status,
+          );
+          agentStore.applyConversationState(agent_id, conversationState);
+          if (isTerminalConversationStatus(conversationState.status)) {
+            invalidateUsageDataAfterAgentRun().catch((error) => {
+              console.warn("[use-agent-stream] event=invalidate_usage_failed error=%s", error);
+            });
+          }
+          return;
+        }
       }
 
       if (message.type === "refine_question") {
