@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sidecarDir = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(sidecarDir, "..", "..");
 const runnerPath = path.join(sidecarDir, "openhands", "runner.py");
 
 type JsonRecord = Record<string, unknown>;
@@ -167,17 +168,10 @@ Return concise validation results for scope review requests.
     "utf8",
   );
   const researchDir = path.join(workspaceDir, ".agents", "skills", "research");
-  mkdirSync(researchDir, { recursive: true });
-  writeFileSync(
-    path.join(researchDir, "SKILL.md"),
-    `---
-name: research
-description: Workflow research smoke skill for OpenHands SDK integration tests.
----
-
-Return only the requested workflow research JSON object.
-`,
-    "utf8",
+  cpSync(
+    path.join(repoRoot, "agent-sources", "workspace", "skills", "research"),
+    researchDir,
+    { recursive: true },
   );
   return workspaceDir;
 }

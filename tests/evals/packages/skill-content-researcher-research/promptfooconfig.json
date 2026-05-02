@@ -12,7 +12,7 @@
       "assert": [
         {
           "type": "javascript",
-          "value": "const trimmed = output.trim(); if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return false; const data = JSON.parse(trimmed); data.status === 'research_complete' && Number.isInteger(data.dimensions_selected) && data.dimensions_selected >= 0 && Number.isInteger(data.question_count) && data.research_output && data.research_output.version === '1' && data.research_output.metadata && Array.isArray(data.research_output.metadata.priority_questions) && data.research_output.metadata.research_plan && Array.isArray(data.research_output.sections) && Array.isArray(data.research_output.answer_evaluator_notes)"
+          "value": "let trimmed = output.trim(); const fenced = trimmed.match(/^```(?:json)?\\s*([\\s\\S]*?)\\s*```$/i); if (fenced) trimmed = fenced[1].trim(); if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return false; const data = JSON.parse(trimmed); return data.status === 'research_complete' && Number.isInteger(data.dimensions_selected) && data.dimensions_selected >= 0 && Number.isInteger(data.question_count) && data.research_output && data.research_output.version === '1' && data.research_output.metadata && Array.isArray(data.research_output.metadata.priority_questions) && data.research_output.metadata.research_plan && Array.isArray(data.research_output.sections) && Array.isArray(data.research_output.answer_evaluator_notes);"
         }
       ]
     }
