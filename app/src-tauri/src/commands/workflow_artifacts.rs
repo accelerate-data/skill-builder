@@ -21,7 +21,6 @@ mod tests {
     fn test_research_step_output_round_trip() {
         let json = serde_json::json!({
             "status": "research_complete",
-            "dimensions_selected": 3,
             "question_count": 7,
             "research_output": {
                 "version": "1",
@@ -41,18 +40,16 @@ mod tests {
         let parsed: ResearchStepOutput =
             serde_json::from_value(json.clone()).expect("deserialize ResearchStepOutput");
         assert_eq!(parsed.status, "research_complete");
-        assert_eq!(parsed.dimensions_selected, 3);
         assert_eq!(parsed.question_count, 7);
 
         let re_serialized = serde_json::to_value(&parsed).expect("serialize ResearchStepOutput");
         assert_eq!(re_serialized["status"], "research_complete");
-        assert_eq!(re_serialized["dimensions_selected"], 3);
+        assert!(re_serialized.get("dimensions_selected").is_none());
     }
 
     #[test]
     fn test_research_step_output_rejects_missing_status() {
         let json = serde_json::json!({
-            "dimensions_selected": 3,
             "question_count": 7,
             "research_output": {
                 "version": "1",
@@ -73,7 +70,6 @@ mod tests {
     fn test_research_step_output_rejects_missing_research_output() {
         let json = serde_json::json!({
             "status": "research_complete",
-            "dimensions_selected": 3,
             "question_count": 7
         });
         let result = serde_json::from_value::<ResearchStepOutput>(json);
@@ -81,7 +77,7 @@ mod tests {
     }
 
     #[test]
-    fn test_research_step_output_rejects_missing_dimensions_selected() {
+    fn test_research_step_output_accepts_missing_dimensions_selected() {
         let json = serde_json::json!({
             "status": "research_complete",
             "question_count": 7,
@@ -92,14 +88,16 @@ mod tests {
             }
         });
         let result = serde_json::from_value::<ResearchStepOutput>(json);
-        assert!(result.is_err(), "should reject missing dimensions_selected");
+        assert!(
+            result.is_ok(),
+            "should accept clean-break payload without dimensions_selected"
+        );
     }
 
     #[test]
     fn test_research_step_output_rejects_missing_question_count() {
         let json = serde_json::json!({
             "status": "research_complete",
-            "dimensions_selected": 3,
             "research_output": {
                 "version": "1",
                 "metadata": { "title": "T", "question_count": 7, "section_count": 0, "refinement_count": 0, "must_answer_count": 0 },

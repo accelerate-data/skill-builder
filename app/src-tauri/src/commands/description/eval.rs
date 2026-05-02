@@ -275,6 +275,7 @@ async fn run_single_eval_query(
         run_source: Some("gate-eval".to_string()),
         plugin_slug: plugin_slug.to_string(),
         transcript_log_dir: Some(transcript_dir_str.clone()),
+        persistence_dir: None,
         runtime_provider: None,
         task_kind: None,
         user_message_suffix: None,

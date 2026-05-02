@@ -200,6 +200,7 @@ pub async fn start_agent(
         run_source,
         plugin_slug,
         transcript_log_dir: None,
+        persistence_dir: None,
         runtime_provider: None,
         task_kind: None,
         user_message_suffix: None,

@@ -243,6 +243,7 @@ describe("OpenHands runner live SDK integration", () => {
           },
           workspaceRootDir: workspaceDir,
           workspaceSkillDir: workspaceDir,
+          persistenceDir: path.join(workspaceDir, "logs", "scope-review"),
           allowedTools: [],
           maxTurns: 3,
         });
@@ -326,7 +327,7 @@ describe("OpenHands runner live SDK integration", () => {
           agentName: "skill-creator",
           taskKind: "workflow.research",
           prompt:
-            'Return exactly this raw JSON object and nothing else: {"status":"research_complete","dimensions_selected":1,"question_count":0,"research_output":{"version":"1","metadata":{},"sections":[],"notes":[]}}',
+            'Return exactly this raw JSON object and nothing else: {"status":"research_complete","question_count":0,"research_output":{"version":"1","metadata":{},"sections":[],"notes":[]}}',
           llm: {
             model: config.model,
             apiKey: config.apiKey,
@@ -339,6 +340,7 @@ describe("OpenHands runner live SDK integration", () => {
           },
           workspaceRootDir: workspaceDir,
           workspaceSkillDir: workspaceDir,
+          persistenceDir: path.join(workspaceDir, "logs", "workflow-research"),
           allowedTools: ["file_editor", "terminal"],
           maxTurns: 5,
           outputFormat: { type: "json_schema", json_schema: { name: "ResearchStepOutput" } },

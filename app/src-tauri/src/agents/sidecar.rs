@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::{Mutex, OnceLock};
@@ -89,10 +88,13 @@ pub struct SidecarConfig {
     /// Run source: "workflow", "refine", or "test".
     #[serde(rename = "runSource", skip_serializing_if = "Option::is_none")]
     pub run_source: Option<String>,
-    /// Override the log directory for the JSONL transcript. When set, transcripts
-    /// are written here instead of the default `{workspaceSkillDir}/logs/`.
+    /// Base log directory for native runtime logs. OpenHands uses this as the
+    /// parent for its SDK `persistenceDir`.
     #[serde(rename = "transcriptLogDir", skip_serializing_if = "Option::is_none")]
     pub transcript_log_dir: Option<String>,
+    /// OpenHands-native persistence directory for the SDK conversation event log.
+    #[serde(rename = "persistenceDir", skip_serializing_if = "Option::is_none")]
+    pub persistence_dir: Option<String>,
     /// Plugin slug for the skill (from plugin-paths.json layout: `{root}/{plugin_slug}/{skill_name}`).
     /// Threaded through terminal lifecycle events so persistence handlers can resolve the correct skill dir.
     #[serde(rename = "pluginSlug")]
@@ -196,6 +198,7 @@ pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> 
         run_source: params.run_source,
         plugin_slug: params.plugin_slug,
         transcript_log_dir: None,
+        persistence_dir: None,
         runtime_provider: Some("openhands".to_string()),
         task_kind: params.task_kind,
         user_message_suffix: params.user_message_suffix,
@@ -319,44 +322,26 @@ fn openhands_terminal_outcome(line: &str) -> Option<(bool, Option<String>)> {
     }
 }
 
-async fn write_openhands_transcript_line(
-    log_handle: &Option<std::sync::Arc<std::sync::Mutex<std::fs::File>>>,
-    line: &str,
-) {
-    if let Some(handle) = log_handle {
-        if let Ok(mut file) = handle.lock() {
-            let _ = writeln!(file, "{}", line);
-        }
-    }
-}
-
-fn create_openhands_transcript(
+fn create_openhands_persistence_dir(
     agent_id: &str,
     config: &SidecarConfig,
     transcript_log_dir: Option<&str>,
-) -> Option<(PathBuf, std::sync::Arc<std::sync::Mutex<std::fs::File>>)> {
+) -> Result<PathBuf, String> {
     let now = chrono::Local::now();
     let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
     let log_dir = transcript_log_dir
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(&config.workspace_skill_dir).join("logs"));
-    let log_path = log_dir.join(format!("{}-{}.jsonl", agent_id, ts));
-    match std::fs::create_dir_all(&log_dir).and_then(|_| std::fs::File::create(&log_path)) {
-        Ok(mut file) => {
-            let first_line = redact_openhands_config_for_log(config).to_string();
-            let _ = writeln!(file, "{}", first_line);
-            Some((log_path, std::sync::Arc::new(std::sync::Mutex::new(file))))
-        }
-        Err(e) => {
-            log::warn!(
-                "[openhands-direct:{}] failed to create transcript in {}: {}",
-                agent_id,
-                log_dir.display(),
-                e
-            );
-            None
-        }
-    }
+    let persistence_dir = log_dir.join(format!("{}-{}", agent_id, ts));
+    std::fs::create_dir_all(&persistence_dir).map_err(|e| {
+        format!(
+            "Failed to create OpenHands native persistence dir {} for {}: {}",
+            persistence_dir.display(),
+            agent_id,
+            e
+        )
+    })?;
+    Ok(persistence_dir)
 }
 
 /// Spawn the bundled OpenHands runner directly from Rust.
@@ -370,7 +355,7 @@ pub async fn dispatch_openhands_one_shot(
     agent_id: &str,
     mut config: SidecarConfig,
     transcript_log_dir: Option<&str>,
-) -> Result<Option<PathBuf>, String> {
+) -> Result<PathBuf, String> {
     if config.path_to_openhands_runner.is_none() {
         config.path_to_openhands_runner = Some(resolve_openhands_runner_path(app)?);
     }
@@ -379,9 +364,8 @@ pub async fn dispatch_openhands_one_shot(
         .path_to_openhands_runner
         .clone()
         .ok_or_else(|| "OpenHands runner path was not resolved".to_string())?;
-    let transcript = create_openhands_transcript(agent_id, &config, transcript_log_dir);
-    let transcript_path = transcript.as_ref().map(|(path, _)| path.clone());
-    let log_handle = transcript.map(|(_, handle)| handle);
+    let persistence_path = create_openhands_persistence_dir(agent_id, &config, transcript_log_dir)?;
+    config.persistence_dir = Some(persistence_path.to_string_lossy().into_owned());
     let stderr_secrets = openhands_request_secrets(&config);
 
     let config_event = redact_openhands_config_for_log(&config);
@@ -432,14 +416,12 @@ pub async fn dispatch_openhands_one_shot(
 
     let app_for_stdout = app.clone();
     let agent_for_stdout = agent_id.to_string();
-    let log_for_stdout = log_handle.clone();
     let stdout_task = tokio::spawn(async move {
         let mut terminal_outcome: Option<(bool, Option<String>)> = None;
         let mut lines = BufReader::new(stdout).lines();
         loop {
             match lines.next_line().await {
                 Ok(Some(line)) => {
-                    write_openhands_transcript_line(&log_for_stdout, &line).await;
                     if let Some(outcome) = openhands_terminal_outcome(&line) {
                         terminal_outcome = Some(outcome);
                     }
@@ -563,7 +545,7 @@ pub async fn dispatch_openhands_one_shot(
         );
     });
 
-    Ok(transcript_path)
+    Ok(persistence_path)
 }
 
 fn openhands_conversation_state_error_detail(
@@ -611,7 +593,7 @@ fn parse_openhands_one_shot_terminal_state(
 /// runner boundary and wait for its terminal `conversation_state` payload.
 ///
 /// Callers keep task-specific result parsing, but they should not duplicate the
-/// dispatch, transcript directory, runner path, or terminal wait
+/// dispatch, native persistence directory, runner path, or terminal wait
 /// mechanics for each migrated OpenHands feature.
 pub async fn run_openhands_one_shot(
     app: &tauri::AppHandle,
@@ -620,14 +602,8 @@ pub async fn run_openhands_one_shot(
 ) -> Result<OpenHandsOneShotRun, String> {
     let config = params.config;
     let agent_id = format!("{}-{}", params.agent_id_prefix, uuid::Uuid::new_v4());
-    let transcript_dir = PathBuf::from(&config.workspace_skill_dir)
-        .join("logs")
-        .join(format!(
-            "{}-{}",
-            params.agent_id_prefix,
-            uuid::Uuid::new_v4()
-        ));
-    let transcript_dir_str = transcript_dir.to_string_lossy().into_owned();
+    let log_dir = PathBuf::from(&config.workspace_skill_dir).join("logs");
+    let log_dir_str = log_dir.to_string_lossy().into_owned();
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsOneShotEvent>();
     let target_agent_id = agent_id.clone();
@@ -687,7 +663,7 @@ pub async fn run_openhands_one_shot(
         )));
     });
 
-    dispatch_openhands_one_shot(app, &agent_id, config, Some(&transcript_dir_str))
+    let persistence_dir = dispatch_openhands_one_shot(app, &agent_id, config, Some(&log_dir_str))
         .await
         .inspect_err(|_| {
             app.unlisten(message_listener);
@@ -737,7 +713,7 @@ pub async fn run_openhands_one_shot(
     })?;
 
     Ok(OpenHandsOneShotRun {
-        transcript_dir,
+        transcript_dir: persistence_dir,
         conversation_state,
     })
 }
@@ -969,6 +945,7 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            persistence_dir: None,
             runtime_provider: None,
             task_kind: None,
             user_message_suffix: None,
@@ -1043,6 +1020,7 @@ mod tests {
             run_source: Some("workflow".to_string()),
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            persistence_dir: None,
             runtime_provider: Some("openhands".to_string()),
             task_kind: Some("workflow.research".to_string()),
             user_message_suffix: None,
@@ -1108,6 +1086,7 @@ mod tests {
             run_source: Some("workflow".to_string()),
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            persistence_dir: None,
             runtime_provider: Some("openhands".to_string()),
             task_kind: Some("workflow.research".to_string()),
             user_message_suffix: None,
@@ -1187,6 +1166,7 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            persistence_dir: None,
             runtime_provider: None,
             task_kind: None,
             user_message_suffix: None,
@@ -1235,6 +1215,7 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            persistence_dir: None,
             runtime_provider: None,
             task_kind: None,
             user_message_suffix: None,
@@ -1286,6 +1267,7 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            persistence_dir: None,
             runtime_provider: None,
             task_kind: None,
             user_message_suffix: None,
@@ -1332,6 +1314,7 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            persistence_dir: None,
             runtime_provider: Some("openhands".to_string()),
             task_kind: None,
             user_message_suffix: None,
@@ -1418,6 +1401,7 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
+            persistence_dir: None,
             runtime_provider: Some("openhands".to_string()),
             task_kind: Some("scope_review".to_string()),
             user_message_suffix: Some(

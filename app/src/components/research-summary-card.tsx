@@ -1,49 +1,9 @@
 import { useState } from "react";
-import { CheckCircle2, Clock, Layers, AlertTriangle, ChevronRight, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, HelpCircle, AlertTriangle, ChevronRight, XCircle } from "lucide-react";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import type { SaveStatus } from "@/components/clarifications-editor";
 import { type ClarificationsFile } from "@/lib/clarifications-types";
 import { formatElapsed } from "@/lib/utils";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface DimensionScore {
-  name: string;
-  score: number;
-  reason: string;
-}
-
-interface ResearchPlanData {
-  purpose: string;
-  domain?: string;
-  dimensionsEvaluated: number;
-  dimensionsSelected: number;
-  topicRelevance?: string;
-  dimensions: DimensionScore[];
-  selectedDimensions: string[];
-}
-
-interface ResearchPlanJson {
-  purpose: string;
-  domain: string;
-  topic_relevance: string;
-  dimensions_evaluated: number;
-  dimensions_selected: number;
-  dimension_scores: Array<{
-    name: string;
-    score: number;
-    reason: string;
-    focus: string;
-  }>;
-  selected_dimensions: Array<{
-    name: string;
-    focus: string;
-  }>;
-}
-
-function stripInlineMarkdown(text: string): string {
-  return text.replace(/[*_`~]/g, "").trim();
-}
 
 interface ResearchSummaryCardProps {
   researchPlan?: string;
@@ -58,150 +18,22 @@ interface ResearchSummaryCardProps {
   evaluating?: boolean;
 }
 
-// ─── Parser ───────────────────────────────────────────────────────────────────
-
-function parseResearchPlan(markdown: string): ResearchPlanData {
-  const result: ResearchPlanData = {
-    purpose: "",
-    dimensionsEvaluated: 0,
-    dimensionsSelected: 0,
-    dimensions: [],
-    selectedDimensions: [],
-  };
-
-  // Parse YAML frontmatter
-  const fmMatch = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (fmMatch) {
-    const fm = fmMatch[1];
-    for (const line of fm.split(/\r?\n/)) {
-      const [key, ...rest] = line.split(":");
-      const value = rest.join(":").trim();
-      switch (key.trim()) {
-        case "purpose": result.purpose = value; break;
-        case "dimensions_evaluated": result.dimensionsEvaluated = parseInt(value) || 0; break;
-        case "dimensions_selected": result.dimensionsSelected = parseInt(value) || 0; break;
-        case "topic_relevance": result.topicRelevance = value; break;
-      }
-    }
-  }
-
-  // Parse Dimension Scores table
-  const scoreTableMatch = markdown.match(/## Dimension Scores\s*\n\|[^\n]+\n\|[-|\s]+\n([\s\S]*?)(?=\n##|\n---|\Z)/);
-  if (scoreTableMatch) {
-    for (const row of scoreTableMatch[1].trim().split(/\r?\n/)) {
-      const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
-      if (cells.length >= 3) {
-        result.dimensions.push({
-          name: cells[0],
-          score: parseInt(cells[1]) || 0,
-          reason: cells[2],
-        });
-      }
-    }
-  }
-
-  // Parse Selected Dimensions table
-  const selectedMatch = markdown.match(/## Selected Dimensions\s*\n\|[^\n]+\n\|[-|\s]+\n([\s\S]*?)(?=\n##|\n---|\Z)/);
-  if (selectedMatch) {
-    for (const row of selectedMatch[1].trim().split(/\r?\n/)) {
-      const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
-      if (cells.length >= 1) {
-        result.selectedDimensions.push(cells[0]);
-      }
-    }
-  }
-
-  // Back-compat: older research-plan outputs may only contain a single top-level
-  // markdown table (Dimension | Score | Reasoning | Clarifications Needed),
-  // without frontmatter or a dedicated "Selected Dimensions" section.
-  if (result.dimensions.length === 0) {
-    const tableRows = markdown
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith("|") && line.endsWith("|"));
-
-    for (const row of tableRows) {
-      const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
-      if (cells.length < 2) continue;
-
-      const scoreMatch = cells[1].match(/\d+/);
-      const score = scoreMatch ? parseInt(scoreMatch[0], 10) : NaN;
-      if (!Number.isFinite(score)) continue;
-
-      result.dimensions.push({
-        name: stripInlineMarkdown(cells[0]),
-        score,
-        reason: cells[2] ?? "",
-      });
-    }
-  }
-
-  if (result.dimensionsEvaluated === 0 && result.dimensions.length > 0) {
-    result.dimensionsEvaluated = result.dimensions.length;
-  }
-
-  if (result.selectedDimensions.length === 0 && result.dimensions.length > 0) {
-    const inferred = result.dimensions
-      .filter((d) => d.score >= 4)
-      .map((d) => d.name);
-    result.selectedDimensions = inferred.length > 0
-      ? inferred
-      : result.dimensions.map((d) => d.name);
-  }
-
-  if (result.dimensionsSelected === 0 && result.selectedDimensions.length > 0) {
-    result.dimensionsSelected = result.selectedDimensions.length;
-  }
-
-  return result;
-}
-
-function parseResearchPlanFromClarifications(
-  clarificationsData: ClarificationsFile,
-): ResearchPlanData | null {
-  const metadata = clarificationsData.metadata as typeof clarificationsData.metadata & {
-    research_plan?: ResearchPlanJson;
-  };
-  const rawPlan = metadata.research_plan;
-  if (!rawPlan || typeof rawPlan !== "object") return null;
-  return {
-    purpose: rawPlan.purpose ?? "",
-    domain: rawPlan.domain ?? "",
-    topicRelevance: rawPlan.topic_relevance ?? "",
-    dimensionsEvaluated: rawPlan.dimensions_evaluated ?? 0,
-    dimensionsSelected: rawPlan.dimensions_selected ?? 0,
-    dimensions: Array.isArray(rawPlan.dimension_scores)
-      ? rawPlan.dimension_scores.map((d) => ({
-        name: d.name,
-        score: d.score,
-        reason: d.reason,
-      }))
-      : [],
-    selectedDimensions: Array.isArray(rawPlan.selected_dimensions)
-      ? rawPlan.selected_dimensions
-          .map((d) => d?.name)
-          .filter((name): name is string => typeof name === "string" && name.trim().length > 0)
-      : [],
-  };
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 // ─── Outcome helpers ─────────────────────────────────────────────────────────
 
-type OutcomeState = "ok" | "error" | "scope_guard" | "low_score";
+type OutcomeState = "ok" | "error" | "scope_guard" | "warning";
 
 function getOutcomeState(meta: ClarificationsFile["metadata"]): OutcomeState {
   if (meta?.error) return "error";
-  if (meta?.warning?.code === "scope_guard_triggered") return "scope_guard";
-  if (meta?.warning?.code === "all_dimensions_low_score") return "low_score";
+  if (meta?.warning?.code === "scope_guard_triggered" || meta?.scope_recommendation) return "scope_guard";
+  if (meta?.warning) return "warning";
   return "ok";
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ResearchSummaryCard({
-  researchPlan,
   clarificationsData,
   duration,
   editable,
@@ -212,18 +44,16 @@ export function ResearchSummaryCard({
   evaluating,
 }: ResearchSummaryCardProps) {
   const [planExpanded, setPlanExpanded] = useState(false);
-  const plan = parseResearchPlanFromClarifications(clarificationsData)
-    ?? parseResearchPlan(researchPlan ?? "");
   const meta = clarificationsData.metadata;
-
-  const sortedDimensions = [...plan.dimensions].sort((a, b) => b.score - a.score);
-
-  const dimPct = plan.dimensionsEvaluated > 0
-    ? Math.round((plan.dimensionsSelected / plan.dimensionsEvaluated) * 100)
-    : 0;
 
   const outcome = getOutcomeState(meta);
   const isNonHappyPath = outcome !== "ok";
+  const summaryStats = [
+    { label: "Questions", value: meta?.question_count ?? 0 },
+    { label: "Sections", value: meta?.section_count ?? 0 },
+    { label: "Must answer", value: meta?.must_answer_count ?? 0 },
+    { label: "Refinements", value: meta?.refinement_count ?? 0 },
+  ];
 
   // Header config per outcome
   const headerConfig = {
@@ -242,16 +72,12 @@ export function ResearchSummaryCard({
       label: "Scope Too Broad",
       labelClass: "text-sm font-semibold tracking-tight text-amber-600 dark:text-amber-400",
     },
-    low_score: {
+    warning: {
       icon: <AlertTriangle className="size-5 shrink-0 text-amber-600 dark:text-amber-400" />,
-      label: "No Dimensions Selected",
+      label: "Research Warning",
       labelClass: "text-sm font-semibold tracking-tight text-amber-600 dark:text-amber-400",
     },
   }[outcome];
-
-  // Dimensions column (shown for "ok" and "low_score")
-  const showDimensions = outcome === "ok" || outcome === "low_score";
-  // Full stats grid (Clarifications + Notes) only for happy path
 
   // Banner for non-happy-path outcomes
   const banner = isNonHappyPath ? (
@@ -266,9 +92,14 @@ export function ResearchSummaryCard({
       <div className="flex items-start gap-2 px-4 py-3 bg-amber-100 dark:bg-amber-900/30 border-b text-amber-700 dark:text-amber-300 text-sm">
         <AlertTriangle className="size-4 shrink-0 mt-0.5" />
         <div>
-          <p className="font-medium">{meta?.warning?.message}</p>
+          <p className="font-medium">
+            {meta?.warning?.message ?? meta?.scope_reason ?? "Research needs a narrower scope before continuing."}
+          </p>
           {meta?.scope_reason && (
             <p className="mt-1 text-xs opacity-80">{meta?.scope_reason}</p>
+          )}
+          {meta?.scope_next_action && (
+            <p className="mt-1 text-xs opacity-80">{meta.scope_next_action}</p>
           )}
         </div>
       </div>
@@ -320,108 +151,19 @@ export function ResearchSummaryCard({
       {/* Banner — non-happy-path message */}
       {planExpanded && banner}
 
-      {/* Stats Grid — collapsible; hidden for error/scope_guard */}
-      {planExpanded && showDimensions && (
-        <div>
-          {/* Dimensions Row — full width */}
-          {showDimensions && (
-            <div className="p-4">
-              <div className="flex items-center gap-1.5 mb-3">
-                <Layers className="size-3.5" style={{ color: "var(--color-pacific)" }} />
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Dimensions
-                </span>
+      {planExpanded && !isNonHappyPath && (
+        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4">
+          {summaryStats.map((stat) => (
+            <div key={stat.label} className="rounded-md border bg-muted/30 px-3 py-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <HelpCircle className="size-3.5" />
+                {stat.label}
               </div>
-              <div className="flex items-baseline gap-1.5 mb-2">
-                <span className="text-2xl font-semibold tracking-tight" style={{ color: "var(--color-pacific)" }}>
-                  {plan.dimensionsSelected}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  of {plan.dimensionsEvaluated} selected
-                </span>
+              <div className="mt-1 text-sm font-medium text-foreground">
+                {stat.value} {stat.label.toLowerCase()}
               </div>
-              {/* Progress bar */}
-              <div className="h-1.5 w-full rounded-full bg-border mb-3">
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{ width: `${dimPct}%`, background: "var(--color-pacific)" }}
-                />
-              </div>
-              {/* Dimension pills */}
-              {sortedDimensions.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-3">
-                  {sortedDimensions.map((dim) => {
-                    const isSelected = plan.selectedDimensions.includes(dim.name);
-                    return (
-                      <span
-                        key={dim.name}
-                        className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium"
-                        style={{
-                          background: isSelected
-                            ? "color-mix(in oklch, var(--color-pacific), transparent 88%)"
-                            : "transparent",
-                          border: isSelected
-                            ? "1px solid color-mix(in oklch, var(--color-pacific), transparent 60%)"
-                            : "1px solid var(--border)",
-                          color: isSelected ? "var(--color-pacific)" : "var(--muted-foreground)",
-                          opacity: isSelected ? 1 : 0.6,
-                        }}
-                      >
-                        {dim.name}
-                        <span className="font-mono text-[10px] tabular-nums">{dim.score}/5</span>
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Dimension reasons */}
-              {sortedDimensions.length > 0 && (
-                <div className="space-y-1.5">
-                  {sortedDimensions.map((dim) => {
-                    const isSelected = plan.selectedDimensions.includes(dim.name);
-                    return (
-                      <div
-                        key={`${dim.name}-reason`}
-                        className="rounded-md border bg-muted/40 px-2.5 py-1.5"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] font-medium text-foreground">
-                              {dim.name}
-                            </span>
-                            <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-                              {dim.score}/5
-                            </span>
-                          </div>
-                          <span
-                            className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
-                            style={{
-                              borderColor: isSelected
-                                ? "color-mix(in oklch, var(--color-pacific), transparent 40%)"
-                                : "var(--border)",
-                              background: isSelected
-                                ? "color-mix(in oklch, var(--color-pacific), transparent 90%)"
-                                : "transparent",
-                              color: isSelected ? "var(--color-pacific)" : "var(--muted-foreground)",
-                            }}
-                          >
-                            {isSelected ? "Selected" : "Evaluated"}
-                          </span>
-                        </div>
-                        {dim.reason && (
-                          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-                            {dim.reason}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
-          )}
-
+          ))}
         </div>
       )}
 
