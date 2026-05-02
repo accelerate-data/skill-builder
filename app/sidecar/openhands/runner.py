@@ -143,32 +143,67 @@ def emit_conversation_state(status: str, secrets: list[str], **kwargs: Any) -> N
 
 
 # ---------------------------------------------------------------------------
-# Optional OpenHands imports — guarded so callers get a clean error on missing
-# deps rather than a traceback landing on stdout.
+# Optional OpenHands imports — lazy-loaded after startup JSONL is emitted so
+# slow packaged-runner imports do not leave the UI stuck in initialization.
 # ---------------------------------------------------------------------------
 
 _OPENHANDS_IMPORT_ERROR: str | None = None
+Agent = AgentContext = Conversation = LLM = Tool = None  # type: ignore[assignment]
+get_agent_final_response = None  # type: ignore[assignment]
+LocalWorkspace = None  # type: ignore[assignment]
+load_skills_from_dir = None  # type: ignore[assignment]
+BrowserToolSet = None  # type: ignore[assignment]
+FileEditorTool = None  # type: ignore[assignment]
+TaskTrackerTool = None  # type: ignore[assignment]
+TerminalTool = None  # type: ignore[assignment]
 
-try:
-    from openhands.sdk import Agent, AgentContext, Conversation, LLM, Tool  # type: ignore[import]
-    from openhands.sdk.conversation.response_utils import get_agent_final_response  # type: ignore[import]
-    from openhands.sdk.skills import load_skills_from_dir  # type: ignore[import]
-    from openhands.sdk.workspace import LocalWorkspace  # type: ignore[import]
-    from openhands.tools.browser_use import BrowserToolSet  # type: ignore[import]
-    from openhands.tools.file_editor import FileEditorTool  # type: ignore[import]
-    from openhands.tools.task_tracker import TaskTrackerTool  # type: ignore[import]
-    from openhands.tools.terminal import TerminalTool  # type: ignore[import]
 
-except ImportError as exc:
-    _OPENHANDS_IMPORT_ERROR = (
-        f"OpenHands SDK not installed ({exc}). "
-        "Install dev dependencies from app/sidecar/openhands/requirements.txt"
-    )
-    Agent = AgentContext = Conversation = LLM = Tool = None  # type: ignore[assignment]
-    get_agent_final_response = None  # type: ignore[assignment]
-    LocalWorkspace = None  # type: ignore[assignment]
-    load_skills_from_dir = None  # type: ignore[assignment]
-    BrowserToolSet = FileEditorTool = TaskTrackerTool = TerminalTool = None  # type: ignore[assignment]
+def _ensure_openhands_imports() -> None:
+    global Agent, AgentContext, Conversation, LLM, Tool
+    global get_agent_final_response, LocalWorkspace, load_skills_from_dir
+    global BrowserToolSet, FileEditorTool, TaskTrackerTool, TerminalTool
+    global _OPENHANDS_IMPORT_ERROR
+
+    if all(
+        x is not None for x in [Agent, AgentContext, Conversation, LLM, Tool, LocalWorkspace]
+    ):
+        return
+    if _OPENHANDS_IMPORT_ERROR is not None:
+        return
+
+    try:
+        from openhands.sdk import Agent as SdkAgent  # type: ignore[import]
+        from openhands.sdk import AgentContext as SdkAgentContext  # type: ignore[import]
+        from openhands.sdk import Conversation as SdkConversation  # type: ignore[import]
+        from openhands.sdk import LLM as SdkLLM  # type: ignore[import]
+        from openhands.sdk import Tool as SdkTool  # type: ignore[import]
+        from openhands.sdk.conversation.response_utils import (  # type: ignore[import]
+            get_agent_final_response as sdk_get_agent_final_response,
+        )
+        from openhands.sdk.skills import load_skills_from_dir as sdk_load_skills_from_dir  # type: ignore[import]
+        from openhands.sdk.workspace import LocalWorkspace as SdkLocalWorkspace  # type: ignore[import]
+        from openhands.tools.browser_use import BrowserToolSet as SdkBrowserToolSet  # type: ignore[import]
+        from openhands.tools.file_editor import FileEditorTool as SdkFileEditorTool  # type: ignore[import]
+        from openhands.tools.task_tracker import TaskTrackerTool as SdkTaskTrackerTool  # type: ignore[import]
+        from openhands.tools.terminal import TerminalTool as SdkTerminalTool  # type: ignore[import]
+
+        Agent = SdkAgent
+        AgentContext = SdkAgentContext
+        Conversation = SdkConversation
+        LLM = SdkLLM
+        Tool = SdkTool
+        get_agent_final_response = sdk_get_agent_final_response
+        LocalWorkspace = SdkLocalWorkspace
+        load_skills_from_dir = sdk_load_skills_from_dir
+        BrowserToolSet = SdkBrowserToolSet
+        FileEditorTool = SdkFileEditorTool
+        TaskTrackerTool = SdkTaskTrackerTool
+        TerminalTool = SdkTerminalTool
+    except ImportError as exc:
+        _OPENHANDS_IMPORT_ERROR = (
+            f"OpenHands SDK not installed ({exc}). "
+            "Install dev dependencies from app/sidecar/openhands/requirements.txt"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +358,7 @@ def _normalize_model_for_litellm(model: str, base_url: Any) -> str:
 
 def run_via_openhands_sdk(request: dict[str, Any]) -> str:
     global _ACTIVE_CONVERSATION
+    _ensure_openhands_imports()
     if any(x is None for x in [Agent, AgentContext, Conversation, LLM, Tool, LocalWorkspace]):
         raise RuntimeError(_OPENHANDS_IMPORT_ERROR or "OpenHands SDK not available")
 
@@ -388,6 +424,8 @@ def _extract_final_text(source: Any) -> str:
         return ""
 
     events = list(events_source)
+    if get_agent_final_response is None:
+        _ensure_openhands_imports()
     if get_agent_final_response is None:
         final_response = ""
     else:
@@ -475,15 +513,6 @@ def main() -> None:
         request = parse_request(raw)
     except ValueError as exc:
         _emit_startup_error(str(exc))
-        return
-
-    if _OPENHANDS_IMPORT_ERROR is not None:
-        secrets = _redaction_secrets(request)
-        print(
-            f"[openhands-runner] import error: {_redact(_OPENHANDS_IMPORT_ERROR, secrets)}",
-            file=sys.stderr,
-        )
-        _emit_startup_error(_OPENHANDS_IMPORT_ERROR, secrets)
         return
 
     try:
