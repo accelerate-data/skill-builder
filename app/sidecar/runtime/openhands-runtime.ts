@@ -2,8 +2,8 @@
  * OpenHands one-shot runtime adapter.
  *
  * Spawns the Python runner (`app/sidecar/openhands/runner.py`), writes a
- * serialized `OneShotRunRequest` to its stdin, and maps JSONL lines from its
- * stdout into the sidecar runtime sink via `OpenHandsEventProcessor`.
+ * serialized `OneShotRunRequest` to its stdin, and forwards app-framed
+ * conversation JSONL lines from stdout into the sidecar runtime sink.
  *
  * @module openhands-runtime
  */
@@ -127,16 +127,7 @@ export class OpenHandsRuntime implements AgentRuntime {
       `[openhands-runtime] event=spawn runner=${runner.command}${runner.args.length > 0 ? ` ${runner.args.join(" ")}` : ""}\n`,
     );
 
-    const processor = new OpenHandsEventProcessor({
-      skillName: request.context.skillName,
-      stepId: request.context.stepId,
-      workflowSessionId: request.context.workflowSessionId,
-      usageSessionId: request.context.usageSessionId,
-      runSource: request.context.runSource,
-      workspaceSkillDir: request.context.workspaceSkillDir,
-      pluginSlug: request.context.pluginSlug,
-      hasOutputFormat: request.outputFormat != null,
-    });
+    const processor = new OpenHandsEventProcessor();
 
     return new Promise<void>((resolve) => {
       const child = child_process.spawn(runner.command, runner.args, {
@@ -167,7 +158,9 @@ export class OpenHandsRuntime implements AgentRuntime {
       child.stdin.write(requestJson + "\n");
       child.stdin.end();
 
-      // Collect stderr from the Python runner and forward as system events
+      let childProcessFailed = false;
+
+      // Collect stderr from the Python runner and forward only to process stderr.
       let stderrBuffer = "";
       child.stderr.on("data", (chunk: Buffer) => {
         stderrBuffer += chunk.toString();
@@ -175,13 +168,7 @@ export class OpenHandsRuntime implements AgentRuntime {
         stderrBuffer = lines.pop() ?? "";
         for (const line of lines) {
           if (line.length > 0) {
-            const redactedLine = redactSecrets(line, secrets);
-            sink.emitRaw({
-              type: "system",
-              subtype: "sdk_stderr",
-              data: redactedLine,
-              timestamp: Date.now(),
-            });
+            process.stderr.write(`${redactSecrets(line, secrets)}\n`);
           }
         }
       });
@@ -191,6 +178,10 @@ export class OpenHandsRuntime implements AgentRuntime {
         input: child.stdout,
         crlfDelay: Infinity,
       });
+      let childClosed = false;
+      let readlineClosed = false;
+      let childExitCode: number | null = null;
+      let finished = false;
 
       rl.on("line", (line: string) => {
         try {
@@ -200,24 +191,52 @@ export class OpenHandsRuntime implements AgentRuntime {
           process.stderr.write(
             `[openhands-runtime] error=line_processing message=${msg}\n`,
           );
-          sink.emitRaw({
-            type: "system",
-            subtype: "sdk_stderr",
-            data: `openhands-runtime: line processing error: ${msg}`,
-            timestamp: Date.now(),
-          });
         }
       });
 
+      const finishWhenDrained = () => {
+        if (finished) return;
+        if (childProcessFailed) return;
+        if (!childClosed || !readlineClosed) return;
+        finished = true;
+
+        process.stderr.write(
+          `[openhands-runtime] event=child_exit exit_code=${childExitCode ?? "null"} terminal_state=${processor.hasTerminalState()}\n`,
+        );
+
+        if (!processor.hasTerminalState()) {
+          if (signal?.aborted) {
+            process.stderr.write(
+              "[openhands-runtime] event=aborted emitting cancelled state\n",
+            );
+            sink.emitRaw(processor.buildCancelledState("Run aborted by caller"));
+          } else {
+            const message =
+              childExitCode !== 0 && childExitCode !== null
+                ? `OpenHands runner exited with code ${childExitCode}`
+                : "OpenHands runner exited without producing a terminal conversation_state";
+            process.stderr.write(
+              `[openhands-runtime] event=no_terminal_state emitting error: ${message}\n`,
+            );
+            sink.emitRaw(processor.buildErrorState(message));
+          }
+        }
+
+        resolve();
+      };
+
+      rl.on("close", () => {
+        readlineClosed = true;
+        finishWhenDrained();
+      });
+
       child.on("close", (code: number | null) => {
+        childClosed = true;
+        childExitCode = code;
+
         // Flush any remaining stderr
         if (stderrBuffer.length > 0) {
-          sink.emitRaw({
-            type: "system",
-            subtype: "sdk_stderr",
-            data: redactSecrets(stderrBuffer, secrets),
-            timestamp: Date.now(),
-          });
+          process.stderr.write(redactSecrets(stderrBuffer, secrets));
           stderrBuffer = "";
         }
 
@@ -226,61 +245,24 @@ export class OpenHandsRuntime implements AgentRuntime {
           signal.removeEventListener("abort", abortHandler);
         }
 
-        // Close readline — this drains any buffered lines before emitting 'close'.
-        // We wait for readline 'close' before resolving to avoid a double-emit race
-        // where the fallback error result fires before the last 'line' event fires.
-        rl.on("close", () => {
-          process.stderr.write(
-            `[openhands-runtime] event=child_exit exit_code=${code ?? "null"} result_emitted=${processor.hasEmittedResult()}\n`,
-          );
-
-          if (!processor.hasEmittedResult()) {
-            if (signal?.aborted) {
-              process.stderr.write(
-                "[openhands-runtime] event=aborted emitting shutdown result\n",
-              );
-              const shutdownResult = processor.buildErrorResult(
-                "Run aborted by caller",
-              );
-              sink.emitAgentEvent({
-                ...shutdownResult,
-                status: "shutdown",
-              });
-            } else {
-              const message =
-                code !== 0 && code !== null
-                  ? `OpenHands runner exited with code ${code}`
-                  : "OpenHands runner exited without producing a result";
-              process.stderr.write(
-                `[openhands-runtime] event=no_result emitting error: ${message}\n`,
-              );
-              const errorResult = processor.buildErrorResult(message);
-              sink.emitAgentEvent(errorResult);
-            }
-          }
-
-          resolve();
-        });
-
-        rl.close();
+        if (!readlineClosed) {
+          rl.close();
+        }
+        finishWhenDrained();
       });
 
       child.on("error", (err: Error) => {
+        childProcessFailed = true;
         const redactedMessage = redactSecrets(err.message, secrets);
         process.stderr.write(
           `[openhands-runtime] event=spawn_error message=${redactedMessage}\n`,
         );
-        sink.emitRaw({
-          type: "system",
-          subtype: "sdk_stderr",
-          data: `openhands-runtime: spawn error: ${redactedMessage}`,
-          timestamp: Date.now(),
-        });
-        if (!processor.hasEmittedResult()) {
-          const errorResult = processor.buildErrorResult(
-            `Failed to spawn OpenHands runner: ${redactedMessage}`,
+        if (!processor.hasTerminalState()) {
+          sink.emitRaw(
+            processor.buildErrorState(
+              `Failed to spawn OpenHands runner: ${redactedMessage}`,
+            ),
           );
-          sink.emitAgentEvent(errorResult);
         }
         resolve();
       });

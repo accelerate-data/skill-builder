@@ -39,6 +39,14 @@ ${body}
 `;
 }
 
+function parseJsonl(stdout: string): Record<string, unknown>[] {
+  return stdout
+    .trim()
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
 describe("openhands runner.py", () => {
   it("maps llm config, file agent context, workspace skills, tools, and workspace onto SDK Conversation", () => {
     const result = runPython(
@@ -99,16 +107,17 @@ class LocalWorkspace:
         captured["local_workspace_working_dir"] = working_dir
 
 class Conversation:
-    def __init__(self, agent, workspace, callbacks=None, visualizer="default", delete_on_close=True):
+    def __init__(self, agent, workspace, callbacks=None, max_iteration_per_run=500, visualizer="default", delete_on_close=True):
         captured["workspace"] = {"working_dir": workspace.working_dir}
         captured["callbacks_count"] = len(callbacks or [])
+        captured["max_iteration_per_run"] = max_iteration_per_run
         captured["visualizer"] = visualizer
         captured["delete_on_close"] = delete_on_close
         self.state = type("State", (), {"events": []})()
     def send_message(self, prompt):
         captured["prompt"] = prompt
-    def run(self, max_iterations):
-        captured["max_iterations"] = max_iterations
+    def run(self):
+        captured["run_called"] = True
         self.state.events.append(type("Event", (), {"message": "ok"})())
         return None
 
@@ -190,7 +199,8 @@ print(json.dumps(captured, sort_keys=True))
       system_message_suffix: "You create Skill Builder skills.",
       user_message_suffix: "Follow the current user message exactly.",
       load_public_skills: false,
-      max_iterations: 8,
+      max_iteration_per_run: 8,
+      run_called: true,
       callbacks_count: 1,
       visualizer: null,
       delete_on_close: false,
@@ -204,7 +214,7 @@ print(json.dumps(captured, sort_keys=True))
     expect(captured.skills_dir).toMatch(/\/\.agents\/skills$/);
   }, 30_000);
 
-  it("emits redacted JSONL for SDK callback events", () => {
+  it("emits redacted JSONL for SDK callback events using the conversation_event protocol", () => {
     const result = runPython(
       runnerImportScript(`
 class Event:
@@ -217,7 +227,7 @@ class Event:
 
 stdout = io.StringIO()
 with contextlib.redirect_stdout(stdout):
-    runner.emit_openhands_sdk_event(
+    runner.emit_conversation_event(
         Event(),
         ["sk-secret", "secure-route"],
     )
@@ -229,7 +239,7 @@ print(stdout.getvalue())
     expect(result.status).toBe(0);
     const event = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
     expect(event).toMatchObject({
-      type: "openhands_sdk_event",
+      type: "conversation_event",
       event_class: "Event",
     });
     expect(typeof event.timestamp).toBe("number");
@@ -301,14 +311,188 @@ print(json.dumps(runner._build_llm_kwargs({
     });
   }, 30_000);
 
+  it("maps OpenCode Go catalog model ids to OpenAI-compatible LiteLLM ids", () => {
+    const result = runPython(
+      runnerImportScript(`
+print(json.dumps(runner._build_llm_kwargs({
+    "llm": {
+        "model": "opencode-go/minimax-m2.7",
+        "apiKey": "sk-secret",
+        "baseUrl": "https://opencode.ai/zen/go/v1"
+    }
+}), sort_keys=True))
+`),
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      api_key: "sk-secret",
+      base_url: "https://opencode.ai/zen/go/v1",
+      model: "openai/minimax-m2.7",
+    });
+  }, 30_000);
+
+  it("keeps SDK stdout noise off the JSONL protocol stream and emits native state/event records", () => {
+    const result = runPython(
+      runnerImportScript(`
+import tempfile
+from pathlib import Path
+
+workspace_dir = Path(tempfile.mkdtemp())
+agent_dir = workspace_dir / ".agents" / "agents"
+agent_dir.mkdir(parents=True)
+(workspace_dir / ".agents" / "skills").mkdir(parents=True)
+(agent_dir / "skill-creator.md").write_text("# Skill Creator", encoding="utf-8")
+
+class LLM:
+    def __init__(self, **kwargs):
+        print("llm stdout noise sk-secret")
+
+class Tool:
+    def __init__(self, name):
+        self.name = name
+
+class TerminalTool:
+    name = "TerminalTool"
+class FileEditorTool:
+    name = "FileEditorTool"
+class TaskTrackerTool:
+    name = "TaskTrackerTool"
+class AgentContext:
+    def __init__(self, **kwargs):
+        print("context stdout noise")
+class Agent:
+    def __init__(self, **kwargs):
+        print("agent stdout noise")
+class LocalWorkspace:
+    def __init__(self, working_dir):
+        self.working_dir = working_dir
+class Conversation:
+    def __init__(self, **kwargs):
+        self.state = type("State", (), {"events": []})()
+        self.callbacks = kwargs.get("callbacks") or []
+        print("conversation stdout noise")
+    def send_message(self, prompt):
+        print("send stdout noise")
+    def run(self):
+        print("run stdout noise")
+        class Event:
+            def model_dump(self, mode="python"):
+                return {"message": "using sk-secret", "nested": {"route": "secure-route"}}
+        event = Event()
+        for callback in self.callbacks:
+            callback(event)
+        self.state.events.append(type("FinalEvent", (), {"message": "{\\"status\\":\\"ok\\"}"})())
+
+runner.LLM = LLM
+runner.Tool = Tool
+runner.TerminalTool = TerminalTool
+runner.FileEditorTool = FileEditorTool
+runner.TaskTrackerTool = TaskTrackerTool
+runner.AgentContext = AgentContext
+runner.Agent = Agent
+runner.LocalWorkspace = LocalWorkspace
+runner.Conversation = Conversation
+runner.load_skills_from_dir = lambda skills_dir: ({}, {}, {})
+runner._OPENHANDS_IMPORT_ERROR = None
+
+request = {
+    "mode": "one-shot",
+    "prompt": "build",
+    "llm": {
+        "model": "openai/test",
+        "apiKey": "sk-secret",
+        "extraHeaders": {"x-provider-routing": "secure-route"},
+    },
+    "workspaceSkillDir": str(workspace_dir),
+}
+stdout = io.StringIO()
+stderr = io.StringIO()
+with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+    runner.run(request)
+print(json.dumps({"stdout": stdout.getvalue(), "stderr": stderr.getvalue()}, sort_keys=True))
+`),
+    );
+
+    expect(result.status).toBe(0);
+    const captured = JSON.parse(result.stdout) as {
+      stdout: string;
+      stderr: string;
+    };
+    expect(captured.stdout).not.toContain("stdout noise");
+    expect(captured.stdout).not.toContain("sk-secret");
+    expect(captured.stdout).not.toContain("secure-route");
+    expect(captured.stderr).toContain("stdout noise");
+    expect(captured.stderr).not.toContain("sk-secret");
+    expect(captured.stderr).toContain("[REDACTED]");
+
+    const records = parseJsonl(captured.stdout);
+    expect(
+      records.every(
+        (record) =>
+          record.type === "conversation_state" ||
+          record.type === "conversation_event",
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(records)).not.toContain("openhands_event");
+    expect(JSON.stringify(records)).not.toContain("openhands_result");
+    expect(JSON.stringify(records)).not.toContain("display_item");
+    expect(JSON.stringify(records)).not.toContain("run_result");
+    expect(JSON.stringify(records)).not.toContain("sdk_stderr");
+    expect(records.map((record) => record.type)).toEqual([
+      "conversation_state",
+      "conversation_state",
+      "conversation_event",
+      "conversation_state",
+    ]);
+    expect(records.map((record) => record.status).filter(Boolean)).toEqual([
+      "starting",
+      "running",
+      "completed",
+    ]);
+    expect(
+      records.filter(
+        (record) =>
+          record.type === "conversation_state" &&
+          ["completed", "error", "cancelled"].includes(record.status as string),
+      ),
+    ).toHaveLength(1);
+    expect(records[2]).toMatchObject({
+      type: "conversation_event",
+      event_class: "Event",
+      event: {
+        message: "using [REDACTED]",
+        nested: { route: "[REDACTED]" },
+      },
+    });
+    expect(records[3]).toMatchObject({
+      type: "conversation_state",
+      runtime: "openhands",
+      agent_id: "skill-creator",
+      status: "completed",
+      error_detail: null,
+      result_text: '{"status":"ok"}',
+      structured_output: null,
+    });
+  }, 30_000);
+
   it("extracts final text from OpenHands conversation state events", () => {
     const result = runPython(
       runnerImportScript(`
+from openhands.sdk.event import MessageEvent
+from openhands.sdk.llm import Message, TextContent
+
 conversation = type("Conversation", (), {})()
 conversation.state = type("State", (), {})()
 conversation.state.events = [
-    type("Event", (), {"message": "first"})(),
-    type("Event", (), {"message": "{\\"status\\":\\"complete\\"}"})(),
+    MessageEvent(
+        source="user",
+        llm_message=Message(role="user", content=[TextContent(text="first")]),
+    ),
+    MessageEvent(
+        source="agent",
+        llm_message=Message(role="assistant", content=[TextContent(text="{\\"status\\":\\"complete\\"}")]),
+    ),
 ]
 print(runner._extract_final_text(conversation))
 `),
@@ -343,7 +527,7 @@ except ValueError as exc:
     expect(result.stdout.trim()).toBe("maxTurns must be a positive integer");
   }, 30_000);
 
-  it("redacts API keys from stderr and emitted error results", () => {
+  it("redacts API keys from stderr and emitted error states exactly once", () => {
     const result = runPython(
       runnerImportScript(`
 import tempfile
@@ -422,6 +606,20 @@ print(json.dumps({"stdout": stdout.getvalue(), "stderr": stderr.getvalue()}, sor
     expect(captured.stderr).not.toContain("sk-secret");
     expect(captured.stdout).toContain("[REDACTED]");
     expect(captured.stderr).toContain("[REDACTED]");
+    const records = parseJsonl(captured.stdout);
+    expect(records.map((record) => record.status).filter(Boolean)).toEqual([
+      "starting",
+      "running",
+      "error",
+    ]);
+    expect(records.filter((record) => record.status === "error")).toHaveLength(1);
+    expect(records.at(-1)).toMatchObject({
+      type: "conversation_state",
+      runtime: "openhands",
+      agent_id: "skill-creator",
+      status: "error",
+      error_detail: "provider rejected [REDACTED]",
+    });
   }, 30_000);
 
   it("rejects requests without llm config", () => {

@@ -34,11 +34,38 @@ if ! "${PYTHON_BIN}" -c "import PyInstaller" >/dev/null 2>&1; then
   exit 1
 fi
 
+OPENHANDS_SDK_DIR="$("${PYTHON_BIN}" - <<'PY'
+import importlib.util
+from pathlib import Path
+
+spec = importlib.util.find_spec("openhands.sdk")
+if spec is None or spec.origin is None:
+    raise SystemExit("openhands.sdk package not found")
+print(Path(spec.origin).parent)
+PY
+)"
+
+if [[ "${OS:-}" == "Windows_NT" ]]; then
+  DATA_SEP=";"
+else
+  DATA_SEP=":"
+fi
+
 mkdir -p "${DIST_DIR}" "${BUILD_DIR}" "${SPEC_DIR}"
 
 "${PYTHON_BIN}" -m PyInstaller \
   --onefile \
   --clean \
+  --collect-data "binaryornot" \
+  --collect-data "litellm" \
+  --add-data "${OPENHANDS_SDK_DIR}/agent/prompts${DATA_SEP}openhands/sdk/agent/prompts" \
+  --add-data "${OPENHANDS_SDK_DIR}/context/condenser/prompts${DATA_SEP}openhands/sdk/context/condenser/prompts" \
+  --add-data "${OPENHANDS_SDK_DIR}/context/prompts/templates${DATA_SEP}openhands/sdk/context/prompts/templates" \
+  --copy-metadata "binaryornot" \
+  --copy-metadata "fastmcp" \
+  --copy-metadata "mcp" \
+  --copy-metadata "litellm" \
+  --copy-metadata "browser-use" \
   --name "openhands-runner" \
   --distpath "${DIST_DIR}" \
   --workpath "${BUILD_DIR}" \

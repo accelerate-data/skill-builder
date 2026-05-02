@@ -10,6 +10,36 @@
 
 ---
 
+## Delta: OpenHands Conversation Protocol
+
+Validate must use the OpenHands-native protocol defined in
+`docs/design/openhands-sdk-runner/README.md`.
+
+The implementation is a clean break from transitional Claude-compatible event
+shapes. The OpenHands path must not emit or consume:
+
+- `openhands_event`
+- `openhands_result`
+- `display_item`
+- `run_result`
+- `request_complete` as the semantic terminal signal
+- `sdk_stderr` as a UI or transcript event
+
+The runtime protocol is:
+
+- `conversation_event`: app-framed serialized OpenHands SDK conversation event.
+- `conversation_state`: app-framed conversation lifecycle state. Terminal states
+  are `completed`, `error`, and `cancelled`.
+
+stdout and stderr are diagnostic process logs only. Python tracebacks,
+OpenHands SDK logs, LiteLLM logs, and PyInstaller diagnostics stay in process
+diagnostics after redaction; they are not converted into frontend activity.
+
+The frontend must replace the OpenHands use of `DisplayItemList` with a
+conversation-event renderer. OpenHands activity is rendered directly from SDK
+events. Validate result parsing reads the final assistant content from the
+conversation event log/state, not from `run_result.resultText`.
+
 ## Stable Boundaries For This Spike
 
 This spike establishes reusable boundaries for later OpenHands migration work:
@@ -75,11 +105,17 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - Modify: `app/sidecar/runtime/types.ts`
 - Modify: `app/sidecar/runtime/openhands-runtime.ts`
 - Modify: `app/sidecar/openhands/runner.py`
-- Modify: `app/sidecar/openhands-event-processor.ts`
+- Modify or remove: `app/sidecar/openhands-event-processor.ts`
+- Modify: `app/src/hooks/use-agent-stream.ts`
+- Modify: `app/src/stores/agent-store.ts`
+- Create: `app/src/components/agent-items/conversation-event-list.tsx`
+- Create: `app/src/lib/openhands-conversation-events.ts`
 - Test: `app/src-tauri/src/commands/skill/scope_review.rs`
 - Test: `app/sidecar/__tests__/openhands-runtime.test.ts`
 - Test: `app/sidecar/__tests__/openhands-runner.test.ts`
 - Test: `app/sidecar/__tests__/openhands-event-processor.test.ts`
+- Test: `app/src/__tests__/hooks/use-agent-stream.test.ts`
+- Test: `app/src/__tests__/components/agent-output-panel.test.tsx`
 - Test: `app/src/__tests__/hooks/use-scope-advisor.test.ts`
 - Test: `app/src/__tests__/components/new-skill-dialog.test.tsx`
 
@@ -130,7 +166,8 @@ Follow the current user message exactly. Do not infer a different task than the 
   persistence context) plus the resolved runtime context. Validate must use this
   API instead of hand-assembling Claude-era sidecar fields.
 - [ ] Add a backend-owned one-shot execution helper that dispatches through the
-  sidecar pool, owns transcript allocation, and waits for terminal `agent-exit`.
+  sidecar pool, owns diagnostics allocation, and waits for terminal
+  `conversation_state`.
   Validate must use this helper instead of embedding one-shot listener plumbing
   in the feature command.
 - [ ] Validate `userMessageSuffix` as an optional string in `app/sidecar/config.ts`.
@@ -162,8 +199,14 @@ workspace = LocalWorkspace(working_dir=workspace_skill_dir)
   visualizer so stdout remains JSONL-only, and set `delete_on_close=False` so
   the app-managed workspace is not removed.
 - [ ] Register a `Conversation(callbacks=[...])` SDK event callback that emits
-  redacted `openhands_sdk_event` JSONL lines for all SDK events before the
-  terminal result.
+  redacted `conversation_event` JSONL lines for all SDK events before terminal
+  conversation state.
+- [ ] Emit `conversation_state(status="starting")` before SDK setup and
+  `conversation_state(status="running")` once the conversation starts running.
+- [ ] Emit exactly one terminal `conversation_state(status="completed" |
+  "error" | "cancelled")`.
+- [ ] Do not emit `openhands_event`, `openhands_result`, `display_item`, or
+  `run_result` from the Python runner.
 - [ ] Run one-shot scope review as a single-message `Conversation`:
 
 ```python
@@ -171,11 +214,12 @@ conversation = Conversation(
     agent=agent,
     workspace=workspace,
     callbacks=[emit_sdk_event],
+    max_iteration_per_run=parse_max_iterations(request),
     visualizer=None,
     delete_on_close=False,
 )
 conversation.send_message(request["prompt"])
-result = conversation.run(max_iterations=parse_max_iterations(request))
+result = conversation.run()
 ```
 
 - [ ] Add runner tests for frontmatter stripping, skill loading, disabled public
@@ -234,24 +278,59 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill::scope_revie
 cd app && npx vitest run src/__tests__/hooks/use-scope-advisor.test.ts src/__tests__/components/new-skill-dialog.test.tsx src/__tests__/components/scope-advisor.test.tsx
 ```
 
-## Task 6: SDK Event And Smoke Coverage
+## Task 6: OpenHands Conversation Events In The App
 
-- [ ] Add sidecar event-processor coverage showing OpenHands SDK
-  `MessageEvent`, `ActionEvent`, `ObservationEvent`, `AgentErrorEvent`, and
-  conversation-level error events are preserved as raw transcript events and
-  mapped into visible display items before the terminal `run_result`.
+- [ ] Add OpenHands conversation event and state TypeScript types for the app
+  boundary.
+- [ ] Route `conversation_event` through Rust and frontend IPC without mapping it
+  to `display_item`.
+- [ ] Treat terminal `conversation_state` as the Rust sidecar-pool completion
+  signal for OpenHands requests.
+- [ ] Update frontend agent state to keep OpenHands conversation events for
+  OpenHands runs.
+- [ ] Replace the OpenHands use of `DisplayItemList` with
+  `ConversationEventList`.
+- [ ] Add event renderers for `MessageEvent`, `ActionEvent`,
+  `ObservationEvent`, `AgentErrorEvent`, `ConversationErrorEvent`, and unknown
+  SDK events.
 - [ ] Ensure action events expose tool calls, reasoning/thought content, tool
   call ids, summaries, and security risk when present.
-- [ ] Ensure observation and agent error events attach or emit tool result/error
+- [ ] Ensure observation and agent error events render tool result/error
   visibility rather than disappearing into raw logs only.
-- [ ] Add deterministic smoke coverage for the runner request shape without requiring a live model.
-- [ ] Add a live smoke/eval only if local OpenHands credentials are available; otherwise skip with a precise prerequisite message.
 - [ ] Run:
 
 ```bash
-cd app/sidecar && npx vitest run __tests__/openhands-event-processor.test.ts __tests__/openhands-runtime.test.ts __tests__/openhands-runner.test.ts
+cd app/sidecar && npx vitest run __tests__/openhands-runtime.test.ts __tests__/openhands-runner.test.ts
+cd app && npx vitest run src/__tests__/hooks/use-agent-stream.test.ts src/__tests__/components/agent-output-panel.test.tsx
 cd app && npm run test:agents:structural
 ```
+
+## Task 7: OpenHands SDK Integration Smoke
+
+- [x] Add a deterministic integration test or script that invokes the local
+  OpenHands runner against the installed OpenHands SDK with a minimal
+  workspace, `skill-creator` agent, and local `.agents/skills` directory.
+- [x] The integration must assert:
+  - at least one `conversation_state(status="starting")`;
+  - at least one `conversation_state(status="running")`;
+  - at least one `conversation_event` from the SDK callback;
+  - exactly one terminal `conversation_state`;
+  - stdout contains JSONL protocol only;
+  - stderr diagnostics are not re-emitted as conversation events.
+- [x] Add a live end-to-end smoke that uses the app's configured OpenHands LLM
+  settings when credentials are available. If credentials are missing, skip
+  with a precise prerequisite message.
+- [x] Run:
+
+```bash
+cd app/sidecar && npx vitest run __tests__/openhands-runner.integration.test.ts
+```
+
+The live smoke is gated by `SKILL_BUILDER_OPENHANDS_MODEL` and
+`SKILL_BUILDER_OPENHANDS_API_KEY`, with optional
+`SKILL_BUILDER_OPENHANDS_BASE_URL` and
+`SKILL_BUILDER_OPENHANDS_API_VERSION`. Without those environment variables, the
+test is skipped in the normal sidecar suite.
 
 ## Final Verification
 
