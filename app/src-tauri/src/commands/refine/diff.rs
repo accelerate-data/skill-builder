@@ -2,11 +2,14 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::types::{RefineDiff, RefineFileDiff};
- 
+
 // ─── get_refine_diff ─────────────────────────────────────────────────────────
 
 #[cfg(test)]
-pub(crate) fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDiff, String> {
+pub(crate) fn get_refine_diff_inner(
+    skill_name: &str,
+    skills_path: &str,
+) -> Result<RefineDiff, String> {
     use git2::{Delta, DiffFormat, DiffOptions, Repository};
 
     let repo_path = Path::new(skills_path);
@@ -243,9 +246,7 @@ fn build_refine_patch_metadata(delta: git2::DiffDelta<'_>) -> String {
     } else {
         format!(
             "a/{}",
-            old_path
-                .clone()
-                .unwrap_or_else(|| "/dev/null".to_string())
+            old_path.clone().unwrap_or_else(|| "/dev/null".to_string())
         )
     };
     let new_display = if delta.status() == git2::Delta::Deleted {
@@ -253,9 +254,7 @@ fn build_refine_patch_metadata(delta: git2::DiffDelta<'_>) -> String {
     } else {
         format!(
             "b/{}",
-            new_path
-                .clone()
-                .unwrap_or_else(|| "/dev/null".to_string())
+            new_path.clone().unwrap_or_else(|| "/dev/null".to_string())
         )
     };
 

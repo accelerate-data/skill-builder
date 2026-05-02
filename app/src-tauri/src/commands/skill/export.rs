@@ -4,7 +4,10 @@ use std::path::Path;
 
 pub(crate) fn export_skill_as_file_inner(skill_dir: &Path, dest_path: &str) -> Result<(), String> {
     if !skill_dir.exists() {
-        return Err(format!("Skill directory not found: {}", skill_dir.display()));
+        return Err(format!(
+            "Skill directory not found: {}",
+            skill_dir.display()
+        ));
     }
     if !skill_dir.join("SKILL.md").is_file() {
         return Err("Not a valid skill: SKILL.md missing".to_string());
@@ -54,7 +57,9 @@ pub fn export_skill_as_file(
 ) -> Result<(), String> {
     log::info!(
         "[export_skill_as_file] skill_name={} plugin_slug={} dest={}",
-        skill_name, plugin_slug, dest_path
+        skill_name,
+        plugin_slug,
+        dest_path
     );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[export_skill_as_file] failed to acquire DB lock: {}", e);
@@ -77,7 +82,11 @@ pub fn export_skill_as_file(
         log::error!("[export_skill_as_file] export failed: {}", e);
         e
     })?;
-    log::info!("[export_skill_as_file] exported '{}' to '{}'", skill_name, dest_path);
+    log::info!(
+        "[export_skill_as_file] exported '{}' to '{}'",
+        skill_name,
+        dest_path
+    );
     Ok(())
 }
 
@@ -110,10 +119,15 @@ mod tests {
         let names: Vec<String> = (0..archive.len())
             .map(|i| archive.by_index(i).unwrap().name().to_string())
             .collect();
-        assert!(names.contains(&"SKILL.md".to_string()), "expected SKILL.md at root, got: {:?}", names);
+        assert!(
+            names.contains(&"SKILL.md".to_string()),
+            "expected SKILL.md at root, got: {:?}",
+            names
+        );
 
         let mut content = String::new();
-        std::io::Read::read_to_string(&mut archive.by_name("SKILL.md").unwrap(), &mut content).unwrap();
+        std::io::Read::read_to_string(&mut archive.by_name("SKILL.md").unwrap(), &mut content)
+            .unwrap();
         assert!(content.contains("test-skill"));
     }
 
@@ -132,7 +146,8 @@ mod tests {
             .collect();
         assert!(
             names.contains(&"references/ref1.md".to_string()),
-            "expected references/ref1.md, got: {:?}", names
+            "expected references/ref1.md, got: {:?}",
+            names
         );
     }
 
@@ -147,7 +162,11 @@ mod tests {
         let file = fs::File::open(&dest).unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
         let result = crate::commands::imported_skills::helpers::find_skill_md(&mut archive);
-        assert!(result.is_ok(), "import flow could not parse exported zip: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "import flow could not parse exported zip: {:?}",
+            result.err()
+        );
         let (path, content) = result.unwrap();
         assert_eq!(path, "SKILL.md");
         assert!(content.contains("test-skill"));
@@ -159,7 +178,11 @@ mod tests {
         let missing = dir.path().join("does-not-exist");
         let dest = dir.path().join("out.skill");
         let err = export_skill_as_file_inner(&missing, dest.to_str().unwrap()).unwrap_err();
-        assert!(err.contains("not found"), "expected 'not found' in: {}", err);
+        assert!(
+            err.contains("not found"),
+            "expected 'not found' in: {}",
+            err
+        );
     }
 
     #[test]
@@ -168,6 +191,10 @@ mod tests {
         // dir exists but has no SKILL.md
         let dest = dir.path().join("out.skill");
         let err = export_skill_as_file_inner(dir.path(), dest.to_str().unwrap()).unwrap_err();
-        assert!(err.contains("SKILL.md missing"), "expected 'SKILL.md missing' in: {}", err);
+        assert!(
+            err.contains("SKILL.md missing"),
+            "expected 'SKILL.md missing' in: {}",
+            err
+        );
     }
 }

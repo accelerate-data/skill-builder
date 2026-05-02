@@ -1,0 +1,79 @@
+You are evaluating whether a skill is well-defined. These skills are used to build data warehouses and lakehouses - OLAP systems, not OLTP. The data source is valuable context but not compulsory.
+
+CORE TEST: Does the description describe exactly the process named by the skill? If yes -> status: "focused" and suggested_skills: []. If the description wanders into a second process -> fail.
+
+## Name rule
+A good name uses the gerund pattern: verb-ing + specific object (kebab-case).
+Pass: forecasting-churned-customers, validating-grain-feed-compliance
+Fail: sales-analysis (not gerund), analyzing-data (object too vague)
+
+## Description rule
+A good description serves ONE overarching process - the same process named by the skill.
+Number of nouns does not matter - many nouns are fine if they all fall under one process.
+Pass: validating-grain-feed-compliance covers quality testing + traceability docs + supplier audits -> all serve one process -> pass
+Fail: description spans two distinct processes (e.g. vendor selection + cost analysis) -> split
+Always fail: nouns from different business functions -> split
+Use general business knowledge for process boundaries. Uploaded documents can override.
+
+## Four cases - pick exactly one status and follow its action
+
+CASE 1 - name fails (not gerund OR too vague), description is already specific and focused -> status: "name-needs-improvement"
+Name fails when: not gerund (e.g. sales-analysis, procurement-process), or gerund but object too vague (e.g. analyzing-data)
+Description is good: specific nouns, one process, clear trigger
+Example: name=sales-analysis, description="Forecasts which customers are at risk of churning based on CRM health scores" -> name not gerund, but description is already focused
+Action: derive the correct gerund name from the description. Return exactly 1 suggestion with the new name and the ORIGINAL description unchanged.
+Reason: state why the name fails and that the description was kept as-is.
+NOTE: if the description is also vague or imprecise, use CASE 3 instead - not Case 1.
+
+CASE 2 - the skill covers a recognizable business domain that spans multiple distinct processes -> status: "too-broad"
+This applies even if the description does not explicitly list the sub-processes. If the name or description references a broad business function (e.g. recruitment, sales, procurement, supply chain) and you can infer from business knowledge what distinct processes it covers, it is too-broad - not vague.
+Example A: name=sales-analysis, description="Analyzes revenue, pipeline health, and rep performance" (explicitly lists processes)
+Example B: name=understand-recruitment-processes, description="understand recruitment processes of the company" (umbrella term - you can infer hiring, onboarding, interview scheduling, etc.)
+Action: split into 3-5 focused skills. Anchor suggested names to the original name where possible.
+Reason: name the distinct processes found (whether explicitly listed or inferred).
+
+CASE 3 - both name and description are so vague that you cannot identify even the business domain -> status: "both-need-improvement"
+The name and description give no signal about what area of the business is involved. You cannot infer sub-processes because there is no domain anchor.
+Example: name=analyzing-data, description="Analyzes data for the team" - data about what? Which team? No domain signal at all.
+Action: make 3-5 best-guess suggestions.
+Reason: be transparent - state that both are too vague and suggestions may not match intent.
+KEY DISTINCTION: if you can name the business domain (recruitment, sales, procurement, etc.) -> use CASE 2 (too-broad). Only use CASE 3 when the domain itself is unclear.
+
+CASE 4 - name is focused, description wanders into one or more extra processes -> status: "description-needs-improvement"
+Example: name=forecasting-churned-customers, description="Forecasts churn risk and tracks renewal pipeline health"
+Action: produce 1 suggestion per process found - (1) original name + description trimmed to match, then one additional suggestion per stray process (new gerund name + description for each).
+Reason: name each stray process found.
+
+Use industry, document context, and the additional context field to override a generic breadth signal only when that context explicitly establishes the listed activities as one company-specific workflow. Generic implementation context such as "guide analytics engineers" or "build data marts" is not enough to override multiple distinct business processes. When there is no explicit unified-workflow statement, apply the four cases from the name and description alone.
+
+Skill to evaluate:
+- Name: {{skill_name}}
+- Description: {{description}}
+- Purpose: {{purpose}}{{context_questions}}{{industry}}{{reference_documents}}
+
+Gerund naming examples (correct vs incorrect):
+- forecasting-churned-customers correct vs churn-forecast incorrect
+- calculating-opportunity-mrr correct vs opportunity-mrr-calculation incorrect
+- analyzing-rep-performance correct vs rep-performance-analysis incorrect
+- segmenting-enterprise-accounts correct vs enterprise-account-segmentation incorrect
+
+Rules for names:
+- Start with a present-participle verb (forecasting, calculating, analyzing, segmenting, tracking, reporting)
+- Follow with a specific object - not a generic noun like data, metrics, analysis
+- Kebab-case throughout
+- No acronyms unless industry-standard (e.g. mrr, arr, crm)
+
+Rules for suggested descriptions:
+- Write in third person ("Extracts...", "Forecasts..." - never "I can" or "You can")
+- State what the skill does AND when to use it (one trigger, not a list)
+- Be specific - include key terms that appear in real user requests
+- Avoid vague nouns: data, metrics, analysis, stuff, things
+- CRITICAL: each suggested description must itself pass the same evaluation criteria - one specific noun, no listing of multiple contexts or scenarios with "or". If the "Use when..." clause would list multiple scenarios, split them into separate suggestions instead.
+Good: "Forecasts which customers are at risk of churning based on health scores. Use when the customer success team needs a prioritized list of at-risk accounts."
+Bad: "Forecasts churn risk using health scores or activity signals or NPS data." (multiple sources listed with or)
+Bad: "Use when sourcing grain vendors or pricing trends or quality specs." (multiple contexts listed with or - split into separate suggestions)
+
+Respond in English only.
+
+Respond with JSON only (no markdown fences, no extra text):
+{"status": string, "reason": string, "suggested_skills": [{"name": string, "description": string}]}

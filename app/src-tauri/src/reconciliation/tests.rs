@@ -152,7 +152,14 @@ fn test_marketplace_skill_preserved_when_skill_md_exists() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::upsert_skill_in_plugin(&conn, "my-skill", "marketplace", "platform", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
+    crate::db::upsert_skill_in_plugin(
+        &conn,
+        "my-skill",
+        "marketplace",
+        "platform",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap();
 
     // Create SKILL.md in skills_path (simulates installed marketplace skill)
     let skill_dir = skills_tmp.path().join("my-skill");
@@ -187,8 +194,18 @@ fn test_marketplace_plugin_deleted_when_skill_md_missing() {
 
     // Create a marketplace plugin with a skill folder that has no SKILL.md
     let plugin_slug = "test-marketplace";
-    crate::db::ensure_plugin(&conn, plugin_slug, "Test Marketplace", "marketplace", None, None, false).unwrap();
-    crate::db::upsert_skill_in_plugin(&conn, "some-skill", "marketplace", "domain", plugin_slug).unwrap();
+    crate::db::ensure_plugin(
+        &conn,
+        plugin_slug,
+        "Test Marketplace",
+        "marketplace",
+        None,
+        None,
+        false,
+    )
+    .unwrap();
+    crate::db::upsert_skill_in_plugin(&conn, "some-skill", "marketplace", "domain", plugin_slug)
+        .unwrap();
     let plugin_skills = skills_tmp.path().join(plugin_slug).join("some-skill");
     std::fs::create_dir_all(&plugin_skills).unwrap();
     // Deliberately NOT creating SKILL.md — simulates tampering
@@ -196,11 +213,16 @@ fn test_marketplace_plugin_deleted_when_skill_md_missing() {
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     // Plugin should be deleted
-    assert!(result.notifications.iter().any(|n| n.contains(plugin_slug) && n.contains("missing SKILL.md")));
+    assert!(result
+        .notifications
+        .iter()
+        .any(|n| n.contains(plugin_slug) && n.contains("missing SKILL.md")));
     // Plugin folder should be gone from disk
     assert!(!skills_tmp.path().join(plugin_slug).exists());
     // Plugin should be gone from DB
-    assert!(crate::db::get_plugin_id_by_slug(&conn, plugin_slug).unwrap().is_none());
+    assert!(crate::db::get_plugin_id_by_slug(&conn, plugin_slug)
+        .unwrap()
+        .is_none());
 }
 
 // --- Missing workspace dir is recreated, not treated as stale ---
@@ -230,7 +252,12 @@ fn test_missing_workspace_dir_is_recreated() {
     assert_eq!(run.current_step, 0);
 
     // Workspace dir should have been recreated
-    assert!(tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill").join("context").exists());
+    assert!(tmp
+        .path()
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("my-skill")
+        .join("context")
+        .exists());
 }
 
 // --- Normal case ---
@@ -612,7 +639,14 @@ fn test_reconcile_mixed_scenarios() {
     create_step_output(skills_tmp.path(), "normal", 0);
 
     // Marketplace skill with SKILL.md
-    crate::db::upsert_skill_in_plugin(&conn, "mkt-skill", "marketplace", "platform", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
+    crate::db::upsert_skill_in_plugin(
+        &conn,
+        "mkt-skill",
+        "marketplace",
+        "platform",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap();
     let mkt_dir = skills_tmp.path().join("mkt-skill");
     std::fs::create_dir_all(&mkt_dir).unwrap();
     std::fs::write(mkt_dir.join("SKILL.md"), "# Marketplace").unwrap();
@@ -625,7 +659,12 @@ fn test_reconcile_mixed_scenarios() {
     assert!(result.orphans.is_empty());
 
     // db-only skill's workspace dir should have been recreated
-    assert!(tmp.path().join(DEFAULT_PLUGIN_SLUG).join("db-only").join("context").exists());
+    assert!(tmp
+        .path()
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("db-only")
+        .join("context")
+        .exists());
 
     // DB records for all skills should still be present
     assert!(crate::db::get_workflow_run(&conn, "db-only")
@@ -673,8 +712,7 @@ fn test_reconcile_skips_skill_with_active_session_from_current_pid() {
     create_step_output(skills_tmp.path(), "active-skill", 0);
 
     let current_pid = std::process::id();
-    crate::db::create_workflow_session(&conn, "sess-active", "active-skill", current_pid)
-        .unwrap();
+    crate::db::create_workflow_session(&conn, "sess-active", "active-skill", current_pid).unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
@@ -835,7 +873,11 @@ fn test_missing_workspace_dir_recreated_for_in_progress_skill() {
 
     // Workspace dir should have been recreated
     assert!(
-        tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill").join("context").exists(),
+        tmp.path()
+            .join(DEFAULT_PLUGIN_SLUG)
+            .join("my-skill")
+            .join("context")
+            .exists(),
         "workspace context dir should be recreated"
     );
 
@@ -959,7 +1001,10 @@ fn test_resolve_orphan_delete() {
     let conn = create_test_db();
 
     crate::db::save_workflow_run(&conn, "orphan", 7, "completed", "domain").unwrap();
-    let output_dir = tmp.path().join(crate::skill_paths::DEFAULT_PLUGIN_SLUG).join("orphan");
+    let output_dir = tmp
+        .path()
+        .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+        .join("orphan");
     std::fs::create_dir_all(output_dir.join("references")).unwrap();
     std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
@@ -1463,7 +1508,10 @@ fn test_skill_on_disk_auto_created_in_db() {
     assert_eq!(result.discovered_skills[0].name, "complete-skill");
     assert_eq!(result.discovered_skills[0].scenario, "discovered");
     // Should have a notification
-    assert!(result.notifications.iter().any(|n| n.contains("complete-skill") && n.contains("discovered")));
+    assert!(result
+        .notifications
+        .iter()
+        .any(|n| n.contains("complete-skill") && n.contains("discovered")));
     // Skill should now be in DB
     let all = crate::db::list_all_skills(&conn).unwrap();
     assert!(all.iter().any(|s| s.name == "complete-skill"));
@@ -1489,7 +1537,10 @@ fn test_partial_skill_on_disk_auto_created() {
     assert_eq!(result.discovered_skills[0].name, "partial-skill");
     assert_eq!(result.discovered_skills[0].scenario, "discovered");
     // Should have a notification
-    assert!(result.notifications.iter().any(|n| n.contains("partial-skill")));
+    assert!(result
+        .notifications
+        .iter()
+        .any(|n| n.contains("partial-skill")));
     // Skill should now be in DB
     let all = crate::db::list_all_skills(&conn).unwrap();
     assert!(all.iter().any(|s| s.name == "partial-skill"));
@@ -1558,7 +1609,11 @@ fn test_pass2_scenario_9c_with_some_context() {
 
     // Create step 0 output + SKILL.md but no step 4
     create_step_output(skills_tmp.path(), "some-context-skill", 0);
-    let skill_dir = crate::skill_paths::workspace_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "some-context-skill");
+    let skill_dir = crate::skill_paths::workspace_skill_dir(
+        skills_tmp.path(),
+        DEFAULT_PLUGIN_SLUG,
+        "some-context-skill",
+    );
     std::fs::write(skill_dir.join("SKILL.md"), "# Some context skill").unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -1620,8 +1675,7 @@ fn test_pass3_skips_dotfiles_and_trash() {
     std::fs::create_dir_all(skills.join(".trash")).unwrap();
 
     let result =
-        reconcile_on_startup(&conn, workspace.to_str().unwrap(), skills.to_str().unwrap())
-            .unwrap();
+        reconcile_on_startup(&conn, workspace.to_str().unwrap(), skills.to_str().unwrap()).unwrap();
 
     assert!(result.notifications.is_empty());
     // .git and .trash should still exist
@@ -1707,12 +1761,23 @@ fn test_reconcile_skill_builder_resets_stale_in_progress_steps() {
     create_skill_dir(tmp.path(), name, "");
 
     let mut notifications = Vec::new();
-    super::skill_builder::reconcile_skill_builder(&conn, name, DEFAULT_PLUGIN_SLUG, workspace, skills_path, &mut notifications).unwrap();
+    super::skill_builder::reconcile_skill_builder(
+        &conn,
+        name,
+        DEFAULT_PLUGIN_SLUG,
+        workspace,
+        skills_path,
+        &mut notifications,
+    )
+    .unwrap();
 
     // The stale in_progress step should be reset to pending
     let steps = crate::db::get_workflow_steps(&conn, name).unwrap();
     let step0 = steps.iter().find(|s| s.step_id == 0).unwrap();
-    assert_eq!(step0.status, "pending", "stale in_progress step should be reset to pending");
+    assert_eq!(
+        step0.status, "pending",
+        "stale in_progress step should be reset to pending"
+    );
 }
 
 #[test]
@@ -1732,12 +1797,23 @@ fn test_reconcile_skill_builder_scenario_10_missing_workflow_run() {
     create_step_output(tmp.path(), name, 0);
 
     let mut notifications = Vec::new();
-    super::skill_builder::reconcile_skill_builder(&conn, name, DEFAULT_PLUGIN_SLUG, workspace, skills_path, &mut notifications).unwrap();
+    super::skill_builder::reconcile_skill_builder(
+        &conn,
+        name,
+        DEFAULT_PLUGIN_SLUG,
+        workspace,
+        skills_path,
+        &mut notifications,
+    )
+    .unwrap();
 
     // Should auto-create workflow_runs row
     let run = crate::db::get_workflow_run(&conn, name).unwrap();
     assert!(run.is_some(), "workflow_runs row should be auto-created");
-    assert!(notifications.iter().any(|n| n.contains("recreated")), "should notify about recreation");
+    assert!(
+        notifications.iter().any(|n| n.contains("recreated")),
+        "should notify about recreation"
+    );
 }
 
 #[test]
@@ -1754,12 +1830,23 @@ fn test_reconcile_skill_builder_recreates_missing_workspace_dir() {
     crate::db::save_workflow_run(&conn, name, 0, "pending", "domain").unwrap();
 
     let mut notifications = Vec::new();
-    super::skill_builder::reconcile_skill_builder(&conn, name, DEFAULT_PLUGIN_SLUG, workspace, skills_path, &mut notifications).unwrap();
+    super::skill_builder::reconcile_skill_builder(
+        &conn,
+        name,
+        DEFAULT_PLUGIN_SLUG,
+        workspace,
+        skills_path,
+        &mut notifications,
+    )
+    .unwrap();
 
     // The workspace dir should be recreated (scenario 5)
     let skill_dir = crate::skill_paths::workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, name);
     assert!(skill_dir.exists(), "workspace dir should be recreated");
-    assert!(skill_dir.join("context").exists(), "context subdir should be created");
+    assert!(
+        skill_dir.join("context").exists(),
+        "context subdir should be created"
+    );
 }
 
 // ── Phase 1f: Dedup tests ───────────────────────────────────────────────────
@@ -1788,8 +1875,13 @@ fn test_reconciliation_dedup_removes_stale_row() {
 
     // Row in the non-default plugin (the new location, added by Phase 1c discovery)
     let nd_id = crate::db::upsert_skill_in_plugin(
-        &conn, "moved-skill", "skill-builder", "domain", &non_default_slug,
-    ).unwrap();
+        &conn,
+        "moved-skill",
+        "skill-builder",
+        "domain",
+        &non_default_slug,
+    )
+    .unwrap();
 
     // Phase 1c would have also created a completed workflow_run for the new row.
     // Insert it directly (mimicking Phase 1c) so Phase 2 sees the skill as completed
@@ -1802,8 +1894,9 @@ fn test_reconciliation_dedup_removes_stale_row() {
     ).unwrap();
 
     // Disk: SKILL.md only in the non-default plugin location
-    let skill_md_path = crate::skill_paths::resolve_skill_dir(skills_dir, &non_default_slug, "moved-skill")
-        .join("SKILL.md");
+    let skill_md_path =
+        crate::skill_paths::resolve_skill_dir(skills_dir, &non_default_slug, "moved-skill")
+            .join("SKILL.md");
     std::fs::create_dir_all(skill_md_path.parent().unwrap()).unwrap();
     std::fs::write(&skill_md_path, "---\ntitle: moved-skill\n---\n").unwrap();
 
@@ -1820,9 +1913,12 @@ fn test_reconciliation_dedup_removes_stale_row() {
     assert_eq!(count, 1, "exactly one active row must remain after dedup");
 
     // The surviving row must be in the non-default plugin
-    let master = crate::db::get_skill_master_in_plugin(&conn, "moved-skill", &non_default_slug)
-        .unwrap();
-    assert!(master.is_some(), "surviving row must be in the non-default plugin");
+    let master =
+        crate::db::get_skill_master_in_plugin(&conn, "moved-skill", &non_default_slug).unwrap();
+    assert!(
+        master.is_some(),
+        "surviving row must be in the non-default plugin"
+    );
 }
 
 /// When SKILL.md exists under both plugins (edge case), the non-default plugin
@@ -1843,8 +1939,13 @@ fn test_reconciliation_dedup_prefers_non_default_when_both_have_skill_md() {
     // Two rows for the same skill
     crate::db::upsert_skill(&conn, "ambiguous-skill", "skill-builder", "domain").unwrap();
     let nd_id = crate::db::upsert_skill_in_plugin(
-        &conn, "ambiguous-skill", "skill-builder", "domain", &non_default_slug,
-    ).unwrap();
+        &conn,
+        "ambiguous-skill",
+        "skill-builder",
+        "domain",
+        &non_default_slug,
+    )
+    .unwrap();
 
     // Completed workflow_run pointing at non-default row so Phase 2 skips it
     conn.execute(
@@ -1874,8 +1975,8 @@ fn test_reconciliation_dedup_prefers_non_default_when_both_have_skill_md() {
     assert_eq!(count, 1, "exactly one active row must remain");
 
     // Non-default plugin must win the tie-break
-    let master = crate::db::get_skill_master_in_plugin(&conn, "ambiguous-skill", &non_default_slug)
-        .unwrap();
+    let master =
+        crate::db::get_skill_master_in_plugin(&conn, "ambiguous-skill", &non_default_slug).unwrap();
     assert!(master.is_some(), "non-default plugin must win tie-break");
 }
 
@@ -1896,8 +1997,13 @@ fn test_cross_plugin_skill_not_rediscovered_every_startup() {
     let (_, other_slug) =
         crate::db::create_plugin(&conn, "other-plugin", "local", None, None).unwrap();
     crate::db::upsert_skill_in_plugin(
-        &conn, "cross-plugin-skill", "skill-builder", "domain", &other_slug,
-    ).unwrap();
+        &conn,
+        "cross-plugin-skill",
+        "skill-builder",
+        "domain",
+        &other_slug,
+    )
+    .unwrap();
 
     // Phase 1b deletes plugins whose folder is missing on disk — ensure the folder exists
     // so Phase 1b doesn't wipe the plugin row before Phase 1c runs.
@@ -1906,8 +2012,11 @@ fn test_cross_plugin_skill_not_rediscovered_every_startup() {
 
     // Disk: SKILL.md exists under the default "skills" plugin (different from DB location)
     let skill_md = crate::skill_paths::resolve_skill_dir(
-        skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "cross-plugin-skill",
-    ).join("SKILL.md");
+        skills_tmp.path(),
+        DEFAULT_PLUGIN_SLUG,
+        "cross-plugin-skill",
+    )
+    .join("SKILL.md");
     std::fs::create_dir_all(skill_md.parent().unwrap()).unwrap();
     std::fs::write(&skill_md, "---\ntitle: cross-plugin-skill\n---\n").unwrap();
 
@@ -1919,7 +2028,10 @@ fn test_cross_plugin_skill_not_rediscovered_every_startup() {
         result.discovered_skills
     );
     assert!(
-        !result.notifications.iter().any(|n| n.contains("cross-plugin-skill") && n.contains("discovered")),
+        !result
+            .notifications
+            .iter()
+            .any(|n| n.contains("cross-plugin-skill") && n.contains("discovered")),
         "must not emit a 'discovered' notification for a cross-plugin skill: {:?}",
         result.notifications
     );
@@ -1932,7 +2044,10 @@ fn test_cross_plugin_skill_not_rediscovered_every_startup() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(count, 1, "exactly one active row must exist after reconciliation");
+    assert_eq!(
+        count, 1,
+        "exactly one active row must exist after reconciliation"
+    );
 
     // Second startup: same result — dialog must not reappear
     let result2 = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -1954,8 +2069,18 @@ fn test_phase1e_restores_marketplace_skills() {
     let conn = create_test_db();
 
     // Create a marketplace plugin with a skill
-    crate::db::ensure_plugin(&conn, "mkt-restore", "Marketplace Restore", "marketplace", None, None, false).unwrap();
-    crate::db::upsert_skill_in_plugin(&conn, "mkt-skill", "marketplace", "domain", "mkt-restore").unwrap();
+    crate::db::ensure_plugin(
+        &conn,
+        "mkt-restore",
+        "Marketplace Restore",
+        "marketplace",
+        None,
+        None,
+        false,
+    )
+    .unwrap();
+    crate::db::upsert_skill_in_plugin(&conn, "mkt-skill", "marketplace", "domain", "mkt-restore")
+        .unwrap();
 
     // Create the skill directory on disk (standard layout: {plugin_slug}/{skill_name}/SKILL.md)
     let skill_dir = skills_tmp.path().join("mkt-restore").join("mkt-skill");
@@ -1966,7 +2091,8 @@ fn test_phase1e_restores_marketplace_skills() {
     conn.execute(
         "UPDATE skills SET deleted_at = datetime('now') || 'Z' WHERE name = 'mkt-skill'",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Verify the skill is soft-deleted
     let deleted_at: Option<String> = conn
@@ -1976,7 +2102,10 @@ fn test_phase1e_restores_marketplace_skills() {
             |r| r.get(0),
         )
         .unwrap();
-    assert!(deleted_at.is_some(), "precondition: skill should be soft-deleted");
+    assert!(
+        deleted_at.is_some(),
+        "precondition: skill should be soft-deleted"
+    );
 
     // Run reconciliation — Phase 1e Pass A should restore it
     reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -1989,7 +2118,10 @@ fn test_phase1e_restores_marketplace_skills() {
             |r| r.get(0),
         )
         .unwrap();
-    assert!(after.is_none(), "Phase 1e Pass A should restore marketplace skill with directory on disk");
+    assert!(
+        after.is_none(),
+        "Phase 1e Pass A should restore marketplace skill with directory on disk"
+    );
 }
 
 /// VU-984: Phase 1e Pass B must not soft-delete marketplace skills stored
@@ -2005,14 +2137,32 @@ fn test_phase1e_does_not_soft_delete_marketplace_nested_layout() {
     // Create a plugin with a skill stored in the nested marketplace layout.
     // Use source_type "local" to avoid Phase 1c-ii marketplace integrity checks
     // (which is a separate concern from Phase 1e).
-    crate::db::ensure_plugin(&conn, "mkt-nested", "Marketplace Nested", "local", None, None, false).unwrap();
-    crate::db::upsert_skill_in_plugin(&conn, "nested-skill", "marketplace", "domain", "mkt-nested").unwrap();
+    crate::db::ensure_plugin(
+        &conn,
+        "mkt-nested",
+        "Marketplace Nested",
+        "local",
+        None,
+        None,
+        false,
+    )
+    .unwrap();
+    crate::db::upsert_skill_in_plugin(&conn, "nested-skill", "marketplace", "domain", "mkt-nested")
+        .unwrap();
 
     // Create the skill directory in the marketplace nested layout:
     // {plugin_slug}/skills/{skill_name}/SKILL.md
-    let nested_skill_dir = skills_tmp.path().join("mkt-nested").join("skills").join("nested-skill");
+    let nested_skill_dir = skills_tmp
+        .path()
+        .join("mkt-nested")
+        .join("skills")
+        .join("nested-skill");
     std::fs::create_dir_all(&nested_skill_dir).unwrap();
-    std::fs::write(nested_skill_dir.join("SKILL.md"), "---\nname: nested-skill\n---\n").unwrap();
+    std::fs::write(
+        nested_skill_dir.join("SKILL.md"),
+        "---\nname: nested-skill\n---\n",
+    )
+    .unwrap();
 
     // Run reconciliation
     reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -2025,5 +2175,8 @@ fn test_phase1e_does_not_soft_delete_marketplace_nested_layout() {
             |r| r.get(0),
         )
         .unwrap();
-    assert!(deleted_at.is_none(), "Phase 1e must not soft-delete marketplace skills in nested plugin/skills/skill/ layout");
+    assert!(
+        deleted_at.is_none(),
+        "Phase 1e must not soft-delete marketplace skills in nested plugin/skills/skill/ layout"
+    );
 }

@@ -42,19 +42,31 @@ pub fn reconcile_on_startup(
             log::warn!("[reconcile] failed to create default plugin dir: {}", e);
         }
         // Ensure plugin.json exists for the default plugin
-        let pj_path = skills_dir.join(DEFAULT_PLUGIN_SLUG).join(".claude-plugin").join("plugin.json");
+        let pj_path = skills_dir
+            .join(DEFAULT_PLUGIN_SLUG)
+            .join(".claude-plugin")
+            .join("plugin.json");
         if !pj_path.is_file() {
             if let Err(e) = crate::marketplace_manifest::write_plugin_json(
-                skills_dir, DEFAULT_PLUGIN_SLUG, crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME, None, None,
+                skills_dir,
+                DEFAULT_PLUGIN_SLUG,
+                crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME,
+                None,
+                None,
             ) {
                 log::warn!("[reconcile] failed to write default plugin.json: {}", e);
             }
         }
         // Ensure the default plugin is listed in marketplace.json
         if let Err(e) = crate::marketplace_manifest::ensure_plugin_in_marketplace(
-            skills_dir, DEFAULT_PLUGIN_SLUG, crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME,
+            skills_dir,
+            DEFAULT_PLUGIN_SLUG,
+            crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME,
         ) {
-            log::warn!("[reconcile] failed to ensure default plugin in marketplace.json: {}", e);
+            log::warn!(
+                "[reconcile] failed to ensure default plugin in marketplace.json: {}",
+                e
+            );
         }
     }
 
@@ -83,14 +95,16 @@ pub fn reconcile_on_startup(
                 ) {
                     log::warn!(
                         "[reconcile] plugin '{}': failed to delete skills: {}",
-                        plugin.slug, e
+                        plugin.slug,
+                        e
                     );
                     continue;
                 }
                 if let Err(e) = crate::db::delete_plugin_by_slug(conn, &plugin.slug) {
                     log::warn!(
                         "[reconcile] plugin '{}': failed to delete plugin row: {}",
-                        plugin.slug, e
+                        plugin.slug,
+                        e
                     );
                 } else {
                     notifications.push(format!(
@@ -112,7 +126,11 @@ pub fn reconcile_on_startup(
             .collect();
 
         // Discover plugin folders
-        for entry in std::fs::read_dir(skills_dir).into_iter().flatten().flatten() {
+        for entry in std::fs::read_dir(skills_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
             let path = entry.path();
             if !path.is_dir() {
                 continue;
@@ -127,8 +145,19 @@ pub fn reconcile_on_startup(
             }
             if !db_plugins.contains(&slug) {
                 let display_name = crate::skill_paths::plugin_display_name(&slug);
-                log::info!("[reconcile] discovered plugin '{}' on disk, creating DB row", slug);
-                if let Err(e) = crate::db::ensure_plugin(conn, &slug, &display_name, "local", None, None, slug == DEFAULT_PLUGIN_SLUG) {
+                log::info!(
+                    "[reconcile] discovered plugin '{}' on disk, creating DB row",
+                    slug
+                );
+                if let Err(e) = crate::db::ensure_plugin(
+                    conn,
+                    &slug,
+                    &display_name,
+                    "local",
+                    None,
+                    None,
+                    slug == DEFAULT_PLUGIN_SLUG,
+                ) {
                     log::warn!("[reconcile] failed to create plugin '{}': {}", slug, e);
                 }
             }
@@ -172,7 +201,8 @@ pub fn reconcile_on_startup(
             // New skill on disk not in DB — create it
             log::info!(
                 "[reconcile] discovered skill '{}' in plugin '{}', creating DB row",
-                loc.skill_name, loc.plugin_slug
+                loc.skill_name,
+                loc.plugin_slug
             );
             match crate::db::upsert_skill_in_plugin(
                 conn,
@@ -186,10 +216,19 @@ pub fn reconcile_on_startup(
                     // Insert directly using the known skill_id to avoid save_workflow_run's
                     // upsert_skill call which always targets the default plugin and would create
                     // a duplicate skills row for non-default-plugin skills.
-                    let disk_step = detect_furthest_step(workspace_path, &loc.plugin_slug, &loc.skill_name, skills_path)
-                        .map(|s| s as i32)
-                        .unwrap_or(3);
-                    let status = if disk_step >= 3 { "completed" } else { "pending" };
+                    let disk_step = detect_furthest_step(
+                        workspace_path,
+                        &loc.plugin_slug,
+                        &loc.skill_name,
+                        skills_path,
+                    )
+                    .map(|s| s as i32)
+                    .unwrap_or(3);
+                    let status = if disk_step >= 3 {
+                        "completed"
+                    } else {
+                        "pending"
+                    };
                     conn.execute(
                         "INSERT INTO workflow_runs \
                              (skill_name, current_step, status, purpose, skill_id, updated_at) \
@@ -216,7 +255,9 @@ pub fn reconcile_on_startup(
                 Err(e) => {
                     log::warn!(
                         "[reconcile] failed to create skill '{}' in plugin '{}': {}",
-                        loc.skill_name, loc.plugin_slug, e
+                        loc.skill_name,
+                        loc.plugin_slug,
+                        e
                     );
                 }
             }
@@ -261,7 +302,11 @@ pub fn reconcile_on_startup(
                     continue;
                 }
                 if let Err(e) = crate::db::delete_plugin_by_slug(conn, &plugin.slug) {
-                    log::warn!("[reconcile] failed to delete marketplace plugin '{}': {}", plugin.slug, e);
+                    log::warn!(
+                        "[reconcile] failed to delete marketplace plugin '{}': {}",
+                        plugin.slug,
+                        e
+                    );
                 } else {
                     // Remove from disk — guard against path traversal via a crafted plugin slug
                     let plugin_dir = skills_dir.join(&plugin.slug);
@@ -294,7 +339,11 @@ pub fn reconcile_on_startup(
         let display_names = crate::marketplace_manifest::read_plugin_display_names(skills_dir);
         for (slug, name) in &display_names {
             if let Err(e) = crate::db::update_plugin_display_name(conn, slug, name) {
-                log::debug!("[reconcile] failed to sync display name for '{}': {}", slug, e);
+                log::debug!(
+                    "[reconcile] failed to sync display name for '{}': {}",
+                    slug,
+                    e
+                );
             }
         }
     }
@@ -316,7 +365,8 @@ pub fn reconcile_on_startup(
     // Wrapped in BEGIN IMMEDIATE so Pass A and Pass B see a consistent
     // DB snapshot and a concurrent IPC call cannot race between them.
     // ════════════════════════════════════════════════════════════════════════
-    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| e.to_string())?;
     let phase1e_result: Result<Vec<String>, String> = (|| {
         let mut phase_notifs: Vec<String> = Vec::new();
         let skills_dir_1e = Path::new(skills_path);
@@ -329,10 +379,13 @@ pub fn reconcile_on_startup(
         // plugin directory itself, not a skill named "skills".
         let skill_dir_exists = |plugin_slug: &str, name: &str| -> bool {
             let new_path = crate::skill_paths::resolve_skill_dir(skills_dir_1e, plugin_slug, name);
-            let legacy_exists =
-                name != DEFAULT_PLUGIN_SLUG && skills_dir_1e.join(name).exists();
+            let legacy_exists = name != DEFAULT_PLUGIN_SLUG && skills_dir_1e.join(name).exists();
             // Marketplace plugins store skills under {plugin_slug}/skills/{skill_name}/
-            let marketplace_nested = skills_dir_1e.join(plugin_slug).join("skills").join(name).exists();
+            let marketplace_nested = skills_dir_1e
+                .join(plugin_slug)
+                .join("skills")
+                .join(name)
+                .exists();
             new_path.exists() || legacy_exists || marketplace_nested
         };
 
@@ -354,7 +407,8 @@ pub fn reconcile_on_startup(
                 if skill_dir_exists(plugin_slug, name) {
                     log::info!(
                         "[reconcile] restoring '{}' in plugin '{}': directory found in skills_path",
-                        name, plugin_slug
+                        name,
+                        plugin_slug
                     );
                     // Use NULL (not '') so all active-check idioms agree.
                     // Scope by plugin_id to avoid touching same-named skills in other plugins.
@@ -386,14 +440,18 @@ pub fn reconcile_on_startup(
             }
             if skill.skill_source == "skill-builder" {
                 let run = crate::db::get_workflow_run(conn, &skill.name)?;
-                let is_completed = run.as_ref().map(|r| r.status == "completed").unwrap_or(false);
+                let is_completed = run
+                    .as_ref()
+                    .map(|r| r.status == "completed")
+                    .unwrap_or(false);
                 if !is_completed {
                     continue;
                 }
             }
             log::info!(
                 "[reconcile] soft-deleting '{}' in plugin '{}': no directory in skills_path",
-                skill.name, skill.plugin_slug
+                skill.name,
+                skill.plugin_slug
             );
             // Scope by plugin_id to avoid touching same-named skills in other plugins.
             if let Err(e) = conn.execute(
@@ -469,7 +527,11 @@ pub fn reconcile_on_startup(
                 .map_err(|e| e.to_string())?;
             let rows: Vec<(String, i64, bool)> = rows_stmt
                 .query_map(rusqlite::params![name], |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, bool>(2)?))
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, bool>(2)?,
+                    ))
                 })
                 .map_err(|e| e.to_string())?
                 .filter_map(|r| r.ok())
@@ -513,7 +575,9 @@ pub fn reconcile_on_startup(
                 ) {
                     log::warn!(
                         "[reconcile] dedup: failed to delete stale row for '{}' in plugin '{}': {}",
-                        name, rows[i].0, e
+                        name,
+                        rows[i].0,
+                        e
                     );
                 } else {
                     notifications.push(format!(
@@ -532,7 +596,9 @@ pub fn reconcile_on_startup(
     let all_skills = crate::db::list_all_skills(conn)?;
     log::info!(
         "[reconcile] phase 2: workflow recon for {} skills, workspace={} skills_path={}",
-        all_skills.len(), workspace_path, skills_path
+        all_skills.len(),
+        workspace_path,
+        skills_path
     );
 
     for skill in &all_skills {
@@ -542,7 +608,10 @@ pub fn reconcile_on_startup(
 
         // Only reconcile incomplete skills — completed skills were handled in Phase 1
         let maybe_run = crate::db::get_workflow_run(conn, &skill.name)?;
-        let is_completed = maybe_run.as_ref().map(|r| r.status == "completed").unwrap_or(false);
+        let is_completed = maybe_run
+            .as_ref()
+            .map(|r| r.status == "completed")
+            .unwrap_or(false);
         if is_completed {
             continue;
         }
@@ -580,7 +649,9 @@ pub fn resolve_orphan(
 ) -> Result<(), String> {
     log::debug!(
         "[resolve_orphan] skill='{}': action={} skills_path={}",
-        skill_name, action, skills_path
+        skill_name,
+        action,
+        skills_path
     );
     match action {
         "delete" => {

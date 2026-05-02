@@ -119,8 +119,7 @@ pub fn db_get_skill_ids_for_document(
     conn: &Connection,
     document_id: i64,
 ) -> Result<Vec<i64>, rusqlite::Error> {
-    let mut stmt =
-        conn.prepare("SELECT skill_id FROM document_skills WHERE document_id = ?1")?;
+    let mut stmt = conn.prepare("SELECT skill_id FROM document_skills WHERE document_id = ?1")?;
     let ids = stmt
         .query_map(params![document_id], |r| r.get(0))?
         .filter_map(|r| r.ok())
@@ -188,7 +187,11 @@ pub fn db_documents_for_skill(
                 } else {
                     raw
                 };
-                contents.push(DocumentContent { name, file_path, content });
+                contents.push(DocumentContent {
+                    name,
+                    file_path,
+                    content,
+                });
             }
             Err(e) => {
                 log::warn!(
@@ -210,7 +213,9 @@ mod tests {
 
     fn insert_test_skill(conn: &Connection, name: &str) -> i64 {
         let plugin_id: i64 = conn
-            .query_row("SELECT id FROM plugins WHERE slug = 'skills'", [], |r| r.get(0))
+            .query_row("SELECT id FROM plugins WHERE slug = 'skills'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         conn.execute(
             "INSERT INTO skills (name, skill_source, plugin_id) VALUES (?1, 'skill-builder', ?2)",

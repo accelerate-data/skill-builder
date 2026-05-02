@@ -4,11 +4,7 @@ use super::eval::{EvalResult, EvalResults};
 
 /// Call the Anthropic Messages API directly via reqwest.
 /// Returns the text content of the first content block.
-pub async fn call_anthropic(
-    prompt: &str,
-    model: &str,
-    api_key: &str,
-) -> Result<String, String> {
+pub async fn call_anthropic(prompt: &str, model: &str, api_key: &str) -> Result<String, String> {
     let client = reqwest::Client::new();
     let resp = client
         .post("https://api.anthropic.com/v1/messages")
@@ -39,7 +35,10 @@ pub async fn call_anthropic(
             .and_then(|e| e.get("message"))
             .and_then(|m| m.as_str())
             .unwrap_or("unknown error");
-        return Err(format!("Anthropic API error (HTTP {}): {}", status, error_msg));
+        return Err(format!(
+            "Anthropic API error (HTTP {}): {}",
+            status, error_msg
+        ));
     }
 
     body.get("content")
@@ -231,10 +230,7 @@ mod tests {
     #[test]
     fn test_extract_new_description_with_tags() {
         let text = "Here is the result:\n\n<new_description>\nA great skill description.\n</new_description>\n\nDone.";
-        assert_eq!(
-            extract_new_description(text),
-            "A great skill description."
-        );
+        assert_eq!(extract_new_description(text), "A great skill description.");
     }
 
     #[test]
@@ -249,16 +245,14 @@ mod tests {
     #[test]
     fn test_build_improve_prompt_contains_key_sections() {
         let eval_results = EvalResults {
-            results: vec![
-                EvalResult {
-                    query: "test query".to_string(),
-                    should_trigger: true,
-                    trigger_rate: 0.0,
-                    triggers: 0,
-                    runs: 3,
-                    pass: false,
-                },
-            ],
+            results: vec![EvalResult {
+                query: "test query".to_string(),
+                should_trigger: true,
+                trigger_rate: 0.0,
+                triggers: 0,
+                runs: 3,
+                pass: false,
+            }],
             summary: super::super::eval::EvalSummary {
                 total: 1,
                 passed: 0,

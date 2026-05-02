@@ -70,7 +70,8 @@ pub(crate) fn reconcile_skill_builder(
     let run = maybe_run.unwrap();
 
     // Scenario 5: workspace dir missing → recreate transient scratch space
-    let skill_dir = crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, name);
+    let skill_dir =
+        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, name);
     if !skill_dir.exists() {
         let context_dir = skill_dir.join("context");
         match std::fs::create_dir_all(&context_dir) {

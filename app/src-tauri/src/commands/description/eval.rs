@@ -39,7 +39,11 @@ pub struct EvalResults {
 
 /// Root for eval command files:
 /// `{workspace}/skills/{plugin_slug}/{skill_name}/description-optimization/eval-commands/`
-pub(super) fn eval_commands_root(workspace_path: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
+pub(super) fn eval_commands_root(
+    workspace_path: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> PathBuf {
     crate::skill_paths::workspace_skill_dir(workspace_path, plugin_slug, skill_name)
         .join("description-optimization")
         .join("eval-commands")
@@ -71,7 +75,10 @@ fn create_eval_run_workspace(
         .collect::<Vec<_>>()
         .join("\n");
 
-    let content = format!("---\ndescription: |\n{}\n---\n\n# {}\n", indented, skill_name);
+    let content = format!(
+        "---\ndescription: |\n{}\n---\n\n# {}\n",
+        indented, skill_name
+    );
 
     let cmd_file = cmd_dir.join(format!("{}.md", skill_name));
     std::fs::write(&cmd_file, &content)
@@ -269,6 +276,8 @@ async fn run_single_eval_query(
         plugin_slug: plugin_slug.to_string(),
         transcript_log_dir: Some(transcript_dir_str.clone()),
         runtime_provider: None,
+        task_kind: None,
+        user_message_suffix: None,
     };
 
     let worker_key = eval_worker_key(plugin_slug, worker_idx);
@@ -280,7 +289,13 @@ async fn run_single_eval_query(
     );
 
     if let Err(e) = pool
-        .send_request(&worker_key, &agent_id, config, app, Some(&transcript_dir_str))
+        .send_request(
+            &worker_key,
+            &agent_id,
+            config,
+            app,
+            Some(&transcript_dir_str),
+        )
         .await
     {
         log::warn!("[eval] send_request failed for '{}': {}", agent_id, e);
@@ -581,8 +596,12 @@ mod tests {
         let dir2 = create_eval_run_workspace(eval_cmds_root, "my-skill", "desc B").unwrap();
         assert_ne!(dir1, dir2, "each run gets a unique subdirectory");
         // Each dir has exactly one command file
-        let cmds1: Vec<_> = std::fs::read_dir(dir1.join(".claude").join("commands")).unwrap().collect();
-        let cmds2: Vec<_> = std::fs::read_dir(dir2.join(".claude").join("commands")).unwrap().collect();
+        let cmds1: Vec<_> = std::fs::read_dir(dir1.join(".claude").join("commands"))
+            .unwrap()
+            .collect();
+        let cmds2: Vec<_> = std::fs::read_dir(dir2.join(".claude").join("commands"))
+            .unwrap()
+            .collect();
         assert_eq!(cmds1.len(), 1);
         assert_eq!(cmds2.len(), 1);
     }
@@ -597,8 +616,14 @@ mod tests {
     fn test_aggregate_trigger_results_should_trigger_pass() {
         use super::super::EvalQuery;
         let eval_set = vec![
-            EvalQuery { query: "q1".to_string(), should_trigger: true },
-            EvalQuery { query: "q2".to_string(), should_trigger: false },
+            EvalQuery {
+                query: "q1".to_string(),
+                should_trigger: true,
+            },
+            EvalQuery {
+                query: "q2".to_string(),
+                should_trigger: false,
+            },
         ];
         let mut query_triggers = HashMap::new();
         query_triggers.insert("q1".to_string(), vec![true, true, true]); // 3/3 → rate=1.0
@@ -615,12 +640,18 @@ mod tests {
     fn test_aggregate_trigger_results_should_trigger_fail() {
         use super::super::EvalQuery;
         let eval_set = vec![
-            EvalQuery { query: "q1".to_string(), should_trigger: true },
-            EvalQuery { query: "q2".to_string(), should_trigger: false },
+            EvalQuery {
+                query: "q1".to_string(),
+                should_trigger: true,
+            },
+            EvalQuery {
+                query: "q2".to_string(),
+                should_trigger: false,
+            },
         ];
         let mut query_triggers = HashMap::new();
         query_triggers.insert("q1".to_string(), vec![false, false, false]); // 0/3 → fail
-        query_triggers.insert("q2".to_string(), vec![true, true, true]);  // 3/3 → fail
+        query_triggers.insert("q2".to_string(), vec![true, true, true]); // 3/3 → fail
 
         let results = aggregate_trigger_results(&query_triggers, &eval_set, 0.5);
         let q1 = results.iter().find(|r| r.query == "q1").unwrap();
@@ -632,7 +663,10 @@ mod tests {
     #[test]
     fn test_aggregate_trigger_results_threshold_boundary() {
         use super::super::EvalQuery;
-        let eval_set = vec![EvalQuery { query: "q".to_string(), should_trigger: true }];
+        let eval_set = vec![EvalQuery {
+            query: "q".to_string(),
+            should_trigger: true,
+        }];
         let mut triggers_exactly_at = HashMap::new();
         triggers_exactly_at.insert("q".to_string(), vec![true, false]); // rate=0.5
         let results = aggregate_trigger_results(&triggers_exactly_at, &eval_set, 0.5);
@@ -651,25 +685,26 @@ mod tests {
         let root = eval_commands_root(workspace, "my-plugin", "my-skill");
         // Must be under workspace/my-plugin/my-skill/description-optimization/eval-commands/
         // (via workspace_skill_dir which joins plugin_slug/skill_name)
-        assert!(
-            root.starts_with(workspace),
-            "root must be under workspace"
-        );
+        assert!(root.starts_with(workspace), "root must be under workspace");
         let rel = root.strip_prefix(workspace).unwrap();
-        let components: Vec<_> = rel.components()
+        let components: Vec<_> = rel
+            .components()
             .map(|c| c.as_os_str().to_string_lossy().into_owned())
             .collect();
         assert!(
             components.contains(&"my-plugin".to_string()),
-            "path must include plugin slug: {:?}", components
+            "path must include plugin slug: {:?}",
+            components
         );
         assert!(
             components.contains(&"my-skill".to_string()),
-            "path must include skill name: {:?}", components
+            "path must include skill name: {:?}",
+            components
         );
         assert!(
             components.contains(&"eval-commands".to_string()),
-            "path must end at eval-commands: {:?}", components
+            "path must end at eval-commands: {:?}",
+            components
         );
     }
 
@@ -679,6 +714,9 @@ mod tests {
         let workspace = tmp.path();
         let root_a = eval_commands_root(workspace, "plugin", "skill-a");
         let root_b = eval_commands_root(workspace, "plugin", "skill-b");
-        assert_ne!(root_a, root_b, "different skills must get different eval-commands roots");
+        assert_ne!(
+            root_a, root_b,
+            "different skills must get different eval-commands roots"
+        );
     }
 }

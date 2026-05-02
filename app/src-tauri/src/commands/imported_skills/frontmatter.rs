@@ -43,7 +43,10 @@ fn clean_scalar(raw: &str) -> String {
 }
 
 fn parse_bool(raw: &str) -> bool {
-    matches!(raw.trim().to_ascii_lowercase().as_str(), "true" | "yes" | "1")
+    matches!(
+        raw.trim().to_ascii_lowercase().as_str(),
+        "true" | "yes" | "1"
+    )
 }
 
 /// Parse YAML frontmatter from SKILL.md content.
@@ -113,7 +116,8 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
         // Parse new field
         if !is_indented {
             current_section = None;
-            if trimmed_line.ends_with(':') && !trimmed_line[..trimmed_line.len() - 1].contains(':') {
+            if trimmed_line.ends_with(':') && !trimmed_line[..trimmed_line.len() - 1].contains(':')
+            {
                 current_section = Some(trimmed_line.trim_end_matches(':'));
                 continue;
             }
@@ -296,7 +300,8 @@ pub(crate) fn ensure_skill_frontmatter_version(
     skill_md_path: &Path,
     preferred_version: Option<&str>,
 ) -> Result<String, String> {
-    ensure_skill_frontmatter_metadata(skill_md_path, preferred_version, None).map(|result| result.version)
+    ensure_skill_frontmatter_metadata(skill_md_path, preferred_version, None)
+        .map(|result| result.version)
 }
 
 pub(crate) fn render_frontmatter_yaml(frontmatter: &Frontmatter) -> String {

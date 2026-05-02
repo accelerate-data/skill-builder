@@ -235,6 +235,117 @@ describe("SkillDialog (create mode)", () => {
     expect(nextButton).toBeEnabled();
   });
 
+  it("does not call scope validation when advancing or creating without Validate", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockInvoke.mockResolvedValue(undefined);
+    renderDialog();
+    await openDialog(user);
+
+    await fillStep1AndAdvance(user, "test-skill", "platform", "A test skill description");
+    await user.click(screen.getByRole("button", { name: /^Create$/i }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("create_skill", expect.objectContaining({
+        name: "test-skill",
+      }));
+    });
+    expect(mockInvoke).not.toHaveBeenCalledWith("review_skill_scope", expect.anything());
+  });
+
+  it("runs scope validation only when Validate is clicked and keeps Next advisory", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockInvoke.mockImplementation((command: string) => {
+      if (command === "review_skill_scope") {
+        return Promise.resolve({
+          status: "too-broad",
+          reason: "This spans several workflows.",
+          suggested_skills: [
+            { name: "reviewing-scope", description: "Reviews scope" },
+          ],
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    renderDialog();
+    await openDialog(user);
+
+    await user.type(screen.getByLabelText(/^Skill Name/), "test-skill");
+    await user.selectOptions(screen.getByLabelText(/What are you trying to capture/), "platform");
+    await user.type(screen.getByLabelText(/^What the skill does/), "A broad platform skill");
+
+    const nextButton = screen.getByRole("button", { name: /Next/i });
+    expect(nextButton).toBeEnabled();
+    expect(mockInvoke).not.toHaveBeenCalledWith("review_skill_scope", expect.anything());
+
+    await user.click(screen.getByRole("button", { name: /Validate/i }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("review_skill_scope", {
+        skillName: "test-skill",
+        description: "A broad platform skill",
+        purpose: "platform",
+        contextQuestions: null,
+        industry: null,
+      });
+    });
+    expect(await screen.findByText(/This skill might be too broad/)).toBeInTheDocument();
+    expect(nextButton).toBeEnabled();
+
+    await user.click(nextButton);
+    expect(screen.getByText("Step 2 of 2")).toBeInTheDocument();
+  });
+
+  it("keeps the dialog usable after scope validation fails", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockInvoke.mockImplementation((command: string) => {
+      if (command === "review_skill_scope") {
+        return Promise.reject(new Error("scope review unavailable"));
+      }
+      return Promise.resolve(undefined);
+    });
+    renderDialog();
+    await openDialog(user);
+
+    await user.type(screen.getByLabelText(/^Skill Name/), "test-skill");
+    await user.selectOptions(screen.getByLabelText(/What are you trying to capture/), "platform");
+    await user.type(screen.getByLabelText(/^What the skill does/), "A platform skill");
+
+    await user.click(screen.getByRole("button", { name: /Validate/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Analyzing skill details…")).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /Validate/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Next/i })).toBeEnabled();
+  });
+
+  it("does not render a progress transcript in the create dialog during validation", async () => {
+    const user = userEvent.setup({ delay: null });
+    let resolveReview: (value: unknown) => void = () => {};
+    mockInvoke.mockImplementation((command: string) => {
+      if (command === "review_skill_scope") {
+        return new Promise((resolve) => {
+          resolveReview = resolve;
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    renderDialog();
+    await openDialog(user);
+
+    await user.type(screen.getByLabelText(/^Skill Name/), "test-skill");
+    await user.selectOptions(screen.getByLabelText(/What are you trying to capture/), "platform");
+    await user.type(screen.getByLabelText(/^What the skill does/), "A platform skill");
+    await user.click(screen.getByRole("button", { name: /Validate/i }));
+
+    expect(await screen.findByText("Analyzing skill details…")).toBeInTheDocument();
+    expect(screen.queryByText(/transcript/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/tool output/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/run log/i)).not.toBeInTheDocument();
+
+    resolveReview({ status: "focused", reason: "Focused.", suggested_skills: [] });
+  });
+
   it("disables Next button when skill name already exists", async () => {
     const user = userEvent.setup({ delay: null });
     renderDialog({ existingNames: ["sales-pipeline", "my-skill"] });

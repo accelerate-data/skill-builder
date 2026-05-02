@@ -159,9 +159,18 @@ mod tests {
             "message": "No stream session found"
         });
 
-        assert_eq!(stream_message_terminal_status(&completed), Some(TerminalOutcome::Completed));
-        assert_eq!(stream_message_terminal_status(&failed), Some(TerminalOutcome::Error));
-        assert_eq!(stream_message_terminal_status(&raw_error), Some(TerminalOutcome::Error));
+        assert_eq!(
+            stream_message_terminal_status(&completed),
+            Some(TerminalOutcome::Completed)
+        );
+        assert_eq!(
+            stream_message_terminal_status(&failed),
+            Some(TerminalOutcome::Error)
+        );
+        assert_eq!(
+            stream_message_terminal_status(&raw_error),
+            Some(TerminalOutcome::Error)
+        );
         assert_eq!(stream_message_terminal_status(&display_item), None);
 
         // "shutdown" status must map to Shutdown, not Error, so the frontend
@@ -174,7 +183,10 @@ mod tests {
                 "status": "shutdown"
             }
         });
-        assert_eq!(stream_message_terminal_status(&shutdown), Some(TerminalOutcome::Shutdown));
+        assert_eq!(
+            stream_message_terminal_status(&shutdown),
+            Some(TerminalOutcome::Shutdown)
+        );
     }
 
     #[tokio::test]
@@ -198,8 +210,7 @@ mod tests {
     #[tokio::test]
     async fn test_message_without_request_id_detected() {
         // Messages without request_id are logged and skipped.
-        let msg: serde_json::Value =
-            serde_json::from_str(r#"{"type":"unknown_msg"}"#).unwrap();
+        let msg: serde_json::Value = serde_json::from_str(r#"{"type":"unknown_msg"}"#).unwrap();
         assert!(
             msg.get("request_id").is_none(),
             "Message should lack request_id"
@@ -212,10 +223,8 @@ mod tests {
     async fn test_request_complete_is_not_terminal() {
         // request_complete is handled separately from terminal outcomes.
         // stream_message_terminal_status should return None for it.
-        let msg: serde_json::Value = serde_json::from_str(
-            r#"{"type":"request_complete","request_id":"agent-1"}"#,
-        )
-        .unwrap();
+        let msg: serde_json::Value =
+            serde_json::from_str(r#"{"type":"request_complete","request_id":"agent-1"}"#).unwrap();
         assert_eq!(
             stream_message_terminal_status(&msg),
             None,

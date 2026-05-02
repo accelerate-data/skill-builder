@@ -1,21 +1,156 @@
+use crate::agents::sidecar::{
+    OpenHandsOneShotConfigParams, OpenHandsOneShotRunParams, SidecarConfig,
+};
+use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::path::Path;
 
-#[derive(Serialize)]
+const SCOPE_REVIEW_PROMPT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/scope-review.txt"
+));
+
+const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/skill-creator-user-suffix.txt"
+));
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ScopeReviewSuggestion {
     pub name: String,
     pub description: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ScopeReviewResult {
-    pub status: String, // "focused" | "too-broad" | "name-needs-improvement" | "description-needs-improvement" | "both-need-improvement"
+    pub status: String,
     pub reason: String,
     pub suggested_skills: Vec<ScopeReviewSuggestion>,
 }
 
+pub(crate) struct ScopeReviewPromptParams<'a> {
+    pub skill_name: &'a str,
+    pub description: &'a str,
+    pub purpose: &'a str,
+    pub context_questions: Option<&'a str>,
+    pub industry: Option<&'a str>,
+    pub reference_documents: &'a [(String, String)],
+}
+
+pub(crate) struct ScopeReviewSidecarConfigParams<'a> {
+    pub skill_name: &'a str,
+    pub prompt: &'a str,
+    pub workspace_path: &'a str,
+    pub llm: crate::types::WorkflowLlmConfig,
+}
+
+pub(crate) fn render_scope_review_prompt(params: ScopeReviewPromptParams<'_>) -> String {
+    let context_questions = params
+        .context_questions
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| format!("\n- Additional context: {}", value.trim()))
+        .unwrap_or_default();
+    let industry = params
+        .industry
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| format!("\nIndustry context: {}", value.trim()))
+        .unwrap_or_default();
+    let reference_documents = render_reference_documents(params.reference_documents);
+
+    SCOPE_REVIEW_PROMPT
+        .replace("{{skill_name}}", params.skill_name)
+        .replace("{{description}}", params.description)
+        .replace("{{purpose}}", params.purpose)
+        .replace("{{context_questions}}", &context_questions)
+        .replace("{{industry}}", &industry)
+        .replace("{{reference_documents}}", &reference_documents)
+}
+
+fn render_reference_documents(documents: &[(String, String)]) -> String {
+    if documents.is_empty() {
+        return String::new();
+    }
+
+    let parts = documents
+        .iter()
+        .map(|(name, content)| {
+            let end = content.floor_char_boundary(2000);
+            let snippet = &content[..end];
+            format!("### {}\n{}", name, snippet)
+        })
+        .collect::<Vec<_>>();
+
+    format!(
+        "\n\n## Reference Documents\n\n{}",
+        parts.join("\n\n---\n\n")
+    )
+}
+
+fn scope_review_output_format() -> serde_json::Value {
+    serde_json::json!({
+        "type": "json_schema",
+        "schema": {
+            "type": "object",
+            "required": ["status", "reason", "suggested_skills"],
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "focused",
+                        "too-broad",
+                        "name-needs-improvement",
+                        "description-needs-improvement",
+                        "both-need-improvement"
+                    ]
+                },
+                "reason": { "type": "string" },
+                "suggested_skills": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "description"],
+                        "properties": {
+                            "name": { "type": "string" },
+                            "description": { "type": "string" }
+                        },
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "additionalProperties": false
+        }
+    })
+}
+
+pub(crate) fn build_scope_review_sidecar_config(
+    params: ScopeReviewSidecarConfigParams<'_>,
+) -> SidecarConfig {
+    let workspace_dir = params.workspace_path.replace('\\', "/");
+
+    crate::agents::sidecar::build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+        prompt: params.prompt.to_string(),
+        llm: params.llm,
+        workspace_root_dir: workspace_dir.clone(),
+        workspace_run_dir: workspace_dir,
+        agent_name: "skill-creator".to_string(),
+        task_kind: Some("scope_review".to_string()),
+        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+        allowed_tools: vec!["file_editor".to_string()],
+        max_turns: 4,
+        output_format: Some(scope_review_output_format()),
+        skill_name: Some(params.skill_name.to_string()),
+        step_id: Some(-30),
+        run_source: None,
+        plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
+    })
+}
+
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn review_skill_scope(
+    app: tauri::AppHandle,
+    pool: tauri::State<'_, SidecarPool>,
     skill_name: String,
     description: String,
     purpose: String,
@@ -29,205 +164,144 @@ pub async fn review_skill_scope(
         purpose
     );
 
-    let (api_key, model, documents) = {
+    let runtime_context = crate::commands::workflow::read_initialized_runtime_context(&db)
+        .inspect_err(|e| log::error!("[review_skill_scope] Runtime context unavailable: {}", e))?;
+    let document_paths = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[review_skill_scope] Failed to acquire DB lock: {}", e);
             e.to_string()
         })?;
-        let settings = crate::db::read_settings(&conn).map_err(|e| {
-            log::error!("[review_skill_scope] Failed to read settings: {}", e);
-            e
-        })?;
-        let key = match settings.anthropic_api_key {
-            Some(k) => crate::types::SecretString::new(k),
-            None => {
-                log::error!("[review_skill_scope] API key not configured");
-                return Err("API key not configured".to_string());
-            }
-        };
-        let model = settings
-            .preferred_model
-            .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| {
-                "Model not configured. Select a model in Settings before reviewing scope."
-                    .to_string()
-            })?;
-        let docs = crate::db::db_list_documents(&conn)
+        crate::db::db_list_documents(&conn)
             .unwrap_or_default()
             .into_iter()
             .filter(|d| d.scope == "all")
-            .filter_map(|d| {
-                std::fs::read_to_string(&d.file_path)
-                    .ok()
-                    .map(|content| (d.name, content))
-            })
-            .collect::<Vec<_>>();
-        (key, model, docs)
+            .map(|d| (d.name, d.file_path))
+            .collect::<Vec<_>>()
     };
 
-    let doc_context = if documents.is_empty() {
-        String::new()
-    } else {
-        let parts: Vec<String> = documents
-            .iter()
-            .map(|(name, content)| {
-                let end = content.floor_char_boundary(2000);
-                let snippet = &content[..end];
-                format!("### {}\n{}", name, snippet)
-            })
-            .collect();
-        format!(
-            "\n\n## Reference Documents\n\n{}",
-            parts.join("\n\n---\n\n")
-        )
-    };
+    let documents = document_paths
+        .into_iter()
+        .filter_map(|(name, file_path)| {
+            std::fs::read_to_string(&file_path)
+                .ok()
+                .map(|content| (name, content))
+        })
+        .collect::<Vec<_>>();
 
-    let industry_context = industry
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .map(|s| format!("\nIndustry context: {}", s))
-        .unwrap_or_default();
-
-    let context_questions_line = context_questions
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .map(|s| format!("\n- What Claude needs to know: {}", s))
-        .unwrap_or_default();
-
-    let prompt = format!(
-        "You are evaluating whether a Claude skill is well-defined. \
-         These skills are used to build data warehouses and lakehouses — OLAP systems, not OLTP. \
-         The data source is valuable context but not compulsory.\n\n\
-         CORE TEST: Does the description describe exactly the process named by the skill? \
-         If yes → status: \"focused\" and suggested_skills: []. If the description wanders into a second process → fail.\n\n\
-         ## Name rule\n\
-         A good name uses the gerund pattern: verb-ing + specific object (kebab-case).\n\
-         Pass: forecasting-churned-customers, validating-grain-feed-compliance\n\
-         Fail: sales-analysis (not gerund), analyzing-data (object too vague)\n\n\
-         ## Description rule\n\
-         A good description serves ONE overarching process — the same process named by the skill.\n\
-         Number of nouns does not matter — many nouns are fine if they all fall under one process.\n\
-         Pass: validating-grain-feed-compliance covers quality testing + traceability docs + supplier audits → all serve one process → pass\n\
-         Fail: description spans two distinct processes (e.g. vendor selection + cost analysis) → split\n\
-         Always fail: nouns from different business functions → split\n\
-         Use general business knowledge for process boundaries. Uploaded documents can override.\n\n\
-         ## Four cases — pick exactly one status and follow its action\n\n\
-         CASE 1 — name fails (not gerund OR too vague), description is already specific and focused → status: \"name-needs-improvement\"\n\
-         Name fails when: not gerund (e.g. sales-analysis, procurement-process), or gerund but object too vague (e.g. analyzing-data)\n\
-         Description is good: specific nouns, one process, clear trigger\n\
-         Example: name=sales-analysis, description=\"Forecasts which customers are at risk of churning based on CRM health scores\" → name not gerund, but description is already focused\n\
-         Action: derive the correct gerund name from the description. Return exactly 1 suggestion with the new name and the ORIGINAL description unchanged.\n\
-         Reason: state why the name fails and that the description was kept as-is.\n\
-         NOTE: if the description is also vague or imprecise, use CASE 3 instead — not Case 1.\n\n\
-         CASE 2 — the skill covers a recognizable business domain that spans multiple distinct processes → status: \"too-broad\"\n\
-         This applies even if the description does not explicitly list the sub-processes. If the name or description \
-references a broad business function (e.g. recruitment, sales, procurement, supply chain) and you can infer \
-from business knowledge what distinct processes it covers, it is too-broad — not vague.\n\
-         Example A: name=sales-analysis, description=\"Analyzes revenue, pipeline health, and rep performance\" (explicitly lists processes)\n\
-         Example B: name=understand-recruitment-processes, description=\"understand recruitment processes of the company\" \
-(umbrella term — you can infer hiring, onboarding, interview scheduling, etc.)\n\
-         Action: split into 3-5 focused skills. Anchor suggested names to the original name where possible.\n\
-         Reason: name the distinct processes found (whether explicitly listed or inferred).\n\n\
-         CASE 3 — both name and description are so vague that you cannot identify even the business domain → status: \"both-need-improvement\"\n\
-         The name and description give no signal about what area of the business is involved. \
-You cannot infer sub-processes because there is no domain anchor.\n\
-         Example: name=analyzing-data, description=\"Analyzes data for the team\" — data about what? Which team? No domain signal at all.\n\
-         Action: make 3-5 best-guess suggestions.\n\
-         Reason: be transparent — state that both are too vague and suggestions may not match intent.\n\
-         KEY DISTINCTION: if you can name the business domain (recruitment, sales, procurement, etc.) → use CASE 2 (too-broad). \
-Only use CASE 3 when the domain itself is unclear.\n\n\
-         CASE 4 — name is focused, description wanders into one or more extra processes → status: \"description-needs-improvement\"\n\
-         Example: name=forecasting-churned-customers, description=\"Forecasts churn risk and tracks renewal pipeline health\"\n\
-         Action: produce 1 suggestion per process found — (1) original name + description trimmed to match, then one additional suggestion per stray process (new gerund name + description for each).\n\
-         Reason: name each stray process found.\n\n\
-         Use industry, document context, and the What Claude needs to know field to override a generic breadth signal only when that context explicitly establishes the listed activities as one company-specific workflow. \
-Generic implementation context such as \"guide analytics engineers\" or \"build data marts\" is not enough to override multiple distinct business processes. \
-When there is no explicit unified-workflow statement, apply the four cases from the name and description alone.\n\n\
-         Skill to evaluate:\n\
-         - Name: {skill_name}\n\
-         - Description: {description}\n\
-         - Purpose: {purpose}{context_questions_line}{industry_context}{doc_context}\n\n\
-         Gerund naming examples (correct vs incorrect):\n\
-         - forecasting-churned-customers ✓ vs churn-forecast ✗\n\
-         - calculating-opportunity-mrr ✓ vs opportunity-mrr-calculation ✗\n\
-         - analyzing-rep-performance ✓ vs rep-performance-analysis ✗\n\
-         - segmenting-enterprise-accounts ✓ vs enterprise-account-segmentation ✗\n\n\
-         Rules for names:\n\
-         - Start with a present-participle verb (forecasting, calculating, analyzing, segmenting, tracking, reporting)\n\
-         - Follow with a specific object — not a generic noun like data, metrics, analysis\n\
-         - Kebab-case throughout\n\
-         - No acronyms unless industry-standard (e.g. mrr, arr, crm)\n\n\
-         Rules for suggested descriptions:\n\
-         - Write in third person (\"Extracts...\", \"Forecasts...\" — never \"I can\" or \"You can\")\n\
-         - State what the skill does AND when to use it (one trigger, not a list)\n\
-         - Be specific — include key terms that appear in real user requests\n\
-         - Avoid vague nouns: data, metrics, analysis, stuff, things\n\
-         - CRITICAL: each suggested description must itself pass the same evaluation criteria — \
-one specific noun, no listing of multiple contexts or scenarios with \"or\". \
-If the \"Use when...\" clause would list multiple scenarios, split them into separate suggestions instead.\n\
-         Good: \"Forecasts which customers are at risk of churning based on health scores. \
-Use when the customer success team needs a prioritized list of at-risk accounts.\"\n\
-         Bad: \"Forecasts churn risk using health scores or activity signals or NPS data.\" \
-(multiple sources listed with or)\n\
-         Bad: \"Use when sourcing grain vendors or pricing trends or quality specs.\" \
-(multiple contexts listed with or — split into separate suggestions)\n\n\
-         Respond in English only.\n\n\
-         Respond with JSON only (no markdown fences, no extra text):\n\
-         {{\"status\": string, \"reason\": string, \"suggested_skills\": [{{\"name\": string, \"description\": string}}]}}",
-        skill_name = skill_name,
-        description = description,
-        purpose = purpose,
-        context_questions_line = context_questions_line,
-        industry_context = industry_context,
-        doc_context = doc_context,
-    );
+    let prompt = render_scope_review_prompt(ScopeReviewPromptParams {
+        skill_name: &skill_name,
+        description: &description,
+        purpose: &purpose,
+        context_questions: context_questions.as_deref(),
+        industry: industry.as_deref(),
+        reference_documents: &documents,
+    });
 
     log::debug!("[review_skill_scope] prompt length={}", prompt.len());
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let config = build_scope_review_sidecar_config(ScopeReviewSidecarConfigParams {
+        skill_name: &skill_name,
+        prompt: &prompt,
+        workspace_path: &runtime_context.workspace_path,
+        llm: runtime_context.llm,
+    });
 
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", api_key.expose())
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .body(
-            serde_json::json!({
-                "model": model,
-                "max_tokens": 1024,
-                "messages": [{"role": "user", "content": prompt}]
-            })
-            .to_string(),
-        )
-        .send()
-        .await
-        .map_err(|e| {
-            log::error!("[review_skill_scope] API request failed: {}", e);
-            format!("API request failed: {}", e)
-        })?;
+    let run = crate::agents::sidecar::run_openhands_one_shot(
+        &app,
+        &pool,
+        OpenHandsOneShotRunParams {
+            pool_key: skill_name.clone(),
+            agent_id_prefix: format!("{}-scope-review", skill_name),
+            config,
+            timeout: std::time::Duration::from_secs(90),
+        },
+    )
+    .await
+    .inspect_err(|e| log::error!("[review_skill_scope] sidecar request failed: {}", e))?;
 
-    if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        let body = resp.text().await.unwrap_or_default();
-        log::error!("[review_skill_scope] API error ({}): {}", status, body);
-        return Err(format!("Anthropic API error ({})", status));
+    let result = match read_scope_review_result_from_transcripts(&run.transcript_dir).await {
+        Ok(result) => result,
+        Err(error) => {
+            return Err(error);
+        }
+    };
+    log::info!(
+        "[review_skill_scope] result: status={} suggestions={}",
+        result.status,
+        result.suggested_skills.len()
+    );
+    Ok(result)
+}
+
+async fn read_scope_review_result_from_transcripts(
+    transcript_dir: &Path,
+) -> Result<ScopeReviewResult, String> {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match try_read_scope_review_result_from_transcripts(transcript_dir) {
+            Ok(result) => return Ok(result),
+            Err(message) if message == "No scope review result in sidecar transcript" => {
+                if tokio::time::Instant::now() >= deadline {
+                    return Err(message);
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            Err(message) => return Err(message),
+        }
+    }
+}
+
+fn try_read_scope_review_result_from_transcripts(
+    transcript_dir: &Path,
+) -> Result<ScopeReviewResult, String> {
+    let entries = std::fs::read_dir(transcript_dir)
+        .map_err(|e| format!("Failed to read scope review transcript: {}", e))?;
+    for entry in entries {
+        let path = entry
+            .map_err(|e| format!("Failed to read scope review transcript entry: {}", e))?
+            .path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read scope review transcript: {}", e))?;
+        for line in content.lines() {
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            let Some(event) = value.get("event") else {
+                continue;
+            };
+            if event.get("type").and_then(|v| v.as_str()) != Some("run_result") {
+                continue;
+            }
+            if event.get("status").and_then(|v| v.as_str()) != Some("success") {
+                let errors = event
+                    .get("resultErrors")
+                    .and_then(|v| v.as_array())
+                    .map(|values| {
+                        values
+                            .iter()
+                            .filter_map(|value| value.as_str())
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    })
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or_else(|| "Scope review failed".to_string());
+                return Err(errors);
+            }
+            let text = event
+                .get("resultText")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "No text in scope review response".to_string())?;
+            return parse_scope_review_result_text(text);
+        }
     }
 
-    let body: serde_json::Value = resp.json().await.map_err(|e| {
-        log::error!("[review_skill_scope] Failed to parse response JSON: {}", e);
-        e.to_string()
-    })?;
+    Err("No scope review result in sidecar transcript".to_string())
+}
 
-    let text = body["content"][0]["text"].as_str().ok_or_else(|| {
-        log::error!("[review_skill_scope] No text in API response");
-        "No text in API response".to_string()
-    })?;
-
-    log::debug!("[review_skill_scope] raw response={}", text);
-
+fn parse_scope_review_result_text(text: &str) -> Result<ScopeReviewResult, String> {
     let cleaned = text.trim();
     let cleaned = cleaned
         .strip_prefix("```json")
@@ -253,31 +327,144 @@ Use when the customer success team needs a prioritized list of at-risk accounts.
     let status = parsed["status"]
         .as_str()
         .filter(|s| valid_statuses.contains(s))
-        .unwrap_or("focused")
+        .ok_or_else(|| "Scope review result missing valid status".to_string())?
         .to_string();
-    let reason = parsed["reason"].as_str().unwrap_or("").to_string();
-    let suggested_skills: Vec<ScopeReviewSuggestion> = parsed["suggested_skills"]
+    let reason = parsed["reason"]
+        .as_str()
+        .ok_or_else(|| "Scope review result missing reason".to_string())?
+        .to_string();
+    let suggested_skills = parsed["suggested_skills"]
         .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|s| {
-                    let name = s["name"].as_str()?.to_string();
-                    let description = s["description"].as_str()?.to_string();
-                    Some(ScopeReviewSuggestion { name, description })
-                })
-                .collect()
+        .ok_or_else(|| "Scope review result missing suggested_skills".to_string())?
+        .iter()
+        .map(|s| {
+            let name = s["name"]
+                .as_str()
+                .ok_or_else(|| "Scope review suggestion missing name".to_string())?
+                .to_string();
+            let description = s["description"]
+                .as_str()
+                .ok_or_else(|| "Scope review suggestion missing description".to_string())?
+                .to_string();
+            Ok(ScopeReviewSuggestion { name, description })
         })
-        .unwrap_or_default();
-
-    log::info!(
-        "[review_skill_scope] result: status={} suggestions={}",
-        status,
-        suggested_skills.len()
-    );
+        .collect::<Result<Vec<_>, String>>()?;
 
     Ok(ScopeReviewResult {
         status,
         reason,
         suggested_skills,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renders_scope_review_prompt_from_template_with_submitted_values() {
+        let prompt = render_scope_review_prompt(ScopeReviewPromptParams {
+            skill_name: "forecasting-churned-customers",
+            description: "Forecasts customer churn from CRM health scores.",
+            purpose: "Guide analytics engineers building customer success marts.",
+            context_questions: Some("Use renewal dates and account owner context."),
+            industry: Some("B2B SaaS"),
+            reference_documents: &[(
+                "Customer Health Playbook".to_string(),
+                "Renewal risk is a single company-specific workflow.".to_string(),
+            )],
+        });
+
+        assert!(prompt.contains("forecasting-churned-customers"));
+        assert!(prompt.contains("Forecasts customer churn from CRM health scores."));
+        assert!(prompt.contains("Guide analytics engineers building customer success marts."));
+        assert!(prompt.contains("Use renewal dates and account owner context."));
+        assert!(prompt.contains("B2B SaaS"));
+        assert!(prompt.contains("Customer Health Playbook"));
+        assert!(prompt.contains("\"status\": string"));
+        assert!(prompt.contains("\"suggested_skills\""));
+    }
+
+    #[test]
+    fn scope_review_openhands_config_uses_clean_break_runner_contract() {
+        let config = build_scope_review_sidecar_config(ScopeReviewSidecarConfigParams {
+            skill_name: "forecasting-churned-customers",
+            prompt: "rendered prompt",
+            workspace_path: "/tmp/skill-builder/workspace",
+            llm: crate::types::WorkflowLlmConfig {
+                model: "anthropic/claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: Some("workflow".to_string()),
+            },
+        });
+
+        let json = serde_json::to_value(&config).unwrap();
+        assert_eq!(json["runtimeProvider"], "openhands");
+        assert_eq!(json["mode"], "one-shot");
+        assert_eq!(json["agentName"], "skill-creator");
+        assert_eq!(json["taskKind"], "scope_review");
+        assert_eq!(
+            json["userMessageSuffix"],
+            "Follow the current user message exactly. Do not infer a different task than the one stated in the message."
+        );
+        assert_eq!(json["llm"]["model"], "anthropic/claude-sonnet-4-5");
+        assert!(json.get("model").is_none());
+        assert_eq!(json["apiKey"], "openhands-llm-config");
+        assert!(json["workspaceRootDir"]
+            .as_str()
+            .unwrap()
+            .ends_with("/workspace"));
+        assert!(json["workspaceSkillDir"]
+            .as_str()
+            .unwrap()
+            .ends_with("/workspace"));
+        assert_eq!(json["allowedTools"], serde_json::json!(["file_editor"]));
+        assert_eq!(json["maxTurns"], 4);
+        assert!(json["outputFormat"]["schema"]["required"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("suggested_skills")));
+    }
+
+    #[test]
+    fn parses_valid_scope_review_result_text() {
+        let result = parse_scope_review_result_text(
+            r#"{"status":"too-broad","reason":"Covers multiple workflows.","suggested_skills":[{"name":"renewal-risk","description":"Focuses on renewal risk."}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(result.status, "too-broad");
+        assert_eq!(result.reason, "Covers multiple workflows.");
+        assert_eq!(result.suggested_skills.len(), 1);
+        assert_eq!(result.suggested_skills[0].name, "renewal-risk");
+    }
+
+    #[test]
+    fn rejects_scope_review_result_with_invalid_status() {
+        let error = parse_scope_review_result_text(
+            r#"{"status":"ok","reason":"Looks fine.","suggested_skills":[]}"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "Scope review result missing valid status");
+    }
+
+    #[test]
+    fn rejects_scope_review_result_without_suggestions_array() {
+        let error =
+            parse_scope_review_result_text(r#"{"status":"focused","reason":"Looks fine."}"#)
+                .unwrap_err();
+
+        assert_eq!(error, "Scope review result missing suggested_skills");
+    }
 }

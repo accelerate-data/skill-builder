@@ -92,6 +92,8 @@ function buildRunnerRequest(
     mode: request.mode,
     prompt: request.prompt,
     systemPrompt: request.systemPrompt,
+    taskKind: request.taskKind,
+    userMessageSuffix: request.userMessageSuffix,
     agentName: request.agentName,
     llm: request.llm,
     workspaceRootDir: request.workspaceRootDir,

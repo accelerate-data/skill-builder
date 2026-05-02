@@ -177,7 +177,9 @@ describe("OpenHandsRuntime.runOnce", () => {
 
   it("writes serialized request to stdin and closes it", async () => {
     const request = makeRequest({
-      agentName: "skill-writer-agent",
+      agentName: "skill-creator",
+      taskKind: "scope_review",
+      userMessageSuffix: "Follow the current user message exactly.",
       model: "anthropic/claude-sonnet-4-6",
       apiKey: "sk-top-level",
       modelBaseUrl: "https://models.example.com/v1",
@@ -201,6 +203,17 @@ describe("OpenHandsRuntime.runOnce", () => {
       workspaceRootDir: "/tmp/workspace-root",
       workspaceSkillDir: "/tmp/workspace-root/plugin/skill",
       allowedTools: ["file_editor", "terminal"],
+      maxTurns: 8,
+      outputFormat: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          required: ["status"],
+          properties: {
+            status: { type: "string" },
+          },
+        },
+      },
     });
     let stdinWritten = "";
 
@@ -250,7 +263,11 @@ describe("OpenHandsRuntime.runOnce", () => {
     const serialized = JSON.parse(stdinWritten) as Record<string, unknown>;
     expect(serialized.prompt).toBe("test prompt");
     expect(serialized.mode).toBe("one-shot");
-    expect(serialized.agentName).toBe("skill-writer-agent");
+    expect(serialized.agentName).toBe("skill-creator");
+    expect(serialized.taskKind).toBe("scope_review");
+    expect(serialized.userMessageSuffix).toBe(
+      "Follow the current user message exactly.",
+    );
     expect(serialized).not.toHaveProperty("model");
     expect(serialized).not.toHaveProperty("apiKey");
     expect(serialized).not.toHaveProperty("modelBaseUrl");
@@ -271,8 +288,18 @@ describe("OpenHandsRuntime.runOnce", () => {
       outputCostPerToken: 0.000015,
       usageId: "workflow",
     });
-    expect(serialized.maxTurns).toBe(50);
+    expect(serialized.maxTurns).toBe(8);
     expect(serialized.allowedTools).toEqual(["file_editor", "terminal"]);
+    expect(serialized.outputFormat).toEqual({
+      type: "json_schema",
+      schema: {
+        type: "object",
+        required: ["status"],
+        properties: {
+          status: { type: "string" },
+        },
+      },
+    });
     expect(serialized.workspaceRootDir).toBe("/tmp/workspace-root");
     expect(serialized.workspaceSkillDir).toBe(
       "/tmp/workspace-root/plugin/skill",

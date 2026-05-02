@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use crate::db::{db_delete_document, db_get_document, db_insert_document, db_list_documents,
-    db_set_document_skills, db_update_document_scope, DocumentRecord, Db};
+use crate::db::{
+    db_delete_document, db_get_document, db_insert_document, db_list_documents,
+    db_set_document_skills, db_update_document_scope, Db, DocumentRecord,
+};
 use crate::DataDir;
 
 /// Lightweight skill id+name pair with plugin metadata for the document assignment UI.
@@ -49,7 +51,13 @@ pub fn list_skills_for_documents(db: tauri::State<'_, Db>) -> Result<Vec<SkillId
 /// Sanitise a document name into a safe filename segment.
 fn sanitise_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .to_lowercase()
 }
@@ -155,7 +163,12 @@ pub async fn add_document_url(
     scope: String,
     skill_ids: Vec<i64>,
 ) -> Result<DocumentRecord, String> {
-    log::info!("add_document_url: name={} url={} scope={}", name, url, scope);
+    log::info!(
+        "add_document_url: name={} url={} scope={}",
+        name,
+        url,
+        scope
+    );
 
     let dir = documents_dir(&data_dir.0).map_err(|e| {
         log::error!("add_document_url: failed to create documents dir: {}", e);
@@ -240,7 +253,12 @@ pub fn add_document_folder(
     scope: String,
     skill_ids: Vec<i64>,
 ) -> Result<Vec<DocumentRecord>, String> {
-    log::info!("add_document_folder: name={} path={} scope={}", name, folder_path, scope);
+    log::info!(
+        "add_document_folder: name={} path={} scope={}",
+        name,
+        folder_path,
+        scope
+    );
 
     let folder = Path::new(&folder_path);
     if !folder.is_dir() {
@@ -259,25 +277,40 @@ pub fn add_document_folder(
 
     for entry in entries {
         let path = entry.path();
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
         if !["md", "txt", "pdf"].contains(&ext.as_str()) {
             continue;
         }
 
-        let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
+        let file_name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("document");
         let doc_name = format!("{}/{}", name, file_name);
 
         let content = match std::fs::read_to_string(path) {
             Ok(s) => s,
             Err(e) => {
-                log::warn!("add_document_folder: skipping unreadable file {}: {}", path.display(), e);
+                log::warn!(
+                    "add_document_folder: skipping unreadable file {}: {}",
+                    path.display(),
+                    e
+                );
                 continue;
             }
         };
 
         let temp_path = dir.join(format!("tmp-{}.md", uuid::Uuid::new_v4()));
         if let Err(e) = std::fs::write(&temp_path, &content) {
-            log::warn!("add_document_folder: failed to write {}: {}", temp_path.display(), e);
+            log::warn!(
+                "add_document_folder: failed to write {}: {}",
+                temp_path.display(),
+                e
+            );
             continue;
         }
 
@@ -292,7 +325,11 @@ pub fn add_document_folder(
             Ok(id) => id,
             Err(e) => {
                 let _ = std::fs::remove_file(&temp_path);
-                log::error!("add_document_folder: db insert failed for {}: {}", doc_name, e);
+                log::error!(
+                    "add_document_folder: db insert failed for {}: {}",
+                    doc_name,
+                    e
+                );
                 continue;
             }
         };
@@ -318,7 +355,11 @@ pub fn add_document_folder(
         }
     }
 
-    log::info!("add_document_folder: ingested {} files from {}", records.len(), folder_path);
+    log::info!(
+        "add_document_folder: ingested {} files from {}",
+        records.len(),
+        folder_path
+    );
     Ok(records)
 }
 
@@ -349,10 +390,7 @@ pub fn update_document(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn delete_document(
-    db: tauri::State<'_, Db>,
-    id: i64,
-) -> Result<(), String> {
+pub fn delete_document(db: tauri::State<'_, Db>, id: i64) -> Result<(), String> {
     log::info!("delete_document: id={}", id);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
@@ -360,7 +398,11 @@ pub fn delete_document(
     if let Ok(Some(doc)) = db_get_document(&conn, id) {
         if !doc.file_path.is_empty() {
             if let Err(e) = std::fs::remove_file(&doc.file_path) {
-                log::warn!("delete_document: could not remove file {}: {}", doc.file_path, e);
+                log::warn!(
+                    "delete_document: could not remove file {}: {}",
+                    doc.file_path,
+                    e
+                );
             }
         }
     }

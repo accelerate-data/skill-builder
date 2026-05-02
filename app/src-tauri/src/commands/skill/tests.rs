@@ -168,9 +168,15 @@ fn test_create_skill_filesystem_phase_does_not_write_db_records() {
 
     create_skill_filesystem_inner(workspace_path, "fs-only-skill", Some(skills_path)).unwrap();
 
-    assert!(flat_skill(workspace_path, "fs-only-skill").join("context").is_dir());
-    assert!(nested_skill(skills_path, "fs-only-skill").join("references").is_dir());
-    assert!(crate::db::get_workflow_run(&conn, "fs-only-skill").unwrap().is_none());
+    assert!(flat_skill(workspace_path, "fs-only-skill")
+        .join("context")
+        .is_dir());
+    assert!(nested_skill(skills_path, "fs-only-skill")
+        .join("references")
+        .is_dir());
+    assert!(crate::db::get_workflow_run(&conn, "fs-only-skill")
+        .unwrap()
+        .is_none());
 }
 
 #[test]
@@ -199,7 +205,9 @@ fn test_create_skill_db_phase_does_not_create_filesystem_dirs() {
     )
     .unwrap();
 
-    assert!(crate::db::get_workflow_run(&conn, "db-only-skill").unwrap().is_some());
+    assert!(crate::db::get_workflow_run(&conn, "db-only-skill")
+        .unwrap()
+        .is_some());
     assert!(!flat_skill(workspace_path, "db-only-skill").exists());
     assert!(!nested_skill(skills_path, "db-only-skill").exists());
 }
@@ -284,7 +292,9 @@ fn test_delete_skill_filesystem_phase_does_not_delete_db_records() {
     )
     .unwrap();
 
-    assert!(crate::db::get_workflow_run(&conn, "delete-fs-only").unwrap().is_some());
+    assert!(crate::db::get_workflow_run(&conn, "delete-fs-only")
+        .unwrap()
+        .is_some());
     assert!(!flat_skill(workspace_path, "delete-fs-only").exists());
     assert!(!nested_skill(skills_path, "delete-fs-only").exists());
 }
@@ -319,7 +329,9 @@ fn test_delete_skill_db_phase_does_not_delete_filesystem_dirs() {
 
     delete_skill_db_records_inner(&conn, "delete-db-only", DEFAULT_PLUGIN_SLUG).unwrap();
 
-    assert!(crate::db::get_workflow_run(&conn, "delete-db-only").unwrap().is_none());
+    assert!(crate::db::get_workflow_run(&conn, "delete-db-only")
+        .unwrap()
+        .is_none());
     assert!(flat_skill(workspace_path, "delete-db-only").exists());
     assert!(nested_skill(skills_path, "delete-db-only").exists());
 }
@@ -356,8 +368,8 @@ fn test_create_skill_rejects_path_separator() {
     let workspace = dir.path().to_str().unwrap();
 
     let result = create_skill_inner(
-        workspace, "bad/name", None, None, None, None, None, None, None, None, None, None,
-        None, None, None,
+        workspace, "bad/name", None, None, None, None, None, None, None, None, None, None, None,
+        None, None,
     );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Invalid skill name"));
@@ -369,8 +381,7 @@ fn test_create_skill_rejects_empty_name() {
     let workspace = dir.path().to_str().unwrap();
 
     let result = create_skill_inner(
-        workspace, "", None, None, None, None, None, None, None, None, None, None, None, None,
-        None,
+        workspace, "", None, None, None, None, None, None, None, None, None, None, None, None, None,
     );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("cannot be empty"));
@@ -445,7 +456,14 @@ fn test_delete_skill_workspace_only() {
     let skills = list_skills_inner(workspace, None, &conn).unwrap();
     assert_eq!(skills.len(), 1);
 
-    delete_skill_inner(workspace, "to-delete", DEFAULT_PLUGIN_SLUG, Some(&conn), None).unwrap();
+    delete_skill_inner(
+        workspace,
+        "to-delete",
+        DEFAULT_PLUGIN_SLUG,
+        Some(&conn),
+        None,
+    )
+    .unwrap();
 
     // DB should be clean
     let skills = list_skills_inner(workspace, None, &conn).unwrap();
@@ -488,7 +506,14 @@ fn test_delete_skill_with_skills_path() {
     fs::create_dir_all(output_dir.join("references")).unwrap();
     fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
-    delete_skill_inner(workspace, "full-delete", DEFAULT_PLUGIN_SLUG, Some(&conn), Some(skills_path)).unwrap();
+    delete_skill_inner(
+        workspace,
+        "full-delete",
+        DEFAULT_PLUGIN_SLUG,
+        Some(&conn),
+        Some(skills_path),
+    )
+    .unwrap();
 
     // Workspace dir should be gone (flat path)
     assert!(!flat_skill(workspace, "full-delete").exists());
@@ -557,7 +582,14 @@ fn test_delete_skill_cleans_db_fully() {
     )
     .unwrap();
 
-    delete_skill_inner(workspace, "db-cleanup", DEFAULT_PLUGIN_SLUG, Some(&conn), None).unwrap();
+    delete_skill_inner(
+        workspace,
+        "db-cleanup",
+        DEFAULT_PLUGIN_SLUG,
+        Some(&conn),
+        None,
+    )
+    .unwrap();
 
     // Verify all DB records are cleaned up
     assert!(crate::db::get_workflow_run(&conn, "db-cleanup")
@@ -600,14 +632,23 @@ fn test_delete_skill_no_workspace_dir_but_has_skills_output() {
     let conn = create_test_db();
 
     // Only create skill output, no workspace dir (canonical plugin layout)
-    let output_dir = Path::new(skills_path).join(DEFAULT_PLUGIN_SLUG).join("orphan-output");
+    let output_dir = Path::new(skills_path)
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("orphan-output");
     fs::create_dir_all(output_dir.join("references")).unwrap();
     fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
     // Add DB record
     crate::db::save_workflow_run(&conn, "orphan-output", 7, "completed", "domain").unwrap();
 
-    delete_skill_inner(workspace, "orphan-output", DEFAULT_PLUGIN_SLUG, Some(&conn), Some(skills_path)).unwrap();
+    delete_skill_inner(
+        workspace,
+        "orphan-output",
+        DEFAULT_PLUGIN_SLUG,
+        Some(&conn),
+        Some(skills_path),
+    )
+    .unwrap();
 
     // Skills output should be deleted
     assert!(!output_dir.exists());
@@ -669,7 +710,13 @@ fn test_delete_skill_directory_traversal() {
     // Attempt to delete using "../.." to escape the workspace
     // With plugin-namespaced paths, workspace_skill_dir resolves to
     // workspace/skills/../../outside-target which is dir/outside-target
-    let result = delete_skill_inner(workspace_str, "../../outside-target", DEFAULT_PLUGIN_SLUG, None, None);
+    let result = delete_skill_inner(
+        workspace_str,
+        "../../outside-target",
+        DEFAULT_PLUGIN_SLUG,
+        None,
+        None,
+    );
     assert!(result.is_err(), "Directory traversal should be rejected");
 
     // The outside directory should still exist (not deleted)
@@ -701,7 +748,13 @@ fn test_delete_skill_skills_path_directory_traversal() {
     // With plugin layout, resolve_skill_dir produces:
     //   skills_base/{plugin_slug}/../../outside-target → dir.path()/outside-target
     // which is outside skills_base.
-    let result = delete_skill_inner(workspace, "../../outside-target", DEFAULT_PLUGIN_SLUG, None, Some(skills_path));
+    let result = delete_skill_inner(
+        workspace,
+        "../../outside-target",
+        DEFAULT_PLUGIN_SLUG,
+        None,
+        Some(skills_path),
+    );
     assert!(
         result.is_err(),
         "Directory traversal on skills_path should be rejected"
@@ -740,7 +793,8 @@ fn test_delete_skill_inner_marketplace_skill_routes_to_imported_path() {
          VALUES ('mkt-id', 'mkt-skill', '/tmp/mkt-skill', 0,
                  (SELECT id FROM skills WHERE name = 'mkt-skill'))",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Verify setup: no workflow_run, but skills + imported_skills rows exist
     let wf_id = crate::db::get_workflow_run_id(&conn, "mkt-skill").unwrap();
@@ -759,7 +813,14 @@ fn test_delete_skill_inner_marketplace_skill_routes_to_imported_path() {
     assert_eq!(skill_count, 1);
 
     // Delete via delete_skill_inner
-    delete_skill_inner(workspace, "mkt-skill", DEFAULT_PLUGIN_SLUG, Some(&conn), None).unwrap();
+    delete_skill_inner(
+        workspace,
+        "mkt-skill",
+        DEFAULT_PLUGIN_SLUG,
+        Some(&conn),
+        None,
+    )
+    .unwrap();
 
     // skills master row is soft-deleted (deleted_at set), imported_skills row is removed
     let deleted_at: Option<String> = conn
@@ -817,7 +878,14 @@ fn test_delete_skill_inner_skill_builder_routes_to_workflow_path() {
         "skill-builder skill should have workflow_run"
     );
 
-    delete_skill_inner(workspace, "builder-skill", DEFAULT_PLUGIN_SLUG, Some(&conn), None).unwrap();
+    delete_skill_inner(
+        workspace,
+        "builder-skill",
+        DEFAULT_PLUGIN_SLUG,
+        Some(&conn),
+        None,
+    )
+    .unwrap();
 
     // workflow_runs row should be gone
     let wf_after = crate::db::get_workflow_run(&conn, "builder-skill").unwrap();
@@ -851,7 +919,8 @@ fn test_rename_skill_inner_updates_imported_skills_name() {
          VALUES ('imp-id', 'imp-skill', '/tmp/imp-skill', 0,
                  (SELECT id FROM skills WHERE name = 'imp-skill'))",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     rename_skill_inner("imp-skill", "imp-skill-renamed", workspace, &mut conn, None).unwrap();
 
@@ -1048,7 +1117,14 @@ fn test_delete_skill_removes_logs_directory() {
     assert!(logs_dir.join("step-1.log").exists());
 
     // Delete the skill
-    delete_skill_inner(workspace, "skill-with-logs", DEFAULT_PLUGIN_SLUG, None, None).unwrap();
+    delete_skill_inner(
+        workspace,
+        "skill-with-logs",
+        DEFAULT_PLUGIN_SLUG,
+        None,
+        None,
+    )
+    .unwrap();
 
     // Verify the entire skill directory (including logs/) is gone
     assert!(!skill_dir.exists(), "skill directory should be removed");
@@ -1096,7 +1172,13 @@ fn test_update_metadata_tags() {
     let conn = create_test_db();
     setup_skill_for_metadata(&conn, "tag-skill");
 
-    crate::db::set_skill_tags(&conn, "tag-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["rust".into(), "wasm".into()]).unwrap();
+    crate::db::set_skill_tags(
+        &conn,
+        "tag-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["rust".into(), "wasm".into()],
+    )
+    .unwrap();
 
     let tags = crate::db::get_tags_for_skills(&conn, &["tag-skill".into()]).unwrap();
     assert_eq!(tags.get("tag-skill").unwrap(), &["rust", "wasm"]);
@@ -1127,7 +1209,13 @@ fn test_update_metadata_all_fields() {
         "UPDATE workflow_runs SET purpose = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
         rusqlite::params!["full-meta", "source"],
     ).unwrap();
-    crate::db::set_skill_tags(&conn, "full-meta", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["api".into(), "rest".into()]).unwrap();
+    crate::db::set_skill_tags(
+        &conn,
+        "full-meta",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["api".into(), "rest".into()],
+    )
+    .unwrap();
     crate::db::set_skill_intake(&conn, "full-meta", Some(r#"{"audience":"Devs"}"#)).unwrap();
 
     let row = crate::db::get_workflow_run(&conn, "full-meta")
@@ -1195,7 +1283,12 @@ fn test_update_metadata_nonexistent_skill_is_noop() {
     crate::db::set_skill_intake(&conn, "ghost", Some("{}")).unwrap();
 
     // set_skill_tags now requires a skills master row — returns Err for unknown skills
-    let result = crate::db::set_skill_tags(&conn, "ghost", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["tag".into()]);
+    let result = crate::db::set_skill_tags(
+        &conn,
+        "ghost",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["tag".into()],
+    );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not found in plugin"));
 
@@ -1561,7 +1654,14 @@ fn test_rename_skill_inner_happy_path_renames_db_and_disk() {
     // Confirm the workspace directory was created on disk (flat layout).
     assert!(flat_skill(workspace, "original-skill").exists());
 
-    rename_skill_inner("original-skill", "renamed-skill", workspace, &mut conn, None).unwrap();
+    rename_skill_inner(
+        "original-skill",
+        "renamed-skill",
+        workspace,
+        &mut conn,
+        None,
+    )
+    .unwrap();
 
     // DB row should now use the new name.
     let run = crate::db::get_workflow_run(&conn, "renamed-skill")
@@ -1612,8 +1712,21 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
 
     // Create a skill with workspace and skills directories
     create_skill_inner(
-        workspace_str, "rename-fail", None, None, Some(&conn), Some(skills_str),
-        None, None, None, None, None, None, None, None, None,
+        workspace_str,
+        "rename-fail",
+        None,
+        None,
+        Some(&conn),
+        Some(skills_str),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     )
     .unwrap();
 
@@ -1641,7 +1754,10 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
     let _ = fs::set_permissions(&skills_plugin_dir, restore_perms);
 
     // The rename should fail because the skills directory is read-only
-    assert!(result.is_err(), "rename should fail when skills dir is read-only");
+    assert!(
+        result.is_err(),
+        "rename should fail when skills dir is read-only"
+    );
     let err = result.unwrap_err();
     assert!(
         err.contains("Failed to rename skills directory"),
@@ -1682,7 +1798,13 @@ fn test_sync_user_context_writes_file_after_metadata_update() {
     crate::db::save_workflow_run(&conn, "test-sync-skill", 0, "pending", "domain").unwrap();
 
     // Set tags and behaviour fields
-    crate::db::set_skill_tags(&conn, "test-sync-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["tag-a".to_string(), "tag-b".to_string()]).unwrap();
+    crate::db::set_skill_tags(
+        &conn,
+        "test-sync-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["tag-a".to_string(), "tag-b".to_string()],
+    )
+    .unwrap();
     crate::db::set_skill_behaviour(
         &conn,
         "test-sync-skill",
@@ -1718,17 +1840,38 @@ fn test_sync_user_context_writes_file_after_metadata_update() {
     let content = fs::read_to_string(&uc_path).unwrap();
 
     // Verify synced fields are present
-    assert!(content.contains("test-sync-skill"), "should contain skill name");
-    assert!(content.contains("A test skill description"), "should contain description");
+    assert!(
+        content.contains("test-sync-skill"),
+        "should contain skill name"
+    );
+    assert!(
+        content.contains("A test skill description"),
+        "should contain description"
+    );
     assert!(content.contains("tag-a"), "should contain tag-a");
     assert!(content.contains("tag-b"), "should contain tag-b");
-    assert!(content.contains("provide a file path"), "should contain argument hint");
-    assert!(content.contains("User Invocable"), "should contain user invocable");
-    assert!(content.contains("This skill needs specific domain knowledge"), "should contain intake context");
+    assert!(
+        content.contains("provide a file path"),
+        "should contain argument hint"
+    );
+    assert!(
+        content.contains("User Invocable"),
+        "should contain user invocable"
+    );
+    assert!(
+        content.contains("This skill needs specific domain knowledge"),
+        "should contain intake context"
+    );
 
     // Verify preserved fields (industry, function from settings)
-    assert!(content.contains("Healthcare"), "should contain industry from settings");
-    assert!(content.contains("Data Engineer"), "should contain function from settings");
+    assert!(
+        content.contains("Healthcare"),
+        "should contain industry from settings"
+    );
+    assert!(
+        content.contains("Data Engineer"),
+        "should contain function from settings"
+    );
 }
 
 #[test]
@@ -1754,7 +1897,10 @@ fn test_sync_user_context_creates_file_when_none_exists() {
 
     sync_user_context_file(&conn, "brand-new-skill");
 
-    assert!(uc_path.exists(), "user-context.md should be created on first sync");
+    assert!(
+        uc_path.exists(),
+        "user-context.md should be created on first sync"
+    );
 }
 
 #[test]
@@ -1794,11 +1940,17 @@ fn test_sync_user_context_preserves_non_edit_fields() {
     let content = fs::read_to_string(&uc_path).unwrap();
 
     // Non-edit fields should be preserved
-    assert!(content.contains("author@example.com"), "should contain author from settings");
+    assert!(
+        content.contains("author@example.com"),
+        "should contain author from settings"
+    );
     assert!(content.contains("Finance"), "should contain industry");
     assert!(content.contains("Analyst"), "should contain function");
     assert!(content.contains("1.0.0"), "should contain version");
-    assert!(content.contains("Original description"), "should contain description");
+    assert!(
+        content.contains("Original description"),
+        "should contain description"
+    );
 }
 
 #[test]
@@ -1823,39 +1975,99 @@ fn test_sync_user_context_reflects_updated_fields_after_edit() {
 
     // Create skill with initial values
     crate::db::save_workflow_run(&conn, "edit-flow-skill", 0, "pending", "domain").unwrap();
-    crate::db::set_skill_tags(&conn, "edit-flow-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["old-tag".to_string()]).unwrap();
-    crate::db::set_skill_behaviour(&conn, "edit-flow-skill", Some("Old description"), None, None, None, Some(false), None).unwrap();
+    crate::db::set_skill_tags(
+        &conn,
+        "edit-flow-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["old-tag".to_string()],
+    )
+    .unwrap();
+    crate::db::set_skill_behaviour(
+        &conn,
+        "edit-flow-skill",
+        Some("Old description"),
+        None,
+        None,
+        None,
+        Some(false),
+        None,
+    )
+    .unwrap();
 
     // First sync — initial state
     sync_user_context_file(&conn, "edit-flow-skill");
-    let uc_path = crate::skill_paths::workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "edit-flow-skill").join("user-context.md");
+    let uc_path = crate::skill_paths::workspace_skill_dir(
+        workspace.path(),
+        DEFAULT_PLUGIN_SLUG,
+        "edit-flow-skill",
+    )
+    .join("user-context.md");
     let initial = fs::read_to_string(&uc_path).unwrap();
-    assert!(initial.contains("Old description"), "initial file should have old description");
-    assert!(initial.contains("old-tag"), "initial file should have old tag");
+    assert!(
+        initial.contains("Old description"),
+        "initial file should have old description"
+    );
+    assert!(
+        initial.contains("old-tag"),
+        "initial file should have old tag"
+    );
 
     // Simulate editing: update tags, description, and purpose (what the Edit dialog does)
     conn.execute(
         "UPDATE skills SET purpose = 'platform', updated_at = datetime('now') WHERE name = 'edit-flow-skill'",
         [],
     ).unwrap();
-    crate::db::set_skill_tags(&conn, "edit-flow-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["new-tag-a".to_string(), "new-tag-b".to_string()]).unwrap();
-    crate::db::set_skill_behaviour(&conn, "edit-flow-skill", Some("Updated description"), None, None, Some("provide a URL"), Some(true), None).unwrap();
-    crate::db::set_skill_intake(&conn, "edit-flow-skill", Some(r#"{"context":"New custom context"}"#)).unwrap();
+    crate::db::set_skill_tags(
+        &conn,
+        "edit-flow-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["new-tag-a".to_string(), "new-tag-b".to_string()],
+    )
+    .unwrap();
+    crate::db::set_skill_behaviour(
+        &conn,
+        "edit-flow-skill",
+        Some("Updated description"),
+        None,
+        None,
+        Some("provide a URL"),
+        Some(true),
+        None,
+    )
+    .unwrap();
+    crate::db::set_skill_intake(
+        &conn,
+        "edit-flow-skill",
+        Some(r#"{"context":"New custom context"}"#),
+    )
+    .unwrap();
 
     // Second sync — after edit
     sync_user_context_file(&conn, "edit-flow-skill");
     let updated = fs::read_to_string(&uc_path).unwrap();
 
     // Updated fields should reflect new values
-    assert!(updated.contains("Updated description"), "should have updated description");
+    assert!(
+        updated.contains("Updated description"),
+        "should have updated description"
+    );
     assert!(updated.contains("new-tag-a"), "should have new tag a");
     assert!(updated.contains("new-tag-b"), "should have new tag b");
     assert!(!updated.contains("old-tag"), "old tag should be gone");
-    assert!(updated.contains("provide a URL"), "should have updated argument hint");
-    assert!(updated.contains("New custom context"), "should have updated intake context");
+    assert!(
+        updated.contains("provide a URL"),
+        "should have updated argument hint"
+    );
+    assert!(
+        updated.contains("New custom context"),
+        "should have updated intake context"
+    );
 
     // Non-edit fields should still be preserved
-    assert!(updated.contains("Healthcare"), "industry should be preserved");
+    assert!(
+        updated.contains("Healthcare"),
+        "industry should be preserved"
+    );
 }
 
 #[test]
@@ -1872,7 +2084,9 @@ fn test_sync_user_context_includes_reference_documents() {
     crate::db::save_workflow_run(&conn, "doc-test-skill", 0, "pending", "domain").unwrap();
 
     // Look up the skill ID from the master table
-    let skill_id = crate::db::get_skill_master_id_any_plugin(&conn, "doc-test-skill").unwrap().unwrap();
+    let skill_id = crate::db::get_skill_master_id_any_plugin(&conn, "doc-test-skill")
+        .unwrap()
+        .unwrap();
 
     // Create a document file on disk for the content reader
     let doc_dir = tempdir().unwrap();
@@ -1887,14 +2101,26 @@ fn test_sync_user_context_includes_reference_documents() {
         None,
         doc_path.to_str().unwrap(),
         "skill",
-    ).unwrap();
+    )
+    .unwrap();
     crate::db::db_set_document_skills(&conn, doc_id, &[skill_id]).unwrap();
 
     sync_user_context_file(&conn, "doc-test-skill");
 
-    let uc_path = crate::skill_paths::workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "doc-test-skill").join("user-context.md");
+    let uc_path = crate::skill_paths::workspace_skill_dir(
+        workspace.path(),
+        DEFAULT_PLUGIN_SLUG,
+        "doc-test-skill",
+    )
+    .join("user-context.md");
     let content = fs::read_to_string(&uc_path).unwrap();
 
-    assert!(content.contains("API Specification"), "should include document name");
-    assert!(content.contains("Reference Documents"), "should have reference documents section");
+    assert!(
+        content.contains("API Specification"),
+        "should include document name"
+    );
+    assert!(
+        content.contains("Reference Documents"),
+        "should have reference documents section"
+    );
 }

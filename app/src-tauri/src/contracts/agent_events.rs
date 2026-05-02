@@ -8,7 +8,9 @@
 pub const AGENT_EVENTS_VERSION: u32 = 3;
 
 /// Per-model token usage breakdown.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelUsageEntry {
     pub model: String,
@@ -20,7 +22,9 @@ pub struct ModelUsageEntry {
 }
 
 /// Configuration event emitted at the start of a run.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct RunConfigEvent {
     pub thinking_enabled: bool,
@@ -29,7 +33,9 @@ pub struct RunConfigEvent {
 }
 
 /// Initialization event with session and model info.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct RunInitEvent {
     pub session_id: String,
@@ -37,7 +43,9 @@ pub struct RunInitEvent {
 }
 
 /// Per-turn token usage.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnUsageEvent {
     pub turn: i64,
@@ -46,7 +54,9 @@ pub struct TurnUsageEvent {
 }
 
 /// Context compaction event.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionEvent {
     pub turn: i64,
@@ -55,21 +65,27 @@ pub struct CompactionEvent {
 }
 
 /// Context window size event.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextWindowEvent {
     pub context_window: i64,
 }
 
 /// Session exhausted event.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionExhaustedEvent {
     pub session_id: String,
 }
 
 /// Progress stage during agent initialization.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum InitProgressStage {
     InitStart,
@@ -77,21 +93,27 @@ pub enum InitProgressStage {
 }
 
 /// Initialization progress event.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct InitProgressEvent {
     pub stage: InitProgressStage,
 }
 
 /// Turn completion event.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnCompleteEvent {
     pub streaming: bool,
 }
 
 /// Terminal status of a run.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum RunResultStatus {
     Completed,
@@ -100,7 +122,9 @@ pub enum RunResultStatus {
 }
 
 /// Source that triggered the run.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum RunSource {
     Workflow,
@@ -109,7 +133,9 @@ pub enum RunSource {
 }
 
 /// Terminal event with full run summary and token usage.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct RunResultEvent {
     pub skill_name: String,
@@ -154,7 +180,9 @@ pub struct RunResultEvent {
 ///
 /// Uses `"type"` as the discriminator field with snake_case variant names,
 /// matching the TypeScript `AgentEvent` union.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
     RunConfig(RunConfigEvent),
@@ -172,7 +200,9 @@ pub enum AgentEvent {
 ///
 /// The sidecar envelope has `type: "agent_event"` as a literal discriminator
 /// plus the nested `event` and `timestamp` fields.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct AgentEventEnvelope {
     /// Always `"agent_event"` — discriminator for the outer message type.
     #[serde(rename = "type")]
@@ -226,7 +256,10 @@ mod tests {
 
         let deserialized: RunConfigEvent = serde_json::from_str(&json).expect("deserialize");
         assert!(deserialized.thinking_enabled);
-        assert_eq!(deserialized.agent_name.as_deref(), Some("research-orchestrator"));
+        assert_eq!(
+            deserialized.agent_name.as_deref(),
+            Some("research-orchestrator")
+        );
     }
 
     #[test]
@@ -260,7 +293,8 @@ mod tests {
 
     #[test]
     fn test_tagged_union_run_init() {
-        let json = r#"{"type": "run_init", "sessionId": "sess-123", "model": "claude-sonnet-4-20250514"}"#;
+        let json =
+            r#"{"type": "run_init", "sessionId": "sess-123", "model": "claude-sonnet-4-20250514"}"#;
         let event: AgentEvent = serde_json::from_str(json).expect("deserialize");
         match event {
             AgentEvent::RunInit(e) => {
@@ -287,7 +321,8 @@ mod tests {
 
     #[test]
     fn test_tagged_union_compaction() {
-        let json = r#"{"type": "compaction", "turn": 5, "preTokens": 50000, "timestamp": 1700000000.0}"#;
+        let json =
+            r#"{"type": "compaction", "turn": 5, "preTokens": 50000, "timestamp": 1700000000.0}"#;
         let event: AgentEvent = serde_json::from_str(json).expect("deserialize");
         match event {
             AgentEvent::Compaction(e) => {
@@ -323,12 +358,10 @@ mod tests {
         let json = r#"{"type": "init_progress", "stage": "sdk_ready"}"#;
         let event: AgentEvent = serde_json::from_str(json).expect("deserialize");
         match event {
-            AgentEvent::InitProgress(e) => {
-                match e.stage {
-                    InitProgressStage::SdkReady => {}
-                    other => panic!("expected SdkReady, got {:?}", other),
-                }
-            }
+            AgentEvent::InitProgress(e) => match e.stage {
+                InitProgressStage::SdkReady => {}
+                other => panic!("expected SdkReady, got {:?}", other),
+            },
             other => panic!("expected InitProgress, got {:?}", other),
         }
     }

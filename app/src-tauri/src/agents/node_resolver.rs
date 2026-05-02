@@ -38,9 +38,7 @@ impl fmt::Display for NodeBinaryError {
 ///
 /// Returns `NodeResolution` with full metadata (path, source, version, meets_minimum).
 /// Used by `check_node` and `check_startup_deps` commands that need rich status info.
-pub async fn resolve_node_binary(
-    _app_handle: &tauri::AppHandle,
-) -> Result<NodeResolution, String> {
+pub async fn resolve_node_binary(_app_handle: &tauri::AppHandle) -> Result<NodeResolution, String> {
     resolve_system_node().await
 }
 

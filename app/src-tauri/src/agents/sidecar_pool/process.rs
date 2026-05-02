@@ -7,7 +7,7 @@ use tokio::process::Child;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-use super::startup_error::{TerminalOutcome, stream_message_terminal_status};
+use super::startup_error::{stream_message_terminal_status, TerminalOutcome};
 use crate::agents::events;
 
 /// Redact Anthropic API key values (sk-ant-... tokens) from a string before logging.
@@ -23,7 +23,9 @@ fn redact_api_key(s: &str) -> String {
         result.push_str("sk-ant-[REDACTED]");
         let after = &remaining[start + PREFIX.len()..];
         // skip until a non-token character (whitespace, quote, comma, closing brace)
-        let end = after.find(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_').unwrap_or(after.len());
+        let end = after
+            .find(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
+            .unwrap_or(after.len());
         remaining = &after[end..];
     }
     result.push_str(remaining);
@@ -225,11 +227,7 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
             pending.remove(request_id).is_some()
         };
         if was_pending {
-            events::handle_sidecar_exit(
-                &ctx.app_handle,
-                request_id,
-                true,
-            );
+            events::handle_sidecar_exit(&ctx.app_handle, request_id, true);
         } else {
             log::debug!(
                 "[persistent-sidecar:{}] request_complete for '{}' — already cleaned up via run_result, skipping exit",
@@ -244,11 +242,7 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
     }
 
     // Route this message to the correct agent using the request_id as agent_id
-    events::handle_sidecar_message(
-        &ctx.app_handle,
-        request_id,
-        line,
-    );
+    events::handle_sidecar_message(&ctx.app_handle, request_id, line);
 
     // Append to per-request JSONL transcript
     {
@@ -264,15 +258,14 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
     // Log lifecycle events at INFO so the log file tells the full story.
     // Streaming messages (assistant, user, tool_use, etc.) stay at debug.
     if let Some("system") = msg.get("type").and_then(|t| t.as_str()) {
-        let subtype = msg.get("subtype")
+        let subtype = msg
+            .get("subtype")
             .and_then(|s| s.as_str())
             .unwrap_or("unknown");
         // Surface SDK stderr in the app log — this is diagnostic output
         // (not agent content) and is critical for debugging startup failures.
         if subtype == "sdk_stderr" {
-            let data = msg.get("data")
-                .and_then(|d| d.as_str())
-                .unwrap_or("");
+            let data = msg.get("data").and_then(|d| d.as_str()).unwrap_or("");
             log::warn!(
                 "[persistent-sidecar:{}] Agent '{}' stderr: {}",
                 ctx.skill_name,
@@ -313,7 +306,8 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
     //                     only — run_result (which carries structured output) is the
     //                     real terminal signal.
     if event_subtype == Some("turn_complete") {
-        let is_streaming = msg.get("event")
+        let is_streaming = msg
+            .get("event")
             .and_then(|e| e.get("streaming"))
             .and_then(|s| s.as_bool())
             .unwrap_or(false);
@@ -328,11 +322,7 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                 let mut pending = ctx.pending_requests.lock().await;
                 pending.remove(request_id);
             }
-            events::handle_sidecar_exit(
-                &ctx.app_handle,
-                request_id,
-                true,
-            );
+            events::handle_sidecar_exit(&ctx.app_handle, request_id, true);
             // Close JSONL log for this turn
             let mut logs = ctx.request_logs.lock().await;
             logs.remove(request_id);
@@ -361,11 +351,7 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
             pending.remove(request_id).is_some()
         };
         if was_pending {
-            events::handle_sidecar_exit(
-                &ctx.app_handle,
-                request_id,
-                true,
-            );
+            events::handle_sidecar_exit(&ctx.app_handle, request_id, true);
         } else {
             log::debug!(
                 "[persistent-sidecar:{}] session_exhausted for '{}' — already cleaned up via run_result, skipping exit",
@@ -459,7 +445,8 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
             }
 
             if msg_type == "error" {
-                let error_detail = msg.get("message")
+                let error_detail = msg
+                    .get("message")
                     .and_then(|m| m.as_str())
                     .unwrap_or("(no message)");
                 // Redact API keys before logging and forwarding to frontend
@@ -479,7 +466,8 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                     &serde_json::json!({
                         "type": "error",
                         "error": redacted,
-                    }).to_string(),
+                    })
+                    .to_string(),
                 );
             }
 
@@ -494,11 +482,10 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
             if outcome == TerminalOutcome::Error || outcome == TerminalOutcome::Shutdown {
                 use tauri::Manager;
                 // Scope the DB lock tightly — release before filesystem work.
-                let workspace_path = ctx.app_handle.try_state::<crate::db::Db>()
-                    .and_then(|db| {
-                        let conn = db.0.lock().ok()?;
-                        crate::db::read_settings(&conn).ok()?.workspace_path
-                    });
+                let workspace_path = ctx.app_handle.try_state::<crate::db::Db>().and_then(|db| {
+                    let conn = db.0.lock().ok()?;
+                    crate::db::read_settings(&conn).ok()?.workspace_path
+                });
                 if let Some(wp) = workspace_path {
                     crate::commands::workflow::evaluation::clean_incomplete_iterations(
                         &wp,
@@ -510,10 +497,7 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
             // Dispatch based on outcome: shutdown uses handle_agent_shutdown
             // so the frontend calls shutdownRun() instead of completeRun(false).
             if outcome == TerminalOutcome::Shutdown {
-                events::handle_agent_shutdown(
-                    &ctx.app_handle,
-                    request_id,
-                );
+                events::handle_agent_shutdown(&ctx.app_handle, request_id);
             } else {
                 events::handle_sidecar_exit_with_detail(
                     &ctx.app_handle,
@@ -535,8 +519,8 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::panic::AssertUnwindSafe;
     use futures::FutureExt;
+    use std::panic::AssertUnwindSafe;
 
     #[tokio::test]
     async fn test_cleanup_aborts_heartbeat() {

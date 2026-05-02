@@ -51,6 +51,7 @@ The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary
 | LiteLLM provider strings for multi-model support. | OpenHands routes all LLM calls through LiteLLM. Any provider string (`anthropic/claude-sonnet-4-6`, `openai/gpt-4o`, `google/gemini-2.0-flash`, `ollama/llama3.2`) works without runner changes. Settings adds a provider picker and per-provider API key. |
 | `AGENTS.md` is the always-on context file. | Both Claude Code and OpenHands read `AGENTS.md` natively. No change to the always-on instruction layer. |
 | `AskUserQuestion` gap is deferred. | Refine streaming depends on a custom interrupt tool. Until it is built, streaming sessions return a clear error. Workflow one-shot steps are unaffected. |
+| Workspace, LLM, and agent invocation are backend-owned boundaries. | App startup initializes the workspace and deploys `.agents` artifacts; Rust projects settings into `WorkflowLlmConfig`; product features invoke app agents through one-shot or streaming runtime APIs instead of constructing raw runtime details. |
 
 ## Runtime Invariants
 
@@ -64,6 +65,27 @@ The app depends on a set of execution contracts that must hold regardless of whi
 | Users can see work in progress | Claude SDK messages become display items and agent events while the run is active | OpenHands conversation events are streamed as normalized display items and agent events for one-shot and multi-message conversations |
 | Per-step turn budget is enforced | `max_turns` in `SidecarConfig` | `max_iterations` in `RunConfig`, populated from the same `max_turns` field |
 | Tool availability is scoped per task | `allowedTools` in `SidecarConfig`, per step | Request-level tool list used to construct the OpenHands `Agent` |
+
+## Stable Runtime Boundaries
+
+The OpenHands migration establishes reusable boundaries for every current and
+future feature that calls agents.
+
+| Boundary | Owner | Contract |
+|---|---|---|
+| Workspace | App startup + Rust runtime API | `init_workspace` creates the workspace and deploys root `.agents` artifacts. Runtime callers use the initialized path and fail if it is missing; they do not create validation or task workspaces opportunistically. |
+| LLM | Rust settings projection | Runtime callers use `WorkflowLlmConfig` produced by backend code such as `selected_workflow_llm`; frontend settings fields are storage/UI inputs, not runtime invocation contracts. |
+| Agent invocation | Rust agent runtime API | Product features choose `agentName`, task kind, mode (`one-shot` or `streaming`), prompt, tool set, output schema, and persistence context. The runtime API supplies workspace, LLM, sidecar path, transcript wiring, event forwarding, and terminal wait handling. Feature commands own task-specific result parsing. |
+
+Create-skill `Validate` is the first caller of these boundaries. Because it
+runs before a skill exists, it uses the initialized workspace root as the
+OpenHands `LocalWorkspace`. Workflow steps continue using skill-scoped
+workspace directories that the create/workflow lifecycle already created.
+
+The same boundaries should be reused as answer evaluation, workflow steps,
+description optimization, eval generation, and refine migrate to OpenHands. New
+features should not read raw model settings or create runtime workspaces in the
+feature command.
 
 Nothing in this migration removes a runtime invariant. The mechanism changes; the contract does not.
 

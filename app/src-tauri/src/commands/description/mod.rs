@@ -531,6 +531,8 @@ pub async fn start_generate_desc_evals(
         plugin_slug,
         transcript_log_dir: Some(desc_opt_log_dir.clone()),
         runtime_provider: None,
+        task_kind: None,
+        user_message_suffix: None,
     };
 
     sidecar::spawn_sidecar(

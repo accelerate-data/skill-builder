@@ -209,12 +209,18 @@ mod tests {
 
     #[test]
     fn resolve_relative_path_ignores_plugin_root() {
-        assert_eq!(resolve_plugin_path("./my-plugin", Some("plugins"), None), "my-plugin");
+        assert_eq!(
+            resolve_plugin_path("./my-plugin", Some("plugins"), None),
+            "my-plugin"
+        );
     }
 
     #[test]
     fn resolve_bare_name_prepends_plugin_root() {
-        assert_eq!(resolve_plugin_path("my-plugin", Some("plugins"), None), "plugins/my-plugin");
+        assert_eq!(
+            resolve_plugin_path("my-plugin", Some("plugins"), None),
+            "plugins/my-plugin"
+        );
     }
 
     #[test]
@@ -224,7 +230,10 @@ mod tests {
 
     #[test]
     fn resolve_with_subpath_prepends() {
-        assert_eq!(resolve_plugin_path("./my-plugin", None, Some("sub")), "sub/my-plugin");
+        assert_eq!(
+            resolve_plugin_path("./my-plugin", None, Some("sub")),
+            "sub/my-plugin"
+        );
     }
 
     #[test]
@@ -237,7 +246,10 @@ mod tests {
 
     #[test]
     fn resolve_trims_trailing_slashes() {
-        assert_eq!(resolve_plugin_path("./my-plugin/", None, Some("sub/")), "sub/my-plugin");
+        assert_eq!(
+            resolve_plugin_path("./my-plugin/", None, Some("sub/")),
+            "sub/my-plugin"
+        );
     }
 
     // --- discover_plugins_from_catalog ---
@@ -303,12 +315,18 @@ mod tests {
 
     #[test]
     fn extract_plugin_path_nested() {
-        assert_eq!(extract_plugin_path("engineering/skills/standup"), "engineering");
+        assert_eq!(
+            extract_plugin_path("engineering/skills/standup"),
+            "engineering"
+        );
     }
 
     #[test]
     fn extract_plugin_path_deep_nested() {
-        assert_eq!(extract_plugin_path("plugins/eng/skills/standup"), "plugins/eng");
+        assert_eq!(
+            extract_plugin_path("plugins/eng/skills/standup"),
+            "plugins/eng"
+        );
     }
 
     #[test]

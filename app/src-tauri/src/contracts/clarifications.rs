@@ -4,7 +4,9 @@
 //! and serve as the single source of truth for the clarifications JSON schema.
 
 /// Root type for a clarifications file.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct ClarificationsFile {
     #[serde(default)]
     pub version: String,
@@ -19,7 +21,9 @@ pub struct ClarificationsFile {
 }
 
 /// Metadata block with counts, priority questions, and optional scope/research info.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct ClarificationsMetadata {
     #[serde(default)]
     pub title: String,
@@ -50,21 +54,27 @@ pub struct ClarificationsMetadata {
 }
 
 /// Warning attached to metadata.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct ClarificationsWarning {
     pub code: String,
     pub message: String,
 }
 
 /// Error attached to metadata.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct ClarificationsError {
     pub code: String,
     pub message: String,
 }
 
 /// Research plan with dimension scoring.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct ClarificationsResearchPlan {
     pub purpose: String,
     pub domain: String,
@@ -80,7 +90,9 @@ pub struct ClarificationsResearchPlan {
 }
 
 /// A scored dimension in the research plan.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct DimensionScore {
     pub name: String,
     pub score: f64,
@@ -90,14 +102,18 @@ pub struct DimensionScore {
 }
 
 /// A dimension selected for deeper research.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct SelectedDimension {
     pub name: String,
     pub focus: String,
 }
 
 /// A section grouping related questions.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct Section {
     pub id: i64,
     pub title: String,
@@ -108,7 +124,9 @@ pub struct Section {
 }
 
 /// A question with choices and optional answer fields. Recursive via `refinements`.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct Question {
     pub id: String,
     pub title: String,
@@ -129,7 +147,9 @@ pub struct Question {
 }
 
 /// A multiple-choice option.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct Choice {
     pub id: String,
     pub text: String,
@@ -137,7 +157,9 @@ pub struct Choice {
 }
 
 /// A note (research note or evaluator feedback).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct Note {
     #[serde(rename = "type")]
     pub type_: String,
@@ -179,8 +201,16 @@ mod tests {
                     must_answer: true,
                     consolidated_from: None,
                     choices: vec![
-                        Choice { id: "A".to_string(), text: "Option A".to_string(), is_other: false },
-                        Choice { id: "B".to_string(), text: "Option B".to_string(), is_other: false },
+                        Choice {
+                            id: "A".to_string(),
+                            text: "Option A".to_string(),
+                            is_other: false,
+                        },
+                        Choice {
+                            id: "B".to_string(),
+                            text: "Option B".to_string(),
+                            is_other: false,
+                        },
                     ],
                     recommendation: Some("A".to_string()),
                     answer_choice: None,
@@ -382,12 +412,21 @@ mod tests {
         assert!((plan.dimension_scores[0].score - 0.9).abs() < f64::EPSILON);
 
         // Warning and error
-        assert_eq!(file.metadata.warning.as_ref().unwrap().code, "scope_guard_triggered");
-        assert_eq!(file.metadata.error.as_ref().unwrap().code, "missing_user_context");
+        assert_eq!(
+            file.metadata.warning.as_ref().unwrap().code,
+            "scope_guard_triggered"
+        );
+        assert_eq!(
+            file.metadata.error.as_ref().unwrap().code,
+            "missing_user_context"
+        );
 
         // Sections and questions
         assert_eq!(file.sections.len(), 1);
-        assert_eq!(file.sections[0].description.as_deref(), Some("Questions about data flow"));
+        assert_eq!(
+            file.sections[0].description.as_deref(),
+            Some("Questions about data flow")
+        );
         let q1 = &file.sections[0].questions[0];
         assert_eq!(q1.answer_choice.as_deref(), Some("B"));
         assert!(q1.answer_text.is_none());
@@ -399,7 +438,10 @@ mod tests {
         assert_eq!(file.notes[0].type_, "inconsistency");
 
         // Answer evaluator notes
-        let eval_notes = file.answer_evaluator_notes.as_ref().expect("evaluator notes");
+        let eval_notes = file
+            .answer_evaluator_notes
+            .as_ref()
+            .expect("evaluator notes");
         assert_eq!(eval_notes.len(), 1);
         assert_eq!(eval_notes[0].type_, "answer_feedback");
 

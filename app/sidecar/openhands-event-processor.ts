@@ -35,6 +35,7 @@ interface OpenHandsSdkEvent {
   type: "openhands_sdk_event";
   event_class: string;
   event?: unknown;
+  payload?: unknown;
   timestamp?: number;
 }
 
@@ -163,13 +164,14 @@ export class OpenHandsEventProcessor {
   private processSdkEvent(record: OpenHandsSdkEvent, sink: RuntimeSink): void {
     const timestamp = record.timestamp ?? Date.now();
     const eventClass = record.event_class ?? "UnknownSdkEvent";
-    const event = asRecord(record.event);
+    const sdkPayload = record.event ?? record.payload;
+    const event = asRecord(sdkPayload);
 
     sink.emitRaw({
       type: "system",
       subtype: "openhands_sdk_event",
       event_class: eventClass,
-      event: record.event ?? null,
+      event: sdkPayload ?? null,
       timestamp,
     });
 

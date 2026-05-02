@@ -135,7 +135,11 @@ pub fn commit_all(path: &Path, message: &str) -> Result<Option<String>, String> 
 
 /// Stage and commit only one repo-relative path. Returns the commit SHA, or
 /// Ok(None) if that path has no changes.
-pub fn commit_path(path: &Path, relative_path: &Path, message: &str) -> Result<Option<String>, String> {
+pub fn commit_path(
+    path: &Path,
+    relative_path: &Path,
+    message: &str,
+) -> Result<Option<String>, String> {
     let relative = relative_path
         .to_string_lossy()
         .replace(std::path::MAIN_SEPARATOR, "/")
@@ -145,13 +149,21 @@ pub fn commit_path(path: &Path, relative_path: &Path, message: &str) -> Result<O
         return Err("Refusing to commit empty relative path".to_string());
     }
 
-    log::debug!("[git] commit_path at {} path={} — \"{}\"", path.display(), relative, message);
+    log::debug!(
+        "[git] commit_path at {} path={} — \"{}\"",
+        path.display(),
+        relative,
+        message
+    );
     let repo = ensure_repo(path)?;
 
     ensure_no_unrelated_staged_changes(&repo, &relative)?;
 
     let mut scoped_opts = StatusOptions::new();
-    scoped_opts.include_untracked(true).recurse_untracked_dirs(true).pathspec(&relative);
+    scoped_opts
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .pathspec(&relative);
     let scoped_statuses = repo
         .statuses(Some(&mut scoped_opts))
         .map_err(|e| format!("Failed to get statuses for '{}': {}", relative, e))?;
@@ -164,7 +176,11 @@ pub fn commit_path(path: &Path, relative_path: &Path, message: &str) -> Result<O
         .index()
         .map_err(|e| format!("Failed to get index: {}", e))?;
     index
-        .add_all([relative.as_str()].iter(), git2::IndexAddOption::DEFAULT, None)
+        .add_all(
+            [relative.as_str()].iter(),
+            git2::IndexAddOption::DEFAULT,
+            None,
+        )
         .map_err(|e| format!("Failed to stage '{}': {}", relative, e))?;
 
     for entry in scoped_statuses.iter() {
@@ -206,14 +222,23 @@ pub fn commit_path(path: &Path, relative_path: &Path, message: &str) -> Result<O
         .commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
         .map_err(|e| format!("Failed to commit '{}': {}", relative, e))?;
 
-    log::info!("[git] Committed {}: {} ({})", relative, message, &oid.to_string()[..8]);
+    log::info!(
+        "[git] Committed {}: {} ({})",
+        relative,
+        message,
+        &oid.to_string()[..8]
+    );
     Ok(Some(oid.to_string()))
 }
 
 // --- Tag name helpers (templates from plugin-paths.json via skill_paths) ---
 
 pub fn skill_version_tag_name(plugin_slug: &str, skill_name: &str, version: &str) -> String {
-    format!("{}{}", crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name), version)
+    format!(
+        "{}{}",
+        crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name),
+        version
+    )
 }
 
 pub fn skill_version_tag_exists(
@@ -233,7 +258,10 @@ pub fn skill_version_tag_exists(
 pub fn skill_has_any_tag(path: &Path, plugin_slug: &str, skill_name: &str) -> Result<bool, String> {
     let repo = ensure_repo(path)?;
     let tags = repo
-        .tag_names(Some(&crate::skill_paths::skill_tag_glob(plugin_slug, skill_name)))
+        .tag_names(Some(&crate::skill_paths::skill_tag_glob(
+            plugin_slug,
+            skill_name,
+        )))
         .map_err(|e| format!("Failed to list tags: {}", e))?;
     Ok(tags.iter().flatten().next().is_some())
 }
@@ -286,10 +314,13 @@ pub fn migrate_skill_tags(
     let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
     let (old_glob, old_prefix) = match old_plugin_slug {
-        Some(old) => (crate::skill_paths::skill_tag_glob(old, skill_name), crate::skill_paths::skill_tag_prefix(old, skill_name)),
+        Some(old) => (
+            crate::skill_paths::skill_tag_glob(old, skill_name),
+            crate::skill_paths::skill_tag_prefix(old, skill_name),
+        ),
         None => (
-            format!("{}/*", skill_name),      // legacy: {name}/*
-            format!("{}/v", skill_name),       // legacy prefix: {name}/v
+            format!("{}/*", skill_name), // legacy: {name}/*
+            format!("{}/v", skill_name), // legacy prefix: {name}/v
         ),
     };
 
@@ -327,7 +358,12 @@ pub fn migrate_skill_tags(
     }
 
     if count > 0 {
-        log::info!("[git] migrate_skill_tags: '{}' → plugin='{}': {} tags migrated", skill_name, new_plugin_slug, count);
+        log::info!(
+            "[git] migrate_skill_tags: '{}' → plugin='{}': {} tags migrated",
+            skill_name,
+            new_plugin_slug,
+            count
+        );
     }
     Ok(count)
 }
@@ -374,12 +410,21 @@ pub fn migrate_marketplace_skill_tags(
         if let Ok(mut reference) = repo.find_reference(&format!("refs/tags/{}", tag_name)) {
             let _ = reference.delete();
         }
-        log::debug!("[git] migrated marketplace tag '{}' → '{}'", tag_name, new_tag);
+        log::debug!(
+            "[git] migrated marketplace tag '{}' → '{}'",
+            tag_name,
+            new_tag
+        );
         count += 1;
     }
 
     if count > 0 {
-        log::info!("[git] migrate_marketplace_skill_tags: '{}' plugin='{}': {} tags migrated", skill_name, plugin_slug, count);
+        log::info!(
+            "[git] migrate_marketplace_skill_tags: '{}' plugin='{}': {} tags migrated",
+            skill_name,
+            plugin_slug,
+            count
+        );
     }
     Ok(count)
 }
@@ -429,7 +474,12 @@ pub fn get_history(
     plugin_slug: &str,
     limit: usize,
 ) -> Result<Vec<SkillCommit>, String> {
-    log::debug!("[git] get_history for '{}' plugin='{}' (limit {})", skill_name, plugin_slug, limit);
+    log::debug!(
+        "[git] get_history for '{}' plugin='{}' (limit {})",
+        skill_name,
+        plugin_slug,
+        limit
+    );
     let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
     // Build tag→commit lookup for this skill's version tags.
@@ -497,7 +547,12 @@ pub fn get_history(
 /// Files are always written to the plugin-aware path for the current layout.
 /// Reading from the historical tree tries multiple prefixes (plugin → default → flat)
 /// so that pre-migration commits are handled correctly.
-pub fn restore_version(repo_path: &Path, sha: &str, skill_name: &str, plugin_slug: &str) -> Result<(), String> {
+pub fn restore_version(
+    repo_path: &Path,
+    sha: &str,
+    skill_name: &str,
+    plugin_slug: &str,
+) -> Result<(), String> {
     log::info!(
         "[git] Restoring '{}' plugin='{}' to commit {}",
         skill_name,
@@ -557,7 +612,11 @@ pub fn restore_version(repo_path: &Path, sha: &str, skill_name: &str, plugin_slu
             .map(|(path, content)| (path[prefix.len()..].to_string(), content.clone()))
             .collect();
         if !matched.is_empty() {
-            log::debug!("[git] restore: found {} files under prefix '{}'", matched.len(), prefix);
+            log::debug!(
+                "[git] restore: found {} files under prefix '{}'",
+                matched.len(),
+                prefix
+            );
             files_to_restore = matched;
             break;
         }
@@ -567,8 +626,13 @@ pub fn restore_version(repo_path: &Path, sha: &str, skill_name: &str, plugin_slu
     if write_dir.exists() {
         remove_dir_contents(&write_dir)?;
     }
-    std::fs::create_dir_all(&write_dir)
-        .map_err(|e| format!("Failed to create skill dir '{}': {}", write_dir.display(), e))?;
+    std::fs::create_dir_all(&write_dir).map_err(|e| {
+        format!(
+            "Failed to create skill dir '{}': {}",
+            write_dir.display(),
+            e
+        )
+    })?;
     for (relative_path, content) in &files_to_restore {
         let file_path = write_dir.join(relative_path);
         if let Some(parent) = file_path.parent() {
@@ -607,7 +671,11 @@ fn parse_semver(version: &str) -> (u32, u32, u32) {
 
 /// Find the highest existing semver tag for a skill in the given plugin namespace.
 /// Returns "0.0.0" if no valid semver tags exist.
-pub fn latest_skill_semver(path: &Path, plugin_slug: &str, skill_name: &str) -> Result<String, String> {
+pub fn latest_skill_semver(
+    path: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<String, String> {
     log::debug!(
         "[git] latest_skill_semver: skill='{}' plugin='{}' repo={}",
         skill_name,
@@ -771,11 +839,15 @@ pub fn get_skill_files_at_sha(
     plugin_slug: &str,
     sha: &str,
 ) -> Result<Vec<(String, String)>, String> {
-    log::debug!("[git] get_skill_files_at_sha: skill='{}' plugin='{}' sha={}", skill_name, plugin_slug, sha);
+    log::debug!(
+        "[git] get_skill_files_at_sha: skill='{}' plugin='{}' sha={}",
+        skill_name,
+        plugin_slug,
+        sha
+    );
     let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
-    let oid = git2::Oid::from_str(sha)
-        .map_err(|e| format!("Invalid SHA '{}': {}", sha, e))?;
+    let oid = git2::Oid::from_str(sha).map_err(|e| format!("Invalid SHA '{}': {}", sha, e))?;
     let commit = repo
         .find_commit(oid)
         .map_err(|e| format!("Commit '{}' not found: {}", sha, e))?;
@@ -834,7 +906,9 @@ pub fn get_skill_files_at_sha(
         .filter(|(path, _)| *path == skill_md_path || path.starts_with(&refs_prefix))
         .filter_map(|(path, content)| {
             let relative = path[prefix_used.len()..].to_string();
-            std::str::from_utf8(&content).ok().map(|s| (relative, s.to_string()))
+            std::str::from_utf8(&content)
+                .ok()
+                .map(|s| (relative, s.to_string()))
         })
         .collect();
 
@@ -849,7 +923,10 @@ pub fn get_skill_files_at_sha(
         }
     });
 
-    log::debug!("[git] get_skill_files_at_sha: returning {} files", files.len());
+    log::debug!(
+        "[git] get_skill_files_at_sha: returning {} files",
+        files.len()
+    );
     Ok(files)
 }
 
@@ -1143,7 +1220,13 @@ mod tests {
         ensure_repo(dir.path()).unwrap();
 
         // No skill files committed — only initial empty commit
-        let history = get_history(dir.path(), "nonexistent-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 50).unwrap();
+        let history = get_history(
+            dir.path(),
+            "nonexistent-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            50,
+        )
+        .unwrap();
         assert!(history.is_empty());
     }
 
@@ -1314,15 +1397,27 @@ mod tests {
         create_tag(dir.path(), "skills/skill-a/v1.0.0");
         create_tag(dir.path(), "skills/skill-b/v1.0.0");
 
-        assert_eq!(latest_skill_semver(dir.path(), plugin, "skill-a").unwrap(), "1.0.0");
-        assert_eq!(latest_skill_semver(dir.path(), plugin, "skill-b").unwrap(), "1.0.0");
+        assert_eq!(
+            latest_skill_semver(dir.path(), plugin, "skill-a").unwrap(),
+            "1.0.0"
+        );
+        assert_eq!(
+            latest_skill_semver(dir.path(), plugin, "skill-b").unwrap(),
+            "1.0.0"
+        );
 
         std::fs::write(a_dir.join("SKILL.md"), "# A v2").unwrap();
         commit_all(dir.path(), "skill-a v2").unwrap();
         create_tag(dir.path(), "skills/skill-a/v2.0.0");
 
-        assert_eq!(latest_skill_semver(dir.path(), plugin, "skill-a").unwrap(), "2.0.0");
-        assert_eq!(latest_skill_semver(dir.path(), plugin, "skill-b").unwrap(), "1.0.0");
+        assert_eq!(
+            latest_skill_semver(dir.path(), plugin, "skill-a").unwrap(),
+            "2.0.0"
+        );
+        assert_eq!(
+            latest_skill_semver(dir.path(), plugin, "skill-b").unwrap(),
+            "1.0.0"
+        );
     }
 
     #[test]
@@ -1495,7 +1590,14 @@ mod tests {
 
         // Extract v1 to a separate directory
         let dest = dir.path().join("snapshot");
-        extract_skill_at_tag(dir.path(), plugin, "my-skill", "skills/my-skill/v1.0.0", &dest).unwrap();
+        extract_skill_at_tag(
+            dir.path(),
+            plugin,
+            "my-skill",
+            "skills/my-skill/v1.0.0",
+            &dest,
+        )
+        .unwrap();
 
         // Verify v1 content was extracted
         assert_eq!(
@@ -1515,8 +1617,13 @@ mod tests {
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
         let dest = dir.path().join("snapshot");
-        let result = extract_skill_at_tag(dir.path(), plugin, "my-skill", "skills/my-skill/v99.0.0", &dest);
+        let result = extract_skill_at_tag(
+            dir.path(),
+            plugin,
+            "my-skill",
+            "skills/my-skill/v99.0.0",
+            &dest,
+        );
         assert!(result.is_err());
     }
-
 }

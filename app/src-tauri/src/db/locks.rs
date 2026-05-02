@@ -15,7 +15,6 @@ pub fn acquire_skill_lock(
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(|e| e.to_string())?;
 
-
     let result = (|| -> Result<(), String> {
         let s_id = get_skill_master_id_any_plugin(conn, skill_name)?
             .ok_or_else(|| "Skill not found in skills master".to_string())?;
@@ -190,7 +189,6 @@ pub fn check_pid_alive(pid: u32) -> bool {
         .unwrap_or(false)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,11 +205,17 @@ mod tests {
         insert_skill(&conn, "my-skill");
 
         let result = acquire_skill_lock(&conn, "my-skill", "instance-1", std::process::id());
-        assert!(result.is_ok(), "acquire_skill_lock should succeed for an unlocked skill");
+        assert!(
+            result.is_ok(),
+            "acquire_skill_lock should succeed for an unlocked skill"
+        );
 
         // Lock row should now exist
         let lock = get_skill_lock(&conn, "my-skill").unwrap();
-        assert!(lock.is_some(), "skill_locks row should be present after acquire");
+        assert!(
+            lock.is_some(),
+            "skill_locks row should be present after acquire"
+        );
         let lock = lock.unwrap();
         assert_eq!(lock.instance_id, "instance-1");
         assert_eq!(lock.skill_name, "my-skill");
@@ -238,7 +242,10 @@ mod tests {
 
         // A second instance_id must not be able to steal the lock from a live process.
         let result = acquire_skill_lock(&conn, "live-skill", "instance-thief", std::process::id());
-        assert!(result.is_err(), "acquire should fail while skill is locked by a live process");
+        assert!(
+            result.is_err(),
+            "acquire should fail while skill is locked by a live process"
+        );
         let err = result.unwrap_err();
         assert!(
             err.contains("being edited in another instance"),
@@ -254,11 +261,9 @@ mod tests {
 
         // Manually insert a lock with a PID that is guaranteed not to be alive.
         let skill_id: i64 = conn
-            .query_row(
-                "SELECT id FROM skills WHERE name = 'dead-skill'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT id FROM skills WHERE name = 'dead-skill'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         conn.execute(
             "INSERT INTO skill_locks (skill_name, skill_id, instance_id, pid) VALUES ('dead-skill', ?1, 'dead-instance', 9999999)",
@@ -268,10 +273,17 @@ mod tests {
 
         // A new instance should be able to reclaim the lock held by PID 9999999 (dead).
         let result = acquire_skill_lock(&conn, "dead-skill", "new-instance", std::process::id());
-        assert!(result.is_ok(), "acquire should reclaim a lock held by a dead PID, got: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "acquire should reclaim a lock held by a dead PID, got: {:?}",
+            result
+        );
 
         let lock = get_skill_lock(&conn, "dead-skill").unwrap().unwrap();
-        assert_eq!(lock.instance_id, "new-instance", "lock should now belong to new-instance");
+        assert_eq!(
+            lock.instance_id, "new-instance",
+            "lock should now belong to new-instance"
+        );
     }
 
     #[test]
@@ -350,6 +362,9 @@ mod tests {
         let conn = create_test_db_for_tests();
         // No skill inserted — the lock function must return an error.
         let result = acquire_skill_lock(&conn, "nonexistent-skill", "inst", 1);
-        assert!(result.is_err(), "acquire should fail when skill is not in the skills table");
+        assert!(
+            result.is_err(),
+            "acquire should fail when skill is not in the skills table"
+        );
     }
 }
