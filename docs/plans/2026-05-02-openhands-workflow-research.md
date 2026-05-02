@@ -359,8 +359,11 @@ Expected: deterministic assertions and targeted existing eval packages pass.
 cd app && npm run sidecar:build
 ```
 
-- [x] Add env-gated live OpenHands SDK integration coverage for
-  `agentName = "skill-creator"` and `taskKind = "workflow.research"`:
+- [x] Add live OpenHands SDK integration coverage for
+  `agentName = "skill-creator"` and `taskKind = "workflow.research"`. The
+  test resolves LLM config from explicit `SKILL_BUILDER_OPENHANDS_*` env vars
+  first, then falls back to the app SQLite `model_settings` row so local live
+  validation uses the configured app settings:
 
 ```bash
 cd app/sidecar && npx vitest run __tests__/openhands-runner.integration.test.ts __tests__/openhands-workflow-smoke.test.ts
@@ -372,13 +375,12 @@ cd app/sidecar && npx vitest run __tests__/openhands-runner.integration.test.ts 
   - parseable research JSON, including fenced JSON tolerance;
   - backend `context/clarifications.json` materialization;
   - UI completion and error behavior without frontend `materializeWorkflowStepOutput(...)`.
-- [ ] Run the env-gated live SDK case with
-  `SKILL_BUILDER_OPENHANDS_MODEL` and `SKILL_BUILDER_OPENHANDS_API_KEY`
-  configured, then capture the transcript/log evidence in the PR notes.
+- [x] Run the live SDK case using the DB-backed app settings and capture the
+  transcript/log evidence in the PR notes.
 
-Result: local automated command passed with the live SDK cases skipped because
-the required OpenHands env vars were not present in this shell. No manual-only
-test remains; the live provider smoke is automated but credential-gated.
+Result: local automated command passed with both live SDK cases executed against
+the configured app DB LLM settings. No manual-only test remains; the live
+provider smoke is automated and uses env vars only as overrides.
 
 ## Task 11: Docs, Plan, And Repo Map Audit
 
