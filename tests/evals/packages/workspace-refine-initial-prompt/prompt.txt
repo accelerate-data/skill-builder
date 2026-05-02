@@ -2,7 +2,7 @@ Eval mode: the app AskUserQuestion tool is not available in this OpenCode eval r
 
 Rendered Skill Builder prompt:
 
-The skill name is: fabric-dbt-standards. The command is: refine. The skill directory is: /tmp/skill-builder/skills/skill-builder/fabric-dbt-standards. The context directory is: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context. The workspace directory is: /tmp/skill-builder/workspace/skills/fabric-dbt-standards. All directories already exist - never create directories with mkdir or any other method. The user context file is at: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/user-context.md - read it for purpose, description, and all user context.
+We are writing the skill fabric-dbt-standards. The command is: refine. The skill directory is: /tmp/skill-builder/skills/skill-builder/fabric-dbt-standards. The context directory is: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context. The workspace directory is: /tmp/skill-builder/workspace/skills/fabric-dbt-standards. All directories already exist - never create directories with mkdir or any other method. The user context file is at: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/user-context.md - read it for purpose, description, and all user context.
 
 ROUTING:
 

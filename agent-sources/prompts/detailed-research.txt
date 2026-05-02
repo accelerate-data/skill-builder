@@ -1,0 +1,45 @@
+EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
+
+Produce the detailed-research output for the skill we are writing.
+
+We are writing the skill {{skill_name}}.
+Workspace directory: {{workspace_dir}}
+User context file: {{workspace_dir}}/user-context.md
+Answer evaluation file: {{workspace_dir}}/answer-evaluation.json
+Clarifications file: {{workspace_dir}}/context/clarifications.json
+Context directory: {{workspace_dir}}/context
+
+All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
+
+Read user-context.md, answer-evaluation.json, and context/clarifications.json.
+Read every existing section, question, answer_text, choices, recommendation, and refinement in context/clarifications.json. Use the human's current responses together with answer-evaluation.json to decide what is still missing.
+Use answer-evaluation.json as the source of truth for which answers are clear, vague, missing, contradictory, or need refinement. Do not reclassify those verdicts.
+
+Return DetailedResearchOutput only.
+
+You can add new sections when the user's answers reveal a new decision area.
+You can add new top-level questions to existing sections when the missing decision belongs in that section.
+You can add refinement questions under existing questions when a specific answer needs a narrower follow-up.
+
+Do not add refinements to every question. Add refinement questions only when the human response leaves real confusion, a material clarification gap, or missing organization-specific information that cannot be answered from general LLM background knowledge and would affect skill performance.
+Preserve every existing section and every existing top-level question. Do not delete, reorder, renumber, or rewrite existing questions. Append only.
+Do not rewrite existing answers, choices, or recommendations. Keep the human's current responses intact.
+
+Recompute metadata after merging:
+- metadata.question_count is the number of top-level questions only.
+- metadata.section_count is the number of sections.
+- metadata.refinement_count is the total number of refinement questions.
+- metadata.must_answer_count includes top-level questions and refinements where must_answer is true.
+- metadata.priority_questions includes every top-level or refinement ID where must_answer is true.
+- metadata.duplicates_removed counts duplicate candidate additions that were dropped.
+
+For schema validity, every question object must include a refinements array. This is a structural field, not an instruction to add refinement questions. Default to an empty array unless the question meets the refinement threshold above.
+Do not return transient planning fields such as parent_question_id, detailed_research_type, target_section_id, or merge_action.
+
+Return only a raw JSON object with this envelope:
+{
+  "status": "detailed_research_complete",
+  "refinement_count": number,
+  "section_count": number,
+  "clarifications_json": { ...canonical clarifications.json object... }
+}

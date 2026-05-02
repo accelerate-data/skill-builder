@@ -17,6 +17,7 @@ function readEval(relativePath) {
 test('active workflow prompt surfaces stay OpenHands-native', () => {
   const activeWorkflowFiles = [
     'agent-sources/prompts/research.txt',
+    'agent-sources/prompts/detailed-research.txt',
     'agent-sources/prompts/workflow-step.txt',
     'agent-sources/prompts/answer-evaluator.txt',
     'app/src-tauri/src/commands/workflow/prompt.rs',
@@ -35,7 +36,6 @@ test('active workflow prompt surfaces stay OpenHands-native', () => {
     'skill-creator:',
     'research-orchestrator',
     'confirm-decisions',
-    'detailed-research',
     'generate-skill',
   ];
 
@@ -65,6 +65,8 @@ test('deterministic eval packages cover OpenHands workflow agent topology', () =
   const packageEvidence = [
     readEval('packages/skill-content-researcher-research/prompt.txt'),
     readEval('packages/skill-content-researcher-research/promptfooconfig.json'),
+    readEval('packages/skill-content-researcher-detailed-research/prompt.txt'),
+    readEval('packages/skill-content-researcher-detailed-research/promptfooconfig.json'),
     readEval('packages/skill-content-researcher-answer-evaluator/prompt.txt'),
     readEval('packages/skill-content-researcher-answer-evaluator/promptfooconfig.json'),
     readEval('packages/workspace-workflow-step-prompt/prompt.txt'),
@@ -74,9 +76,11 @@ test('deterministic eval packages cover OpenHands workflow agent topology', () =
   for (const token of [
     'skill-creator',
     'workflow.research',
+    'workflow.detailed_research',
     'workflow.answer_evaluator',
     'answer-evaluator',
     'agent-sources/prompts/research.txt',
+    'agent-sources/prompts/detailed-research.txt',
   ]) {
     assert.ok(
       packageEvidence.includes(token),
