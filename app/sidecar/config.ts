@@ -1,9 +1,26 @@
+export interface OpenHandsLlmConfig {
+  model: string;
+  apiKey?: string;
+  baseUrl?: string;
+  apiVersion?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  timeoutSeconds?: number;
+  numRetries?: number;
+  reasoningEffort?: "auto" | "low" | "medium" | "high";
+  extraHeaders?: Record<string, string>;
+  inputCostPerToken?: number;
+  outputCostPerToken?: number;
+  usageId?: string;
+}
+
 export interface SidecarConfig {
   mode?: "one-shot" | "streaming";
   prompt: string;
   systemPrompt?: string;
   model?: string;
   modelBaseUrl?: string;
+  llm?: OpenHandsLlmConfig;
   agentName?: string;
   apiKey: string;
   /** Workspace root directory ({data_dir}/workspace). Used for plugin discovery and SDK settings. */
@@ -59,10 +76,31 @@ function assertOptStringIn(c: Record<string, unknown>, field: string, allowed: r
   }
 }
 
+function assertOptStringInAs(
+  c: Record<string, unknown>,
+  field: string,
+  label: string,
+  allowed: readonly string[],
+): void {
+  if (c[field] !== undefined) {
+    if (typeof c[field] !== "string" || !allowed.includes(c[field] as string)) {
+      throw new Error(`Invalid SidecarConfig: ${label} must be one of ${allowed.join(", ")}`);
+    }
+  }
+}
+
 function assertOptPositiveInt(c: Record<string, unknown>, field: string): void {
   if (c[field] !== undefined) {
     if (typeof c[field] !== "number" || !Number.isInteger(c[field]) || (c[field] as number) <= 0) {
       throw new Error(`Invalid SidecarConfig: ${field} must be a positive integer`);
+    }
+  }
+}
+
+function assertOptPositiveIntAs(c: Record<string, unknown>, field: string, label: string): void {
+  if (c[field] !== undefined) {
+    if (typeof c[field] !== "number" || !Number.isInteger(c[field]) || (c[field] as number) <= 0) {
+      throw new Error(`Invalid SidecarConfig: ${label} must be a positive integer`);
     }
   }
 }
@@ -85,6 +123,44 @@ function assertOptStringArray(c: Record<string, unknown>, field: string): void {
       throw new Error(`Invalid SidecarConfig: ${field} must be string[]`);
     }
   }
+}
+
+function assertOptStringRecord(c: Record<string, unknown>, field: string): void {
+  if (c[field] !== undefined) {
+    if (
+      typeof c[field] !== "object" ||
+      c[field] === null ||
+      Array.isArray(c[field]) ||
+      Object.values(c[field] as Record<string, unknown>).some(
+        (v) => typeof v !== "string",
+      )
+    ) {
+      throw new Error(`Invalid SidecarConfig: ${field} must be Record<string, string>`);
+    }
+  }
+}
+
+function assertOpenHandsLlmConfig(raw: unknown): void {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new Error("Invalid SidecarConfig: llm must be an object");
+  }
+  const llm = raw as Record<string, unknown>;
+  if (typeof llm.model !== "string" || llm.model.length === 0) {
+    throw new Error("Invalid SidecarConfig: llm.model must be a string");
+  }
+
+  assertOptString(llm, "apiKey");
+  assertOptString(llm, "baseUrl");
+  assertOptString(llm, "apiVersion");
+  assertOptString(llm, "usageId");
+  assertOptNumber(llm, "temperature");
+  assertOptPositiveIntAs(llm, "maxOutputTokens", "llm.maxOutputTokens");
+  assertOptPositiveIntAs(llm, "timeoutSeconds", "llm.timeoutSeconds");
+  assertOptPositiveIntAs(llm, "numRetries", "llm.numRetries");
+  assertOptStringInAs(llm, "reasoningEffort", "llm.reasoningEffort", ["auto", "low", "medium", "high"]);
+  assertOptStringRecord(llm, "extraHeaders");
+  assertOptNumber(llm, "inputCostPerToken");
+  assertOptNumber(llm, "outputCostPerToken");
 }
 
 /**
@@ -120,6 +196,14 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   assertOptStringIn(c, "effort", ["low", "medium", "high", "max"]);
   assertOptStringIn(c, "runSource", ["workflow", "refine", "test", "gate-eval"]);
   assertOptStringIn(c, "runtimeProvider", ["claude", "openhands"]);
+  if (c.runtimeProvider === "openhands") {
+    if (c.llm === undefined) {
+      throw new Error("Invalid SidecarConfig: openhands runtimeProvider requires llm");
+    }
+    assertOpenHandsLlmConfig(c.llm);
+  } else if (c.llm !== undefined) {
+    assertOpenHandsLlmConfig(c.llm);
+  }
 
   // Optional numeric fields
   assertOptPositiveInt(c, "maxTurns");
@@ -171,8 +255,24 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
  * accidental API key exposure in stderr/transcripts.
  */
 export function redactConfig(config: SidecarConfig): Record<string, unknown> {
+  const redactedLlm = config.llm
+    ? {
+        ...config.llm,
+        apiKey: config.llm.apiKey ? "[REDACTED]" : config.llm.apiKey,
+        extraHeaders: config.llm.extraHeaders
+          ? Object.fromEntries(
+              Object.keys(config.llm.extraHeaders).map((key) => [
+                key,
+                "[REDACTED]",
+              ]),
+            )
+          : config.llm.extraHeaders,
+      }
+    : undefined;
+
   return {
     ...config,
     apiKey: "[REDACTED]",
+    ...(redactedLlm ? { llm: redactedLlm } : {}),
   };
 }

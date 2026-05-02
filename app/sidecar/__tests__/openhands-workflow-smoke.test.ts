@@ -98,7 +98,10 @@ function baseRequest(
     allowUserQuestions: false,
     prompt: "Run workflow step",
     apiKey: "sk-test",
-    model: "anthropic/claude-sonnet-4-6",
+    llm: {
+      model: "anthropic/claude-sonnet-4-6",
+      apiKey: "sk-llm-test",
+    },
     workspaceRootDir,
     workspaceSkillDir,
     context: {

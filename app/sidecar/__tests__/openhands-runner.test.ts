@@ -40,7 +40,7 @@ ${body}
 }
 
 describe("openhands runner.py", () => {
-  it("maps model, base URL, agent context, tools, and workspace onto SDK Conversation", () => {
+  it("maps llm config, agent context, tools, and workspace onto SDK Conversation", () => {
     const result = runPython(
       runnerImportScript(`
 captured = {}
@@ -97,9 +97,23 @@ runner._OPENHANDS_IMPORT_ERROR = None
 request = {
     "mode": "one-shot",
     "prompt": "build",
-    "apiKey": "sk-secret",
-    "model": "anthropic/claude-sonnet-4-6",
-    "modelBaseUrl": "https://models.example.com/v1",
+    "llm": {
+        "model": "anthropic/claude-sonnet-4-6",
+        "apiKey": "sk-secret",
+        "baseUrl": "https://models.example.com/v1",
+        "apiVersion": "2024-10-01",
+        "temperature": 0.2,
+        "maxOutputTokens": 4096,
+        "timeoutSeconds": 300,
+        "numRetries": 5,
+        "reasoningEffort": "high",
+        "extraHeaders": {
+            "x-provider-routing": "secure-route"
+        },
+        "inputCostPerToken": 0.000003,
+        "outputCostPerToken": 0.000015,
+        "usageId": "workflow"
+    },
     "agentName": "skill-writer-agent",
     "workspaceRootDir": "/tmp/workspace",
     "workspaceSkillDir": "/tmp/workspace/plugin/skill",
@@ -121,6 +135,18 @@ print(json.dumps(captured, sort_keys=True))
         model: "anthropic/claude-sonnet-4-6",
         api_key: "sk-secret",
         base_url: "https://models.example.com/v1",
+        api_version: "2024-10-01",
+        temperature: 0.2,
+        max_output_tokens: 4096,
+        timeout: 300,
+        num_retries: 5,
+        reasoning_effort: "high",
+        extra_headers: {
+          "x-provider-routing": "secure-route",
+        },
+        input_cost_per_token: 0.000003,
+        output_cost_per_token: 0.000015,
+        usage_id: "workflow",
       },
       workspace: "/tmp/workspace/plugin/skill",
       tools: ["TerminalTool", "FileEditorTool", "TaskTrackerTool"],
@@ -212,7 +238,10 @@ runner._OPENHANDS_IMPORT_ERROR = None
 request = {
     "mode": "one-shot",
     "prompt": "build",
-    "apiKey": "sk-secret",
+    "llm": {
+        "model": "anthropic/claude-sonnet-4-6",
+        "apiKey": "sk-secret",
+    },
 }
 
 stdout = io.StringIO()
@@ -233,5 +262,19 @@ print(json.dumps({"stdout": stdout.getvalue(), "stderr": stderr.getvalue()}, sor
     expect(captured.stderr).not.toContain("sk-secret");
     expect(captured.stdout).toContain("[REDACTED]");
     expect(captured.stderr).toContain("[REDACTED]");
+  }, 30_000);
+
+  it("rejects requests without llm config", () => {
+    const result = runPython(
+      runnerImportScript(`
+try:
+    runner.parse_request(json.dumps({"mode": "one-shot", "prompt": "build"}))
+except ValueError as exc:
+    print(str(exc))
+`),
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe("OpenHands runner request missing llm config");
   }, 30_000);
 });

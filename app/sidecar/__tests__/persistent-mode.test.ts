@@ -1420,6 +1420,10 @@ describe("runPersistent", () => {
         config: {
           prompt: "test",
           apiKey: "sk-test",
+          llm: {
+            model: "claude-sonnet-4-5",
+            apiKey: "sk-llm-test",
+          },
           workspaceRootDir: os.tmpdir(),
           workspaceSkillDir: os.tmpdir(),
           runtimeProvider: "openhands",

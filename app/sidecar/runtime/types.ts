@@ -1,5 +1,8 @@
 import type { AgentEvent } from "../agent-events.js";
 import type { DisplayItem } from "../display-types.js";
+import type { OpenHandsLlmConfig } from "../config.js";
+
+export type { OpenHandsLlmConfig };
 
 export type RuntimeMode = "one-shot" | "streaming";
 
@@ -18,6 +21,7 @@ export interface RuntimeRequestBase {
   systemPrompt?: string;
   model?: string;
   modelBaseUrl?: string;
+  llm?: OpenHandsLlmConfig;
   agentName?: string;
   apiKey: string;
   workspaceRootDir: string;

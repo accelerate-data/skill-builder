@@ -228,7 +228,33 @@ describe("parseSidecarConfig", () => {
 
   it("accepts openhands as a valid runtimeProvider", () => {
     const baseConfig = { prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD };
-    expect(parseSidecarConfig({ ...baseConfig, runtimeProvider: "openhands" }).runtimeProvider).toBe("openhands");
+    expect(parseSidecarConfig({
+      ...baseConfig,
+      runtimeProvider: "openhands",
+      llm: {
+        model: "claude-sonnet-4-5",
+      },
+    }).runtimeProvider).toBe("openhands");
+  });
+
+  it("throws when openhands runtimeProvider is missing llm", () => {
+    const baseConfig = { prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD };
+    expect(() => parseSidecarConfig({ ...baseConfig, runtimeProvider: "openhands" })).toThrow(
+      "Invalid SidecarConfig: openhands runtimeProvider requires llm",
+    );
+  });
+
+  it("validates openhands llm fields", () => {
+    const baseConfig = { prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, runtimeProvider: "openhands" };
+    expect(() => parseSidecarConfig({ ...baseConfig, llm: { apiKey: "sk-test" } })).toThrow(
+      "Invalid SidecarConfig: llm.model must be a string",
+    );
+    expect(() => parseSidecarConfig({ ...baseConfig, llm: { model: "claude-sonnet-4-5", timeoutSeconds: 0 } })).toThrow(
+      "Invalid SidecarConfig: llm.timeoutSeconds must be a positive integer",
+    );
+    expect(() => parseSidecarConfig({ ...baseConfig, llm: { model: "claude-sonnet-4-5", reasoningEffort: "max" } })).toThrow(
+      "Invalid SidecarConfig: llm.reasoningEffort must be one of auto, low, medium, high",
+    );
   });
 
   it("throws when runtimeProvider is invalid", () => {
@@ -245,6 +271,21 @@ describe("parseSidecarConfig", () => {
 
       workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD,
       model: "claude-sonnet-4-6",
+      llm: {
+        model: "claude-sonnet-4-5",
+        apiKey: "sk-llm",
+        baseUrl: "https://models.example.com/v1",
+        apiVersion: "2024-10-01",
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+        timeoutSeconds: 300,
+        numRetries: 5,
+        reasoningEffort: "high",
+        extraHeaders: { "x-provider-routing": "secure-route" },
+        inputCostPerToken: 0.000003,
+        outputCostPerToken: 0.000015,
+        usageId: "workflow",
+      },
       modelBaseUrl: "https://models.example.com/v1",
       agentName: "my-agent",
       maxTurns: 50,
@@ -262,6 +303,7 @@ describe("parseSidecarConfig", () => {
       usageSessionId: "usage-456",
     });
     expect(result.model).toBe("claude-sonnet-4-6");
+    expect(result.llm?.model).toBe("claude-sonnet-4-5");
     expect(result.modelBaseUrl).toBe("https://models.example.com/v1");
     expect(result.maxTurns).toBe(50);
   });
@@ -277,5 +319,27 @@ describe("redactConfig", () => {
     expect(redacted.apiKey).toBe("[REDACTED]");
     expect(redacted.prompt).toBe("hello");
     expect(redacted.workspaceRootDir).toBe(TEST_CWD);
+  });
+
+  it("redacts llm apiKey and extra header values", () => {
+    const config = parseSidecarConfig({
+      prompt: "hello",
+      apiKey: "sk-secret-key",
+      workspaceRootDir: TEST_CWD,
+      workspaceSkillDir: TEST_CWD,
+      runtimeProvider: "openhands",
+      llm: {
+        model: "claude-sonnet-4-5",
+        apiKey: "sk-llm-secret",
+        extraHeaders: {
+          "x-provider-routing": "secure-route",
+        },
+      },
+    });
+    const redacted = redactConfig(config);
+    expect((redacted.llm as Record<string, unknown>).apiKey).toBe("[REDACTED]");
+    expect(
+      ((redacted.llm as Record<string, unknown>).extraHeaders as Record<string, unknown>)["x-provider-routing"],
+    ).toBe("[REDACTED]");
   });
 });
