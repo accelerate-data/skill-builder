@@ -23,6 +23,7 @@ adapters are responsible for converting SDK-specific events into that protocol.
 - How the existing Claude SDK implementation moves behind the new boundary.
 - How OpenHands can be introduced after the boundary exists.
 - Runtime-facing configuration and event mapping responsibilities.
+- Progress visibility requirements for one-shot runs and streaming sessions.
 
 **Does not cover**
 
@@ -41,6 +42,7 @@ adapters are responsible for converting SDK-specific events into that protocol.
 | Forbid user questions in one-shot runs. | A one-shot run has no app-owned pause/resume loop, so `AskUserQuestion` semantics are incompatible by definition. |
 | Keep `AskUserQuestion` as a Skill Builder interaction contract. | The UX belongs to this app; Claude currently triggers it, but OpenHands can trigger the same app behavior through a custom tool. |
 | Keep the app-facing protocol stable during the boundary refactor. | Rust persistence, frontend stores, and tests already depend on normalized sidecar messages. |
+| Preserve visible progress for every runtime mode. | Users need to see reasoning/progress messages, tool calls, file activity, and terminal status while the agent runs. A runtime adapter that only emits a final result does not satisfy the app contract. |
 | Treat Claude as the first runtime adapter. | Wrapping the current implementation creates a working reference adapter for OpenHands parity checks. |
 
 ## Runtime Contract
@@ -131,12 +133,31 @@ Adapters can keep internal SDK event shapes, but they must normalize before
 emitting to the sink. The Rust event router and React stores should not need to
 know whether a message came from Claude or OpenHands.
 
+## Progress Visibility
+
+Both runtime modes must stream work-in-progress information through the sink.
+The UI must never have to wait for a final `run_result` to know that work is
+happening.
+
+Runtime adapters should emit normalized events for:
+
+- run/conversation start and terminal status;
+- assistant reasoning or progress messages when the runtime exposes them;
+- tool-call start with tool name and summary;
+- safe tool observations, file operations, and shell command activity;
+- validation warnings, retries, cancellation, and max-turn exits.
+
+One-shot runs and streaming sessions use the same progress envelopes. The
+difference is lifecycle: one-shot sends one user prompt and terminates after one
+result; streaming sessions keep the conversation open for additional user
+messages and app-owned user-question turns.
+
 ## One-Shot Runs
 
 A one-shot run is an autonomous request:
 
 1. The caller submits one request.
-2. The runtime streams progress and display events.
+2. The runtime streams progress, reasoning, tool-call, and display events.
 3. The runtime emits exactly one terminal `run_result`.
 4. The runtime is done.
 
@@ -351,8 +372,7 @@ created -> active -> closed
 
 ## Open Questions
 
-1. Should runtime selection be a hidden developer setting during the OpenHands
-   port, or should Settings expose it once both adapters exist?
-2. Should Claude plugin layout remain the canonical skill layout after
-   OpenHands lands, or should the app introduce a runtime-neutral skill layout
-   as a later migration?
+None for VU-1145. The clean-break OpenHands migration makes OpenHands the
+workflow runtime and moves workflow runtime artifacts to `.agents/**`; remaining
+marketplace or imported-skill compatibility questions are outside this runtime
+boundary.
