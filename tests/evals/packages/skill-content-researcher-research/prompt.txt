@@ -1,6 +1,6 @@
 EXECUTE IMMEDIATELY - do not ask questions, do not greet the user, do not offer options.
 
-This is the app step-0 research prompt for the OpenHands `skill-creator` agent using task kind `workflow.research`. Use the inline context as if it came from user-context.md and return the same structured output the app captures.
+This is the app step-0 research prompt for the OpenHands `skill-creator` agent using task kind `workflow.research` and app-owned prompt `agent-sources/prompts/research.txt`. Use the inline context as if it came from user-context.md and return the same structured output the app captures.
 
 Skill name: fabric-dbt-standards
 Workspace directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
@@ -17,8 +17,23 @@ Return raw JSON only. Use this exact envelope shape:
   "research_output": {
     "version": "1",
     "metadata": {
+      "question_count": 0,
+      "section_count": 0,
+      "refinement_count": 0,
+      "must_answer_count": 0,
       "priority_questions": [],
-      "research_plan": {}
+      "scope_recommendation": false,
+      "warning": null,
+      "error": null,
+      "research_plan": {
+        "purpose": "organization specific data engineering standards",
+        "domain": "data-engineering",
+        "topic_relevance": "relevant",
+        "dimensions_evaluated": 0,
+        "dimensions_selected": 0,
+        "dimension_scores": [],
+        "selected_dimensions": []
+      }
     },
     "sections": [],
     "notes": [],

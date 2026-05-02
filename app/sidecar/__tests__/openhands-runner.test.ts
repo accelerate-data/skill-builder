@@ -394,6 +394,110 @@ print(stdout.getvalue())
     expect(JSON.stringify(records[0])).not.toContain("vault-token");
   }, 30_000);
 
+  it("routes answer evaluation through skill-creator with bundled workspace skills", () => {
+    const result = runPython(
+      runnerImportScript(`
+import tempfile
+from pathlib import Path
+
+captured = {}
+workspace_dir = Path(tempfile.mkdtemp())
+agent_dir = workspace_dir / ".agents" / "agents"
+skills_dir = workspace_dir / ".agents" / "skills"
+agent_dir.mkdir(parents=True)
+(skills_dir / "answer-evaluator").mkdir(parents=True)
+(agent_dir / "skill-creator.md").write_text("# Skill Creator\\n\\nUse deployed skills when requested.", encoding="utf-8")
+(skills_dir / "answer-evaluator" / "SKILL.md").write_text("""---
+name: answer-evaluator
+---
+
+# Answer Evaluator
+""", encoding="utf-8")
+
+class LLM:
+    def __init__(self, **kwargs):
+        pass
+
+class Tool:
+    def __init__(self, name):
+        self.name = name
+
+class FileEditorTool:
+    name = "FileEditorTool"
+class TaskTrackerTool:
+    name = "TaskTrackerTool"
+class AgentContext:
+    def __init__(self, skills=None, system_message_suffix=None, user_message_suffix=None, load_public_skills=True):
+        captured["skills"] = skills
+        captured["system_message_suffix"] = system_message_suffix
+        captured["user_message_suffix"] = user_message_suffix
+        captured["load_public_skills"] = load_public_skills
+class Agent:
+    def __init__(self, **kwargs):
+        pass
+class LocalWorkspace:
+    def __init__(self, working_dir):
+        captured["working_dir"] = working_dir
+class Conversation:
+    def __init__(self, **kwargs):
+        self.state = type("State", (), {"events": []})()
+    def send_message(self, prompt):
+        captured["prompt"] = prompt
+    def run(self):
+        captured["run_called"] = True
+        return None
+
+runner.LLM = LLM
+runner.Tool = Tool
+runner.FileEditorTool = FileEditorTool
+runner.TaskTrackerTool = TaskTrackerTool
+runner.AgentContext = AgentContext
+runner.Agent = Agent
+runner.Conversation = Conversation
+runner.LocalWorkspace = LocalWorkspace
+def load_skills_from_dir(value):
+    captured["skills_dir"] = value
+    return ({}, {}, {"answer-evaluator": "answer-evaluator-skill"})
+runner.load_skills_from_dir = load_skills_from_dir
+runner._OPENHANDS_IMPORT_ERROR = None
+
+request = {
+    "mode": "one-shot",
+    "prompt": "Use the answer-evaluator skill to evaluate answers.",
+    "llm": {"model": "anthropic/claude-sonnet-4-6"},
+    "agentName": "skill-creator",
+    "taskKind": "workflow.answer_evaluator",
+    "workspaceRootDir": str(workspace_dir),
+    "workspaceSkillDir": str(workspace_dir),
+    "allowedTools": ["file_editor"],
+    "maxTurns": 4,
+}
+
+with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+    runner.parse_request(json.dumps(request))
+    runner.run_via_openhands_sdk(request)
+
+print(json.dumps(captured, sort_keys=True))
+`),
+    );
+
+    expect(result.status).toBe(0);
+    const captured = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(captured).toMatchObject({
+      prompt: "Use the answer-evaluator skill to evaluate answers.",
+      skills: ["answer-evaluator-skill"],
+      load_public_skills: false,
+      run_called: true,
+    });
+    expect(captured.system_message_suffix).toContain(
+      "Use deployed skills when requested.",
+    );
+    expect(captured.skills_dir).toMatch(/\/\.agents\/skills$/);
+    expect(captured.working_dir).toBe(
+      (captured.skills_dir as string).replace("/.agents/skills", ""),
+    );
+  }, 30_000);
+
   it("rejects non skill-creator agents", () => {
     const result = runPython(
       runnerImportScript(`

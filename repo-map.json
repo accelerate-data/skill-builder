@@ -264,7 +264,7 @@
   },
   "key_references": {
     "artifact_contracts": "docs/design/agent-specs/canonical-format.md — high-level artifact format contracts",
-    "research_output_schema": "agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md — canonical research_output schema",
+    "research_output_schema": "agent-sources/workspace/skills/shared/schemas.md — canonical workflow research and answer-evaluator schema reference copied with the OpenHands workspace skills",
     "startup_recon_design": "docs/design/startup-recon/ — reconciliation scenario matrix (scenarios 1–12), used by reconciliation/",
     "frontend_rules": ".claude/rules/frontend-design.md — AD brand, component constraints, state indicators",
     "codegen_rules": ".claude/rules/codegen.md — generated contract freshness requirements",

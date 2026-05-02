@@ -65,11 +65,19 @@ test('deterministic eval packages cover OpenHands workflow agent topology', () =
   const packageEvidence = [
     readEval('packages/skill-content-researcher-research/prompt.txt'),
     readEval('packages/skill-content-researcher-research/promptfooconfig.json'),
+    readEval('packages/skill-content-researcher-answer-evaluator/prompt.txt'),
+    readEval('packages/skill-content-researcher-answer-evaluator/promptfooconfig.json'),
     readEval('packages/workspace-workflow-step-prompt/prompt.txt'),
     readEval('packages/workspace-workflow-step-prompt/promptfooconfig.json'),
   ].join('\n');
 
-  for (const token of ['skill-creator', 'workflow.research', 'agent-sources/prompts/research.txt']) {
+  for (const token of [
+    'skill-creator',
+    'workflow.research',
+    'workflow.answer_evaluator',
+    'answer-evaluator',
+    'agent-sources/prompts/research.txt',
+  ]) {
     assert.ok(
       packageEvidence.includes(token),
       `eval prompt/config coverage must mention ${token}`,
