@@ -24,8 +24,19 @@ legacy_patterns=(
 
 failed=0
 
+search_legacy_pattern() {
+  local pattern="$1"
+
+  if command -v rg >/dev/null 2>&1; then
+    rg -n --glob '*.md' "$pattern" "${check_paths[@]}"
+    return $?
+  fi
+
+  grep -RIn --include='*.md' -e "$pattern" "${check_paths[@]}"
+}
+
 for pattern in "${legacy_patterns[@]}"; do
-  if rg -n --glob '*.md' "$pattern" "${check_paths[@]}"; then
+  if search_legacy_pattern "$pattern"; then
     echo ""
     echo "Found forbidden legacy token: $pattern"
     failed=1

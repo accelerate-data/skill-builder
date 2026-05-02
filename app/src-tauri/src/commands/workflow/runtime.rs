@@ -97,6 +97,45 @@ pub(crate) fn build_workflow_research_sidecar_config(
     config
 }
 
+pub(crate) fn build_answer_evaluator_sidecar_config(
+    skill_name: &str,
+    prompt: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+    llm: crate::types::WorkflowLlmConfig,
+) -> SidecarConfig {
+    let workspace_root_dir = workspace_path.replace('\\', "/");
+    let workspace_run_dir =
+        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
+            .to_string_lossy()
+            .replace('\\', "/");
+
+    let mut config =
+        crate::agents::sidecar::build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+            prompt: prompt.to_string(),
+            llm,
+            workspace_root_dir,
+            workspace_run_dir,
+            agent_name: "skill-creator".to_string(),
+            task_kind: Some("workflow.answer_evaluator".to_string()),
+            user_message_suffix: None,
+            allowed_tools: tools_for_agent("answer-evaluator"),
+            max_turns: 20,
+            output_format: Some(answer_evaluator_output_format()),
+            skill_name: None,
+            step_id: None,
+            run_source: Some("gate-eval".to_string()),
+            plugin_slug: plugin_slug.to_string(),
+        });
+    config.transcript_log_dir = Some(
+        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
+            .join("logs")
+            .to_string_lossy()
+            .into_owned(),
+    );
+    config
+}
+
 const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../agent-sources/prompts/skill-creator-user-suffix.txt"
@@ -675,68 +714,19 @@ pub async fn run_answer_evaluator(
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
     log::info!(
-        "run_answer_evaluator: skill={} agent=answer-evaluator",
+        "run_answer_evaluator: skill={} agent=skill-creator task=workflow.answer_evaluator",
         skill_name
     );
 
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
-    let config = SidecarConfig {
-        mode: Some("one-shot".to_string()),
-        prompt,
-        system_prompt: None,
-        llm: Some(llm),
-        model: None,
-        model_base_url: None,
-        api_key: crate::types::SecretString::new("openhands-llm-config".to_string()),
-        workspace_root_dir: workspace_path.replace('\\', "/"),
-        workspace_skill_dir: resolve_workspace_skill_dir(
-            Path::new(&workspace_path),
-            &plugin_slug,
-            &skill_name,
-        )
-        .to_string_lossy()
-        .replace('\\', "/"),
-        allowed_tools: Some(tools_for_agent("answer-evaluator")),
-        max_turns: Some(20),
-        // Compatibility field retained while other runtime paths still share
-        // SidecarConfig; OpenHands one-shot workflow ignores it.
-        permission_mode: None,
-        betas: None,
-        thinking: None,
-        // Workflow model configuration is carried by llm; suppress legacy fields.
-        fallback_model: None,
-        effort: None,
-        output_format: Some(answer_evaluator_output_format()),
-        prompt_suggestions: None,
-        path_to_claude_code_executable: None,
-        path_to_openhands_runner: None,
-        agent_name: Some("answer-evaluator".to_string()),
-        // Retained so existing sidecar config parsing accepts gate runs;
-        // OpenHands resolves workflow instructions from the `.agents` layout.
-        required_plugins: Some(vec!["skill-content-researcher".to_string()]),
-        setting_sources: None,
-        conversation_history: None,
-        skill_name: None,
-        step_id: None,
-        workflow_session_id: None,
-        usage_session_id: None,
-        run_source: Some("gate-eval".to_string()),
-        plugin_slug: plugin_slug.clone(),
-        transcript_log_dir: Some(
-            crate::skill_paths::workspace_skill_dir(
-                Path::new(&workspace_path),
-                &plugin_slug,
-                &skill_name,
-            )
-            .join("logs")
-            .to_string_lossy()
-            .into_owned(),
-        ),
-        runtime_provider: workflow_one_shot_runtime_provider(),
-        task_kind: None,
-        user_message_suffix: None,
-    };
+    let config = build_answer_evaluator_sidecar_config(
+        &skill_name,
+        &prompt,
+        &workspace_path,
+        &plugin_slug,
+        llm,
+    );
 
     log::debug!(
         "[run_answer_evaluator] starting one-shot request agent={} workspace_skill_dir={}",

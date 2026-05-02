@@ -45,6 +45,19 @@ function getString(
   return undefined;
 }
 
+function parseResultTextPayload(text: string): unknown | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const candidate = fenced?.[1]?.trim() ?? trimmed;
+
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+}
+
 function getNumber(
   record: Record<string, unknown>,
   ...keys: string[]
@@ -212,8 +225,14 @@ export function useWorkflowStateMachine({
       const resultItem = [...run.displayItems]
         .reverse()
         .find((di) => di.type === "result");
-      if (!resultItem?.structuredOutput) return null;
-      return resultItem.structuredOutput;
+      if (resultItem?.structuredOutput != null)
+        return resultItem.structuredOutput;
+
+      const state = run.conversationState;
+      if (state?.structuredOutput != null) return state.structuredOutput;
+      if (state?.resultText) return parseResultTextPayload(state.resultText);
+
+      return null;
     },
     [],
   );

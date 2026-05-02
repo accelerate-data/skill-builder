@@ -243,6 +243,33 @@ describe("read directive compliance", () => {
 });
 
 describe("Research scope guard contract prompts", () => {
+  it("research and answer-evaluator skills use shared schemas only", () => {
+    const checkedFiles = [
+      "agent-sources/workspace/skills/research/SKILL.md",
+      "agent-sources/workspace/skills/research/references/consolidation-handoff.md",
+      "agent-sources/workspace/skills/answer-evaluator/SKILL.md",
+      "agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md",
+      "agent-sources/plugins/skill-content-researcher/skills/research/references/consolidation-handoff.md",
+      "agent-sources/plugins/skill-content-researcher/skills/answer-evaluator/SKILL.md",
+    ];
+
+    for (const relPath of checkedFiles) {
+      const content = fs.readFileSync(path.join(REPO_ROOT, relPath), "utf8");
+      expect(content, relPath).toMatch(/shared\/schemas\.md/);
+      expect(content, relPath).not.toMatch(/old-schemas\.md/);
+    }
+
+    expect(fs.existsSync(
+      path.join(REPO_ROOT, "agent-sources/workspace/skills/shared/schemas.md"),
+    )).toBe(true);
+    expect(fs.existsSync(
+      path.join(
+        REPO_ROOT,
+        "agent-sources/plugins/skill-content-researcher/skills/shared/schemas.md",
+      ),
+    )).toBe(true);
+  });
+
   it("research skill does not run preflight and emits low-score scope recommendation", () => {
     const content = fs.readFileSync(
       path.join(
