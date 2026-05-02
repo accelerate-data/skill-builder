@@ -38,4 +38,8 @@ vd-memory/*
 # Python temp files
 __pycache__
 
+# OpenHands runner PyInstaller scratch output
+app/sidecar/openhands/.pyinstaller-build/
+app/sidecar/openhands/.pyinstaller-spec/
+
 .mcp.json
