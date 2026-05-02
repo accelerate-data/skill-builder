@@ -76,7 +76,10 @@ Guard and error outputs use `research_lens: null`, zero counts, empty `sections`
 - Modify: `agent-sources/workspace/skills/research/SKILL.md` - replace dimension scoring flow with one-lens flow.
 - Delete: `agent-sources/workspace/skills/research/references/consolidation-handoff.md`, `dimension-sets.md`, `scoring-rubric.md`, and `references/dimensions/*.md`. These references are obsolete in the one-lens flow and should not remain as discoverable fallback guidance.
 - Modify: `agent-sources/workspace/skills/shared/schemas.md` - document `research_lens` semantics and remove `research_plan` semantics.
-- Modify: `tests/evals/packages/*research*/prompt.txt` and `promptfooconfig.json` where assertions require `dimensions_selected` or `research_plan`.
+- Modify: `tests/evals/packages/skill-content-researcher-research/prompt.txt` and `promptfooconfig.json`.
+- Modify: `tests/evals/packages/skill-content-researcher-skill-builder/prompt.txt` and `promptfooconfig.json`.
+- Modify: `tests/evals/packages/workspace-workflow-step-prompt/prompt.txt` and `promptfooconfig.json`.
+- Audit all other `tests/evals/packages/**/prompt*.json` and `prompt.txt` files for legacy research contract fields.
 - Audit: `repo-map.json` if files are deleted from or added under mapped paths.
 
 ---
@@ -679,9 +682,11 @@ If `repo-map.json` names the deleted reference set, update that description in t
 - Modify: `app/agent-tests/agent-structure.test.ts`
 - Modify: `tests/evals/packages/skill-content-researcher-research/prompt.txt`
 - Modify: `tests/evals/packages/skill-content-researcher-research/promptfooconfig.json`
+- Modify: `tests/evals/packages/skill-content-researcher-skill-builder/prompt.txt`
+- Modify: `tests/evals/packages/skill-content-researcher-skill-builder/promptfooconfig.json`
 - Modify: `tests/evals/packages/workspace-workflow-step-prompt/prompt.txt`
 - Modify: `tests/evals/packages/workspace-workflow-step-prompt/promptfooconfig.json`
-- Modify other `tests/evals/packages/*research*` files found by `rg`.
+- Audit: other `tests/evals/packages/**/prompt.txt` and `promptfooconfig.json` files found by `rg`.
 
 - [ ] **Step 1: Update structural tests**
 
@@ -699,7 +704,22 @@ expect(content).not.toMatch(/selected_dimensions/);
 
 - [ ] **Step 2: Update eval prompt examples**
 
-Remove top-level `dimensions_selected` from research output examples. Add `metadata.research_lens` to successful examples.
+Run:
+
+```bash
+find tests/evals/packages -maxdepth 2 -type f \( -name 'prompt.txt' -o -name 'promptfooconfig.json' \) | sort | xargs rg -n "dimensions_selected|research_plan|dimension_scores|selected_dimensions|all_dimensions_low_score"
+```
+
+Expected initial hits include:
+
+- `tests/evals/packages/skill-content-researcher-research/prompt.txt`
+- `tests/evals/packages/skill-content-researcher-research/promptfooconfig.json`
+- `tests/evals/packages/skill-content-researcher-skill-builder/prompt.txt`
+- `tests/evals/packages/skill-content-researcher-skill-builder/promptfooconfig.json`
+- `tests/evals/packages/workspace-workflow-step-prompt/prompt.txt`
+- `tests/evals/packages/workspace-workflow-step-prompt/promptfooconfig.json`
+
+Remove top-level `dimensions_selected` from research output examples. Remove `metadata.research_plan`, `dimension_scores`, and `selected_dimensions`. Add `metadata.research_lens` to successful examples.
 
 - [ ] **Step 3: Update eval assertions**
 
@@ -720,6 +740,16 @@ typeof data.research_output.metadata.research_lens === "string"
 ```
 
 For guard/error evals, assert `research_lens` may be absent and `warning` or `error` is present.
+
+- [ ] **Step 4: Verify eval package inventory is clean**
+
+Run the same eval grep again:
+
+```bash
+find tests/evals/packages -maxdepth 2 -type f \( -name 'prompt.txt' -o -name 'promptfooconfig.json' \) | sort | xargs rg -n "dimensions_selected|research_plan|dimension_scores|selected_dimensions|all_dimensions_low_score"
+```
+
+Expected: no matches.
 
 ### Task 8: Full Validation and Cleanup
 
