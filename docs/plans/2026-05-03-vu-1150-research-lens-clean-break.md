@@ -74,7 +74,7 @@ Guard and error outputs use `research_lens: null`, zero counts, empty `sections`
 - Modify: `app/src-tauri/src/commands/workflow/tests.rs`, `app/src-tauri/src/commands/workflow_artifacts.rs`, `app/src-tauri/src/contracts/*` tests - remove `dimensions_selected` expectations.
 - Modify: `agent-sources/prompts/research.txt` - remove top-level `dimensions_selected`.
 - Modify: `agent-sources/workspace/skills/research/SKILL.md` and `agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md` - replace dimension scoring flow with one-lens flow.
-- Delete or stop referencing: `agent-sources/**/skills/research/references/consolidation-handoff.md`, `dimension-sets.md`, `scoring-rubric.md`, and `references/dimensions/*.md` if no remaining tests or docs use them.
+- Delete: `agent-sources/**/skills/research/references/consolidation-handoff.md`, `dimension-sets.md`, `scoring-rubric.md`, and `references/dimensions/*.md`. These references are obsolete in the one-lens flow and should not remain as discoverable fallback guidance.
 - Modify: `agent-sources/workspace/skills/shared/schemas.md` and plugin copy - document `research_lens` semantics and remove `research_plan` semantics.
 - Modify: `agent-sources/plugins/skill-content-researcher/agents/research-agent.md` if it contains dimension examples or guard payloads.
 - Modify: `tests/evals/packages/*research*/prompt.txt` and `promptfooconfig.json` where assertions require `dimensions_selected` or `research_plan`.
@@ -546,10 +546,10 @@ from both render paths in `app/src/components/step-complete/research-step-comple
 - Modify: `agent-sources/plugins/skill-content-researcher/shared/schemas.md`
 - Modify: `agent-sources/plugins/skill-content-researcher/agents/research-agent.md`
 - Modify: `agent-sources/prompts/research.txt`
-- Delete if unused: `agent-sources/**/skills/research/references/consolidation-handoff.md`
-- Delete if unused: `agent-sources/**/skills/research/references/dimension-sets.md`
-- Delete if unused: `agent-sources/**/skills/research/references/scoring-rubric.md`
-- Delete if unused: `agent-sources/**/skills/research/references/dimensions/*.md`
+- Delete: `agent-sources/**/skills/research/references/consolidation-handoff.md`
+- Delete: `agent-sources/**/skills/research/references/dimension-sets.md`
+- Delete: `agent-sources/**/skills/research/references/scoring-rubric.md`
+- Delete: `agent-sources/**/skills/research/references/dimensions/*.md`
 
 - [ ] **Step 1: Replace the research skill overview**
 
@@ -644,7 +644,7 @@ Return only a raw JSON object with this envelope:
 
 Remove `Maximum research dimensions before scope warning` if no prompt or runtime behavior uses it after the migration.
 
-### Task 6: Remove or Archive Obsolete Dimension References
+### Task 6: Delete Obsolete Dimension References
 
 **Files:**
 
@@ -655,7 +655,7 @@ Remove `Maximum research dimensions before scope warning` if no prompt or runtim
 - Delete matching plugin copies under `agent-sources/plugins/skill-content-researcher/skills/research/references/`
 - Modify: `repo-map.json` if it describes these reference files.
 
-- [ ] **Step 1: Confirm no remaining references**
+- [ ] **Step 1: Confirm all remaining references are targets for rewrite or deletion**
 
 Run:
 
@@ -663,7 +663,7 @@ Run:
 rg -n "dimension-sets|scoring-rubric|consolidation-handoff|references/dimensions|dimension_scores|selected_dimensions" agent-sources app tests
 ```
 
-Expected after previous tasks: only planned deletions or old generated snapshots remain.
+Expected after previous tasks: no runtime, prompt, schema, fixture, or eval code still depends on these files. Any remaining references must be rewritten or deleted in this task; do not keep the old dimension/scoring/consolidation files as archived reference material.
 
 - [ ] **Step 2: Delete obsolete references**
 
