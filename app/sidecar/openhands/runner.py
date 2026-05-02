@@ -31,6 +31,7 @@ os.environ.setdefault("OPENHANDS_SUPPRESS_BANNER", "1")
 
 _PROTOCOL_STDOUT: TextIO | None = None
 _TERMINAL_STATUSES = {"completed", "error", "cancelled"}
+_ACTIVE_CONVERSATION: Any | None = None
 
 
 def _protocol_stream() -> TextIO:
@@ -321,6 +322,7 @@ def _normalize_model_for_litellm(model: str, base_url: Any) -> str:
 
 
 def run_via_openhands_sdk(request: dict[str, Any]) -> str:
+    global _ACTIVE_CONVERSATION
     if any(x is None for x in [Agent, AgentContext, Conversation, LLM, Tool, LocalWorkspace]):
         raise RuntimeError(_OPENHANDS_IMPORT_ERROR or "OpenHands SDK not available")
 
@@ -362,8 +364,12 @@ def run_via_openhands_sdk(request: dict[str, Any]) -> str:
         )
 
     with contextlib.redirect_stdout(_RedactingStderr(secrets)):
-        conversation.send_message(prompt)
-        result = conversation.run()
+        _ACTIVE_CONVERSATION = conversation
+        try:
+            conversation.send_message(prompt)
+            result = conversation.run()
+        finally:
+            _ACTIVE_CONVERSATION = None
 
         return _extract_final_text(result) or _extract_final_text(conversation)
 
@@ -450,6 +456,14 @@ def _emit_startup_error(error_message: str, secrets: list[str] | None = None) ->
 
 
 def _raise_keyboard_interrupt(_signum: int, _frame: Any) -> None:
+    if _ACTIVE_CONVERSATION is not None:
+        try:
+            _ACTIVE_CONVERSATION.pause()
+        except Exception as exc:
+            print(
+                f"[openhands-runner] SDK pause failed during cancellation: {exc}",
+                file=sys.stderr,
+            )
     raise KeyboardInterrupt
 
 
