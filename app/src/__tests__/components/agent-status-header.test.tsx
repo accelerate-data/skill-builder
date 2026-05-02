@@ -5,6 +5,7 @@ import { useWorkflowStore } from "@/stores/workflow-store";
 import type { DisplayItem } from "@/lib/display-types";
 import {
   AgentStatusHeader,
+  getAgentActivityCount,
   getDisplayStatus,
   formatElapsed,
 } from "@/components/agent-status-header";
@@ -62,6 +63,25 @@ describe("AgentStatusHeader", () => {
     rerender(<AgentStatusHeader agentId="test-agent" />);
 
     // Now should show Running
+    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.queryByText("Initializing\u2026")).not.toBeInTheDocument();
+  });
+
+  it("transitions from Initializing to Running when first OpenHands conversation event arrives", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    const { rerender } = render(<AgentStatusHeader agentId="test-agent" />);
+
+    expect(screen.getByText("Initializing\u2026")).toBeInTheDocument();
+
+    useAgentStore.getState().addConversationEvent("test-agent", {
+      type: "conversation_event",
+      eventClass: "SystemPromptEvent",
+      event: { source: "system" },
+      timestamp: Date.now(),
+    });
+
+    rerender(<AgentStatusHeader agentId="test-agent" />);
+
     expect(screen.getByText("Running")).toBeInTheDocument();
     expect(screen.queryByText("Initializing\u2026")).not.toBeInTheDocument();
   });
@@ -213,6 +233,24 @@ describe("getDisplayStatus", () => {
 
   it("returns 'running' when workflowIsInitializing is undefined and items exist", () => {
     expect(getDisplayStatus("running", 3, undefined)).toBe("running");
+  });
+});
+
+describe("getAgentActivityCount", () => {
+  it("counts OpenHands conversation events as activity", () => {
+    expect(
+      getAgentActivityCount({
+        displayItems: [],
+        conversationEvents: [
+          {
+            type: "conversation_event",
+            eventClass: "SystemPromptEvent",
+            event: {},
+            timestamp: Date.now(),
+          },
+        ],
+      }),
+    ).toBe(1);
   });
 });
 
