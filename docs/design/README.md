@@ -10,6 +10,7 @@
 | [skill-tester/](skill-tester/README.md) | Skill tester: two-agent comparison + evaluator design |
 | [skill-import/](skill-import/README.md) | Import skill from file: file picker → metadata review dialog → conflict handling |
 | [skills-marketplace/](skills-marketplace/README.md) | Skills marketplace design |
+| [model-settings/](model-settings/README.md) | Model settings: clean-break OpenHands LLM settings UI, app settings contract, sidecar request shape, and workspace boundary |
 | [../user-guide/](../user-guide/) | User-facing docs site (VitePress). Source markdown; deployed to GitHub Pages via `docs.yml`. Route → docs URL map: `app/src/lib/help-urls.ts` |
 | [branding/](branding/ad-brand.md) | Brand and visual identity |
 | [release/](release/README.md) | Release pipeline: CI/CD workflows, desktop app build, credentials |
