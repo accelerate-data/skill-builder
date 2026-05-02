@@ -4,9 +4,9 @@
 
 **Goal:** Migrate workflow step 0 Research to the OpenHands-native clean-break runtime so the app streams OpenHands tool/reasoning events while Rust extracts the final JSON result and materializes `context/clarifications.json`.
 
-**Architecture:** Implement this as a child branch/worktree off `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`, then merge the tested child branch back into the VU-1145 accumulation branch. Keep one OpenHands agent, `skill-creator`; route step behavior through app-owned prompts and `task_kind = "workflow.research"`. The frontend observes OpenHands `conversation_event` / `conversation_state` records and no longer owns research output materialization.
+**Architecture:** Implement this as a child branch/worktree off `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`, then merge the tested child branch back into the VU-1145 accumulation branch. Keep one OpenHands agent, `skill-creator`; route step behavior through app-owned prompts and `task_kind = "workflow.research"`. Use a clean-break Rust -> Python OpenHands runner boundary for OpenHands calls. Node is not in the OpenHands workflow research path. The frontend observes OpenHands `conversation_event` / `conversation_state` records and no longer owns research output materialization.
 
-**Tech Stack:** Tauri Rust commands, Node/OpenHands sidecar protocol, Python OpenHands SDK runner, React/Zustand event stream UI, Vitest, cargo tests, live OpenHands smoke testing.
+**Tech Stack:** Tauri Rust commands, Rust OpenHands process manager, Python OpenHands SDK runner, React/Zustand event stream UI, Vitest, cargo tests, live OpenHands smoke testing.
 
 ---
 
@@ -32,6 +32,7 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 **In scope**
 
 - Migrate workflow step 0 Research to OpenHands one-shot execution.
+- Spawn the bundled Python `openhands-runner` directly from Rust for OpenHands one-shot calls; do not route OpenHands workflow research through the Node sidecar.
 - Use the shared `skill-creator` OpenHands agent with `task_kind = "workflow.research"`.
 - Keep the current UI progress behavior by streaming OpenHands `conversation_event` records for reasoning, tool calls, observations, and parallel action groups while the run is active.
 - Move the research task prompt to `agent-sources/prompts/research.txt`.
@@ -49,6 +50,7 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - Reworking answer evaluator / gate execution.
 - Improving the quality of research questions beyond making the step run end to end.
 - Reintroducing Claude-style `display_item`, `run_result`, or frontend-owned structured-output materialization for OpenHands.
+- Preserving Node as an OpenHands runtime adapter. Existing Node/Claude files may remain until broader cleanup, but new or migrated OpenHands calls must use the direct Rust runner boundary.
 - Adding SDK `outputFormat` support. OpenHands terminal text is the source; Rust extracts and validates JSON.
 
 ## Reviewed Current Code
@@ -60,7 +62,7 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - `app/src-tauri/src/commands/workflow/prompt.rs:72` hard-codes the step 0 prompt and says `You are research-agent`.
 - `app/src/hooks/use-workflow-state-machine.ts:331` still extracts legacy `displayItems[].structuredOutput`.
 - `app/src/hooks/use-workflow-state-machine.ts:349` still calls `materializeWorkflowStepOutput(...)` from the frontend.
-- `app/src-tauri/src/agents/sidecar.rs:139` and `app/src-tauri/src/agents/sidecar.rs:265` already provide the clean OpenHands config and terminal wait boundaries used by scope review.
+- `app/src-tauri/src/agents/sidecar.rs` owns the clean OpenHands config, direct runner dispatch, transcript logging, terminal wait, and event routing boundaries used by scope review and workflow research.
 - `app/src/lib/openhands-conversation-events.ts` and `app/src/components/agent-items/conversation-event-list.tsx` already support OpenHands-native event rendering from VU-1147; workflow research must use that path directly.
 
 ## File Structure
@@ -80,7 +82,7 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - Modify: `app/src-tauri/src/commands/workflow/output_format.rs`
   - Add or expose a strict helper for parsing research JSON from terminal result text if keeping it near materialization is cleaner.
 - Modify: `app/src-tauri/src/agents/sidecar.rs`
-  - Extract reusable nonblocking one-shot start/listener pieces if needed so workflow can return `agent_id` immediately and still materialize in the backend after terminal state.
+  - Add the Rust-owned OpenHands process dispatcher, stdout JSONL router, stderr logger, transcript writer, and reusable blocking one-shot helper. OpenHands calls must not pass through Node.
 - Modify: `app/src/lib/workflow-step-configs.ts`
   - Stop requiring frontend structured output for step 0 after backend-owned materialization.
 - Modify: `app/src/hooks/use-workflow-state-machine.ts`
@@ -258,8 +260,17 @@ Expected: research config tests pass.
 
 ## Task 6: Add Nonblocking Backend Materialization For Research
 
+- [x] Add a Rust-owned `dispatch_openhands_one_shot(...)` helper that:
+  - resolves and spawns the bundled `openhands-runner` directly;
+  - writes the runner request JSON to stdin;
+  - treats stdout as JSONL protocol only and routes each line through the Rust event router;
+  - writes redacted stderr to app logs only;
+  - writes per-run transcript JSONL with the redacted config first line;
+  - emits `agent-exit` from Rust after terminal state or runner exit;
+  - supports direct cancellation for Rust-spawned OpenHands processes without falling back to the Node sidecar cancel path.
+- [x] Update the shared blocking `run_openhands_one_shot(...)` helper used by scope review to use the direct Rust runner instead of the Node persistent sidecar.
 - [x] Preserve the current `run_workflow_step(...) -> agent_id` frontend contract so the UI can register the active run immediately and show streaming events.
-- [x] Start the OpenHands request as step 0, return `agent_id` immediately, and install a backend terminal listener before dispatching the sidecar request.
+- [x] Start the OpenHands request as step 0, return `agent_id` immediately, and install a backend terminal listener before dispatching the direct runner request.
 - [x] When terminal `conversation_state` arrives for that `agent_id`:
   - extract research JSON from `result_text`;
   - call `materialize_workflow_step_output_value(&workspace_skill_dir, 0, &payload)`;
@@ -406,15 +417,19 @@ Expected: markdownlint passes.
 ```bash
 cd app && npm run test:agents:structural
 cd app && npx vitest run src/__tests__/pages/workflow.test.tsx src/__tests__/hooks/use-agent-stream.test.ts src/__tests__/components/agent-output-panel.test.tsx
+cargo test --manifest-path app/src-tauri/Cargo.toml agents::sidecar
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill
 cd tests/evals && npm test
+cd app/sidecar && npx vitest run __tests__/openhands-runner.integration.test.ts
 ```
 
 - [x] Run broader checks if the implementation changes shared event types or generated command types:
 
 ```bash
 cd app && npm run codegen
-cd app && npm run test:unit
+cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings
+cd app && bash tests/run.sh e2e --tag @workflow
 ```
 
 - [x] Commit and push from the child worktree:

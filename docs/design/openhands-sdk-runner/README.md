@@ -10,11 +10,13 @@ functional-specs: []
 ## Overview
 
 Skill Builder calls the OpenHands SDK through the bundled `openhands-runner`.
-The runner always constructs one top-level OpenHands agent, `skill-creator`.
-One-shot work is a single-message OpenHands `Conversation`: the app sends one
-rendered task prompt, the runner streams progress and tool events, and the run
-ends with one terminal result. Future multi-message conversations use the same
-agent and SDK object model, but keep the `Conversation` open across messages.
+Rust owns the OpenHands process lifecycle and spawns this runner directly for
+OpenHands work; Node is not part of the OpenHands runtime boundary. The runner
+always constructs one top-level OpenHands agent, `skill-creator`. One-shot work
+is a single-message OpenHands `Conversation`: the app sends one rendered task
+prompt, the runner streams progress and tool events, and the run ends with one
+terminal result. Future multi-message conversations use the same agent and SDK
+object model, but keep the `Conversation` open across messages.
 
 This document defines the exact SDK invocation contract: where the agent system
 prompt comes from, how file-based skills are loaded, how app-owned task prompts
@@ -51,6 +53,7 @@ are rendered, and how progress remains visible in the current UI.
 | Load `skill-creator.md` into `AgentContext.system_message_suffix`. | The file defines stable identity and always-on rules for the one top-level agent. |
 | Define `user_message_suffix`, but keep it effectively no-op for VU-1145. | The SDK field is useful for future per-message invariants, but task instructions must stay explicit in `Conversation.send_message(...)`. |
 | Load file-based skills in Python with OpenHands `load_skills_from_dir`. | The Python runner owns SDK construction; Rust and Node should not parse AgentSkills. |
+| Spawn the OpenHands runner directly from Rust. | OpenHands is the clean-break runtime. Keeping Node as an adapter adds an extra process and hides stderr/terminal state behind old sidecar conventions. |
 | Disable public OpenHands skills. | Skill Builder must be deterministic and expose only skills deployed into the workspace. |
 | Pass tools to `Agent(tools=...)`, not `AgentContext`. | Tools are part of OpenHands agent construction and cannot vary within a multi-message conversation. |
 | Stream progress before terminal results. | The current UI shows work in progress; the OpenHands runner must preserve visible reasoning/progress, tool calls, file activity, and status updates. |
@@ -128,7 +131,8 @@ Current Rust boundaries:
 |---|---|---|
 | Workspace + LLM runtime context | `commands::workflow::read_initialized_runtime_context` | Read the startup-initialized workspace path, verify root `.agents` artifacts exist, and project settings into `WorkflowLlmConfig`. |
 | OpenHands one-shot request shape | `agents::sidecar::build_openhands_one_shot_config` | Build the internal sidecar request from app-agent task fields plus backend-owned workspace and LLM context. |
-| OpenHands one-shot execution | `agents::sidecar::run_openhands_one_shot` | Dispatch the sidecar request, allocate diagnostic transcript logs, resolve runner paths through the sidecar pool, wait for lifecycle completion, and return the terminal `conversation_state`. |
+| OpenHands direct dispatch | `agents::sidecar::dispatch_openhands_one_shot` | Resolve the bundled runner, spawn it directly from Rust, write request JSON to stdin, route stdout JSONL through Rust event routing, log redacted stderr, write transcript JSONL, support direct cancellation, and emit terminal lifecycle events. |
+| OpenHands one-shot execution | `agents::sidecar::run_openhands_one_shot` | Use the direct dispatcher, wait for lifecycle completion, and return the terminal `conversation_state`. |
 | Execution mode | `mode: "one-shot"` / `mode: "streaming"` | Select single-message completion versus long-lived conversation semantics. |
 
 ## Source And Runtime Layout
@@ -324,10 +328,10 @@ Lifecycle:
 
 1. Rust renders the task prompt from `agent-sources/prompts/{task}.txt`.
 2. Rust renders or includes `skill-creator-user-suffix.txt`.
-3. Rust sends `SidecarConfig` with `prompt`, `userMessageSuffix`, `llm`,
+3. Rust builds the OpenHands request with `prompt`, `userMessageSuffix`, `llm`,
    `workspaceSkillDir`, `allowedTools`, and `maxTurns`.
-4. Node passes the request to `openhands-runner` and streams JSONL back through
-   `OpenHandsEventProcessor`.
+4. Rust spawns `openhands-runner` directly, writes the request JSON to stdin,
+   and reads stdout as JSONL protocol records.
 5. Python reads `.agents/agents/skill-creator.md`.
 6. Python loads `.agents/skills` with OpenHands `load_skills_from_dir`.
 7. Python builds `AgentContext`, `Agent`, and `Conversation`.
@@ -365,7 +369,7 @@ contract that future refine work must use.
 ## Conversation Event Mapping
 
 The runner emits JSONL progress before terminal states for non-trivial runs.
-Node forwards OpenHands SDK conversation events through app-framed
+Rust forwards OpenHands SDK conversation events through app-framed
 `conversation_event` envelopes and forwards lifecycle changes through
 `conversation_state` envelopes.
 
@@ -404,9 +408,11 @@ results. Product code reads final status, errors, and `result_text` from
 terminal state records, not from activity events.
 
 Runner stdout is reserved for JSONL protocol records:
-`conversation_event` and `conversation_state`. Runner stderr and transcript logs
-remain diagnostics for operators and support; they must not become frontend
-activity or result inputs.
+`conversation_event` and `conversation_state`. Rust parses stdout line by line
+and sends each record through the same `agent-message` Tauri event boundary used
+by the UI. Runner stderr and transcript logs remain diagnostics for operators
+and support; they must not become frontend activity or result inputs. Rust
+redacts known request secrets before writing stderr diagnostics to app logs.
 
 ## Output And Parsing
 
@@ -460,9 +466,7 @@ The runner and sidecar must produce app-visible errors for:
 | File | Purpose |
 |---|---|
 | `app/sidecar/openhands/runner.py` | Python OpenHands SDK construction and JSONL runner. |
-| `app/sidecar/runtime/openhands-runtime.ts` | Node adapter that spawns the runner and forwards request JSON. |
-| `app/sidecar/openhands-event-processor.ts` | Validates and forwards raw runner JSONL conversation envelopes. |
-| `app/src-tauri/src/agents/sidecar.rs` | Rust `SidecarConfig` serialized to the sidecar. |
+| `app/src-tauri/src/agents/sidecar.rs` | Rust OpenHands request builder, direct runner process manager, stdout JSONL event router, stderr logger, transcript writer, and terminal one-shot helper. |
 | `app/src-tauri/src/commands/workflow/prompt.rs` | Existing pattern for compile-time prompt templates. |
 | `app/src-tauri/src/commands/skill/scope_review.rs` | Existing direct Anthropic scope-review command to migrate. |
 | `agent-sources/workspace/` | Source files copied into `.agents/**`. |

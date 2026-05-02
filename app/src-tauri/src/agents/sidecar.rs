@@ -1,7 +1,12 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::io::Write;
 use std::path::PathBuf;
+use std::process::Stdio;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use tauri::Listener;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::types::SecretString;
 
@@ -89,7 +94,7 @@ pub struct SidecarConfig {
     #[serde(rename = "transcriptLogDir", skip_serializing_if = "Option::is_none")]
     pub transcript_log_dir: Option<String>,
     /// Plugin slug for the skill (from plugin-paths.json layout: `{root}/{plugin_slug}/{skill_name}`).
-    /// Threaded through to `run_result` so persistence handlers can resolve the correct skill dir.
+    /// Threaded through terminal lifecycle events so persistence handlers can resolve the correct skill dir.
     #[serde(rename = "pluginSlug")]
     pub plugin_slug: String,
     /// Selects the agent runtime backend. Defaults to "claude" when absent.
@@ -198,7 +203,6 @@ pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> 
 }
 
 pub struct OpenHandsOneShotRunParams {
-    pub pool_key: String,
     pub agent_id_prefix: String,
     pub config: SidecarConfig,
     pub timeout: Duration,
@@ -213,6 +217,353 @@ pub struct OpenHandsOneShotRun {
 enum OpenHandsOneShotEvent {
     TerminalState(Result<serde_json::Value, String>),
     Lifecycle(Result<(), String>),
+}
+
+type OpenHandsCancelRegistry = Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>;
+
+fn openhands_cancel_registry() -> &'static OpenHandsCancelRegistry {
+    static REGISTRY: OnceLock<OpenHandsCancelRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub fn cancel_openhands_one_shot(agent_id: &str) -> bool {
+    let Ok(mut registry) = openhands_cancel_registry().lock() else {
+        log::warn!(
+            "[openhands-direct:{}] failed to lock cancellation registry",
+            agent_id
+        );
+        return false;
+    };
+    registry
+        .remove(agent_id)
+        .map(|cancel| cancel.send(()).is_ok())
+        .unwrap_or(false)
+}
+
+fn redact_openhands_config_for_log(config: &SidecarConfig) -> serde_json::Value {
+    let mut value = serde_json::to_value(config).unwrap_or(serde_json::Value::Null);
+    if let Some(obj) = value.as_object_mut() {
+        if obj.contains_key("apiKey") {
+            obj.insert(
+                "apiKey".to_string(),
+                serde_json::Value::String("[REDACTED]".to_string()),
+            );
+        }
+        if let Some(llm) = obj.get_mut("llm").and_then(|v| v.as_object_mut()) {
+            if llm.contains_key("apiKey") {
+                llm.insert(
+                    "apiKey".to_string(),
+                    serde_json::Value::String("[REDACTED]".to_string()),
+                );
+            }
+            if let Some(headers) = llm.get_mut("extraHeaders").and_then(|v| v.as_object_mut()) {
+                for value in headers.values_mut() {
+                    if value.is_string() {
+                        *value = serde_json::Value::String("[REDACTED]".to_string());
+                    }
+                }
+            }
+        }
+    }
+    serde_json::json!({
+        "type": "config",
+        "config": value,
+    })
+}
+
+fn openhands_request_secrets(config: &SidecarConfig) -> Vec<String> {
+    let mut secrets = vec![config.api_key.expose().to_string()];
+    if let Some(llm) = &config.llm {
+        if let Some(api_key) = &llm.api_key {
+            secrets.push(api_key.expose().to_string());
+        }
+        if let Some(extra_headers) = &llm.extra_headers {
+            secrets.extend(extra_headers.values().cloned());
+        }
+    }
+    secrets
+        .into_iter()
+        .filter(|secret| !secret.trim().is_empty())
+        .collect()
+}
+
+fn redact_openhands_text(text: &str, secrets: &[String]) -> String {
+    secrets.iter().fold(text.to_string(), |redacted, secret| {
+        redacted.replace(secret, "[REDACTED]")
+    })
+}
+
+fn openhands_terminal_outcome(line: &str) -> Option<(bool, Option<String>)> {
+    let value = serde_json::from_str::<serde_json::Value>(line).ok()?;
+    if value.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+        return None;
+    }
+
+    match value.get("status").and_then(|v| v.as_str())? {
+        "completed" => Some((true, None)),
+        "error" => Some((
+            false,
+            Some(openhands_conversation_state_error_detail(
+                &value,
+                "OpenHands one-shot run failed",
+            )),
+        )),
+        "cancelled" | "canceled" => Some((
+            false,
+            Some(openhands_conversation_state_error_detail(
+                &value,
+                "OpenHands one-shot run cancelled",
+            )),
+        )),
+        _ => None,
+    }
+}
+
+async fn write_openhands_transcript_line(
+    log_handle: &Option<std::sync::Arc<std::sync::Mutex<std::fs::File>>>,
+    line: &str,
+) {
+    if let Some(handle) = log_handle {
+        if let Ok(mut file) = handle.lock() {
+            let _ = writeln!(file, "{}", line);
+        }
+    }
+}
+
+fn create_openhands_transcript(
+    agent_id: &str,
+    config: &SidecarConfig,
+    transcript_log_dir: Option<&str>,
+) -> Option<(PathBuf, std::sync::Arc<std::sync::Mutex<std::fs::File>>)> {
+    let now = chrono::Local::now();
+    let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
+    let log_dir = transcript_log_dir
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(&config.workspace_skill_dir).join("logs"));
+    let log_path = log_dir.join(format!("{}-{}.jsonl", agent_id, ts));
+    match std::fs::create_dir_all(&log_dir).and_then(|_| std::fs::File::create(&log_path)) {
+        Ok(mut file) => {
+            let first_line = redact_openhands_config_for_log(config).to_string();
+            let _ = writeln!(file, "{}", first_line);
+            Some((log_path, std::sync::Arc::new(std::sync::Mutex::new(file))))
+        }
+        Err(e) => {
+            log::warn!(
+                "[openhands-direct:{}] failed to create transcript in {}: {}",
+                agent_id,
+                log_dir.display(),
+                e
+            );
+            None
+        }
+    }
+}
+
+/// Spawn the bundled OpenHands runner directly from Rust.
+///
+/// Stdout is the JSONL app protocol (`conversation_event` and
+/// `conversation_state`) and is routed through the existing Rust event router.
+/// Stderr is diagnostic output only and is written to app logs; it is never
+/// forwarded as frontend activity.
+pub async fn dispatch_openhands_one_shot(
+    app: &tauri::AppHandle,
+    agent_id: &str,
+    mut config: SidecarConfig,
+    transcript_log_dir: Option<&str>,
+) -> Result<Option<PathBuf>, String> {
+    if config.path_to_openhands_runner.is_none() {
+        config.path_to_openhands_runner = Some(resolve_openhands_runner_path(app)?);
+    }
+
+    let runner_path = config
+        .path_to_openhands_runner
+        .clone()
+        .ok_or_else(|| "OpenHands runner path was not resolved".to_string())?;
+    let transcript = create_openhands_transcript(agent_id, &config, transcript_log_dir);
+    let transcript_path = transcript.as_ref().map(|(path, _)| path.clone());
+    let log_handle = transcript.map(|(_, handle)| handle);
+    let stderr_secrets = openhands_request_secrets(&config);
+
+    let config_event = redact_openhands_config_for_log(&config);
+    super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
+
+    let request_json = serde_json::to_string(&config)
+        .map_err(|e| format!("Failed to serialize OpenHands request: {}", e))?;
+    let mut child = tokio::process::Command::new(&runner_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn OpenHands runner {}: {}", runner_path, e))?;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "Failed to open OpenHands runner stdin".to_string())?;
+    stdin
+        .write_all(request_json.as_bytes())
+        .await
+        .map_err(|e| format!("Failed to write OpenHands request: {}", e))?;
+    stdin
+        .write_all(b"\n")
+        .await
+        .map_err(|e| format!("Failed to terminate OpenHands request: {}", e))?;
+    stdin
+        .shutdown()
+        .await
+        .map_err(|e| format!("Failed to close OpenHands runner stdin: {}", e))?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to open OpenHands runner stdout".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Failed to open OpenHands runner stderr".to_string())?;
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    {
+        let mut registry = openhands_cancel_registry()
+            .lock()
+            .map_err(|e| format!("Failed to lock OpenHands cancellation registry: {}", e))?;
+        registry.insert(agent_id.to_string(), cancel_tx);
+    }
+
+    let app_for_stdout = app.clone();
+    let agent_for_stdout = agent_id.to_string();
+    let log_for_stdout = log_handle.clone();
+    let stdout_task = tokio::spawn(async move {
+        let mut terminal_outcome: Option<(bool, Option<String>)> = None;
+        let mut lines = BufReader::new(stdout).lines();
+        loop {
+            match lines.next_line().await {
+                Ok(Some(line)) => {
+                    write_openhands_transcript_line(&log_for_stdout, &line).await;
+                    if let Some(outcome) = openhands_terminal_outcome(&line) {
+                        terminal_outcome = Some(outcome);
+                    }
+                    super::events::handle_sidecar_message(
+                        &app_for_stdout,
+                        &agent_for_stdout,
+                        &line,
+                    );
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    log::warn!(
+                        "[openhands-direct:{}] stdout read failed: {}",
+                        agent_for_stdout,
+                        e
+                    );
+                    break;
+                }
+            }
+        }
+        terminal_outcome
+    });
+
+    let agent_for_stderr = agent_id.to_string();
+    let stderr_task = tokio::spawn(async move {
+        let mut lines = BufReader::new(stderr).lines();
+        loop {
+            match lines.next_line().await {
+                Ok(Some(line)) => {
+                    if !line.trim().is_empty() {
+                        let line = redact_openhands_text(&line, &stderr_secrets);
+                        log::debug!("[openhands-stderr:{}] {}", agent_for_stderr, line);
+                    }
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    log::warn!(
+                        "[openhands-direct:{}] stderr read failed: {}",
+                        agent_for_stderr,
+                        e
+                    );
+                    break;
+                }
+            }
+        }
+    });
+
+    let app_for_exit = app.clone();
+    let agent_for_exit = agent_id.to_string();
+    tokio::spawn(async move {
+        let mut was_cancelled = false;
+        let exit_status = tokio::select! {
+            status = child.wait() => status,
+            _ = cancel_rx => {
+                was_cancelled = true;
+                if let Err(e) = child.start_kill() {
+                    log::warn!(
+                        "[openhands-direct:{}] failed to kill cancelled runner: {}",
+                        agent_for_exit,
+                        e
+                    );
+                }
+                child.wait().await
+            }
+        };
+        let terminal_outcome = match stdout_task.await {
+            Ok(outcome) => outcome,
+            Err(e) => {
+                log::warn!(
+                    "[openhands-direct:{}] stdout task join failed: {}",
+                    agent_for_exit,
+                    e
+                );
+                None
+            }
+        };
+        let _ = stderr_task.await;
+        if let Ok(mut registry) = openhands_cancel_registry().lock() {
+            registry.remove(&agent_for_exit);
+        }
+
+        if was_cancelled {
+            let cancel_state = serde_json::json!({
+                "type": "conversation_state",
+                "runtime": "openhands",
+                "agent_id": agent_for_exit.clone(),
+                "status": "cancelled",
+                "timestamp": chrono::Utc::now().timestamp_millis(),
+                "error_detail": "OpenHands one-shot run cancelled",
+                "result_text": null,
+                "structured_output": null,
+            });
+            super::events::handle_sidecar_message(
+                &app_for_exit,
+                &agent_for_exit,
+                &cancel_state.to_string(),
+            );
+            super::events::handle_agent_shutdown(&app_for_exit, &agent_for_exit);
+            return;
+        }
+
+        let (success, detail) = match terminal_outcome {
+            Some(outcome) => outcome,
+            None => match exit_status {
+                Ok(status) if status.success() => (
+                    false,
+                    Some("OpenHands runner exited without terminal conversation_state".to_string()),
+                ),
+                Ok(status) => (
+                    false,
+                    Some(format!("OpenHands runner exited with {}", status)),
+                ),
+                Err(e) => (false, Some(format!("OpenHands runner wait failed: {}", e))),
+            },
+        };
+        super::events::handle_sidecar_exit_with_detail(
+            &app_for_exit,
+            &agent_for_exit,
+            success,
+            detail,
+        );
+    });
+
+    Ok(transcript_path)
 }
 
 fn openhands_conversation_state_error_detail(
@@ -256,18 +607,18 @@ fn parse_openhands_one_shot_terminal_state(
     }
 }
 
-/// Dispatch a backend-owned OpenHands one-shot request through the persistent
-/// sidecar and wait for its terminal `conversation_state` payload.
+/// Dispatch a backend-owned OpenHands one-shot request through the direct
+/// runner boundary and wait for its terminal `conversation_state` payload.
 ///
 /// Callers keep task-specific result parsing, but they should not duplicate the
-/// sidecar dispatch, transcript directory, runner path, or terminal wait
+/// dispatch, transcript directory, runner path, or terminal wait
 /// mechanics for each migrated OpenHands feature.
 pub async fn run_openhands_one_shot(
     app: &tauri::AppHandle,
-    pool: &crate::agents::sidecar_pool::SidecarPool,
+    _pool: &crate::agents::sidecar_pool::SidecarPool,
     params: OpenHandsOneShotRunParams,
 ) -> Result<OpenHandsOneShotRun, String> {
-    let mut config = params.config;
+    let config = params.config;
     let agent_id = format!("{}-{}", params.agent_id_prefix, uuid::Uuid::new_v4());
     let transcript_dir = PathBuf::from(&config.workspace_skill_dir)
         .join("logs")
@@ -277,7 +628,6 @@ pub async fn run_openhands_one_shot(
             uuid::Uuid::new_v4()
         ));
     let transcript_dir_str = transcript_dir.to_string_lossy().into_owned();
-    config.transcript_log_dir = Some(transcript_dir_str.clone());
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsOneShotEvent>();
     let target_agent_id = agent_id.clone();
@@ -337,19 +687,13 @@ pub async fn run_openhands_one_shot(
         )));
     });
 
-    pool.send_request(
-        &params.pool_key,
-        &agent_id,
-        config,
-        app,
-        Some(&transcript_dir_str),
-    )
-    .await
-    .inspect_err(|_| {
-        app.unlisten(message_listener);
-        app.unlisten(exit_listener);
-        app.unlisten(shutdown_listener);
-    })?;
+    dispatch_openhands_one_shot(app, &agent_id, config, Some(&transcript_dir_str))
+        .await
+        .inspect_err(|_| {
+            app.unlisten(message_listener);
+            app.unlisten(exit_listener);
+            app.unlisten(shutdown_listener);
+        })?;
 
     let mut terminal_state: Option<Result<serde_json::Value, String>> = None;
     let mut lifecycle_result: Option<Result<(), String>> = None;
@@ -398,8 +742,11 @@ pub async fn run_openhands_one_shot(
     })
 }
 
-/// Spawn an agent using the persistent sidecar pool, which reuses a long-lived
-/// Node.js process per skill to reduce startup latency.
+/// Spawn an agent request.
+///
+/// OpenHands requests use the direct Rust -> Python runner boundary. Legacy
+/// runtime requests still use the persistent sidecar pool, which reuses a
+/// long-lived Node.js process per skill to reduce startup latency.
 ///
 /// The request runs until the agent completes or the user cancels manually.
 pub async fn spawn_sidecar(
@@ -411,11 +758,14 @@ pub async fn spawn_sidecar(
     transcript_log_dir: Option<String>,
 ) -> Result<(), String> {
     if config.runtime_provider.as_deref() == Some("openhands") {
-        if config.path_to_openhands_runner.is_none() {
-            if let Ok(runner_path) = resolve_openhands_runner_path(&app_handle) {
-                config.path_to_openhands_runner = Some(runner_path);
-            }
-        }
+        dispatch_openhands_one_shot(
+            &app_handle,
+            &agent_id,
+            config,
+            transcript_log_dir.as_deref(),
+        )
+        .await?;
+        return Ok(());
     } else if config.path_to_claude_code_executable.is_none() {
         // Resolve the SDK native binary path so the bundled SDK can spawn it.
         if let Ok(cli_path) = resolve_sdk_cli_path(&app_handle) {
@@ -640,6 +990,164 @@ mod tests {
         assert!(parsed.get("betas").is_none());
         // thinking is None + skip_serializing_if — should be absent
         assert!(parsed.get("thinking").is_none());
+    }
+
+    #[test]
+    fn test_openhands_log_config_redacts_nested_llm_secrets() {
+        let config = SidecarConfig {
+            mode: Some("one-shot".to_string()),
+            prompt: "run".to_string(),
+            system_prompt: None,
+            model: None,
+            llm: Some(crate::types::WorkflowLlmConfig {
+                model: "openai/test".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-secret".to_string())),
+                base_url: Some("https://example.test/v1".to_string()),
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: Some(std::collections::HashMap::from([(
+                    "Authorization".to_string(),
+                    "Bearer secret".to_string(),
+                )])),
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: Some("workflow".to_string()),
+            }),
+            model_base_url: None,
+            api_key: crate::types::SecretString::new("transport-secret".to_string()),
+            workspace_root_dir: "/tmp".to_string(),
+            workspace_skill_dir: "/tmp".to_string(),
+            allowed_tools: None,
+            max_turns: None,
+            permission_mode: None,
+            betas: None,
+            thinking: None,
+            fallback_model: None,
+            effort: None,
+            output_format: None,
+            prompt_suggestions: None,
+            path_to_claude_code_executable: None,
+            path_to_openhands_runner: None,
+            agent_name: Some("skill-creator".to_string()),
+            required_plugins: None,
+            setting_sources: None,
+            conversation_history: None,
+            skill_name: Some("demo".to_string()),
+            step_id: Some(0),
+            workflow_session_id: None,
+            usage_session_id: None,
+            run_source: Some("workflow".to_string()),
+            plugin_slug: "skills".to_string(),
+            transcript_log_dir: None,
+            runtime_provider: Some("openhands".to_string()),
+            task_kind: Some("workflow.research".to_string()),
+            user_message_suffix: None,
+        };
+
+        let redacted = redact_openhands_config_for_log(&config).to_string();
+
+        assert!(redacted.contains("[REDACTED]"));
+        assert!(!redacted.contains("sk-secret"));
+        assert!(!redacted.contains("transport-secret"));
+        assert!(!redacted.contains("Bearer secret"));
+        assert!(redacted.contains("workflow.research"));
+    }
+
+    #[test]
+    fn test_openhands_stderr_redaction_replaces_request_secrets() {
+        let config = SidecarConfig {
+            mode: Some("one-shot".to_string()),
+            prompt: "Prompt".to_string(),
+            system_prompt: None,
+            model: Some("provider/model".to_string()),
+            llm: Some(crate::types::WorkflowLlmConfig {
+                model: "provider/model".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-secret".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: Some(std::collections::HashMap::from([(
+                    "Authorization".to_string(),
+                    "Bearer secret".to_string(),
+                )])),
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: None,
+            }),
+            model_base_url: None,
+            api_key: crate::types::SecretString::new("transport-secret".to_string()),
+            workspace_root_dir: "/tmp".to_string(),
+            workspace_skill_dir: "/tmp".to_string(),
+            allowed_tools: None,
+            max_turns: None,
+            permission_mode: None,
+            betas: None,
+            thinking: None,
+            fallback_model: None,
+            effort: None,
+            output_format: None,
+            prompt_suggestions: None,
+            path_to_claude_code_executable: None,
+            path_to_openhands_runner: None,
+            agent_name: Some("skill-creator".to_string()),
+            required_plugins: None,
+            setting_sources: None,
+            conversation_history: None,
+            skill_name: Some("demo".to_string()),
+            step_id: Some(0),
+            workflow_session_id: None,
+            usage_session_id: None,
+            run_source: Some("workflow".to_string()),
+            plugin_slug: "skills".to_string(),
+            transcript_log_dir: None,
+            runtime_provider: Some("openhands".to_string()),
+            task_kind: Some("workflow.research".to_string()),
+            user_message_suffix: None,
+        };
+
+        let secrets = openhands_request_secrets(&config);
+        let redacted = redact_openhands_text(
+            "failed with sk-secret / transport-secret / Bearer secret",
+            &secrets,
+        );
+
+        assert_eq!(redacted, "failed with [REDACTED] / [REDACTED] / [REDACTED]");
+    }
+
+    #[test]
+    fn test_cancel_openhands_one_shot_consumes_registered_cancel_sender() {
+        let agent_id = format!("test-agent-{}", uuid::Uuid::new_v4());
+        let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+        {
+            let mut registry = openhands_cancel_registry().lock().unwrap();
+            registry.insert(agent_id.clone(), tx);
+        }
+
+        assert!(cancel_openhands_one_shot(&agent_id));
+        assert!(rx.try_recv().is_ok());
+        assert!(!cancel_openhands_one_shot(&agent_id));
+    }
+
+    #[test]
+    fn test_openhands_terminal_outcome_reads_conversation_state() {
+        let completed = r#"{"type":"conversation_state","status":"completed"}"#;
+        let error = r#"{"type":"conversation_state","status":"error","error_detail":"zip failed"}"#;
+        let running = r#"{"type":"conversation_state","status":"running"}"#;
+
+        assert_eq!(openhands_terminal_outcome(completed), Some((true, None)));
+        assert_eq!(
+            openhands_terminal_outcome(error),
+            Some((false, Some("zip failed".to_string())))
+        );
+        assert_eq!(openhands_terminal_outcome(running), None);
     }
 
     #[test]

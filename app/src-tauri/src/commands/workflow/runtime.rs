@@ -37,7 +37,7 @@ pub struct WorkflowStepRun {
 }
 
 /// Manages active workflow step one-shot runs. Registered as Tauri managed state.
-/// Allows `cancel_workflow_step` to look up the skill sidecar for a given agent.
+/// Allows `cancel_workflow_step` to look up the skill key for a given agent.
 pub struct WorkflowStepRunManager(pub Arc<Mutex<HashMap<String, WorkflowStepRun>>>);
 
 impl WorkflowStepRunManager {
@@ -185,9 +185,9 @@ fn install_research_materialization_listener(
 
 // ─── run_workflow_step_inner ─────────────────────────────────────────────────
 
-/// Core logic for launching a single workflow step via one-shot execution. Builds
-/// the prompt, constructs the sidecar config, and sends an agent_request. Returns
-/// the agent_id, which is also the one-shot request_id.
+/// Core logic for launching a single workflow step via one-shot execution.
+/// Builds the prompt, constructs the runtime config, and starts the request.
+/// Returns the agent_id, which is also the one-shot request_id.
 #[allow(clippy::too_many_arguments)]
 async fn run_workflow_step_inner(
     app: &tauri::AppHandle,
@@ -366,15 +366,27 @@ async fn run_workflow_step_inner(
     }
 
     let transcript_log_dir = config.transcript_log_dir.clone();
-    pool.send_request(
-        skill_name,
-        &agent_id,
-        config,
-        app,
-        transcript_log_dir.as_deref(),
-    )
-    .await
-    .map_err(|e| {
+    let start_result = if step_id == 0 {
+        crate::agents::sidecar::dispatch_openhands_one_shot(
+            app,
+            &agent_id,
+            config,
+            transcript_log_dir.as_deref(),
+        )
+        .await
+        .map(|_| ())
+    } else {
+        pool.send_request(
+            skill_name,
+            &agent_id,
+            config,
+            app,
+            transcript_log_dir.as_deref(),
+        )
+        .await
+    };
+
+    start_result.map_err(|e| {
         log::error!(
             "[run_workflow_step] Failed to start one-shot request for agent={}: {}",
             agent_id,
@@ -422,7 +434,8 @@ pub async fn run_workflow_step(
     )?;
 
     // Cancel any stale one-shot workflow requests for this skill before starting
-    // a new step. The sidecar treats agent_id as request_id for agent_request.
+    // a new step. OpenHands uses the direct Rust runner registry; legacy steps
+    // fall back to sidecar cancellation.
     let stale_runs: Vec<String> = {
         let map = runs.0.lock().map_err(|e| e.to_string())?;
         map.iter()
@@ -436,7 +449,9 @@ pub async fn run_workflow_step(
             stale_agent_id,
             step_id,
         );
-        let _ = pool.send_cancel(&skill_name, stale_agent_id).await;
+        if !crate::agents::sidecar::cancel_openhands_one_shot(stale_agent_id) {
+            let _ = pool.send_cancel(&skill_name, stale_agent_id).await;
+        }
     }
     if !stale_runs.is_empty() {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;
@@ -758,8 +773,9 @@ pub async fn run_answer_evaluator(
 
 /// Cancel a running workflow step one-shot request by agent_id.
 ///
-/// Looks up the sidecar skill key and sends a cancel message to the sidecar so
-/// the current one-shot request AbortController fires.
+/// Cancels an active one-shot workflow request. OpenHands requests are killed
+/// through the direct Rust runner registry; legacy requests fall back to the
+/// sidecar cancel protocol.
 #[tauri::command]
 pub async fn cancel_workflow_step(
     agent_id: String,
@@ -782,6 +798,10 @@ pub async fn cancel_workflow_step(
         })?;
         session.skill_name.clone()
     };
+    if crate::agents::sidecar::cancel_openhands_one_shot(&agent_id) {
+        return Ok(());
+    }
+
     pool.send_cancel(&skill_name, &agent_id).await.map_err(|e| {
         log::warn!(
             "[cancel_workflow_step] Failed to send cancel for agent={}: {}",
