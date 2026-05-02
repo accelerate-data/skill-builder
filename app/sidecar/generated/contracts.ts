@@ -50,14 +50,9 @@ export type ClarificationsError = { code: string; message: string }
 export type ClarificationsFile = { version?: string; metadata?: ClarificationsMetadata; sections?: Section[]; notes?: Note[]; answer_evaluator_notes?: Note[] | null }
 
 /**
- * Metadata block with counts, priority questions, and optional scope/research info.
+ * Metadata block with counts, priority questions, and optional scope info.
  */
-export type ClarificationsMetadata = { title?: string; question_count?: number; section_count?: number; refinement_count?: number; must_answer_count?: number; priority_questions?: string[]; duplicates_removed?: number | null; scope_recommendation?: boolean | null; scope_reason?: string | null; scope_next_action?: string | null; research_plan?: ClarificationsResearchPlan | null; warning?: ClarificationsWarning | null; error?: ClarificationsError | null }
-
-/**
- * Research plan with dimension scoring.
- */
-export type ClarificationsResearchPlan = { purpose: string; domain: string; topic_relevance: string; dimensions_evaluated?: number; dimensions_selected?: number; dimension_scores?: DimensionScore[]; selected_dimensions?: SelectedDimension[] }
+export type ClarificationsMetadata = { title?: string; question_count?: number; section_count?: number; refinement_count?: number; must_answer_count?: number; priority_questions?: string[]; duplicates_removed?: number | null; scope_recommendation?: boolean | null; scope_reason?: string | null; scope_next_action?: string | null; warning?: ClarificationsWarning | null; error?: ClarificationsError | null }
 
 /**
  * Warning attached to metadata.
@@ -111,11 +106,6 @@ export type DecisionsOutput = { version: string; metadata: DecisionsMetadata; de
 export type DetailedResearchOutput = { status: string; refinement_count: number; section_count: number; clarifications_json: ClarificationsFile }
 
 /**
- * A scored dimension in the research plan.
- */
-export type DimensionScore = { name: string; score: number; reason: string; focus?: string | null }
-
-/**
  * Structured output produced by the `generate-skill` agent (workflow step 3,
  * writing phase) or the `benchmark-skill` agent (benchmark phase).
  * 
@@ -158,10 +148,10 @@ export type Question = { id: string; title: string; text: string; must_answer: b
 /**
  * Structured output produced by the OpenHands research workflow step.
  * 
- * Required fields: `status` (const `"research_complete"`), `dimensions_selected`,
- * `question_count`, `research_output`.
+ * Required fields: `status` (const `"research_complete"`), `question_count`,
+ * `research_output`.
  */
-export type ResearchStepOutput = { status: string; dimensions_selected: number; question_count: number; research_output: ClarificationsFile }
+export type ResearchStepOutput = { status: string; question_count: number; research_output: ClarificationsFile }
 
 /**
  * Configuration event emitted at the start of a run.
@@ -192,11 +182,6 @@ export type RunSource = "workflow" | "refine" | "test"
  * A section grouping related questions.
  */
 export type Section = { id: number; title: string; description?: string | null; questions?: Question[] }
-
-/**
- * A dimension selected for deeper research.
- */
-export type SelectedDimension = { name: string; focus: string }
 
 /**
  * Session exhausted event.
