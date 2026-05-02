@@ -22,8 +22,8 @@ use super::runtime::{
     workflow_step_uses_native_openhands_dispatch,
 };
 use super::step_config::{
-    build_betas, get_step_config, thinking_budget_for_step, tools_for_agent,
-    workflow_output_format_for_step,
+    build_betas, get_step_config, research_workflow_tools, thinking_budget_for_step,
+    tools_for_agent, workflow_output_format_for_step,
 };
 use super::user_context::{format_user_context, write_user_context_file};
 
@@ -122,7 +122,7 @@ fn test_get_step_output_files_unknown_step() {
 
 #[test]
 fn test_step_config_canonical_agent_names() {
-    assert_eq!(get_step_config(0).unwrap().agent_name, "research-agent");
+    assert_eq!(get_step_config(0).unwrap().agent_name, "skill-creator");
     assert_eq!(get_step_config(1).unwrap().agent_name, "skill-creator");
     assert_eq!(get_step_config(2).unwrap().agent_name, "skill-writer-agent");
     assert_eq!(get_step_config(3).unwrap().agent_name, "skill-writer-agent");
@@ -171,8 +171,11 @@ fn test_workflow_step_tools_are_one_shot_safe() {
     for step_id in 0..=3 {
         let config = get_step_config(step_id).unwrap();
         let expected_tools = match step_id {
-            0 | 1 => vec!["file_editor", "terminal", "browser_tool_set"],
-            _ => vec!["file_editor", "terminal"],
+            0 | 1 => research_workflow_tools(),
+            _ => ["file_editor", "terminal"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
         };
         assert_eq!(
             config.allowed_tools, expected_tools,
@@ -570,10 +573,6 @@ fn test_workflow_output_format_is_set_for_json_contract_workflow_steps() {
             "workflow step {step_id} must have an output format"
         );
     }
-    assert_ne!(
-        get_step_config(0).unwrap().agent_name,
-        get_step_config(1).unwrap().agent_name
-    );
     assert_ne!(
         workflow_output_format_for_step(0).unwrap()["schema"],
         workflow_output_format_for_step(1).unwrap()["schema"],

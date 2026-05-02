@@ -12,6 +12,13 @@ pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
     tools.iter().map(|s| s.to_string()).collect()
 }
 
+pub(crate) fn research_workflow_tools() -> Vec<String> {
+    ["file_editor", "terminal", "browser_tool_set"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
 fn one_shot_tools_for_agent(agent_name: &str) -> Vec<String> {
     tools_for_agent(agent_name)
 }
@@ -23,20 +30,20 @@ fn one_shot_tools_for_agent(agent_name: &str) -> Vec<String> {
 ///
 /// | Step | Capability | Plugins |
 /// |------|------------|---------|
-/// | 0 | research-agent | skill-content-researcher |
+/// | 0 | skill-creator | skill-content-researcher |
 /// | 1 | skill-creator | skill-content-researcher |
 /// | 2 | skill-writer-agent | skill-content-researcher |
 /// | 3 | skill-writer-agent | skill-content-researcher, skill-creator |
 pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => {
-            let agent = "research-agent";
+            let agent = "skill-creator";
             Ok(StepConfig {
                 step_id: 0,
                 name: "Research".to_string(),
-                prompt_template: "research-agent.md".to_string(),
+                prompt_template: "research.txt".to_string(),
                 output_file: "context/clarifications.json".to_string(),
-                allowed_tools: one_shot_tools_for_agent(agent),
+                allowed_tools: research_workflow_tools(),
                 max_turns: 50,
                 agent_name: agent.to_string(),
                 required_plugins: vec!["skill-content-researcher".to_string()],
@@ -49,7 +56,7 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 name: "Detailed Research".to_string(),
                 prompt_template: "detailed-research.txt".to_string(),
                 output_file: "context/clarifications.json".to_string(),
-                allowed_tools: tools_for_agent("research-agent"),
+                allowed_tools: research_workflow_tools(),
                 max_turns: 50,
                 agent_name: agent.to_string(),
                 required_plugins: vec!["skill-content-researcher".to_string()],

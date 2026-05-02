@@ -21,7 +21,9 @@ use super::output_format::{
 };
 use super::prompt::{build_evaluator_prompt, build_prompt, build_step0_prompt, build_step1_prompt};
 use super::settings::{read_workflow_settings, WorkflowSettings};
-use super::step_config::{get_step_config, tools_for_agent, workflow_output_format_for_step};
+use super::step_config::{
+    get_step_config, research_workflow_tools, tools_for_agent, workflow_output_format_for_step,
+};
 use super::user_context::write_user_context_file;
 
 pub(crate) fn workflow_one_shot_runtime_provider() -> Option<String> {
@@ -64,16 +66,16 @@ pub(crate) fn build_workflow_research_sidecar_config(
     llm: crate::types::WorkflowLlmConfig,
     workflow_session_id: Option<String>,
 ) -> SidecarConfig {
-    build_skill_creator_workflow_sidecar_config(
+    build_skill_creator_workflow_sidecar_config(SkillCreatorWorkflowConfigParams {
         skill_name,
         prompt,
         workspace_path,
         plugin_slug,
         llm,
         workflow_session_id,
-        0,
-        "workflow.research",
-    )
+        step_id: 0,
+        task_kind: "workflow.research",
+    })
 }
 
 pub(crate) fn build_workflow_detailed_research_sidecar_config(
@@ -84,28 +86,43 @@ pub(crate) fn build_workflow_detailed_research_sidecar_config(
     llm: crate::types::WorkflowLlmConfig,
     workflow_session_id: Option<String>,
 ) -> SidecarConfig {
-    build_skill_creator_workflow_sidecar_config(
+    build_skill_creator_workflow_sidecar_config(SkillCreatorWorkflowConfigParams {
         skill_name,
         prompt,
         workspace_path,
         plugin_slug,
         llm,
         workflow_session_id,
-        1,
-        "workflow.detailed_research",
-    )
+        step_id: 1,
+        task_kind: "workflow.detailed_research",
+    })
 }
 
-fn build_skill_creator_workflow_sidecar_config(
-    skill_name: &str,
-    prompt: &str,
-    workspace_path: &str,
-    plugin_slug: &str,
+struct SkillCreatorWorkflowConfigParams<'a> {
+    skill_name: &'a str,
+    prompt: &'a str,
+    workspace_path: &'a str,
+    plugin_slug: &'a str,
     llm: crate::types::WorkflowLlmConfig,
     workflow_session_id: Option<String>,
     step_id: u32,
-    task_kind: &str,
+    task_kind: &'a str,
+}
+
+fn build_skill_creator_workflow_sidecar_config(
+    params: SkillCreatorWorkflowConfigParams<'_>,
 ) -> SidecarConfig {
+    let SkillCreatorWorkflowConfigParams {
+        skill_name,
+        prompt,
+        workspace_path,
+        plugin_slug,
+        llm,
+        workflow_session_id,
+        step_id,
+        task_kind,
+    } = params;
+
     let workspace_root_dir = workspace_path.replace('\\', "/");
     let workspace_run_dir =
         resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
@@ -121,7 +138,7 @@ fn build_skill_creator_workflow_sidecar_config(
             agent_name: "skill-creator".to_string(),
             task_kind: Some(task_kind.to_string()),
             user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-            allowed_tools: tools_for_agent("research-agent"),
+            allowed_tools: research_workflow_tools(),
             max_turns: 50,
             output_format: workflow_output_format_for_step(step_id),
             skill_name: Some(skill_name.to_string()),
@@ -703,7 +720,6 @@ pub async fn answer_workflow_step_question(
 #[tauri::command]
 pub async fn run_answer_evaluator(
     app: tauri::AppHandle,
-    pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
     runs: tauri::State<'_, WorkflowStepRunManager>,
     skill_name: String,
@@ -789,28 +805,38 @@ pub async fn run_answer_evaluator(
     );
 
     let transcript_log_dir = config.transcript_log_dir.clone();
-    pool.send_request(
-        &skill_name,
+
+    // Register before dispatch so cancellation can route to the native OpenHands
+    // runner even if the user cancels immediately after the command returns.
+    {
+        let mut map = runs.0.lock().map_err(|e| e.to_string())?;
+        map.insert(
+            agent_id.clone(),
+            WorkflowStepRun {
+                skill_name: skill_name.clone(),
+            },
+        );
+    }
+
+    crate::agents::sidecar::dispatch_openhands_one_shot(
+        &app,
         &agent_id,
         config,
-        &app,
         transcript_log_dir.as_deref(),
     )
     .await
+    .map(|_| ())
     .map_err(|e| {
         log::error!(
             "[run_answer_evaluator] Failed to start one-shot request for agent={}: {}",
             agent_id,
             e
         );
+        if let Ok(mut map) = runs.0.lock() {
+            map.remove(&agent_id);
+        }
         e
     })?;
-
-    // Register active one-shot run so cancel_workflow_step can route cancel.
-    {
-        let mut map = runs.0.lock().map_err(|e| e.to_string())?;
-        map.insert(agent_id.clone(), WorkflowStepRun { skill_name });
-    }
 
     Ok(agent_id)
 }
