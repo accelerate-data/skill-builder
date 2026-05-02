@@ -1,12 +1,18 @@
-# VU-1150 Research Lens Clean-Break Implementation Plan
+# VU-1150 Workflow Research Clean-Break Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace workflow research dimension scoring with a one-flow, one-lens clean-break contract for OpenHands research.
+**Goal:** Replace workflow research dimension scoring with one inline OpenHands
+research flow that emits only the final clarifications contract.
 
-**Architecture:** Step 0 research should return only completion status, question count, and the canonical clarifications object. Clarifications metadata should carry one `research_lens` value and no `research_plan`, dimension scores, selected dimensions, or consolidation handoff artifacts. The app should render a compact research summary from clarifications metadata and counts instead of the legacy dimensions panel.
+**Architecture:** Step 0 research should use topic scope gating, four internal
+knowledge lenses, and candidate-topic scoring to decide which clarification
+questions matter. Those internal judgments are not emitted. The app should read
+only completion status, question count, and the canonical clarifications object.
 
-**Tech Stack:** Rust Tauri contracts with Specta/Schemars codegen, TypeScript React UI, Vitest unit and structural tests, bundled OpenHands workspace agent sources, Promptfoo eval packages.
+**Tech Stack:** Rust Tauri contracts with Specta/Schemars codegen, TypeScript
+React UI, Vitest unit and structural tests, bundled OpenHands workspace agent
+sources, and Promptfoo eval packages.
 
 ---
 
@@ -14,18 +20,26 @@
 
 Linear: VU-1150
 
+Design: [Workflow Research Clean Break](../design/workflow-research-clean-break/README.md)
+
 ## Current Evidence
 
-- `app/src-tauri/src/contracts/workflow_outputs.rs` requires top-level `dimensions_selected` in `ResearchStepOutput`.
-- `app/src-tauri/src/contracts/clarifications.rs` defines `ClarificationsResearchPlan`, `DimensionScore`, and `SelectedDimension`.
-- `app/src/components/research-summary-card.tsx` parses `metadata.research_plan`, legacy research-plan markdown, dimension scores, and selected dimensions.
-- `agent-sources/workspace/skills/research/SKILL.md` still describes dimension scoring, per-dimension research, and consolidation.
-- `agent-sources/workspace/skills/shared/schemas.md` still requires `metadata.research_plan`.
-- `app/src/__tests__/lib/canonical-format.test.ts`, mock clarifications fixtures, and eval prompt assertions still encode the dimension contract.
+- `app/src-tauri/src/contracts/workflow_outputs.rs` requires top-level
+  `dimensions_selected` in `ResearchStepOutput`.
+- `app/src-tauri/src/contracts/clarifications.rs` defines
+  `ClarificationsResearchPlan`, `DimensionScore`, and `SelectedDimension`.
+- `app/src/components/research-summary-card.tsx` parses legacy research-plan
+  markdown, dimension scores, and selected dimensions.
+- `agent-sources/workspace/skills/research/SKILL.md` still describes dimension
+  scoring, per-dimension research, and consolidation.
+- `agent-sources/workspace/skills/shared/schemas.md` still requires
+  `metadata.research_plan`.
+- `app/src/__tests__/lib/canonical-format.test.ts`, mock clarifications
+  fixtures, and eval prompt assertions still encode the dimension contract.
 
 ## Target Contract
 
-Step 0 research output:
+Successful step 0 research output:
 
 ```json
 {
@@ -35,7 +49,6 @@ Step 0 research output:
     "version": "1",
     "metadata": {
       "title": "Clarifications: Example",
-      "research_lens": "rules-and-metrics",
       "question_count": 5,
       "section_count": 2,
       "refinement_count": 0,
@@ -52,35 +65,87 @@ Step 0 research output:
 }
 ```
 
-Allowed `metadata.research_lens` values:
+The output must not include:
 
-- `subject-model`
-- `rules-and-metrics`
-- `data-behavior`
-- `runtime-constraints`
+- top-level `dimensions_selected`
+- `metadata.research_plan`
+- `metadata.research_lens`
+- `dimension_scores`
+- `selected_dimensions`
+- emitted consolidation, handoff, or scoring notes
 
-Guard and error outputs use `research_lens: null`, zero counts, empty `sections`, and the existing `warning` or `error` channels.
+Guard and error outputs use the same envelope with zero counts, empty arrays,
+and the existing `warning`, `error`, or `scope_recommendation` channels.
+
+## Internal Research Model
+
+The research skill should use the following internal flow without emitting the
+intermediate reasoning:
+
+1. Score topic usefulness for data, analytics, or data-engineering skill
+   creation.
+2. If the topic is not useful or is too broad, return a scope recommendation
+   instead of pretending research can cover it.
+3. Check whether each internal lens is relevant to the topic:
+   business process, data engineering standards, source system customizations,
+   and platform standards.
+4. Generate candidate clarification topics from every relevant lens.
+5. Score each candidate by organization-specific knowledge delta:
+   what people typically get wrong, what is not in baseline LLM knowledge,
+   what is commonly customized, and whether the answer would change the skill.
+6. Drop low-scoring candidates and emit only high-value clarification sections.
 
 ## File Map
 
-- Modify: `app/src-tauri/src/contracts/workflow_outputs.rs` - remove `dimensions_selected` from `ResearchStepOutput`.
-- Modify: `app/src-tauri/src/contracts/clarifications.rs` - add `research_lens`, remove research-plan structs and tests.
-- Generate: `app/src/generated/contracts.ts`, `app/sidecar/generated/contracts.ts`, `app/src-tauri/src/generated/schemas.rs`, `agent-sources/**/shared/output-schemas/*.json`, `agent-sources/**/shared/output-deep-schemas/*.json`.
-- Modify: `app/sidecar/mock-agent.ts` - derive step 0 structured mock output without dimensions.
-- Modify: `app/sidecar/mock-templates/outputs/step0*/context/clarifications.json` - replace `research_plan` with `research_lens`.
-- Modify: `app/src/components/research-summary-card.tsx` - remove dimension parser/display and show lens/count summary.
-- Modify: `app/src/__tests__/components/research-summary-card.test.tsx` - assert lens/count display and guard states.
-- Modify: `app/src/__tests__/lib/canonical-format.test.ts` - remove embedded research plan tests and add lens metadata checks.
-- Modify: `app/src-tauri/src/commands/workflow/tests.rs`, `app/src-tauri/src/commands/workflow_artifacts.rs`, `app/src-tauri/src/contracts/*` tests - remove `dimensions_selected` expectations.
-- Modify: `agent-sources/prompts/research.txt` - remove top-level `dimensions_selected`.
-- Modify: `agent-sources/workspace/skills/research/SKILL.md` - replace dimension scoring flow with one-lens flow.
-- Delete: `agent-sources/workspace/skills/research/references/consolidation-handoff.md`, `dimension-sets.md`, `scoring-rubric.md`, and `references/dimensions/*.md`. These references are obsolete in the one-lens flow and should not remain as discoverable fallback guidance.
-- Modify: `agent-sources/workspace/skills/shared/schemas.md` - document `research_lens` semantics and remove `research_plan` semantics.
-- Modify: `tests/evals/packages/skill-content-researcher-research/prompt.txt` and `promptfooconfig.json`.
-- Modify: `tests/evals/packages/skill-content-researcher-skill-builder/prompt.txt` and `promptfooconfig.json`.
-- Modify: `tests/evals/packages/workspace-workflow-step-prompt/prompt.txt` and `promptfooconfig.json`.
-- Audit all other `tests/evals/packages/**/prompt*.json` and `prompt.txt` files for legacy research contract fields.
-- Audit: `repo-map.json` if files are deleted from or added under mapped paths.
+- Modify: `app/src-tauri/src/contracts/workflow_outputs.rs` - remove
+  `dimensions_selected` from `ResearchStepOutput`.
+- Modify: `app/src-tauri/src/contracts/clarifications.rs` - remove research-plan
+  structs, dimension structs, and metadata fields.
+- Generate: `app/src/generated/contracts.ts`,
+  `app/sidecar/generated/contracts.ts`,
+  `app/src-tauri/src/generated/schemas.rs`,
+  `agent-sources/workspace/**/shared/output-schemas/*.json`, and
+  `agent-sources/workspace/**/shared/output-deep-schemas/*.json`.
+- Modify: `app/sidecar/mock-agent.ts` - derive step 0 structured mock output
+  without dimensions or lenses.
+- Modify:
+  `app/sidecar/mock-templates/outputs/step0*/context/clarifications.json` -
+  remove `research_plan` and any lens metadata.
+- Modify: `app/src/components/research-summary-card.tsx` - remove dimension and
+  lens parsing/display and show a compact outcome summary.
+- Modify: `app/src/__tests__/components/research-summary-card.test.tsx` -
+  assert count, notes, warning, and scope-recommendation states.
+- Modify: `app/src/__tests__/lib/canonical-format.test.ts` - assert the new
+  clean-break contract and absence of legacy fields.
+- Modify: `app/src-tauri/src/commands/workflow/tests.rs`,
+  `app/src-tauri/src/commands/workflow_artifacts.rs`, and affected contract
+  tests - remove `dimensions_selected` expectations.
+- Modify: `agent-sources/prompts/research.txt` - remove top-level
+  `dimensions_selected` instructions.
+- Modify: `agent-sources/workspace/skills/research/SKILL.md` - replace
+  dimension scoring and consolidation with the one-flow internal scoring model.
+- Delete:
+  `agent-sources/workspace/skills/research/references/consolidation-handoff.md`,
+  `agent-sources/workspace/skills/research/references/dimension-sets.md`,
+  `agent-sources/workspace/skills/research/references/scoring-rubric.md`, and
+  `agent-sources/workspace/skills/research/references/dimensions/*.md`.
+- Modify: `agent-sources/workspace/skills/shared/schemas.md` - document that
+  research emits only the final clarifications object.
+- Modify:
+  `tests/evals/packages/skill-content-researcher-research/prompt.txt` and
+  `promptfooconfig.json`.
+- Modify:
+  `tests/evals/packages/skill-content-researcher-skill-builder/prompt.txt` and
+  `promptfooconfig.json`.
+- Modify: `tests/evals/packages/workspace-workflow-step-prompt/prompt.txt` and
+  `promptfooconfig.json`.
+- Audit: all `tests/evals/packages/**/prompt*.json`,
+  `tests/evals/packages/**/promptfooconfig.json`, and
+  `tests/evals/packages/**/prompt.txt` files for legacy research contract
+  fields.
+- Audit: `repo-map.json` if deleted or generated paths are mapped.
+
+Do not modify `agent-sources/plugins/`; that is the old Claude path.
 
 ---
 
@@ -93,56 +158,36 @@ Guard and error outputs use `research_lens: null`, zero counts, empty `sections`
 - Modify: `app/src/__tests__/lib/canonical-format.test.ts`
 - Modify: `app/src/__tests__/components/research-summary-card.test.tsx`
 
-- [ ] **Step 1: Update Rust contract tests to expect no top-level dimensions field**
+- [ ] **Step 1: Update `ResearchStepOutput` contract tests**
 
-In `app/src-tauri/src/contracts/workflow_outputs.rs`, update the `ResearchStepOutput` serialization test fixture so it constructs:
+In `app/src-tauri/src/contracts/workflow_outputs.rs`, construct
+`ResearchStepOutput` with only `status`, `question_count`, and
+`research_output`.
 
-```rust
-let output = ResearchStepOutput {
-    status: "research_complete".to_string(),
-    question_count: 3,
-    research_output: ClarificationsFile {
-        version: "1".to_string(),
-        metadata: ClarificationsMetadata {
-            title: "Clarifications: Test".to_string(),
-            research_lens: Some("subject-model".to_string()),
-            question_count: 3,
-            section_count: 1,
-            refinement_count: 0,
-            must_answer_count: 1,
-            priority_questions: vec!["Q1".to_string()],
-            ..Default::default()
-        },
-        ..Default::default()
-    },
-};
-```
-
-Remove assertions that read or require `deserialized.dimensions_selected`. Add an assertion that the serialized JSON has no `dimensions_selected` key:
+Add serialization assertions:
 
 ```rust
 assert!(serialized.get("dimensions_selected").is_none());
+assert_eq!(deserialized.status, "research_complete");
 assert_eq!(deserialized.question_count, 3);
 ```
 
-- [ ] **Step 2: Update Rust clarifications metadata tests for `research_lens`**
+Remove every fixture field or assertion that reads `dimensions_selected`.
 
-In `app/src-tauri/src/contracts/clarifications.rs`, add this field to the expected metadata test fixture:
+- [ ] **Step 2: Update clarifications metadata tests**
 
-```rust
-research_lens: Some("rules-and-metrics".to_string()),
-```
+In `app/src-tauri/src/contracts/clarifications.rs`, remove tests that require
+`research_plan`, `dimension_scores`, `selected_dimensions`, or `research_lens`.
 
-Remove `test_full_metadata_with_research_plan` and `test_dimension_score_focus_accepts_null_for_unselected_dimensions`. Replace them with:
+Add a metadata round-trip test:
 
 ```rust
 #[test]
-fn test_metadata_accepts_research_lens_without_research_plan() {
+fn test_metadata_rejects_legacy_research_planning_fields() {
     let json = serde_json::json!({
         "version": "1",
         "metadata": {
             "title": "Clarifications: Sales Metrics",
-            "research_lens": "rules-and-metrics",
             "question_count": 0,
             "section_count": 0,
             "refinement_count": 0,
@@ -155,10 +200,9 @@ fn test_metadata_accepts_research_lens_without_research_plan() {
     });
 
     let file: ClarificationsFile = serde_json::from_value(json).expect("deserialize");
-    assert_eq!(file.metadata.research_lens.as_deref(), Some("rules-and-metrics"));
     let reserialized = serde_json::to_string(&file).expect("serialize");
-    assert!(reserialized.contains("research_lens"));
     assert!(!reserialized.contains("research_plan"));
+    assert!(!reserialized.contains("research_lens"));
     assert!(!reserialized.contains("dimension_scores"));
     assert!(!reserialized.contains("selected_dimensions"));
 }
@@ -166,87 +210,67 @@ fn test_metadata_accepts_research_lens_without_research_plan() {
 
 - [ ] **Step 3: Update canonical fixture tests**
 
-In `app/src/__tests__/lib/canonical-format.test.ts`, replace the entire `Canonical format: embedded research plan structure` describe block with:
+In `app/src/__tests__/lib/canonical-format.test.ts`, replace the embedded
+research-plan assertions with:
 
 ```ts
-describe("Canonical format: embedded research lens", () => {
+describe("Canonical format: research clean-break contract", () => {
   const step0Clarifications = path.join(MOCK_ROOT, "step0/context/clarifications.json");
 
-  it("step0 clarifications.json exists", () => {
-    expect(fs.existsSync(step0Clarifications)).toBe(true);
-  });
-
-  if (fs.existsSync(step0Clarifications)) {
+  it("step0 clarifications.json has no legacy planning fields", () => {
     const data = JSON.parse(readFile(step0Clarifications));
-    const meta = data.metadata ?? {};
+    const body = JSON.stringify(data);
 
-    it("has metadata.research_lens string", () => {
-      expect(typeof meta.research_lens).toBe("string");
-      expect([
-        "subject-model",
-        "rules-and-metrics",
-        "data-behavior",
-        "runtime-constraints",
-      ]).toContain(meta.research_lens);
-    });
-
-    it("does not include legacy research plan fields", () => {
-      expect(meta.research_plan).toBeUndefined();
-      expect(JSON.stringify(data)).not.toContain("dimension_scores");
-      expect(JSON.stringify(data)).not.toContain("selected_dimensions");
-    });
-  }
+    expect(data.metadata).toBeTruthy();
+    expect(data.metadata.question_count).toEqual(expect.any(Number));
+    expect(data.metadata.research_plan).toBeUndefined();
+    expect(data.metadata.research_lens).toBeUndefined();
+    expect(body).not.toContain("dimension_scores");
+    expect(body).not.toContain("selected_dimensions");
+  });
 });
 ```
 
-- [ ] **Step 4: Update UI tests to describe the desired lens display**
+- [ ] **Step 4: Update UI tests for compact research display**
 
-In `app/src/__tests__/components/research-summary-card.test.tsx`, remove the legacy table-only research-plan test. Add a happy-path fixture with:
-
-```ts
-const clarificationsData: ClarificationsFile = {
-  version: "1",
-  metadata: {
-    ...baseMetadata,
-    research_lens: "rules-and-metrics",
-    question_count: 2,
-    must_answer_count: 1,
-  },
-  sections: [baseSection],
-  notes: [{ type: "flag", title: "Known gap", body: "Need owner confirmation." }],
-  answer_evaluator_notes: [],
-};
-```
-
-Add an assertion:
+In `app/src/__tests__/components/research-summary-card.test.tsx`, replace the
+dimension and lens assertions with count and note assertions:
 
 ```ts
-it("shows selected research lens and summary counts", async () => {
+it("shows research outcome, counts, and notes without planning metadata", async () => {
   const user = userEvent.setup();
   render(<ResearchSummaryCard clarificationsData={clarificationsData} />);
 
   await user.click(screen.getByText("Research Complete"));
 
-  expect(screen.getByText("Research Lens")).toBeInTheDocument();
-  expect(screen.getByText("Rules and metrics")).toBeInTheDocument();
   expect(screen.getByText("Clarifications")).toBeInTheDocument();
   expect(screen.getByText("Must answer")).toBeInTheDocument();
   expect(screen.getByText("Notes")).toBeInTheDocument();
+  expect(screen.queryByText("Research Lens")).not.toBeInTheDocument();
+  expect(screen.queryByText("Dimensions")).not.toBeInTheDocument();
 });
 ```
 
-- [ ] **Step 5: Run the focused failing tests**
+- [ ] **Step 5: Run focused failing tests**
 
 Run:
 
 ```bash
-cd app/src-tauri && cargo test contracts::workflow_outputs contracts::clarifications
-cd app && npx vitest run src/__tests__/lib/canonical-format.test.ts src/__tests__/components/research-summary-card.test.tsx
+cd app && npm run test:unit -- canonical-format research-summary-card
+cd app/src-tauri && cargo test contracts::
 ```
 
-Expected before implementation: failures mentioning missing `research_lens`, unexpected `dimensions_selected`, or old UI text.
+Expected before implementation: tests fail because existing contracts and
+fixtures still emit legacy planning fields.
 
-### Task 2: Change Rust Contracts and Regenerate Schemas
+Commit after the failing-test edits:
+
+```bash
+git add app/src-tauri/src/contracts app/src/__tests__/lib/canonical-format.test.ts app/src/__tests__/components/research-summary-card.test.tsx
+git commit -m "VU-1150: lock research clean-break tests"
+```
+
+### Task 2: Simplify Rust and Generated Contracts
 
 **Files:**
 
@@ -255,55 +279,36 @@ Expected before implementation: failures mentioning missing `research_lens`, une
 - Generate: `app/src/generated/contracts.ts`
 - Generate: `app/sidecar/generated/contracts.ts`
 - Generate: `app/src-tauri/src/generated/schemas.rs`
-- Generate: `agent-sources/workspace/skills/shared/output-schemas/*.json`
-- Generate: `agent-sources/workspace/skills/shared/output-deep-schemas/*.json`
+- Generate: `agent-sources/workspace/**/shared/output-schemas/*.json`
+- Generate: `agent-sources/workspace/**/shared/output-deep-schemas/*.json`
 
-- [ ] **Step 1: Remove top-level `dimensions_selected` from `ResearchStepOutput`**
+- [ ] **Step 1: Remove `dimensions_selected` from `ResearchStepOutput`**
 
-Change `app/src-tauri/src/contracts/workflow_outputs.rs` from:
+Delete the field from the Rust struct and update constructors to compile with
+only:
 
 ```rust
-/// Required fields: `status` (const `"research_complete"`), `dimensions_selected`,
-/// `question_count`, `research_output`.
 pub struct ResearchStepOutput {
     pub status: String,
-    pub dimensions_selected: i64,
-    pub question_count: i64,
+    pub question_count: u32,
     pub research_output: ClarificationsFile,
 }
 ```
 
-to:
+- [ ] **Step 2: Remove research planning metadata structs**
 
-```rust
-/// Required fields: `status` (const `"research_complete"`), `question_count`,
-/// `research_output`.
-pub struct ResearchStepOutput {
-    pub status: String,
-    pub question_count: i64,
-    pub research_output: ClarificationsFile,
-}
-```
+Delete unused struct definitions and metadata fields for:
 
-- [ ] **Step 2: Replace research plan metadata with one lens**
+- `ClarificationsResearchPlan`
+- `DimensionScore`
+- `SelectedDimension`
+- `research_plan`
+- `research_lens`
 
-In `app/src-tauri/src/contracts/clarifications.rs`, add this field to `ClarificationsMetadata`:
+Keep existing scalar metadata such as counts, warnings, errors, scope
+recommendations, and priority questions.
 
-```rust
-#[serde(default, skip_serializing_if = "Option::is_none")]
-pub research_lens: Option<String>,
-```
-
-Remove these fields and structs entirely:
-
-```rust
-pub research_plan: Option<ClarificationsResearchPlan>,
-pub struct ClarificationsResearchPlan { ... }
-pub struct DimensionScore { ... }
-pub struct SelectedDimension { ... }
-```
-
-- [ ] **Step 3: Run codegen**
+- [ ] **Step 3: Regenerate contracts**
 
 Run:
 
@@ -311,477 +316,359 @@ Run:
 cd app && npm run codegen
 ```
 
-Expected: generated TypeScript contracts and JSON schemas no longer include `ResearchStepOutput.dimensions_selected`, `ClarificationsResearchPlan`, `DimensionScore`, `SelectedDimension`, `dimension_scores`, or `selected_dimensions`; they include optional `research_lens`.
+Expected: generated TypeScript, Rust schema, and workspace output schema files
+no longer include `dimensions_selected`, `research_plan`, `research_lens`,
+`dimension_scores`, or `selected_dimensions`.
 
-- [ ] **Step 4: Fix compile errors from old contract references**
+- [ ] **Step 4: Run contract tests**
 
-Use:
+Run:
 
 ```bash
-rg -n "dimensions_selected|research_plan|dimension_scores|selected_dimensions|ClarificationsResearchPlan|DimensionScore|SelectedDimension" app/src-tauri app/src app/sidecar agent-sources tests/evals
+cd app/src-tauri && cargo test contracts::
 ```
 
-For each remaining runtime reference, either remove it or rewrite it to `metadata.research_lens`. Do not keep compatibility aliases.
+Expected: all contract tests pass.
 
-### Task 3: Update Step 0 Materialization, Mock Runner, and Fixtures
+Commit:
+
+```bash
+git add app/src-tauri/src/contracts app/src/generated app/sidecar/generated app/src-tauri/src/generated agent-sources/workspace
+git commit -m "VU-1150: simplify research output contracts"
+```
+
+### Task 3: Update Mock Output Producers and Fixtures
 
 **Files:**
 
-- Modify: `app/src-tauri/src/commands/workflow/tests.rs`
-- Modify: `app/src-tauri/src/commands/workflow_artifacts.rs`
 - Modify: `app/sidecar/mock-agent.ts`
-- Modify: `app/sidecar/__tests__/mock-agent.test.ts`
-- Modify: `app/sidecar/__tests__/openhands-runner.integration.test.ts`
-- Modify: `app/sidecar/__tests__/openhands-workflow-smoke.test.ts`
-- Modify: `app/sidecar/mock-templates/outputs/step0/context/clarifications.json`
-- Modify: `app/sidecar/mock-templates/outputs/step0-contradictory/context/clarifications.json`
-- Modify: `app/sidecar/mock-templates/step0-research.jsonl`
+- Modify:
+  `app/sidecar/mock-templates/outputs/step0*/context/clarifications.json`
+- Modify: affected unit fixtures under `app/e2e/fixtures/agent-responses/**`
 
-- [ ] **Step 1: Update Rust materialization fixtures**
+- [ ] **Step 1: Remove dimensions from mock step output**
 
-Every step 0 payload in `app/src-tauri/src/commands/workflow/tests.rs` and `app/src-tauri/src/commands/workflow_artifacts.rs` should drop:
-
-```json
-"dimensions_selected": 1
-```
-
-and keep:
-
-```json
-"status": "research_complete",
-"question_count": 1,
-"research_output": {
-  "version": "1",
-  "metadata": {
-    "title": "Test",
-    "research_lens": "subject-model",
-    "question_count": 1,
-    "section_count": 1,
-    "refinement_count": 0,
-    "must_answer_count": 0,
-    "priority_questions": []
-  },
-  "sections": [],
-  "notes": [],
-  "answer_evaluator_notes": []
-}
-```
-
-Delete tests whose only purpose is rejecting missing `dimensions_selected`. Replace them with a test that rejects missing `question_count`.
-
-- [ ] **Step 2: Simplify sidecar mock structured result**
-
-In `app/sidecar/mock-agent.ts`, replace:
-
-```ts
-const researchPlan =
-  metadata.research_plan &&
-  typeof metadata.research_plan === "object" &&
-  !Array.isArray(metadata.research_plan)
-    ? (metadata.research_plan as JsonObject)
-    : {};
-const dimensionsSelected =
-  typeof researchPlan.dimensions_selected === "number"
-    ? researchPlan.dimensions_selected
-    : 0;
-return {
-  status: "research_complete",
-  dimensions_selected: dimensionsSelected,
-  question_count: questionCount,
-  research_output: clarifications,
-};
-```
-
-with:
+In `app/sidecar/mock-agent.ts`, return step 0 mock output in this shape:
 
 ```ts
 return {
   status: "research_complete",
-  question_count: questionCount,
+  question_count: clarifications.metadata?.question_count ?? 0,
   research_output: clarifications,
 };
 ```
 
-- [ ] **Step 3: Update mock clarifications files**
+Remove any `dimensions_selected` fallback.
 
-In both step 0 mock clarifications files, replace the whole `metadata.research_plan` object with:
+- [ ] **Step 2: Rewrite step 0 mock clarifications**
 
-```json
-"research_lens": "subject-model"
+For every step 0 `clarifications.json`, remove `metadata.research_plan` and
+`metadata.research_lens`. Keep the count fields, `priority_questions`,
+`scope_recommendation`, `warning`, `error`, `sections`, `notes`, and
+`answer_evaluator_notes`.
+
+- [ ] **Step 3: Search fixtures for legacy fields**
+
+Run:
+
+```bash
+rg "dimensions_selected|research_plan|research_lens|dimension_scores|selected_dimensions" app/sidecar app/e2e
 ```
 
-For contradictory or guard mock outputs, use:
+Expected: no matches outside assertions that intentionally verify absence.
 
-```json
-"research_lens": null
+- [ ] **Step 4: Run unit tests affected by fixtures**
+
+Run:
+
+```bash
+cd app && npm run test:unit -- canonical-format
 ```
 
-only if the generated schema permits null; otherwise omit `research_lens` on guard/error outputs.
+Expected: canonical format tests pass.
 
-- [ ] **Step 4: Update sidecar test expectations**
+Commit:
 
-Replace assertions like:
-
-```ts
-expect(typeof payload.dimensions_selected).toBe("number");
-expect(result.result_text).toContain("dimensions_selected");
+```bash
+git add app/sidecar app/e2e app/src/__tests__/lib/canonical-format.test.ts
+git commit -m "VU-1150: update research mock fixtures"
 ```
 
-with:
-
-```ts
-expect(payload).not.toHaveProperty("dimensions_selected");
-expect(typeof payload.question_count).toBe("number");
-expect(payload.research_output?.metadata?.research_lens).toBeTruthy();
-```
-
-### Task 4: Simplify Research Complete UI
+### Task 4: Simplify the Research Summary UI
 
 **Files:**
 
 - Modify: `app/src/components/research-summary-card.tsx`
 - Modify: `app/src/__tests__/components/research-summary-card.test.tsx`
-- Modify: `app/src/components/step-complete/research-step-complete.tsx` only if the `researchPlan` prop becomes unused.
 
-- [ ] **Step 1: Remove research plan parsing types and helpers**
+- [ ] **Step 1: Remove legacy parsing helpers**
 
-Delete these from `research-summary-card.tsx`:
+Delete code that parses or displays:
 
-```ts
-interface DimensionScore { ... }
-interface ResearchPlanData { ... }
-interface ResearchPlanJson { ... }
-function stripInlineMarkdown(...)
-function parseResearchPlan(...)
-function parseResearchPlanFromClarifications(...)
-```
+- markdown research plans
+- dimensions tables
+- `dimension_scores`
+- `selected_dimensions`
+- `research_lens`
 
-Remove `researchPlan?: string` from `ResearchSummaryCardProps` if it is no longer used.
+Keep helpers that summarize counts, notes, warnings, errors, and scope
+recommendations.
 
-- [ ] **Step 2: Add lens label helper**
-
-Add:
-
-```ts
-const LENS_LABELS: Record<string, string> = {
-  "subject-model": "Subject model",
-  "rules-and-metrics": "Rules and metrics",
-  "data-behavior": "Data behavior",
-  "runtime-constraints": "Runtime constraints",
-};
-
-function researchLensLabel(value: unknown): string {
-  return typeof value === "string" && value in LENS_LABELS
-    ? LENS_LABELS[value]
-    : "Not selected";
-}
-```
-
-- [ ] **Step 3: Replace dimensions panel with summary metrics**
-
-Replace the dimensions row with a compact grid:
-
-```tsx
-const lensLabel = researchLensLabel(meta?.research_lens);
-const noteCount = clarificationsData.notes?.length ?? 0;
-const questionCount = meta?.question_count ?? 0;
-const mustAnswerCount = meta?.must_answer_count ?? 0;
-```
+- [ ] **Step 2: Render compact research state**
 
 Render:
 
-```tsx
-<div className="grid gap-3 p-4 sm:grid-cols-4">
-  <div className="rounded-md border bg-muted/30 px-3 py-2">
-    <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-      Research Lens
-    </div>
-    <div className="mt-1 text-sm font-medium text-foreground">{lensLabel}</div>
-  </div>
-  <div className="rounded-md border bg-muted/30 px-3 py-2">
-    <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-      Clarifications
-    </div>
-    <div className="mt-1 text-sm font-medium text-foreground">{questionCount}</div>
-  </div>
-  <div className="rounded-md border bg-muted/30 px-3 py-2">
-    <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-      Must answer
-    </div>
-    <div className="mt-1 text-sm font-medium text-foreground">{mustAnswerCount}</div>
-  </div>
-  <div className="rounded-md border bg-muted/30 px-3 py-2">
-    <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-      Notes
-    </div>
-    <div className="mt-1 text-sm font-medium text-foreground">{noteCount}</div>
-  </div>
-</div>
+- completion or warning state
+- total question count
+- must-answer count
+- section count
+- notes count
+- warning, error, and scope recommendation copy when present
+
+Do not render a dimensions or lens panel.
+
+- [ ] **Step 3: Run focused UI tests**
+
+Run:
+
+```bash
+cd app && npm run test:unit -- research-summary-card
 ```
 
-Keep the existing non-happy-path banner and reset footer.
+Expected: summary-card tests pass.
 
-- [ ] **Step 4: Remove obsolete icon imports**
+Commit:
 
-Remove `Layers` from the lucide import if unused. Keep `CheckCircle2`, `Clock`, `AlertTriangle`, `ChevronRight`, and `XCircle` if still used.
-
-- [ ] **Step 5: Update `ResearchStepComplete` prop wiring**
-
-If `ResearchSummaryCard` no longer accepts `researchPlan`, remove:
-
-```ts
-const researchPlanContent = fileContents.get("context/research-plan.md");
-researchPlan={researchPlanContent}
+```bash
+git add app/src/components/research-summary-card.tsx app/src/__tests__/components/research-summary-card.test.tsx
+git commit -m "VU-1150: simplify research summary display"
 ```
 
-from both render paths in `app/src/components/step-complete/research-step-complete.tsx`.
-
-### Task 5: Rewrite Research Skill to One Flow and One Lens
+### Task 5: Rewrite the Workspace Research Skill
 
 **Files:**
 
 - Modify: `agent-sources/workspace/skills/research/SKILL.md`
+- Delete:
+  `agent-sources/workspace/skills/research/references/consolidation-handoff.md`
+- Delete:
+  `agent-sources/workspace/skills/research/references/dimension-sets.md`
+- Delete:
+  `agent-sources/workspace/skills/research/references/scoring-rubric.md`
+- Delete:
+  `agent-sources/workspace/skills/research/references/dimensions/*.md`
 - Modify: `agent-sources/workspace/skills/shared/schemas.md`
 - Modify: `agent-sources/prompts/research.txt`
-- Delete: `agent-sources/workspace/skills/research/references/consolidation-handoff.md`
-- Delete: `agent-sources/workspace/skills/research/references/dimension-sets.md`
-- Delete: `agent-sources/workspace/skills/research/references/scoring-rubric.md`
-- Delete: `agent-sources/workspace/skills/research/references/dimensions/*.md`
 
-- [ ] **Step 1: Replace the research skill overview**
+- [ ] **Step 1: Replace the skill overview**
 
-Use this shape in `agent-sources/workspace/skills/research/SKILL.md`:
+In `agent-sources/workspace/skills/research/SKILL.md`, make the core rule:
 
 ```md
-# Research Skill
+Workflow research is one inline pass. Use internal scope checks, internal lens
+checks, and internal candidate scoring to decide what to ask. Emit only the
+final `research_complete` JSON.
+```
 
-This skill runs inside the single `skill-creator` OpenHands agent for the
-`workflow.research` task. It reads user context, selects exactly one research
-lens, researches that lens inline, and returns the final clarifications JSON.
+- [ ] **Step 2: Add the topic scope gate**
 
-The research lenses are:
+Document this internal gate:
 
-| Lens | Use when the requested skill depends on |
+| Score | Meaning | Output behavior |
+|---|---|---|
+| 5 | Clearly bounded data or analytics skill | Proceed to lens checks |
+| 4 | Useful with modest ambiguity | Proceed and include targeted clarifications |
+| 3 | Relevant but too broad | Return narrowing clarification questions only |
+| 2 | Weak data-engineering relevance | Return scope recommendation |
+| 1 | Not a useful skill topic | Return scope recommendation |
+
+Use examples such as `HR analytics` as a broad topic that needs narrowing
+before research can create a useful skill.
+
+- [ ] **Step 3: Add internal lens relevance checks**
+
+Document the four internal lenses:
+
+| Lens | Consider when the topic may depend on |
 |---|---|
-| `subject-model` | Core entities, relationships, grain, nouns, and conceptual boundaries |
-| `rules-and-metrics` | Calculations, thresholds, business rules, segmentation, and exceptions |
-| `data-behavior` | Source behavior, lifecycle, field semantics, quality, and reconciliation |
-| `runtime-constraints` | Platform behavior, configuration, orchestration, and operational failures |
-```
+| Business process | Business events, grain, lifecycle, metrics, rules, exceptions, segmentation, periods |
+| Data engineering standards | Modeling standards, layers, quality gates, load patterns, historization, naming, tests |
+| Source system customizations | Custom objects, custom fields, overridden semantics, lifecycle state, extraction, reconciliation |
+| Platform standards | Azure, Fabric, orchestration, deployment, environments, configuration, operational failures |
 
-- [ ] **Step 2: Replace dimension scoring steps with one-lens selection**
+The skill should ask: "Is this lens relevant for this topic?" for each lens.
+Irrelevant lenses should not generate candidate topics. Relevant lenses may all
+contribute candidates.
 
-Delete steps for dimension sets, scoring JSON, selecting 3-5 dimensions, sequential dimension research, and consolidation. Add:
+- [ ] **Step 4: Add candidate-topic scoring**
 
-```md
-## Step 3: Select one research lens
+Document the internal candidate score:
 
-Select exactly one lens. Use the user's declared purpose and context:
+| Score | Keep? | Meaning |
+|---|---|---|
+| 5 | Yes | Organization-specific answer is likely essential to skill correctness |
+| 4 | Yes | Answer would materially change generated skill behavior |
+| 3 | Maybe | Keep only if needed for minimum useful coverage |
+| 2 | No | Generic answer is likely enough |
+| 1 | No | Nice-to-know or outside requested skill scope |
 
-- Choose `subject-model` when the main unknown is what concepts/entities the skill must understand.
-- Choose `rules-and-metrics` when the main unknown is how the skill should calculate, classify, segment, or apply business rules.
-- Choose `data-behavior` when the main unknown is source-system behavior, lifecycle, field meaning, quality, or reconciliation.
-- Choose `runtime-constraints` when the main unknown is platform-specific behavior, configuration, orchestration, or production operations.
+Score each candidate by:
 
-If multiple lenses seem relevant, choose the one that would most change the clarification questions. Do not select a second lens.
-```
+- what people typically get wrong
+- what is absent from baseline LLM knowledge
+- what organizations commonly customize
+- whether the answer would change the generated skill
 
-- [ ] **Step 3: Add inline research instruction**
+- [ ] **Step 5: Remove intermediate-output instructions**
 
-Add:
+Delete instructions to emit or hand off:
 
-```md
-## Step 4: Research the selected lens inline
+- dimension sets
+- dimension scores
+- selected dimensions
+- intermediate JSON
+- consolidation notes
+- `research_plan`
+- `research_lens`
 
-Use the selected lens, the full user context, and any user-provided reference
-documents to produce the final clarification questions directly. Do not write
-intermediate JSON, do not write hidden per-dimension notes, and do not run a
-consolidation pass.
-```
+- [ ] **Step 6: Delete obsolete workspace references**
 
-- [ ] **Step 4: Update final payload examples**
-
-Every step 0 example should omit top-level `dimensions_selected` and include:
-
-```json
-"research_lens": "subject-model"
-```
-
-inside `research_output.metadata`.
-
-Guard/error examples should omit `research_lens` or set it to `null` only if the generated schema allows null.
-
-- [ ] **Step 5: Update semantic schema docs**
-
-In both `shared/schemas.md` copies, replace the `Research Plan` section with:
-
-```md
-## Research Lens
-
-- `metadata.research_lens` is required for successful research outputs.
-- Allowed values: `subject-model`, `rules-and-metrics`, `data-behavior`, `runtime-constraints`.
-- Guard and error outputs may omit `research_lens`.
-- Research outputs must not include `metadata.research_plan`, `dimension_scores`, or `selected_dimensions`.
-```
-
-Update the orchestrator envelope section to remove the `dimensions_selected` invariant.
-
-- [ ] **Step 6: Update app prompt**
-
-In `agent-sources/prompts/research.txt`, change the envelope to:
-
-```md
-Return only a raw JSON object with this envelope:
-{
-  "status": "research_complete",
-  "question_count": number,
-  "research_output": { ...canonical clarifications.json object... }
-}
-```
-
-Remove `Maximum research dimensions before scope warning` if no prompt or runtime behavior uses it after the migration.
-
-### Task 6: Delete Obsolete Dimension References
-
-**Files:**
-
-- Delete: `agent-sources/workspace/skills/research/references/dimensions/*.md`
-- Delete: `agent-sources/workspace/skills/research/references/dimension-sets.md`
-- Delete: `agent-sources/workspace/skills/research/references/scoring-rubric.md`
-- Delete: `agent-sources/workspace/skills/research/references/consolidation-handoff.md`
-- Modify: `repo-map.json` if it describes these reference files.
-
-- [ ] **Step 1: Confirm all remaining references are targets for rewrite or deletion**
-
-Run:
+Delete the obsolete reference files listed in this task. Then run:
 
 ```bash
-rg -n "dimension-sets|scoring-rubric|consolidation-handoff|references/dimensions|dimension_scores|selected_dimensions" agent-sources app tests
-```
-
-Expected after previous tasks: no runtime, prompt, schema, fixture, or eval code still depends on these files. Any remaining references must be rewritten or deleted in this task; do not keep the old dimension/scoring/consolidation files as archived reference material.
-
-- [ ] **Step 2: Delete obsolete references**
-
-Delete the obsolete reference files with `git rm`.
-
-- [ ] **Step 3: Update repo map only if needed**
-
-Run:
-
-```bash
-rg -n "research/references|dimension" repo-map.json
-```
-
-If `repo-map.json` names the deleted reference set, update that description in the same change.
-
-### Task 7: Update Evals and Structural Tests
-
-**Files:**
-
-- Modify: `app/agent-tests/agent-structure.test.ts`
-- Modify: `tests/evals/packages/skill-content-researcher-research/prompt.txt`
-- Modify: `tests/evals/packages/skill-content-researcher-research/promptfooconfig.json`
-- Modify: `tests/evals/packages/skill-content-researcher-skill-builder/prompt.txt`
-- Modify: `tests/evals/packages/skill-content-researcher-skill-builder/promptfooconfig.json`
-- Modify: `tests/evals/packages/workspace-workflow-step-prompt/prompt.txt`
-- Modify: `tests/evals/packages/workspace-workflow-step-prompt/promptfooconfig.json`
-- Audit: other `tests/evals/packages/**/prompt.txt` and `promptfooconfig.json` files found by `rg`.
-
-- [ ] **Step 1: Update structural tests**
-
-Replace assertions requiring `dimensions_selected` and `all_dimensions_low_score` with assertions requiring:
-
-```ts
-expect(content).toMatch(/research_lens/);
-expect(content).toMatch(/subject-model/);
-expect(content).toMatch(/rules-and-metrics/);
-expect(content).toMatch(/data-behavior/);
-expect(content).toMatch(/runtime-constraints/);
-expect(content).not.toMatch(/dimension_scores/);
-expect(content).not.toMatch(/selected_dimensions/);
-```
-
-- [ ] **Step 2: Update eval prompt examples**
-
-Run:
-
-```bash
-find tests/evals/packages -maxdepth 2 -type f \( -name 'prompt.txt' -o -name 'promptfooconfig.json' \) | sort | xargs rg -n "dimensions_selected|research_plan|dimension_scores|selected_dimensions|all_dimensions_low_score"
-```
-
-Expected initial hits include:
-
-- `tests/evals/packages/skill-content-researcher-research/prompt.txt`
-- `tests/evals/packages/skill-content-researcher-research/promptfooconfig.json`
-- `tests/evals/packages/skill-content-researcher-skill-builder/prompt.txt`
-- `tests/evals/packages/skill-content-researcher-skill-builder/promptfooconfig.json`
-- `tests/evals/packages/workspace-workflow-step-prompt/prompt.txt`
-- `tests/evals/packages/workspace-workflow-step-prompt/promptfooconfig.json`
-
-Remove top-level `dimensions_selected` from research output examples. Remove `metadata.research_plan`, `dimension_scores`, and `selected_dimensions`. Add `metadata.research_lens` to successful examples.
-
-- [ ] **Step 3: Update eval assertions**
-
-Replace JavaScript assertions requiring:
-
-```js
-Number.isInteger(data.dimensions_selected)
-data.research_output.metadata.research_plan
-```
-
-with:
-
-```js
-!Object.prototype.hasOwnProperty.call(data, "dimensions_selected")
-typeof data.question_count === "number"
-data.research_output.metadata
-typeof data.research_output.metadata.research_lens === "string"
-```
-
-For guard/error evals, assert `research_lens` may be absent and `warning` or `error` is present.
-
-- [ ] **Step 4: Verify eval package inventory is clean**
-
-Run the same eval grep again:
-
-```bash
-find tests/evals/packages -maxdepth 2 -type f \( -name 'prompt.txt' -o -name 'promptfooconfig.json' \) | sort | xargs rg -n "dimensions_selected|research_plan|dimension_scores|selected_dimensions|all_dimensions_low_score"
+rg "consolidation-handoff|dimension-sets|scoring-rubric|references/dimensions" agent-sources/workspace/skills/research agent-sources/workspace/skills/shared
 ```
 
 Expected: no matches.
 
-### Task 8: Full Validation and Cleanup
+- [ ] **Step 7: Update shared schema instructions**
 
-**Files:**
+In `agent-sources/workspace/skills/shared/schemas.md`, state that research
+outputs must include only the final clarifications object and must not include
+intermediate planning fields.
 
-- Review all changed files.
-- No new source files expected unless codegen produces them.
-
-- [ ] **Step 1: Run contract/codegen validation**
-
-Run:
-
-```bash
-cd app && npm run codegen
-git diff -- app/src/generated/contracts.ts app/sidecar/generated/contracts.ts app/src-tauri/src/generated/schemas.rs agent-sources
-```
-
-Expected: generated diffs reflect the clean-break contract and no manual generated-file edits are needed.
-
-- [ ] **Step 2: Run mapped tests**
+- [ ] **Step 8: Run agent structural tests**
 
 Run:
 
 ```bash
 cd app && npm run test:agents:structural
-cd app && npm run test:unit
-cd app/src-tauri && cargo test contracts:: workflow::
 ```
 
-Expected: all pass.
+Expected: structural tests pass.
 
-- [ ] **Step 3: Run eval harness contract tests**
+Commit:
+
+```bash
+git add agent-sources/workspace agent-sources/prompts/research.txt
+git commit -m "VU-1150: simplify workspace research skill"
+```
+
+### Task 6: Update Workflow Parsers and Artifact Tests
+
+**Files:**
+
+- Modify: `app/src-tauri/src/commands/workflow/tests.rs`
+- Modify: `app/src-tauri/src/commands/workflow_artifacts.rs`
+- Modify: affected parser or artifact tests found by `rg`
+
+- [ ] **Step 1: Remove workflow assertions for `dimensions_selected`**
+
+Run:
+
+```bash
+rg "dimensions_selected|research_plan|research_lens|dimension_scores|selected_dimensions" app/src-tauri
+```
+
+Update parser and artifact tests so they accept the clean-break output only.
+Assertions that verify absence are allowed.
+
+- [ ] **Step 2: Run workflow contract tests**
+
+Run:
+
+```bash
+cd app/src-tauri && cargo test commands::workflow
+cd app/src-tauri && cargo test contracts::
+```
+
+Expected: workflow and contract tests pass.
+
+Commit:
+
+```bash
+git add app/src-tauri/src/commands app/src-tauri/src/contracts
+git commit -m "VU-1150: remove workflow dimension handling"
+```
+
+### Task 7: Update Evals for the Clean-Break Flow
+
+**Files:**
+
+- Modify:
+  `tests/evals/packages/skill-content-researcher-research/prompt.txt`
+- Modify:
+  `tests/evals/packages/skill-content-researcher-research/promptfooconfig.json`
+- Modify:
+  `tests/evals/packages/skill-content-researcher-skill-builder/prompt.txt`
+- Modify:
+  `tests/evals/packages/skill-content-researcher-skill-builder/promptfooconfig.json`
+- Modify: `tests/evals/packages/workspace-workflow-step-prompt/prompt.txt`
+- Modify:
+  `tests/evals/packages/workspace-workflow-step-prompt/promptfooconfig.json`
+
+- [ ] **Step 1: Update eval prompt expectations**
+
+Each affected eval prompt should require:
+
+- one inline research flow
+- internal topic scope gate
+- internal relevance check for all four lenses
+- internal candidate-topic scoring
+- low-value candidate pruning
+- final `research_complete` JSON only
+- no emitted intermediate JSON, lens metadata, dimension metadata, or
+  consolidation artifacts
+
+- [ ] **Step 2: Update eval assertions**
+
+For the affected `promptfooconfig.json` files, assert that outputs do not
+contain:
+
+```txt
+dimensions_selected
+metadata.research_plan
+research_plan
+metadata.research_lens
+research_lens
+dimension_scores
+selected_dimensions
+consolidation
+handoff
+```
+
+Add positive assertions for:
+
+```txt
+status
+question_count
+research_output
+scope_recommendation
+priority_questions
+```
+
+- [ ] **Step 3: Audit all eval packages**
+
+Run:
+
+```bash
+rg "dimensions_selected|research_plan|research_lens|dimension_scores|selected_dimensions|all_dimensions_low_score|consolidation-handoff|scoring-rubric" tests/evals/packages
+```
+
+Expected: no matches outside negative assertions that intentionally ban legacy
+fields.
+
+- [ ] **Step 4: Run deterministic eval harness tests**
 
 Run:
 
@@ -789,35 +676,73 @@ Run:
 cd tests/evals && npm test
 ```
 
-Expected: deterministic eval harness tests pass.
+Expected: deterministic harness tests pass.
 
-- [ ] **Step 4: Run targeted research eval smoke if environment is configured**
+- [ ] **Step 5: Run targeted live evals**
 
 Run:
 
 ```bash
 cd tests/evals && npm run eval:skill-content-researcher-research
+cd tests/evals && npm run eval:skill-content-researcher-skill-builder
+cd tests/evals && npm run eval:workspace-workflow-step-prompt
 ```
 
-If the script name differs, inspect `tests/evals/package.json` and run the targeted research package command. If live model credentials are unavailable, record the exact skipped command and reason in the final implementation notes.
+Expected: targeted evals pass or produce actionable failures for prompt tuning.
 
-- [ ] **Step 5: Final grep for forbidden legacy contract terms**
+Commit:
+
+```bash
+git add tests/evals/packages
+git commit -m "VU-1150: update research eval contract"
+```
+
+### Task 8: Final Verification and Repo Map Audit
+
+**Files:**
+
+- Modify: `repo-map.json` only if mapped files were added, removed, or renamed.
+- Verify: all changed files.
+
+- [ ] **Step 1: Run the full legacy-field audit**
 
 Run:
 
 ```bash
-rg -n "dimensions_selected|dimension_scores|selected_dimensions|research_plan|all_dimensions_low_score|consolidation-handoff|scoring-rubric" app agent-sources tests/evals
+rg "dimensions_selected|research_plan|research_lens|dimension_scores|selected_dimensions|all_dimensions_low_score|consolidation-handoff|scoring-rubric" app agent-sources/workspace tests/evals
 ```
 
-Expected: no runtime, prompt, schema, fixture, or eval references remain. Historical docs may remain only if explicitly preserved and clearly marked obsolete.
+Expected: no matches outside tests or eval assertions that intentionally check
+absence.
 
-- [ ] **Step 6: Commit implementation**
+- [ ] **Step 2: Run required validation**
 
-After implementation and validation:
+Run:
 
 ```bash
-git add app agent-sources tests/evals repo-map.json
-git commit -m "VU-1150: simplify research lens contract"
+cd app && npm run test:agents:structural
+cd app && npm run test:unit
+cd app && npm run codegen
+cd app/src-tauri && cargo test contracts::
+cd app/src-tauri && cargo test commands::workflow
+cd tests/evals && npm test
 ```
 
-Do not include unrelated worktree changes.
+Expected: all commands pass.
+
+- [ ] **Step 3: Audit `repo-map.json`**
+
+Run the required pre-PR map checks from `AGENTS.md`. Update `repo-map.json` in
+the same implementation branch if any deleted or generated path is mapped.
+
+- [ ] **Step 4: Commit final map or cleanup changes**
+
+If `repo-map.json` or cleanup changes were required, run:
+
+```bash
+git add repo-map.json
+git commit -m "VU-1150: align repo map after research cleanup"
+```
+
+If no final changes are required, record that in the implementation summary
+instead of creating an empty commit.
