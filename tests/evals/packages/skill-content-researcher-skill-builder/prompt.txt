@@ -9,7 +9,6 @@ User context: Purpose is organization specific data engineering standards. Descr
 Return JSON only. Required top-level shape:
 {
   "status": "research_complete",
-  "dimensions_selected": 3,
   "question_count": 3,
   "research_output": {
     "version": "1",
@@ -25,6 +24,6 @@ Return JSON only. Required top-level shape:
   }
 }
 
-Return only the final research_complete JSON. Do not include `research_plan`,
-`research_lens`, `dimension_scores`, `selected_dimensions`, `topic_relevance`,
-or `dimensions_evaluated`.
+Return only the final research_complete JSON. Do not include
+`dimensions_selected`, `research_plan`, `research_lens`, `dimension_scores`,
+`selected_dimensions`, `topic_relevance`, or `dimensions_evaluated`.

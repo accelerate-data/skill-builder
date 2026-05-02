@@ -12,7 +12,6 @@ Return raw JSON only. Use this exact envelope shape:
 
 {
   "status": "research_complete",
-  "dimensions_selected": 0,
   "question_count": 0,
   "research_output": {
     "version": "1",
@@ -37,5 +36,5 @@ Do not put `sections`, `notes`, or `answer_evaluator_notes` inside
 `research_output.metadata`; they are top-level fields inside `research_output`.
 
 Do not include legacy planning or scoring fields anywhere in the output:
-`research_plan`, `research_lens`, `dimension_scores`, `selected_dimensions`,
-`topic_relevance`, or `dimensions_evaluated`.
+`dimensions_selected`, `research_plan`, `research_lens`, `dimension_scores`,
+`selected_dimensions`, `topic_relevance`, or `dimensions_evaluated`.

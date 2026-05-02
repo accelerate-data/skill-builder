@@ -297,12 +297,12 @@ describe("Research scope guard contract prompts", () => {
   });
 
   it("research-agent includes scope recommendation short-circuit contract", () => {
-    const content = fileContent("research-agent");
+    const content = fs.readFileSync(WORKSPACE_RESEARCH_SKILL_PATH, "utf8");
     expect(content).toMatch(
       /Scope (Recommendation )?[Gg]uard|scope_recommendation/,
     );
     expect(content).toMatch(/status": "research_complete"/);
-    expect(content).toMatch(/dimensions_selected": 0/);
+    expect(content).not.toMatch(/dimensions_selected": 0/);
     expect(content).toMatch(/question_count": 0/);
   });
 

@@ -11,14 +11,13 @@ Maximum research dimensions before scope warning: {{max_dimensions}}
 All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
 
 The research skill must run as one inline flow and return only final output.
-Do not emit intermediate JSON, markdown summaries, research_plan,
-research_lens, dimension_scores, selected_dimensions, topic_relevance,
-dimensions_evaluated, or consolidation handoff text.
+Do not emit intermediate JSON, markdown summaries, dimensions_selected,
+research_plan, research_lens, dimension_scores, selected_dimensions,
+topic_relevance, dimensions_evaluated, or consolidation handoff text.
 
 Return only a raw JSON object with this envelope:
 {
   "status": "research_complete",
-  "dimensions_selected": number,
   "question_count": number,
   "research_output": { ...canonical clarifications.json object... }
 }
