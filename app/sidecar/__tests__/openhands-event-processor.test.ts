@@ -72,6 +72,92 @@ describe("OpenHandsEventProcessor", () => {
     expectNoLegacyMessages(messages);
   });
 
+  it("forwards realistic nested SDK conversation_event payloads unchanged", () => {
+    const processor = new OpenHandsEventProcessor();
+    const { messages, sink } = makeSink();
+    const record = {
+      type: "conversation_event",
+      runtime: "openhands",
+      conversation_id: "scope-review-1",
+      agent_id: "skill-creator",
+      event_class: "ActionEvent",
+      event: {
+        source: "agent",
+        llm_response_id: "resp_01JY",
+        tool_call_id: "toolu_01JZ",
+        reasoning_content: "Need to inspect the sidecar tests first.",
+        thinking_blocks: [
+          {
+            type: "thinking",
+            thinking: "Find the narrow boundary and preserve raw payloads.",
+            signature: "sig_01",
+          },
+        ],
+        tool_call: {
+          id: "toolu_01JZ",
+          type: "function",
+          function: {
+            name: "read_file",
+            arguments: {
+              path: "app/sidecar/__tests__/openhands-runner.test.ts",
+              ranges: [{ start: 1, end: 120 }],
+            },
+          },
+        },
+        nested: {
+          llm_message: {
+            role: "assistant",
+            content: [
+              { type: "text", text: "Reading the runner boundary tests." },
+              {
+                type: "tool_use",
+                id: "toolu_01JZ",
+                name: "read_file",
+                input: { path: "app/sidecar/__tests__/openhands-runner.test.ts" },
+              },
+            ],
+          },
+        },
+      },
+      timestamp: 1714550400000,
+    };
+
+    processor.processLine(JSON.stringify(record), sink);
+
+    expect(messages).toEqual([record]);
+    expect(processor.hasTerminalState()).toBe(false);
+    expectNoLegacyMessages(messages);
+  });
+
+  it("forwards unknown SDK event classes unchanged", () => {
+    const processor = new OpenHandsEventProcessor();
+    const { messages, sink } = makeSink();
+    const record = {
+      type: "conversation_event",
+      runtime: "openhands",
+      conversation_id: "scope-review-1",
+      agent_id: "skill-creator",
+      event_class: "FutureOpenHandsControlEvent",
+      event: {
+        source: "environment",
+        control: {
+          checkpoint_id: "ckpt-42",
+          metadata: {
+            labels: ["unknown", "preserve"],
+            retryable: true,
+          },
+        },
+      },
+      timestamp: 1714550400500,
+    };
+
+    processor.processLine(JSON.stringify(record), sink);
+
+    expect(messages).toEqual([record]);
+    expect(processor.hasTerminalState()).toBe(false);
+    expectNoLegacyMessages(messages);
+  });
+
   it("forwards conversation_state records and tracks terminal states", () => {
     const processor = new OpenHandsEventProcessor();
     const { messages, sink } = makeSink();

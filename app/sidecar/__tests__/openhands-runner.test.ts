@@ -47,6 +47,21 @@ function parseJsonl(stdout: string): Record<string, unknown>[] {
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
+function expectOnlyOpenHandsProtocolRecords(records: Record<string, unknown>[]): void {
+  expect(
+    records.every(
+      (record) =>
+        record.type === "conversation_state" ||
+        record.type === "conversation_event",
+    ),
+  ).toBe(true);
+  expect(JSON.stringify(records)).not.toContain("openhands_event");
+  expect(JSON.stringify(records)).not.toContain("openhands_result");
+  expect(JSON.stringify(records)).not.toContain("display_item");
+  expect(JSON.stringify(records)).not.toContain("run_result");
+  expect(JSON.stringify(records)).not.toContain("sdk_stderr");
+}
+
 describe("openhands runner.py", () => {
   it("maps llm config, file agent context, workspace skills, tools, and workspace onto SDK Conversation", () => {
     const result = runPython(
@@ -217,19 +232,58 @@ print(json.dumps(captured, sort_keys=True))
   it("emits redacted JSONL for SDK callback events using the conversation_event protocol", () => {
     const result = runPython(
       runnerImportScript(`
-class Event:
+class ActionEvent:
     def model_dump(self, mode="python"):
         return {
-            "message": "using sk-secret through secure-route",
-            "nested": {"api_key": "sk-secret"},
-            "headers": ["secure-route"],
+            "source": "agent",
+            "llm_response_id": "resp_01JY",
+            "tool_call_id": "toolu_01JZ",
+            "reasoning_content": "Need to inspect sk-secret before calling secure-route",
+            "thinking_blocks": [
+                {
+                    "type": "thinking",
+                    "thinking": "Use vault-token only inside the provider boundary",
+                    "signature": "sig_01"
+                }
+            ],
+            "tool_call": {
+                "id": "toolu_01JZ",
+                "type": "function",
+                "function": {
+                    "name": "read_file",
+                    "arguments": {
+                        "path": "app/sidecar/__tests__/openhands-runner.test.ts",
+                        "headers": {"authorization": "Bearer sk-secret"},
+                        "routes": ["secure-route"]
+                    }
+                }
+            },
+            "llm_message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "I will inspect the sidecar boundary."},
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_01JZ",
+                        "name": "read_file",
+                        "input": {
+                            "path": "app/sidecar/__tests__/openhands-runner.test.ts",
+                            "token": "vault-token"
+                        }
+                    }
+                ]
+            },
+            "metadata": {
+                "attempts": [{"provider": "secure-route", "api_key": "sk-secret"}],
+                "tuple_value": ("vault-token", "keep-me")
+            }
         }
 
 stdout = io.StringIO()
 with contextlib.redirect_stdout(stdout):
     runner.emit_conversation_event(
-        Event(),
-        ["sk-secret", "secure-route"],
+        ActionEvent(),
+        ["sk-secret", "secure-route", "vault-token"],
     )
 
 print(stdout.getvalue())
@@ -237,20 +291,62 @@ print(stdout.getvalue())
     );
 
     expect(result.status).toBe(0);
-    const event = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
-    expect(event).toMatchObject({
+    const records = parseJsonl(result.stdout);
+    expectOnlyOpenHandsProtocolRecords(records);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
       type: "conversation_event",
-      event_class: "Event",
+      event_class: "ActionEvent",
+      event: {
+        source: "agent",
+        llm_response_id: "resp_01JY",
+        tool_call_id: "toolu_01JZ",
+        reasoning_content: "Need to inspect [REDACTED] before calling [REDACTED]",
+        thinking_blocks: [
+          {
+            type: "thinking",
+            thinking: "Use [REDACTED] only inside the provider boundary",
+            signature: "sig_01",
+          },
+        ],
+        tool_call: {
+          id: "toolu_01JZ",
+          type: "function",
+          function: {
+            name: "read_file",
+            arguments: {
+              path: "app/sidecar/__tests__/openhands-runner.test.ts",
+              headers: { authorization: "Bearer [REDACTED]" },
+              routes: ["[REDACTED]"],
+            },
+          },
+        },
+        llm_message: {
+          role: "assistant",
+          content: [
+            { type: "text", text: "I will inspect the sidecar boundary." },
+            {
+              type: "tool_use",
+              id: "toolu_01JZ",
+              name: "read_file",
+              input: {
+                path: "app/sidecar/__tests__/openhands-runner.test.ts",
+                token: "[REDACTED]",
+              },
+            },
+          ],
+        },
+        metadata: {
+          attempts: [{ provider: "[REDACTED]", api_key: "[REDACTED]" }],
+          tuple_value: ["[REDACTED]", "keep-me"],
+        },
+      },
     });
-    expect(typeof event.timestamp).toBe("number");
-    expect(event).not.toHaveProperty("event_kind");
-    expect(JSON.stringify(event)).not.toContain("sk-secret");
-    expect(JSON.stringify(event)).not.toContain("secure-route");
-    expect(event.event).toEqual({
-      message: "using [REDACTED] through [REDACTED]",
-      nested: { api_key: "[REDACTED]" },
-      headers: ["[REDACTED]"],
-    });
+    expect(typeof records[0].timestamp).toBe("number");
+    expect(records[0]).not.toHaveProperty("event_kind");
+    expect(JSON.stringify(records[0])).not.toContain("sk-secret");
+    expect(JSON.stringify(records[0])).not.toContain("secure-route");
+    expect(JSON.stringify(records[0])).not.toContain("vault-token");
   }, 30_000);
 
   it("rejects non skill-creator agents", () => {
@@ -427,18 +523,7 @@ print(json.dumps({"stdout": stdout.getvalue(), "stderr": stderr.getvalue()}, sor
     expect(captured.stderr).toContain("[REDACTED]");
 
     const records = parseJsonl(captured.stdout);
-    expect(
-      records.every(
-        (record) =>
-          record.type === "conversation_state" ||
-          record.type === "conversation_event",
-      ),
-    ).toBe(true);
-    expect(JSON.stringify(records)).not.toContain("openhands_event");
-    expect(JSON.stringify(records)).not.toContain("openhands_result");
-    expect(JSON.stringify(records)).not.toContain("display_item");
-    expect(JSON.stringify(records)).not.toContain("run_result");
-    expect(JSON.stringify(records)).not.toContain("sdk_stderr");
+    expectOnlyOpenHandsProtocolRecords(records);
     expect(records.map((record) => record.type)).toEqual([
       "conversation_state",
       "conversation_state",

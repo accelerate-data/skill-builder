@@ -113,7 +113,7 @@ Run:
 
 ```bash
 git status --short
-git add app/src-tauri/src/commands/workflow/output_format.rs app/src-tauri/src/commands/workflow/tests.rs docs/superpowers/plans/2026-05-01-vu-1050-generated-skill-version-tag.md
+git add app/src-tauri/src/commands/workflow/output_format.rs app/src-tauri/src/commands/workflow/tests.rs docs/plans/2026-05-01-vu-1050-generated-skill-version-tag.md
 git commit -m "VU-1050: tag generated skills after commit"
 ```
 

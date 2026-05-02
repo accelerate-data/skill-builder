@@ -358,6 +358,34 @@ and Rust reads task completion from terminal conversation state.
 | startup / running lifecycle | `conversation_state` |
 | terminal success, error, cancelled | terminal `conversation_state` |
 
+### Event Handling
+
+SDK callback events are preserved as raw SDK payloads under
+`conversation_event.event`. The app envelope may add transport metadata such as
+`event_class`, `timestamp`, `conversation_id`, or `agent_id`, but it must not
+flatten or remap the SDK event body into Claude-style display records.
+
+Frontend extraction handles OpenHands SDK shapes directly, including nested
+`MessageEvent`, `ActionEvent`, and `ObservationEvent` payloads produced by
+SDK serialization. Message text, tool-call metadata, reasoning text, tool
+inputs, and observations may live under nested fields such as `llm_message`,
+`tool_call`, `tool_call_id`, `llm_response_id`, `reasoning_content`, or
+`thinking_blocks`.
+
+Parallel `ActionEvent`s that share the same non-empty `llm_response_id` are
+grouped only as a render-time display projection. The stored event stream
+remains append-only and keeps each SDK callback as its own
+`conversation_event`.
+
+`conversation_state` remains the app boundary for lifecycle and terminal task
+results. Product code reads final status, errors, `structured_output`, and
+`result_text` from terminal state records, not from activity events.
+
+Runner stdout is reserved for JSONL protocol records:
+`conversation_event` and `conversation_state`. Runner stderr and transcript logs
+remain diagnostics for operators and support; they must not become frontend
+activity or result inputs.
+
 ## Output And Parsing
 
 The OpenHands SDK final answer crosses the Rust boundary through the terminal

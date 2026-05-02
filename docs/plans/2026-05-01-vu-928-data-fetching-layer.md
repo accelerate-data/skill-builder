@@ -1497,7 +1497,7 @@ Request/response backend data belongs in TanStack Query hooks under `app/src/lib
 Run:
 
 ```bash
-markdownlint AGENTS.md .claude/rules/state-management.md docs/superpowers/plans/2026-05-01-vu-928-data-fetching-layer.md
+markdownlint AGENTS.md .claude/rules/state-management.md docs/plans/2026-05-01-vu-928-data-fetching-layer.md
 ```
 
 Expected: PASS.
@@ -1583,7 +1583,7 @@ Expected: listed stores match `repo-map.json`, and query module is documented.
 Run:
 
 ```bash
-markdownlint AGENTS.md .claude/rules/state-management.md docs/superpowers/plans/2026-05-01-vu-928-data-fetching-layer.md
+markdownlint AGENTS.md .claude/rules/state-management.md docs/plans/2026-05-01-vu-928-data-fetching-layer.md
 cd app && bash scripts/lint-agent-docs.sh
 ```
 
@@ -1651,7 +1651,7 @@ Fixes VU-928
 - `cd app && npm run test:e2e:workflow`
 - `cd app && npx tsc --noEmit`
 - `cd app && npm run build`
-- `markdownlint AGENTS.md .claude/rules/state-management.md docs/superpowers/plans/2026-05-01-vu-928-data-fetching-layer.md`
+- `markdownlint AGENTS.md .claude/rules/state-management.md docs/plans/2026-05-01-vu-928-data-fetching-layer.md`
 - `cd app && bash scripts/lint-agent-docs.sh`
 ```
 

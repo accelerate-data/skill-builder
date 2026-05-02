@@ -12,14 +12,14 @@
 
 ## Branch And Merge Contract
 
-- [ ] Create the implementation worktree from the current VU-1145 branch:
+- [x] Create the implementation worktree from the current VU-1145 branch:
 
 ```bash
 cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-clean-break-agent-runtime
 ./scripts/worktree.sh feature/vu-1147-openhands-event-shape-hardening
 ```
 
-- [ ] Implement and test only in the child worktree.
+- [x] Implement and test only in the child worktree.
 - [ ] Raise the PR with base `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`.
 - [ ] Merge the tested child branch back into the VU-1145 accumulation branch.
 
@@ -50,7 +50,7 @@ does not migrate the research step itself.
 
 - OpenHands event docs: `https://docs.openhands.dev/sdk/arch/events`
 - Runner design: `docs/design/openhands-sdk-runner/README.md`
-- VU-1145 umbrella plan: `docs/plan/2026-05-02-vu-1145-openhands-native-migration.md`
+- VU-1145 umbrella plan: `docs/plans/2026-05-02-openhands-native-migration.md`
 - OpenHands event transport: `app/sidecar/openhands/runner.py`
 - Node protocol forwarder: `app/sidecar/openhands-event-processor.ts`
 - Rust forwarding/completion boundary: `app/src-tauri/src/agents/event_router.rs`
@@ -94,12 +94,12 @@ does not migrate the research step itself.
   - Transport-only coverage that raw OpenHands records are forwarded unchanged.
 - Modify: `docs/design/openhands-sdk-runner/README.md`
   - Document event-shape handling and parallel `ActionEvent` grouping.
-- Modify: `docs/superpowers/plans/2026-05-02-openhands-event-shape-hardening.md`
+- Modify: `docs/plans/2026-05-02-openhands-event-shape-hardening.md`
   - Track completion while implementing.
 
 ## Task 1: Add Realistic Event Fixtures
 
-- [ ] Create `app/src/__tests__/fixtures/openhands-conversation-events.ts` with
+- [x] Create `app/src/__tests__/fixtures/openhands-conversation-events.ts` with
   representative app-framed records:
   - `MessageEvent` with `event.llm_message.content[]`.
   - `ActionEvent` with `event.tool_call`, `event.tool_call_id`,
@@ -112,28 +112,30 @@ does not migrate the research step itself.
   - `CondensationSummaryEvent`.
   - `ConversationStateUpdateEvent`.
   - `PauseEvent`.
-- [ ] Export fixtures as plain records shaped like messages received by
+- [x] Export fixtures as plain records shaped like messages received by
   `normalizeConversationEventMessage`.
-- [ ] Run:
+- [x] Run:
 
 ```bash
-cd app && npx vitest run src/__tests__/components/agent-output-panel.test.tsx --runInBand
+cd app && npx vitest run src/__tests__/components/agent-output-panel.test.tsx
 ```
 
 Expected: tests still pass before fixture usage.
 
 ## Task 2: Harden Event Extraction Helpers
 
-- [ ] Add tests in `app/src/__tests__/components/agent-output-panel.test.tsx`
+- [x] Add tests in `app/src/__tests__/components/agent-output-panel.test.tsx`
   or a new focused lib test file for:
   - nested `llm_message.content` text extraction;
-  - nested `tool_call.name` and `tool_call.arguments` extraction;
+  - nested `tool_call.function.name` and
+    `tool_call.function.arguments` extraction;
   - `tool_call_id` extraction;
   - `llm_response_id` extraction;
   - `reasoning_content` extraction;
-  - `thinking_blocks` extraction;
+  - `thinking_blocks` extraction, including blocks that use the SDK
+    `thinking` field;
   - nested observation/error text extraction.
-- [ ] Update `app/src/lib/openhands-conversation-events.ts` with helper
+- [x] Update `app/src/lib/openhands-conversation-events.ts` with helper
   functions:
   - `getMessageText(event)`;
   - `getReasoningText(event)`;
@@ -144,8 +146,10 @@ Expected: tests still pass before fixture usage.
   - `getObservationText(event)`;
   - `getErrorText(event)`;
   - `getInternalEventSummary(event)`.
-- [ ] Keep `stringifyEventPayload` as the fallback for unknown shapes.
-- [ ] Run:
+- [x] Keep `stringifyEventPayload` as the fallback for unknown shapes.
+- [x] Preserve non-object SDK serialization fallbacks as raw payload records
+  rather than dropping them during normalization.
+- [x] Run:
 
 ```bash
 cd app && npx vitest run src/__tests__/components/agent-output-panel.test.tsx src/__tests__/lib/agent-events-sync.test.ts
@@ -155,7 +159,7 @@ Expected: all tests pass, including new extraction assertions.
 
 ## Task 3: Render Common SDK Event Classes Readably
 
-- [ ] Add failing UI tests for readable rendering of:
+- [x] Add UI tests for readable rendering of:
   - `MessageEvent`;
   - `ActionEvent`;
   - `ObservationEvent`;
@@ -163,14 +167,16 @@ Expected: all tests pass, including new extraction assertions.
   - `ConversationErrorEvent`;
   - `SystemPromptEvent`;
   - `CondensationSummaryEvent`;
+  - other common `Condensation*` control events;
   - `ConversationStateUpdateEvent`;
   - `PauseEvent`;
   - unknown event fallback.
-- [ ] Update `ConversationEventList` so each known class has a compact,
+- [x] Update `ConversationEventList` so each known class has a compact,
   readable row.
-- [ ] Keep full raw payload access through fallback payload blocks when no
-  readable field exists.
-- [ ] Run:
+- [x] Keep full raw payload access through fallback payload blocks when no
+  readable field exists, including known event classes with unfamiliar
+  payload shapes.
+- [x] Run:
 
 ```bash
 cd app && npx vitest run src/__tests__/components/agent-output-panel.test.tsx
@@ -180,9 +186,9 @@ Expected: event rendering tests pass.
 
 ## Task 4: Group Parallel Action Events
 
-- [ ] Add tests for two or more `ActionEvent`s with the same
+- [x] Add tests for two or more `ActionEvent`s with the same
   `llm_response_id`.
-- [ ] Implement grouping in `ConversationEventList` or a helper in
+- [x] Implement grouping in `ConversationEventList` or a helper in
   `openhands-conversation-events.ts`:
   - consecutive `ActionEvent`s with the same non-empty `llm_response_id` render
     as one parallel action group;
@@ -190,8 +196,8 @@ Expected: event rendering tests pass.
   - each tool call remains visible with its own tool name, input, and
     `tool_call_id`;
   - unrelated actions remain separate rows.
-- [ ] Do not mutate stored events; grouping is a render-time projection.
-- [ ] Run:
+- [x] Do not mutate stored events; grouping is a render-time projection.
+- [x] Run:
 
 ```bash
 cd app && npx vitest run src/__tests__/components/agent-output-panel.test.tsx src/__tests__/hooks/use-agent-stream.test.ts
@@ -202,15 +208,15 @@ append-only.
 
 ## Task 5: Preserve Transport And Terminal Boundaries
 
-- [ ] Add sidecar tests proving `OpenHandsEventProcessor` still forwards
+- [x] Add sidecar tests proving `OpenHandsEventProcessor` still forwards
   `conversation_event` records unchanged, including unknown event classes and
   nested payloads.
-- [ ] Add runner tests proving `emit_conversation_event(...)` preserves
+- [x] Add runner tests proving `emit_conversation_event(...)` preserves
   `event_class`, nested payloads, `llm_response_id`, `tool_call_id`, and
   redacts secrets recursively.
-- [ ] Add a regression assertion that OpenHands stdout still contains only
+- [x] Add a regression assertion that OpenHands stdout still contains only
   `conversation_event` and `conversation_state` records.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd app/sidecar && npx vitest run __tests__/openhands-runner.test.ts __tests__/openhands-event-processor.test.ts __tests__/openhands-runtime.test.ts
@@ -220,7 +226,7 @@ Expected: all sidecar event tests pass.
 
 ## Task 6: Update Runner Design Documentation
 
-- [ ] Update `docs/design/openhands-sdk-runner/README.md` to document:
+- [x] Update `docs/design/openhands-sdk-runner/README.md` to document:
   - SDK callback events are preserved as raw payloads under
     `conversation_event.event`;
   - frontend extraction supports nested SDK `MessageEvent`, `ActionEvent`, and
@@ -228,23 +234,40 @@ Expected: all sidecar event tests pass.
   - parallel `ActionEvent`s are grouped by `llm_response_id` only for display;
   - `conversation_state` remains the app terminal/result boundary;
   - stdout/stderr remain diagnostics and must not become frontend activity.
-- [ ] Run:
+- [x] Run:
 
 ```bash
-markdownlint docs/design/openhands-sdk-runner/README.md docs/superpowers/plans/2026-05-02-openhands-event-shape-hardening.md
+markdownlint docs/design/openhands-sdk-runner/README.md docs/plans/2026-05-02-openhands-event-shape-hardening.md
 ```
 
 Expected: no markdownlint errors.
 
+### Task 6 Implementation Notes
+
+Current code evidence after implementation:
+
+- `app/sidecar/openhands/runner.py` serializes SDK callback events with
+  `emit_conversation_event(...)`, preserving the serialized SDK object under
+  `event` and writing protocol records to stdout.
+- `app/sidecar/openhands-event-processor.ts` forwards `conversation_event`
+  records unchanged and treats unparseable or unknown stdout as diagnostics.
+- `app/src/lib/openhands-conversation-events.ts` and
+  `app/src/components/agent-items/conversation-event-list.tsx` extract nested
+  SDK event payloads and group parallel `ActionEvent`s by `llm_response_id`
+  only for display.
+
 ## Final Verification
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd app && npm run test:unit
 cd app/sidecar && npx vitest run
 cd app && npx tsc --noEmit
-markdownlint docs/design/openhands-sdk-runner/README.md docs/superpowers/plans/2026-05-02-openhands-event-shape-hardening.md
+cd app && npm run test:agents:structural
+cd app && npm run test:integration
+python3 -m json.tool repo-map.json >/dev/null
+markdownlint docs/design/openhands-sdk-runner/README.md docs/plans/2026-05-02-openhands-event-shape-hardening.md
 ```
 
 - [ ] If implementation touches Rust event forwarding, also run:

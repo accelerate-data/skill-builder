@@ -15,30 +15,49 @@
 ## Source Context
 
 - Parent Linear issue: `VU-1145`
-- Next child issue: `VU-1146`
+- Current child issue: `VU-1147`
 - Primary design: `docs/design/openhands-native-migration/README.md`
 - SDK runner design: `docs/design/openhands-sdk-runner/README.md`
 - Runtime boundary design: `docs/design/agent-runtime-boundary/README.md`
 - Model settings design: `docs/design/model-settings/README.md`
-- Validate child plan: `docs/superpowers/plans/2026-05-02-scope-review-openhands-validate.md`
+- Validate child plan: `docs/plans/2026-05-02-scope-review-openhands-validate.md`
+- Event-shape child plan: `docs/plans/2026-05-02-openhands-event-shape-hardening.md`
 
 ## Current State Snapshot
 
-This snapshot reflects the codebase state inspected on 2026-05-02 before starting VU-1146.
+This snapshot reflects the VU-1145 accumulation branch after VU-1146 merged
+back and while VU-1147 is being implemented as the next child branch.
 
 | Area | Status | Evidence |
 |---|---|---|
-| Runtime boundary types | Partial | `app/sidecar/runtime/types.ts` has `modelBaseUrl`, `llm`, `pathToOpenHandsRunner`, and `runtimeProvider`, but does not yet carry `taskKind` or `userMessageSuffix`. |
-| Sidecar config validation | Partial | `app/sidecar/config.ts` validates `modelBaseUrl` and `llm`, but not `taskKind` or `userMessageSuffix`. |
-| OpenHands runtime adapter | Partial | `app/sidecar/runtime/openhands-runtime.ts` spawns the packaged runner when present and serializes `llm`, but does not serialize `taskKind` or `userMessageSuffix`. |
-| Python runner | Partial | `app/sidecar/openhands/runner.py` builds `LLM`, `AgentContext`, `Agent`, and `Conversation`, but still calls `load_project_skills`, does not pass `user_message_suffix`, does not set `load_public_skills=False`, does not enforce `skill-creator`, and still labels itself a dev-only spike. |
+| Runtime boundary types | Done for one-shot OpenHands | VU-1146 added task metadata, runtime LLM projection, terminal `conversation_state`, and the one-shot result boundary needed by Validate. |
+| Sidecar config validation | Done for one-shot OpenHands | VU-1146 validates OpenHands request fields including `taskKind`, `agentName`, `llm`, workspace paths, and `userMessageSuffix`. |
+| OpenHands runtime adapter | Done for one-shot OpenHands | The sidecar forwards app-framed `conversation_event` and `conversation_state` records without legacy OpenHands display/run-result mappings. |
+| Python runner | Done for one-shot OpenHands | The runner uses one `skill-creator` agent, `AgentContext.system_message_suffix`, file-based workspace skills, disabled public skills, `LocalWorkspace`, SDK callbacks, and terminal `conversation_state`. |
 | Runner packaging | Mostly done | `app/sidecar/openhands/build.sh`, `app/sidecar/openhands/requirements.txt`, `app/sidecar/build.js`, and `app/src-tauri/src/agents/sidecar.rs` stage and resolve `sidecar/dist/openhands/openhands-runner`. |
-| Workspace startup/deploy | Partial | `init_workspace` already creates/refeshes the app workspace and `workflow/deploy.rs` copies plugin agents/skills into `.agents/**`; the source layout still comes from `agent-sources/plugins/**`, not the final `agent-sources/workspace/**` plus `agent-sources/prompts/**` contract. |
+| Workspace startup/deploy | Done for root OpenHands workspace | App startup creates/refeshes the workspace and deploys `agent-sources/workspace/**`; task prompts live under `agent-sources/prompts/**` and are read by code, not copied into runtime `.agents`. |
 | Workflow routing | Not done | `app/src-tauri/src/commands/workflow/step_config.rs` still routes to `research-agent`, `skill-writer-agent`, and `answer-evaluator`. |
-| Create-skill Validate | Not done | `app/src-tauri/src/commands/skill/scope_review.rs` still reads `anthropic_api_key` / `preferred_model` and posts directly to `https://api.anthropic.com/v1/messages`. |
-| Model settings UI | Mostly done | `app/src/lib/model-catalog.ts` and `app/src/components/settings/sdk-section.tsx` use `models.dev`, provider/model dropdowns, reasoning/tool-calling filters, model details, and hidden backend-owned `usageId`. Remaining check: Request Options UI lacks visible temperature and max-output controls. |
+| Create-skill Validate | Done | VU-1146 routes Validate through the shared OpenHands one-shot runner and parses the terminal `conversation_state` result. |
+| Event-shape hardening | In progress | VU-1147 hardens real SDK event rendering, nested tool/message extraction, parallel `ActionEvent` grouping, and raw payload preservation before workflow research migration. |
+| Model settings UI | Mostly done | `app/src/lib/model-catalog.ts` and `app/src/components/settings/sdk-section.tsx` use `models.dev`, provider/model dropdowns, reasoning/tool-calling filters, model details, and hidden backend-owned `usageId`. Verify request-option controls during the final settings pass, but do not block workflow migration on this unless tests reveal a runtime LLM projection gap. |
 | Eval coverage | Partial | Promptfoo/OpenCode packages exist and static OpenHands assertions exist, but packages still name `research-agent` / `skill-writer-agent` and there is not yet an automated live OpenHands workflow smoke for step 0 and step 3. |
 | Repo docs/map | Partial | Runtime/model designs have been updated. `repo-map.json` still describes mixed Claude/OpenHands runtime and old plugin-hosted agent prompts. |
+
+## Pre-Workflow Migration Gate
+
+Before starting workflow research migration, merge these child branches back
+into the VU-1145 accumulation branch:
+
+- [x] VU-1146 Scope Review Validate. This proves the shared one-shot
+  OpenHands runner, workspace, LLM, agent, and result boundary.
+- [ ] VU-1147 Event Shape Hardening. This must land before workflow research
+  so the UI can display real OpenHands messages, reasoning, tool calls,
+  observations, errors, internal events, and parallel action batches.
+
+No other remaining 1145 slice is required ahead of workflow migration unless a
+local re-check shows the workflow path cannot use the VU-1146 runner boundary.
+Model-settings polish, broad eval updates, Claude compatibility removal, and
+repo-map cleanup are follow-on or final-readiness tasks.
 
 ## Execution Rules
 
@@ -59,7 +78,7 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 
 Use this slice before continuing the broader workflow migration.
 
-**Plan:** `docs/superpowers/plans/2026-05-02-scope-review-openhands-validate.md`
+**Plan:** `docs/plans/2026-05-02-scope-review-openhands-validate.md`
 
 **Branch:**
 
@@ -81,18 +100,18 @@ Use this slice before continuing the broader workflow migration.
 
 **Required behavior:**
 
-- [ ] Preserve existing Validate semantics: user-clicked, advisory, no hard gate, no create-dialog UI rewrite.
-- [ ] Route `review_skill_scope` through the OpenHands one-shot runner.
-- [ ] Reuse the existing app startup workspace creation/refresh path; do not create a temporary validation workspace.
-- [ ] Add `taskKind: "scope_review"` and `userMessageSuffix` to the runner request contract.
-- [ ] Load `.agents/agents/skill-creator.md` as `system_message_suffix`.
-- [ ] Load file-based skills with OpenHands `load_skills_from_dir(".agents/skills")`.
-- [ ] Set `load_public_skills=False`.
+- [x] Preserve existing Validate semantics: user-clicked, advisory, no hard gate, no create-dialog UI rewrite.
+- [x] Route `review_skill_scope` through the OpenHands one-shot runner.
+- [x] Reuse the existing app startup workspace creation/refresh path; do not create a temporary validation workspace.
+- [x] Add `taskKind: "scope_review"` and `userMessageSuffix` to the runner request contract.
+- [x] Load `.agents/agents/skill-creator.md` as `system_message_suffix`.
+- [x] Load file-based skills with OpenHands `load_skills_from_dir(".agents/skills")`.
+- [x] Set `load_public_skills=False`.
 
 **Verification:**
 
 ```bash
-markdownlint docs/superpowers/plans/2026-05-02-scope-review-openhands-validate.md docs/design/openhands-sdk-runner/README.md
+markdownlint docs/plans/2026-05-02-scope-review-openhands-validate.md docs/design/openhands-sdk-runner/README.md
 cd app/sidecar && npx vitest run __tests__/config.test.ts __tests__/runtime-types.test.ts __tests__/openhands-runtime.test.ts __tests__/openhands-runner.test.ts __tests__/openhands-event-processor.test.ts
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill::scope_review
 cd app && npx vitest run src/__tests__/hooks/use-scope-advisor.test.ts src/__tests__/components/new-skill-dialog.test.tsx src/__tests__/components/scope-advisor.test.tsx
@@ -100,13 +119,58 @@ cd app && npx vitest run src/__tests__/hooks/use-scope-advisor.test.ts src/__tes
 
 **Merge-back gate:**
 
-- [ ] VU-1146 branch is merged into VU-1145.
-- [ ] `scope_review.rs` no longer contains direct Anthropic HTTP calls.
-- [ ] The VU-1145 umbrella plan still reflects the merged code before starting Slice 2.
+- [x] VU-1146 branch is merged into VU-1145.
+- [x] `scope_review.rs` no longer contains direct Anthropic HTTP calls.
+- [x] The VU-1145 umbrella plan reflects the merged code before starting VU-1147.
 
-## Slice 2: Harden The OpenHands Runner Contract
+## Slice 2: VU-1147 Event Shape Hardening
 
-This slice finishes the reusable runner behavior after the Validate path has proven it.
+This slice is required before workflow research migration. It hardens the
+visible OpenHands event stream that workflow users depend on while a research
+step is running.
+
+**Plan:** `docs/plans/2026-05-02-openhands-event-shape-hardening.md`
+
+**Branch:**
+
+```bash
+./scripts/worktree.sh feature/vu-1147-openhands-event-shape-hardening
+```
+
+**Required behavior:**
+
+- [x] Preserve SDK callback records as `conversation_event` payloads.
+- [x] Render nested `MessageEvent`, `ActionEvent`, `ObservationEvent`,
+  `AgentErrorEvent`, `ConversationErrorEvent`, common internal events, and
+  unknown events.
+- [x] Extract nested `tool_call.function.name`,
+  `tool_call.function.arguments`, `tool_call_id`, `llm_response_id`,
+  `reasoning_content`, and `thinking_blocks`.
+- [x] Preserve non-object SDK payload fallbacks as raw payloads.
+- [x] Group consecutive parallel `ActionEvent`s with the same
+  `llm_response_id` only for display.
+
+**Verification:**
+
+```bash
+cd app && npm run test:unit
+cd app/sidecar && npx vitest run
+cd app && npx tsc --noEmit
+cd app && npm run test:agents:structural
+cd app && npm run test:integration
+markdownlint docs/design/openhands-sdk-runner/README.md docs/plans/2026-05-02-openhands-event-shape-hardening.md
+```
+
+**Merge-back gate:**
+
+- [ ] VU-1147 branch is merged into VU-1145.
+- [ ] Workflow research migration starts only after this gate is complete.
+
+## Slice 3: Harden Remaining OpenHands Runner Contract
+
+This slice covers residual runner hardening that is not already done by
+VU-1146 or VU-1147. Re-check the code before implementing; many original
+runner-contract tasks were completed by VU-1146.
 
 **Files:**
 
@@ -143,7 +207,7 @@ cd app/sidecar && npx vitest run __tests__/runtime-types.test.ts __tests__/confi
 cd app/sidecar && python3 -m py_compile openhands/runner.py
 ```
 
-## Slice 3: Move Agent Sources To Final OpenHands Layout
+## Slice 4: Move Agent Sources To Final OpenHands Layout
 
 This slice changes prompt/source ownership without changing workflow semantics.
 
@@ -178,7 +242,7 @@ cd app && npm run test:agents:structural
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
 ```
 
-## Slice 4: Route Workflow Steps Through `skill-creator`
+## Slice 5: Route Workflow Steps Through `skill-creator`
 
 This slice changes workflow runtime behavior after the final source layout exists.
 
@@ -210,7 +274,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
 cd app && npm run test:unit
 ```
 
-## Slice 5: Verify And Patch Model Settings Gaps
+## Slice 6: Verify And Patch Model Settings Gaps
 
 Do not redo the model-settings implementation. It is mostly present; this slice closes the remaining gaps against the design.
 
@@ -244,7 +308,7 @@ cd app && npm run test:unit
 cargo test --manifest-path app/src-tauri/Cargo.toml db::settings types::settings
 ```
 
-## Slice 6: Remove Workflow Claude Runtime Compatibility
+## Slice 7: Remove Workflow Claude Runtime Compatibility
 
 Run this only after workflow steps, scope review, and answer evaluation all use the OpenHands runner.
 
@@ -280,7 +344,7 @@ cd app && npm run test:unit
 cargo test --manifest-path app/src-tauri/Cargo.toml
 ```
 
-## Slice 7: Add Automated OpenHands Smoke And Eval Coverage
+## Slice 8: Add Automated OpenHands Smoke And Eval Coverage
 
 This slice is required before final VU-1145 PR readiness.
 
@@ -296,7 +360,7 @@ This slice is required before final VU-1145 PR readiness.
 **Required behavior:**
 
 - [ ] Add automated coverage for OpenHands workflow step 0 and step 3 without manual UI interaction.
-- [ ] Assert terminal `run_result`.
+- [ ] Assert terminal `conversation_state`.
 - [ ] Assert parseable expected artifact output.
 - [ ] Assert no `AskUserQuestion` appears in one-shot workflow requests.
 - [ ] Assert `.agents/agents/skill-creator.md` and `.agents/skills/**` artifact discovery.
@@ -311,7 +375,7 @@ cd tests/evals && npm test
 cd tests/evals && npm run eval:smoke
 ```
 
-## Slice 8: Final Docs, Repo Map, And Release Readiness
+## Slice 9: Final Docs, Repo Map, And Release Readiness
 
 Run this after all implementation slices have merged back into VU-1145.
 
@@ -347,7 +411,7 @@ node scripts/verify-release-stage.mjs
 ## Acceptance Checklist
 
 - [ ] VU-1145 acceptance criteria are checked against the final diff.
-- [ ] VU-1146 has merged back into VU-1145.
+- [x] VU-1146 has merged back into VU-1145.
 - [ ] `docs/design/openhands-native-migration/README.md` matches the implemented runtime decisions.
 - [ ] `docs/design/openhands-sdk-runner/README.md` matches the Python runner call shape.
 - [ ] `repo-map.json` reflects added, removed, and renamed sidecar/runtime/agent files.
