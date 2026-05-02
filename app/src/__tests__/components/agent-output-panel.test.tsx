@@ -115,6 +115,104 @@ describe("AgentOutputPanel", () => {
     expect(screen.getAllByText("Here is the analysis of the domain.").length).toBeGreaterThanOrEqual(1);
   });
 
+  it("renders OpenHands conversation events instead of display items when present", () => {
+    useAgentStore.getState().startRun("openhands-agent", "sonnet");
+    addDisplayItems("openhands-agent", [
+      makeDisplayItem({
+        type: "output",
+        outputText: "Legacy display item should be hidden for OpenHands.",
+      }),
+    ]);
+    useAgentStore.getState().addConversationEvent("openhands-agent", {
+      type: "conversation_event",
+      runtime: "openhands",
+      conversationId: "conv-1",
+      eventClass: "MessageEvent",
+      timestamp: Date.now(),
+      event: {
+        source: "assistant",
+        message: "OpenHands rendered message.",
+      },
+    });
+
+    render(<AgentOutputPanel agentId="openhands-agent" />);
+
+    expect(screen.getByTestId("conversation-event-list")).toBeInTheDocument();
+    expect(screen.getByText("OpenHands rendered message.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Legacy display item should be hidden for OpenHands."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders OpenHands action, observation, error, and unknown event content", () => {
+    useAgentStore.getState().startRun("openhands-agent", "sonnet");
+    const store = useAgentStore.getState();
+    store.addConversationEvent("openhands-agent", {
+      type: "conversation_event",
+      runtime: "openhands",
+      conversationId: "conv-1",
+      eventClass: "ActionEvent",
+      timestamp: Date.now(),
+      event: {
+        thought: "Need to inspect files.",
+        tool_name: "terminal",
+        command: "npm test",
+      },
+    });
+    store.addConversationEvent("openhands-agent", {
+      type: "conversation_event",
+      runtime: "openhands",
+      conversationId: "conv-1",
+      eventClass: "ObservationEvent",
+      timestamp: Date.now(),
+      event: {
+        content: "All tests passed.",
+      },
+    });
+    store.addConversationEvent("openhands-agent", {
+      type: "conversation_event",
+      runtime: "openhands",
+      conversationId: "conv-1",
+      eventClass: "AgentErrorEvent",
+      timestamp: Date.now(),
+      event: {
+        tool_name: "file_editor",
+        error: "Patch failed.",
+      },
+    });
+    store.addConversationEvent("openhands-agent", {
+      type: "conversation_event",
+      runtime: "openhands",
+      conversationId: "conv-1",
+      eventClass: "ConversationErrorEvent",
+      timestamp: Date.now(),
+      event: {
+        message: "Conversation stopped.",
+      },
+    });
+    store.addConversationEvent("openhands-agent", {
+      type: "conversation_event",
+      runtime: "openhands",
+      conversationId: "conv-1",
+      eventClass: "CustomEvent",
+      timestamp: Date.now(),
+      event: {
+        note: "Unexpected payload.",
+      },
+    });
+
+    render(<AgentOutputPanel agentId="openhands-agent" />);
+
+    expect(screen.getByText("Need to inspect files.")).toBeInTheDocument();
+    expect(screen.getByText("terminal")).toBeInTheDocument();
+    expect(screen.getByText("npm test")).toBeInTheDocument();
+    expect(screen.getByText("All tests passed.")).toBeInTheDocument();
+    expect(screen.getByText("Patch failed.")).toBeInTheDocument();
+    expect(screen.getByText("Conversation stopped.")).toBeInTheDocument();
+    expect(screen.getByText("CustomEvent")).toBeInTheDocument();
+    expect(screen.getByText(/Unexpected payload/)).toBeInTheDocument();
+  });
+
   it("renders tool_call display item inside tool activity group", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     addDisplayItems("test-agent", [
