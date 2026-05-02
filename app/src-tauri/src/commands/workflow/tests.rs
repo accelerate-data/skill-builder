@@ -14,7 +14,7 @@ use super::output_format::{
     answer_evaluator_output_format, materialize_answer_evaluation_output_value,
     materialize_workflow_step_output_value, publish_commit_and_tag_generated_skill,
 };
-use super::prompt::{PromptParams, build_prompt, build_step0_prompt};
+use super::prompt::{build_prompt, build_step0_prompt, PromptParams};
 use super::runtime::workflow_one_shot_runtime_provider;
 use super::step_config::{
     build_betas, get_step_config, thinking_budget_for_step, tools_for_agent,
@@ -1310,12 +1310,8 @@ fn test_active_workflow_prompts_do_not_reintroduce_claude_routing() {
         created_at: None,
         step_id: 2,
     });
-    let evaluator_prompt = super::prompt::build_evaluator_prompt(
-        "s",
-        "/ws",
-        DEFAULT_PLUGIN_SLUG,
-        "/sk",
-    );
+    let evaluator_prompt =
+        super::prompt::build_evaluator_prompt("s", "/ws", DEFAULT_PLUGIN_SLUG, "/sk");
     let prompts = [
         ("workflow", workflow_prompt),
         ("answer evaluator", evaluator_prompt),
@@ -1500,11 +1496,9 @@ fn test_delete_step_output_files_from_step_onwards() {
     );
 
     // Steps 0, 1 output (unified clarifications.json) should still exist
-    assert!(
-        workspace_skill_dir
-            .join("context/clarifications.json")
-            .exists()
-    );
+    assert!(workspace_skill_dir
+        .join("context/clarifications.json")
+        .exists());
 
     // Steps 2+ outputs should be deleted
     assert!(!workspace_skill_dir.join("context/decisions.json").exists());
@@ -1636,13 +1630,11 @@ fn test_copy_directory_recursive_handles_nested_dirs() {
 
     assert!(dest_path.join("top.md").exists());
     assert!(dest_path.join("sub").join("middle.txt").exists());
-    assert!(
-        dest_path
-            .join("sub")
-            .join("deep")
-            .join("bottom.md")
-            .exists()
-    );
+    assert!(dest_path
+        .join("sub")
+        .join("deep")
+        .join("bottom.md")
+        .exists());
 
     let bottom =
         std::fs::read_to_string(dest_path.join("sub").join("deep").join("bottom.md")).unwrap();
@@ -1729,7 +1721,8 @@ fn test_copy_agents_to_claude_dir() {
 
 #[test]
 fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
-    let plugins_src = tempfile::tempdir().unwrap();
+    let workspace_agents_src = tempfile::tempdir().unwrap();
+    let workspace_skills_src = tempfile::tempdir().unwrap();
     let workspace = tempfile::tempdir().unwrap();
     let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
         workspace.path(),
@@ -1738,46 +1731,28 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     );
     std::fs::create_dir_all(&workspace_skill_dir).unwrap();
 
-    let researcher = plugins_src.path().join("skill-content-researcher");
-    std::fs::create_dir_all(researcher.join("agents")).unwrap();
-    std::fs::create_dir_all(researcher.join("skills").join("research")).unwrap();
     std::fs::write(
-        researcher.join("agents").join("research-agent.md"),
-        "# Research Agent",
+        workspace_agents_src.path().join("skill-creator.md"),
+        "# Skill Creator Agent",
     )
     .unwrap();
+    std::fs::write(workspace_agents_src.path().join("README.txt"), "skip me").unwrap();
+    std::fs::create_dir_all(workspace_skills_src.path().join("research")).unwrap();
     std::fs::write(
-        researcher.join("skills").join("research").join("SKILL.md"),
+        workspace_skills_src
+            .path()
+            .join("research")
+            .join("SKILL.md"),
         "# Research",
     )
     .unwrap();
-    std::fs::create_dir_all(researcher.join(".claude-plugin")).unwrap();
+    std::fs::create_dir_all(workspace_skills_src.path().join("skill-creator")).unwrap();
     std::fs::write(
-        researcher.join(".claude-plugin").join("plugin.json"),
-        r#"{"name":"skill-content-researcher"}"#,
-    )
-    .unwrap();
-
-    let creator = plugins_src.path().join("skill-creator");
-    std::fs::create_dir_all(creator.join("agents")).unwrap();
-    std::fs::create_dir_all(creator.join("skills").join("skill-creator")).unwrap();
-    std::fs::write(
-        creator.join("agents").join("skill-writer-agent.md"),
-        "# Skill Writer Agent",
-    )
-    .unwrap();
-    std::fs::write(
-        creator
-            .join("skills")
+        workspace_skills_src
+            .path()
             .join("skill-creator")
             .join("SKILL.md"),
         "# Skill Creator",
-    )
-    .unwrap();
-    std::fs::create_dir_all(creator.join(".claude-plugin")).unwrap();
-    std::fs::write(
-        creator.join(".claude-plugin").join("plugin.json"),
-        r#"{"name":"skill-creator"}"#,
     )
     .unwrap();
 
@@ -1785,45 +1760,33 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     std::fs::write(claude_template.path(), "# Claude").unwrap();
 
     copy_prompts_sync(
-        Path::new("/missing/flat-agents"),
-        plugins_src.path(),
+        workspace_agents_src.path(),
+        workspace_skills_src.path(),
         claude_template.path(),
         workspace.path().to_str().unwrap(),
     )
     .unwrap();
 
-    assert!(
-        workspace_skill_dir
-            .join(".agents/agents/research-agent.md")
-            .is_file()
-    );
-    assert!(
-        workspace_skill_dir
-            .join(".agents/agents/skill-writer-agent.md")
-            .is_file()
-    );
-    assert!(
-        workspace_skill_dir
-            .join(".agents/skills/research/SKILL.md")
-            .is_file()
-    );
-    assert!(
-        !workspace_skill_dir
-            .join(".claude/plugins/skill-content-researcher/.claude-plugin/plugin.json")
-            .exists()
-    );
-    assert!(
-        !workspace
-            .path()
-            .join(".claude/plugins/skill-content-researcher/.claude-plugin/plugin.json")
-            .exists()
-    );
-    assert!(
-        !workspace
-            .path()
-            .join(".claude/plugins/skill-creator/.claude-plugin/plugin.json")
-            .exists()
-    );
+    assert!(workspace_skill_dir
+        .join(".agents/agents/skill-creator.md")
+        .is_file());
+    assert!(!workspace_skill_dir
+        .join(".agents/agents/README.txt")
+        .exists());
+    assert!(workspace_skill_dir
+        .join(".agents/skills/research/SKILL.md")
+        .is_file());
+    assert!(workspace_skill_dir
+        .join(".agents/skills/skill-creator/SKILL.md")
+        .is_file());
+    assert!(workspace
+        .path()
+        .join(".agents/agents/skill-creator.md")
+        .is_file());
+    assert!(workspace
+        .path()
+        .join(".agents/skills/research/SKILL.md")
+        .is_file());
     assert!(!workspace_skill_dir.join("CLAUDE.md").exists());
     assert!(!workspace.path().join("CLAUDE.md").exists());
 }
@@ -1863,12 +1826,10 @@ fn test_copy_managed_plugins_replaces_managed_and_preserves_unmanaged() {
     let replaced =
         std::fs::read_to_string(claude_plugins_dir.join("skill-creator").join("SKILL.md")).unwrap();
     assert_eq!(replaced, "new plugin content");
-    assert!(
-        claude_plugins_dir
-            .join("skill-creator")
-            .join(".skill-builder-managed")
-            .exists()
-    );
+    assert!(claude_plugins_dir
+        .join("skill-creator")
+        .join(".skill-builder-managed")
+        .exists());
 
     let preserved =
         std::fs::read_to_string(claude_plugins_dir.join("user-plugin").join("README.md")).unwrap();

@@ -38,6 +38,8 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 
 ## File Structure
 
+- Create or update: `agent-sources/workspace/agents/skill-creator.md`
+- Create or update: `agent-sources/workspace/skills/**`
 - Create: `agent-sources/prompts/scope-review.txt`
 - Create or update: `agent-sources/prompts/skill-creator-user-suffix.txt`
 - Modify: `app/src-tauri/src/commands/skill/scope_review.rs`
@@ -69,6 +71,11 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 ```text
 Follow the current user message exactly. Do not infer a different task than the one stated in the message.
 ```
+
+- [ ] Keep `agent-sources/workspace/**` limited to OpenHands runtime files:
+  `agents/**` and `skills/**`. Keep app-owned task prompts in
+  `agent-sources/prompts/**` and legacy Claude templates in
+  `agent-sources/claude/**`.
 
 - [ ] Add Rust tests that render a scope-review prompt and assert it contains the submitted values and the required JSON response shape.
 - [ ] Run: `cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill::scope_review`

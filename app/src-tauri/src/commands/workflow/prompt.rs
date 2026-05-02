@@ -3,12 +3,12 @@ use std::path::Path;
 
 const WORKFLOW_STEP_TEMPLATE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../agent-sources/workspace/prompts/workflow-step.txt"
+    "/../../agent-sources/prompts/workflow-step.txt"
 ));
 
 const ANSWER_EVALUATOR_TEMPLATE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../agent-sources/workspace/prompts/answer-evaluator.txt"
+    "/../../agent-sources/prompts/answer-evaluator.txt"
 ));
 
 /// Parameters for [`build_prompt`].
