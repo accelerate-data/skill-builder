@@ -64,10 +64,72 @@ already initializes the workspace during app startup. `init_workspace` creates
 OpenHands clean-break implementation should keep using that startup path and
 change the deployed artifact layout from legacy Claude resources to `.agents/**`.
 
-Create-skill validation uses the existing workspace path from settings and the
-already deployed `.agents` files. If implementation finds the workspace
-artifacts missing, it should call the same workspace prompt deployment helper
-used by startup rather than creating a temporary workspace.
+Runtime code reads the initialized workspace through a backend API such as
+`read_initialized_runtime_context`. If the workspace path is missing or the
+directory does not exist, the runtime returns an app-visible startup/config error
+instead of creating a new workspace in the feature command.
+
+For existing skills and workflow steps, the runtime may use a skill-scoped
+workspace directory that was already created by the create/workflow lifecycle.
+For create-skill `Validate`, there is no skill workspace yet, so the one-shot
+run uses the initialized workspace root. Validation must not pre-create
+`workspace/{plugin_slug}/{skill_name}` because that path is owned by skill
+creation.
+
+### LLM
+
+The selected workflow LLM is also a backend-owned runtime boundary. Settings UI
+stores user choices, but runtime callers do not read provider/model/API-key
+fields directly. Rust projects settings into `WorkflowLlmConfig` through
+`selected_workflow_llm` or a wrapper such as `read_initialized_runtime_context`.
+That projection owns validation, backend-only defaults such as `usage_id`, local
+provider API-key rules, and secret redaction.
+
+Frontend code should not receive or construct the runtime `WorkflowLlmConfig`.
+It may display and save settings, but OpenHands invocation receives the resolved
+LLM only from Rust.
+
+### Agent Invocation
+
+Product features invoke agents through a stable app-agent runtime API. The call
+site supplies:
+
+- `agent_name`
+- `mode`: `one-shot` or `streaming`
+- rendered task prompt or conversation message
+- task discriminator
+- allowed tools
+- output format
+- persistence context
+
+The runtime API supplies:
+
+- initialized workspace path
+- selected `WorkflowLlmConfig`
+- sidecar/runner executable resolution
+- transcript directory
+- event forwarding
+- terminal conversation state capture
+
+One-shot and streaming are execution modes under this API. One-shot creates a
+single-message SDK conversation and returns the terminal
+`conversation_state`. Streaming keeps the conversation open across user
+messages and can later host interactive tools such as `AskUserQuestion`.
+
+Create-skill validation uses the one-shot mode through this API. It should not
+construct a bespoke sidecar contract at the feature-command layer beyond the
+task-specific invocation fields. Feature code may still own task-specific
+result parsing, such as converting terminal `conversation_state.result_text` or
+`conversation_state.structured_output` into `ScopeReviewResult`.
+
+Current Rust boundaries:
+
+| Boundary | Rust API | Responsibility |
+|---|---|---|
+| Workspace + LLM runtime context | `commands::workflow::read_initialized_runtime_context` | Read the startup-initialized workspace path, verify root `.agents` artifacts exist, and project settings into `WorkflowLlmConfig`. |
+| OpenHands one-shot request shape | `agents::sidecar::build_openhands_one_shot_config` | Build the internal sidecar request from app-agent task fields plus backend-owned workspace and LLM context. |
+| OpenHands one-shot execution | `agents::sidecar::run_openhands_one_shot` | Dispatch the sidecar request, allocate diagnostic transcript logs, resolve runner paths through the sidecar pool, wait for lifecycle completion, and return the terminal `conversation_state`. |
+| Execution mode | `mode: "one-shot"` / `mode: "streaming"` | Select single-message completion versus long-lived conversation semantics. |
 
 ## Source And Runtime Layout
 
@@ -278,31 +340,48 @@ Multi-message conversations use the same SDK object model but keep the
 VU-1145 does not implement interactive OpenHands refine. It establishes the SDK
 contract that future refine work must use.
 
-## Progress Event Mapping
+## Conversation Event Mapping
 
-The runner must emit JSONL progress before terminal results for non-trivial
-runs. The Node `OpenHandsEventProcessor` maps runner events into the existing
-app protocol:
+The runner emits JSONL progress before terminal states for non-trivial runs.
+Node forwards OpenHands SDK conversation events through app-framed
+`conversation_event` envelopes and forwards lifecycle changes through
+`conversation_state` envelopes.
+
+OpenHands runtime code must not translate SDK activity into legacy
+Claude-compatible envelopes such as `display_item`, `run_result`, or
+`request_complete`. React renders OpenHands activity from conversation events,
+and Rust reads task completion from terminal conversation state.
 
 | Runner event | App envelope |
 |---|---|
-| conversation start / progress message | `display_item` or `agent_event` |
-| assistant reasoning/progress text when exposed | `display_item` |
-| tool-call start | `display_item` plus `agent_event` when metadata is useful |
-| safe tool observation / file activity | `display_item` |
-| warning / retry / validation status | `agent_event` |
-| terminal success, error, canceled, max-turns | `run_result` |
-
-React and Rust continue consuming normalized Skill Builder envelopes. They must
-not consume OpenHands-native event shapes directly.
+| SDK conversation event | `conversation_event` |
+| startup / running lifecycle | `conversation_state` |
+| terminal success, error, cancelled | terminal `conversation_state` |
 
 ## Output And Parsing
 
-The OpenHands SDK returns final text. When `outputFormat` is present in
-`SidecarConfig`, the Node event processor extracts JSON from the final text and
-emits the existing structured `run_result`. The Python runner does not hide
-progress behind final output and does not need to enforce provider-native schema
-constraints for VU-1145.
+The OpenHands SDK final answer crosses the Rust boundary through the terminal
+`conversation_state`, not by replaying JSONL logs. Diagnostic transcript files
+remain useful for support and debugging, but product features must not scrape
+them to discover task results.
+
+The stable one-shot result contract is:
+
+- terminal status is `completed`, `error`, or `cancelled`;
+- `error_detail` carries terminal failure text for `error` and `cancelled`;
+- `structured_output` carries provider or runner structured output when
+  available;
+- `result_text` carries final assistant text when structured output is absent.
+
+When `outputFormat` is present, Rust task code first reads
+`conversation_state.structured_output`. If it is null or missing, Rust parses
+`conversation_state.result_text` as JSON. Completed states without either a
+structured object or parseable JSON are hard failures. Structured-output errors
+are represented as `conversation_state(status="error", error_detail=...)`, not
+as `run_result`.
+
+The Python runner does not hide progress behind final output and does not need
+to enforce provider-native schema constraints for VU-1145.
 
 ## Errors And Validation
 
@@ -333,7 +412,7 @@ The runner and sidecar must produce app-visible errors for:
 |---|---|
 | `app/sidecar/openhands/runner.py` | Python OpenHands SDK construction and JSONL runner. |
 | `app/sidecar/runtime/openhands-runtime.ts` | Node adapter that spawns the runner and forwards request JSON. |
-| `app/sidecar/openhands-event-processor.ts` | Maps raw runner JSONL to Skill Builder envelopes. |
+| `app/sidecar/openhands-event-processor.ts` | Validates and forwards raw runner JSONL conversation envelopes. |
 | `app/src-tauri/src/agents/sidecar.rs` | Rust `SidecarConfig` serialized to the sidecar. |
 | `app/src-tauri/src/commands/workflow/prompt.rs` | Existing pattern for compile-time prompt templates. |
 | `app/src-tauri/src/commands/skill/scope_review.rs` | Existing direct Anthropic scope-review command to migrate. |
@@ -351,9 +430,9 @@ Required coverage:
 - Python runner tests proving it reads `skill-creator.md`, calls
   `load_skills_from_dir(".agents/skills")`, disables public skills, passes
   `user_message_suffix`, and uses `Conversation.send_message`.
-- Sidecar tests for request serialization and progress event mapping.
+- Sidecar tests for request serialization and conversation event forwarding.
 - Automated smoke/eval proving a one-shot run emits progress before terminal
-  `run_result`.
+  `conversation_state`.
 
 ## Open Questions
 

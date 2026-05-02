@@ -29,7 +29,8 @@ The runtime protocol is:
 
 - `conversation_event`: app-framed serialized OpenHands SDK conversation event.
 - `conversation_state`: app-framed conversation lifecycle state. Terminal states
-  are `completed`, `error`, and `cancelled`.
+  are `completed`, `error`, and `cancelled`. For one-shot calls, the terminal
+  state is also the product result boundary.
 
 stdout and stderr are diagnostic process logs only. Python tracebacks,
 OpenHands SDK logs, LiteLLM logs, and PyInstaller diagnostics stay in process
@@ -37,8 +38,8 @@ diagnostics after redaction; they are not converted into frontend activity.
 
 The frontend must replace the OpenHands use of `DisplayItemList` with a
 conversation-event renderer. OpenHands activity is rendered directly from SDK
-events. Validate result parsing reads the final assistant content from the
-conversation event log/state, not from `run_result.resultText`.
+events. Validate result parsing reads final output from terminal
+`conversation_state`, not from `run_result.resultText` or transcript replay.
 
 ## Stable Boundaries For This Spike
 
@@ -52,8 +53,10 @@ This spike establishes reusable boundaries for later OpenHands migration work:
   not read legacy settings or expose runtime LLM details to the frontend.
 - **Agent invocation:** Validate uses the shared OpenHands one-shot request
   builder/API. Feature code supplies the app-agent task fields; runtime code
-  supplies workspace, LLM, sidecar path, transcript/event plumbing, and terminal
-  wait handling. Feature code keeps only task-specific result parsing.
+  supplies workspace, LLM, sidecar path, diagnostic transcript plumbing,
+  terminal wait handling, and terminal `conversation_state` capture. Feature
+  code keeps only task-specific result parsing from
+  `conversation_state.structured_output` or JSON `conversation_state.result_text`.
 
 These boundaries are part of the reusable migration contract for answer
 evaluation, workflow steps, description optimization, eval generation, and
@@ -255,15 +258,36 @@ cd app/sidecar && python3 -m py_compile openhands/runner.py
   - `allowedTools` suitable for scope review
   - `maxTurns` small enough for validation
   - `outputFormat` for `ScopeReviewResult`
-- [ ] Await the terminal result through the shared one-shot execution helper and
-  parse the existing `ScopeReviewResult` shape from the transcript.
-- [ ] Reject malformed structured results instead of defaulting to `focused`.
+- [x] Await the terminal `conversation_state` through the shared one-shot
+  execution helper. Do not scrape JSONL transcript logs for product results.
+- [x] Parse the existing `ScopeReviewResult` shape from
+  `conversation_state.structured_output`, falling back to JSON parsed from
+  `conversation_state.result_text`.
+- [x] Reject malformed structured results instead of defaulting to `focused`.
 - [ ] Preserve existing error behavior exposed to `useScopeAdvisor`: failures reset advisor state and keep the create dialog behavior unchanged.
 - [ ] Run:
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill::scope_review
 ```
+
+## Task 4A: Clean-Break One-Shot Result Boundary
+
+- [x] Change `OpenHandsOneShotRun` so the stable return value includes the
+  terminal `conversation_state` payload, not only the transcript directory.
+- [x] Capture the terminal state from the target request's `agent-message`
+  event before using `agent-exit` or `agent-shutdown` only as lifecycle
+  completion.
+- [x] Keep transcript logs diagnostic-only. They may still be allocated and
+  written, but Rust product features must not rely on replaying them.
+- [x] Add shared helpers for one-shot output extraction:
+  - completed + object `structured_output` -> return the object;
+  - completed + JSON `result_text` -> parse and return object;
+  - completed without object output -> clear error;
+  - error/cancelled -> surface `error_detail`.
+- [x] Add tests proving a completed OpenHands `conversation_state` with
+  `result_text` is returned through `run_openhands_one_shot` and parsed by
+  scope review without transcript scraping.
 
 ## Task 5: Preserve Create Dialog Semantics
 
