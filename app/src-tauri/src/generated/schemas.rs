@@ -8,10 +8,6 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "additionalProperties": false,
   "properties": {
-    "dimensions_selected": {
-      "format": "int64",
-      "type": "integer"
-    },
     "question_count": {
       "format": "int64",
       "type": "integer"
@@ -24,7 +20,6 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
     }
   },
   "required": [
-    "dimensions_selected",
     "question_count",
     "research_output",
     "status"
@@ -227,10 +222,6 @@ pub const CLARIFICATIONS_SCHEMA: &str = r###"{
 pub const RESEARCH_STEP_INLINE_SCHEMA: &str = r###"{
   "additionalProperties": false,
   "properties": {
-    "dimensions_selected": {
-      "format": "int64",
-      "type": "integer"
-    },
     "question_count": {
       "format": "int64",
       "type": "integer"
@@ -276,7 +267,7 @@ pub const RESEARCH_STEP_INLINE_SCHEMA: &str = r###"{
             "section_count": 0,
             "title": ""
           },
-          "description": "Metadata block with counts, priority questions, and optional scope/research info.",
+          "description": "Metadata block with counts, priority questions, and optional scope info.",
           "properties": {
             "duplicates_removed": {
               "format": "int64",
@@ -330,97 +321,6 @@ pub const RESEARCH_STEP_INLINE_SCHEMA: &str = r###"{
               "default": 0,
               "format": "int64",
               "type": "integer"
-            },
-            "research_plan": {
-              "anyOf": [
-                {
-                  "additionalProperties": false,
-                  "description": "Research plan with dimension scoring.",
-                  "properties": {
-                    "dimension_scores": {
-                      "default": [],
-                      "items": {
-                        "additionalProperties": false,
-                        "description": "A scored dimension in the research plan.",
-                        "properties": {
-                          "focus": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "reason": {
-                            "type": "string"
-                          },
-                          "score": {
-                            "format": "double",
-                            "type": "number"
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "score",
-                          "reason"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "dimensions_evaluated": {
-                      "default": 0,
-                      "format": "int64",
-                      "type": "integer"
-                    },
-                    "dimensions_selected": {
-                      "default": 0,
-                      "format": "int64",
-                      "type": "integer"
-                    },
-                    "domain": {
-                      "type": "string"
-                    },
-                    "purpose": {
-                      "type": "string"
-                    },
-                    "selected_dimensions": {
-                      "default": [],
-                      "items": {
-                        "additionalProperties": false,
-                        "description": "A dimension selected for deeper research.",
-                        "properties": {
-                          "focus": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "focus"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "topic_relevance": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "purpose",
-                    "domain",
-                    "topic_relevance"
-                  ],
-                  "type": "object"
-                },
-                {
-                  "type": "null"
-                }
-              ]
             },
             "scope_next_action": {
               "type": [
@@ -631,7 +531,6 @@ pub const RESEARCH_STEP_INLINE_SCHEMA: &str = r###"{
   },
   "required": [
     "status",
-    "dimensions_selected",
     "question_count",
     "research_output"
   ],
@@ -683,7 +582,7 @@ pub const DETAILED_RESEARCH_INLINE_SCHEMA: &str = r###"{
             "section_count": 0,
             "title": ""
           },
-          "description": "Metadata block with counts, priority questions, and optional scope/research info.",
+          "description": "Metadata block with counts, priority questions, and optional scope info.",
           "properties": {
             "duplicates_removed": {
               "format": "int64",
@@ -737,97 +636,6 @@ pub const DETAILED_RESEARCH_INLINE_SCHEMA: &str = r###"{
               "default": 0,
               "format": "int64",
               "type": "integer"
-            },
-            "research_plan": {
-              "anyOf": [
-                {
-                  "additionalProperties": false,
-                  "description": "Research plan with dimension scoring.",
-                  "properties": {
-                    "dimension_scores": {
-                      "default": [],
-                      "items": {
-                        "additionalProperties": false,
-                        "description": "A scored dimension in the research plan.",
-                        "properties": {
-                          "focus": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "reason": {
-                            "type": "string"
-                          },
-                          "score": {
-                            "format": "double",
-                            "type": "number"
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "score",
-                          "reason"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "dimensions_evaluated": {
-                      "default": 0,
-                      "format": "int64",
-                      "type": "integer"
-                    },
-                    "dimensions_selected": {
-                      "default": 0,
-                      "format": "int64",
-                      "type": "integer"
-                    },
-                    "domain": {
-                      "type": "string"
-                    },
-                    "purpose": {
-                      "type": "string"
-                    },
-                    "selected_dimensions": {
-                      "default": [],
-                      "items": {
-                        "additionalProperties": false,
-                        "description": "A dimension selected for deeper research.",
-                        "properties": {
-                          "focus": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "focus"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "topic_relevance": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "purpose",
-                    "domain",
-                    "topic_relevance"
-                  ],
-                  "type": "object"
-                },
-                {
-                  "type": "null"
-                }
-              ]
             },
             "scope_next_action": {
               "type": [

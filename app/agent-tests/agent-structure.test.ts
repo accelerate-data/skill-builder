@@ -243,70 +243,66 @@ describe("read directive compliance", () => {
 });
 
 describe("Research scope guard contract prompts", () => {
-  it("research and answer-evaluator skills use shared schemas only", () => {
-    const checkedFiles = [
-      "agent-sources/workspace/skills/research/SKILL.md",
-      "agent-sources/workspace/skills/research/references/consolidation-handoff.md",
-      "agent-sources/workspace/skills/answer-evaluator/SKILL.md",
-      "agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md",
-      "agent-sources/plugins/skill-content-researcher/skills/research/references/consolidation-handoff.md",
-      "agent-sources/plugins/skill-content-researcher/skills/answer-evaluator/SKILL.md",
-    ];
+  const WORKSPACE_RESEARCH_SKILL_PATH = path.join(
+    REPO_ROOT,
+    "agent-sources",
+    "workspace",
+    "skills",
+    "research",
+    "SKILL.md",
+  );
+  const WORKSPACE_RESEARCH_REFERENCES_DIR = path.join(
+    REPO_ROOT,
+    "agent-sources",
+    "workspace",
+    "skills",
+    "research",
+    "references",
+  );
 
-    for (const relPath of checkedFiles) {
-      const content = fs.readFileSync(path.join(REPO_ROOT, relPath), "utf8");
-      expect(content, relPath).toMatch(/shared\/schemas\.md/);
-      expect(content, relPath).not.toMatch(/old-schemas\.md/);
-    }
-
-    expect(fs.existsSync(
-      path.join(REPO_ROOT, "agent-sources/workspace/skills/shared/schemas.md"),
-    )).toBe(true);
-    expect(fs.existsSync(
-      path.join(
-        REPO_ROOT,
-        "agent-sources/plugins/skill-content-researcher/skills/shared/schemas.md",
-      ),
-    )).toBe(true);
-  });
-
-  it("research skill does not run preflight and emits low-score scope recommendation", () => {
+  it("workspace research skill uses one inline lens flow and final JSON only", () => {
     const content = fs.readFileSync(
-      path.join(
-        REPO_ROOT,
-        "agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md",
-      ),
+      WORKSPACE_RESEARCH_SKILL_PATH,
       "utf8",
-    );
-    expect(content).not.toMatch(/Preflight Scope Guard/i);
-    expect(content).toMatch(/topic_relevance[^\n]{0,80}not_relevant/i);
-    expect(content).toMatch(/scope-recommendation clarifications output/i);
-    expect(content).toMatch(/all_dimensions_low_score/);
-  });
-
-  it("scoring rubric stays scoring-only and delegates selection policy", () => {
-    const content = fs.readFileSync(
-      path.join(
-        REPO_ROOT,
-        "agent-sources/plugins/skill-content-researcher/skills/research/references/scoring-rubric.md",
-      ),
-      "utf8",
-    );
-    expect(content).toMatch(
-      /Do not perform selection or branching in this rubric output/i,
     );
     expect(content).not.toMatch(
-      /If all scores are <=2, trigger scope recommendation output/i,
+      /references\/(?:dimension-sets|scoring-rubric|consolidation-handoff)\.md/,
     );
+    expect(content).not.toMatch(/references\/dimensions\//);
+    expect(content).toMatch(/Business process/i);
+    expect(content).toMatch(/Data engineering standards/i);
+    expect(content).toMatch(/Source system customizations/i);
+    expect(content).toMatch(/Platform standards/i);
+    expect(content).toMatch(/organization-specific knowledge delta/i);
+    expect(content).toMatch(/Return exactly one raw JSON object/i);
+    expect(content).toMatch(/Do not emit intermediate markdown/i);
+    expect(content).toMatch(/research_plan/);
+    expect(content).toMatch(/dimension_scores/);
+    expect(content).toMatch(/selected_dimensions/);
+  });
+
+  it("workspace research legacy reference files are removed", () => {
+    function findFiles(dir: string): string[] {
+      if (!fs.existsSync(dir)) return [];
+      return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const entryPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) return findFiles(entryPath);
+        return [entryPath];
+      });
+    }
+
+    const legacyFiles = findFiles(WORKSPACE_RESEARCH_REFERENCES_DIR);
+
+    expect(legacyFiles).toEqual([]);
   });
 
   it("research-agent includes scope recommendation short-circuit contract", () => {
-    const content = fileContent("research-agent");
+    const content = fs.readFileSync(WORKSPACE_RESEARCH_SKILL_PATH, "utf8");
     expect(content).toMatch(
       /Scope (Recommendation )?[Gg]uard|scope_recommendation/,
     );
     expect(content).toMatch(/status": "research_complete"/);
-    expect(content).toMatch(/dimensions_selected": 0/);
+    expect(content).not.toMatch(/dimensions_selected": 0/);
     expect(content).toMatch(/question_count": 0/);
   });
 

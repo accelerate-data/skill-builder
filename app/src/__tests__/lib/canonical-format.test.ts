@@ -283,26 +283,26 @@ describe("Canonical format: clarifications.json structure", () => {
     expect(output.metadata.section_count).toBe(0);
   });
 
-  it("accepts warning metadata shape for all_dimensions_low_score", () => {
+  it("accepts generic warning metadata shape", () => {
     const output = {
       version: "1",
       metadata: {
-        title: "Low Score Result",
+        title: "Warning",
         question_count: 0,
         section_count: 0,
         refinement_count: 0,
         must_answer_count: 0,
         priority_questions: [],
         warning: {
-          code: "all_dimensions_low_score",
-          message: "No dimensions scored high enough to proceed.",
+          code: "research_warning",
+          message: "Research produced a warning.",
         },
       },
       sections: [],
       notes: [],
     };
 
-    expect(output.metadata.warning.code).toBe("all_dimensions_low_score");
+    expect(output.metadata.warning.code).toBe("research_warning");
     expect(typeof output.metadata.warning.message).toBe("string");
     expect(output.metadata.warning.message.length).toBeGreaterThan(0);
   });
@@ -416,56 +416,37 @@ describe("Canonical format: decisions.json structure", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Embedded research plan JSON checks (step0)
+// Step 0 clean-break structured-output checks
 // ---------------------------------------------------------------------------
 
-describe("Canonical format: embedded research plan structure", () => {
-  const step0Clarifications = path.join(MOCK_ROOT, "step0/context/clarifications.json");
+describe("Canonical format: step0 clean-break metadata", () => {
+  const step0ClarificationFiles = [
+    path.join(MOCK_ROOT, "step0/context/clarifications.json"),
+    path.join(MOCK_ROOT, "step0-contradictory/context/clarifications.json"),
+  ].filter((f) => fs.existsSync(f));
 
-  it("step0 clarifications.json exists", () => {
-    expect(fs.existsSync(step0Clarifications)).toBe(true);
+  it("finds step0 clarification files", () => {
+    expect(step0ClarificationFiles.length).toBeGreaterThan(0);
   });
 
-  if (fs.existsSync(step0Clarifications)) {
-    const data = JSON.parse(readFile(step0Clarifications));
-    const plan = data.metadata?.research_plan;
+  for (const file of step0ClarificationFiles) {
+    const rel = relPath(file);
 
-    it("has metadata.research_plan object", () => {
-      expect(plan && typeof plan === "object").toBe(true);
-    });
+    describe(rel, () => {
+      const data = JSON.parse(readFile(file));
 
-    it("research_plan has required scalar fields", () => {
-      expect(typeof plan.purpose).toBe("string");
-      expect(typeof plan.domain).toBe("string");
-      expect(typeof plan.topic_relevance).toBe("string");
-      expect(typeof plan.dimensions_evaluated).toBe("number");
-      expect(typeof plan.dimensions_selected).toBe("number");
-    });
+      it("does not embed legacy research plan or lens metadata", () => {
+        expect(data.metadata).not.toHaveProperty("research_plan");
+        expect(data.metadata).not.toHaveProperty("research_lens");
+        expect(data.metadata).not.toHaveProperty("selected_lens");
+      });
 
-    it("research_plan has scoring arrays", () => {
-      expect(Array.isArray(plan.dimension_scores)).toBe(true);
-      expect(Array.isArray(plan.selected_dimensions)).toBe(true);
-    });
-
-    it("dimension_scores items have required fields", () => {
-      const scores = plan.dimension_scores;
-      expect(Array.isArray(scores)).toBe(true);
-      expect(scores.length).toBeGreaterThan(0);
-      for (const score of scores) {
-        expect(typeof score.name).toBe("string");
-        expect(typeof score.score).toBe("number");
-        expect(typeof score.reason).toBe("string");
-      }
-    });
-
-    it("selected_dimensions items have required fields", () => {
-      const selected = plan.selected_dimensions;
-      expect(Array.isArray(selected)).toBe(true);
-      expect(selected.length).toBeGreaterThan(0);
-      for (const dim of selected) {
-        expect(typeof dim.name).toBe("string");
-        expect(typeof dim.focus).toBe("string");
-      }
+      it("does not embed dimension scoring metadata", () => {
+        expect(data.metadata).not.toHaveProperty("dimensions_evaluated");
+        expect(data.metadata).not.toHaveProperty("dimensions_selected");
+        expect(data.metadata).not.toHaveProperty("dimension_scores");
+        expect(data.metadata).not.toHaveProperty("selected_dimensions");
+      });
     });
   }
 });

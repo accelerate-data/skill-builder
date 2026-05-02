@@ -124,8 +124,9 @@ class LocalWorkspace:
         captured["local_workspace_working_dir"] = working_dir
 
 class Conversation:
-    def __init__(self, agent, workspace, callbacks=None, max_iteration_per_run=500, visualizer="default", delete_on_close=True):
+    def __init__(self, agent, workspace, persistence_dir=None, callbacks=None, max_iteration_per_run=500, visualizer="default", delete_on_close=True):
         captured["workspace"] = {"working_dir": workspace.working_dir}
+        captured["persistence_dir"] = persistence_dir
         captured["callbacks_count"] = len(callbacks or [])
         captured["max_iteration_per_run"] = max_iteration_per_run
         captured["visualizer"] = visualizer
@@ -179,6 +180,7 @@ request = {
     "userMessageSuffix": "Follow the current user message exactly.",
     "workspaceRootDir": str(workspace_dir),
     "workspaceSkillDir": str(workspace_dir),
+    "persistenceDir": str(workspace_dir / "logs" / "native-openhands"),
     "allowedTools": ["terminal", "file_editor"],
     "maxTurns": 8,
 }
@@ -224,6 +226,9 @@ print(json.dumps(captured, sort_keys=True))
     });
     expect(captured.local_workspace_working_dir).toBe(
       (captured.skills_dir as string).replace("/.agents/skills", ""),
+    );
+    expect(captured.persistence_dir).toBe(
+      `${(captured.skills_dir as string).replace("/.agents/skills", "")}/logs/native-openhands`,
     );
     expect((captured.workspace as { working_dir: string }).working_dir).toBe(
       (captured.skills_dir as string).replace("/.agents/skills", ""),
@@ -469,6 +474,7 @@ request = {
     "taskKind": "workflow.answer_evaluator",
     "workspaceRootDir": str(workspace_dir),
     "workspaceSkillDir": str(workspace_dir),
+    "persistenceDir": str(workspace_dir / "logs" / "answer-evaluator"),
     "allowedTools": ["file_editor"],
     "maxTurns": 4,
 }
@@ -650,6 +656,7 @@ request = {
         "extraHeaders": {"x-provider-routing": "secure-route"},
     },
     "workspaceSkillDir": str(workspace_dir),
+    "persistenceDir": str(workspace_dir / "logs" / "redaction"),
 }
 stdout = io.StringIO()
 stderr = io.StringIO()
@@ -857,6 +864,7 @@ request = {
         "apiKey": "sk-secret",
     },
     "workspaceSkillDir": str(workspace_dir),
+    "persistenceDir": str(workspace_dir / "logs" / "redaction-error"),
 }
 
 stdout = io.StringIO()

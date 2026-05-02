@@ -57,7 +57,7 @@ const legacyResearchPlan = [
 ].join("\n");
 
 describe("ResearchSummaryCard", () => {
-  it("infers selected dimensions from legacy table-only research-plan format", async () => {
+  it("does not render legacy research dimension details", async () => {
     const user = userEvent.setup();
     render(
       <ResearchSummaryCard
@@ -66,12 +66,12 @@ describe("ResearchSummaryCard", () => {
       />,
     );
 
-    // Expand the collapsible panel to reveal dimension details
     await user.click(screen.getByText("Research Complete"));
 
-    expect(screen.getByText("of 5 selected")).toBeInTheDocument();
-    expect(screen.getAllByText("Deal Structure & Typology").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Revenue Recognition & Forecasting Methodology").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Dimensions")).not.toBeInTheDocument();
+    expect(screen.queryByText("of 5 selected")).not.toBeInTheDocument();
+    expect(screen.queryByText("Deal Structure & Typology")).not.toBeInTheDocument();
+    expect(screen.getByText("2 questions")).toBeInTheDocument();
   });
 
   it("shows Research Complete header and clarifications editor on happy path", () => {
@@ -149,7 +149,8 @@ describe("ResearchSummaryCard", () => {
     expect(screen.getByRole("button", { name: /reset/i })).toBeInTheDocument();
   });
 
-  it("falls through to happy path when warning code is unrecognized", () => {
+  it("shows generic warning handling when warning code is unrecognized", async () => {
+    const user = userEvent.setup();
     const data: ClarificationsFile = {
       version: "1",
       metadata: {
@@ -168,17 +169,18 @@ describe("ResearchSummaryCard", () => {
       />,
     );
 
-    // Unknown warning code silently falls through to "ok" — documents the known behavior
-    expect(screen.getByText("Research Complete")).toBeInTheDocument();
+    expect(screen.getByText("Research Warning")).toBeInTheDocument();
+    await user.click(screen.getByText("Research Warning"));
+    expect(screen.getByText("Unknown.")).toBeInTheDocument();
   });
 
-  it("shows No Dimensions Selected header and Dimensions column for all_dimensions_low_score", async () => {
+  it("shows generic warning handling without dimension-specific display", async () => {
     const user = userEvent.setup();
     const data: ClarificationsFile = {
       version: "1",
       metadata: {
         ...baseMetadata,
-        warning: { code: "all_dimensions_low_score", message: "All dimensions scored below threshold." },
+        warning: { code: "research_warning" as "scope_guard_triggered", message: "Research produced a warning." },
       },
       sections: [],
       notes: [],
@@ -192,14 +194,14 @@ describe("ResearchSummaryCard", () => {
       />,
     );
 
-    expect(screen.getByText("No Dimensions Selected")).toBeInTheDocument();
+    expect(screen.getByText("Research Warning")).toBeInTheDocument();
     expect(screen.queryByTestId("clarifications-editor")).not.toBeInTheDocument();
 
-    // Expand the collapsible panel to reveal banner, dimensions, and reset button
-    await user.click(screen.getByText("No Dimensions Selected"));
+    await user.click(screen.getByText("Research Warning"));
 
-    expect(screen.getByText("All dimensions scored below threshold.")).toBeInTheDocument();
-    expect(screen.getByText("Dimensions")).toBeInTheDocument();
+    expect(screen.getByText("Research produced a warning.")).toBeInTheDocument();
+    expect(screen.queryByText("Dimensions")).not.toBeInTheDocument();
+    expect(screen.queryByText("of 5 selected")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /reset/i })).toBeInTheDocument();
   });
 });

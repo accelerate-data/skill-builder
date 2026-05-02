@@ -547,7 +547,6 @@ export type DiscoveryResolutionAction = "add-skill-builder" | "add-imported" | "
 /** Structured output for the OpenHands research workflow step. */
 export interface ResearchStepOutput {
   status: "research_complete"
-  dimensions_selected: number
   question_count: number
   research_output: unknown
 }

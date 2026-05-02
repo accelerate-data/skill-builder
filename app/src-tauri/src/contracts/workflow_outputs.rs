@@ -11,14 +11,13 @@ use crate::contracts::decisions::{Decision, DecisionsMetadata};
 
 /// Structured output produced by the OpenHands research workflow step.
 ///
-/// Required fields: `status` (const `"research_complete"`), `dimensions_selected`,
-/// `question_count`, `research_output`.
+/// Required fields: `status` (const `"research_complete"`), `question_count`,
+/// `research_output`.
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
 )]
 pub struct ResearchStepOutput {
     pub status: String,
-    pub dimensions_selected: i64,
     pub question_count: i64,
     pub research_output: ClarificationsFile,
 }
@@ -132,7 +131,6 @@ mod tests {
     fn test_research_step_output_round_trip() {
         let output = ResearchStepOutput {
             status: "research_complete".to_string(),
-            dimensions_selected: 3,
             question_count: 7,
             research_output: ClarificationsFile {
                 version: "1".to_string(),
@@ -147,7 +145,6 @@ mod tests {
                     scope_recommendation: None,
                     scope_reason: None,
                     scope_next_action: None,
-                    research_plan: None,
                     warning: None,
                     error: None,
                 },
@@ -160,16 +157,16 @@ mod tests {
         let json = serde_json::to_string(&output).expect("serialize");
         let deserialized: ResearchStepOutput = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(deserialized.status, "research_complete");
-        assert_eq!(deserialized.dimensions_selected, 3);
         assert_eq!(deserialized.question_count, 7);
         assert_eq!(deserialized.research_output.version, "1");
+        let serialized: serde_json::Value = serde_json::from_str(&json).expect("json value");
+        assert!(serialized.get("dimensions_selected").is_none());
     }
 
     #[test]
     fn test_research_step_output_from_json() {
         let json = serde_json::json!({
             "status": "research_complete",
-            "dimensions_selected": 3,
             "question_count": 7,
             "research_output": {
                 "version": "1",
@@ -189,6 +186,7 @@ mod tests {
         let parsed: ResearchStepOutput =
             serde_json::from_value(json).expect("deserialize ResearchStepOutput");
         assert_eq!(parsed.status, "research_complete");
+        assert_eq!(parsed.question_count, 7);
         assert_eq!(parsed.research_output.metadata.question_count, 7);
     }
 

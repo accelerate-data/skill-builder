@@ -368,6 +368,7 @@ async fn run_workflow_step_inner(
                 .to_string_lossy()
                 .into_owned(),
             ),
+            persistence_dir: None,
             runtime_provider: workflow_one_shot_runtime_provider(),
             task_kind: None,
             user_message_suffix: None,

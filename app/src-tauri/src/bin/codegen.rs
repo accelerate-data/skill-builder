@@ -279,9 +279,8 @@ use app_lib::contracts::agent_events::{
     RunResultStatus, RunSource, SessionExhaustedEvent, TurnCompleteEvent, TurnUsageEvent,
 };
 use app_lib::contracts::clarifications::{
-    Choice, ClarificationsError, ClarificationsFile, ClarificationsMetadata,
-    ClarificationsResearchPlan, ClarificationsWarning, DimensionScore, Note, Question, Section,
-    SelectedDimension,
+    Choice, ClarificationsError, ClarificationsFile, ClarificationsMetadata, ClarificationsWarning,
+    Note, Question, Section,
 };
 use app_lib::contracts::decisions::{
     ContradictoryInputs, Decision, DecisionStatus, DecisionsMetadata,
@@ -306,9 +305,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.register::<ClarificationsMetadata>();
     types.register::<ClarificationsWarning>();
     types.register::<ClarificationsError>();
-    types.register::<ClarificationsResearchPlan>();
-    types.register::<DimensionScore>();
-    types.register::<SelectedDimension>();
     types.register::<Section>();
     types.register::<Question>();
     types.register::<Choice>();
@@ -407,6 +403,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         consts.push_str(&format!(
             "pub const {name}_SCHEMA: &str = r###\"{pretty}\"###;\n\n"
         ));
+    }
+    while consts.ends_with("\n\n") {
+        consts.pop();
     }
 
     let schemas_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/generated/schemas.rs");

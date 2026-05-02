@@ -20,7 +20,7 @@ pub struct ClarificationsFile {
     pub answer_evaluator_notes: Option<Vec<Note>>,
 }
 
-/// Metadata block with counts, priority questions, and optional scope/research info.
+/// Metadata block with counts, priority questions, and optional scope info.
 #[derive(
     Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
 )]
@@ -46,8 +46,6 @@ pub struct ClarificationsMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope_next_action: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub research_plan: Option<ClarificationsResearchPlan>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub warning: Option<ClarificationsWarning>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<ClarificationsError>,
@@ -69,45 +67,6 @@ pub struct ClarificationsWarning {
 pub struct ClarificationsError {
     pub code: String,
     pub message: String,
-}
-
-/// Research plan with dimension scoring.
-#[derive(
-    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
-)]
-pub struct ClarificationsResearchPlan {
-    pub purpose: String,
-    pub domain: String,
-    pub topic_relevance: String,
-    #[serde(default)]
-    pub dimensions_evaluated: i64,
-    #[serde(default)]
-    pub dimensions_selected: i64,
-    #[serde(default)]
-    pub dimension_scores: Vec<DimensionScore>,
-    #[serde(default)]
-    pub selected_dimensions: Vec<SelectedDimension>,
-}
-
-/// A scored dimension in the research plan.
-#[derive(
-    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
-)]
-pub struct DimensionScore {
-    pub name: String,
-    pub score: f64,
-    pub reason: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub focus: Option<String>,
-}
-
-/// A dimension selected for deeper research.
-#[derive(
-    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
-)]
-pub struct SelectedDimension {
-    pub name: String,
-    pub focus: String,
 }
 
 /// A section grouping related questions.
@@ -186,7 +145,6 @@ mod tests {
                 scope_recommendation: None,
                 scope_reason: None,
                 scope_next_action: None,
-                research_plan: None,
                 warning: None,
                 error: None,
             },
@@ -284,7 +242,6 @@ mod tests {
 
         let file: ClarificationsFile = serde_json::from_str(json).expect("deserialize");
         assert!(file.answer_evaluator_notes.is_none());
-        assert!(file.metadata.research_plan.is_none());
         assert!(file.metadata.warning.is_none());
         assert!(file.metadata.error.is_none());
         assert!(file.metadata.duplicates_removed.is_none());
@@ -319,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn test_full_metadata_with_research_plan() {
+    fn test_full_metadata_preserves_scope_warning_and_error() {
         let json = r#"{
             "version": "1",
             "metadata": {
@@ -333,21 +290,6 @@ mod tests {
                 "scope_recommendation": true,
                 "scope_reason": "Too broad",
                 "scope_next_action": "Narrow focus",
-                "research_plan": {
-                    "purpose": "Understand domain",
-                    "domain": "ML Ops",
-                    "topic_relevance": "High",
-                    "dimensions_evaluated": 8,
-                    "dimensions_selected": 3,
-                    "dimension_scores": [
-                        {"name": "Data Quality", "score": 0.9, "reason": "Critical for ML", "focus": "Input validation"},
-                        {"name": "Model Serving", "score": 0.7, "reason": "Important", "focus": "Latency"}
-                    ],
-                    "selected_dimensions": [
-                        {"name": "Data Quality", "focus": "Input validation"},
-                        {"name": "Model Serving", "focus": "Latency"}
-                    ]
-                },
                 "warning": {"code": "scope_guard_triggered", "message": "Scope too broad"},
                 "error": {"code": "missing_user_context", "message": "No context provided"}
             },
@@ -402,14 +344,10 @@ mod tests {
         assert_eq!(file.metadata.duplicates_removed, Some(2));
         assert_eq!(file.metadata.scope_recommendation, Some(true));
         assert_eq!(file.metadata.scope_reason.as_deref(), Some("Too broad"));
-
-        // Research plan
-        let plan = file.metadata.research_plan.as_ref().expect("research_plan");
-        assert_eq!(plan.purpose, "Understand domain");
-        assert_eq!(plan.dimensions_evaluated, 8);
-        assert_eq!(plan.dimension_scores.len(), 2);
-        assert_eq!(plan.selected_dimensions.len(), 2);
-        assert!((plan.dimension_scores[0].score - 0.9).abs() < f64::EPSILON);
+        assert_eq!(
+            file.metadata.scope_next_action.as_deref(),
+            Some("Narrow focus")
+        );
 
         // Warning and error
         assert_eq!(
@@ -447,20 +385,11 @@ mod tests {
 
         // Round-trip
         let reserialized = serde_json::to_string_pretty(&file).expect("serialize");
+        assert!(!reserialized.contains("research_plan"));
+        assert!(!reserialized.contains("research_lens"));
+        assert!(!reserialized.contains("dimension_scores"));
+        assert!(!reserialized.contains("selected_dimensions"));
         let roundtrip: ClarificationsFile = serde_json::from_str(&reserialized).expect("roundtrip");
         assert_eq!(roundtrip.metadata.title, file.metadata.title);
-    }
-
-    #[test]
-    fn test_dimension_score_focus_accepts_null_for_unselected_dimensions() {
-        let json = serde_json::json!({
-            "name": "segmentation-and-periods",
-            "score": 3.0,
-            "reason": "Useful but mostly standard.",
-            "focus": null
-        });
-
-        let score: DimensionScore = serde_json::from_value(json).unwrap();
-        assert!(score.focus.is_none());
     }
 }

@@ -45,6 +45,8 @@ export interface SidecarConfig {
   promptSuggestions?: boolean;
   pathToClaudeCodeExecutable?: string;
   pathToOpenHandsRunner?: string;
+  /** OpenHands-native SDK persistence directory. */
+  persistenceDir?: string;
   /** Skill name this run is associated with. Used by mock agent for template discrimination. */
   skillName?: string;
   /** Step ID for persistence (-1=unknown, -10=refine, -11=test, 0-3=workflow steps). */
@@ -193,6 +195,7 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   assertOptString(c, "usageSessionId");
   assertOptString(c, "pathToClaudeCodeExecutable");
   assertOptString(c, "pathToOpenHandsRunner");
+  assertOptString(c, "persistenceDir");
 
   // Optional enum fields
   assertOptStringIn(c, "mode", ["one-shot", "streaming"]);
