@@ -1,1 +1,27 @@
-The skill name is: {{skill_name}}. The workspace directory is: {{workspace_dir}}. The skill output directory (SKILL.md and references/) is: {{skill_output_dir}}. The user context file is at: {{workspace_dir}}/user-context.md. The context directory is: {{workspace_dir}}/context. All directories already exist — do not create any directories. Use user-context.md to evaluate answers in the user's specific domain. Evaluate the user's answers as the configured answer-evaluator agent.
+EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
+
+Use the answer-evaluator skill to evaluate the user's answers for this workflow gate.
+
+Skill name: {{skill_name}}
+Workspace directory: {{workspace_dir}}
+Skill output directory: {{skill_output_dir}}
+User context file: {{workspace_dir}}/user-context.md
+Context directory: {{workspace_dir}}/context
+Clarifications file: {{workspace_dir}}/context/clarifications.json
+
+All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
+
+Read user-context.md and clarifications.json, then return only a raw JSON object with this envelope:
+{
+  "verdict": "sufficient|mixed|insufficient",
+  "answered_count": number,
+  "empty_count": number,
+  "vague_count": number,
+  "contradictory_count": number,
+  "total_count": number,
+  "reasoning": "single sentence",
+  "gate_decision": "run_research|revise",
+  "per_question": [
+    { "question_id": "Q1", "verdict": "clear|needs_refinement|not_answered|vague|contradictory", "reason": "required for needs_refinement, vague, or contradictory" }
+  ]
+}
