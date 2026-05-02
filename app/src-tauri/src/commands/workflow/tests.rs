@@ -15,10 +15,11 @@ use super::output_format::{
     materialize_answer_evaluation_output_value, materialize_workflow_step_output_value,
     publish_commit_and_tag_generated_skill,
 };
-use super::prompt::{build_prompt, build_step0_prompt, PromptParams};
+use super::prompt::{build_prompt, build_step0_prompt, build_step1_prompt, PromptParams};
 use super::runtime::{
-    build_answer_evaluator_sidecar_config, build_workflow_research_sidecar_config,
-    workflow_one_shot_runtime_provider,
+    build_answer_evaluator_sidecar_config, build_workflow_detailed_research_sidecar_config,
+    build_workflow_research_sidecar_config, workflow_one_shot_runtime_provider,
+    workflow_step_uses_native_openhands_dispatch,
 };
 use super::step_config::{
     build_betas, get_step_config, thinking_budget_for_step, tools_for_agent,
@@ -122,7 +123,7 @@ fn test_get_step_output_files_unknown_step() {
 #[test]
 fn test_step_config_canonical_agent_names() {
     assert_eq!(get_step_config(0).unwrap().agent_name, "research-agent");
-    assert_eq!(get_step_config(1).unwrap().agent_name, "research-agent");
+    assert_eq!(get_step_config(1).unwrap().agent_name, "skill-creator");
     assert_eq!(get_step_config(2).unwrap().agent_name, "skill-writer-agent");
     assert_eq!(get_step_config(3).unwrap().agent_name, "skill-writer-agent");
 }
@@ -196,10 +197,18 @@ fn test_workflow_step_config_uses_openhands_runtime_provider() {
 }
 
 #[test]
+fn test_research_steps_use_native_openhands_dispatch() {
+    assert!(workflow_step_uses_native_openhands_dispatch(0));
+    assert!(workflow_step_uses_native_openhands_dispatch(1));
+    assert!(!workflow_step_uses_native_openhands_dispatch(2));
+    assert!(!workflow_step_uses_native_openhands_dispatch(3));
+}
+
+#[test]
 fn research_prompt_renders_app_owned_openhands_task_context() {
     let prompt = build_step0_prompt("lead-conversion", "/tmp/workspace", DEFAULT_PLUGIN_SLUG, 4);
 
-    assert!(prompt.contains("Skill name: lead-conversion"));
+    assert!(prompt.contains("We are writing the skill lead-conversion."));
     assert!(prompt.contains("/tmp/workspace/skills/lead-conversion"));
     assert!(
         prompt.contains("User context file: /tmp/workspace/skills/lead-conversion/user-context.md")
@@ -266,6 +275,82 @@ fn research_sidecar_config_uses_skill_creator_openhands_contract() {
 }
 
 #[test]
+fn detailed_research_prompt_renders_clean_break_task_context() {
+    let prompt = build_step1_prompt("pipeline-value", "/tmp/workspace", DEFAULT_PLUGIN_SLUG);
+
+    assert!(prompt.contains("We are writing the skill pipeline-value."));
+    assert!(prompt.contains("/tmp/workspace/skills/pipeline-value"));
+    assert!(
+        prompt.contains("User context file: /tmp/workspace/skills/pipeline-value/user-context.md")
+    );
+    assert!(prompt.contains(
+        "Answer evaluation file: /tmp/workspace/skills/pipeline-value/answer-evaluation.json"
+    ));
+    assert!(prompt.contains(
+        "Clarifications file: /tmp/workspace/skills/pipeline-value/context/clarifications.json"
+    ));
+    assert!(prompt.contains("detailed-research output"));
+    assert!(prompt.contains("DetailedResearchOutput"));
+    assert!(prompt.contains("Preserve every existing section"));
+    assert!(prompt.contains("Append only"));
+    assert!(
+        !prompt.contains("research-agent"),
+        "step 1 prompt should route through skill-creator, not research-agent"
+    );
+    assert!(
+        !prompt.to_ascii_lowercase().contains("subagent"),
+        "step 1 prompt should describe single-agent execution"
+    );
+    assert!(
+        !prompt.to_ascii_lowercase().contains("delegate"),
+        "step 1 prompt should not ask for delegated research"
+    );
+}
+
+#[test]
+fn detailed_research_sidecar_config_uses_skill_creator_openhands_contract() {
+    let config = build_workflow_detailed_research_sidecar_config(
+        "pipeline-value",
+        "prompt",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        test_workflow_llm_config(),
+        Some("session-1".to_string()),
+    );
+
+    assert_eq!(config.runtime_provider.as_deref(), Some("openhands"));
+    assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
+    assert_eq!(
+        config.task_kind.as_deref(),
+        Some("workflow.detailed_research")
+    );
+    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert_eq!(
+        config.allowed_tools,
+        Some(vec![
+            "file_editor".to_string(),
+            "terminal".to_string(),
+            "browser_tool_set".to_string()
+        ])
+    );
+    assert_eq!(config.skill_name.as_deref(), Some("pipeline-value"));
+    assert_eq!(config.step_id, Some(1));
+    assert_eq!(config.run_source.as_deref(), Some("workflow"));
+    assert_eq!(config.workspace_root_dir, "/tmp/workspace");
+    assert_eq!(
+        config.workspace_skill_dir, "/tmp/workspace/skills/pipeline-value",
+        "workspace run dir must be the skill-scoped workspace"
+    );
+    assert_eq!(config.output_format, workflow_output_format_for_step(1));
+    assert!(
+        config.required_plugins.is_none(),
+        "OpenHands one-shot config should rely on workspace .agents layout"
+    );
+    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
+    assert!(config.path_to_claude_code_executable.is_none());
+}
+
+#[test]
 fn answer_evaluator_prompt_renders_clean_break_skill_routing() {
     let prompt = super::prompt::build_evaluator_prompt(
         "sales-analytics",
@@ -275,7 +360,7 @@ fn answer_evaluator_prompt_renders_clean_break_skill_routing() {
     );
 
     assert!(prompt.contains("Use the answer-evaluator skill"));
-    assert!(prompt.contains("Skill name: sales-analytics"));
+    assert!(prompt.contains("We are writing the skill sales-analytics."));
     assert!(prompt.contains("/tmp/workspace"));
     assert!(prompt.contains("/user-context.md"));
     assert!(prompt.contains("/context"));
@@ -485,14 +570,14 @@ fn test_workflow_output_format_is_set_for_json_contract_workflow_steps() {
             "workflow step {step_id} must have an output format"
         );
     }
-    assert_eq!(
+    assert_ne!(
         get_step_config(0).unwrap().agent_name,
         get_step_config(1).unwrap().agent_name
     );
     assert_ne!(
         workflow_output_format_for_step(0).unwrap()["schema"],
         workflow_output_format_for_step(1).unwrap()["schema"],
-        "shared research-agent steps must still use step-specific schemas"
+        "research and detailed-research steps must still use step-specific schemas"
     );
     assert_eq!(
         get_step_config(2).unwrap().agent_name,
@@ -923,6 +1008,115 @@ fn test_materialize_step1_writes_clarifications_only() {
 
     materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap();
     assert!(skill_root.join("context/clarifications.json").exists());
+}
+
+#[test]
+fn test_materialize_step1_writes_additive_detailed_research_output() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    let output = serde_json::json!({
+        "status": "detailed_research_complete",
+        "refinement_count": 1,
+        "section_count": 2,
+        "clarifications_json": {
+            "version": "1",
+            "metadata": {
+                "question_count": 5,
+                "section_count": 2,
+                "refinement_count": 1,
+                "must_answer_count": 4,
+                "priority_questions": ["Q1", "Q3", "R3.1", "Q5"],
+                "duplicates_removed": 0,
+                "scope_recommendation": false,
+                "scope_reason": null,
+                "warning": null,
+                "error": null
+            },
+            "sections": [
+                {
+                    "id": 1,
+                    "title": "Existing section",
+                    "questions": [
+                        {
+                            "id": "Q1",
+                            "title": "Existing clear question",
+                            "text": "Which layers are in scope?",
+                            "must_answer": true,
+                            "choices": [],
+                            "answer_text": "Bronze, silver, gold",
+                            "refinements": []
+                        },
+                        {
+                            "id": "Q2",
+                            "title": "Existing clear question",
+                            "text": "What is the incremental policy?",
+                            "must_answer": false,
+                            "choices": [],
+                            "answer_text": "Merge on natural key and updated_at",
+                            "refinements": []
+                        },
+                        {
+                            "id": "Q3",
+                            "title": "Existing vague question",
+                            "text": "Who uses this skill?",
+                            "must_answer": true,
+                            "choices": [],
+                            "answer_text": "TBD",
+                            "refinements": [
+                                {
+                                    "id": "R3.1",
+                                    "title": "Primary user persona",
+                                    "text": "Which primary role should this skill optimize for?",
+                                    "must_answer": true,
+                                    "choices": [],
+                                    "refinements": []
+                                }
+                            ]
+                        },
+                        {
+                            "id": "Q4",
+                            "title": "New section-level question",
+                            "text": "What naming convention should generated models follow?",
+                            "must_answer": false,
+                            "choices": [],
+                            "refinements": []
+                        }
+                    ]
+                },
+                {
+                    "id": 2,
+                    "title": "New governance section",
+                    "questions": [
+                        {
+                            "id": "Q5",
+                            "title": "Approval process",
+                            "text": "Who approves changes to shared modeling standards?",
+                            "must_answer": true,
+                            "choices": [],
+                            "refinements": []
+                        }
+                    ]
+                }
+            ],
+            "notes": [],
+            "answer_evaluator_notes": []
+        }
+    });
+
+    materialize_workflow_step_output_value(&skill_root, 1, &output).unwrap();
+    let written: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(skill_root.join("context/clarifications.json")).unwrap(),
+    )
+    .unwrap();
+    let sections = written["sections"].as_array().unwrap();
+    assert_eq!(sections.len(), 2);
+    assert_eq!(sections[0]["id"], 1);
+    assert_eq!(sections[1]["id"], 2);
+    let s1_questions = sections[0]["questions"].as_array().unwrap();
+    assert_eq!(s1_questions[0]["id"], "Q1");
+    assert!(s1_questions.iter().any(|q| q["id"] == "Q4"));
+    let q3 = s1_questions.iter().find(|q| q["id"] == "Q3").unwrap();
+    assert_eq!(q3["refinements"][0]["id"], "R3.1");
 }
 
 #[test]
@@ -1640,7 +1834,7 @@ fn test_build_step0_prompt_uses_openhands_native_research_routing() {
         4,
     );
 
-    assert!(prompt.contains("Skill name: my-skill"));
+    assert!(prompt.contains("We are writing the skill my-skill."));
     assert!(prompt.contains("Maximum research dimensions before scope warning: 4"));
     assert!(prompt.contains("research_output"));
 
@@ -1696,7 +1890,7 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
         skills_path,
     );
 
-    assert!(prompt.contains("Skill name: my-skill"));
+    assert!(prompt.contains("We are writing the skill my-skill."));
     assert!(
         prompt.contains("Workspace directory: /home/user/.vibedata/skill-builder/skills/my-skill")
     );

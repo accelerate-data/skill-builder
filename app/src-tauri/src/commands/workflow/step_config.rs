@@ -24,7 +24,7 @@ fn one_shot_tools_for_agent(agent_name: &str) -> Vec<String> {
 /// | Step | Capability | Plugins |
 /// |------|------------|---------|
 /// | 0 | research-agent | skill-content-researcher |
-/// | 1 | research-agent | skill-content-researcher |
+/// | 1 | skill-creator | skill-content-researcher |
 /// | 2 | skill-writer-agent | skill-content-researcher |
 /// | 3 | skill-writer-agent | skill-content-researcher, skill-creator |
 pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
@@ -43,13 +43,13 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             })
         }
         1 => {
-            let agent = "research-agent";
+            let agent = "skill-creator";
             Ok(StepConfig {
                 step_id: 1,
                 name: "Detailed Research".to_string(),
-                prompt_template: "research-agent.md".to_string(),
+                prompt_template: "detailed-research.txt".to_string(),
                 output_file: "context/clarifications.json".to_string(),
-                allowed_tools: one_shot_tools_for_agent(agent),
+                allowed_tools: tools_for_agent("research-agent"),
                 max_turns: 50,
                 agent_name: agent.to_string(),
                 required_plugins: vec!["skill-content-researcher".to_string()],
@@ -94,7 +94,7 @@ pub(crate) fn workflow_output_format_for_step(step_id: u32) -> Option<serde_json
     let schema_str = match step_id {
         // Deep schema — all fields required per SKILL.md, nested ClarificationsFile enforced.
         0 => Some(schemas::RESEARCH_STEP_INLINE_SCHEMA),
-        // Step 1 reuses research-agent with the detailed research schema.
+        // Step 1 uses the shared skill-creator agent with the detailed research schema.
         1 => Some(schemas::DETAILED_RESEARCH_INLINE_SCHEMA),
         // Step 2 reuses skill-writer-agent with the decisions schema.
         2 => Some(schemas::DECISIONS_INLINE_SCHEMA),
@@ -115,7 +115,7 @@ pub(crate) fn workflow_output_format_for_step(step_id: u32) -> Option<serde_json
 pub(crate) fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
     match step_id {
         0 => Some(8_000),  // research
-        1 => Some(8_000),  // research-agent detailed research
+        1 => Some(8_000),  // skill-creator detailed research
         2 => Some(32_000), // skill-writer-agent decisions pass
         3 => Some(16_000), // skill-writer-agent skill generation
         _ => None,

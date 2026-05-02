@@ -41,6 +41,30 @@ describe("resolveStepTemplate", () => {
     expect(resolveStepTemplate("skill-content-researcher:research-agent", { stepId: 1 })).toBe("step1-detailed-research");
   });
 
+  it("routes skill-creator workflow.detailed_research to step1 detailed research template", () => {
+    expect(
+      resolveStepTemplate("skill-creator", {
+        stepId: 1,
+        taskKind: "workflow.detailed_research",
+      }),
+    ).toBe("step1-detailed-research");
+  });
+
+  it("does not route workflow.detailed_research for the wrong agent", () => {
+    expect(
+      resolveStepTemplate("skill-writer-agent", {
+        stepId: 1,
+        taskKind: "workflow.detailed_research",
+      }),
+    ).toBe("step2-confirm-decisions");
+    expect(
+      resolveStepTemplate(undefined, {
+        stepId: 1,
+        taskKind: "workflow.detailed_research",
+      }),
+    ).toBeNull();
+  });
+
   it("maps OpenHands skill-writer-agent by workflow step", () => {
     expect(resolveStepTemplate("skill-writer-agent", { stepId: 2 })).toBe("step2-confirm-decisions");
     expect(resolveStepTemplate("skill-writer-agent", { stepId: 3 })).toBe("step3-generate-skill");
@@ -161,6 +185,19 @@ describe("parsePromptPaths", () => {
     expect(paths.workspaceDir).toBe("/Users/hb/.vibedata/skill-builder/test-skill");
     expect(paths.contextDir).toBe("/Users/hb/skills/test-skill/context");
     expect(paths.skillOutputDir).toBeNull();
+  });
+
+  it("extracts workspace + context from app-owned detailed-research prompt labels", () => {
+    const prompt =
+      "Skill name: test-skill\n" +
+      "Workspace directory: /Users/hb/workspace/skills/test-skill\n" +
+      "User context file: /Users/hb/workspace/skills/test-skill/user-context.md\n" +
+      "Clarifications file: /Users/hb/workspace/skills/test-skill/context/clarifications.json\n" +
+      "Context directory: /Users/hb/workspace/skills/test-skill/context\n";
+
+    const paths = parsePromptPaths(prompt);
+    expect(paths.workspaceDir).toBe("/Users/hb/workspace/skills/test-skill");
+    expect(paths.contextDir).toBe("/Users/hb/workspace/skills/test-skill/context");
   });
 
   it("handles paths with dots (e.g., john.doe)", () => {

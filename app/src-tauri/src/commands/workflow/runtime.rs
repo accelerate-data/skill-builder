@@ -19,7 +19,7 @@ use super::output_format::{
     answer_evaluator_output_format, extract_research_json_from_conversation_state,
     materialize_workflow_step_output_value,
 };
-use super::prompt::{build_evaluator_prompt, build_prompt, build_step0_prompt};
+use super::prompt::{build_evaluator_prompt, build_prompt, build_step0_prompt, build_step1_prompt};
 use super::settings::{read_workflow_settings, WorkflowSettings};
 use super::step_config::{get_step_config, tools_for_agent, workflow_output_format_for_step};
 use super::user_context::write_user_context_file;
@@ -64,6 +64,48 @@ pub(crate) fn build_workflow_research_sidecar_config(
     llm: crate::types::WorkflowLlmConfig,
     workflow_session_id: Option<String>,
 ) -> SidecarConfig {
+    build_skill_creator_workflow_sidecar_config(
+        skill_name,
+        prompt,
+        workspace_path,
+        plugin_slug,
+        llm,
+        workflow_session_id,
+        0,
+        "workflow.research",
+    )
+}
+
+pub(crate) fn build_workflow_detailed_research_sidecar_config(
+    skill_name: &str,
+    prompt: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+    llm: crate::types::WorkflowLlmConfig,
+    workflow_session_id: Option<String>,
+) -> SidecarConfig {
+    build_skill_creator_workflow_sidecar_config(
+        skill_name,
+        prompt,
+        workspace_path,
+        plugin_slug,
+        llm,
+        workflow_session_id,
+        1,
+        "workflow.detailed_research",
+    )
+}
+
+fn build_skill_creator_workflow_sidecar_config(
+    skill_name: &str,
+    prompt: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+    llm: crate::types::WorkflowLlmConfig,
+    workflow_session_id: Option<String>,
+    step_id: u32,
+    task_kind: &str,
+) -> SidecarConfig {
     let workspace_root_dir = workspace_path.replace('\\', "/");
     let workspace_run_dir =
         resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
@@ -77,13 +119,13 @@ pub(crate) fn build_workflow_research_sidecar_config(
             workspace_root_dir,
             workspace_run_dir,
             agent_name: "skill-creator".to_string(),
-            task_kind: Some("workflow.research".to_string()),
+            task_kind: Some(task_kind.to_string()),
             user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
             allowed_tools: tools_for_agent("research-agent"),
             max_turns: 50,
-            output_format: workflow_output_format_for_step(0),
+            output_format: workflow_output_format_for_step(step_id),
             skill_name: Some(skill_name.to_string()),
-            step_id: Some(0),
+            step_id: Some(step_id as i32),
             run_source: Some("workflow".to_string()),
             plugin_slug: plugin_slug.to_string(),
         });
@@ -95,6 +137,10 @@ pub(crate) fn build_workflow_research_sidecar_config(
             .into_owned(),
     );
     config
+}
+
+pub(crate) fn workflow_step_uses_native_openhands_dispatch(step_id: u32) -> bool {
+    matches!(step_id, 0 | 1)
 }
 
 pub(crate) fn build_answer_evaluator_sidecar_config(
@@ -260,15 +306,15 @@ async fn run_workflow_step_inner(
         &settings.documents,
     );
 
-    let prompt = if step_id == 0 {
-        build_step0_prompt(
+    let prompt = match step_id {
+        0 => build_step0_prompt(
             skill_name,
             workspace_path,
             &settings.plugin_slug,
             settings.max_dimensions,
-        )
-    } else {
-        build_prompt(&super::prompt::PromptParams {
+        ),
+        1 => build_step1_prompt(skill_name, workspace_path, &settings.plugin_slug),
+        _ => build_prompt(&super::prompt::PromptParams {
             skill_name,
             workspace_path,
             plugin_slug: &settings.plugin_slug,
@@ -276,7 +322,7 @@ async fn run_workflow_step_inner(
             author_login: settings.author_login.as_deref(),
             created_at: settings.created_at.as_deref(),
             step_id,
-        })
+        }),
     };
     log::debug!(
         "[run_workflow_step] prompt for step={} step_id={}: {}",
@@ -303,17 +349,24 @@ async fn run_workflow_step_inner(
         step_id
     );
 
-    let config = if step_id == 0 {
-        build_workflow_research_sidecar_config(
+    let config = match step_id {
+        0 => build_workflow_research_sidecar_config(
             skill_name,
             &prompt,
             workspace_path,
             &settings.plugin_slug,
             settings.llm.clone(),
             workflow_session_id,
-        )
-    } else {
-        SidecarConfig {
+        ),
+        1 => build_workflow_detailed_research_sidecar_config(
+            skill_name,
+            &prompt,
+            workspace_path,
+            &settings.plugin_slug,
+            settings.llm.clone(),
+            workflow_session_id,
+        ),
+        _ => SidecarConfig {
             mode: Some("one-shot".to_string()),
             prompt,
             // Do not set a string systemPrompt for workflow steps. Agent identity
@@ -372,7 +425,7 @@ async fn run_workflow_step_inner(
             runtime_provider: workflow_one_shot_runtime_provider(),
             task_kind: None,
             user_message_suffix: None,
-        }
+        },
     };
 
     log::debug!(
@@ -406,7 +459,7 @@ async fn run_workflow_step_inner(
     }
 
     let transcript_log_dir = config.transcript_log_dir.clone();
-    let start_result = if step_id == 0 {
+    let start_result = if workflow_step_uses_native_openhands_dispatch(step_id) {
         crate::agents::sidecar::dispatch_openhands_one_shot(
             app,
             &agent_id,

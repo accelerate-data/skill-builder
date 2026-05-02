@@ -1,8 +1,8 @@
 EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
 
-Use the research skill to produce workflow step 0 clarification output for this skill.
+Produce workflow research clarification output for the skill we are writing.
 
-Skill name: {{skill_name}}
+We are writing the skill {{skill_name}}.
 Workspace directory: {{workspace_dir}}
 User context file: {{workspace_dir}}/user-context.md
 Context directory: {{workspace_dir}}/context
@@ -10,7 +10,7 @@ Maximum research dimensions before scope warning: {{max_dimensions}}
 
 All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
 
-The research skill must run as one inline flow and return only final output.
+Research must run as one inline flow and return only final output.
 Do not emit intermediate JSON, markdown summaries, dimensions_selected,
 research_plan, research_lens, dimension_scores, selected_dimensions,
 topic_relevance, dimensions_evaluated, or consolidation handoff text.

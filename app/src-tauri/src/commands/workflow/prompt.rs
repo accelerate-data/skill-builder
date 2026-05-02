@@ -16,6 +16,11 @@ const RESEARCH_PROMPT_TEMPLATE: &str = include_str!(concat!(
     "/../../agent-sources/prompts/research.txt"
 ));
 
+const DETAILED_RESEARCH_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/detailed-research.txt"
+));
+
 /// Parameters for [`build_prompt`].
 pub(crate) struct PromptParams<'a> {
     pub skill_name: &'a str,
@@ -25,6 +30,21 @@ pub(crate) struct PromptParams<'a> {
     pub author_login: Option<&'a str>,
     pub created_at: Option<&'a str>,
     pub step_id: u32,
+}
+
+fn render_workspace_prompt(
+    template: &str,
+    skill_name: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+) -> String {
+    let workspace_dir =
+        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    template
+        .trim_end_matches('\n')
+        .replace("{{skill_name}}", skill_name)
+        .replace("{{workspace_dir}}", &workspace_str)
 }
 
 /// Construct the agent prompt string injected into every `SidecarConfig`.
@@ -80,14 +100,27 @@ pub(crate) fn build_step0_prompt(
     plugin_slug: &str,
     max_dimensions: u32,
 ) -> String {
-    let workspace_dir =
-        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    RESEARCH_PROMPT_TEMPLATE
-        .trim_end_matches('\n')
-        .replace("{{skill_name}}", skill_name)
-        .replace("{{workspace_dir}}", &workspace_str)
-        .replace("{{max_dimensions}}", &max_dimensions.to_string())
+    render_workspace_prompt(
+        RESEARCH_PROMPT_TEMPLATE,
+        skill_name,
+        workspace_path,
+        plugin_slug,
+    )
+    .replace("{{max_dimensions}}", &max_dimensions.to_string())
+}
+
+/// Build the prompt for step 1 (detailed research).
+pub(crate) fn build_step1_prompt(
+    skill_name: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+) -> String {
+    render_workspace_prompt(
+        DETAILED_RESEARCH_TEMPLATE,
+        skill_name,
+        workspace_path,
+        plugin_slug,
+    )
 }
 
 /// Build the lighter prompt used by the answer-evaluator agent.

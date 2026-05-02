@@ -2,7 +2,7 @@ EXECUTE IMMEDIATELY - do not ask questions, do not greet the user, do not offer 
 
 This is the app step-0 research prompt for the OpenHands `skill-creator` agent using task kind `workflow.research` and app-owned prompt `agent-sources/prompts/research.txt`. Use the inline context as if it came from user-context.md and return the same structured output the app captures.
 
-Skill name: fabric-dbt-standards
+We are writing the skill fabric-dbt-standards.
 Workspace directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
 Context directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context
 Maximum research dimensions before scope warning: 5
