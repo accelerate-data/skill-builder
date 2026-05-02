@@ -6,7 +6,7 @@
 
 **Architecture:** Step 0 research should return only completion status, question count, and the canonical clarifications object. Clarifications metadata should carry one `research_lens` value and no `research_plan`, dimension scores, selected dimensions, or consolidation handoff artifacts. The app should render a compact research summary from clarifications metadata and counts instead of the legacy dimensions panel.
 
-**Tech Stack:** Rust Tauri contracts with Specta/Schemars codegen, TypeScript React UI, Vitest unit and structural tests, bundled OpenHands workspace/plugin agent sources, Promptfoo eval packages.
+**Tech Stack:** Rust Tauri contracts with Specta/Schemars codegen, TypeScript React UI, Vitest unit and structural tests, bundled OpenHands workspace agent sources, Promptfoo eval packages.
 
 ---
 
@@ -19,8 +19,8 @@ Linear: VU-1150
 - `app/src-tauri/src/contracts/workflow_outputs.rs` requires top-level `dimensions_selected` in `ResearchStepOutput`.
 - `app/src-tauri/src/contracts/clarifications.rs` defines `ClarificationsResearchPlan`, `DimensionScore`, and `SelectedDimension`.
 - `app/src/components/research-summary-card.tsx` parses `metadata.research_plan`, legacy research-plan markdown, dimension scores, and selected dimensions.
-- `agent-sources/workspace/skills/research/SKILL.md` and `agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md` still describe dimension scoring, per-dimension research, and consolidation.
-- `agent-sources/workspace/skills/shared/schemas.md` and the plugin copy still require `metadata.research_plan`.
+- `agent-sources/workspace/skills/research/SKILL.md` still describes dimension scoring, per-dimension research, and consolidation.
+- `agent-sources/workspace/skills/shared/schemas.md` still requires `metadata.research_plan`.
 - `app/src/__tests__/lib/canonical-format.test.ts`, mock clarifications fixtures, and eval prompt assertions still encode the dimension contract.
 
 ## Target Contract
@@ -73,10 +73,9 @@ Guard and error outputs use `research_lens: null`, zero counts, empty `sections`
 - Modify: `app/src/__tests__/lib/canonical-format.test.ts` - remove embedded research plan tests and add lens metadata checks.
 - Modify: `app/src-tauri/src/commands/workflow/tests.rs`, `app/src-tauri/src/commands/workflow_artifacts.rs`, `app/src-tauri/src/contracts/*` tests - remove `dimensions_selected` expectations.
 - Modify: `agent-sources/prompts/research.txt` - remove top-level `dimensions_selected`.
-- Modify: `agent-sources/workspace/skills/research/SKILL.md` and `agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md` - replace dimension scoring flow with one-lens flow.
-- Delete: `agent-sources/**/skills/research/references/consolidation-handoff.md`, `dimension-sets.md`, `scoring-rubric.md`, and `references/dimensions/*.md`. These references are obsolete in the one-lens flow and should not remain as discoverable fallback guidance.
-- Modify: `agent-sources/workspace/skills/shared/schemas.md` and plugin copy - document `research_lens` semantics and remove `research_plan` semantics.
-- Modify: `agent-sources/plugins/skill-content-researcher/agents/research-agent.md` if it contains dimension examples or guard payloads.
+- Modify: `agent-sources/workspace/skills/research/SKILL.md` - replace dimension scoring flow with one-lens flow.
+- Delete: `agent-sources/workspace/skills/research/references/consolidation-handoff.md`, `dimension-sets.md`, `scoring-rubric.md`, and `references/dimensions/*.md`. These references are obsolete in the one-lens flow and should not remain as discoverable fallback guidance.
+- Modify: `agent-sources/workspace/skills/shared/schemas.md` - document `research_lens` semantics and remove `research_plan` semantics.
 - Modify: `tests/evals/packages/*research*/prompt.txt` and `promptfooconfig.json` where assertions require `dimensions_selected` or `research_plan`.
 - Audit: `repo-map.json` if files are deleted from or added under mapped paths.
 
@@ -253,8 +252,6 @@ Expected before implementation: failures mentioning missing `research_lens`, une
 - Generate: `app/src/generated/contracts.ts`
 - Generate: `app/sidecar/generated/contracts.ts`
 - Generate: `app/src-tauri/src/generated/schemas.rs`
-- Generate: `agent-sources/plugins/skill-content-researcher/shared/output-schemas/*.json`
-- Generate: `agent-sources/plugins/skill-content-researcher/shared/output-deep-schemas/*.json`
 - Generate: `agent-sources/workspace/skills/shared/output-schemas/*.json`
 - Generate: `agent-sources/workspace/skills/shared/output-deep-schemas/*.json`
 
@@ -541,19 +538,16 @@ from both render paths in `app/src/components/step-complete/research-step-comple
 **Files:**
 
 - Modify: `agent-sources/workspace/skills/research/SKILL.md`
-- Modify: `agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md`
 - Modify: `agent-sources/workspace/skills/shared/schemas.md`
-- Modify: `agent-sources/plugins/skill-content-researcher/shared/schemas.md`
-- Modify: `agent-sources/plugins/skill-content-researcher/agents/research-agent.md`
 - Modify: `agent-sources/prompts/research.txt`
-- Delete: `agent-sources/**/skills/research/references/consolidation-handoff.md`
-- Delete: `agent-sources/**/skills/research/references/dimension-sets.md`
-- Delete: `agent-sources/**/skills/research/references/scoring-rubric.md`
-- Delete: `agent-sources/**/skills/research/references/dimensions/*.md`
+- Delete: `agent-sources/workspace/skills/research/references/consolidation-handoff.md`
+- Delete: `agent-sources/workspace/skills/research/references/dimension-sets.md`
+- Delete: `agent-sources/workspace/skills/research/references/scoring-rubric.md`
+- Delete: `agent-sources/workspace/skills/research/references/dimensions/*.md`
 
 - [ ] **Step 1: Replace the research skill overview**
 
-Use this shape in both research `SKILL.md` files:
+Use this shape in `agent-sources/workspace/skills/research/SKILL.md`:
 
 ```md
 # Research Skill
@@ -652,7 +646,6 @@ Remove `Maximum research dimensions before scope warning` if no prompt or runtim
 - Delete: `agent-sources/workspace/skills/research/references/dimension-sets.md`
 - Delete: `agent-sources/workspace/skills/research/references/scoring-rubric.md`
 - Delete: `agent-sources/workspace/skills/research/references/consolidation-handoff.md`
-- Delete matching plugin copies under `agent-sources/plugins/skill-content-researcher/skills/research/references/`
 - Modify: `repo-map.json` if it describes these reference files.
 
 - [ ] **Step 1: Confirm all remaining references are targets for rewrite or deletion**
