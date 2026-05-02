@@ -32,6 +32,7 @@ pub const RESEARCH_STEP_SCHEMA: &str = r###"{
   "title": "ResearchStepOutput",
   "type": "object"
 }"###;
+
 pub const DETAILED_RESEARCH_SCHEMA: &str = r###"{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "additionalProperties": false,
@@ -1157,3 +1158,4 @@ pub const DECISIONS_INLINE_SCHEMA: &str = r###"{
   "title": "DecisionsOutput",
   "type": "object"
 }"###;
+

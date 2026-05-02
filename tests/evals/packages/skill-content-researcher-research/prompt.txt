@@ -8,4 +8,23 @@ Context directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/cont
 Maximum research dimensions before scope warning: 5
 User context: Purpose is organization specific data engineering standards. Description asks for a skill for analytics engineers building dbt models on Microsoft Fabric, covering bronze/silver/gold modeling rules, naming conventions, incremental strategy, SCD2 snapshot guidance, semantic model handoff, and CI review expectations.
 
-Return raw JSON only. Required top-level fields: status="research_complete", dimensions_selected integer, question_count integer, research_output.version="1", research_output.metadata.priority_questions array, research_output.metadata.research_plan object, research_output.sections array, research_output.answer_evaluator_notes array.
+Return raw JSON only. Use this exact envelope shape:
+
+{
+  "status": "research_complete",
+  "dimensions_selected": 0,
+  "question_count": 0,
+  "research_output": {
+    "version": "1",
+    "metadata": {
+      "priority_questions": [],
+      "research_plan": {}
+    },
+    "sections": [],
+    "notes": [],
+    "answer_evaluator_notes": []
+  }
+}
+
+Do not put `sections`, `notes`, or `answer_evaluator_notes` inside
+`research_output.metadata`; they are top-level fields inside `research_output`.
