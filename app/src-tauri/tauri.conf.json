@@ -36,6 +36,7 @@
       "../sidecar/dist/": "sidecar/dist",
       "../../agent-sources/plugins/": "agent-sources/plugins",
       "../../agent-sources/skills/": "agent-sources/skills",
+      "../../agent-sources/claude/": "claude",
       "../../agent-sources/workspace/": "workspace"
     },
     "icon": [

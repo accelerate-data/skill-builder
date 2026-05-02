@@ -51,7 +51,7 @@ fn migrate_workspace_layout(workspace_path: &str) {
         let _ = fs::remove_file(&db_file);
     }
     // Remove stale nested CLAUDE.md if both files exist.
-    // Workspace instructions now live at workspace/CLAUDE.md.
+    // Legacy Claude instructions now live at workspace/CLAUDE.md.
     let root_claude_md = base.join("CLAUDE.md");
     let nested_claude_md = base.join(".claude").join("CLAUDE.md");
     if root_claude_md.is_file() && nested_claude_md.is_file() {

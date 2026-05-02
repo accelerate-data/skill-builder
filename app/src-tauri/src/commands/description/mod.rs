@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 const DESC_EVALS_PROMPT_TEMPLATE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../agent-sources/workspace/prompts/skill-description-evals-generator.md"
+    "/../../agent-sources/prompts/skill-description-evals-generator.md"
 ));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

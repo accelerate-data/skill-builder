@@ -5,6 +5,12 @@ import { AGENTS_DIR, PLUGINS_DIR, REPO_ROOT } from "./helpers";
 
 /** Top-level agents deployed to .claude/agents/ */
 const EXPECTED_AGENTS: string[] = [];
+const WORKSPACE_AGENTS_DIR = path.join(
+  REPO_ROOT,
+  "agent-sources",
+  "workspace",
+  "agents",
+);
 
 /** Plugin-hosted agents: agent name → plugin path relative to PLUGINS_DIR */
 const PLUGIN_AGENTS: Record<string, string> = {
@@ -15,11 +21,7 @@ const PLUGIN_AGENTS: Record<string, string> = {
   grader: "skill-creator/agents/grader.md",
 };
 
-const OPENHANDS_WORKFLOW_AGENTS = [
-  "research-agent",
-  "answer-evaluator",
-  "skill-writer-agent",
-] as const;
+const OPENHANDS_WORKFLOW_AGENTS = ["skill-creator"] as const;
 
 const OBSOLETE_WORKFLOW_AGENT_PATHS = [
   "skill-content-researcher/agents/skill-builder.md",
@@ -30,6 +32,9 @@ const OBSOLETE_WORKFLOW_AGENT_PATHS = [
 
 /** Resolve the .md file path for any agent (top-level or plugin). */
 function resolveAgentPath(agentName: string): string {
+  if ((OPENHANDS_WORKFLOW_AGENTS as readonly string[]).includes(agentName)) {
+    return path.join(WORKSPACE_AGENTS_DIR, `${agentName}.md`);
+  }
   const pluginRelPath = PLUGIN_AGENTS[agentName];
   if (pluginRelPath) return path.join(PLUGINS_DIR, pluginRelPath);
   return path.join(AGENTS_DIR, `${agentName}.md`);
@@ -296,7 +301,7 @@ describe("Agent output contracts (backend protocol alignment)", () => {
 
   it("evaluate-skill prompt template matches SDK-enforced schema", () => {
     const content = fs.readFileSync(
-      path.join(REPO_ROOT, "agent-sources/workspace/prompts/eval-initial.txt"),
+      path.join(REPO_ROOT, "agent-sources/prompts/eval-initial.txt"),
       "utf8",
     );
     expect(content).toMatch(/"status":\s*"complete"/);
@@ -306,7 +311,7 @@ describe("Agent output contracts (backend protocol alignment)", () => {
 
   it("evaluate-skill prompt documents grading.json write paths", () => {
     const content = fs.readFileSync(
-      path.join(REPO_ROOT, "agent-sources/workspace/prompts/eval-initial.txt"),
+      path.join(REPO_ROOT, "agent-sources/prompts/eval-initial.txt"),
       "utf8",
     );
     expect(content).toMatch(/grading\.json/);

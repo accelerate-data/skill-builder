@@ -299,7 +299,11 @@ The workspace directory path is unchanged. Agent and skill artifacts move from `
 | `.claude/plugins/<slug>/.claude-plugin/plugin.json` | Not needed — agents and skills are discovered directly |
 | `CLAUDE.md` | Not generated — `AGENTS.md` is the only always-on context file |
 
-`plugin.json` and the `.claude-plugin/` directory are eliminated. Plugin identity is carried by agent and skill frontmatter names. This binary ships OpenHands only — `CLAUDE.md` generation is removed with no compatibility shim.
+`plugin.json` and the `.claude-plugin/` directory are eliminated from the
+OpenHands runtime layout. Plugin identity is carried by agent and skill
+frontmatter names. During the migration, remaining legacy Claude rebuild paths
+read their adapter template from `agent-sources/claude/**`; the OpenHands
+workspace source tree does not contain `CLAUDE.md` or prompt templates.
 
 ## AskUserQuestion Gap
 
@@ -324,7 +328,7 @@ Refine streaming remains broken until a custom `AskUserQuestion` tool is impleme
 | Parallel sub-agent spawning instructions | Replaced by inline sequential execution |
 | Sub-agent merge and deduplication logic | Not needed with inline execution |
 | `options.ts` Claude SDK option builder | Runner builds OpenHands config directly |
-| `CLAUDE.md` generation | Clean break — `AGENTS.md` is the only always-on context file; no compatibility shim |
+| OpenHands `CLAUDE.md` generation | Clean break — `AGENTS.md` is the only always-on context file; no compatibility shim in `.agents/**` |
 
 ## Key Source Files
 
@@ -338,6 +342,7 @@ Refine streaming remains broken until a custom `AskUserQuestion` tool is impleme
 | `agent-sources/workspace/agents/skill-creator.md` | One file-based OpenHands agent copied into `.agents/agents/` |
 | `agent-sources/workspace/skills/` | File-based AgentSkills copied into `.agents/skills/` |
 | `agent-sources/prompts/` | App-owned prompt templates compiled/rendered by code |
+| `agent-sources/claude/` | Legacy Claude adapter templates for non-migrated rebuild paths; not part of OpenHands runtime |
 | `agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md` | Inline research — sub-agent sections removed |
 | `agent-sources/plugins/skill-creator/skills/skill-creator/SKILL.md` | Skill writer — no structural change |
 | `docs/design/agent-runtime-boundary/README.md` | Runtime boundary contract (prerequisite) |

@@ -79,9 +79,13 @@ agent-sources/
     agents/
       skill-creator.md
     skills/
+      answer-evaluator/
+        SKILL.md
       research/
         SKILL.md
       skill-creator/
+        SKILL.md
+      skill-validator/
         SKILL.md
   prompts/
     skill-creator-user-suffix.txt
@@ -101,16 +105,22 @@ Runtime workspace layout:
     agents/
       skill-creator.md
     skills/
+      answer-evaluator/
+        SKILL.md
       research/
         SKILL.md
       skill-creator/
         SKILL.md
+      skill-validator/
+        SKILL.md
 ```
 
-`agent-sources/workspace/**` is copied into `.agents/**` when the workflow
-workspace is prepared. `agent-sources/prompts/**` is not copied. Prompt templates
-are compiled into Rust with `include_str!`, rendered with request values, and
-sent to the sidecar/runner as strings.
+`agent-sources/workspace/**` contains only OpenHands runtime-discoverable files
+and is copied into `.agents/**` when the workflow workspace is prepared.
+`agent-sources/prompts/**` is not copied. Prompt templates are compiled into
+Rust with `include_str!`, rendered with request values, and sent to the
+sidecar/runner as strings. Legacy Claude adapter templates live in
+`agent-sources/claude/**`, outside the OpenHands workspace source tree.
 
 ## SDK Object Contract
 
@@ -329,6 +339,7 @@ The runner and sidecar must produce app-visible errors for:
 | `app/src-tauri/src/commands/skill/scope_review.rs` | Existing direct Anthropic scope-review command to migrate. |
 | `agent-sources/workspace/` | Source files copied into `.agents/**`. |
 | `agent-sources/prompts/` | App-owned prompt templates compiled/rendered by code. |
+| `agent-sources/claude/` | Legacy Claude adapter templates; not copied into `.agents/**`. |
 
 ## Testing
 

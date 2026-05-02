@@ -13,11 +13,14 @@ This is a dev-only spike — do not integrate into Tauri config or build scripts
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import traceback
 from pathlib import Path
 from typing import Any
+
+os.environ.setdefault("OPENHANDS_SUPPRESS_BANNER", "1")
 
 # ---------------------------------------------------------------------------
 # Protocol helpers
@@ -81,7 +84,7 @@ _OPENHANDS_IMPORT_ERROR: str | None = None
 
 try:
     from openhands.sdk import Agent, AgentContext, Conversation, LLM, Tool  # type: ignore[import]
-    from openhands.sdk.context.skills import load_project_skills, load_skills_from_dir  # type: ignore[import]
+    from openhands.sdk.skills import load_project_skills, load_skills_from_dir  # type: ignore[import]
     from openhands.tools.file_editor import FileEditorTool  # type: ignore[import]
     from openhands.tools.task_tracker import TaskTrackerTool  # type: ignore[import]
     from openhands.tools.terminal import TerminalTool  # type: ignore[import]

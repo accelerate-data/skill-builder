@@ -3,7 +3,7 @@ use serde::Serialize;
 
 const SUGGESTIONS_TEMPLATE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../agent-sources/workspace/prompts/skill-suggestions.txt"
+    "/../../agent-sources/prompts/skill-suggestions.txt"
 ));
 
 #[derive(Serialize)]

@@ -43,6 +43,13 @@ mkdir -p "${DIST_DIR}" "${BUILD_DIR}" "${SPEC_DIR}"
   --distpath "${DIST_DIR}" \
   --workpath "${BUILD_DIR}" \
   --specpath "${SPEC_DIR}" \
+  --collect-data "binaryornot" \
+  --collect-data "litellm" \
+  --copy-metadata "binaryornot" \
+  --copy-metadata "browser-use" \
+  --copy-metadata "fastmcp" \
+  --copy-metadata "litellm" \
+  --copy-metadata "mcp" \
   "${SCRIPT_DIR}/runner.py"
 
 chmod +x "${DIST_DIR}/${EXE_NAME}" 2>/dev/null || true

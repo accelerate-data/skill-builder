@@ -147,7 +147,15 @@
     },
     "workspace_instructions": {
       "path": "agent-sources/workspace/",
-      "description": "Agent workspace instructions deployed at startup. CLAUDE.md (full instructions → workspace .claude/CLAUDE.md), CLAUDE-MINIMAL.md (lightweight variant), prompts/ (shared prompt fragments injected into workspace)"
+      "description": "OpenHands runtime workspace sources deployed at startup. agents/ is copied to .agents/agents and skills/ is copied to .agents/skills. App prompt templates and Claude adapter templates do not live here."
+    },
+    "app_prompts": {
+      "path": "agent-sources/prompts/",
+      "description": "App-owned prompt templates compiled/rendered by Rust and sent as explicit task messages. These files are not copied into the OpenHands runtime workspace."
+    },
+    "claude_templates": {
+      "path": "agent-sources/claude/",
+      "description": "Legacy Claude adapter templates used by remaining non-OpenHands CLAUDE.md rebuild paths until those flows migrate."
     },
     "rust_reconciliation": {
       "path": "app/src-tauri/src/reconciliation/",
@@ -176,7 +184,9 @@
     "app/sidecar/__tests__/": "Sidecar unit tests (one test file per sidecar module)",
     "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, description, evals, settings, usage, skill-tester, skills-library, integration, desktop-smoke, fixtures, helpers, setup",
     "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains suite-owned tier config, OpenCode provider config, package-level eval configs, deterministic harness tests, static assertions for code contracts including shared Tauri command policy analysis, repo-local Promptfoo state ignores, one-scenario-per-package smoke, and live model regression commands.",
-    "agent-sources/workspace/": "Workspace agent instructions: CLAUDE.md (full), CLAUDE-MINIMAL.md (lightweight), prompts/ (shared fragments). Deployed to workspace .claude/ at app startup.",
+    "agent-sources/workspace/": "OpenHands runtime workspace sources only: agents/ is copied to .agents/agents and skills/ is copied to .agents/skills during startup/runtime deployment.",
+    "agent-sources/prompts/": "App-owned prompt templates compiled/rendered by Rust and sent as explicit task messages; not copied into the OpenHands runtime workspace.",
+    "agent-sources/claude/": "Legacy Claude adapter templates used by remaining non-OpenHands CLAUDE.md rebuild paths.",
     "agent-sources/plugins/": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent",
     "docs/design/": "Architecture decision records and design specs: agent-specs, backend-design, startup-recon, workflow-state, clarifications-rendering, skill-tester, skills-marketplace, and more. Primary reference for non-obvious design decisions.",
     "docs/user-guide/": "VitePress user documentation, deployed via docs.yml to GitHub Pages",

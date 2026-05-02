@@ -1,6 +1,6 @@
 # OpenHands Python runner dependencies
 # Install with: pip install -r app/sidecar/openhands/requirements.txt
 
-openhands-sdk>=0.4.0
-openhands-tools>=0.4.0
+openhands-sdk==1.19.1
+openhands-tools==1.19.1
 pyinstaller>=6.0.0

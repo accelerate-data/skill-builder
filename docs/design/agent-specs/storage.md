@@ -123,7 +123,7 @@ Copy bundled top-level agent prompts (`agents/*.md`) to `{workspace}/.claude/age
 
 Merge three sections and write to `{workspace}/.claude/CLAUDE.md`:
 
-1. **Base** — bundled template from `agent-sources/workspace/CLAUDE.md` (always overwritten)
+1. **Base** — bundled template from `agent-sources/claude/CLAUDE.md` (always overwritten)
 2. **Custom Skills** — generated from `list_active_skills(db)` (regenerated)
 3. **Customization** — extracted from the existing file's `## Customization` section (preserved)
 
