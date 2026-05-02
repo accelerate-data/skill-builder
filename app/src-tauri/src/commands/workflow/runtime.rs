@@ -79,7 +79,7 @@ pub(crate) fn build_workflow_research_sidecar_config(
             agent_name: "skill-creator".to_string(),
             task_kind: Some("workflow.research".to_string()),
             user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-            allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
+            allowed_tools: tools_for_agent("research-agent"),
             max_turns: 50,
             output_format: workflow_output_format_for_step(0),
             skill_name: Some(skill_name.to_string()),

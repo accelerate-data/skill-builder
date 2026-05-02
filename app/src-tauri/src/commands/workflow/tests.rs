@@ -234,7 +234,11 @@ fn research_sidecar_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.mode.as_deref(), Some("one-shot"));
     assert_eq!(
         config.allowed_tools,
-        Some(vec!["file_editor".to_string(), "terminal".to_string()])
+        Some(vec![
+            "file_editor".to_string(),
+            "terminal".to_string(),
+            "browser_tool_set".to_string()
+        ])
     );
     assert_eq!(config.skill_name.as_deref(), Some("lead-conversion"));
     assert_eq!(config.step_id, Some(0));
