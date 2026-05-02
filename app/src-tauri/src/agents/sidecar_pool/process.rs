@@ -150,6 +150,106 @@ pub(super) fn spawn_heartbeat_task(
 /// and the stdout reader task (which appends each message line).
 pub(super) type RequestLogFile = Arc<Mutex<Option<std::fs::File>>>;
 
+#[derive(Debug, PartialEq)]
+pub(super) enum TerminalEvent {
+    Exit {
+        success: bool,
+        error_detail: Option<String>,
+    },
+    Shutdown,
+}
+
+#[derive(Debug, PartialEq)]
+pub(super) struct TerminalRequestDecision {
+    pub(super) event: TerminalEvent,
+    pub(super) clean_incomplete_iterations: bool,
+}
+
+fn is_sdk_stderr_diagnostic(msg: &serde_json::Value) -> bool {
+    msg.get("type").and_then(|t| t.as_str()) == Some("system")
+        && msg.get("subtype").and_then(|s| s.as_str()) == Some("sdk_stderr")
+}
+
+fn extract_run_result_error_detail(msg: &serde_json::Value) -> Option<String> {
+    let event_obj = msg.get("event");
+    let status = event_obj
+        .and_then(|e| e.get("status"))
+        .and_then(|s| s.as_str())
+        .unwrap_or("error");
+    let detail = event_obj
+        .and_then(|e| e.get("resultErrors"))
+        .and_then(|e| e.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join("; ")
+        })
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| status.to_string());
+    Some(detail)
+}
+
+fn extract_conversation_state_error_detail(msg: &serde_json::Value) -> Option<String> {
+    let status = msg
+        .get("status")
+        .and_then(|s| s.as_str())
+        .unwrap_or("error");
+    let detail = msg
+        .get("error_detail")
+        .or_else(|| msg.get("errorDetail"))
+        .and_then(|d| d.as_str())
+        .filter(|d| !d.trim().is_empty())
+        .unwrap_or(status);
+    Some(redact_api_key(detail))
+}
+
+fn extract_raw_error_detail(msg: &serde_json::Value) -> Option<String> {
+    let error_detail = msg
+        .get("message")
+        .or_else(|| msg.get("error"))
+        .and_then(|m| m.as_str())
+        .unwrap_or("(no message)");
+    Some(redact_api_key(error_detail))
+}
+
+fn terminal_error_detail(msg: &serde_json::Value) -> Option<String> {
+    match msg.get("type").and_then(|t| t.as_str()) {
+        Some("agent_event") => extract_run_result_error_detail(msg),
+        Some("conversation_state") => extract_conversation_state_error_detail(msg),
+        Some("error") => extract_raw_error_detail(msg),
+        _ => None,
+    }
+}
+
+pub(super) fn prepare_terminal_request_decision(
+    pending: &mut HashMap<String, String>,
+    request_id: &str,
+    msg: &serde_json::Value,
+    outcome: TerminalOutcome,
+) -> Option<TerminalRequestDecision> {
+    pending.remove(request_id)?;
+
+    let event = if outcome == TerminalOutcome::Shutdown {
+        TerminalEvent::Shutdown
+    } else {
+        TerminalEvent::Exit {
+            success: outcome == TerminalOutcome::Completed,
+            error_detail: if outcome == TerminalOutcome::Error {
+                terminal_error_detail(msg)
+            } else {
+                None
+            },
+        }
+    };
+
+    Some(TerminalRequestDecision {
+        event,
+        clean_incomplete_iterations: outcome == TerminalOutcome::Error
+            || outcome == TerminalOutcome::Shutdown,
+    })
+}
+
 /// Result of successfully launching and validating a sidecar process.
 /// Contains all handles needed to construct a `PersistentSidecar`.
 pub(super) struct LaunchedProcess {
@@ -212,6 +312,17 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
         }
     };
 
+    if is_sdk_stderr_diagnostic(&msg) {
+        let data = msg.get("data").and_then(|d| d.as_str()).unwrap_or("");
+        log::debug!(
+            "[persistent-sidecar:{}] Agent '{}' stderr diagnostic: {}",
+            ctx.skill_name,
+            request_id,
+            data,
+        );
+        return;
+    }
+
     // Intercept request_complete — sidecar signals it's ready for the next request.
     // Emit agent-exit so the frontend transitions the run to completed state.
     if msg.get("type").and_then(|t| t.as_str()) == Some("request_complete") {
@@ -262,24 +373,12 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
             .get("subtype")
             .and_then(|s| s.as_str())
             .unwrap_or("unknown");
-        // Surface SDK stderr in the app log — this is diagnostic output
-        // (not agent content) and is critical for debugging startup failures.
-        if subtype == "sdk_stderr" {
-            let data = msg.get("data").and_then(|d| d.as_str()).unwrap_or("");
-            log::warn!(
-                "[persistent-sidecar:{}] Agent '{}' stderr: {}",
-                ctx.skill_name,
-                request_id,
-                data,
-            );
-        } else {
-            log::debug!(
-                "[persistent-sidecar:{}] Agent '{}': {}",
-                ctx.skill_name,
-                request_id,
-                subtype,
-            );
-        }
+        log::debug!(
+            "[persistent-sidecar:{}] Agent '{}': {}",
+            ctx.skill_name,
+            request_id,
+            subtype,
+        );
     }
 
     // Check if this is a terminal or turn-boundary message.
@@ -372,20 +471,12 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
         // Guard: only process if this request is still pending.
         // The sidecar may emit both a raw error and a follow-up
         // agent_event(run_result) — the second must be a no-op.
-        let was_pending = {
+        let decision = {
             let mut pending = ctx.pending_requests.lock().await;
-            pending.remove(request_id).is_some()
+            prepare_terminal_request_decision(&mut pending, request_id, &msg, outcome)
         };
 
-        if !was_pending {
-            log::debug!(
-                "[persistent-sidecar:{}] Ignoring duplicate terminal for '{}' (already cleaned up)",
-                ctx.skill_name,
-                request_id,
-            );
-        } else {
-            let mut exit_error_detail: Option<String> = None;
-
+        if let Some(decision) = decision {
             if msg_type == "agent_event" {
                 match &outcome {
                     TerminalOutcome::Completed => {
@@ -405,23 +496,7 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                         );
                     }
                     TerminalOutcome::Error => {
-                        let event_obj = msg.get("event");
-                        let status = event_obj
-                            .and_then(|e| e.get("status"))
-                            .and_then(|s| s.as_str())
-                            .unwrap_or("error");
-                        let detail = event_obj
-                            .and_then(|e| e.get("resultErrors"))
-                            .and_then(|e| e.as_array())
-                            .map(|arr| {
-                                arr.iter()
-                                    .filter_map(|v| v.as_str())
-                                    .collect::<Vec<_>>()
-                                    .join("; ")
-                            })
-                            .filter(|s| !s.is_empty())
-                            .unwrap_or_else(|| status.to_string());
-                        exit_error_detail = Some(detail.clone());
+                        let detail = terminal_error_detail(&msg).unwrap_or_else(|| "error".into());
                         log::warn!(
                             "[persistent-sidecar:{}] Agent '{}' finished with error via {}: {}",
                             ctx.skill_name,
@@ -445,13 +520,7 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
             }
 
             if msg_type == "error" {
-                let error_detail = msg
-                    .get("message")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("(no message)");
-                // Redact API keys before logging and forwarding to frontend
-                let redacted = redact_api_key(error_detail);
-                exit_error_detail = Some(redacted.clone());
+                let redacted = terminal_error_detail(&msg).unwrap_or_else(|| "(no message)".into());
                 log::info!(
                     "[persistent-sidecar:{}] Agent error for '{}': {}",
                     ctx.skill_name,
@@ -471,6 +540,30 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
                 );
             }
 
+            if msg_type == "conversation_state" {
+                match &outcome {
+                    TerminalOutcome::Completed => log::info!(
+                        "[persistent-sidecar:{}] Agent '{}' completed via conversation_state",
+                        ctx.skill_name,
+                        request_id,
+                    ),
+                    TerminalOutcome::Shutdown => log::info!(
+                        "[persistent-sidecar:{}] Agent '{}' cancelled via conversation_state",
+                        ctx.skill_name,
+                        request_id,
+                    ),
+                    TerminalOutcome::Error => {
+                        let detail = terminal_error_detail(&msg).unwrap_or_else(|| "error".into());
+                        log::warn!(
+                            "[persistent-sidecar:{}] Agent '{}' errored via conversation_state: {}",
+                            ctx.skill_name,
+                            request_id,
+                            detail,
+                        );
+                    }
+                }
+            }
+
             {
                 let pool = ctx.sidecars.lock().await;
                 if let Some(s) = pool.get(&ctx.skill_name) {
@@ -479,7 +572,7 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
             }
             // On error/shutdown, clean up any incomplete benchmark iterations
             // for this skill so partial runs don't hide valid benchmarks.
-            if outcome == TerminalOutcome::Error || outcome == TerminalOutcome::Shutdown {
+            if decision.clean_incomplete_iterations {
                 use tauri::Manager;
                 // Scope the DB lock tightly — release before filesystem work.
                 let workspace_path = ctx.app_handle.try_state::<crate::db::Db>().and_then(|db| {
@@ -496,16 +589,28 @@ pub(super) async fn handle_stdout_line(line: &str, ctx: &StdoutContext) {
 
             // Dispatch based on outcome: shutdown uses handle_agent_shutdown
             // so the frontend calls shutdownRun() instead of completeRun(false).
-            if outcome == TerminalOutcome::Shutdown {
-                events::handle_agent_shutdown(&ctx.app_handle, request_id);
-            } else {
-                events::handle_sidecar_exit_with_detail(
-                    &ctx.app_handle,
-                    request_id,
-                    outcome == TerminalOutcome::Completed,
-                    exit_error_detail,
-                );
+            match decision.event {
+                TerminalEvent::Shutdown => {
+                    events::handle_agent_shutdown(&ctx.app_handle, request_id)
+                }
+                TerminalEvent::Exit {
+                    success,
+                    error_detail,
+                } => {
+                    events::handle_sidecar_exit_with_detail(
+                        &ctx.app_handle,
+                        request_id,
+                        success,
+                        error_detail,
+                    );
+                }
             }
+        } else {
+            log::debug!(
+                "[persistent-sidecar:{}] Ignoring duplicate terminal for '{}' (already cleaned up)",
+                ctx.skill_name,
+                request_id,
+            );
         }
     }
 
@@ -670,6 +775,117 @@ mod tests {
         // This mirrors the early-return path in handle_stdout_line.
         let result = serde_json::from_str::<serde_json::Value>("not valid json {{{");
         assert!(result.is_err(), "Invalid JSON should return Err");
+    }
+
+    #[test]
+    fn test_openhands_terminal_state_removes_pending_request_and_carries_error_detail() {
+        let mut pending = HashMap::from([("agent-1".to_string(), "demo-skill".to_string())]);
+        let msg = serde_json::json!({
+            "type": "conversation_state",
+            "runtime": "openhands",
+            "request_id": "agent-1",
+            "status": "error",
+            "error_detail": "scope validation failed"
+        });
+
+        let decision = prepare_terminal_request_decision(
+            &mut pending,
+            "agent-1",
+            &msg,
+            TerminalOutcome::Error,
+        );
+
+        assert_eq!(
+            decision,
+            Some(TerminalRequestDecision {
+                event: TerminalEvent::Exit {
+                    success: false,
+                    error_detail: Some("scope validation failed".to_string()),
+                },
+                clean_incomplete_iterations: true,
+            })
+        );
+        assert!(
+            pending.is_empty(),
+            "terminal conversation_state should clean pending request"
+        );
+    }
+
+    #[test]
+    fn test_openhands_completed_state_uses_successful_agent_exit_decision() {
+        let mut pending = HashMap::from([("agent-1".to_string(), "demo-skill".to_string())]);
+        let msg = serde_json::json!({
+            "type": "conversation_state",
+            "runtime": "openhands",
+            "request_id": "agent-1",
+            "status": "completed"
+        });
+
+        let decision = prepare_terminal_request_decision(
+            &mut pending,
+            "agent-1",
+            &msg,
+            TerminalOutcome::Completed,
+        );
+
+        assert_eq!(
+            decision,
+            Some(TerminalRequestDecision {
+                event: TerminalEvent::Exit {
+                    success: true,
+                    error_detail: None,
+                },
+                clean_incomplete_iterations: false,
+            })
+        );
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn test_openhands_cancelled_state_uses_agent_shutdown_decision() {
+        let mut pending = HashMap::from([("agent-1".to_string(), "demo-skill".to_string())]);
+        let msg = serde_json::json!({
+            "type": "conversation_state",
+            "runtime": "openhands",
+            "request_id": "agent-1",
+            "status": "cancelled"
+        });
+
+        let decision = prepare_terminal_request_decision(
+            &mut pending,
+            "agent-1",
+            &msg,
+            TerminalOutcome::Shutdown,
+        );
+
+        assert_eq!(
+            decision,
+            Some(TerminalRequestDecision {
+                event: TerminalEvent::Shutdown,
+                clean_incomplete_iterations: true,
+            })
+        );
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn test_duplicate_terminal_state_does_not_emit_lifecycle_decision() {
+        let mut pending = HashMap::new();
+        let msg = serde_json::json!({
+            "type": "conversation_state",
+            "runtime": "openhands",
+            "request_id": "agent-1",
+            "status": "completed"
+        });
+
+        let decision = prepare_terminal_request_decision(
+            &mut pending,
+            "agent-1",
+            &msg,
+            TerminalOutcome::Completed,
+        );
+
+        assert_eq!(decision, None);
     }
 
     #[test]

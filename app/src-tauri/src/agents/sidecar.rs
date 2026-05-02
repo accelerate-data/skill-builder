@@ -267,6 +267,25 @@ pub async fn run_openhands_one_shot(
             }
         }
     });
+    let target_agent_id = agent_id.clone();
+    let tx_shutdown = tx.clone();
+    let shutdown_listener = app.listen("agent-shutdown", move |event| {
+        let payload = event.payload();
+        if !payload.contains(target_agent_id.as_str()) {
+            return;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
+            return;
+        };
+        if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id.as_str()) {
+            return;
+        }
+        if let Ok(mut guard) = tx_shutdown.lock() {
+            if let Some(sender) = guard.take() {
+                let _ = sender.send(Err("OpenHands one-shot run cancelled".to_string()));
+            }
+        }
+    });
 
     pool.send_request(
         &params.pool_key,
@@ -278,6 +297,7 @@ pub async fn run_openhands_one_shot(
     .await
     .inspect_err(|_| {
         app.unlisten(exit_listener);
+        app.unlisten(shutdown_listener);
     })?;
 
     let exit_result = match tokio::time::timeout(params.timeout, rx).await {
@@ -286,6 +306,7 @@ pub async fn run_openhands_one_shot(
         Err(_) => Err("OpenHands one-shot run timed out".to_string()),
     };
     app.unlisten(exit_listener);
+    app.unlisten(shutdown_listener);
     exit_result?;
 
     Ok(OpenHandsOneShotRun { transcript_dir })

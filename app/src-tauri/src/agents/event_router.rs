@@ -47,6 +47,15 @@ pub(super) fn route_sidecar_message(
         .and_then(|t| t.as_str())
         .unwrap_or("unknown");
 
+    if msg_type == "system" && message.get("subtype").and_then(|s| s.as_str()) == Some("sdk_stderr")
+    {
+        log::debug!(
+            "[event:agent-message:{}] skipping sdk_stderr diagnostic",
+            agent_id
+        );
+        return None;
+    }
+
     if msg_type == "agent_event" {
         let timestamp = message
             .get("timestamp")
@@ -558,6 +567,67 @@ mod tests {
             }
             other => panic!("expected frontend event action, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn route_sidecar_message_forwards_openhands_conversation_event() {
+        let message = serde_json::json!({
+            "type": "conversation_event",
+            "runtime": "openhands",
+            "conversation_id": "scope-review-1",
+            "event": {
+                "event_class": "MessageEvent",
+                "message": "Checking scope"
+            }
+        });
+
+        let action = route_sidecar_message("agent-6", message.clone());
+
+        match action {
+            Some(SidecarMessageAction::ForwardAgentMessage(event)) => {
+                assert_eq!(event.agent_id, "agent-6");
+                assert_eq!(event.message, message);
+            }
+            other => panic!(
+                "expected conversation_event to be forwarded, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn route_sidecar_message_forwards_openhands_conversation_state() {
+        let message = serde_json::json!({
+            "type": "conversation_state",
+            "runtime": "openhands",
+            "conversation_id": "scope-review-1",
+            "status": "completed",
+            "error_detail": null
+        });
+
+        let action = route_sidecar_message("agent-6", message.clone());
+
+        match action {
+            Some(SidecarMessageAction::ForwardAgentMessage(event)) => {
+                assert_eq!(event.agent_id, "agent-6");
+                assert_eq!(event.message, message);
+            }
+            other => panic!(
+                "expected conversation_state to be forwarded, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn route_sidecar_message_skips_sdk_stderr_diagnostics() {
+        let message = serde_json::json!({
+            "type": "system",
+            "subtype": "sdk_stderr",
+            "data": "diagnostic stderr line"
+        });
+
+        assert!(route_sidecar_message("agent-6", message).is_none());
     }
 
     #[test]

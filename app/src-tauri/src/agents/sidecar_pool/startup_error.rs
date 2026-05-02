@@ -1,7 +1,7 @@
 use std::fmt;
 
 /// The three possible terminal outcomes for a sidecar request.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TerminalOutcome {
     /// Agent completed successfully.
     Completed,
@@ -27,6 +27,15 @@ pub(super) fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<
                 "completed" => Some(TerminalOutcome::Completed),
                 "shutdown" => Some(TerminalOutcome::Shutdown),
                 _ => Some(TerminalOutcome::Error),
+            }
+        }
+        Some("conversation_state") => {
+            let status = msg.get("status").and_then(|status| status.as_str())?;
+            match status {
+                "completed" => Some(TerminalOutcome::Completed),
+                "error" => Some(TerminalOutcome::Error),
+                "cancelled" | "canceled" => Some(TerminalOutcome::Shutdown),
+                _ => None,
             }
         }
         // Raw error messages from sidecar protocol-error paths (e.g.
@@ -187,6 +196,50 @@ mod tests {
             stream_message_terminal_status(&shutdown),
             Some(TerminalOutcome::Shutdown)
         );
+    }
+
+    #[test]
+    fn test_stream_message_terminal_status_recognizes_openhands_conversation_state() {
+        let completed = serde_json::json!({
+            "type": "conversation_state",
+            "runtime": "openhands",
+            "request_id": "agent-1",
+            "status": "completed",
+            "error_detail": null
+        });
+        let failed = serde_json::json!({
+            "type": "conversation_state",
+            "runtime": "openhands",
+            "request_id": "agent-1",
+            "status": "error",
+            "error_detail": "scope validation failed"
+        });
+        let cancelled = serde_json::json!({
+            "type": "conversation_state",
+            "runtime": "openhands",
+            "request_id": "agent-1",
+            "status": "cancelled"
+        });
+        let running = serde_json::json!({
+            "type": "conversation_state",
+            "runtime": "openhands",
+            "request_id": "agent-1",
+            "status": "running"
+        });
+
+        assert_eq!(
+            stream_message_terminal_status(&completed),
+            Some(TerminalOutcome::Completed)
+        );
+        assert_eq!(
+            stream_message_terminal_status(&failed),
+            Some(TerminalOutcome::Error)
+        );
+        assert_eq!(
+            stream_message_terminal_status(&cancelled),
+            Some(TerminalOutcome::Shutdown)
+        );
+        assert_eq!(stream_message_terminal_status(&running), None);
     }
 
     #[tokio::test]
