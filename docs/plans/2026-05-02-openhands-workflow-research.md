@@ -35,6 +35,9 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - Use the shared `skill-creator` OpenHands agent with `task_kind = "workflow.research"`.
 - Keep the current UI progress behavior by streaming OpenHands `conversation_event` records for reasoning, tool calls, observations, and parallel action groups while the run is active.
 - Move the research task prompt to `agent-sources/prompts/research.txt`.
+- Ensure every app-owned prompt touched by this slice is compiled/rendered from
+  `agent-sources/prompts/**`; do not introduce or revive
+  `agent-sources/workspace/prompts/**`.
 - Simplify `agent-sources/workspace/skills/research/SKILL.md` so it describes a single-agent inline research flow and does not refer to subagents, dimension agents, or delegated research outputs.
 - Extract final JSON from terminal `conversation_state.result_text`.
 - Validate and materialize the result in Rust by reusing `materialize_workflow_step_output_value(...)`.
@@ -94,6 +97,15 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
   - Document workflow research as the first backend-materialized workflow one-shot.
 - Modify: `docs/plans/2026-05-02-openhands-native-migration.md`
   - Mark workflow research as the next VU-1145 child slice and link this plan.
+- Modify: `tests/evals/packages/skill-content-researcher-research/*`
+  - Reuse the existing research eval package and update expectations for the
+    `skill-creator` / `workflow.research` route.
+- Modify: `tests/evals/packages/workspace-workflow-step-prompt/*`
+  - Reuse the existing workflow prompt eval package or split its cases only if
+    the new `research.txt` prompt makes that package ambiguous.
+- Modify: `tests/evals/assertions/workflow-openhands-static.test.js`
+  - Update static assertions to the current `agent-sources/prompts/**` layout
+    and the new OpenHands research topology.
 
 ## Task 1: Add Research Runtime Contract Tests
 
@@ -157,6 +169,19 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow::tests::r
 ```
 
 Expected: prompt tests pass; config tests still fail until runtime routing is changed.
+
+- [ ] Add or update deterministic assertions proving workflow prompt templates
+  are rendered from `agent-sources/prompts/**`, not
+  `agent-sources/workspace/prompts/**`.
+
+Run:
+
+```bash
+cd tests/evals && npm test
+```
+
+Expected: static eval assertions pass after they are updated for the current
+prompt layout.
 
 ## Task 3: Simplify The Research Skill For One-Agent Execution
 
@@ -293,7 +318,40 @@ cd app && npx vitest run src/__tests__/components/agent-output-panel.test.tsx sr
 
 Expected: OpenHands event display tests pass.
 
-## Task 9: Live OpenHands Research Smoke
+## Task 9: Update Existing Evals And Run Research Smoke
+
+- [ ] Review the existing eval inventory before changing eval coverage:
+
+```bash
+cd tests/evals && npm test
+cd tests/evals && npm run eval:skill-content-researcher-research
+cd tests/evals && npm run eval:workspace-workflow-step-prompt
+```
+
+Expected: failures, if any, identify stale `research-agent`,
+`skill-writer-agent`, or `agent-sources/workspace/prompts/**` assumptions.
+
+- [ ] Update `tests/evals/packages/skill-content-researcher-research` so it
+  validates the simplified single-agent research skill behavior and the
+  `workflow.research` final JSON envelope.
+- [ ] Update `tests/evals/packages/workspace-workflow-step-prompt` if the old
+  shared `workflow-step.txt` package no longer covers the new step 0
+  `research.txt` prompt. Prefer extending the existing package over adding a
+  new one.
+- [ ] Update `tests/evals/assertions/workflow-openhands-static.test.js` so it
+  reads active prompt files from `agent-sources/prompts/**` and asserts the
+  OpenHands topology no longer depends on `research-agent` for step 0.
+- [ ] Run:
+
+```bash
+cd tests/evals && npm test
+cd tests/evals && npm run eval:skill-content-researcher-research
+cd tests/evals && npm run eval:workspace-workflow-step-prompt
+```
+
+Expected: deterministic assertions and targeted existing eval packages pass.
+
+## Task 10: Live OpenHands Research Smoke
 
 - [ ] Build the sidecar/runner if needed:
 
@@ -316,7 +374,7 @@ cd app && npm run dev
   - failures show an app-visible error message instead of silently hanging.
 - [ ] Capture the transcript log path in the PR notes.
 
-## Task 10: Docs, Plan, And Repo Map Audit
+## Task 11: Docs, Plan, And Repo Map Audit
 
 - [ ] Update `docs/design/openhands-sdk-runner/README.md` to document:
   - workflow research uses `skill-creator` with `task_kind = "workflow.research"`;
@@ -333,7 +391,7 @@ npx markdownlint docs/design/openhands-sdk-runner/README.md docs/plans/2026-05-0
 
 Expected: markdownlint passes.
 
-## Task 11: Final Verification And Commit
+## Task 12: Final Verification And Commit
 
 - [ ] Run the targeted verification set:
 
@@ -341,6 +399,7 @@ Expected: markdownlint passes.
 cd app && npm run test:agents:structural
 cd app && npx vitest run src/__tests__/pages/workflow.test.tsx src/__tests__/hooks/use-agent-stream.test.ts src/__tests__/components/agent-output-panel.test.tsx
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
+cd tests/evals && npm test
 ```
 
 - [ ] Run broader checks if the implementation changes shared event types or generated command types:

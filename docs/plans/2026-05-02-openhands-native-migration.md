@@ -43,7 +43,7 @@ step 0 Research.
 | Event-shape hardening | Done | VU-1147 hardens real SDK event rendering, nested tool/message extraction, parallel `ActionEvent` grouping, and raw payload preservation before workflow research migration. |
 | Workflow research | Planned | VU-1148 migrates step 0 Research to the OpenHands one-shot runtime, keeps OpenHands events visible while running, and moves terminal JSON extraction/materialization into Rust. |
 | Model settings UI | Mostly done | `app/src/lib/model-catalog.ts` and `app/src/components/settings/sdk-section.tsx` use `models.dev`, provider/model dropdowns, reasoning/tool-calling filters, model details, and hidden backend-owned `usageId`. Verify request-option controls during the final settings pass, but do not block workflow migration on this unless tests reveal a runtime LLM projection gap. |
-| Eval coverage | Partial | Promptfoo/OpenCode packages exist and static OpenHands assertions exist, but packages still name `research-agent` / `skill-writer-agent` and there is not yet an automated live OpenHands workflow smoke for step 0 and step 3. |
+| Eval coverage | Partial | Promptfoo/OpenCode packages and static OpenHands assertions exist. Workflow migration slices should update the existing targeted packages and assertions first; add new eval packages only when no existing package maps to the changed contract. |
 | Repo docs/map | Partial | Runtime/model designs have been updated. `repo-map.json` still describes mixed Claude/OpenHands runtime and old plugin-hosted agent prompts. |
 
 ## Pre-Workflow Migration Gate
@@ -390,14 +390,15 @@ cd app && npm run test:unit
 cargo test --manifest-path app/src-tauri/Cargo.toml
 ```
 
-## Slice 9: Add Automated OpenHands Smoke And Eval Coverage
+## Slice 9: Refresh Existing OpenHands Smoke And Eval Coverage
 
 This slice is required before final VU-1145 PR readiness.
 
 **Files:**
 
-- Modify or create: `tests/evals/packages/*`
-- Modify or create: `tests/evals/scripts/*`
+- Modify: existing targeted `tests/evals/packages/*`
+- Modify: `tests/evals/scripts/*` only if the current harness cannot exercise
+  the migrated contract
 - Modify: `tests/evals/docs/scenario-inventory.md`
 - Modify: `tests/evals/assertions/workflow-openhands-static.test.js`
 - Modify: `tests/evals/package.json`
@@ -405,13 +406,20 @@ This slice is required before final VU-1145 PR readiness.
 
 **Required behavior:**
 
-- [ ] Add automated coverage for OpenHands workflow step 0 and step 3 without manual UI interaction.
+- [ ] Review the existing eval inventory and targeted packages before adding
+  any new package.
+- [ ] Update existing automated coverage for OpenHands workflow step 0 and
+  step 3 without manual UI interaction.
 - [ ] Assert terminal `conversation_state`.
 - [ ] Assert parseable expected artifact output.
 - [ ] Assert no `AskUserQuestion` appears in one-shot workflow requests.
 - [ ] Assert `.agents/agents/skill-creator.md` and `.agents/skills/**` artifact discovery.
 - [ ] Assert at least one app-visible progress/tool event occurs before terminal result.
-- [ ] Update existing eval packages that still mention `research-agent` or `skill-writer-agent`.
+- [ ] Update existing eval packages that still mention `research-agent` or
+  `skill-writer-agent`.
+- [ ] Keep active static assertions pointed at `agent-sources/prompts/**` for
+  app-owned prompt templates; do not assert against
+  `agent-sources/workspace/prompts/**`.
 - [ ] If live provider credentials are required, skip with a precise prerequisite message rather than failing opaquely.
 
 **Verification:**
