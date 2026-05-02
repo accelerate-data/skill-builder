@@ -308,6 +308,10 @@ fn answer_evaluator_sidecar_config_uses_skill_creator_openhands_contract() {
         config.allowed_tools,
         Some(tools_for_agent("answer-evaluator"))
     );
+    assert!(
+        config.required_plugins.is_none(),
+        "OpenHands answer evaluation should rely on workspace .agents skills"
+    );
 }
 
 #[test]
@@ -1695,34 +1699,25 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
     let workspace_path = "/home/user/.vibedata/skill-builder";
     let skill_name = "my-skill";
     let skills_path = "/home/user/my-skills";
-    let workspace_dir = std::path::Path::new(workspace_path)
-        .join(DEFAULT_PLUGIN_SLUG)
-        .join(skill_name);
-    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let skill_output_dir = std::path::Path::new(skills_path)
-        .join(DEFAULT_PLUGIN_SLUG)
-        .join(skill_name);
-    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
 
-    let prompt = format!(
-        "The skill name is: {}. The workspace directory is: {}. \
-         The skill output directory (SKILL.md and references/) is: {}. \
-         The user context file is at: {}/user-context.md. \
-         The context directory is: {}/context. \
-         All directories already exist — do not create any directories.",
-        skill_name, workspace_str, skill_output_str, workspace_str, workspace_str,
+    let prompt = super::prompt::build_evaluator_prompt(
+        skill_name,
+        workspace_path,
+        DEFAULT_PLUGIN_SLUG,
+        skills_path,
     );
 
-    assert!(prompt.contains("The skill name is: my-skill"));
+    assert!(prompt.contains("Skill name: my-skill"));
+    assert!(
+        prompt.contains("Workspace directory: /home/user/.vibedata/skill-builder/skills/my-skill")
+    );
+    assert!(prompt.contains("Skill output directory: /home/user/my-skills/skills/my-skill"));
     assert!(prompt.contains(
-        "The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"
+        "User context file: /home/user/.vibedata/skill-builder/skills/my-skill/user-context.md"
     ));
-    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/skills/my-skill"));
-    assert!(prompt.contains("The user context file is at: /home/user/.vibedata/skill-builder/skills/my-skill/user-context.md"));
-    assert!(prompt.contains(
-        "The context directory is: /home/user/.vibedata/skill-builder/skills/my-skill/context"
-    ));
-    assert!(prompt.contains("do not create any directories"));
+    assert!(prompt
+        .contains("Context directory: /home/user/.vibedata/skill-builder/skills/my-skill/context"));
+    assert!(prompt.contains("Do not create directories with mkdir"));
 }
 
 #[test]
@@ -2048,6 +2043,15 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         "# Research",
     )
     .unwrap();
+    std::fs::create_dir_all(workspace_skills_src.path().join("answer-evaluator")).unwrap();
+    std::fs::write(
+        workspace_skills_src
+            .path()
+            .join("answer-evaluator")
+            .join("SKILL.md"),
+        "# Answer Evaluator",
+    )
+    .unwrap();
     std::fs::create_dir_all(workspace_skills_src.path().join("skill-creator")).unwrap();
     std::fs::write(
         workspace_skills_src
@@ -2079,6 +2083,9 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         .join(".agents/skills/research/SKILL.md")
         .is_file());
     assert!(workspace_skill_dir
+        .join(".agents/skills/answer-evaluator/SKILL.md")
+        .is_file());
+    assert!(workspace_skill_dir
         .join(".agents/skills/skill-creator/SKILL.md")
         .is_file());
     assert!(workspace
@@ -2088,6 +2095,10 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     assert!(workspace
         .path()
         .join(".agents/skills/research/SKILL.md")
+        .is_file());
+    assert!(workspace
+        .path()
+        .join(".agents/skills/answer-evaluator/SKILL.md")
         .is_file());
     assert!(!workspace_skill_dir.join("CLAUDE.md").exists());
     assert!(!workspace.path().join("CLAUDE.md").exists());

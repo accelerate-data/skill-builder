@@ -12,6 +12,7 @@ import {
   getToolName,
   groupConversationActionEvents,
   normalizeConversationEventMessage,
+  normalizeConversationStateMessage,
   stringifyEventPayload,
   type OpenHandsConversationEvent,
 } from "@/lib/openhands-conversation-events";
@@ -66,6 +67,30 @@ describe("OpenHands conversation event helpers", () => {
       conversationId: "conv-fixture",
       agentId: "agent-fixture",
       timestamp: 1_778_000_001,
+    });
+  });
+
+  it("preserves terminal result text and structured output", () => {
+    const state = normalizeConversationStateMessage({
+      type: "conversation_state",
+      runtime: "openhands",
+      conversation_id: "conv-result",
+      agent_id: "agent-result",
+      status: "completed",
+      result_text: '```json\n{"verdict":"mixed"}\n```',
+      structured_output: { verdict: "mixed" },
+      timestamp: 1_778_000_100,
+    });
+
+    expect(state).toMatchObject({
+      type: "conversation_state",
+      runtime: "openhands",
+      conversationId: "conv-result",
+      agentId: "agent-result",
+      status: "completed",
+      resultText: '```json\n{"verdict":"mixed"}\n```',
+      structuredOutput: { verdict: "mixed" },
+      timestamp: 1_778_000_100,
     });
   });
 

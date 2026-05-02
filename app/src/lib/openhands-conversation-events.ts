@@ -22,6 +22,8 @@ export interface OpenHandsConversationState {
   agentId?: string;
   status: OpenHandsConversationStatus;
   errorDetail?: string;
+  resultText?: string;
+  structuredOutput?: unknown;
   timestamp: number;
 }
 
@@ -85,6 +87,8 @@ export function normalizeConversationStateMessage(
     agentId: getString(message, "agent_id", "agentId"),
     status,
     errorDetail: getString(message, "error_detail", "errorDetail"),
+    resultText: getString(message, "result_text", "resultText"),
+    structuredOutput: message.structured_output ?? message.structuredOutput,
     timestamp: getNumber(message, "timestamp") ?? Date.now(),
   };
 }
