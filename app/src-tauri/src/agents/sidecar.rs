@@ -11,6 +11,8 @@ pub struct SidecarConfig {
     pub system_prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm: Option<crate::types::WorkflowLlmConfig>,
     #[serde(rename = "modelBaseUrl", skip_serializing_if = "Option::is_none")]
     pub model_base_url: Option<String>,
     #[serde(rename = "apiKey")]
@@ -97,6 +99,7 @@ impl std::fmt::Debug for SidecarConfig {
             .field("mode", &self.mode)
             .field("prompt", &self.prompt)
             .field("model", &self.model)
+            .field("llm", &self.llm)
             .field("model_base_url", &self.model_base_url)
             .field("api_key", &"[redacted]")
             .field("workspace_root_dir", &self.workspace_root_dir)
@@ -312,6 +315,7 @@ mod tests {
             prompt: "Analyze this codebase".to_string(),
             system_prompt: None,
             model: Some("sonnet".to_string()),
+            llm: None,
             model_base_url: Some("https://models.example.com/v1".to_string()),
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             workspace_root_dir: "/home/user/project".to_string(),
@@ -366,6 +370,7 @@ mod tests {
             prompt: "Reason about this".to_string(),
             system_prompt: None,
             model: Some("opus".to_string()),
+            llm: None,
             model_base_url: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             workspace_root_dir: "/home/user/project".to_string(),
@@ -414,6 +419,7 @@ mod tests {
             prompt: "test".to_string(),
             system_prompt: None,
             model: None,
+            llm: None,
             model_base_url: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             workspace_root_dir: "/tmp".to_string(),
@@ -462,6 +468,7 @@ mod tests {
             prompt: "test".to_string(),
             system_prompt: None,
             model: None,
+            llm: None,
             model_base_url: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             workspace_root_dir: "/tmp".to_string(),
@@ -505,6 +512,7 @@ mod tests {
             prompt: "test".to_string(),
             system_prompt: None,
             model: None,
+            llm: None,
             model_base_url: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             workspace_root_dir: "/tmp".to_string(),

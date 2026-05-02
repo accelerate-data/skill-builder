@@ -6,12 +6,7 @@ use super::guards::validate_decisions_exist_inner;
 pub(crate) struct WorkflowSettings {
     pub plugin_slug: String,
     pub skills_path: String,
-    pub api_key: crate::types::SecretString,
-    pub preferred_model: String,
-    pub model_base_url: Option<String>,
-    pub extended_thinking: bool,
-    pub interleaved_thinking_beta: bool,
-    pub sdk_effort: Option<String>,
+    pub llm: crate::types::WorkflowLlmConfig,
     pub purpose: String,
     pub tags: Vec<String>,
     pub author_login: Option<String>,
@@ -45,11 +40,7 @@ pub(crate) fn read_workflow_settings(
         "Skills path not configured. Please set it in Settings before running workflow steps."
             .to_string()
     })?;
-    let (preferred_model, api_key, model_base_url) =
-        crate::db::selected_openhands_runtime(&settings)?;
-    let extended_thinking = settings.extended_thinking;
-    let interleaved_thinking_beta = settings.interleaved_thinking_beta;
-    let sdk_effort = settings.sdk_effort.clone();
+    let llm = crate::db::selected_workflow_llm(&settings)?;
     let max_dimensions = settings.max_dimensions;
     let industry = settings.industry;
     let function_role = settings.function_role;
@@ -116,12 +107,7 @@ pub(crate) fn read_workflow_settings(
     Ok(WorkflowSettings {
         plugin_slug,
         skills_path,
-        api_key,
-        preferred_model,
-        model_base_url,
-        extended_thinking,
-        interleaved_thinking_beta,
-        sdk_effort,
+        llm,
         purpose,
         tags,
         author_login,
@@ -144,7 +130,7 @@ pub(crate) fn read_workflow_settings(
 mod tests {
     use super::*;
     use crate::db::{create_test_db_for_tests, upsert_skill, write_settings, Db};
-    use crate::types::AppSettings;
+    use crate::types::{AppSettings, ModelSettings, SecretString};
     use std::sync::Mutex;
 
     fn workflow_settings_for(app_settings: AppSettings) -> Result<WorkflowSettings, String> {
@@ -155,81 +141,80 @@ mod tests {
         read_workflow_settings(&db, "test-skill", 0, "/tmp/workspace")
     }
 
-    fn configured_settings(provider: &str, model: &str, api_key: Option<&str>) -> AppSettings {
+    fn configured_settings(model: &str, api_key: Option<&str>) -> AppSettings {
         AppSettings {
             skills_path: Some("/tmp/skills".to_string()),
-            openhands_provider: Some(provider.to_string()),
-            openhands_model: Some(model.to_string()),
-            openhands_api_key: api_key.map(str::to_string),
+            model_settings: ModelSettings {
+                model: Some(model.to_string()),
+                api_key: api_key.map(|key| SecretString::new(key.to_string())),
+                ..ModelSettings::default()
+            },
             ..AppSettings::default()
         }
     }
 
     #[test]
-    fn read_workflow_settings_prefixes_cloud_provider_models() {
-        for (provider, model, expected) in [
-            (
-                "anthropic",
-                "claude-sonnet-4-6",
-                "anthropic/claude-sonnet-4-6",
-            ),
-            ("openai", "gpt-4o", "openai/gpt-4o"),
-            ("google", "gemini-2.5-pro", "gemini/gemini-2.5-pro"),
-        ] {
-            let settings =
-                workflow_settings_for(configured_settings(provider, model, Some("sk-test")))
-                    .expect(provider);
-            assert_eq!(settings.preferred_model, expected);
-            assert_eq!(settings.api_key.expose(), "sk-test");
-        }
+    fn read_workflow_settings_uses_canonical_model_id_as_runtime_authority() {
+        let settings =
+            workflow_settings_for(configured_settings("claude-sonnet-4-5", Some("sk-test")))
+                .unwrap();
+        assert_eq!(settings.llm.model, "claude-sonnet-4-5");
+        assert_eq!(settings.llm.api_key.as_ref().unwrap().expose(), "sk-test");
     }
 
     #[test]
-    fn read_workflow_settings_preserves_provider_prefixed_model() {
-        let settings = workflow_settings_for(configured_settings(
-            "openai",
-            "openai/gpt-4.1",
-            Some("sk-openai"),
-        ))
-        .unwrap();
-        assert_eq!(settings.preferred_model, "openai/gpt-4.1");
+    fn read_workflow_settings_preserves_openhands_prefixed_model_ids() {
+        let settings =
+            workflow_settings_for(configured_settings("openai/gpt-4.1", Some("sk-openai")))
+                .unwrap();
+        assert_eq!(settings.llm.model, "openai/gpt-4.1");
     }
 
     #[test]
-    fn read_workflow_settings_allows_ollama_without_api_key_and_keeps_base_url() {
-        let mut app_settings = configured_settings("ollama", "llama3.1", None);
-        app_settings.openhands_base_url = Some("http://localhost:11434".to_string());
+    fn read_workflow_settings_allows_model_without_api_key_and_keeps_base_url() {
+        let mut app_settings = configured_settings("ollama/llama3.1", None);
+        app_settings.model_settings.base_url = Some("http://localhost:11434".to_string());
 
         let settings = workflow_settings_for(app_settings).unwrap();
 
-        assert_eq!(settings.preferred_model, "ollama/llama3.1");
-        assert_eq!(settings.api_key.expose(), "ollama");
+        assert_eq!(settings.llm.model, "ollama/llama3.1");
+        assert!(settings.llm.api_key.is_none());
         assert_eq!(
-            settings.model_base_url.as_deref(),
+            settings.llm.base_url.as_deref(),
             Some("http://localhost:11434")
         );
     }
 
     #[test]
-    fn read_workflow_settings_migrates_legacy_anthropic_preferred_model() {
+    fn read_workflow_settings_ignores_legacy_anthropic_preferred_model() {
         let mut app_settings = AppSettings::default();
         app_settings.skills_path = Some("/tmp/skills".to_string());
         app_settings.anthropic_api_key = Some("sk-legacy".to_string());
         app_settings.preferred_model = Some("claude-sonnet-4-6".to_string());
 
-        let settings = workflow_settings_for(app_settings).unwrap();
-
-        assert_eq!(settings.preferred_model, "anthropic/claude-sonnet-4-6");
-        assert_eq!(settings.api_key.expose(), "sk-legacy");
-    }
-
-    #[test]
-    fn read_workflow_settings_requires_key_for_cloud_providers() {
-        let err = match workflow_settings_for(configured_settings("openai", "gpt-4o", None)) {
-            Ok(_) => panic!("expected missing OpenAI key error"),
+        let err = match workflow_settings_for(app_settings) {
+            Ok(_) => panic!("expected legacy settings to be ignored"),
             Err(err) => err,
         };
 
-        assert!(err.contains("OpenAI API key not configured"), "{err}");
+        assert!(err.contains("Select a model in Settings"), "{err}");
+    }
+
+    #[test]
+    fn read_workflow_settings_ignores_legacy_openhands_fields() {
+        let app_settings = AppSettings {
+            skills_path: Some("/tmp/skills".to_string()),
+            openhands_provider: Some("openai".to_string()),
+            openhands_model: Some("openai/gpt-4o".to_string()),
+            openhands_api_key: Some("sk-legacy-openhands".to_string()),
+            ..AppSettings::default()
+        };
+
+        let err = match workflow_settings_for(app_settings) {
+            Ok(_) => panic!("expected legacy OpenHands settings to be ignored"),
+            Err(err) => err,
+        };
+
+        assert!(err.contains("Select a model in Settings"), "{err}");
     }
 }

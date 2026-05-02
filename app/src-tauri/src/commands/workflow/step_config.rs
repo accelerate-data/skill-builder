@@ -110,6 +110,7 @@ pub(crate) fn workflow_output_format_for_step(step_id: u32) -> Option<serde_json
     })
 }
 
+#[allow(dead_code)]
 pub(crate) fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
     match step_id {
         0 => Some(8_000),  // research

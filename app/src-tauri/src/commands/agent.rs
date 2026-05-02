@@ -169,6 +169,7 @@ pub async fn start_agent(
         prompt,
         system_prompt,
         model: model_for_config,
+        llm: None,
         model_base_url: None,
         api_key,
         workspace_root_dir: cwd.clone(),

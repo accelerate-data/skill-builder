@@ -1244,6 +1244,7 @@ mod tests {
             prompt: "Top secret prompt".to_string(),
             system_prompt: None,
             model: Some("claude-sonnet-4".to_string()),
+            llm: None,
             model_base_url: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             workspace_root_dir: "/tmp/skill-builder".to_string(),

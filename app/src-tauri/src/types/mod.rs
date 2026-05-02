@@ -48,6 +48,7 @@ mod tests {
     fn test_app_settings_serde_roundtrip() {
         let settings = AppSettings {
             anthropic_api_key: Some("sk-ant-test-key".to_string()),
+            model_settings: ModelSettings::default(),
             openhands_provider: Some("anthropic".to_string()),
             openhands_api_key: Some("sk-ant-test-key".to_string()),
             openhands_model: Some("anthropic/sonnet".to_string()),
@@ -146,6 +147,7 @@ mod tests {
             prompt: "test prompt".to_string(),
             system_prompt: None,
             model: Some("sonnet".to_string()),
+            llm: None,
             model_base_url: None,
             api_key: SecretString::new("sk-test".to_string()),
             workspace_root_dir: "/tmp".to_string(),

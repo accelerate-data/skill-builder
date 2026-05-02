@@ -1,4 +1,4 @@
-use crate::types::AppSettings;
+use crate::types::{AppSettings, WorkflowLlmConfig};
 use rusqlite::Connection;
 
 fn trimmed_opt(value: Option<String>) -> Option<String> {
@@ -19,6 +19,7 @@ fn provider_prefix(provider: &str) -> &str {
     }
 }
 
+#[allow(dead_code)]
 fn provider_label(provider: &str) -> &str {
     match provider {
         "anthropic" => "Anthropic",
@@ -39,6 +40,7 @@ pub(crate) fn provider_model(provider: &str, model: &str) -> String {
 }
 
 pub(crate) fn normalize_openhands_settings(mut settings: AppSettings) -> AppSettings {
+    settings = normalize_model_settings(settings);
     settings.openhands_provider =
         trimmed_opt(settings.openhands_provider).or_else(|| Some("anthropic".to_string()));
     settings.openhands_api_key = trimmed_opt(settings.openhands_api_key);
@@ -54,6 +56,16 @@ pub(crate) fn normalize_openhands_settings(mut settings: AppSettings) -> AppSett
     settings
 }
 
+pub(crate) fn normalize_model_settings(mut settings: AppSettings) -> AppSettings {
+    settings.model_settings = settings.model_settings.normalized();
+    settings
+}
+
+pub(crate) fn selected_workflow_llm(settings: &AppSettings) -> Result<WorkflowLlmConfig, String> {
+    settings.model_settings.selected_workflow_llm()
+}
+
+#[allow(dead_code)]
 pub(crate) fn selected_openhands_runtime(
     settings: &AppSettings,
 ) -> Result<(String, crate::types::SecretString, Option<String>), String> {
@@ -94,11 +106,7 @@ pub(crate) fn selected_openhands_runtime(
     }
     // SidecarConfig still carries a non-empty apiKey transport field; Ollama
     // ignores the placeholder and the user does not need to configure a key.
-    let runtime_api_key = api_key.unwrap_or(if provider == "ollama" {
-        "ollama"
-    } else {
-        ""
-    });
+    let runtime_api_key = api_key.unwrap_or(if provider == "ollama" { "ollama" } else { "" });
     Ok((
         provider_model(provider, model),
         crate::types::SecretString::new(runtime_api_key.to_string()),
@@ -137,6 +145,7 @@ pub fn write_settings(conn: &Connection, settings: &AppSettings) -> Result<(), S
 mod tests {
     use super::*;
     use crate::db::create_test_db_for_tests;
+    use crate::types::{ModelSettings, SecretString};
 
     fn make_settings(workspace_path: Option<&str>, skills_path: Option<&str>) -> AppSettings {
         AppSettings {
@@ -159,6 +168,7 @@ mod tests {
         // Defaults: no workspace path set.
         assert!(settings.workspace_path.is_none());
         assert_eq!(settings.openhands_provider.as_deref(), Some("anthropic"));
+        assert!(settings.model_settings.model.is_none());
     }
 
     #[test]
@@ -244,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn test_legacy_preferred_model_normalizes_to_openhands_model() {
+    fn test_legacy_preferred_model_normalizes_to_openhands_model_for_non_workflow_paths() {
         let conn = create_test_db_for_tests();
         let mut legacy = make_settings(Some("/ws"), Some("/skills"));
         legacy.anthropic_api_key = Some("sk-legacy".to_string());
@@ -259,5 +269,55 @@ mod tests {
             read_back.openhands_model.as_deref(),
             Some("anthropic/claude-sonnet-4-6")
         );
+    }
+
+    #[test]
+    fn selected_workflow_llm_ignores_legacy_fields() {
+        let settings = AppSettings {
+            anthropic_api_key: Some("sk-legacy".to_string()),
+            preferred_model: Some("claude-sonnet-4-6".to_string()),
+            openhands_provider: Some("anthropic".to_string()),
+            openhands_api_key: Some("sk-openhands".to_string()),
+            openhands_model: Some("anthropic/claude-sonnet-4-6".to_string()),
+            openhands_base_url: Some("https://legacy.example.com".to_string()),
+            extended_thinking: true,
+            interleaved_thinking_beta: true,
+            sdk_effort: Some("high".to_string()),
+            fallback_model: Some("claude-fallback".to_string()),
+            skills_path: Some("/tmp/skills".to_string()),
+            ..AppSettings::default()
+        };
+
+        let err = selected_workflow_llm(&settings).unwrap_err();
+        assert!(err.contains("Select a model in Settings"), "{err}");
+    }
+
+    #[test]
+    fn selected_workflow_llm_accepts_canonical_model_settings() {
+        let settings = AppSettings {
+            skills_path: Some("/tmp/skills".to_string()),
+            model_settings: ModelSettings {
+                provider: Some("anthropic".to_string()),
+                model: Some("claude-sonnet-4-5".to_string()),
+                api_key: Some(SecretString::new("sk-test".to_string())),
+                base_url: Some("https://models.example.com/v1".to_string()),
+                timeout_seconds: Some(300),
+                num_retries: Some(5),
+                reasoning_effort: Some("high".to_string()),
+                ..ModelSettings::default()
+            },
+            ..AppSettings::default()
+        };
+
+        let llm = selected_workflow_llm(&settings).unwrap();
+        assert_eq!(llm.model, "claude-sonnet-4-5");
+        assert_eq!(llm.api_key.as_ref().unwrap().expose(), "sk-test");
+        assert_eq!(
+            llm.base_url.as_deref(),
+            Some("https://models.example.com/v1")
+        );
+        assert_eq!(llm.timeout_seconds, Some(300));
+        assert_eq!(llm.num_retries, Some(5));
+        assert_eq!(llm.reasoning_effort.as_deref(), Some("high"));
     }
 }
