@@ -119,8 +119,8 @@ messages and can later host interactive tools such as `AskUserQuestion`.
 Create-skill validation uses the one-shot mode through this API. It should not
 construct a bespoke sidecar contract at the feature-command layer beyond the
 task-specific invocation fields. Feature code may still own task-specific
-result parsing, such as converting terminal `conversation_state.result_text` or
-`conversation_state.structured_output` into `ScopeReviewResult`.
+result parsing, such as extracting JSON from terminal
+`conversation_state.result_text` and converting it into `ScopeReviewResult`.
 
 Current Rust boundaries:
 
@@ -378,8 +378,8 @@ remains append-only and keeps each SDK callback as its own
 `conversation_event`.
 
 `conversation_state` remains the app boundary for lifecycle and terminal task
-results. Product code reads final status, errors, `structured_output`, and
-`result_text` from terminal state records, not from activity events.
+results. Product code reads final status, errors, and `result_text` from
+terminal state records, not from activity events.
 
 Runner stdout is reserved for JSONL protocol records:
 `conversation_event` and `conversation_state`. Runner stderr and transcript logs
@@ -397,16 +397,15 @@ The stable one-shot result contract is:
 
 - terminal status is `completed`, `error`, or `cancelled`;
 - `error_detail` carries terminal failure text for `error` and `cancelled`;
-- `structured_output` carries provider or runner structured output when
-  available;
-- `result_text` carries final assistant text when structured output is absent.
+- `result_text` carries final assistant text.
 
-When `outputFormat` is present, Rust task code first reads
-`conversation_state.structured_output`. If it is null or missing, Rust parses
-`conversation_state.result_text` as JSON. Completed states without either a
-structured object or parseable JSON are hard failures. Structured-output errors
-are represented as `conversation_state(status="error", error_detail=...)`, not
-as `run_result`.
+When `outputFormat` is present, the app treats it as a JSON-contract signal:
+the final assistant text must contain one parseable JSON object. Rust task code
+parses `conversation_state.result_text`, deserializes the object into the typed
+contract, and materializes artifacts only after validation passes. Completed
+states without parseable JSON are hard failures. Structured-output errors are
+represented as `conversation_state(status="error", error_detail=...)`, not as
+`run_result`.
 
 The Python runner does not hide progress behind final output and does not need
 to enforce provider-native schema constraints for VU-1145.

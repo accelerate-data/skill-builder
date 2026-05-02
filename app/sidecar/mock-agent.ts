@@ -296,7 +296,7 @@ export async function runMockAgent(
       }
       if (message.type === "result") {
         if (structuredResultOverride !== null) {
-          // Match real SDK behavior: structured JSON in structured_output, text summary in result.
+          // Preserve native structured-output fixtures for legacy Claude-style mocks.
           message.structured_output = structuredResultOverride;
           message.result = `Mock: ${stepTemplate} completed`;
         }

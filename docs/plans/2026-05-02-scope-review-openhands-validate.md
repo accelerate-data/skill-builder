@@ -56,7 +56,7 @@ This spike establishes reusable boundaries for later OpenHands migration work:
   supplies workspace, LLM, sidecar path, diagnostic transcript plumbing,
   terminal wait handling, and terminal `conversation_state` capture. Feature
   code keeps only task-specific result parsing from
-  `conversation_state.structured_output` or JSON `conversation_state.result_text`.
+  JSON parsed from `conversation_state.result_text`.
 
 These boundaries are part of the reusable migration contract for answer
 evaluation, workflow steps, description optimization, eval generation, and
@@ -262,11 +262,10 @@ cd app/sidecar && python3 -m py_compile openhands/runner.py
   - rendered `userMessageSuffix`
   - `allowedTools` suitable for scope review
   - `maxTurns` small enough for validation
-  - `outputFormat` for `ScopeReviewResult`
+  - `outputFormat` as the app-side `ScopeReviewResult` contract signal
 - [x] Await the terminal `conversation_state` through the shared one-shot
   execution helper. Do not scrape JSONL transcript logs for product results.
-- [x] Parse the existing `ScopeReviewResult` shape from
-  `conversation_state.structured_output`, falling back to JSON parsed from
+- [x] Parse the existing `ScopeReviewResult` shape from JSON extracted from
   `conversation_state.result_text`.
 - [x] Reject malformed structured results instead of defaulting to `focused`.
 - [x] Preserve existing error behavior exposed to `useScopeAdvisor`: failures reset advisor state and keep the create dialog behavior unchanged.
@@ -286,7 +285,6 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill::scope_revie
 - [x] Keep transcript logs diagnostic-only. They may still be allocated and
   written, but Rust product features must not rely on replaying them.
 - [x] Add shared helpers for one-shot output extraction:
-  - completed + object `structured_output` -> return the object;
   - completed + JSON `result_text` -> parse and return object;
   - completed without object output -> clear error;
   - error/cancelled -> surface `error_detail`.

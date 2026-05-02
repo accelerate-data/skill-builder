@@ -29,9 +29,9 @@ When changing any format in this file, run all applicable checks before merge:
 | Structural (static) | Prompt inventory, frontmatter/model tiers, anti-pattern bans, and key policy-text invariants | `cd app && npm run test:agents:structural` |
 | Unit parser checks | App-side parsing stays compatible with canonical artifacts | `cd app && npm run test:unit` |
 | Codegen freshness | Generated TypeScript types and JSON Schema match Rust contract structs | `cd app && npm run codegen && git diff --exit-code src/generated/ sidecar/generated/ src-tauri/src/generated/` |
-| SDK outputFormat | Inline JSON Schema passed to Agent SDK `outputFormat` for constrained decoding (steps 0-2). `structured_output` is required. | Verified by `app/src-tauri/schemas-review/test-sdk-multiturn.mjs` and `app/sidecar/__tests__/sdk-output-format.integration.test.ts` |
+| Output contract signal | Inline JSON Schema generated from Rust contract structs. OpenHands does not receive it as an SDK option; task prompts instruct JSON output and Rust uses schema-backed types for validation. | `cd app && cargo test --manifest-path src-tauri/Cargo.toml commands::workflow` |
 | Prompt directives | Agent `.md` files include "CRITICAL — raw JSON only" directives and reference generated JSON schema files at `shared/output-schemas/`. These reinforce the JSON-only contract but are not the extraction path. | Manual / smoke tests |
-| Sidecar extraction | Sidecar uses SDK `structured_output` directly. If `outputFormat` was configured and `structured_output` is absent, sidecar emits `structured_output_missing`; it does not parse JSON from `result` text as fallback. | `cd app/sidecar && npx vitest run` |
+| Result extraction | The terminal agent message is treated as text. The app extracts one JSON object from final text for JSON-contract runs, then passes it to Rust for typed validation. Missing or invalid JSON is a run error. | `cd app/sidecar && npx vitest run __tests__/structured-output-required.test.ts` |
 | Rust serde (final) | Typed deserialization into contract structs (`ResearchStepOutput`, `DetailedResearchOutput`, `DecisionsOutput`). Rejects missing required fields, wrong types, invalid enum values. This is the authoritative validation layer. | `cd app && cargo test --manifest-path src-tauri/Cargo.toml` |
 | Promptfoo smoke (live) | End-to-end behavior still produces contract-compliant outputs in representative scenarios | `cd app && FORCE_PLUGIN_TESTS=1 npm run test:agents:smoke` |
 
@@ -274,10 +274,11 @@ The precise field‑level schema for `research_output` is defined in the Rust co
 
 ## Structured Output Extraction Flow
 
-1. SDK `outputFormat` passes inline JSON Schema for constrained decoding (steps 0-2).
-2. If `structured_output` is present on the SDK result → use it directly.
-3. If `structured_output` is absent on an `outputFormat` run → sidecar emits `structured_output_missing`.
-4. Rust deserializes `structured_output` into typed contract structs — this is the final validation.
+1. Rust generates inline JSON Schema from the same structs used for typed deserialization.
+2. The workflow prompt includes the JSON contract and requires a raw JSON object as the final answer.
+3. The OpenHands runner emits the final assistant message as terminal `conversation_state.result_text`.
+4. The app extracts one JSON object from `result_text`.
+5. Rust deserializes that object into typed contract structs — this is the final validation.
 
 Legacy `research-plan.md` markdown output is no longer part of the app ↔ agent contract; it may still be generated for human‑readable views but must be derived from `research_output.metadata.research_plan`.
 

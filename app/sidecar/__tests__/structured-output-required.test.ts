@@ -1,11 +1,10 @@
 /**
- * Tests for VU-1015: SDK outputFormat should provide structured_output
- * for nested schemas (anthropics/claude-agent-sdk-typescript#277).
+ * Tests for JSON-contract result extraction.
  *
- * When outputFormat is configured, MessageProcessor prefers SDK
- * structured_output. If a runtime returns JSON as final text instead, the
- * one-shot boundary extracts that JSON and lets Rust validate the typed
- * workflow contract.
+ * When outputFormat is configured, it is an app-side signal that the final
+ * result must contain JSON. MessageProcessor accepts native structured_output
+ * from runtimes that provide it, but it also extracts JSON from final text for
+ * runtimes such as OpenHands.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { MessageProcessor } from "../message-processor.js";
@@ -25,7 +24,7 @@ function extractRunResult(output: Record<string, unknown>[]): RunResultEvent | u
     .find((event): event is RunResultEvent => event.type === "run_result");
 }
 
-describe("structured_output required outputFormat path (VU-1015)", () => {
+describe("JSON-contract outputFormat path", () => {
   describe("with hasOutputFormat: true (requireStructuredOutput)", () => {
     let processor: MessageProcessor;
 
@@ -33,7 +32,7 @@ describe("structured_output required outputFormat path (VU-1015)", () => {
       processor = new MessageProcessor({ hasOutputFormat: true, pluginSlug: "test" });
     });
 
-    it("uses SDK structured_output when present (happy path)", () => {
+    it("uses native structured_output when present", () => {
       const schema = { step_summary: "All steps complete", artifacts: ["a.ts", "b.ts"] };
       const raw = {
         type: "result",
@@ -51,12 +50,12 @@ describe("structured_output required outputFormat path (VU-1015)", () => {
       expect(result?.structuredOutput).toEqual(schema);
     });
 
-    it("recovers JSON when SDK omits structured_output but result text is JSON", () => {
+    it("recovers JSON when runtime omits structured_output but result text is JSON", () => {
       const schema = { step_summary: "Research complete", artifacts: ["plan.md"] };
       const raw = {
         type: "result",
         subtype: "success",
-        // structured_output intentionally absent.
+        // structured_output intentionally absent; OpenHands currently returns text.
         result: JSON.stringify(schema),
         usage: { input_tokens: 100, output_tokens: 50 },
       };
@@ -72,7 +71,7 @@ describe("structured_output required outputFormat path (VU-1015)", () => {
       expect(JSON.parse(extractRunResult(out)?.resultText ?? "{}")).toEqual(schema);
     });
 
-    it("recovers JSON when SDK returns structured_output: null but result text is JSON", () => {
+    it("recovers JSON when runtime returns structured_output: null but result text is JSON", () => {
       const schema = { step_summary: "Done", next_steps: ["deploy"] };
       const raw = {
         type: "result",
@@ -91,7 +90,7 @@ describe("structured_output required outputFormat path (VU-1015)", () => {
       expect(result?.structuredOutput).toEqual(schema);
     });
 
-    it("recovers object result when SDK omits structured_output", () => {
+    it("recovers object result when runtime omits structured_output", () => {
       const raw = {
         type: "result",
         subtype: "success",
@@ -166,7 +165,7 @@ describe("structured_output required outputFormat path (VU-1015)", () => {
     });
 
     it("hard-fails with structured_output_missing when no JSON is recoverable", () => {
-      // No structured_output, no JSON in result text, no prior assistant text.
+      // No native structured output, no JSON in result text, no prior assistant text.
       const raw = {
         type: "result",
         subtype: "success",

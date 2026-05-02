@@ -36,9 +36,9 @@ One agent delegates to a plugin-internal skill:
 
 JSON contract write path:
 
-- Steps 0, 1, and 2 return structured payloads. Steps 1 and 2 run as direct agents (not subagent relay) so `outputFormat` applies to the producing agent.
-- SDK `outputFormat` is set with inline JSON Schema generated from Rust structs (no `$ref`). `structured_output` is required for these runs; if it is absent, the sidecar emits `structured_output_missing` instead of parsing JSON from text.
-- Rust deserializes `structured_output` into typed contract structs (`ResearchStepOutput`, `DetailedResearchOutput`, `DecisionsOutput`) — this is the authoritative validation.
+- Steps 0, 1, and 2 return JSON payloads as the final agent message.
+- `outputFormat` is an app-side contract signal. OpenHands does not receive it as an SDK option; the rendered task prompt includes the JSON contract.
+- The app extracts one JSON object from terminal result text. Rust deserializes that object into typed contract structs (`ResearchStepOutput`, `DetailedResearchOutput`, `DecisionsOutput`) — this is the authoritative validation.
 - `answer-evaluator` follows the same structured-output pattern for `answer-evaluation.json`.
 - Agent-facing schema references are at `agent-sources/plugins/skill-content-researcher/shared/schemas.md` (semantic rules) and `shared/output-schemas/` (generated JSON Schema files agents can Read).
 
@@ -78,8 +78,8 @@ Written by `answer-evaluator` as a gate check before advancing from steps 0 and 
 | Structured-output materialization | Steps 0/1/2 + gate evaluator validated/written by backend | This page now documents backend materialization path | aligned |
 | Rust contract structs | All workflow output types defined in `contracts/` with Specta + Schemars derives | `canonical-format.md` references Rust as canonical source | aligned |
 | Codegen pipeline | `cargo run --bin codegen` generates TS types + inline JSON Schema | Enforcement layers table documents freshness check | aligned |
-| SDK outputFormat | Inline JSON Schema passed for steps 0-2; `structured_output` required | Documented with integration canary for nested schemas | aligned |
-| Sidecar missing-output handling | Emits `structured_output_missing` when `outputFormat` was configured but SDK omits `structured_output` | `canonical-format.md` documents extraction flow | aligned |
+| Output contract signal | Inline JSON Schema generated for workflow JSON contracts; OpenHands receives prompt instructions, not SDK schema options | `canonical-format.md` documents extraction flow | aligned |
+| Missing-output handling | Emits a structured-output error when JSON extraction or Rust validation fails | `canonical-format.md` documents extraction flow | aligned |
 | Agent prompt directives | Agent `.md` files reference generated `output-schemas/` and include "raw JSON only" instructions | `schemas.md` path updated to `shared/` | aligned |
 | Workflow step outputs | Step 3 writes `SKILL.md`, `references/`, `context/evaluations.md` | Workflow table includes all three outputs | aligned |
 | `answer-evaluation.json` consumers | Used by `detailed-research` | Infrastructure note reflects `detailed-research` only | aligned |
@@ -90,4 +90,4 @@ Written by `answer-evaluator` as a gate check before advancing from steps 0 and 
 1. Normalize remaining legacy `clarifications.md` / `decisions.md` wording in sidecar mock transcript templates.
 2. Add/extend tests to flag new legacy transcript references automatically.
 3. Keep this page and `canonical-format.md` synchronized whenever agent I/O contracts change.
-4. Keep the nested-schema SDK canary ([anthropics/claude-agent-sdk-typescript#277](https://github.com/anthropics/claude-agent-sdk-typescript/issues/277)) green. If the SDK omits `structured_output`, fail the run rather than parsing result text. Prompt directives can be relaxed but not removed.
+4. Keep prompt-level JSON directives and Rust validation aligned. If final text does not contain valid contract JSON, fail the run rather than materializing partial artifacts.

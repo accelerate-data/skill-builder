@@ -7,7 +7,7 @@
 
 Workflow step outputs suffer from data contract drift across 4 layers:
 
-1. **SDK outputFormat** declares `clarifications_json` as `{ "type": "object" }` — no inner structure
+1. **Output contract schema** declares `clarifications_json` as `{ "type": "object" }` — no inner structure
 2. **Rust validator** (`validate_clarifications_json()`) does deep imperative checks the SDK doesn't enforce
 3. **Agent prose** (`schemas.md`) hand-written descriptions that drift from the Rust validator
 4. **Frontend** (`parseClarifications()`) silently patches missing fields and handles legacy formats
@@ -22,7 +22,7 @@ Result: agents produce output the SDK accepts but Rust rejects (e.g., `"clarific
 | Crate | Output | Consumers |
 |---|---|---|
 | `specta` + `specta-typescript` | TypeScript types | Frontend (`app/src/generated/`), Sidecar (`app/sidecar/generated/`) |
-| `schemars` | JSON Schema | SDK `outputFormat` (constrained decoding), agent `schemas.md` |
+| `schemars` | JSON Schema | App output contracts, agent `schemas.md` |
 
 No hand-maintained type mirrors. No untyped `serde_json::Value` escape hatches. No coercion.
 
@@ -47,8 +47,8 @@ No hand-maintained type mirrors. No untyped `serde_json::Value` escape hatches. 
     ┌───────────┐ ┌─────────┐ ┌─────────────────┐
     │ TypeScript │ │  JSON   │ │  Rust const     │
     │  types    │ │ Schema  │ │  schema strings  │
-    │ (Specta)  │ │(Schemars│ │  (for SDK        │
-    │           │ │)        │ │   outputFormat)  │
+    │ (Specta)  │ │(Schemars│ │  (for app        │
+    │           │ │)        │ │   contracts)     │
     └─────┬─────┘ └────┬────┘ └────────┬────────┘
           │            │               │
     ┌─────┴─────┐  ┌───┴────┐  ┌──────┴──────────┐
@@ -64,10 +64,10 @@ A separate Rust binary (`app/src-tauri/src/bin/codegen.rs`) runs as `npm run cod
 
 1. Imports all contract types from `app_lib::contracts`
 2. Uses Specta to export TypeScript → `app/src/generated/contracts.ts` + `app/sidecar/generated/contracts.ts`
-3. Uses Schemars to export JSON Schema → `app/src-tauri/src/generated/schemas.rs` (Rust const strings for SDK `outputFormat`)
+3. Uses Schemars to export JSON Schema → `app/src-tauri/src/generated/schemas.rs` (Rust const strings for app output contracts)
 4. Writes inline JSON Schema files → `agent-sources/plugins/skill-content-researcher/shared/output-schemas/` (agents Read these at runtime)
 
-A companion `validate-output` binary (`app/src-tauri/src/bin/validate_output.rs`) validates JSON from stdin against step-specific contract structs. Used by the test script `app/src-tauri/schemas-review/test-sdk-multiturn.mjs`.
+A companion `validate-output` binary (`app/src-tauri/src/bin/validate_output.rs`) validates JSON from stdin against step-specific contract structs.
 
 Deep schemas with `$ref`/`$defs` are maintained separately at `shared/output-deep-schemas/` for human readability.
 
@@ -128,18 +128,14 @@ AgentEventEnvelope
 
 ## Key Design Decisions
 
-### Inline JSON Schema in SDK outputFormat
+### Inline JSON Schema as App Contract
 
-The SDK's `outputFormat` gets **inline** JSON Schema generated from Rust structs — all `$ref` resolved, `additionalProperties: false` on every object, no `$schema`/`definitions` block. This is required because the SDK silently ignores schemas with `$ref`.
+The app generates **inline** JSON Schema from Rust structs — all `$ref` resolved, `additionalProperties: false` on every object, no `$schema`/`definitions` block. The schema is an app contract used in prompts and validation. OpenHands does not receive it as an SDK `outputFormat` option.
 
-The sidecar requires SDK `structured_output` for `outputFormat` runs. If the SDK omits `structured_output`, the sidecar emits `structured_output_missing`; it does not parse JSON from `result` text as a recovery path.
-
-1. Agent `.md` files include strong prompt directives ("CRITICAL — raw JSON only, no markdown fences") and reference generated JSON schema files at `shared/output-schemas/`.
-2. The sidecar reads `structured_output` from the SDK result.
-3. If `structured_output` is absent, the sidecar emits `structured_output_missing`.
-4. Rust serde deserializes `structured_output` into typed contract structs — this is the authoritative validation.
-
-Regression coverage for the previously observed nested-schema SDK issue ([anthropics/claude-agent-sdk-typescript#277](https://github.com/anthropics/claude-agent-sdk-typescript/issues/277)) lives in `app/sidecar/__tests__/sdk-output-format.integration.test.ts` and `app/src-tauri/schemas-review/test-sdk-multiturn.mjs`.
+1. Agent prompts include strong prompt directives ("CRITICAL: raw JSON only, no markdown fences") and reference generated JSON schema files at `shared/output-schemas/`.
+2. The OpenHands runner emits the final assistant message as terminal result text.
+3. The app extracts one JSON object from that result text.
+4. Rust serde deserializes the extracted object into typed contract structs — this is the authoritative validation.
 
 ### Recursive Question type
 
@@ -159,7 +155,7 @@ Semantic validation: `validate_business_rules()` methods on contract structs for
 | Item | Location | Reason |
 |---|---|---|
 | `validate_clarifications_json()` | `step_config.rs:228-387` | Replaced by serde deserialization |
-| `coerce_to_i64/string/bool` | `workflow/mod.rs:38-60` | SDK constrained decoding prevents type drift |
+| `coerce_to_i64/string/bool` | `workflow/mod.rs:38-60` | Rust typed validation catches type drift |
 | Hand-crafted JSON Schema | `step_config.rs:94-199` | Replaced by Schemars-generated schemas |
 | Frontend type interfaces | `clarifications-types.ts:4-97` | Replaced by Specta-generated imports |
 | Sidecar event interfaces | `sidecar/agent-events.ts:10-115` | Replaced by Specta-generated imports |
@@ -194,11 +190,10 @@ Semantic validation: `validate_business_rules()` methods on contract structs for
 | `app/src-tauri/src/bin/validate_output.rs` | CLI validator — pipe JSON stdin, exit 0/1 |
 | `app/src/generated/contracts.ts` | Generated frontend TypeScript |
 | `app/sidecar/generated/contracts.ts` | Generated sidecar TypeScript |
-| `app/src-tauri/src/generated/schemas.rs` | Generated inline JSON Schema const strings (for SDK outputFormat) |
+| `app/src-tauri/src/generated/schemas.rs` | Generated inline JSON Schema const strings for app prompts and validation |
 | `agent-sources/.../shared/output-schemas/` | Generated inline JSON Schema files (agents Read at runtime) |
 | `agent-sources/.../shared/output-deep-schemas/` | Deep JSON Schema with `$ref`/`$defs` (human-readable) |
 | `agent-sources/.../shared/schemas.md` | Semantic rules supplement (what JSON Schema cannot express) |
 | `app/sidecar/message-processor.ts` | Structured output extraction + missing-output error handling |
 | `app/sidecar/lib/result-extraction.ts` | Display markdown extraction from structured output |
-| `app/src-tauri/schemas-review/test-sdk-multiturn.mjs` | SDK structured output test script |
 | `.claude/rules/codegen.md` | Agent rule: run codegen when modifying contracts |

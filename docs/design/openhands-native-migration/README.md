@@ -60,7 +60,7 @@ The app depends on a set of execution contracts that must hold regardless of whi
 | Contract | Current enforcement | OpenHands enforcement |
 |---|---|---|
 | One-shot steps cannot interrupt for user input | `AskUserQuestion` absent from `allowedTools` for steps 0–3 | One-shot conversation requests omit the app-owned question tool and the runner rejects it for `mode: "one-shot"` |
-| Structured output is required for steps 0–3 | Prompt instructions; frontend parser validates `run_result` payload | Same prompt instructions; `extractJsonFromText` fallback + `structured_output_missing` retry prompt if first attempt produces invalid JSON |
+| Structured JSON is required for steps 0–3 | Prompt instructions; parser validates terminal result payload | Same prompt instructions; extract JSON from terminal `conversation_state.result_text`, then Rust validates the typed contract |
 | Artifact parsing errors are app-visible | Parser emits `run_result` error event over JSONL | Unchanged — same JSONL protocol, same `run_result` envelope |
 | Users can see work in progress | Claude SDK messages become display items and agent events while the run is active | OpenHands conversation events are streamed as normalized display items and agent events for one-shot and multi-message conversations |
 | Per-step turn budget is enforced | `max_turns` in `SidecarConfig` | `max_iterations` in `RunConfig`, populated from the same `max_turns` field |

@@ -25,7 +25,7 @@
 1. Keep the sidecar process as the app boundary.
 2. Add OpenHands as a runtime provider behind the existing runtime interface.
 3. Bridge Node -> Python with a small Python runner process at first. Do not embed Python packaging into Tauri until the spike proves the event stream and workflow outputs.
-4. **Structured output is text-extraction only.** `outputFormat` in `SidecarConfig` is the app-owned signal that JSON is expected — it is never forwarded to any runtime SDK. Every adapter's event processor extracts JSON from result text using `extractJsonFromText` when `outputFormat` is set. See `docs/design/agent-runtime-boundary/README.md#structured-output-contract` for the full contract.
+4. **Structured output is text-extraction only.** `outputFormat` in `SidecarConfig` is the app-owned signal that JSON is expected — it is never forwarded to any runtime SDK. OpenHands emits terminal `conversation_state.result_text`; app task code extracts JSON from that text and Rust validates the typed contract. See `docs/design/agent-runtime-boundary/README.md#structured-output-contract` for the full contract.
 5. Migrate one-shot workflow steps before refine streaming. Refine is the risk-heavy path because it depends on blocking UI questions, cancellation, and session continuation.
 
 ## Task 1: Runtime Selection Flag
@@ -58,24 +58,22 @@ expect(() => parseSidecarConfig({ ...baseConfig, runtimeProvider: "bad" })).toTh
 
 - Create: `app/sidecar/openhands/runner.py`
 - Create: `app/sidecar/openhands/requirements.txt`
-- Create: `app/sidecar/__tests__/fixtures/openhands-events.jsonl`
 - Test: manual spike command documented in the PR body
 
-**Structured output contract (see design doc §Structured Output Contract):** The runner is not responsible for JSON extraction. It always emits `structured_output: null` and puts the agent's full result text in `result_text`. JSON extraction from that text is the event processor's job (Task 3).
+**Structured output contract (see design doc §Structured Output Contract):** The runner is not responsible for JSON extraction. It puts the agent's full final text in terminal `conversation_state.result_text`. App task code extracts JSON from that text and Rust validates the typed contract.
 
 - [ ] Create a Python runner that accepts one JSON request on stdin and emits JSONL events on stdout.
 - [ ] Use `LLM`, `get_default_agent`, and `Conversation(agent=agent, workspace=cwd)` from OpenHands for the first pass.
-- [ ] Map OpenHands lifecycle to raw neutral events:
+- [ ] Map OpenHands lifecycle to OpenHands-native conversation records:
 
 ```json
-{"type":"openhands_event","event_kind":"message","text":"...","timestamp":123}
-{"type":"openhands_event","event_kind":"tool_call","tool_name":"BashTool","summary":"...","timestamp":123}
-{"type":"openhands_result","status":"success","result_text":"...","structured_output":null,"timestamp":123}
+{"type":"conversation_event","event_class":"...","event":{},"timestamp":123}
+{"type":"conversation_state","runtime":"openhands","status":"completed","result_text":"...","timestamp":123}
 ```
 
-- [ ] Always emit `structured_output: null` — never attempt JSON extraction in the runner. The event processor handles extraction.
-- [ ] Validate required fields (`prompt`, `apiKey`) before running; emit an `openhands_result` error for missing fields.
-- [ ] Handle OpenHands `ImportError` gracefully: emit `openhands_result` error pointing to `requirements.txt`.
+- [ ] Never attempt JSON extraction in the runner.
+- [ ] Validate required fields before running; emit a terminal `conversation_state(status="error")` for missing fields.
+- [ ] Handle OpenHands `ImportError` gracefully: emit terminal `conversation_state(status="error")` pointing to `requirements.txt`.
 - [ ] Verify the runner can edit files in a temporary workspace using `LocalWorkspace`/plain workspace path.
 - [ ] Verify which models and API key env names work through OpenHands `LLM`; record the chosen mapping in the plan PR notes.
 - [ ] Do not bundle Python or change Tauri config yet.
@@ -94,8 +92,8 @@ expect(() => parseSidecarConfig({ ...baseConfig, runtimeProvider: "bad" })).toTh
 - [ ] Implement `OpenHandsRuntime implements AgentRuntime` for one-shot only.
 - [ ] Remove `outputFormat` from the Claude SDK options in `app/sidecar/options.ts` (line with `outputFormat: config.outputFormat`). The field stays in `SidecarConfig` as the extraction signal but must not be forwarded to the SDK.
 - [ ] Spawn `python app/sidecar/openhands/runner.py` with a sanitized env and write the serialized `OneShotRunRequest` to stdin.
-- [ ] Convert runner JSONL through `openhands-event-processor.ts` into existing `display_item` and `agent_event/run_result` messages.
-- [ ] In `openhands-event-processor.ts`: when processing an `openhands_result`, use `extractJsonFromText` (from `app/sidecar/lib/result-extraction.ts`) to populate `structuredOutput` when `hasOutputFormat` is true — matching `MessageProcessor.processResultMessage` behavior. Emit `structured_output_missing` run-result error when extraction fails, same as the Claude path.
+- [ ] Forward runner `conversation_event` and `conversation_state` JSONL through `openhands-event-processor.ts` without converting them to legacy display/result records.
+- [ ] Keep JSON extraction out of `openhands-event-processor.ts`; task-specific app code extracts JSON from terminal `conversation_state.result_text` and Rust validates it.
 - [ ] Keep `runAgentRequest` provider routing small:
 
 ```ts
