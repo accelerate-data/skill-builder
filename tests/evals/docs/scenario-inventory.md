@@ -11,7 +11,7 @@ artifact changes, run and update the matching package.
 | `harness-smoke` | OpenCode provider reachability | Keep | Proves the tiered OpenCode provider can execute a minimal Promptfoo request. |
 | `skill-content-researcher-research` | Research output | Rewrite | Covers OpenHands `skill-creator` step 0 output, canonical `clarifications_json`, scope recommendation output, and research metadata. |
 | `skill-content-researcher-answer-evaluator` | Gate verdict | Rewrite | Covers OpenHands `skill-creator` answer-evaluator gate answer classification and `gate_decision` JSON. |
-| `skill-content-researcher-detailed-research` | Refinement merge | Rewrite | Covers OpenHands `research-agent` step 1 refinement merge behavior. |
+| `skill-content-researcher-detailed-research` | Detailed research merge | Rewrite | Covers OpenHands `skill-creator` step 1 `workflow.detailed_research` additive merge behavior. |
 | `skill-content-researcher-confirm-decisions` | Decisions output | Rewrite | Covers OpenHands `skill-writer-agent` step 2 decisions analysis and canonical decisions JSON. |
 | `skill-creator-generate-skill` | Generated skill output | Rewrite | Covers OpenHands `skill-writer-agent` step 3 `{skill_output_dir}/SKILL.md`, references, generated evals, and no benchmark execution. |
 | `skill-creator-rewrite-skill` | Refine rewrite | Add | Covers the rewrite agent contract used by refine sessions. |

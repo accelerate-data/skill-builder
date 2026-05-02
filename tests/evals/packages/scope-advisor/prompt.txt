@@ -1,6 +1,6 @@
 Eval mode: evaluate this create-skill form submission using the Skill Builder scope-advisor product contract. Return the final JSON object immediately. Do not use tools, do not ask follow-up questions, and do not return prose outside the JSON.
 
-Skill name: {{skill_name}}
+We are writing the skill {{skill_name}}.
 Skill description: {{description}}
 Purpose: {{purpose}}
 Additional context: {{context_questions}}

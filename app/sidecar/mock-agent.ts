@@ -21,8 +21,15 @@ const MOCK_SCENARIO = process.env.MOCK_SCENARIO ?? "default";
 /** @internal Exported for testing only. */
 export function resolveStepTemplate(
   agentName: string | undefined,
-  config?: { skillName?: string; runSource?: string; stepId?: number },
+  config?: { skillName?: string; runSource?: string; stepId?: number; taskKind?: string },
 ): string | null {
+  if (
+    agentName === "skill-creator" &&
+    config?.taskKind === "workflow.detailed_research"
+  ) {
+    return "step1-detailed-research";
+  }
+
   if (!agentName) {
     // Description optimization eval-query generator: one-shot outputFormat path.
     if (config?.stepId === -12) return "description-evals-generator";
@@ -112,12 +119,12 @@ export function parsePromptPaths(prompt: string): {
   skillDir: string | null;
 } {
   const workspaceMatch = prompt.match(
-    /The workspace directory is: ([^\r\n]+?)\.\s/,
+    /(?:The workspace directory is|Workspace directory): ([^\r\n]+?)(?:\.\s|\r?\n)/,
   );
   const workspaceDir = workspaceMatch?.[1]?.trim() ?? null;
 
   const contextMatch = prompt.match(
-    /The context directory is: ([^\r\n]+?)\.\s/,
+    /(?:The context directory is|Context directory): ([^\r\n]+?)(?:\.\s|\r?\n)/,
   );
   const outputMatch = prompt.match(
     /The skill output directory \(SKILL\.md and references\/\) is: ([^\r\n]+?)\.\s/,
