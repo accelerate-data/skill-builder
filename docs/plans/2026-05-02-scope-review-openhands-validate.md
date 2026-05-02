@@ -87,11 +87,16 @@ runtime.
 
 ```bash
 cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-clean-break-agent-runtime
-./scripts/worktree.sh feature/vu-1145-openhands-scope-review-validate
+./scripts/worktree.sh feature/vu-1146-use-openhands-runner-for-create-skill-scope-validation
 ```
 
 - [x] Implement and test in the new worktree.
-- [ ] Merge the completed branch back into `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime` after tests pass.
+- [x] Merge the completed branch back into `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime` after tests pass.
+
+Post-merge status: VU-1146 is complete and merged into the VU-1145
+accumulation branch. The remaining OpenHands work should build on the shared
+one-shot runner, terminal `conversation_state` result boundary, initialized
+workspace boundary, and backend-owned LLM projection established by this plan.
 
 ## File Structure
 
@@ -361,11 +366,11 @@ test is skipped in the normal sidecar suite.
 - [x] Run:
 
 ```bash
-markdownlint docs/design/openhands-sdk-runner/README.md docs/design/openhands-native-migration/README.md docs/superpowers/plans/2026-05-02-scope-review-openhands-validate.md
+markdownlint docs/design/openhands-sdk-runner/README.md docs/design/openhands-native-migration/README.md docs/plans/2026-05-02-scope-review-openhands-validate.md
 cd app && npm run test:unit
 cd app/sidecar && npx vitest run
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill::scope_review
 ```
 
-- [ ] Record any skipped live OpenHands smoke prerequisite in the PR body.
-- [ ] Merge the branch back into the VU-1145 worktree after tests pass.
+- [x] Record any skipped live OpenHands smoke prerequisite in the PR body.
+- [x] Merge the branch back into the VU-1145 worktree after tests pass.

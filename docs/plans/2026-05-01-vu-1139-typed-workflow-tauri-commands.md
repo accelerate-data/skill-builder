@@ -21,7 +21,7 @@
   - `docs/design/sdk-agent-options/README.md`
   - `docs/design/startup-recon/README.md`
   - `docs/design/workflow-state/README.md`
-- Implementation plan: `docs/plan/2026-05-01-vu-1139-typed-workflow-tauri-commands.md`
+- Implementation plan: `docs/plans/2026-05-01-vu-1139-typed-workflow-tauri-commands.md`
 
 ## Manual Tests
 
@@ -217,7 +217,7 @@ Post implementation status with:
 ```md
 Functional spec: user-approved override; missing docs/functional/custom-plugin-management/.
 Design docs: docs/design/agent-runtime-boundary/README.md, docs/design/agent-specs/README.md, docs/design/backend-design/README.md, docs/design/sdk-agent-options/README.md, docs/design/startup-recon/README.md, docs/design/workflow-state/README.md
-Implementation plan: docs/plan/2026-05-01-vu-1139-typed-workflow-tauri-commands.md
+Implementation plan: docs/plans/2026-05-01-vu-1139-typed-workflow-tauri-commands.md
 Verification: <commands and results>
 Manual tests: No manual tests required.
 ```
@@ -228,6 +228,6 @@ Run:
 
 ```bash
 git status --short
-git add app/src/lib/tauri-command-types.ts app/src/lib/tauri-command-types.typecheck.ts app/src/lib/tauri.ts docs/plan/2026-05-01-vu-1139-typed-workflow-tauri-commands.md
+git add app/src/lib/tauri-command-types.ts app/src/lib/tauri-command-types.typecheck.ts app/src/lib/tauri.ts docs/plans/2026-05-01-vu-1139-typed-workflow-tauri-commands.md
 git commit -m "VU-1139: type workflow Tauri command wrappers"
 ```

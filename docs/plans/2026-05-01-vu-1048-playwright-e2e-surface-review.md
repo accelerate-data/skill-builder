@@ -112,6 +112,6 @@ Expected: mock-agent tests pass.
 
 - [x] **Step 3: Run manifest/docs checks**
 
-Run: `markdownlint docs/superpowers/plans/2026-05-01-vu-1048-playwright-e2e-surface-review.md && git diff --check`
+Run: `markdownlint docs/plans/2026-05-01-vu-1048-playwright-e2e-surface-review.md && git diff --check`
 
 Expected: no output and exit code 0.

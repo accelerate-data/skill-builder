@@ -19,7 +19,7 @@
   - `docs/design/agent-specs/canonical-format.md`
   - `docs/design/skill-scope-review/README.md`
   - `docs/design/write-eval-test-refine-loop/README.md`
-- Existing implementation plan: none; `docs/plan/` did not exist before this issue.
+- Existing implementation plan: none; `docs/plans/` did not exist before this issue.
 - Manual tests: No manual tests required. Smoke and regression evals are automated OpenCode/Promptfoo commands.
 
 ## Tasks
@@ -158,7 +158,7 @@ prompt is supposed to emit.
 - `cd tests/evals && npm run eval:workspace-skill-suggestions-prompt`
 - `cd tests/evals && npm run eval:scope-advisor`
 - `cd tests/evals && npm run eval:smoke`
-- `markdownlint AGENTS.md TEST_MANIFEST.md docs/plan/2026-05-01-vu-1135-skill-builder-eval-coverage.md tests/evals/docs/scenario-inventory.md`
+- `markdownlint AGENTS.md TEST_MANIFEST.md docs/plans/2026-05-01-vu-1135-skill-builder-eval-coverage.md tests/evals/docs/scenario-inventory.md`
 - `cd app && npm run sidecar:build`
 - `cargo test --manifest-path app/src-tauri/Cargo.toml scope_review`
 

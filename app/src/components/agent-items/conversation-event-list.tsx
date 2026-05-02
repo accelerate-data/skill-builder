@@ -2,7 +2,9 @@ import { memo, useMemo } from "react";
 import {
   AlertTriangle,
   Braces,
+  Layers3,
   MessageSquare,
+  Pause,
   Terminal,
   TextSearch,
 } from "lucide-react";
@@ -14,10 +16,15 @@ import {
   getCommandText,
   getErrorText,
   getEventText,
+  getInternalEventSummary,
+  getLlmResponseId,
   getObservationText,
   getReasoningText,
+  getToolCallId,
   getToolInput,
   getToolName,
+  groupConversationActionEvents,
+  isInternalOpenHandsEventClass,
   stringifyEventPayload,
 } from "@/lib/openhands-conversation-events";
 
@@ -75,7 +82,6 @@ function PayloadBlock({ value }: { value: unknown }) {
 
 function MessageEventView({ event }: { event: OpenHandsConversationEvent }) {
   const text = getEventText(event);
-  if (!text) return null;
   const source = typeof event.event.source === "string" ? event.event.source : undefined;
 
   return (
@@ -88,7 +94,7 @@ function MessageEventView({ event }: { event: OpenHandsConversationEvent }) {
           {source}
         </Badge>
       )}
-      <MarkdownText text={text} />
+      {text ? <MarkdownText text={text} /> : <PayloadBlock value={event.event} />}
     </EventShell>
   );
 }
@@ -96,8 +102,13 @@ function MessageEventView({ event }: { event: OpenHandsConversationEvent }) {
 function ActionEventView({ event }: { event: OpenHandsConversationEvent }) {
   const reasoning = getReasoningText(event);
   const toolName = getToolName(event);
+  const toolCallId = getToolCallId(event);
+  const llmResponseId = getLlmResponseId(event);
   const command = getCommandText(event);
   const input = getToolInput(event);
+  const hasReadableContent = Boolean(
+    reasoning || toolName || toolCallId || llmResponseId || command || input !== undefined,
+  );
 
   return (
     <EventShell icon={<Terminal className="size-3.5" />} title="Action">
@@ -107,10 +118,21 @@ function ActionEventView({ event }: { event: OpenHandsConversationEvent }) {
           <Badge variant="secondary" className="font-mono text-[10px]">
             {toolName}
           </Badge>
+          {toolCallId && (
+            <Badge variant="outline" className="font-mono text-[10px]">
+              {toolCallId}
+            </Badge>
+          )}
+          {llmResponseId && (
+            <Badge variant="outline" className="font-mono text-[10px]">
+              {llmResponseId}
+            </Badge>
+          )}
           {command && <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{command}</code>}
         </div>
       )}
       {input !== undefined && <PayloadBlock value={input} />}
+      {!hasReadableContent && <PayloadBlock value={event.event} />}
     </EventShell>
   );
 }
@@ -147,6 +169,76 @@ function ErrorEventView({
   );
 }
 
+function ParallelActionGroupView({
+  events,
+  llmResponseId,
+  reasoningText,
+}: {
+  events: OpenHandsConversationEvent[];
+  llmResponseId: string;
+  reasoningText?: string;
+}) {
+  return (
+    <EventShell
+      icon={<Layers3 className="size-3.5" />}
+      title={`Parallel Actions (${events.length})`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline" className="font-mono text-[10px]">
+          {llmResponseId}
+        </Badge>
+      </div>
+      {reasoningText && <MarkdownText text={reasoningText} />}
+      <div className="space-y-2">
+        {events.map((event, index) => {
+          const toolName = getToolName(event);
+          const toolCallId = getToolCallId(event);
+          const command = getCommandText(event);
+          const input = getToolInput(event);
+
+          return (
+            <div
+              key={`${toolCallId ?? event.timestamp}-${index}`}
+              className="rounded border border-border/60 bg-muted/20 p-2"
+            >
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                {toolName && (
+                  <Badge variant="secondary" className="font-mono text-[10px]">
+                    {toolName}
+                  </Badge>
+                )}
+                {toolCallId && (
+                  <Badge variant="outline" className="font-mono text-[10px]">
+                    {toolCallId}
+                  </Badge>
+                )}
+                {command && (
+                  <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                    {command}
+                  </code>
+                )}
+              </div>
+              {input !== undefined && <PayloadBlock value={input} />}
+            </div>
+          );
+        })}
+      </div>
+    </EventShell>
+  );
+}
+
+function InternalEventView({ event }: { event: OpenHandsConversationEvent }) {
+  const summary = getInternalEventSummary(event);
+  return (
+    <EventShell
+      icon={<Pause className="size-3.5" />}
+      title={event.eventClass}
+    >
+      {summary ? <MarkdownText text={summary} /> : <PayloadBlock value={event.event} />}
+    </EventShell>
+  );
+}
+
 function UnknownEventView({ event }: { event: OpenHandsConversationEvent }) {
   return (
     <EventShell icon={<Braces className="size-3.5" />} title={event.eventClass}>
@@ -169,6 +261,9 @@ function ConversationEventView({ event }: { event: OpenHandsConversationEvent })
     case "ConversationErrorEvent":
       return <ErrorEventView event={event} title="Conversation Error" />;
     default:
+      if (isInternalOpenHandsEventClass(event.eventClass)) {
+        return <InternalEventView event={event} />;
+      }
       return <UnknownEventView event={event} />;
   }
 }
@@ -183,6 +278,10 @@ export const ConversationEventList = memo(function ConversationEventList({
         ? events.slice(-CONVERSATION_EVENT_WINDOW_SIZE)
         : events,
     [events, hiddenEventCount],
+  );
+  const visibleEventItems = useMemo(
+    () => groupConversationActionEvents(visibleEvents),
+    [visibleEvents],
   );
 
   if (events.length === 0) return null;
@@ -200,12 +299,24 @@ export const ConversationEventList = memo(function ConversationEventList({
           {hiddenEventCount} older {hiddenEventCount === 1 ? "event" : "events"} hidden
         </div>
       )}
-      {visibleEvents.map((event, index) => (
+      {visibleEventItems.map((item, index) => (
         <div
-          key={`${event.conversationId ?? "conversation"}-${event.timestamp}-${index}`}
+          key={
+            item.type === "parallel_action_group"
+              ? `parallel-${item.llmResponseId}-${index}`
+              : `${item.event.conversationId ?? "conversation"}-${item.event.timestamp}-${index}`
+          }
           className="min-w-0 w-full animate-message-in"
         >
-          <ConversationEventView event={event} />
+          {item.type === "parallel_action_group" ? (
+            <ParallelActionGroupView
+              events={item.events}
+              llmResponseId={item.llmResponseId}
+              reasoningText={item.reasoningText}
+            />
+          ) : (
+            <ConversationEventView event={item.event} />
+          )}
         </div>
       ))}
     </div>

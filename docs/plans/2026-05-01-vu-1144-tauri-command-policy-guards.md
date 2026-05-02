@@ -18,7 +18,7 @@
   - `docs/design/backend-design/README.md`
   - `docs/design/data-contracts/README.md`
   - `docs/design/agent-runtime-boundary/README.md`
-- Implementation plan: `docs/plan/2026-05-01-vu-1144-tauri-command-policy-guards.md`
+- Implementation plan: `docs/plans/2026-05-01-vu-1144-tauri-command-policy-guards.md`
 - Manual checks: No manual tests required. All scenarios are covered by AST policy unit guards, deterministic eval assertions, TypeScript typechecking, and existing automated test commands.
 
 ## Files
@@ -27,7 +27,7 @@
 - Modify: `app/src/__tests__/guards/tauri-command-policy.test.ts` to use the shared helper and add alias/non-literal AST checks.
 - Modify: `tests/evals/assertions/tauri-command-contract.test.js` to use the same helper and assert the same policy.
 - Modify: `app/src/lib/tauri.ts` only if helper type cleanup can reduce wrapper/type-map drift without behavior change.
-- Modify: `docs/plan/2026-05-01-vu-1144-tauri-command-policy-guards.md` as implementation status is completed.
+- Modify: `docs/plans/2026-05-01-vu-1144-tauri-command-policy-guards.md` as implementation status is completed.
 
 ## Task 1: RED AST Policy Guard
 

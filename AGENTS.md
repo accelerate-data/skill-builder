@@ -64,9 +64,8 @@ Use these folder boundaries for documentation work:
   navigation, build dependencies, or VitePress configuration.
 - `docs/design/` is for developer-facing architecture and design records. Do
   not put end-user help pages here.
-- `docs/plan/` and `docs/superpowers/plans/` are for implementation plans and
-  execution notes. Do not treat them as published help content unless the docs
-  workflows are changed.
+- `docs/plans/` is for implementation plans and execution notes. Do not treat
+  plans as published help content unless the docs workflows are changed.
 - `docs/references/` is for vendored or external reference material used by
   implementation work. Do not route product help or design decisions there.
 
