@@ -267,7 +267,7 @@ fn research_json_extraction_parses_raw_completed_result_text() {
     let state = serde_json::json!({
         "type": "conversation_state",
         "status": "completed",
-        "result_text": r#"{"status":"research_complete","dimensions_selected":1,"question_count":0,"research_output":{"version":"1","metadata":{},"sections":[],"notes":[]}}"#
+        "result_text": r#"{"status":"research_complete","question_count":0,"research_output":{"version":"1","metadata":{},"sections":[],"notes":[]}}"#
     });
 
     let parsed = extract_research_json_from_conversation_state(&state).unwrap();
@@ -298,7 +298,6 @@ fn research_json_extraction_parses_json_after_visible_dimension_table() {
 
 {
   "status": "research_complete",
-  "dimensions_selected": 0,
   "question_count": 0,
   "research_output": {
     "version": "1",
@@ -314,7 +313,7 @@ fn research_json_extraction_parses_json_after_visible_dimension_table() {
     let parsed = extract_research_json_from_conversation_state(&state).unwrap();
 
     assert_eq!(parsed["status"], "research_complete");
-    assert_eq!(parsed["dimensions_selected"], 0);
+    assert!(parsed.get("dimensions_selected").is_none());
 }
 
 #[test]
@@ -371,7 +370,6 @@ fn research_materialization_from_conversation_state_writes_clarifications() {
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "status": "research_complete",
-        "dimensions_selected": 1,
         "question_count": 0,
         "research_output": valid_clarifications_value()
     });
@@ -407,7 +405,6 @@ mod research {
         let skill_root = tmp.path().join("my-skill");
         let payload = serde_json::json!({
             "status": "research_complete",
-            "dimensions_selected": 1,
             "question_count": 0,
             "research_output": valid_clarifications_value()
         });
@@ -495,7 +492,7 @@ fn test_research_step_schema_is_inline_with_all_required() {
     assert_inline_schema_basics(schema, "research-step");
     let required = schema["required"].as_array().expect("required array");
     assert!(required.iter().any(|v| v == "status"));
-    assert!(required.iter().any(|v| v == "dimensions_selected"));
+    assert!(!required.iter().any(|v| v == "dimensions_selected"));
     assert!(required.iter().any(|v| v == "question_count"));
     assert!(required.iter().any(|v| v == "research_output"));
     // Nested ClarificationsFile is inlined as an object with properties
@@ -734,7 +731,6 @@ fn test_materialize_step0_writes_research_and_clarifications() {
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "status": "research_complete",
-        "dimensions_selected": 2,
         "question_count": 5,
         "research_output": {
             "version": "1",
@@ -757,12 +753,11 @@ fn test_materialize_step0_writes_research_and_clarifications() {
 }
 
 #[test]
-fn test_materialize_step0_accepts_null_focus_in_unselected_dimension_scores() {
+fn test_materialize_step0_drops_legacy_research_metadata() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "status": "research_complete",
-        "dimensions_selected": 1,
         "question_count": 0,
         "research_output": {
             "version": "1",
@@ -778,7 +773,6 @@ fn test_materialize_step0_accepts_null_focus_in_unselected_dimension_scores() {
                     "domain": "Cloud services",
                     "topic_relevance": "High",
                     "dimensions_evaluated": 2,
-                    "dimensions_selected": 1,
                     "dimension_scores": [
                         {
                             "name": "entities",
@@ -808,7 +802,10 @@ fn test_materialize_step0_accepts_null_focus_in_unselected_dimension_scores() {
 
     materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
     let written = std::fs::read_to_string(skill_root.join("context/clarifications.json")).unwrap();
-    assert!(written.contains("\"modeling-patterns\""));
+    assert!(!written.contains("research_plan"));
+    assert!(!written.contains("dimension_scores"));
+    assert!(!written.contains("selected_dimensions"));
+    assert!(!written.contains("modeling-patterns"));
 }
 
 #[test]
@@ -819,7 +816,6 @@ fn test_materialize_step0_empty_metadata_defaults_to_zeros() {
     // Empty metadata now defaults all fields to 0/"" instead of erroring
     let payload = serde_json::json!({
         "status": "research_complete",
-        "dimensions_selected": 2,
         "question_count": 5,
         "research_output": {
             "version": "1",
@@ -892,7 +888,6 @@ fn test_materialize_step0_rejects_wrong_status() {
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "status": "detailed_research_complete",
-        "dimensions_selected": 1,
         "question_count": 1,
         "research_output": valid_clarifications_value()
     });
@@ -905,23 +900,20 @@ fn test_materialize_step0_rejects_missing_required_fields() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_root = tmp.path().join("my-skill");
 
-    // Missing dimensions_selected → hard fail (required per SKILL.md)
-    let missing_dimensions = serde_json::json!({
+    let missing_research_output = serde_json::json!({
         "status": "research_complete",
-        "question_count": 1,
-        "research_output": valid_clarifications_value()
+        "question_count": 1
     });
-    let err =
-        materialize_workflow_step_output_value(&skill_root, 0, &missing_dimensions).unwrap_err();
+    let err = materialize_workflow_step_output_value(&skill_root, 0, &missing_research_output)
+        .unwrap_err();
     assert!(
-        err.contains("dimensions_selected"),
+        err.contains("research_output"),
         "should mention missing field: {err}"
     );
 
     // Wrong type (string for integer) still errors
     let non_integer_question_count = serde_json::json!({
         "status": "research_complete",
-        "dimensions_selected": 1,
         "question_count": "one",
         "research_output": valid_clarifications_value()
     });
@@ -937,7 +929,6 @@ fn test_materialize_step0_rejects_missing_research_output() {
 
     let missing = serde_json::json!({
         "status": "research_complete",
-        "dimensions_selected": 1,
         "question_count": 1
     });
     let err = materialize_workflow_step_output_value(&skill_root, 0, &missing).unwrap_err();
@@ -946,7 +937,6 @@ fn test_materialize_step0_rejects_missing_research_output() {
     // Choice is missing required `is_other` field — typed deserialization rejects it
     let invalid_nested = serde_json::json!({
         "status": "research_complete",
-        "dimensions_selected": 1,
         "question_count": 1,
         "research_output": {
             "version": "1",
@@ -1152,7 +1142,6 @@ fn test_materialize_step0_scope_recommendation_triggers_scope_guard_parser() {
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "status": "research_complete",
-        "dimensions_selected": 0,
         "question_count": 0,
         "research_output": {
             "version": "1",
