@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::Listener;
 
@@ -205,12 +204,60 @@ pub struct OpenHandsOneShotRunParams {
     pub timeout: Duration,
 }
 
+#[allow(dead_code)]
 pub struct OpenHandsOneShotRun {
     pub transcript_dir: PathBuf,
+    pub conversation_state: serde_json::Value,
+}
+
+enum OpenHandsOneShotEvent {
+    TerminalState(Result<serde_json::Value, String>),
+    Lifecycle(Result<(), String>),
+}
+
+fn openhands_conversation_state_error_detail(
+    message: &serde_json::Value,
+    fallback: &str,
+) -> String {
+    message
+        .get("error_detail")
+        .or_else(|| message.get("errorDetail"))
+        .and_then(|v| v.as_str())
+        .filter(|detail| !detail.trim().is_empty())
+        .unwrap_or(fallback)
+        .to_string()
+}
+
+fn parse_openhands_one_shot_terminal_state(
+    payload: &str,
+    target_agent_id: &str,
+) -> Option<Result<serde_json::Value, String>> {
+    let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+    if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
+        return None;
+    }
+
+    let message = value.get("message")?;
+    if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+        return None;
+    }
+
+    match message.get("status").and_then(|v| v.as_str())? {
+        "completed" => Some(Ok(message.clone())),
+        "error" => Some(Err(openhands_conversation_state_error_detail(
+            message,
+            "OpenHands one-shot run failed",
+        ))),
+        "cancelled" | "canceled" => Some(Err(openhands_conversation_state_error_detail(
+            message,
+            "OpenHands one-shot run cancelled",
+        ))),
+        _ => None,
+    }
 }
 
 /// Dispatch a backend-owned OpenHands one-shot request through the persistent
-/// sidecar and wait for its terminal `agent-exit` event.
+/// sidecar and wait for its terminal `conversation_state` payload.
 ///
 /// Callers keep task-specific result parsing, but they should not duplicate the
 /// sidecar dispatch, transcript directory, runner path, or terminal wait
@@ -232,8 +279,17 @@ pub async fn run_openhands_one_shot(
     let transcript_dir_str = transcript_dir.to_string_lossy().into_owned();
     config.transcript_log_dir = Some(transcript_dir_str.clone());
 
-    let (tx, rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
-    let tx = Arc::new(Mutex::new(Some(tx)));
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsOneShotEvent>();
+    let target_agent_id = agent_id.clone();
+    let tx_message = tx.clone();
+    let message_listener = app.listen("agent-message", move |event| {
+        if let Some(result) =
+            parse_openhands_one_shot_terminal_state(event.payload(), target_agent_id.as_str())
+        {
+            let _ = tx_message.send(OpenHandsOneShotEvent::TerminalState(result));
+        }
+    });
+
     let target_agent_id = agent_id.clone();
     let tx_exit = tx.clone();
     let exit_listener = app.listen("agent-exit", move |event| {
@@ -261,11 +317,7 @@ pub async fn run_openhands_one_shot(
                 .to_string();
             Err(detail)
         };
-        if let Ok(mut guard) = tx_exit.lock() {
-            if let Some(sender) = guard.take() {
-                let _ = sender.send(result);
-            }
-        }
+        let _ = tx_exit.send(OpenHandsOneShotEvent::Lifecycle(result));
     });
     let target_agent_id = agent_id.clone();
     let tx_shutdown = tx.clone();
@@ -280,11 +332,9 @@ pub async fn run_openhands_one_shot(
         if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id.as_str()) {
             return;
         }
-        if let Ok(mut guard) = tx_shutdown.lock() {
-            if let Some(sender) = guard.take() {
-                let _ = sender.send(Err("OpenHands one-shot run cancelled".to_string()));
-            }
-        }
+        let _ = tx_shutdown.send(OpenHandsOneShotEvent::Lifecycle(Err(
+            "OpenHands one-shot run cancelled".to_string(),
+        )));
     });
 
     pool.send_request(
@@ -296,20 +346,56 @@ pub async fn run_openhands_one_shot(
     )
     .await
     .inspect_err(|_| {
+        app.unlisten(message_listener);
         app.unlisten(exit_listener);
         app.unlisten(shutdown_listener);
     })?;
 
-    let exit_result = match tokio::time::timeout(params.timeout, rx).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(_)) => Err("OpenHands one-shot listener closed unexpectedly".to_string()),
-        Err(_) => Err("OpenHands one-shot run timed out".to_string()),
-    };
+    let mut terminal_state: Option<Result<serde_json::Value, String>> = None;
+    let mut lifecycle_result: Option<Result<(), String>> = None;
+    let wait_result = tokio::time::timeout(params.timeout, async {
+        while terminal_state.is_none() || lifecycle_result.is_none() {
+            match rx.recv().await {
+                Some(OpenHandsOneShotEvent::TerminalState(result)) => {
+                    if terminal_state.is_none() {
+                        terminal_state = Some(result);
+                    }
+                }
+                Some(OpenHandsOneShotEvent::Lifecycle(result)) => {
+                    if lifecycle_result.is_none() {
+                        lifecycle_result = Some(result);
+                    }
+                }
+                None => {
+                    return Err("OpenHands one-shot listener closed unexpectedly".to_string());
+                }
+            }
+        }
+        Ok(())
+    })
+    .await;
+
+    app.unlisten(message_listener);
     app.unlisten(exit_listener);
     app.unlisten(shutdown_listener);
-    exit_result?;
 
-    Ok(OpenHandsOneShotRun { transcript_dir })
+    match wait_result {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => return Err(error),
+        Err(_) => return Err("OpenHands one-shot run timed out".to_string()),
+    };
+
+    let conversation_state = terminal_state.unwrap_or_else(|| {
+        Err("OpenHands one-shot run completed without conversation_state".into())
+    })?;
+    lifecycle_result.unwrap_or_else(|| {
+        Err("OpenHands one-shot lifecycle listener closed unexpectedly".to_string())
+    })?;
+
+    Ok(OpenHandsOneShotRun {
+        transcript_dir,
+        conversation_state,
+    })
 }
 
 /// Spawn an agent using the persistent sidecar pool, which reuses a long-lived
@@ -837,5 +923,72 @@ mod tests {
             json["userMessageSuffix"],
             "Follow the current user message exactly. Do not infer a different task than the one stated in the message."
         );
+    }
+
+    #[test]
+    fn test_openhands_one_shot_extracts_terminal_conversation_state_for_target_agent() {
+        let terminal_state = serde_json::json!({
+            "type": "conversation_state",
+            "runtime": "openhands",
+            "conversation_id": "scope-review-1",
+            "status": "completed",
+            "result": {
+                "status": "new"
+            }
+        });
+        let payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": terminal_state.clone()
+        })
+        .to_string();
+
+        let result =
+            parse_openhands_one_shot_terminal_state(&payload, "agent-1").expect("terminal state");
+
+        assert_eq!(result.unwrap(), terminal_state);
+    }
+
+    #[test]
+    fn test_openhands_one_shot_ignores_other_agents_and_running_state() {
+        let completed_payload = serde_json::json!({
+            "agent_id": "other-agent",
+            "message": {
+                "type": "conversation_state",
+                "runtime": "openhands",
+                "status": "completed"
+            }
+        })
+        .to_string();
+        let running_payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": {
+                "type": "conversation_state",
+                "runtime": "openhands",
+                "status": "running"
+            }
+        })
+        .to_string();
+
+        assert!(parse_openhands_one_shot_terminal_state(&completed_payload, "agent-1").is_none());
+        assert!(parse_openhands_one_shot_terminal_state(&running_payload, "agent-1").is_none());
+    }
+
+    #[test]
+    fn test_openhands_one_shot_terminal_error_carries_error_detail() {
+        let payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": {
+                "type": "conversation_state",
+                "runtime": "openhands",
+                "status": "error",
+                "error_detail": "scope validation failed"
+            }
+        })
+        .to_string();
+
+        let result =
+            parse_openhands_one_shot_terminal_state(&payload, "agent-1").expect("terminal state");
+
+        assert_eq!(result.unwrap_err(), "scope validation failed");
     }
 }
