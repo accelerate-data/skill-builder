@@ -26,3 +26,7 @@ Required JSON shape:
     "sections": []
   }
 }
+
+Return only this final JSON object. Do not include markdown, intermediate JSON,
+`research_plan`, `research_lens`, `dimension_scores`, `selected_dimensions`,
+`topic_relevance`, or `dimensions_evaluated`.

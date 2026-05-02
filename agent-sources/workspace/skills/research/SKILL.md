@@ -1,35 +1,79 @@
 ---
 name: research
-description: Use for workflow research that turns skill purpose and user context into the initial clarifications payload. Covers purpose based dimension selection, dimension scoring, scope recommendation handling, focused inline research, and canonical clarifications.json output.
+description: Use for workflow research that turns skill purpose and user context into final clarification JSON
 user_invocable: false
 ---
 
 # Research Skill
 
 This skill runs inside the single `skill-creator` OpenHands agent for the
-`workflow.research` task. All dimension scoring, selected-dimension research,
-and consolidation happen inline in this same run.
+`workflow.research` task. It performs all research inline and returns only the
+final `research_complete` JSON object.
 
-Given a `purpose`, produce clarification questions which can be used for writing the skill.
-The overall flow is as follows
+Do not emit intermediate markdown, intermediate JSON, plans, scoring tables,
+research lenses, dimension scores, selected dimensions, or handoff text. Keep
+all reasoning private until the final JSON object is ready.
 
-- Understand the user's intent and the skill's purpose
-- Resolve `purpose` to one dimension set from `references/dimension-sets.md`
-- Score all candidate dimensions using `references/scoring-rubric.md`
-- Emit scope recommendation output when rubric `topic_relevance` is `not_relevant`.
-- Select top 3-5 dimensions when viable.
-- Research each selected dimension inline and sequentially
-- Consolidate using `references/consolidation-handoff.md`
-- Validate final payload against `../shared/schemas.md`
-- Return the canonical `clarifications.json` object as top-level JSON
+## Final Output Contract
 
-## Step 0: Read user context
+Return exactly one raw JSON object with this envelope:
+
+```json
+{
+  "status": "research_complete",
+  "dimensions_selected": 0,
+  "question_count": 5,
+  "research_output": {
+    "version": "1",
+    "metadata": {
+      "question_count": 5,
+      "section_count": 2,
+      "refinement_count": 0,
+      "must_answer_count": 2,
+      "priority_questions": ["Q1", "Q2"],
+      "scope_recommendation": false,
+      "scope_reason": null,
+      "warning": null,
+      "error": null
+    },
+    "sections": [],
+    "notes": [],
+    "answer_evaluator_notes": []
+  }
+}
+```
+
+`dimensions_selected` is retained only because the workflow envelope schema
+requires it. Set it to the number of relevant research lenses used to form the
+final questions, or `0` for scope/error outputs. Do not include selected lens or
+dimension names anywhere in the returned payload.
+
+The payload must follow `../shared/schemas.md`. In particular:
+
+- `status` is always `"research_complete"`.
+- `research_output.version` is always `"1"`.
+- `metadata.question_count` equals the total number of questions.
+- `metadata.section_count` equals `sections.length`.
+- `metadata.refinement_count` is `0`.
+- `metadata.must_answer_count` equals the number of `must_answer: true`
+  questions.
+- `metadata.priority_questions` lists every must-answer question ID.
+- `answer_evaluator_notes` is always `[]`.
+- Do not include `metadata.research_plan`, `research_lens`,
+  `dimension_scores`, `selected_dimensions`, `topic_relevance`,
+  `dimensions_evaluated`, or consolidation handoff fields.
+
+## Step 0: Read User Context
 
 Read `{workspace_dir}/user-context.md`.
 
-- If `user-context.md` contains a `## Reference Documents` section with location of one or more named documents supplied by the user **always read first and incorporate these documents**. If a document is missing or its content appears truncated, note this to the user and proceed with the information available.
+If `user-context.md` contains a `## Reference Documents` section with locations
+for one or more user-provided documents, read those documents before forming
+questions. If a document is missing or appears truncated, continue with the
+available material and include a concise `notes` item only if that gap affects
+the questions.
 
-If missing, return:
+If `user-context.md` is missing, return the minimal error payload:
 
 ```json
 {
@@ -50,15 +94,6 @@ If missing, return:
       "error": {
         "code": "missing_user_context",
         "message": "user-context.md not found in workspace directory"
-      },
-      "research_plan": {
-        "purpose": "",
-        "domain": "",
-        "topic_relevance": "not_relevant",
-        "dimensions_evaluated": 0,
-        "dimensions_selected": 0,
-        "dimension_scores": [],
-        "selected_dimensions": []
       }
     },
     "sections": [],
@@ -68,11 +103,21 @@ If missing, return:
 }
 ```
 
-## Step 1: Insufficient context guard
+## Step 1: Scope Guard
 
-After reading `user-context.md`, check whether the description is clearly insufficient for research — e.g. fewer than 20 non-whitespace characters, contains only placeholder text like "just testing" or "test skill", or is not relevant or lacks substantive domain detail.
+After reading the available context, privately score whether the topic is useful
+for skill-building:
 
-If any of these conditions exist, stop and return:
+- `0`: empty, placeholder, or unrelated to agent behavior.
+- `1`: too vague to infer useful clarification topics.
+- `2`: has a broad topic but lacks organization-specific or workflow-specific
+  detail.
+- `3`: useful enough to ask a small number of targeted clarifications.
+- `4`: clearly useful with several organization-specific gaps.
+- `5`: highly useful with multiple concrete workflows, artifacts, rules, or
+  failure modes to clarify.
+
+If the score is below `3`, return a minimal scope recommendation:
 
 ```json
 {
@@ -88,21 +133,12 @@ If any of these conditions exist, stop and return:
       "must_answer_count": 0,
       "priority_questions": [],
       "scope_recommendation": true,
-      "scope_reason": "<one-sentence reason the context was insufficient>",
+      "scope_reason": "<one sentence explaining why the context is not yet useful for skill research>",
       "warning": {
         "code": "scope_guard_triggered",
         "message": "<concise explanation for UI>"
       },
-      "error": null,
-      "research_plan": {
-        "purpose": "",
-        "domain": "",
-        "topic_relevance": "not_relevant",
-        "dimensions_evaluated": 0,
-        "dimensions_selected": 0,
-        "dimension_scores": [],
-        "selected_dimensions": []
-      }
+      "error": null
     },
     "sections": [],
     "notes": [],
@@ -111,174 +147,98 @@ If any of these conditions exist, stop and return:
 }
 ```
 
-## Step 2 - Capture Intent
+## Step 2: Decide Relevant Lenses
 
-The research should focus on producing high-quality, actionable clarifications that directly inform skill-building.
+Privately evaluate all four lenses. A lens is relevant when it can produce
+clarification topics that materially change the resulting skill instructions,
+trigger rules, artifact handling, examples, tests, or guardrails.
 
-Start by understanding the user's intent. The user may need to fill the gaps, and should confirm before proceeding to the next step.
+The four lenses are:
 
-1. What should this skill enable the agent to do?
-2. When should this skill trigger? (what user phrases/contexts)
-3. What's the expected output format?
-4. Who's the typical user?
+1. **Business process** - domain workflows, user roles, decisions, approvals,
+   process states, exceptions, and success criteria.
+2. **Data engineering standards** - naming, modeling, testing, quality gates,
+   layer rules, code review standards, CI expectations, and handoff artifacts.
+3. **Source system customizations** - organization-specific fields,
+   configuration, overrides, integrations, extracts, edge cases, and source
+   semantics.
+4. **Platform standards** - organization-specific Azure, Fabric, Databricks,
+   dbt, deployment, workspace, environment, security, observability, and
+   operational standards.
 
-Proactively ask questions about edge cases, input/output formats, example files, success criteria, and dependencies.
+Keep the relevance decisions private. Do not return lens names, lens scores, a
+research lens object, or any equivalent planning structure.
 
-Use the browser toolset when external web context is useful for research, such
-as searching documentation, finding similar skills, or looking up current best
-practices. Incorporate useful context inline before constructing the
-clarification payload so the user does not have to provide details the available
-material already answers.
+## Step 3: Generate Candidate Clarification Topics
 
-## Step 3 — Select Dimension Set
+For each relevant lens, privately generate candidate clarification topics. A
+candidate topic is a specific knowledge gap that a user can answer and that
+would change how the skill should behave.
 
-Extract `purpose` from the `**Purpose**` field in `user_context`. Read `references/dimension-sets.md` and resolve it to the matching dimension set using the table below.
+Good candidates usually clarify one of these:
 
-| Purpose (label or token) | Dimension set |
-| --- | --- |
-| Business process knowledge (`domain`) | Domain Dimensions |
-| Source system customizations (`source`) | Source Dimensions |
-| Organization specific data engineering standards (`data-engineering`) | Data-Engineering Dimensions |
-| Organization specific Azure or Fabric standards (`platform`) | Platform Dimensions |
+- What the skill should enable the agent to do.
+- When the skill should trigger.
+- What inputs, files, systems, or documents the skill should inspect.
+- What output format, naming, schema, or artifact contract the skill must
+  produce.
+- What organization-specific standards, edge cases, exceptions, or approval
+  paths matter.
+- What examples or tests should be created with the skill.
 
-## Step 4 — Score dimensions
+Use web research only when current public context would materially reduce the
+burden on the user, such as current vendor docs, tool behavior, or known best
+practices. Do not use web research to replace organization-specific answers
+that only the user can provide.
 
-Use `references/scoring-rubric.md` to score all candidate dimensions. Emit a markdown summary table of dimension scores (dimension, score, reason) as visible output, then construct the scoring JSON internally — do not emit the JSON as visible text output.
-Use that scoring JSON to construct `metadata.research_plan` which is part of clarifications.json and schema defined in `../shared/schemas.md`.
+## Step 4: Score Candidate Knowledge Delta
 
-- Set `topic_relevance` from scoring JSON (`relevant|not_relevant`).
-- Set `dimensions_evaluated` from the count of entries in the candidate_dimension_scores array in scoring JSON
-- Set `dimension_scores` from `candidate_dimension_scores` (`name`, `score`, `reason`, `focus`).
-- If `topic_relevance` is `not_relevant`, return canonical minimal/scope-recommendation clarifications output per `../shared/schemas.md` with:
-  - `metadata.scope_recommendation: true`
-  - `metadata.scope_reason`: one-sentence explanation of why no dimensions scored high enough
-  - `metadata.warning.code: "all_dimensions_low_score"`
-  - `metadata.warning.message`: concise explanation for UI
-  - `metadata.research_plan` present and schema-valid with minimal values per `../shared/schemas.md` Scope/Error Minimal Output (including `topic_relevance: "not_relevant"`, zero counts, and empty selected arrays)
-  - zero selected dimensions.
+Privately score each candidate topic by organization-specific knowledge delta:
 
-## Step 5 - Select dimensions for research
+- `0`: answer is already obvious from the context.
+- `1`: answer would be generic best practice.
+- `2`: answer is mildly useful but unlikely to change skill behavior.
+- `3`: answer would change examples, trigger rules, or output details.
+- `4`: answer would change core workflow instructions or guardrails.
+- `5`: answer is essential to avoid the skill doing the wrong work.
 
-Apply these only when `topic_relevance` is `relevant`.
+Drop candidates scored below `3`. If no candidate remains, return a minimal
+scope recommendation with `warning.code: "scope_guard_triggered"` and
+`scope_reason` explaining that the available context does not expose useful
+organization-specific research gaps.
 
-- Select top 3-5 dimensions by score.
-- Prefer coverage quality over exact count.
-- Prefer dimensions scored 4-5.
-- Include score = 3 dimensions only when needed for minimum viable coverage.
+## Step 5: Build Final Questions
 
-Update the `metadata.research_plan` created in Step 2.
+Turn the remaining high-value candidates into concise clarification questions.
 
-- Set `selected_dimensions` as an array of `{ name, focus }` objects copied from the selected `dimension_scores` entries.
-- Set accurate counts `dimensions_selected`.
+Question rules:
 
-## Step 6 — Sequential Dimension Research
+- Prefer 4-7 total questions.
+- Keep only questions that the user can answer from organization knowledge.
+- Mark must-answer questions when the answer changes core behavior, trigger
+  conditions, required inputs, or required outputs.
+- Group questions into 1-3 sections with sequential integer section IDs
+  starting at `1`.
+- Use question IDs `Q1`, `Q2`, and so on.
+- Every question must include `id`, `title`, `text`, `must_answer`, `choices`,
+  and `refinements`.
+- Every question must have 2-4 concrete choices plus final
+  `"Other (please specify)"` with `is_other: true`.
+- Set every question `refinements` to `[]`.
+- Include `notes` only for material caveats such as missing referenced
+  documents, contradictory context, or a scope recommendation.
 
-For each selected dimension object in
-`metadata.research_plan.selected_dimensions`, research that dimension inline
-before moving to the next selected dimension.
+## Step 6: Validate And Return
 
-For each dimension:
+Before returning, validate the final object against the output contract:
 
-1. Read `references/dimensions/{name}.md`.
-2. Use the selected `{focus}`, the full user context, and any user-provided
-   reference documents to produce 500-800 words of working research notes for
-   that dimension.
-3. Frame the notes so the resulting clarification questions help answer:
-   - What should this skill enable the agent to do?
-   - When should this skill trigger?
-   - What's the expected output?
-   - Who's the typical user?
-   - Should we set up test cases?
-4. Include edge cases, input/output formats, example files, success criteria,
-   dependencies, and assumptions when they materially affect the skill.
-5. Keep the dimension notes in memory for consolidation. Do not emit them as the
-   final visible output.
+- Raw JSON object only. No markdown, no code fences, no preamble.
+- No abbreviated values such as `"..."`.
+- No intermediate structures or legacy fields:
+  `research_plan`, `research_lens`, `dimension_scores`,
+  `selected_dimensions`, `topic_relevance`, `dimensions_evaluated`.
+- Counts and priority-question metadata are internally consistent.
+- `metadata.warning` and `metadata.error` are separate channels with non-empty
+  `code` and `message` when present.
 
-## Step 7 — Consolidate
-
-- Use `references/consolidation-handoff.md` to produce `clarifications_json`.
-- Construct the result object internally using the schema below, then return it as the raw JSON object described in Step 8.
-
-  ```json
-  {
-    "dimensions_selected": "<metadata.research_plan.dimensions_selected>",
-    "question_count": "<metadata.question_count from clarifications_json>",
-    "research_output" : {
-      "version": "1",
-      "metadata": {
-        "question_count": "<metadata.question_count from clarifications_json>",
-        "section_count": "<metadata.section_count from clarifications_json>",
-        "refinement_count": "<metadata.refinement_count from clarifications_json>",
-        "must_answer_count": "<metadata.must_answer_count from clarifications_json>",
-        "priority_questions": "<metadata.priority_questions from clarifications_json>",
-        "scope_recommendation": "<metadata.scope_recommendation from clarifications_json>",
-        "scope_reason": "<metadata.scope_reason from clarifications_json>",
-        "warning": "<metadata.warning>",
-        "error": null,
-        "research_plan" : "<metadata.research_plan>"
-      },
-      "sections": "<sections from clarifications_json>",
-      "notes" : "<notes from clarifications_json>",
-      "answer_evaluator_notes": []
-    }
-  }
-  ```
-
-## Step 8 — Return final payload
-
-**CRITICAL — your final message MUST be ONLY a raw JSON object.** No markdown, no explanation, no summary, no code fences, no wrapping text. If you write anything other than a valid JSON object, the backend will REJECT your output and the entire step will FAIL. The required output schema is provided in the app-owned research prompt that invoked this skill.
-
-**NEVER abbreviate or truncate the JSON output.** Every question object MUST include ALL required fields: `id`, `title`, `text`, `must_answer`, `choices`, `refinements`. Do NOT use `"..."` as a placeholder for any field or value. Do NOT omit fields to save tokens. The backend performs strict schema validation — any missing required field will cause the entire step to FAIL.
-
-Return JSON only in this envelope shape:
-
-```json
-{
-  "status": "research_complete",
-  "dimensions_selected": 3,
-  "question_count": 5,
-  "research_output": {
-    "version": "1",
-    "metadata": { "question_count": 5, "section_count": 2, "refinement_count": 0, "must_answer_count": 2, "priority_questions": ["Q1","Q2"] },
-    "sections": [
-      {
-        "id": 1,
-        "title": "Section Title",
-        "questions": [
-          {
-            "id": "Q1",
-            "title": "Question Title",
-            "text": "Full question text — this field is REQUIRED and must not be abbreviated",
-            "must_answer": true,
-            "choices": [
-              {"id": "A", "text": "Choice text", "is_other": false},
-              {"id": "B", "text": "Other (please specify)", "is_other": true}
-            ],
-            "refinements": []
-          }
-        ]
-      }
-    ],
-    "notes": [],
-    "answer_evaluator_notes": []
-  }
-}
-```
-
-### Output Contract
-
-1. `research_output` must follow the canonical clarifications JSON object. Every question must have all required fields (`id`, `title`, `text`, `must_answer`, `choices`, `refinements`) — omitting any field causes a hard failure.
-2. Before returning:
-   - Validate against `../shared/schemas.md` exactly.
-   - Ensure `metadata.research_plan` is present and schema-valid.
-   - Ensure `metadata.research_plan.selected_dimensions` is present as `{ name, focus }` objects aligned to selected dimensions.
-   - Preserve note separation (`notes` vs `answer_evaluator_notes`). Always emit `answer_evaluator_notes: []` — this field is populated by a downstream agent after user answers are evaluated, never during research.
-   - Keep warning/error channels separate (`metadata.warning` and `metadata.error`).
-3. All-low-scores behavior:
-   - If `topic_relevance` is `not_relevant`, emit the minimal scope-recommendation payload from `../shared/schemas.md` with `metadata.scope_recommendation: true` and no selected-dimension research.
-4. If the research task fails for a selected dimension:
-   - Remove the dimension from `metadata.research_plan.selected_dimensions`.
-   - Update the score of that dimension in `metadata.research_plan.dimension_scores` as `1` with reason `Dimension research failed`. This is not an error.
-5. If all selected dimension research fails:
-   - Return the error envelope with `metadata.error.code: "all_dimensions_failed"` and `metadata.error.message: "all selected dimension research tasks failed"`.
-   - Set `metadata.research_plan.selected_dimensions` to `[]` and `dimensions_selected` to `0`.
+Return the final JSON object immediately after validation.
