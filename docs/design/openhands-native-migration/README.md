@@ -6,21 +6,22 @@
 
 Skill Builder currently uses `@anthropic-ai/claude-agent-sdk` and the Claude Code CLI binary as its agent runtime. This design describes a clean-break migration to OpenHands as the native runtime — covering both the **runtime layer** (replacing the execution engine behind the existing sidecar boundary) and the **agent layer** (replacing Claude Code-specific agent and skill files with OpenHands-native equivalents and simplifying the workflow topology).
 
-The migration replaces the Claude SDK binary with a PyInstaller-bundled `openhands-runner` binary, adopts OpenHands file-based agent and AgentSkills conventions, and simplifies the multi-agent workflow from a sub-agent fan-out pattern to named inline agents. The sidecar boundary, JSONL protocol, and all app-owned runtime contracts are preserved.
+The migration replaces the Claude SDK binary with a PyInstaller-bundled `openhands-runner` binary, adopts OpenHands file-based agent and AgentSkills conventions, and simplifies the workflow to one top-level OpenHands agent named `skill-creator`. Workflow phases, scope review, and other one-shot jobs are app-owned task prompts handled by that agent. The sidecar boundary, JSONL protocol, and all app-owned runtime contracts are preserved.
 
-The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary/README.md`. This document is the full migration plan.
+The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary/README.md`. The concrete OpenHands SDK invocation contract is detailed in `docs/design/openhands-sdk-runner/README.md`. This document is the umbrella migration design.
 
 ## Design Scope
 
 **Covers**
 
-- Target agent topology (named agents, named skills, step routing).
+- Target agent topology: one top-level OpenHands agent plus app-owned task prompt templates.
 - How Claude Code agent/skill files map to OpenHands file-based agents and AgentSkills.
 - The simplified inline research pattern replacing parallel sub-agent fan-out.
 - Multi-model support through the LiteLLM provider string model.
 - OpenHands-native runtime packaging via PyInstaller single binary.
 - The output layout change from `.claude/plugins/` to `.agents/`.
 - Which app-owned runtime contracts are preserved and how they are enforced in OpenHands.
+- Preserving visible run progress: reasoning/progress messages, tool calls, file operations, and terminal status for both one-shot and multi-message conversations.
 - What is removed: the Claude SDK dependency, Claude Code tool names, the sub-agent coordination layer, and the confirm-decisions and generate-skill agent files.
 
 **Does not cover**
@@ -38,11 +39,15 @@ The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary
 | Clean break from Claude SDK, not from Skill Builder's runtime invariants. | Removing the Claude SDK dependency does not remove the execution contracts the app depends on: structured output, one-shot step isolation, artifact visibility, per-agent tool constraints. These are explicitly re-expressed in OpenHands terms. |
 | No dual-runtime compatibility. | Maintaining two parallel execution paths adds indefinite carrying cost. A branch release with a 1-month test window validates OpenHands before it becomes the default. |
 | PyInstaller single binary for the OpenHands runner. | Tauri already bundles a native binary (the Claude CLI). The same infra handles a PyInstaller-built `openhands-runner`. No Docker, no system Python, no `uv` first-launch step. |
-| OpenHands file-based agents in `.agents/agents/` and AgentSkills in `.agents/skills/`. | OpenHands natively discovers these directories. `SKILL.md` is already in the AgentSkills standard format — no conversion needed. |
-| Tool availability moves from `allowedTools` to agent frontmatter `tools:`. | The per-agent tool constraint is preserved — it moves from Rust configuration into the agent file. `allowedTools` is not dropped; it is replaced by the OpenHands-native equivalent. |
+| One top-level OpenHands agent, `skill-creator`. | OpenHands `Agent` is the reasoning/action executor and `Conversation` is the stateful run boundary. Skill Builder should create one agent identity and vary task prompts, tools, and output schemas per request. |
+| One-shot runs are single-message conversations. | A one-shot run is not a single OpenHands `step()`. It is a `Conversation` with one user message, no app-owned follow-up questions, and a bounded `run(max_iterations=...)` lifecycle. |
+| Progress visibility is mandatory. | The UI must keep showing users that the agent is working. OpenHands reasoning/progress events, tool calls, file operations, and status updates must stream through the existing `display_item` and `agent_event` envelopes before the terminal `run_result`. |
+| Workspace agent and skills mirror OpenHands `.agents/**`. | `agent-sources/workspace/**` is copied into `.agents/**`; only `.agents/agents/skill-creator.md` and `.agents/skills/**` are runtime workspace files. |
+| Task prompts are app-owned templates. | Task-specific instructions live under `agent-sources/prompts/**`, are compiled/rendered by Rust, and are sent as explicit `Conversation.send_message(...)` content. They are not copied into `.agents/**`. |
+| Tool availability is request scoped. | The one `skill-creator` agent can run with different allowed tool sets per one-shot task. The runner enforces the request's tool list when constructing the OpenHands `Agent`. |
 | Inline research replaces parallel sub-agent fan-out. | OpenHands action-observation loop is sequential. Inline research in one context is simpler, has better cross-dimension coherence, and produces equivalent quality output. The parallel spawning machinery and merge/deduplication logic are removed. |
-| Three named agents replace six. | `research-agent` and `skill-writer-agent` replace the router, orchestrator, detailed-research, confirm-decisions, and generate-skill agents. `answer-evaluator` remains a discrete named agent between workflow steps. |
-| Confirm-decisions logic moves into `skill-writer-agent` base instructions. | Step 2 and step 3 are both one-shot calls to `skill-writer-agent`. The step number in the prompt distinguishes the phase. No separate agent file needed. |
+| One agent replaces the previous router and phase agents. | `skill-creator` replaces the router, orchestrator, detailed-research, confirm-decisions, generate-skill, and evaluator top-level agents. Phase behavior is selected by task prompt, tools, max turns, and output schema. |
+| Confirm-decisions logic moves into app prompts. | Step 2 and step 3 are both one-shot conversations with `skill-creator`. The rendered task prompt and output schema distinguish decision confirmation from skill generation. |
 | LiteLLM provider strings for multi-model support. | OpenHands routes all LLM calls through LiteLLM. Any provider string (`anthropic/claude-sonnet-4-6`, `openai/gpt-4o`, `google/gemini-2.0-flash`, `ollama/llama3.2`) works without runner changes. Settings adds a provider picker and per-provider API key. |
 | `AGENTS.md` is the always-on context file. | Both Claude Code and OpenHands read `AGENTS.md` natively. No change to the always-on instruction layer. |
 | `AskUserQuestion` gap is deferred. | Refine streaming depends on a custom interrupt tool. Until it is built, streaming sessions return a clear error. Workflow one-shot steps are unaffected. |
@@ -53,11 +58,12 @@ The app depends on a set of execution contracts that must hold regardless of whi
 
 | Contract | Current enforcement | OpenHands enforcement |
 |---|---|---|
-| One-shot steps cannot interrupt for user input | `AskUserQuestion` absent from `allowedTools` for steps 0–3 | `AskUserQuestion` absent from `tools:` in all workflow step agent frontmatter |
+| One-shot steps cannot interrupt for user input | `AskUserQuestion` absent from `allowedTools` for steps 0–3 | One-shot conversation requests omit the app-owned question tool and the runner rejects it for `mode: "one-shot"` |
 | Structured output is required for steps 0–3 | Prompt instructions; frontend parser validates `run_result` payload | Same prompt instructions; `extractJsonFromText` fallback + `structured_output_missing` retry prompt if first attempt produces invalid JSON |
 | Artifact parsing errors are app-visible | Parser emits `run_result` error event over JSONL | Unchanged — same JSONL protocol, same `run_result` envelope |
+| Users can see work in progress | Claude SDK messages become display items and agent events while the run is active | OpenHands conversation events are streamed as normalized display items and agent events for one-shot and multi-message conversations |
 | Per-step turn budget is enforced | `max_turns` in `SidecarConfig` | `max_iterations` in `RunConfig`, populated from the same `max_turns` field |
-| Tool availability is scoped per agent | `allowedTools` in `SidecarConfig`, per step | `tools:` in each agent's frontmatter |
+| Tool availability is scoped per task | `allowedTools` in `SidecarConfig`, per step | Request-level tool list used to construct the OpenHands `Agent` |
 
 Nothing in this migration removes a runtime invariant. The mechanism changes; the contract does not.
 
@@ -73,79 +79,120 @@ step_config.rs → skill-builder agent
   └── step 3: Skill tool → generate-skill
 ```
 
-Between steps the frontend calls `answer-evaluator` as a discrete agent.
+Between steps the frontend currently calls `answer-evaluator` as a discrete
+agent; the target OpenHands design converts that gate into an
+`answer_evaluation` task prompt handled by `skill-creator`.
 
 All tool names (`Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash`, `Agent`, `Skill`, `AskUserQuestion`) are Claude Code-specific. The `allowedTools` list in `step_config.rs` enforces per-step tool access. `permissionMode` is a Claude Code permission concept. Plugin discovery in the sidecar resolves `.claude/plugins/` paths from installed plugin directories.
 
 ## Target Architecture
 
 ```text
-step_config.rs → [agent name per step]
-  ├── step 0: research-agent      [research skill, initial pass]
-  ├── step 1: research-agent      [research skill, refinement pass]
-  ├── step 2: skill-writer-agent  [decisions phase — inline instructions]
-  └── step 3: skill-writer-agent  [skill-creator skill]
-
-between 0→1 and 1→2: answer-evaluator (discrete frontend call, unchanged)
+step_config.rs → task kind + prompt + schema
+  └── openhands-runner
+      └── Agent(name: skill-creator)
+          └── Conversation(workspace: skill workspace)
+              ├── step 0 task: scope/research initial pass
+              ├── answer-evaluation task: answer quality review
+              ├── step 1 task: research refinement pass
+              ├── step 2 task: decision confirmation
+              └── step 3 task: skill generation
 ```
+
+Each item above is a separate one-shot conversation: the runner constructs the
+same top-level `skill-creator` agent, sends one rendered task prompt, streams
+conversation events as normalized app-visible progress, runs to completion with
+a bounded iteration count, and returns one terminal `run_result`. The app can
+later use the same runner to create a long-lived conversation for refine chat;
+that mode keeps the same agent and workspace but permits repeated
+`send_message` calls and the app-owned question tool.
 
 The sidecar boundary, JSONL protocol, and `run_result`/`display_item` envelope shapes are unchanged. Rust and React do not observe the agent runtime change.
 
+## Progress Visibility Contract
+
+The OpenHands migration must preserve the current UI behavior where users can
+watch the agent work instead of waiting on an opaque spinner. This applies to
+both execution modes:
+
+- **One-shot:** scope review, workflow steps, answer evaluation, eval runs, and
+  background analysis stream progress until the terminal `run_result`.
+- **Conversation:** refine chat or future interactive sessions stream the same
+  event types across multiple user messages.
+
+The runner must emit JSONL progress events for:
+
+- agent/conversation start and completion;
+- assistant reasoning/progress messages when OpenHands exposes them;
+- tool-call start with tool name and short summary;
+- tool observations/results when safe to show;
+- file operations and shell commands as displayable activity;
+- warnings, validation failures, and retry attempts;
+- terminal success, error, canceled, or max-turns status.
+
+The Node `OpenHandsEventProcessor` maps those raw OpenHands events into the
+existing app protocol. React should continue to render the normalized
+`display_item`, `agent_event`, `refine_question`, and `run_result` envelopes; it
+must not consume OpenHands-native event shapes directly.
+
 ## Agent Model
 
-OpenHands file-based agents live in `<workspace-dir>/.agents/agents/*.md`. Each file has YAML frontmatter and a Markdown body that becomes the system prompt. The runner treats the current workspace directory as the project root and registers agents from that workspace's `.agents/agents/` directory at runtime via `register_file_agents()`.
+OpenHands still constructs an `Agent`, but Skill Builder owns the agent
+identity. The runner always creates one top-level agent named `skill-creator`.
+OpenHands `Conversation` is the stateful execution boundary: a one-shot request
+creates a conversation, sends one prompt, runs until finish, extracts the final
+message, emits a terminal `run_result`, and exits.
 
-### `research-agent.md`
+Only `skill-creator.md` lives in `<workspace-dir>/.agents/agents/`. Task
+instructions are app-owned prompt templates under `agent-sources/prompts/**`.
+Rust compiles those templates with `include_str!`, renders task inputs, and sends
+the rendered text as the explicit user message.
+
+### `skill-creator.md`
 
 ```markdown
 ---
-name: research-agent
+name: skill-creator
 description: >
-  Produces clarification questions for skill-building by researching
-  relevant dimensions inline and consolidating them into clarifications.json.
-  Also handles refinement passes when answer-evaluation.json is present.
+  Executes Skill Builder skill creation tasks, including scope review,
+  research, answer evaluation, decision confirmation, and skill generation.
 tools:
   - file_editor
   - terminal
 skills:
   - research
----
-```
-
-The body instructs the agent to use the `research` skill. The presence or absence of `answer-evaluation.json` in the workspace context dir tells the agent whether this is an initial research pass (step 0) or a refinement pass (step 1). No separate agent file is needed for refinements.
-
-### `answer-evaluator.md`
-
-No structural change. The agent reads `clarifications.json`, evaluates answer quality, and writes `answer-evaluation.json`. Tool list changes from Claude Code names to `file_editor`.
-
-### `skill-writer-agent.md`
-
-```markdown
----
-name: skill-writer-agent
-description: >
-  Step 2: Analyzes clarification answers and surfaces structured decisions
-  for user review. Step 3: Uses the skill-creator skill to write SKILL.md
-  and base evals from approved decisions.
-tools:
-  - file_editor
-  - terminal
-skills:
   - skill-creator
 ---
 ```
 
-The base instructions contain the confirm-decisions logic (currently in `confirm-decisions.md`). The prompt passed for step 2 asks for decisions output. The prompt passed for step 3 asks for skill generation. The `skill-creator` skill is active for step 3 via the `skills:` frontmatter.
+The body contains shared rules that apply to every task: obey the rendered task
+prompt, respect the output schema, never ask user questions during one-shot
+runs, and write only the files requested by the current task.
+
+### App-Owned Prompt Templates
+
+Task prompt templates live in `agent-sources/prompts/**` and are not copied into
+the workspace.
+
+| File | Task kind | Purpose |
+|---|---|---|
+| `scope-review.txt` | `scope_review` | Reviews whether a proposed skill is too broad, vague, or focused and returns split recommendations. |
+| `research.txt` | `research` | Produces initial clarification questions using the `research` AgentSkill. |
+| `research-refinement.txt` | `research_refinement` | Refines clarification questions using answer-evaluation results. |
+| `answer-evaluation.txt` | `answer_evaluation` | Evaluates answer quality and writes `answer-evaluation.json`. |
+| `decision-confirmation.txt` | `decision_confirmation` | Produces `decisions.json` from approved research and answers. |
+| `skill-generation.txt` | `skill_generation` | Uses the `skill-creator` AgentSkill to write `SKILL.md` and base evals. |
+| `skill-creator-user-suffix.txt` | all messages | Provides a no-op per-message suffix for future stable invariants. |
 
 ### Deleted agents
 
 | Agent file | Reason |
 |---|---|
-| `skill-content-researcher/agents/skill-builder.md` | Router — eliminated, step routing moves to `step_config.rs` |
-| `skill-content-researcher/agents/research-orchestrator` (implicit) | Absorbed into `research-agent` |
-| `skill-content-researcher/agents/detailed-research.md` | Absorbed into `research-agent` using same research skill |
-| `skill-content-researcher/agents/confirm-decisions.md` | Absorbed into `skill-writer-agent` base instructions |
-| `skill-creator/agents/generate-skill.md` | Absorbed into `skill-writer-agent` step 3 |
+| `skill-content-researcher/agents/skill-builder.md` | Router — eliminated, top-level agent is `skill-creator` and task routing moves to app-owned request metadata |
+| `skill-content-researcher/agents/research-orchestrator` (implicit) | Converted into `research.txt` prompt and inline research instructions |
+| `skill-content-researcher/agents/detailed-research.md` | Converted into `research-refinement.txt` prompt using the same research skill |
+| `skill-content-researcher/agents/confirm-decisions.md` | Converted into `decision-confirmation.txt` prompt |
+| `skill-creator/agents/generate-skill.md` | Converted into `skill-generation.txt` prompt |
 
 ## Skill Model
 
@@ -170,7 +217,7 @@ For the refinement pass (step 1), the same skill is used with the `answer-evalua
 
 ### `skill-creator/SKILL.md`
 
-Used by `skill-writer-agent` in step 3. Writes `SKILL.md` and base evals from `decisions.json` and `clarifications.json`. No structural change to the skill's output contract.
+Used by the `skill_generation` one-shot task in step 3. Writes `SKILL.md` and base evals from `decisions.json` and `clarifications.json`. No structural change to the skill's output contract.
 
 ### Retained reference files
 
@@ -182,23 +229,32 @@ All dimension reference files (`references/dimensions/*.md`), `references/scorin
 |---|---|---|
 | `Read`, `Write`, `Edit` | `file_editor` | Single built-in tool covers all file operations |
 | `Glob`, `Grep`, `Bash` | `terminal` | Bash execution covers search and shell operations |
-| `Agent`, `Skill` | Not needed | Inline execution replaces sub-agent delegation |
+| `Agent`, `Skill` | Not needed as Claude Code tools | App-owned prompts and AgentSkills replace Claude sub-agent/tool delegation |
 | `AskUserQuestion` | Deferred — custom tool | Required for refine streaming only; not used in one-shot workflow steps |
 
-`allowedTools` in `SidecarConfig` is replaced by `tools:` in agent frontmatter. The per-agent tool constraint is preserved — it moves from Rust configuration into the agent file. `permissionMode` is removed with no equivalent needed: OpenHands does not have a global permission mode; tool access is scoped to each agent's frontmatter declaration. `requiredPlugins` is replaced by `skills:` in agent frontmatter.
+`allowedTools` remains an app-owned request field during the clean-break
+implementation because tool scope varies by task. The runner maps that list to
+OpenHands `Tool(...)` instances when constructing the one `skill-creator`
+agent. Request validation is the runtime authority.
+
+`permissionMode` is removed with no equivalent needed: OpenHands does not have
+a global Claude Code permission mode. `requiredPlugins` is replaced by the
+workspace `.agents/skills/` layout plus app-owned task prompt selection.
 
 ## Workflow Step Routing
 
-`step_config.rs` maps step numbers to agent names instead of routing through `skill-builder`. The `required_plugins` field is replaced by the agent's `skills:` frontmatter — the runner resolves skill paths from `.agents/skills/`.
+`step_config.rs` maps app operations to task kinds, prompt templates, tool sets,
+max turns, and output schemas. It no longer maps workflow phases to separate
+top-level agents.
 
-| Step | Agent | Skill | Output file |
-|---|---|---|---|
-| 0 | `research-agent` | `research` | `context/clarifications.json` |
-| — | `answer-evaluator` | — | `answer-evaluation.json` |
-| 1 | `research-agent` | `research` | `context/clarifications.json` (refined) |
-| — | `answer-evaluator` | — | `answer-evaluation.json` |
-| 2 | `skill-writer-agent` | — | `context/decisions.json` |
-| 3 | `skill-writer-agent` | `skill-creator` | `SKILL.md` + base evals |
+| Operation | Task kind | Prompt template | Skills | Output file |
+|---|---|---|---|---|
+| Scope validate | `scope_review` | `scope-review.txt` | none | returned JSON only |
+| Step 0 | `research` | `research.txt` | `research` | `context/clarifications.json` |
+| Answer eval | `answer_evaluation` | `answer-evaluation.txt` | none | `answer-evaluation.json` |
+| Step 1 | `research_refinement` | `research-refinement.txt` | `research` | `context/clarifications.json` refined |
+| Step 2 | `decision_confirmation` | `decision-confirmation.txt` | none | `context/decisions.json` |
+| Step 3 | `skill_generation` | `skill-generation.txt` | `skill-creator` | `SKILL.md` + base evals |
 
 ## Multi-Model Support
 
@@ -247,7 +303,7 @@ The workspace directory path is unchanged. Agent and skill artifacts move from `
 
 ## AskUserQuestion Gap
 
-`AskUserQuestion` is used only in refine streaming sessions (`stream-session.ts`) and in the `confirm-decisions` agent (now absorbed into `skill-writer-agent`). In `skill-writer-agent`, decisions are returned as structured output and rendered by the frontend without requiring a mid-run interrupt. No blocking question tool is needed for steps 2 or 3.
+`AskUserQuestion` is used only in refine streaming sessions (`stream-session.ts`) and the old Claude confirm-decisions flow. In the OpenHands design, decision confirmation is a `decision_confirmation` one-shot task handled by `skill-creator` with the `decision-confirmation.txt` prompt. Decisions are returned as structured output and rendered by the frontend without requiring a mid-run interrupt. No blocking question tool is needed for steps 2 or 3.
 
 Refine streaming remains broken until a custom `AskUserQuestion` tool is implemented as a registered OpenHands tool that emits a `refine_question` JSONL event and blocks for an answer. That work is tracked separately.
 
@@ -258,14 +314,13 @@ Refine streaming remains broken until a custom `AskUserQuestion` tool is impleme
 | `@anthropic-ai/claude-agent-sdk` npm package | Runtime replaced by `openhands-runner` binary |
 | Claude Code CLI binary in Tauri resources | Replaced by `openhands-runner` |
 | `pathToClaudeCodeExecutable` in `SidecarConfig` | Replaced by `resolve_openhands_runner_path` |
-| `allowedTools` in `SidecarConfig` and `step_config.rs` | Replaced by `tools:` in agent frontmatter — constraint is preserved, not dropped |
-| `permissionMode` in `SidecarConfig` | Claude Code-specific concept with no OpenHands equivalent; per-agent tool scoping via frontmatter covers the same ground |
-| `requiredPlugins` in `SidecarConfig` | Replaced by `skills:` in agent frontmatter |
+| `permissionMode` in `SidecarConfig` | Claude Code-specific concept with no OpenHands equivalent; task-level tool scoping covers the same ground |
+| `requiredPlugins` in `SidecarConfig` | Replaced by `.agents/skills/` deployment plus app-owned task prompt selection |
 | `.claude/plugins/` output layout | Replaced by `.agents/` |
 | `plugin.json` and `.claude-plugin/` | Not needed by OpenHands |
 | `skill-builder.md` agent | Router — step routing moves to `step_config.rs` |
-| `confirm-decisions.md` agent | Absorbed into `skill-writer-agent` |
-| `generate-skill.md` agent | Absorbed into `skill-writer-agent` step 3 |
+| `confirm-decisions.md` agent | Converted into `decision-confirmation.txt` prompt |
+| `generate-skill.md` agent | Converted into `skill-generation.txt` prompt |
 | Parallel sub-agent spawning instructions | Replaced by inline sequential execution |
 | Sub-agent merge and deduplication logic | Not needed with inline execution |
 | `options.ts` Claude SDK option builder | Runner builds OpenHands config directly |
@@ -278,13 +333,15 @@ Refine streaming remains broken until a custom `AskUserQuestion` tool is impleme
 | `app/sidecar/openhands/runner.py` | OpenHands runner — reads one JSON request, emits JSONL events |
 | `app/sidecar/runtime/openhands-runtime.ts` | Spawns runner binary, maps JSONL to runtime sink |
 | `app/sidecar/openhands-event-processor.ts` | Maps OpenHands events to sidecar protocol envelopes |
-| `app/src-tauri/src/agents/sidecar.rs` | `SidecarConfig` — `allowedTools`, `permissionMode`, `requiredPlugins` removed; `modelBaseUrl` added |
-| `app/src-tauri/src/commands/workflow/step_config.rs` | Step-to-agent-name routing table |
-| `agent-sources/plugins/skill-content-researcher/agents/` | Agent files to rewrite in OpenHands format |
-| `agent-sources/plugins/skill-creator/agents/` | Agent files to rewrite or remove |
+| `app/src-tauri/src/agents/sidecar.rs` | `SidecarConfig` carrying rendered prompt, user suffix, model settings, task tools, and workspace paths |
+| `app/src-tauri/src/commands/workflow/step_config.rs` | Step-to-task routing table |
+| `agent-sources/workspace/agents/skill-creator.md` | One file-based OpenHands agent copied into `.agents/agents/` |
+| `agent-sources/workspace/skills/` | File-based AgentSkills copied into `.agents/skills/` |
+| `agent-sources/prompts/` | App-owned prompt templates compiled/rendered by code |
 | `agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md` | Inline research — sub-agent sections removed |
 | `agent-sources/plugins/skill-creator/skills/skill-creator/SKILL.md` | Skill writer — no structural change |
 | `docs/design/agent-runtime-boundary/README.md` | Runtime boundary contract (prerequisite) |
+| `docs/design/openhands-sdk-runner/README.md` | OpenHands SDK invocation contract |
 
 ## Risks
 

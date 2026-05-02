@@ -1,407 +1,277 @@
 # OpenHands Native Migration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development`. Do not implement this plan as a single-agent linear edit pass. Each task below must be assigned to an isolated implementation subagent with a narrow file scope and its own commit.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement each child slice. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Issue:** VU-1145
 
-**Goal:** Replace Skill Builder's Claude Code-specific runtime, agent topology, and generated workspace layout with the OpenHands-native design in `docs/design/openhands-native-migration/README.md`.
+**Goal:** Finish the clean-break migration from Claude SDK workflow execution to an OpenHands-native runtime while preserving Skill Builder's app-owned runtime contracts.
 
-**Architecture:** Keep the app-owned Rust/frontend boundary stable: the Node sidecar still emits the existing JSONL `display_item`, `agent_event`, `refine_question`, and `run_result` envelopes. Inside that boundary, make OpenHands the native one-shot workflow runtime, move workflow routing to named OpenHands file agents, emit artifacts under `.agents/`, and remove Claude SDK/plugin compatibility once parity is validated. Refine streaming remains explicitly unsupported until the separate `AskUserQuestion` custom-tool migration lands.
+**Architecture:** VU-1145 is an accumulation branch. Each implementation slice must be built in a child branch/worktree off `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`, tested independently, then merged back into the VU-1145 branch. The final runtime has one top-level OpenHands agent named `skill-creator`; task behavior comes from app-rendered prompt templates, request metadata, selected tools, output schemas, and file-based skills under `.agents/skills/`.
 
-**Tech Stack:** Tauri v2, Rust, React/TypeScript, Node.js sidecar, Python OpenHands runner, PyInstaller, Vitest, cargo test, agent structural tests.
+**Tech Stack:** Tauri v2, Rust, React/TypeScript, Node.js sidecar, Python OpenHands SDK runner, PyInstaller, Vitest, cargo test, agent structural tests, Promptfoo/OpenCode evals.
 
 ---
 
 ## Source Context
 
-- Linear issue: VU-1145
-- Functional spec: `not_applicable` per user-approved User Flow gate waiver for this runtime/platform issue.
+- Parent Linear issue: `VU-1145`
+- Next child issue: `VU-1146`
 - Primary design: `docs/design/openhands-native-migration/README.md`
-- Runtime boundary prerequisite: `docs/design/agent-runtime-boundary/README.md`
-- Repo implementation plan: `docs/plan/2026-05-02-vu-1145-openhands-native-migration.md`
-- Earlier completed groundwork: VU-1133 and VU-1143
-- Superseded plan: `docs/superpowers/plans/2026-05-01-openhands-runtime-migration.md`
+- SDK runner design: `docs/design/openhands-sdk-runner/README.md`
+- Runtime boundary design: `docs/design/agent-runtime-boundary/README.md`
+- Model settings design: `docs/design/model-settings/README.md`
+- Validate child plan: `docs/superpowers/plans/2026-05-02-scope-review-openhands-validate.md`
 
-The older plan kept Claude as a compatibility fallback while adding OpenHands as a selectable provider. This plan follows the newer clean-break design: OpenHands becomes the native workflow runtime, generated artifacts move from `.claude/plugins/` to `.agents/`, and Claude Code router/sub-agent mechanics are removed.
+## Current State Snapshot
 
-## Execution Mode
+This snapshot reflects the codebase state inspected on 2026-05-02 before starting VU-1146.
 
-Implementation must run in subagent mode.
+| Area | Status | Evidence |
+|---|---|---|
+| Runtime boundary types | Partial | `app/sidecar/runtime/types.ts` has `modelBaseUrl`, `llm`, `pathToOpenHandsRunner`, and `runtimeProvider`, but does not yet carry `taskKind` or `userMessageSuffix`. |
+| Sidecar config validation | Partial | `app/sidecar/config.ts` validates `modelBaseUrl` and `llm`, but not `taskKind` or `userMessageSuffix`. |
+| OpenHands runtime adapter | Partial | `app/sidecar/runtime/openhands-runtime.ts` spawns the packaged runner when present and serializes `llm`, but does not serialize `taskKind` or `userMessageSuffix`. |
+| Python runner | Partial | `app/sidecar/openhands/runner.py` builds `LLM`, `AgentContext`, `Agent`, and `Conversation`, but still calls `load_project_skills`, does not pass `user_message_suffix`, does not set `load_public_skills=False`, does not enforce `skill-creator`, and still labels itself a dev-only spike. |
+| Runner packaging | Mostly done | `app/sidecar/openhands/build.sh`, `app/sidecar/openhands/requirements.txt`, `app/sidecar/build.js`, and `app/src-tauri/src/agents/sidecar.rs` stage and resolve `sidecar/dist/openhands/openhands-runner`. |
+| Workspace startup/deploy | Partial | `init_workspace` already creates/refeshes the app workspace and `workflow/deploy.rs` copies plugin agents/skills into `.agents/**`; the source layout still comes from `agent-sources/plugins/**`, not the final `agent-sources/workspace/**` plus `agent-sources/prompts/**` contract. |
+| Workflow routing | Not done | `app/src-tauri/src/commands/workflow/step_config.rs` still routes to `research-agent`, `skill-writer-agent`, and `answer-evaluator`. |
+| Create-skill Validate | Not done | `app/src-tauri/src/commands/skill/scope_review.rs` still reads `anthropic_api_key` / `preferred_model` and posts directly to `https://api.anthropic.com/v1/messages`. |
+| Model settings UI | Mostly done | `app/src/lib/model-catalog.ts` and `app/src/components/settings/sdk-section.tsx` use `models.dev`, provider/model dropdowns, reasoning/tool-calling filters, model details, and hidden backend-owned `usageId`. Remaining check: Request Options UI lacks visible temperature and max-output controls. |
+| Eval coverage | Partial | Promptfoo/OpenCode packages exist and static OpenHands assertions exist, but packages still name `research-agent` / `skill-writer-agent` and there is not yet an automated live OpenHands workflow smoke for step 0 and step 3. |
+| Repo docs/map | Partial | Runtime/model designs have been updated. `repo-map.json` still describes mixed Claude/OpenHands runtime and old plugin-hosted agent prompts. |
 
-- Assign each numbered task to a scoped implementation subagent.
-- Do not let one subagent own both implementation and quality review for the same task.
-- Keep task commits small and reviewable.
-- After every task, run the listed deterministic tests before starting the next task.
-- If a task changes scope, update this plan before continuing.
+## Execution Rules
 
-## Independent Quality Gates
+- [ ] Every child slice starts from the current VU-1145 worktree:
 
-Each implementation task has two gates:
+```bash
+cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-clean-break-agent-runtime
+./scripts/worktree.sh feature/<child-branch-name>
+```
 
-1. **Implementation gate:** the task subagent runs the task-specific commands listed in that task.
-2. **Independent review gate:** a separate quality subagent reviews the diff for that task, checks the task acceptance bullets, and reruns or inspects the relevant tests without sharing implementation context.
+- [ ] Implement and test inside the child worktree.
+- [ ] Merge the child branch back into `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime` only after deterministic tests pass.
+- [ ] Do not mark a task complete unless its tests have run or the skipped prerequisite is written down.
+- [ ] Do not substitute manual UI testing for the OpenHands workflow smoke/eval.
+- [ ] Keep marketplace/import compatibility out of workflow-runtime slices unless the slice explicitly calls it out.
 
-The independent quality subagent must verify:
+## Slice 1: VU-1146 Scope Review Validate
 
-- no Claude Code-only runtime, tool, plugin, or prompt dependency remains in the changed workflow path;
-- one-shot workflow requests cannot ask user questions;
-- generated workflow artifacts use `.agents/agents/` and `.agents/skills/`;
-- app-facing JSONL envelopes remain `display_item`, `agent_event`, `refine_question`, and `run_result`;
-- all changed scenarios are covered by deterministic tests or eval/smoke automation.
+Use this slice before continuing the broader workflow migration.
 
-Do not proceed to PR preparation until every task has an implementation gate and an independent review gate recorded in the implementation notes.
+**Plan:** `docs/superpowers/plans/2026-05-02-scope-review-openhands-validate.md`
 
-## Manual Test Policy
+**Branch:**
 
-No manual test is required for this migration. The required coverage is deterministic tests plus automated OpenHands smoke/eval coverage. If implementation discovers a scenario that cannot be validated through automation, pause and amend this plan with the exact manual test before performing it.
+```bash
+./scripts/worktree.sh feature/vu-1146-use-openhands-runner-for-create-skill-scope-validation
+```
 
-## Current State To Preserve
+**Files:**
 
-- `app/sidecar/runtime/types.ts` already defines the runtime boundary and rejects `AskUserQuestion` in one-shot runs.
-- `app/sidecar/runtime/openhands-runtime.ts`, `app/sidecar/openhands/runner.py`, and `app/sidecar/openhands-event-processor.ts` exist as the VU-1143 spike.
-- `app/src-tauri/src/commands/workflow/step_config.rs` still routes workflow steps through Claude Code agent names and Claude tool names.
-- `agent-sources/plugins/skill-content-researcher/` and `agent-sources/plugins/skill-creator/` still use `.claude-plugin/plugin.json`, Claude Code agents, and sub-agent fan-out instructions.
-- `app/src-tauri/src/skill_paths.rs`, `app/src-tauri/src/marketplace_manifest.rs`, and app startup/deploy code still generate and read Claude plugin layout.
-- Settings still use `anthropic_api_key` and bare/preconfigured Claude model strings as the primary runtime configuration.
+- Create: `agent-sources/prompts/scope-review.txt`
+- Create: `agent-sources/prompts/skill-creator-user-suffix.txt`
+- Modify: `app/src-tauri/src/commands/skill/scope_review.rs`
+- Modify: `app/src-tauri/src/agents/sidecar.rs`
+- Modify: `app/sidecar/config.ts`
+- Modify: `app/sidecar/runtime/types.ts`
+- Modify: `app/sidecar/runtime/openhands-runtime.ts`
+- Modify: `app/sidecar/openhands/runner.py`
+- Modify: `app/sidecar/openhands-event-processor.ts`
 
-## File Structure
+**Required behavior:**
 
-- Modify `app/sidecar/config.ts`: replace Claude-specific runtime fields with OpenHands-native request fields while keeping old fields only where non-workflow paths still compile during intermediate commits.
-- Modify `app/sidecar/runtime/types.ts`: add OpenHands-native fields such as `modelBaseUrl`, keep one-shot contracts, and make unsupported streaming explicit.
-- Modify `app/sidecar/runtime/openhands-runtime.ts`: resolve the bundled runner path, pass LiteLLM model/key/base URL, map `maxTurns` to `max_iterations`, and remove dev-only `python3 runner.py` assumptions.
-- Modify `app/sidecar/openhands/runner.py`: use OpenHands file agents and AgentSkills from `.agents/`, emit raw JSONL only on stdout, and keep JSON extraction in the Node event processor.
-- Modify `app/sidecar/openhands-event-processor.ts`: preserve current display/run-result envelopes and add coverage for usage/error/status events exposed by the runner.
-- Modify `app/sidecar/build.js`: build or stage the OpenHands runner and stop copying the Claude SDK binary after the switch.
-- Modify `app/src-tauri/src/agents/sidecar.rs`: replace `resolve_sdk_cli_path` with `resolve_openhands_runner_path` and remove `pathToClaudeCodeExecutable` after sidecar callers stop using it.
-- Modify `app/src-tauri/src/commands/workflow/step_config.rs`: route steps 0-3 to `research-agent`, `research-agent`, `skill-writer-agent`, and `skill-writer-agent`.
-- Modify `app/src-tauri/src/commands/workflow/runtime.rs`: stop injecting Claude router directives, pass OpenHands-native agent names, set `runtime_provider` to `openhands`, and keep `AskUserQuestion` out of one-shot requests.
-- Modify `app/src-tauri/src/commands/workflow/settings.rs`, `app/src-tauri/src/types/settings.rs`, `app/src-tauri/src/db/migrations.rs`, `app/src-tauri/src/db/settings.rs`, `app/src/hooks/use-settings-form.ts`, and `app/src/pages/settings.tsx`: introduce provider/model/key/base-URL settings for LiteLLM provider strings.
-- Modify `app/src-tauri/src/skill_paths.rs`, `app/src-tauri/src/marketplace_manifest.rs`, and workspace deployment code under `app/src-tauri/src/commands/workflow/`: generate `.agents/agents/` and `.agents/skills/` for workflow outputs.
-- Modify `agent-sources/plugins/skill-content-researcher/agents/` and `agent-sources/plugins/skill-creator/agents/`: replace five Claude Code workflow agents with the OpenHands-native three-agent topology.
-- Modify `agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md`: remove parallel sub-agent fan-out and replace it with inline dimension research.
-- Modify `repo-map.json`, `TEST_MAP.md`, `README.md`, and design docs only where the implemented structure or commands change.
+- [ ] Preserve existing Validate semantics: user-clicked, advisory, no hard gate, no create-dialog UI rewrite.
+- [ ] Route `review_skill_scope` through the OpenHands one-shot runner.
+- [ ] Reuse the existing app startup workspace creation/refresh path; do not create a temporary validation workspace.
+- [ ] Add `taskKind: "scope_review"` and `userMessageSuffix` to the runner request contract.
+- [ ] Load `.agents/agents/skill-creator.md` as `system_message_suffix`.
+- [ ] Load file-based skills with OpenHands `load_skills_from_dir(".agents/skills")`.
+- [ ] Set `load_public_skills=False`.
 
-## Task 1: Pin Runtime Contract And Runner Shape
+**Verification:**
+
+```bash
+markdownlint docs/superpowers/plans/2026-05-02-scope-review-openhands-validate.md docs/design/openhands-sdk-runner/README.md
+cd app/sidecar && npx vitest run __tests__/config.test.ts __tests__/runtime-types.test.ts __tests__/openhands-runtime.test.ts __tests__/openhands-runner.test.ts __tests__/openhands-event-processor.test.ts
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill::scope_review
+cd app && npx vitest run src/__tests__/hooks/use-scope-advisor.test.ts src/__tests__/components/new-skill-dialog.test.tsx src/__tests__/components/scope-advisor.test.tsx
+```
+
+**Merge-back gate:**
+
+- [ ] VU-1146 branch is merged into VU-1145.
+- [ ] `scope_review.rs` no longer contains direct Anthropic HTTP calls.
+- [ ] The VU-1145 umbrella plan still reflects the merged code before starting Slice 2.
+
+## Slice 2: Harden The OpenHands Runner Contract
+
+This slice finishes the reusable runner behavior after the Validate path has proven it.
 
 **Files:**
 
 - Modify: `app/sidecar/runtime/types.ts`
 - Modify: `app/sidecar/config.ts`
-- Modify: `app/sidecar/openhands/runner.py`
 - Modify: `app/sidecar/runtime/openhands-runtime.ts`
+- Modify: `app/sidecar/openhands/runner.py`
+- Modify: `app/sidecar/openhands-event-processor.ts`
 - Test: `app/sidecar/__tests__/runtime-types.test.ts`
 - Test: `app/sidecar/__tests__/config.test.ts`
 - Test: `app/sidecar/__tests__/openhands-runtime.test.ts`
+- Test: `app/sidecar/__tests__/openhands-runner.test.ts`
+- Test: `app/sidecar/__tests__/openhands-event-processor.test.ts`
 
-- [ ] Update `RuntimeRequestBase` in `app/sidecar/runtime/types.ts` to carry `modelBaseUrl?: string` and document that `model` is a full LiteLLM provider string for OpenHands, for example `anthropic/claude-sonnet-4-6`.
-- [ ] Update `SidecarConfig` in `app/sidecar/config.ts` to accept `modelBaseUrl?: string`.
-- [ ] Add validation in `parseSidecarConfig`:
+**Required behavior:**
 
-```ts
-assertOptString(c, "modelBaseUrl");
-```
+- [ ] Remove the "dev-only spike" runner warning once production packaging is the supported path.
+- [ ] Reject OpenHands requests whose `agentName` is not `skill-creator`.
+- [ ] Use only `.agents/agents/skill-creator.md` for base agent identity.
+- [ ] Strip YAML frontmatter before assigning `AgentContext.system_message_suffix`.
+- [ ] Pass `request.get("userMessageSuffix") or ""` as `AgentContext.user_message_suffix`.
+- [ ] Remove `load_project_skills`; only deployed workspace skills are visible.
+- [ ] Load skills with `load_skills_from_dir(str(Path(workspace_skill_dir) / ".agents" / "skills"))`.
+- [ ] Pass `list(agent_skills.values())` to `AgentContext.skills`.
+- [ ] Set `load_public_skills=False`.
+- [ ] Keep tools on `Agent(tools=...)`, not `AgentContext`.
+- [ ] Emit progress/tool/file/status JSONL events before terminal result whenever OpenHands exposes them.
+- [ ] Keep `structured_output_missing` extraction and retry/error behavior in Node, not Python.
 
-- [ ] Add config tests:
-
-```ts
-it("accepts modelBaseUrl for OpenHands-compatible providers", () => {
-  expect(parseSidecarConfig({ ...baseConfig, modelBaseUrl: "http://localhost:11434" }).modelBaseUrl).toBe(
-    "http://localhost:11434",
-  );
-});
-
-it("rejects non-string modelBaseUrl", () => {
-  expect(() => parseSidecarConfig({ ...baseConfig, modelBaseUrl: 123 })).toThrow(
-    "Invalid SidecarConfig: modelBaseUrl must be a string",
-  );
-});
-```
-
-- [ ] Update `app/sidecar/openhands/runner.py` request parsing so it accepts `modelBaseUrl`, `maxTurns`, `agentName`, `workspaceRootDir`, and `workspaceSkillDir`.
-- [ ] In `runner.py`, map `maxTurns` to OpenHands `max_iterations`; default to 50 when absent.
-- [ ] Keep the stdout protocol limited to these JSONL shapes:
-
-```json
-{"type":"openhands_event","event_kind":"message","text":"...","timestamp":123}
-{"type":"openhands_event","event_kind":"tool_call","tool_name":"...","summary":"...","timestamp":123}
-{"type":"openhands_result","status":"success","result_text":"...","structured_output":null,"timestamp":123}
-```
-
-- [ ] In `app/sidecar/runtime/openhands-runtime.ts`, pass `modelBaseUrl` through the serialized request and keep API keys only in the child environment/request, never in stderr.
-- [ ] Run: `cd app/sidecar && npx vitest run __tests__/runtime-types.test.ts __tests__/config.test.ts __tests__/openhands-runtime.test.ts`
-- [ ] Commit:
+**Verification:**
 
 ```bash
-git add app/sidecar/runtime/types.ts app/sidecar/config.ts app/sidecar/openhands/runner.py app/sidecar/runtime/openhands-runtime.ts app/sidecar/__tests__
-git commit -m "Prepare OpenHands runtime contract for native runner"
+cd app/sidecar && npx vitest run __tests__/runtime-types.test.ts __tests__/config.test.ts __tests__/openhands-runtime.test.ts __tests__/openhands-runner.test.ts __tests__/openhands-event-processor.test.ts
+cd app/sidecar && python3 -m py_compile openhands/runner.py
 ```
 
-## Task 2: Replace Workflow Step Routing With Named OpenHands Agents
+## Slice 3: Move Agent Sources To Final OpenHands Layout
+
+This slice changes prompt/source ownership without changing workflow semantics.
+
+**Files:**
+
+- Create: `agent-sources/workspace/agents/skill-creator.md`
+- Create or update: `agent-sources/prompts/research.txt`
+- Create or update: `agent-sources/prompts/research-refinement.txt`
+- Create or update: `agent-sources/prompts/answer-evaluation.txt`
+- Create or update: `agent-sources/prompts/decision-confirmation.txt`
+- Create or update: `agent-sources/prompts/skill-generation.txt`
+- Modify: `agent-sources/workspace/skills/research/SKILL.md`
+- Modify: `agent-sources/workspace/skills/skill-creator/SKILL.md`
+- Modify: `app/src-tauri/src/commands/workflow/deploy.rs`
+- Modify: `app/plugin-paths.json`
+- Test: `app/agent-tests` structural suite
+
+**Required behavior:**
+
+- [ ] Copy only `agent-sources/workspace/**` into runtime `.agents/**`.
+- [ ] Do not copy `agent-sources/prompts/**` into the runtime workspace.
+- [ ] Keep exactly one top-level OpenHands agent file in runtime workflow workspaces: `.agents/agents/skill-creator.md`.
+- [ ] Make `skill-creator.md` define identity and always-on rules only.
+- [ ] Keep task-specific instructions in app-owned prompt templates under `agent-sources/prompts/**`.
+- [ ] Remove workflow dependency on old plugin agent files: `research-agent.md`, `answer-evaluator.md`, and `skill-writer-agent.md`.
+- [ ] Remove Claude Code sub-agent fan-out instructions from workflow file-based skills.
+
+**Verification:**
+
+```bash
+cd app && npm run test:agents:structural
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
+```
+
+## Slice 4: Route Workflow Steps Through `skill-creator`
+
+This slice changes workflow runtime behavior after the final source layout exists.
 
 **Files:**
 
 - Modify: `app/src-tauri/src/commands/workflow/step_config.rs`
 - Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
+- Modify: `app/src-tauri/src/commands/workflow/prompt.rs`
 - Modify: `app/src-tauri/src/commands/workflow/tests.rs`
-- Test: `app/src-tauri/src/commands/workflow/tests.rs`
+- Modify: `app/src-tauri/src/generated/schemas.rs` only if schema names need regeneration
+- Test: Rust workflow tests
 
-- [ ] Change `get_step_config` so the step routing table is:
+**Required behavior:**
 
-```text
-0 -> research-agent -> context/clarifications.json
-1 -> research-agent -> context/clarifications.json
-2 -> skill-writer-agent -> context/decisions.json
-3 -> skill-writer-agent -> skill/SKILL.md
-```
+- [ ] Step 0 routes to `agentName: "skill-creator"`, `taskKind: "research"`, `promptTemplate: "research.txt"`, output `context/clarifications.json`.
+- [ ] Step 1 routes to `agentName: "skill-creator"`, `taskKind: "research_refinement"`, `promptTemplate: "research-refinement.txt"`, output `context/clarifications.json`.
+- [ ] Answer evaluation routes to `agentName: "skill-creator"`, `taskKind: "answer_evaluation"`, `promptTemplate: "answer-evaluation.txt"`, output `context/answer-evaluation.json`.
+- [ ] Step 2 routes to `agentName: "skill-creator"`, `taskKind: "decision_confirmation"`, `promptTemplate: "decision-confirmation.txt"`, output `context/decisions.json`.
+- [ ] Step 3 routes to `agentName: "skill-creator"`, `taskKind: "skill_generation"`, `promptTemplate: "skill-generation.txt"`, output `skill/SKILL.md`.
+- [ ] Workflow prompts are rendered by Rust and sent as explicit user messages.
+- [ ] Workflow one-shot configs do not include `AskUserQuestion`.
+- [ ] `permission_mode`, `required_plugins`, and Claude router directives are removed from OpenHands workflow one-shot configs.
+- [ ] `allowed_tools` remains request-scoped and uses OpenHands tool names.
 
-- [ ] Replace Claude tool names in `tools_for_agent` with the OpenHands-native tool names used by agent frontmatter:
-
-```rust
-match agent_name {
-    "research-agent" => &["file_editor", "terminal"],
-    "answer-evaluator" => &["file_editor"],
-    "skill-writer-agent" => &["file_editor", "terminal"],
-    _ => &["file_editor"],
-}
-```
-
-- [ ] Keep `one_shot_tools_for_agent` and the tests that reject `AskUserQuestion`, but add a test that none of the four workflow steps includes `AskUserQuestion` or Claude-only `Agent`/`Skill` tools.
-- [ ] Update `workflow_output_format_for_agent` to map `research-agent` to the clarification schemas for steps 0 and 1, and `skill-writer-agent` to decisions or generate-skill schemas based on `step_id`. If a single function cannot distinguish step 2 from step 3 by agent name alone, introduce `workflow_output_format_for_step(step_id: u32)`.
-- [ ] In `runtime.rs`, remove `subagent_directive` construction. Build prompts directly for each step and pass the step's OpenHands agent name through `agent_name`.
-- [ ] Set `runtime_provider: Some("openhands".to_string())` for workflow one-shot configs.
-- [ ] Keep `permission_mode`, `allowed_tools`, and `required_plugins` only until downstream sidecar config no longer needs them; add a comment marking them compatibility fields scheduled for removal in Task 5.
-- [ ] Run: `cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow`
-- [ ] Commit:
+**Verification:**
 
 ```bash
-git add app/src-tauri/src/commands/workflow/step_config.rs app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/workflow/tests.rs
-git commit -m "Route workflow steps to OpenHands agents"
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
+cd app && npm run test:unit
 ```
 
-## Task 3: Rewrite Agent Sources To OpenHands File Agents And AgentSkills
+## Slice 5: Verify And Patch Model Settings Gaps
+
+Do not redo the model-settings implementation. It is mostly present; this slice closes the remaining gaps against the design.
 
 **Files:**
 
-- Create: `agent-sources/plugins/skill-content-researcher/agents/research-agent.md`
-- Create: `agent-sources/plugins/skill-content-researcher/agents/answer-evaluator.md`
-- Create: `agent-sources/plugins/skill-creator/agents/skill-writer-agent.md`
-- Modify: `agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md`
-- Modify: `agent-sources/plugins/skill-creator/skills/skill-creator/SKILL.md`
-- Delete: `agent-sources/plugins/skill-content-researcher/agents/skill-builder.md`
-- Delete: `agent-sources/plugins/skill-content-researcher/agents/detailed-research.md`
-- Delete: `agent-sources/plugins/skill-content-researcher/agents/confirm-decisions.md`
-- Delete: `agent-sources/plugins/skill-creator/agents/generate-skill.md`
-- Test: `app/agent-tests` structural suite through `npm run test:agents:structural`
-
-- [ ] Create `research-agent.md` with this frontmatter:
-
-```md
----
-name: research-agent
-description: Produces clarification questions by researching relevant dimensions inline and consolidating them into clarifications.json.
-tools:
-  - file_editor
-  - terminal
-skills:
-  - research
----
-```
-
-- [ ] Create `answer-evaluator.md` with OpenHands tool names and instructions that preserve the existing `answer-evaluation.json` output contract.
-- [ ] Create `skill-writer-agent.md` with this frontmatter:
-
-```md
----
-name: skill-writer-agent
-description: Produces decisions.json for step 2 and writes SKILL.md plus base evals for step 3.
-tools:
-  - file_editor
-  - terminal
-skills:
-  - skill-creator
----
-```
-
-- [ ] Move the useful step-2 confirm-decisions instructions into the body of `skill-writer-agent.md`. The prompt for step 2 must ask for `decisions.json`; the prompt for step 3 must ask for generated skill artifacts.
-- [ ] In `research/SKILL.md`, replace the parallel sub-agent section with inline sequential dimension research:
-
-```text
-For each selected dimension:
-1. Read references/dimensions/{name}.md.
-2. Research that dimension inline in this same context.
-3. Capture the dimension-specific findings before moving to the next dimension.
-
-After all dimensions are researched, use references/consolidation-handoff.md to consolidate findings into the required clarifications_json payload.
-```
-
-- [ ] Remove references to Claude Code `Agent`, `Skill`, `Task`, `TaskOutput`, `allowedTools`, and sub-agent wait/merge mechanics from the workflow agent files and skills.
-- [ ] Run: `cd app && npm run test:agents:structural`
-- [ ] Commit:
-
-```bash
-git add agent-sources/plugins/skill-content-researcher agent-sources/plugins/skill-creator
-git commit -m "Convert workflow agents to OpenHands native topology"
-```
-
-## Task 4: Generate `.agents` Workspace Layout
-
-**Files:**
-
-- Modify: `app/src-tauri/src/skill_paths.rs`
-- Modify: `app/src-tauri/src/marketplace_manifest.rs`
-- Modify: `app/src-tauri/src/commands/workflow/deploy.rs`
-- Modify: `app/src-tauri/src/commands/workflow/claude_md.rs`
-- Modify: `app/src-tauri/src/commands/workflow/tests.rs`
-- Modify: `app/plugin-paths.json`
-- Test: Rust workflow/deploy tests
-
-- [ ] Add helpers in `skill_paths.rs`:
-
-```rust
-pub fn workspace_agents_dir(workspace_skill_dir: &Path) -> PathBuf {
-    workspace_skill_dir.join(".agents")
-}
-
-pub fn workspace_agent_files_dir(workspace_skill_dir: &Path) -> PathBuf {
-    workspace_agents_dir(workspace_skill_dir).join("agents")
-}
-
-pub fn workspace_agent_skills_dir(workspace_skill_dir: &Path) -> PathBuf {
-    workspace_agents_dir(workspace_skill_dir).join("skills")
-}
-```
-
-- [ ] Update workflow deployment code to copy workflow agent files to `.agents/agents/` and AgentSkills to `.agents/skills/`.
-- [ ] Stop generating `.claude/plugins/<slug>/.claude-plugin/plugin.json` for workflow runtime artifacts.
-- [ ] Stop generating `CLAUDE.md` for OpenHands workflow workspaces; keep `AGENTS.md` as the only always-on instruction file.
-- [ ] Keep marketplace/import code paths scoped to existing marketplace features if they still need Claude plugin manifests. Do not delete marketplace support for unrelated flows in this task.
-- [ ] Add tests asserting a newly deployed workflow workspace contains `.agents/agents/research-agent.md`, `.agents/agents/skill-writer-agent.md`, `.agents/skills/research/SKILL.md`, and no generated workflow `.claude-plugin/plugin.json`.
-- [ ] Run: `cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow`
-- [ ] Commit:
-
-```bash
-git add app/src-tauri/src/skill_paths.rs app/src-tauri/src/marketplace_manifest.rs app/src-tauri/src/commands/workflow app/plugin-paths.json
-git commit -m "Deploy workflow artifacts in OpenHands agents layout"
-```
-
-## Task 5: Add Catalog-Driven OpenHands Model Settings
-
-**Files:**
-
-- Create: `app/src/lib/model-catalog.ts`
-- Modify: `app/src/hooks/use-settings-form.ts`
 - Modify: `app/src/components/settings/sdk-section.tsx`
+- Modify: `app/src/hooks/use-settings-form.ts`
+- Modify: `app/src/lib/model-catalog.ts`
 - Modify: `app/src/lib/types.ts`
 - Test: `app/src/__tests__/lib/model-catalog.test.ts`
 - Test: `app/src/__tests__/pages/settings.test.tsx`
 - Test: `app/src/__tests__/hooks/use-settings-form.test.ts`
 
-- [ ] Add `app/src/lib/model-catalog.ts` with pure helpers:
-  - fetch/read the `models.dev` catalog shape from `https://models.dev/api.json`;
-  - normalize providers from top-level catalog keys;
-  - filter providers to models with text output;
-  - filter models to required capabilities: `reasoning: true` and `tool_call: true`;
-  - build full runtime model IDs as `${provider.id}/${model.id}`;
-  - resolve base URL defaults from provider `api`, app-owned local defaults such as Ollama, or blank when OpenHands/LiteLLM should use its built-in endpoint.
-- [ ] Add unit tests proving catalog parsing, capability filtering, provider/model runtime IDs, API-key env labels, and base URL default behavior.
-- [ ] Update `SdkSection` so Provider and Model are dropdowns backed by the catalog helpers. Keep a custom model entry path for models or providers not in `models.dev`.
-- [ ] Group the settings UI by ownership:
-  - `Provider`: provider dropdown, API key, API-key env hint, Test button, and Base URL.
-  - `Model`: required Reasoning and Tool calling indicators, model dropdown/custom entry, and saved runtime model ID.
-  - `Model Details`: read-only catalog metadata only.
-  - `Request Options`: Reasoning effort, Temperature, Max output tokens, Timeout, and Retries.
-  - `Advanced Provider Overrides`: Provider API version, extra headers, and optional cost overrides.
-- [ ] Show required capability indicators before the model selector. They must be checked, disabled/grey, and always filter the model list to reasoning plus tool-calling models.
-- [ ] Show model details from catalog metadata: reasoning, tool calling, structured output, temperature support, context/output limits, modalities, and pricing.
-- [ ] Rename the API version field to `Provider API version`; do not imply this is an OpenHands or OpenCode API version.
-- [ ] Do not expose OpenHands internal `usageId` in the UI. Workflow runtime projection must set `usageId` internally to `workflow`.
-- [ ] Default `base_url` from provider `api` when present, from app-owned local defaults for local providers, and otherwise keep it blank.
-- [ ] Persist the full provider-prefixed model string in `model_settings.model`; store `model_settings.provider` only as UI metadata.
-- [ ] Add frontend tests for catalog-backed provider selection, grouped field placement, required capability filtering, full provider-prefixed model persistence, base URL defaulting, model detail rendering, Provider API version labelling, hidden `Usage ID`, and the custom model fallback.
-- [ ] Run:
+**Required behavior:**
+
+- [ ] Provider dropdown is backed by `models.dev`.
+- [ ] Model dropdown is backed by provider-scoped `models.dev` entries.
+- [ ] Required Reasoning and Tool calling indicators are checked, disabled, and shown before model selection.
+- [ ] Model options are filtered to reasoning plus tool-calling plus text-output models.
+- [ ] The saved runtime model string is provider-prefixed, for example `anthropic/claude-sonnet-4-5`.
+- [ ] `base_url` defaults from provider `api`, app-owned local defaults such as Ollama, or blank.
+- [ ] `usageId` is not user-visible and backend projection sets it to `workflow`.
+- [ ] Request Options includes visible controls for Reasoning effort, Temperature, Max output tokens, Timeout, and Retries.
+- [ ] Advanced Provider Overrides contains Provider API version, extra headers, and optional cost overrides if those are supported by persisted settings.
+
+**Verification:**
 
 ```bash
 cd app && npx vitest run src/__tests__/lib/model-catalog.test.ts src/__tests__/pages/settings.test.tsx src/__tests__/hooks/use-settings-form.test.ts
 cd app && npm run test:unit
+cargo test --manifest-path app/src-tauri/Cargo.toml db::settings types::settings
 ```
 
-- [ ] Commit:
+## Slice 6: Remove Workflow Claude Runtime Compatibility
 
-```bash
-git add app/src/lib/model-catalog.ts app/src/components/settings/sdk-section.tsx app/src/hooks/use-settings-form.ts app/src/lib/types.ts app/src/__tests__ docs/design/model-settings/README.md docs/superpowers/plans/2026-05-02-openhands-native-migration.md
-git commit -m "Add catalog-driven OpenHands model settings"
-```
-
-## Task 6: Bundle And Resolve `openhands-runner`
+Run this only after workflow steps, scope review, and answer evaluation all use the OpenHands runner.
 
 **Files:**
 
-- Create: `app/sidecar/openhands/build.sh`
-- Create: `app/sidecar/openhands/requirements.txt` if absent or incomplete
-- Modify: `app/sidecar/build.js`
-- Modify: `app/src-tauri/tauri.conf.json`
-- Modify: `app/src-tauri/src/agents/sidecar.rs`
-- Modify: `app/src-tauri/src/commands/node.rs`
-- Test: `app/src-tauri/src/agents/sidecar.rs`
-
-- [ ] Add `app/sidecar/openhands/build.sh`:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")"
-python3 -m pip install -r requirements.txt
-python3 -m PyInstaller runner.py --onefile --name openhands-runner
-```
-
-- [ ] Update `build.js` to stage the built runner under `app/sidecar/dist/openhands/openhands-runner` or `openhands-runner.exe`.
-- [ ] Replace `resolve_sdk_cli_path_public` with `resolve_openhands_runner_path_public`.
-- [ ] Implement resource resolution in Rust for:
-
-```text
-sidecar/dist/openhands/openhands-runner
-sidecar/dist/openhands/openhands-runner.exe
-```
-
-- [ ] Update `OpenHandsRuntime` so production uses the resolved runner path instead of spawning `python3 app/sidecar/openhands/runner.py`.
-- [ ] Remove the Claude SDK binary copy from `build.js` only after no code path reads `pathToClaudeCodeExecutable`.
-- [ ] Run:
-
-```bash
-cd app && npm run sidecar:build
-cargo test --manifest-path app/src-tauri/Cargo.toml agents::sidecar
-```
-
-- [ ] Commit:
-
-```bash
-git add app/sidecar/openhands app/sidecar/build.js app/src-tauri/tauri.conf.json app/src-tauri/src/agents/sidecar.rs app/src-tauri/src/commands/node.rs
-git commit -m "Bundle OpenHands runner for Tauri"
-```
-
-## Task 7: Remove Claude Runtime Compatibility From Workflow
-
-**Files:**
-
-- Modify: `app/sidecar/package.json`
-- Modify: `app/sidecar/package-lock.json`
 - Modify: `app/sidecar/options.ts`
 - Modify: `app/sidecar/runtime/claude-runtime.ts`
 - Modify: `app/sidecar/run-agent.ts`
 - Modify: `app/sidecar/persistent-mode.ts`
 - Modify: `app/src-tauri/src/agents/sidecar.rs`
 - Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
+- Modify: `app/src-tauri/src/commands/description/eval.rs` if it still requires Claude SDK path resolution
 - Modify: `app/src/components/about-dialog.tsx`
-- Modify: `app/src-tauri/src/lib.rs`
+- Modify: `app/sidecar/package.json`
+- Modify: `app/sidecar/package-lock.json`
 - Modify: `repo-map.json`
-- Test: full sidecar suite
 
-- [ ] Remove workflow dependence on `ClaudeRuntime`, `options.ts`, `permissionMode`, `allowedTools`, `requiredPlugins`, and `pathToClaudeCodeExecutable`.
-- [ ] Keep non-workflow refine streaming on its current path only if it still compiles and returns the explicit unsupported OpenHands gap for OpenHands workflow mode.
-- [ ] If no remaining code imports `@anthropic-ai/claude-agent-sdk`, remove it from sidecar package files.
-- [ ] Update About/credits text from Claude Agent SDK to OpenHands and Tauri/React.
-- [ ] Update `repo-map.json` entries for sidecar runtime, agent prompts, build resources, and dependencies.
-- [ ] Run:
+**Required behavior:**
+
+- [ ] Workflow paths no longer import or construct Claude runtime options.
+- [ ] `pathToClaudeCodeExecutable` is absent from workflow configs.
+- [ ] `resolve_sdk_cli_path_public` remains only if non-workflow features still require it; otherwise remove it.
+- [ ] About/credits text no longer says workflow execution is powered by Claude Agent SDK.
+- [ ] Sidecar package dependencies remove `@anthropic-ai/claude-agent-sdk` only if no remaining non-workflow path imports it.
+- [ ] Refine streaming either remains on its existing supported path or returns the explicit OpenHands unsupported gap. Do not silently degrade refine behavior.
+
+**Verification:**
 
 ```bash
 cd app/sidecar && npx vitest run
@@ -410,87 +280,84 @@ cd app && npm run test:unit
 cargo test --manifest-path app/src-tauri/Cargo.toml
 ```
 
-- [ ] Commit:
+## Slice 7: Add Automated OpenHands Smoke And Eval Coverage
 
-```bash
-git add app/sidecar app/src-tauri app/src repo-map.json
-git commit -m "Remove Claude workflow runtime compatibility"
-```
-
-## Task 8: Add Automated Migration Smoke And Eval Coverage
+This slice is required before final VU-1145 PR readiness.
 
 **Files:**
 
 - Modify or create: `tests/evals/packages/*`
 - Modify or create: `tests/evals/scripts/*`
 - Modify: `tests/evals/docs/scenario-inventory.md`
+- Modify: `tests/evals/assertions/workflow-openhands-static.test.js`
+- Modify: `tests/evals/package.json`
 - Modify: `TEST_MAP.md`
-- Test: `tests/evals`
 
-- [ ] Add an automated OpenHands workflow smoke that exercises step 0 and step 3 without manual UI interaction.
-- [ ] The smoke must assert terminal `run_result`, parseable expected artifact output, no `AskUserQuestion`, and `.agents` artifact discovery.
-- [ ] Add deterministic tests or eval checks for provider-prefixed model strings, Ollama/base URL handling, runner JSONL parsing, `structured_output_missing` behavior, and unsupported refine streaming.
-- [ ] If live provider credentials are required, make the smoke skip with a precise prerequisite message rather than failing opaquely.
-- [ ] Run the automated smoke/eval command and record the exact command in the PR body.
-- [ ] Run:
+**Required behavior:**
+
+- [ ] Add automated coverage for OpenHands workflow step 0 and step 3 without manual UI interaction.
+- [ ] Assert terminal `run_result`.
+- [ ] Assert parseable expected artifact output.
+- [ ] Assert no `AskUserQuestion` appears in one-shot workflow requests.
+- [ ] Assert `.agents/agents/skill-creator.md` and `.agents/skills/**` artifact discovery.
+- [ ] Assert at least one app-visible progress/tool event occurs before terminal result.
+- [ ] Update existing eval packages that still mention `research-agent` or `skill-writer-agent`.
+- [ ] If live provider credentials are required, skip with a precise prerequisite message rather than failing opaquely.
+
+**Verification:**
 
 ```bash
 cd tests/evals && npm test
+cd tests/evals && npm run eval:smoke
 ```
 
-- [ ] Commit:
+## Slice 8: Final Docs, Repo Map, And Release Readiness
 
-```bash
-git add tests/evals TEST_MAP.md
-git commit -m "Add OpenHands migration smoke coverage"
-```
-
-## Task 9: Verification, Docs, And Release Decision
+Run this after all implementation slices have merged back into VU-1145.
 
 **Files:**
 
 - Modify: `docs/design/openhands-native-migration/README.md`
+- Modify: `docs/design/openhands-sdk-runner/README.md`
 - Modify: `docs/design/agent-runtime-boundary/README.md`
 - Modify: `README.md`
 - Modify: `TEST_MAP.md`
 - Modify: `repo-map.json`
-- Test: repo-map audit, test-map audit, release-stage verification
 
-- [ ] Update design docs with the implemented packaging choice and any deviations from the draft design.
-- [ ] Update `TEST_MAP.md` if new OpenHands runner, packaging, settings, or artifact-layout files need mapped validation.
-- [ ] Run the repo-map audit described in `AGENTS.md` before PR.
-- [ ] Run:
+**Required behavior:**
+
+- [ ] Design docs match the implemented runner, source layout, workflow routing, settings, and packaging choices.
+- [ ] `TEST_MAP.md` maps all OpenHands runner, prompt, workspace layout, and eval validation surfaces.
+- [ ] `repo-map.json` no longer describes stale Claude workflow routing or plugin-hosted workflow agents.
+- [ ] The repo-map audit in `AGENTS.md` passes.
+- [ ] The final PR body states whether live OpenHands smoke/eval ran, skipped, or blocked, with exact command/prerequisite.
+
+**Verification:**
 
 ```bash
+markdownlint docs/design/openhands-native-migration/README.md docs/design/openhands-sdk-runner/README.md docs/design/agent-runtime-boundary/README.md TEST_MAP.md README.md
 cd app && npm run test:agents:structural
 cd app && npm run test:unit
 cd app/sidecar && npx vitest run
 cargo test --manifest-path app/src-tauri/Cargo.toml
-```
-
-- [ ] Run the automated OpenHands workflow smoke/eval for step 0 and step 3. If credentials or local OpenHands dependencies are missing, record the exact skipped prerequisite in the PR body.
-- [ ] Do not substitute manual UI testing for this smoke. If the smoke cannot be automated, stop and update this plan before implementation continues.
-- [ ] Run release-stage verification if packaging changed:
-
-```bash
+cd tests/evals && npm test
 node scripts/verify-release-stage.mjs
-```
-
-- [ ] Commit:
-
-```bash
-git add docs README.md TEST_MAP.md repo-map.json
-git commit -m "Document OpenHands native migration"
 ```
 
 ## Acceptance Checklist
 
 - [ ] VU-1145 acceptance criteria are checked against the final diff.
-- [ ] `docs/design/openhands-native-migration/README.md` still matches the implemented runtime decisions.
+- [ ] VU-1146 has merged back into VU-1145.
+- [ ] `docs/design/openhands-native-migration/README.md` matches the implemented runtime decisions.
+- [ ] `docs/design/openhands-sdk-runner/README.md` matches the Python runner call shape.
 - [ ] `repo-map.json` reflects added, removed, and renamed sidecar/runtime/agent files.
 - [ ] `TEST_MAP.md` maps the new validation surface.
 - [ ] No workflow one-shot config includes `AskUserQuestion`.
+- [ ] No workflow one-shot config names `research-agent`, `answer-evaluator`, or `skill-writer-agent`.
 - [ ] No workflow prompt requires Claude Code `Agent` or `Skill` tools.
-- [ ] `.agents/agents/` and `.agents/skills/` are the generated workflow runtime layout.
+- [ ] OpenHands one-shot paths stream visible progress/tool activity through existing UI envelopes before terminal results.
+- [ ] `.agents/agents/skill-creator.md` and `.agents/skills/**` are the generated workflow runtime layout.
+- [ ] `agent-sources/prompts/**` templates are app-owned and not copied into the runtime workspace.
+- [ ] Create-skill Validate uses the OpenHands runner and no direct Anthropic HTTP call.
 - [ ] The app shows a clear unsupported error for OpenHands refine streaming until the separate `AskUserQuestion` issue is implemented.
 - [ ] The PR body calls out whether the live OpenHands smoke was run, skipped, or blocked.
