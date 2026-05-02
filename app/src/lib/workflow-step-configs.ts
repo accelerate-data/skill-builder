@@ -12,7 +12,6 @@ export const STEP_CONFIGS: Record<number, StepConfig> = {
     type: "agent",
     outputFiles: ["context/research-plan.md", "context/clarifications.json"],
     clarificationsEditable: true,
-    requiresStructuredOutput: true,
   },
   1: { type: "agent", outputFiles: ["context/clarifications.json"], clarificationsEditable: true, requiresStructuredOutput: true },
   2: { type: "reasoning", outputFiles: ["context/decisions.json"] },

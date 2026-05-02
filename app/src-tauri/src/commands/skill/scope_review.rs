@@ -209,7 +209,6 @@ pub async fn review_skill_scope(
         &app,
         &pool,
         OpenHandsOneShotRunParams {
-            pool_key: skill_name.clone(),
             agent_id_prefix: format!("{}-scope-review", skill_name),
             config,
             timeout: std::time::Duration::from_secs(90),

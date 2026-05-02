@@ -186,9 +186,9 @@ on their current path until their own migration slices.
 
 - [ ] Step 0 routes to `agentName: "skill-creator"` and
   `taskKind: "workflow.research"`.
-- [ ] Step 0 uses an app-owned prompt template at
+- [x] Step 0 uses an app-owned prompt template at
   `agent-sources/prompts/research.txt`.
-- [ ] The research skill describes a single-agent inline flow and does not
+- [x] The research skill describes a single-agent inline flow and does not
   refer to subagents, delegated dimension agents, or sub-agent outputs.
 - [ ] OpenHands `conversation_event` records remain visible in the UI while
   the research run is active.
@@ -415,9 +415,9 @@ This slice is required before final VU-1145 PR readiness.
 - [ ] Assert no `AskUserQuestion` appears in one-shot workflow requests.
 - [ ] Assert `.agents/agents/skill-creator.md` and `.agents/skills/**` artifact discovery.
 - [ ] Assert at least one app-visible progress/tool event occurs before terminal result.
-- [ ] Update existing eval packages that still mention `research-agent` or
+- [x] Update existing eval packages that still mention `research-agent` or
   `skill-writer-agent`.
-- [ ] Keep active static assertions pointed at `agent-sources/prompts/**` for
+- [x] Keep active static assertions pointed at `agent-sources/prompts/**` for
   app-owned prompt templates; do not assert against
   `agent-sources/workspace/prompts/**`.
 - [ ] If live provider credentials are required, skip with a precise prerequisite message rather than failing opaquely.

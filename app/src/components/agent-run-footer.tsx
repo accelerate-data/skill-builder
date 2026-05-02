@@ -8,6 +8,7 @@ import { useWorkflowStore } from "@/stores/workflow-store";
 import { formatElapsed } from "@/lib/utils";
 import {
   type DisplayStatus,
+  getAgentActivityCount,
   getDisplayStatus,
 } from "@/components/agent-status-header";
 
@@ -39,7 +40,7 @@ export function AgentRunFooter({ agentId }: AgentRunFooterProps) {
   const workflowInitStartTime = useWorkflowStore((s) => s.initStartTime);
 
   const displayStatus: DisplayStatus | null = run
-    ? getDisplayStatus(run.status, run.displayItems.length, workflowIsInitializing)
+    ? getDisplayStatus(run.status, getAgentActivityCount(run), workflowIsInitializing)
     : null;
 
   // Force re-render every second while running or initializing so elapsed time updates

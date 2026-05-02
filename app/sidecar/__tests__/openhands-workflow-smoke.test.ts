@@ -155,7 +155,7 @@ beforeEach(() => {
 });
 
 describe("OpenHands workflow smoke", () => {
-  it("runs step 0 and step 3 through named OpenHands agents with parseable structured output", async () => {
+  it("runs workflow research through skill-creator with parseable structured output", async () => {
     const root = mkdtempSync(join(tmpdir(), "skill-builder-openhands-smoke-"));
     const skillDir = join(root, "skills", "test-skill");
     try {
@@ -168,12 +168,8 @@ describe("OpenHands workflow smoke", () => {
       });
       mkdirSync(skillDir, { recursive: true });
       writeFileSync(
-        join(root, ".agents", "agents", "research-agent.md"),
-        "---\nname: research-agent\nskills: [research]\n---\n",
-      );
-      writeFileSync(
-        join(root, ".agents", "agents", "skill-writer-agent.md"),
-        "---\nname: skill-writer-agent\nskills: [skill-creator]\n---\n",
+        join(root, ".agents", "agents", "skill-creator.md"),
+        "---\nname: skill-creator\nskills: [research, skill-creator]\n---\n",
       );
       writeFileSync(
         join(root, ".agents", "skills", "research", "SKILL.md"),
@@ -189,9 +185,9 @@ describe("OpenHands workflow smoke", () => {
         () =>
           makeMockChild((request) => {
             capturedRequests.push(request);
-            if (request.agentName === "research-agent") {
+            if (request.taskKind === "workflow.research") {
               return {
-                status: "ok",
+                status: "research_complete",
                 dimensions_selected: 3,
                 question_count: 2,
                 research_output: { version: "1", sections: [], notes: [] },
@@ -208,9 +204,10 @@ describe("OpenHands workflow smoke", () => {
       const step0 = makeSink();
       await runtime.runOnce(
         baseRequest(root, skillDir, {
-          agentName: "research-agent",
+          agentName: "skill-creator",
+          taskKind: "workflow.research",
           maxTurns: 12,
-          allowedTools: ["Read", "Write"],
+          allowedTools: ["file_editor", "terminal"],
           context: {
             skillName: "test-skill",
             stepId: 0,
@@ -222,27 +219,14 @@ describe("OpenHands workflow smoke", () => {
         step0.sink,
       );
 
-      const step3 = makeSink();
-      await runtime.runOnce(
-        baseRequest(root, skillDir, {
-          agentName: "skill-writer-agent",
-          maxTurns: 20,
-          allowedTools: ["Read", "Write", "Edit"],
-          context: {
-            skillName: "test-skill",
-            stepId: 3,
-            pluginSlug: "skills",
-            workspaceSkillDir: skillDir,
-            runSource: "workflow",
-          },
-        }),
-        step3.sink,
-      );
-
-      expect(capturedRequests).toHaveLength(2);
+      expect(capturedRequests).toHaveLength(1);
       expect(capturedRequests.map((request) => request.agentName)).toEqual([
-        "research-agent",
-        "skill-writer-agent",
+        "skill-creator",
+      ]);
+      expect(capturedRequests[0].taskKind).toBe("workflow.research");
+      expect(capturedRequests[0].allowedTools).toEqual([
+        "file_editor",
+        "terminal",
       ]);
       expect(
         capturedRequests.every((request) => request.workspaceRootDir === root),
@@ -253,16 +237,12 @@ describe("OpenHands workflow smoke", () => {
         ),
       ).toBe(true);
       expect(JSON.stringify(capturedRequests)).not.toContain("AskUserQuestion");
+      expect(JSON.stringify(capturedRequests)).not.toContain("research-agent");
 
       expect(conversationEvents(step0.messages)).toHaveLength(1);
-      expect(conversationEvents(step3.messages)).toHaveLength(1);
       expect(terminalState(step0.messages)).toMatchObject({
         status: "completed",
         result_text: expect.stringContaining("dimensions_selected"),
-      });
-      expect(terminalState(step3.messages)).toMatchObject({
-        status: "completed",
-        result_text: expect.stringContaining("skill_md"),
       });
     } finally {
       rmSync(root, { recursive: true, force: true });

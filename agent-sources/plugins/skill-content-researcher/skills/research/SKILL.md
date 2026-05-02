@@ -1,6 +1,6 @@
 ---
 name: research
-description: ALWAYS use this skill when producing clarification questions for any skill-building purpose (domain, source, data-engineering, platform). Invoke immediately in the research phase: score candidate dimensions, select top dimensions, research each selected dimension inline and sequentially, and return the complete clarifications.json payload. Do not attempt to produce clarifications without using this skill.
+description: Use for workflow research that turns skill purpose and user context into the initial clarifications payload. Covers purpose based dimension selection, dimension scoring, scope recommendation handling, focused inline research, and canonical clarifications.json output.
 user_invocable: false
 ---
 

@@ -3,7 +3,7 @@ import { screen, act, waitFor } from "@testing-library/react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { resetTauriMocks } from "@/test/mocks/tauri";
+import { mockListen, resetTauriMocks } from "@/test/mocks/tauri";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
 
 // Mock TanStack Router — useBlocker returns idle state by default
@@ -120,6 +120,8 @@ import {
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { WorkflowStepComplete } from "@/components/step-complete";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
+
+type ListenCallback = (event: { payload: unknown }) => void;
 
 // Bridge new domain context commands to existing read/write path-based assertions.
 vi.mocked(getClarificationsContent).mockImplementation((skillName: string) =>
@@ -695,6 +697,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     vi.mocked(getWorkflowState).mockClear();
     vi.mocked(readFile).mockClear();
     vi.mocked(writeFile).mockClear();
+    vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
     vi.mocked(materializeWorkflowStepOutput).mockClear();
     vi.mocked(materializeAnswerEvaluationOutput).mockClear();
   });
@@ -810,54 +813,168 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(wf.currentStep).toBe(1);
   });
 
-  it("passes step 0 structured payload to backend materialization", async () => {
+  it("step 0 completes from verified backend materialized output without frontend materialization", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-step0-structured", "sonnet");
+    useAgentStore.getState().startRun("agent-step0-verified", "sonnet");
 
     render(<WorkflowPage />);
 
-    const payload = {
-      status: "research_complete",
-      dimensions_selected: 1,
-      question_count: 1,
-      research_plan_markdown: "# Research Plan\n\n## Dimension Scores\n",
-      clarifications_json: {
-        version: "1",
-        metadata: {
-          question_count: 0,
-          section_count: 0,
-          refinement_count: 0,
-          must_answer_count: 0,
-          priority_questions: [],
-        },
-        sections: [],
-        notes: [],
-      },
-    };
-
     act(() => {
-      useAgentStore.getState().addDisplayItem("agent-step0-structured", {
-        id: "result-step0",
-        type: "result",
-        timestamp: Date.now(),
-        outputText_result: "Agent completed",
-        structuredOutput: payload,
-        resultStatus: "success",
-      });
-      useAgentStore.getState().completeRun("agent-step0-structured", true);
+      useAgentStore.getState().completeRun("agent-step0-verified", true);
     });
 
     await waitFor(() => {
-      expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledWith(
-        "test-skill",
-        0,
-        payload
-      );
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
+    expect(vi.mocked(verifyStepOutput)).toHaveBeenCalledWith(
+      "/test/workspace",
+      "test-skill",
+      0,
+    );
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+  });
+
+  it("step 0 waits for backend materialization after terminal state when files are not verified yet", async () => {
+    let materializedListener: ListenCallback | undefined;
+    vi.mocked(mockListen).mockImplementation((event: string, callback: ListenCallback) => {
+      if (event === "workflow-step-materialized") {
+        materializedListener = callback;
+      }
+      return Promise.resolve(vi.fn());
+    });
+    vi.mocked(verifyStepOutput).mockResolvedValue(false);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-step0-materialized", "sonnet");
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(materializedListener).toBeDefined();
+    });
+
+    act(() => {
+      useAgentStore.getState().completeRun("agent-step0-materialized", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
+    });
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+
+    act(() => {
+      materializedListener?.({
+        payload: {
+          agent_id: "agent-step0-materialized",
+          skill_name: "test-skill",
+          step_id: 0,
+          success: true,
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    });
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+  });
+
+  it("step 0 waits for backend materialization when output verification errors", async () => {
+    let materializedListener: ListenCallback | undefined;
+    vi.mocked(mockListen).mockImplementation((event: string, callback: ListenCallback) => {
+      if (event === "workflow-step-materialized") {
+        materializedListener = callback;
+      }
+      return Promise.resolve(vi.fn());
+    });
+    vi.mocked(verifyStepOutput).mockRejectedValue(new Error("disk busy"));
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-step0-verify-error", "sonnet");
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(materializedListener).toBeDefined();
+    });
+
+    act(() => {
+      useAgentStore.getState().completeRun("agent-step0-verify-error", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
+    });
+
+    act(() => {
+      materializedListener?.({
+        payload: {
+          agent_id: "agent-step0-verify-error",
+          skill_name: "test-skill",
+          step_id: 0,
+          success: true,
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    });
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+  });
+
+  it("step 0 completes when backend materialization arrives before terminal state", async () => {
+    let materializedListener: ListenCallback | undefined;
+    vi.mocked(mockListen).mockImplementation((event: string, callback: ListenCallback) => {
+      if (event === "workflow-step-materialized") {
+        materializedListener = callback;
+      }
+      return Promise.resolve(vi.fn());
+    });
+    vi.mocked(verifyStepOutput).mockResolvedValue(false);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-step0-materialized-early", "sonnet");
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(materializedListener).toBeDefined();
+    });
+
+    act(() => {
+      materializedListener?.({
+        payload: {
+          agent_id: "agent-step0-materialized-early",
+          skill_name: "test-skill",
+          step_id: 0,
+          success: true,
+        },
+      });
+    });
+
+    expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
+
+    act(() => {
+      useAgentStore.getState().completeRun("agent-step0-materialized-early", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    });
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
   });
 
   it("passes step 1 structured payload to backend materialization", async () => {
@@ -963,7 +1080,9 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(mockToast.error).toHaveBeenCalled();
   });
 
-  it("step 0 errors when structured output payload is missing", async () => {
+  it("step 0 does not require legacy structured output when backend output verifies", async () => {
+    vi.mocked(verifyStepOutput).mockResolvedValue(true);
+
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
@@ -977,17 +1096,23 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[0].status).toBe("error");
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
     expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
-    expect(mockToast.error).toHaveBeenCalledWith(
+    expect(mockToast.error).not.toHaveBeenCalledWith(
       "Step 1 completed but produced no structured output",
-      { duration: Infinity },
+      expect.anything(),
     );
   });
 
-  it("step 0 errors when structured output fails backend materialization", async () => {
-    vi.mocked(materializeWorkflowStepOutput).mockRejectedValueOnce(new Error("invalid payload"));
+  it("step 0 shows backend materialization failure details", async () => {
+    let materializedListener: ListenCallback | undefined;
+    vi.mocked(mockListen).mockImplementation((event: string, callback: ListenCallback) => {
+      if (event === "workflow-step-materialized") {
+        materializedListener = callback;
+      }
+      return Promise.resolve(vi.fn());
+    });
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -997,28 +1122,31 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
     render(<WorkflowPage />);
 
+    await waitFor(() => {
+      expect(materializedListener).toBeDefined();
+    });
+
     act(() => {
-      useAgentStore.getState().addDisplayItem("agent-invalid-step0", {
-        id: "result-invalid-step0",
-        type: "result",
-        timestamp: Date.now(),
-        outputText_result: "Agent completed",
-        structuredOutput: {
-          status: "research_complete",
-          dimensions_selected: 1,
-          question_count: 1,
-          research_plan_markdown: "# bad",
-          clarifications_json: {},
+      materializedListener?.({
+        payload: {
+          agent_id: "agent-invalid-step0",
+          skill_name: "test-skill",
+          step_id: 0,
+          success: false,
+          error_detail: "clarifications.json failed schema validation",
         },
-        resultStatus: "success",
       });
-      useAgentStore.getState().completeRun("agent-invalid-step0", true);
     });
 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("error");
     });
-    expect(mockToast.error).toHaveBeenCalled();
+    expect(useWorkflowStore.getState().isRunning).toBe(false);
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+    expect(mockToast.error).toHaveBeenCalledWith(
+      "Step 1 backend materialization failed: clarifications.json failed schema validation",
+      { duration: Infinity },
+    );
   });
 
   it("passes step 3 structured payload to backend materialization", async () => {
@@ -3612,39 +3740,43 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
 
-  it("step errors before file verification when structured output is missing", async () => {
+  it("step 1 errors before file verification when structured output is missing", async () => {
     vi.mocked(verifyStepOutput).mockResolvedValue(false);
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "in_progress");
     useWorkflowStore.getState().setRunning(true);
     useAgentStore.getState().startRun("agent-no-output", "sonnet");
 
     render(<WorkflowPage />);
 
-    // Agent completes without structured output; step 0 now requires structured output.
+    // Agent completes without structured output; step 1 still requires structured output.
     act(() => {
       useAgentStore.getState().completeRun("agent-no-output", true);
     });
 
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[0].status).toBe("error");
+      expect(useWorkflowStore.getState().steps[1].status).toBe("error");
     });
 
     expect(useWorkflowStore.getState().isRunning).toBe(false);
     expect(mockToast.error).toHaveBeenCalledWith(
-      "Step 1 completed but produced no structured output",
+      "Step 2 completed but produced no structured output",
       { duration: Infinity },
     );
   });
 
-  it("step errors when verifyStepOutput returns false even with valid structured output", async () => {
+  it("step 1 errors when verifyStepOutput returns false even with valid structured output", async () => {
     vi.mocked(verifyStepOutput).mockResolvedValue(false);
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "in_progress");
     useWorkflowStore.getState().setRunning(true);
     useAgentStore.getState().startRun("agent-output-fail", "sonnet");
 
@@ -3657,10 +3789,9 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
         timestamp: Date.now(),
         outputText_result: "Agent completed",
         structuredOutput: {
-          status: "research_complete",
-          dimensions_selected: 1,
-          question_count: 1,
-          research_plan_markdown: "# Plan",
+          status: "detailed_research_complete",
+          refinement_count: 1,
+          section_count: 1,
           clarifications_json: {},
         },
         resultStatus: "success",
@@ -3669,15 +3800,19 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     });
 
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[0].status).toBe("error");
+      expect(useWorkflowStore.getState().steps[1].status).toBe("error");
     });
 
     // materializeWorkflowStepOutput was called (since structured output was present)
-    expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalled();
+    expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledWith(
+      "test-skill",
+      1,
+      expect.any(Object),
+    );
 
     // But verifyStepOutput returned false → error
     expect(mockToast.error).toHaveBeenCalledWith(
-      "Step 1 completed but produced no output files",
+      "Step 2 completed but produced no output files",
       { duration: Infinity },
     );
   });
@@ -3783,49 +3918,27 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
   });
 
   it("verifyStepOutput exception is non-fatal — step still completes", async () => {
-    // When verifyStepOutput throws (not returns false), the step should still complete
+    // Steps 1-3 keep the legacy optimistic behavior for verification exceptions.
     vi.mocked(verifyStepOutput).mockRejectedValue(new Error("disk error"));
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(2);
+    useWorkflowStore.getState().updateStepStatus(2, "in_progress");
     useWorkflowStore.getState().setRunning(true);
     useAgentStore.getState().startRun("agent-verify-throw", "sonnet");
 
     render(<WorkflowPage />);
 
     act(() => {
-      useAgentStore.getState().addDisplayItem("agent-verify-throw", {
-        id: "result-verify-throw",
-        type: "result",
-        timestamp: Date.now(),
-        outputText_result: "Agent completed",
-        structuredOutput: {
-          status: "research_complete",
-          dimensions_selected: 1,
-          question_count: 1,
-          research_plan_markdown: "# Research Plan",
-          clarifications_json: {
-            version: "1",
-            metadata: {
-              question_count: 0,
-              section_count: 0,
-              refinement_count: 0,
-              must_answer_count: 0,
-              priority_questions: [],
-            },
-            sections: [],
-            notes: [],
-          },
-        },
-        resultStatus: "success",
-      });
       useAgentStore.getState().completeRun("agent-verify-throw", true);
     });
 
     // Should still complete (verification failure is non-fatal)
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+      expect(useWorkflowStore.getState().steps[2].status).toBe("completed");
     });
 
   });
