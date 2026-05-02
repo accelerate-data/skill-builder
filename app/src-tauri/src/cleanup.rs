@@ -58,7 +58,8 @@ pub fn list_step_output_files(
             }
         }
         3 => {
-            let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
+            let skill_output_dir =
+                resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
             if skill_output_dir.exists() {
                 for file in get_step_output_files(3) {
                     if skill_output_dir.join(file).exists() {
@@ -71,10 +72,7 @@ pub fn list_step_output_files(
                         for entry in entries.flatten() {
                             if entry.path().is_file() {
                                 if let Some(name) = entry.path().file_name() {
-                                    files.push(format!(
-                                        "references/{}",
-                                        name.to_string_lossy()
-                                    ));
+                                    files.push(format!("references/{}", name.to_string_lossy()));
                                 }
                             }
                         }
@@ -131,7 +129,8 @@ pub fn clean_step_output(
         }
         3 => {
             // Skill artifacts in skills_path
-            let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
+            let skill_output_dir =
+                resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
             if skill_output_dir.exists() {
                 for file in get_step_output_files(3) {
                     remove_file_logged(LABEL, &skill_output_dir.join(file));
@@ -175,7 +174,13 @@ pub fn cleanup_future_steps(
         if (step_id as i32) <= after_step {
             continue;
         }
-        clean_step_output(workspace_path, skill_name, plugin_slug, step_id, skills_path);
+        clean_step_output(
+            workspace_path,
+            skill_name,
+            plugin_slug,
+            step_id,
+            skills_path,
+        );
     }
 }
 
@@ -195,7 +200,13 @@ pub fn delete_step_output_files(
         skills_path
     );
     for step_id in from_step_id..=3 {
-        clean_step_output(workspace_path, skill_name, plugin_slug, step_id, skills_path);
+        clean_step_output(
+            workspace_path,
+            skill_name,
+            plugin_slug,
+            step_id,
+            skills_path,
+        );
     }
 }
 
@@ -327,7 +338,9 @@ mod tests {
         std::fs::create_dir_all(sd.join("context")).unwrap();
         for file in get_step_output_files(0) {
             let p = sd.join(file);
-            if let Some(parent) = p.parent() { std::fs::create_dir_all(parent).unwrap(); }
+            if let Some(parent) = p.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
             std::fs::write(&p, "# step 0").unwrap();
         }
 

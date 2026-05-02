@@ -32,7 +32,8 @@ pub(crate) fn build_prompt(p: &PromptParams<'_>) -> String {
     let author_login = p.author_login;
     let created_at = p.created_at;
     let step_id = p.step_id;
-    let workspace_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_dir =
+        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
@@ -74,7 +75,8 @@ pub(crate) fn build_step0_prompt(
     plugin_slug: &str,
     max_dimensions: u32,
 ) -> String {
-    let workspace_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_dir =
+        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     format!(
         "EXECUTE IMMEDIATELY — do not ask questions, do not greet the user, do not offer options. \
@@ -101,7 +103,8 @@ pub(crate) fn build_evaluator_prompt(
     plugin_slug: &str,
     skills_path: &str,
 ) -> String {
-    let workspace_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_dir =
+        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
         .to_string_lossy()

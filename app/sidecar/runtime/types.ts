@@ -19,6 +19,8 @@ export interface RunPersistenceContext {
 export interface RuntimeRequestBase {
   prompt: string;
   systemPrompt?: string;
+  taskKind?: string;
+  userMessageSuffix?: string;
   model?: string;
   modelBaseUrl?: string;
   llm?: OpenHandsLlmConfig;

@@ -16,6 +16,11 @@ import type {
   RunInitEvent,
   TurnUsageEvent,
 } from "@/lib/agent-events";
+import type {
+  OpenHandsConversationEvent,
+  OpenHandsConversationState,
+} from "@/lib/openhands-conversation-events";
+import { isTerminalConversationStatus } from "@/lib/openhands-conversation-events";
 import { formatProviderModelId } from "@/lib/models";
 
 type PendingTerminalStatus = "completed" | "error" | "shutdown";
@@ -229,6 +234,9 @@ export interface AgentRun {
   status: "running" | "completed" | "error" | "shutdown";
   /** Structured display items from sidecar MessageProcessor. */
   displayItems: DisplayItem[];
+  /** OpenHands-native conversation events for clean-break runtime runs. */
+  conversationEvents?: OpenHandsConversationEvent[];
+  conversationState?: OpenHandsConversationState;
   messages?: AgentMessage[];
   startTime: number;
   endTime?: number;
@@ -274,6 +282,14 @@ interface AgentState {
   ) => void;
   /** Add a structured DisplayItem from the sidecar. Update-by-id for tool call status changes. */
   addDisplayItem: (agentId: string, item: DisplayItem) => void;
+  addConversationEvent: (
+    agentId: string,
+    event: OpenHandsConversationEvent,
+  ) => void;
+  applyConversationState: (
+    agentId: string,
+    event: OpenHandsConversationState,
+  ) => void;
   applyRunConfig: (agentId: string, event: RunConfigEvent) => void;
   applyRunInit: (agentId: string, event: RunInitEvent) => void;
   applyTurnUsage: (agentId: string, event: TurnUsageEvent) => void;
@@ -327,6 +343,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 skillName,
                 status: "running" as const,
                 displayItems: [],
+                conversationEvents: [],
                 startTime: Date.now(),
                 contextHistory: [],
                 contextWindow: DEFAULT_CONTEXT_WINDOW,
@@ -378,6 +395,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 skillName,
                 status: "running" as const,
                 displayItems: [],
+                conversationEvents: [],
                 startTime: Date.now(),
                 contextHistory: [],
                 contextWindow: DEFAULT_CONTEXT_WINDOW,
@@ -402,6 +420,115 @@ export const useAgentStore = create<AgentState>((set) => ({
       item.type,
     );
     bufferDisplayItem(agentId, item);
+  },
+
+  addConversationEvent: (agentId, event) =>
+    set((state) => {
+      const run = state.runs[agentId];
+      if (!run) {
+        console.debug(
+          "[agent-store] event=auto_create_run operation=add_conversation_event agent_id=%s",
+          agentId,
+        );
+        return {
+          runs: {
+            ...state.runs,
+            [agentId]: {
+              agentId,
+              model: "unknown",
+              status: "running" as const,
+              displayItems: [],
+              conversationEvents: [event],
+              startTime: Date.now(),
+              contextHistory: [],
+              contextWindow: DEFAULT_CONTEXT_WINDOW,
+              compactionEvents: [],
+              thinkingEnabled: false,
+            },
+          },
+        };
+      }
+
+      return {
+        runs: {
+          ...state.runs,
+          [agentId]: {
+            ...run,
+            conversationEvents: [...(run.conversationEvents ?? []), event],
+          },
+        },
+      };
+    }),
+
+  applyConversationState: (agentId, event) => {
+    clearPhantomTimer(agentId);
+    set((state) => {
+      const run = state.runs[agentId];
+      const now = Date.now();
+      const nextStatus =
+        event.status === "completed"
+          ? "completed"
+          : event.status === "error"
+            ? "error"
+            : event.status === "cancelled"
+              ? "shutdown"
+              : "running";
+      const nextEndTime = isTerminalConversationStatus(event.status)
+        ? (run?.endTime ?? now)
+        : run?.endTime;
+      const nextResultErrors =
+        event.errorDetail && event.status === "error"
+          ? [event.errorDetail]
+          : run?.resultErrors;
+
+      if (!run) {
+        return {
+          runs: {
+            ...state.runs,
+            [agentId]: {
+              agentId,
+              model: "unknown",
+              status: nextStatus,
+              displayItems: [],
+              conversationEvents: [],
+              conversationState: event,
+              startTime: now,
+              endTime: nextEndTime,
+              resultErrors: nextResultErrors,
+              contextHistory: [],
+              contextWindow: DEFAULT_CONTEXT_WINDOW,
+              compactionEvents: [],
+              thinkingEnabled: false,
+            },
+          },
+        };
+      }
+
+      if (run.status !== "running" && nextStatus === "running") {
+        return {
+          runs: {
+            ...state.runs,
+            [agentId]: {
+              ...run,
+              conversationState: event,
+            },
+          },
+        };
+      }
+
+      return {
+        runs: {
+          ...state.runs,
+          [agentId]: {
+            ...run,
+            status: nextStatus,
+            conversationState: event,
+            endTime: nextEndTime,
+            resultErrors: nextResultErrors,
+          },
+        },
+      };
+    });
   },
 
   applyRunConfig: (agentId, event) =>

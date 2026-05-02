@@ -261,7 +261,10 @@ mod tests {
         let parsed: GenerateSkillOutput =
             serde_json::from_value(json).expect("deserialize GenerateSkillOutput");
         assert_eq!(parsed.status, "complete");
-        assert_eq!(parsed.benchmark_path.as_deref(), Some("evals/iterations/iteration-1"));
+        assert_eq!(
+            parsed.benchmark_path.as_deref(),
+            Some("evals/iterations/iteration-1")
+        );
     }
 
     #[test]
@@ -374,8 +377,8 @@ mod tests {
             ]
         });
 
-        let parsed: AnswerEvaluationOutput =
-            serde_json::from_value(json).expect("deserialize AnswerEvaluationOutput with contradictory");
+        let parsed: AnswerEvaluationOutput = serde_json::from_value(json)
+            .expect("deserialize AnswerEvaluationOutput with contradictory");
         let entry = &parsed.per_question[0];
         assert_eq!(entry.verdict, "contradictory");
         assert_eq!(entry.reason.as_deref(), Some("Conflicts with Q3."));
@@ -407,7 +410,8 @@ mod tests {
             "total_count": 5,
             "reasoning": "All answered."
         });
-        let parsed: AnswerEvaluationOutput = serde_json::from_value(json).expect("should default missing fields");
+        let parsed: AnswerEvaluationOutput =
+            serde_json::from_value(json).expect("should default missing fields");
         assert!(parsed.per_question.is_empty());
     }
 }

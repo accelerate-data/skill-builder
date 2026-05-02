@@ -129,9 +129,7 @@ pub(crate) fn list_skills_inner(
 
     if let Some(source_url) = source_url {
         let mut stmt = conn
-            .prepare(
-                "SELECT skill_name FROM imported_skills WHERE marketplace_source_url = ?1",
-            )
+            .prepare("SELECT skill_name FROM imported_skills WHERE marketplace_source_url = ?1")
             .map_err(|e| format!("list_skills_inner source filter prepare: {}", e))?;
         let scoped_names: std::collections::HashSet<String> = stmt
             .query_map(rusqlite::params![source_url], |row| row.get::<_, String>(0))
@@ -154,7 +152,8 @@ fn filter_by_skill_md_exists(skills_path: &str, completed: Vec<SkillSummary>) ->
         .into_iter()
         .filter(|s| {
             let plugin_slug = s.plugin_slug.as_deref().unwrap_or(DEFAULT_PLUGIN_SLUG);
-            let skill_md = resolve_skill_dir(Path::new(skills_path), plugin_slug, &s.name).join("SKILL.md");
+            let skill_md =
+                resolve_skill_dir(Path::new(skills_path), plugin_slug, &s.name).join("SKILL.md");
             let exists = skill_md.exists();
             if !exists {
                 log::debug!(

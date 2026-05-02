@@ -48,7 +48,10 @@ pub fn get_externally_locked_skills(
 ) -> Result<Vec<String>, String> {
     log::info!("[get_externally_locked_skills]");
     let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_externally_locked_skills] Failed to acquire DB lock: {}", e);
+        log::error!(
+            "[get_externally_locked_skills] Failed to acquire DB lock: {}",
+            e
+        );
         e.to_string()
     })?;
     crate::db::reclaim_dead_locks(&conn)?;
@@ -60,7 +63,6 @@ pub fn get_externally_locked_skills(
         .collect();
     Ok(external)
 }
-
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -146,7 +148,10 @@ pub fn update_skill_metadata(
     // Lock the owning plugin against upgrades when a marketplace skill is edited.
     // No-op for builder or non-marketplace plugins (SQL guard: source_type = 'marketplace').
     if let Err(e) = crate::db::lock_plugin_for_skill(&conn, &skill_name) {
-        log::warn!("[update_skill_metadata] lock_plugin_for_skill failed (non-fatal): {}", e);
+        log::warn!(
+            "[update_skill_metadata] lock_plugin_for_skill failed (non-fatal): {}",
+            e
+        );
     }
 
     // Regenerate user-context.md so agents see up-to-date metadata without a workflow run.
@@ -177,11 +182,17 @@ pub(crate) fn sync_user_context_file(conn: &rusqlite::Connection, skill_name: &s
     let master_row = match crate::db::get_skill_master_any_plugin(conn, skill_name) {
         Ok(Some(row)) => row,
         Ok(None) => {
-            log::warn!("[sync_user_context_file] Skill '{}' not found in master table", skill_name);
+            log::warn!(
+                "[sync_user_context_file] Skill '{}' not found in master table",
+                skill_name
+            );
             return;
         }
         Err(e) => {
-            log::warn!("[sync_user_context_file] Failed to read skill master: {}", e);
+            log::warn!(
+                "[sync_user_context_file] Failed to read skill master: {}",
+                e
+            );
             return;
         }
     };
@@ -207,11 +218,10 @@ pub(crate) fn sync_user_context_file(conn: &rusqlite::Connection, skill_name: &s
         .flatten()
         .and_then(|r| r.intake_json);
 
-    let documents = crate::db::db_documents_for_skill(conn, master_row.id)
-        .unwrap_or_else(|e| {
-            log::warn!("[sync_user_context_file] Failed to load documents: {}", e);
-            vec![]
-        });
+    let documents = crate::db::db_documents_for_skill(conn, master_row.id).unwrap_or_else(|e| {
+        log::warn!("[sync_user_context_file] Failed to load documents: {}", e);
+        vec![]
+    });
 
     crate::commands::workflow::user_context::write_user_context_file(
         &workspace_path,
@@ -231,7 +241,10 @@ pub(crate) fn sync_user_context_file(conn: &rusqlite::Connection, skill_name: &s
         master_row.disable_model_invocation,
         &documents,
     );
-    log::info!("[sync_user_context_file] Regenerated user-context.md for '{}'", skill_name);
+    log::info!(
+        "[sync_user_context_file] Regenerated user-context.md for '{}'",
+        skill_name
+    );
 }
 
 /// Validate kebab-case: lowercase alphanumeric segments separated by single hyphens.
@@ -366,8 +379,10 @@ pub(crate) fn rename_skill_inner(
     // Move directories on disk (DB already committed — if disk fails, reconciler can fix)
     // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
     let workspace_root = Path::new(workspace_path);
-    let workspace_old = crate::skill_paths::resolve_workspace_skill_dir(workspace_root, &plugin_slug, old_name);
-    let workspace_new = crate::skill_paths::workspace_skill_dir(workspace_root, &plugin_slug, new_name);
+    let workspace_old =
+        crate::skill_paths::resolve_workspace_skill_dir(workspace_root, &plugin_slug, old_name);
+    let workspace_new =
+        crate::skill_paths::workspace_skill_dir(workspace_root, &plugin_slug, new_name);
     if workspace_old.exists() {
         // Guard against directory traversal
         let canonical_workspace = fs::canonicalize(workspace_path).map_err(|e| e.to_string())?;

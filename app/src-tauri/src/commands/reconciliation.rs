@@ -1,7 +1,5 @@
 use crate::db::Db;
-use crate::skill_paths::{
-    ensure_nested_skill_dir, resolve_skill_dir, DEFAULT_PLUGIN_SLUG,
-};
+use crate::skill_paths::{ensure_nested_skill_dir, resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::ReconciliationResult;
 use std::fs;
 use std::path::Path;
@@ -51,11 +49,9 @@ pub fn reconcile_startup(
         _ => {}
     }
 
-    let result =
-        crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
+    let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
 
     if apply {
-
         // Auto-commit new skill folders added while offline.
         // This is non-fatal: log warnings but don't block startup.
         let output_path = Path::new(&skills_path);
@@ -98,7 +94,6 @@ pub fn reconcile_startup(
                 e
             );
         }
-
     }
 
     if !apply {
@@ -171,9 +166,7 @@ fn migrate_workspace_to_plugin_layout(workspace_path: &Path, conn: &rusqlite::Co
         if !flat_dir.exists() {
             continue;
         }
-        let plugin_dir = workspace_path
-            .join(&skill.plugin_slug)
-            .join(&skill.name);
+        let plugin_dir = workspace_path.join(&skill.plugin_slug).join(&skill.name);
         if plugin_dir.exists() {
             log::debug!(
                 "[migrate_workspace] '{}': already at plugin-organised path, skipping",
@@ -429,10 +422,19 @@ mod tests {
 
         // Should have been moved to the plugin-organised location
         let new_path = workspace.join("skills").join("britney-spears");
-        assert!(new_path.exists(), "plugin-organised dir should exist after migration");
-        assert!(new_path.join("user-context.md").exists(), "contents should be preserved");
+        assert!(
+            new_path.exists(),
+            "plugin-organised dir should exist after migration"
+        );
+        assert!(
+            new_path.join("user-context.md").exists(),
+            "contents should be preserved"
+        );
         // Flat dir should be gone
-        assert!(!flat_path.exists(), "flat dir should be removed after migration");
+        assert!(
+            !flat_path.exists(),
+            "flat dir should be removed after migration"
+        );
     }
 
     #[test]
@@ -457,9 +459,15 @@ mod tests {
 
         // Plugin-organised dir should be untouched (existing content preserved)
         assert!(plugin_path.join("existing.md").exists());
-        assert!(!plugin_path.join("stale.md").exists(), "stale content must not overwrite");
+        assert!(
+            !plugin_path.join("stale.md").exists(),
+            "stale content must not overwrite"
+        );
         // Flat dir should still be there (was not moved since target already exists)
-        assert!(flat_path.exists(), "flat dir kept when plugin-organised already exists");
+        assert!(
+            flat_path.exists(),
+            "flat dir kept when plugin-organised already exists"
+        );
     }
 
     #[test]

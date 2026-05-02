@@ -7,15 +7,14 @@ pub mod updates;
 pub mod url;
 
 pub use commands::{
-    check_marketplace_url, check_skill_customized,
-    get_dashboard_skill_names, import_marketplace_to_library, list_github_skills,
-    MarketplaceImportResult,
-};
-pub use updates::{
-    check_marketplace_updates, MarketplaceUpdateResult, RegistryNameInfo, SkillUpdateInfo,
+    check_marketplace_url, check_skill_customized, get_dashboard_skill_names,
+    import_marketplace_to_library, list_github_skills, MarketplaceImportResult,
 };
 pub(crate) use http::{build_github_client, get_default_branch};
 pub(crate) use import::compute_skill_content_hash;
+pub use updates::{
+    check_marketplace_updates, MarketplaceUpdateResult, RegistryNameInfo, SkillUpdateInfo,
+};
 pub use url::parse_github_url;
 
 pub(crate) use catalog::discover_skills_from_catalog;
@@ -30,8 +29,8 @@ mod tests {
     use crate::types::AvailableSkill;
 
     use super::catalog::{discover_skills_from_catalog, extract_plugin_path};
-    use super::updates::{collect_updates_for_installed, InstalledMarketplaceSkill};
     use super::import::{rewrite_skill_md, yaml_quote};
+    use super::updates::{collect_updates_for_installed, InstalledMarketplaceSkill};
     use super::url::{marketplace_manifest_path, parse_github_url_inner};
 
     fn available(name: &str, version: Option<&str>) -> AvailableSkill {
@@ -1365,8 +1364,7 @@ mod tests {
             crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             "my-skill",
         );
-        let written =
-            std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+        let written = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
         assert_eq!(skill.version.as_deref(), Some("1.0.0"));
         assert!(written.contains("metadata:"));
         assert!(written.contains("version: \"1.0.0\""));

@@ -63,11 +63,17 @@ fn resolve_path_template(template: &str, vars: &[(&str, &str)]) -> PathBuf {
 }
 
 pub fn skill_tag_prefix(plugin_slug: &str, skill_name: &str) -> String {
-    resolve_template(&paths().tag_prefix, &[("plugin_slug", plugin_slug), ("skill_name", skill_name)])
+    resolve_template(
+        &paths().tag_prefix,
+        &[("plugin_slug", plugin_slug), ("skill_name", skill_name)],
+    )
 }
 
 pub fn skill_tag_glob(plugin_slug: &str, skill_name: &str) -> String {
-    resolve_template(&paths().tag_glob, &[("plugin_slug", plugin_slug), ("skill_name", skill_name)])
+    resolve_template(
+        &paths().tag_glob,
+        &[("plugin_slug", plugin_slug), ("skill_name", skill_name)],
+    )
 }
 
 // --- Skill location types ---
@@ -89,12 +95,20 @@ pub fn skill_library_key(plugin_slug: &str, skill_name: &str) -> String {
 pub fn workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
     resolve_path_template(
         &paths().workspace_skill_dir,
-        &[("workspace", &workspace.to_string_lossy()), ("plugin_slug", plugin_slug), ("skill_name", skill_name)],
+        &[
+            ("workspace", &workspace.to_string_lossy()),
+            ("plugin_slug", plugin_slug),
+            ("skill_name", skill_name),
+        ],
     )
 }
 
 /// Resolve the workspace scratch directory for a skill.
-pub fn resolve_workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
+pub fn resolve_workspace_skill_dir(
+    workspace: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> PathBuf {
     workspace_skill_dir(workspace, plugin_slug, skill_name)
 }
 
@@ -118,18 +132,31 @@ pub fn workspace_agent_skills_dir(workspace_skill_dir: &Path) -> PathBuf {
 pub fn resolve_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
     resolve_path_template(
         &paths().skill_dir,
-        &[("root", &root.to_string_lossy()), ("plugin_slug", plugin_slug), ("skill_name", skill_name)],
+        &[
+            ("root", &root.to_string_lossy()),
+            ("plugin_slug", plugin_slug),
+            ("skill_name", skill_name),
+        ],
     )
 }
 
 /// Returns the canonical skill directory, creating the parent plugin
 /// directory if it doesn't exist. Used when the `{plugin_slug}/` folder
 /// may have been deleted and needs to be recreated before writing.
-pub fn ensure_nested_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> Result<PathBuf, String> {
+pub fn ensure_nested_skill_dir(
+    root: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<PathBuf, String> {
     let dir = resolve_skill_dir(root, plugin_slug, skill_name);
     if let Some(parent) = dir.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create plugin directory '{}': {}", parent.display(), e))?;
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create plugin directory '{}': {}",
+                parent.display(),
+                e
+            )
+        })?;
     }
     Ok(dir)
 }
@@ -148,8 +175,11 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
     let mut seen = std::collections::HashSet::new();
 
     // Scan root/{slug}/*/ for skills, root/{name}/ for legacy flat
-    for entry in fs::read_dir(root).map_err(|e| format!("Failed to read '{}': {}", root.display(), e))? {
-        let entry = entry.map_err(|e| format!("Failed to read entry in '{}': {}", root.display(), e))?;
+    for entry in
+        fs::read_dir(root).map_err(|e| format!("Failed to read '{}': {}", root.display(), e))?
+    {
+        let entry =
+            entry.map_err(|e| format!("Failed to read entry in '{}': {}", root.display(), e))?;
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -178,7 +208,11 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
                     seen.insert(key);
                     discovered.push(SkillLocation {
                         plugin_slug: name.clone(),
-                        plugin_display_name: if is_default { DEFAULT_PLUGIN_DISPLAY_NAME.to_string() } else { plugin_display_name(&name) },
+                        plugin_display_name: if is_default {
+                            DEFAULT_PLUGIN_DISPLAY_NAME.to_string()
+                        } else {
+                            plugin_display_name(&name)
+                        },
                         is_default_plugin: is_default,
                         skill_name,
                         dir: skill_path,
@@ -223,8 +257,11 @@ pub fn enumerate_skill_locations_legacy(root: &Path) -> Result<Vec<SkillLocation
     }
 
     let mut discovered = Vec::new();
-    for entry in fs::read_dir(root).map_err(|e| format!("Failed to read '{}': {}", root.display(), e))? {
-        let entry = entry.map_err(|e| format!("Failed to read entry in '{}': {}", root.display(), e))?;
+    for entry in
+        fs::read_dir(root).map_err(|e| format!("Failed to read '{}': {}", root.display(), e))?
+    {
+        let entry =
+            entry.map_err(|e| format!("Failed to read entry in '{}': {}", root.display(), e))?;
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -245,10 +282,15 @@ pub fn enumerate_skill_locations_legacy(root: &Path) -> Result<Vec<SkillLocation
             continue;
         }
 
-        for child in fs::read_dir(&path)
-            .map_err(|e| format!("Failed to read plugin directory '{}': {}", path.display(), e))?
-        {
-            let child = child.map_err(|e| format!("Failed to read entry in '{}': {}", path.display(), e))?;
+        for child in fs::read_dir(&path).map_err(|e| {
+            format!(
+                "Failed to read plugin directory '{}': {}",
+                path.display(),
+                e
+            )
+        })? {
+            let child = child
+                .map_err(|e| format!("Failed to read entry in '{}': {}", path.display(), e))?;
             let child_path = child.path();
             if !child_path.is_dir() {
                 continue;
@@ -317,7 +359,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let workspace_skill = workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "weekly-report");
 
-        assert_eq!(workspace_agents_dir(&workspace_skill), workspace_skill.join(".agents"));
+        assert_eq!(
+            workspace_agents_dir(&workspace_skill),
+            workspace_skill.join(".agents")
+        );
         assert_eq!(
             workspace_agent_files_dir(&workspace_skill),
             workspace_skill.join(".agents").join("agents")

@@ -26,6 +26,8 @@ describe("runtime request types", () => {
       mode: "one-shot",
       allowUserQuestions: false,
       prompt: "Generate the skill.",
+      taskKind: "scope_review",
+      userMessageSuffix: "Follow the current user message exactly.",
       apiKey: "sk-test",
       modelBaseUrl: "https://models.example.com/v1",
       workspaceRootDir: "/workspace",
@@ -36,6 +38,10 @@ describe("runtime request types", () => {
 
     expect(() => assertOneShotHasNoUserQuestions(request)).not.toThrow();
     expect(request.modelBaseUrl).toBe("https://models.example.com/v1");
+    expect(request.taskKind).toBe("scope_review");
+    expect(request.userMessageSuffix).toBe(
+      "Follow the current user message exactly.",
+    );
   });
 
   it("rejects one-shot requests that include AskUserQuestion", () => {

@@ -89,7 +89,9 @@ pub fn import_skill_from_file(
     )?;
     let (_, claude_md_src) = crate::commands::workflow::resolve_prompt_source_dirs_public(&app);
     if claude_md_src.is_file() && !workspace_path.is_empty() {
-        if let Err(e) = crate::commands::workflow::rebuild_claude_md(&claude_md_src, &workspace_path) {
+        if let Err(e) =
+            crate::commands::workflow::rebuild_claude_md(&claude_md_src, &workspace_path)
+        {
             log::warn!("[import_skill_from_file] rebuild_claude_md failed: {}", e);
         }
     }
@@ -144,7 +146,8 @@ fn import_skill_from_file_inner(
     }
 
     // Extract to plugin-nested path: {skills_path}/{default_slug}/{name}/
-    let dest_dir = crate::skill_paths::resolve_skill_dir(Path::new(skills_path), default_slug, name);
+    let dest_dir =
+        crate::skill_paths::resolve_skill_dir(Path::new(skills_path), default_slug, name);
     if let Some(parent) = dest_dir.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -188,7 +191,13 @@ fn import_skill_from_file_inner(
     }
 
     // Step 1: Create/update skill master row (linked to default plugin)
-    let skill_master_id = crate::db::upsert_skill_with_source_in_plugin(conn, name, "imported", "domain", DEFAULT_PLUGIN_SLUG)?;
+    let skill_master_id = crate::db::upsert_skill_with_source_in_plugin(
+        conn,
+        name,
+        "imported",
+        "domain",
+        DEFAULT_PLUGIN_SLUG,
+    )?;
 
     // Update description on skill master
     conn.execute(
@@ -274,22 +283,35 @@ mod tests {
         );
 
         assert!(result.is_ok(), "expected import to succeed: {:?}", result);
-        assert!(
-            crate::git::skill_version_tag_exists(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill", "1.0.0").unwrap()
-        );
+        assert!(crate::git::skill_version_tag_exists(
+            &skills_path,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "imported-skill",
+            "1.0.0"
+        )
+        .unwrap());
         assert_eq!(
-            crate::db::get_imported_skill(&conn, "imported-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG)
-                .unwrap()
-                .unwrap()
-                .version
-                .as_deref(),
+            crate::db::get_imported_skill(
+                &conn,
+                "imported-skill",
+                crate::skill_paths::DEFAULT_PLUGIN_SLUG
+            )
+            .unwrap()
+            .unwrap()
+            .version
+            .as_deref(),
             Some("1.0.0")
         );
-        assert!(
-            std::fs::read_to_string(crate::skill_paths::resolve_skill_dir(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill").join("SKILL.md"))
-                .unwrap()
-                .contains("metadata:\n  version: \"1.0.0\"\n  author: \"hb@acceleratedata.ai\"")
-        );
+        assert!(std::fs::read_to_string(
+            crate::skill_paths::resolve_skill_dir(
+                &skills_path,
+                crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+                "imported-skill"
+            )
+            .join("SKILL.md")
+        )
+        .unwrap()
+        .contains("metadata:\n  version: \"1.0.0\"\n  author: \"hb@acceleratedata.ai\""));
     }
 
     #[test]
@@ -308,7 +330,13 @@ mod tests {
         )
         .unwrap();
         crate::git::commit_all(&skills_path, "imported-skill: seed").unwrap();
-        crate::git::create_skill_version_tag(&skills_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "imported-skill", "1.0.0").unwrap();
+        crate::git::create_skill_version_tag(
+            &skills_path,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "imported-skill",
+            "1.0.0",
+        )
+        .unwrap();
         std::fs::remove_dir_all(&skill_dir).unwrap();
 
         let zip_path = dir.path().join("skill.zip");
@@ -334,9 +362,13 @@ mod tests {
         .unwrap_err();
 
         assert!(err.contains("already exists"));
-        assert!(crate::db::get_imported_skill(&conn, "imported-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG)
-            .unwrap()
-            .is_none());
+        assert!(crate::db::get_imported_skill(
+            &conn,
+            "imported-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG
+        )
+        .unwrap()
+        .is_none());
     }
 
     #[test]

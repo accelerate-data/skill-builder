@@ -34,7 +34,10 @@ fn deep_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
 /// since SKILL.md says refinements don't have sub-refinements.
 fn inline_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
     let deep = deep_schema_for::<T>();
-    let definitions = deep.get("definitions").cloned().unwrap_or(serde_json::json!({}));
+    let definitions = deep
+        .get("definitions")
+        .cloned()
+        .unwrap_or(serde_json::json!({}));
     let mut resolving = std::collections::HashSet::new();
     let mut result = inline_resolve(&deep, &definitions, &mut resolving);
     // Post-process for SDK compatibility:
@@ -46,10 +49,7 @@ fn inline_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
         obj.remove("definitions");
         obj.remove("$schema");
         obj.remove("description");
-        obj.insert(
-            "additionalProperties".to_string(),
-            serde_json::json!(false),
-        );
+        obj.insert("additionalProperties".to_string(), serde_json::json!(false));
     }
     result
 }
@@ -123,7 +123,10 @@ fn inline_resolve(
                 let mut new_obj = serde_json::Map::new();
                 for (k, v) in obj {
                     if k == "anyOf" {
-                        new_obj.insert(k.clone(), serde_json::Value::Array(resolved_variants.clone()));
+                        new_obj.insert(
+                            k.clone(),
+                            serde_json::Value::Array(resolved_variants.clone()),
+                        );
                     } else {
                         new_obj.insert(k.clone(), inline_resolve(v, definitions, resolving));
                     }
@@ -139,16 +142,17 @@ fn inline_resolve(
             // Add additionalProperties: false to all object types with properties
             // (required by Anthropic API for structured output enforcement)
             if is_object_with_props {
-                new_obj.entry("additionalProperties".to_string())
+                new_obj
+                    .entry("additionalProperties".to_string())
                     .or_insert(serde_json::json!(false));
             }
             serde_json::Value::Object(new_obj)
         }
-        serde_json::Value::Array(arr) => {
-            serde_json::Value::Array(
-                arr.iter().map(|v| inline_resolve(v, definitions, resolving)).collect(),
-            )
-        }
+        serde_json::Value::Array(arr) => serde_json::Value::Array(
+            arr.iter()
+                .map(|v| inline_resolve(v, definitions, resolving))
+                .collect(),
+        ),
         other => other.clone(),
     }
 }
@@ -188,14 +192,18 @@ fn flatten_schema(schema: &serde_json::Value) -> serde_json::Value {
         for (key, prop) in props {
             flat_props.insert(key.clone(), flatten_property(prop));
         }
-        result.insert("properties".to_string(), serde_json::Value::Object(flat_props));
+        result.insert(
+            "properties".to_string(),
+            serde_json::Value::Object(flat_props),
+        );
     }
 
     // All properties are required in the SDK schema — the agent should produce
     // every field. Rust serde(default) provides tolerance if fields are missing,
     // but the SDK schema tells the agent they're mandatory.
     if let Some(props) = schema.get("properties").and_then(|p| p.as_object()) {
-        let all_keys: Vec<serde_json::Value> = props.keys()
+        let all_keys: Vec<serde_json::Value> = props
+            .keys()
             .map(|k| serde_json::Value::String(k.clone()))
             .collect();
         result.insert("required".to_string(), serde_json::Value::Array(all_keys));
@@ -226,7 +234,9 @@ fn flatten_property(prop: &serde_json::Value) -> serde_json::Value {
     // anyOf (nullable $ref) → { "type": ["object", "null"] }
     if let Some(any_of) = obj.get("anyOf").and_then(|a| a.as_array()) {
         let has_ref = any_of.iter().any(|v| v.get("$ref").is_some());
-        let has_null = any_of.iter().any(|v| v.get("type") == Some(&serde_json::json!("null")));
+        let has_null = any_of
+            .iter()
+            .any(|v| v.get("type") == Some(&serde_json::json!("null")));
         if has_ref {
             if has_null {
                 return serde_json::json!({ "type": ["object", "null"] });
@@ -270,8 +280,8 @@ use app_lib::contracts::agent_events::{
 };
 use app_lib::contracts::clarifications::{
     Choice, ClarificationsError, ClarificationsFile, ClarificationsMetadata,
-    ClarificationsResearchPlan, ClarificationsWarning, DimensionScore, Note, Question,
-    Section, SelectedDimension,
+    ClarificationsResearchPlan, ClarificationsWarning, DimensionScore, Note, Question, Section,
+    SelectedDimension,
 };
 use app_lib::contracts::decisions::{
     ContradictoryInputs, Decision, DecisionStatus, DecisionsMetadata,
@@ -360,17 +370,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let schemas: Vec<(&str, serde_json::Value)> = vec![
         ("RESEARCH_STEP", flat_schema_for::<ResearchStepOutput>()),
-        ("DETAILED_RESEARCH", flat_schema_for::<DetailedResearchOutput>()),
+        (
+            "DETAILED_RESEARCH",
+            flat_schema_for::<DetailedResearchOutput>(),
+        ),
         ("DECISIONS", flat_schema_for::<DecisionsOutput>()),
         ("GENERATE_SKILL", flat_schema_for::<GenerateSkillOutput>()),
-        ("ANSWER_EVALUATION", flat_schema_for::<AnswerEvaluationOutput>()),
+        (
+            "ANSWER_EVALUATION",
+            flat_schema_for::<AnswerEvaluationOutput>(),
+        ),
         ("CLARIFICATIONS", flat_schema_for::<ClarificationsFile>()),
         // Inlined schemas: all $ref resolved into the body, no definitions block.
         // The SDK's outputFormat cannot handle $ref/definitions but CAN enforce
         // arbitrarily nested inline schemas. Recursive types (Question.refinements)
         // are capped at one level.
-        ("RESEARCH_STEP_INLINE", inline_schema_for::<ResearchStepOutput>()),
-        ("DETAILED_RESEARCH_INLINE", inline_schema_for::<DetailedResearchOutput>()),
+        (
+            "RESEARCH_STEP_INLINE",
+            inline_schema_for::<ResearchStepOutput>(),
+        ),
+        (
+            "DETAILED_RESEARCH_INLINE",
+            inline_schema_for::<DetailedResearchOutput>(),
+        ),
         ("DECISIONS_INLINE", inline_schema_for::<DecisionsOutput>()),
     ];
 
@@ -408,7 +430,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for (filename, const_name) in &agent_schemas {
-        let schema = schemas.iter().find(|(n, _)| n == const_name).map(|(_, s)| s);
+        let schema = schemas
+            .iter()
+            .find(|(n, _)| n == const_name)
+            .map(|(_, s)| s);
         if let Some(s) = schema {
             let pretty = serde_json::to_string_pretty(s)?;
             let path = agent_schema_dir.join(filename);

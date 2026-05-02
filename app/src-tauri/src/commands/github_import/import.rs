@@ -435,7 +435,10 @@ pub(crate) async fn download_plugin_directory(
         .collect();
 
     if files.is_empty() {
-        return Err(format!("No files found under plugin path '{}'", plugin_path));
+        return Err(format!(
+            "No files found under plugin path '{}'",
+            plugin_path
+        ));
     }
 
     log::info!(

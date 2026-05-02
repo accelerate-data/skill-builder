@@ -26,7 +26,11 @@ pub(crate) fn lookup_plugin_slug(conn: &rusqlite::Connection, skill_name: &str) 
         .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string())
 }
 
-pub(crate) fn workspace_context_dir(workspace_path: &str, plugin_slug: &str, skill_name: &str) -> std::path::PathBuf {
+pub(crate) fn workspace_context_dir(
+    workspace_path: &str,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> std::path::PathBuf {
     crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
         .join("context")
 }
@@ -169,10 +173,22 @@ mod tests {
         crate::db::save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();
 
         let step_statuses = vec![
-            StepStatusUpdate { step_id: 0, status: "completed".to_string() },
-            StepStatusUpdate { step_id: 1, status: "completed".to_string() },
-            StepStatusUpdate { step_id: 2, status: "completed".to_string() },
-            StepStatusUpdate { step_id: 3, status: "completed".to_string() },
+            StepStatusUpdate {
+                step_id: 0,
+                status: "completed".to_string(),
+            },
+            StepStatusUpdate {
+                step_id: 1,
+                status: "completed".to_string(),
+            },
+            StepStatusUpdate {
+                step_id: 2,
+                status: "completed".to_string(),
+            },
+            StepStatusUpdate {
+                step_id: 3,
+                status: "completed".to_string(),
+            },
         ];
 
         let effective_status = compute_effective_status("in_progress", &step_statuses);
@@ -189,7 +205,9 @@ mod tests {
             crate::db::save_workflow_step(&conn, "test-skill", step.step_id, &step.status).unwrap();
         }
 
-        let run = crate::db::get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "test-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(
             run.status, "completed",
             "DB status should be 'completed' after all steps complete"
@@ -199,8 +217,14 @@ mod tests {
     #[test]
     fn test_partial_steps_completed_does_not_override_status() {
         let step_statuses = vec![
-            StepStatusUpdate { step_id: 0, status: "completed".to_string() },
-            StepStatusUpdate { step_id: 1, status: "in_progress".to_string() },
+            StepStatusUpdate {
+                step_id: 0,
+                status: "completed".to_string(),
+            },
+            StepStatusUpdate {
+                step_id: 1,
+                status: "in_progress".to_string(),
+            },
         ];
 
         let effective_status = compute_effective_status("in_progress", &step_statuses);
@@ -225,8 +249,14 @@ mod tests {
         // If the frontend already sends "completed" AND all steps are completed, the result
         // should still be "completed" (override is a no-op).
         let step_statuses = vec![
-            StepStatusUpdate { step_id: 0, status: "completed".to_string() },
-            StepStatusUpdate { step_id: 1, status: "completed".to_string() },
+            StepStatusUpdate {
+                step_id: 0,
+                status: "completed".to_string(),
+            },
+            StepStatusUpdate {
+                step_id: 1,
+                status: "completed".to_string(),
+            },
         ];
         let effective_status = compute_effective_status("completed", &step_statuses);
         assert_eq!(effective_status, "completed");
@@ -244,10 +274,22 @@ mod tests {
 
         // Simulate what save_workflow_state does: compute effective status, then persist
         let step_statuses = vec![
-            StepStatusUpdate { step_id: 0, status: "completed".to_string() },
-            StepStatusUpdate { step_id: 1, status: "completed".to_string() },
-            StepStatusUpdate { step_id: 2, status: "completed".to_string() },
-            StepStatusUpdate { step_id: 3, status: "completed".to_string() },
+            StepStatusUpdate {
+                step_id: 0,
+                status: "completed".to_string(),
+            },
+            StepStatusUpdate {
+                step_id: 1,
+                status: "completed".to_string(),
+            },
+            StepStatusUpdate {
+                step_id: 2,
+                status: "completed".to_string(),
+            },
+            StepStatusUpdate {
+                step_id: 3,
+                status: "completed".to_string(),
+            },
         ];
 
         // Frontend sends "pending" but all steps are completed
@@ -261,17 +303,22 @@ mod tests {
         }
 
         // Verify DB state: run status must be "completed"
-        let run = crate::db::get_workflow_run(&conn, "tc06-skill").unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, "tc06-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.status, "completed");
 
         // Verify all steps are "completed" in DB
         let steps = crate::db::get_workflow_steps(&conn, "tc06-skill").unwrap();
         assert_eq!(steps.len(), 4);
         for step in &steps {
-            assert_eq!(step.status, "completed", "step {} should be completed", step.step_id);
+            assert_eq!(
+                step.status, "completed",
+                "step {} should be completed",
+                step.step_id
+            );
         }
     }
-
 }
 
 /// Output files produced by each step, relative to the skill directory.
@@ -317,7 +364,11 @@ pub fn verify_step_output(
     let target_dir = if step_id == 3 {
         crate::skill_paths::resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name)
     } else {
-        crate::skill_paths::workspace_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name)
+        crate::skill_paths::workspace_skill_dir(
+            Path::new(&workspace_path),
+            &plugin_slug,
+            &skill_name,
+        )
     };
     let has_output = if step_id == 3 {
         target_dir.join("SKILL.md").exists()
@@ -365,7 +416,8 @@ pub fn get_clarifications_content(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         lookup_plugin_slug(&conn, &skill_name)
     };
-    let path = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join("clarifications.json");
+    let path = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name)
+        .join("clarifications.json");
     std::fs::read_to_string(&path).map_err(|e| {
         format!(
             "Failed to read clarifications from '{}': {}",
@@ -386,7 +438,8 @@ pub(crate) fn save_clarifications_content_inner(
         .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
     validate_clarifications_json(&parsed)
         .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
-    let path = workspace_context_dir(workspace_path, plugin_slug, skill_name).join("clarifications.json");
+    let path =
+        workspace_context_dir(workspace_path, plugin_slug, skill_name).join("clarifications.json");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -434,7 +487,8 @@ pub fn get_decisions_content(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         lookup_plugin_slug(&conn, &skill_name)
     };
-    let path = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join("decisions.json");
+    let path =
+        workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join("decisions.json");
     std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read decisions from '{}': {}", path.display(), e))
 }
@@ -454,7 +508,8 @@ pub fn save_decisions_content(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         lookup_plugin_slug(&conn, &skill_name)
     };
-    let path = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join("decisions.json");
+    let path =
+        workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join("decisions.json");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -609,7 +664,11 @@ pub fn navigate_back_to_step(
     // Delete output files for steps from the target onwards.
     // Step 0 is a special case: navigating back to it means a full rerun, so its own
     // artifacts (clarifications.json, answer-evaluation.json) must also be cleared.
-    let delete_from = if target_step_id == 0 { 0 } else { target_step_id + 1 };
+    let delete_from = if target_step_id == 0 {
+        0
+    } else {
+        target_step_id + 1
+    };
     let plugin_slug = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::get_skill_master_any_plugin(&conn, &skill_name)?
@@ -683,8 +742,13 @@ pub fn preview_step_reset(
 
     let mut result = Vec::new();
     for step_id in from_step_id..=3 {
-        let existing_files =
-            crate::cleanup::list_step_output_files(&workspace_path, &skill_name, &plugin_slug, step_id, &skills_path);
+        let existing_files = crate::cleanup::list_step_output_files(
+            &workspace_path,
+            &skill_name,
+            &plugin_slug,
+            step_id,
+            &skills_path,
+        );
 
         if !existing_files.is_empty() {
             let name = step_names
@@ -841,9 +905,7 @@ pub fn read_latest_benchmark(
         let name_str = name.to_string_lossy();
         if let Some(n_str) = name_str.strip_prefix("iteration-") {
             if let Ok(n) = n_str.parse::<u32>() {
-                if entry.path().is_dir()
-                    && latest.as_ref().is_none_or(|(cur, _)| n > *cur)
-                {
+                if entry.path().is_dir() && latest.as_ref().is_none_or(|(cur, _)| n > *cur) {
                     latest = Some((n, entry.path()));
                 }
             }
@@ -1024,13 +1086,7 @@ mod benchmark_tests {
     fn returns_none_when_no_iterations() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap().to_string();
-        fs::create_dir_all(
-            tmp.path()
-                .join("my-skill")
-                .join("evals")
-                .join("workspace"),
-        )
-        .unwrap();
+        fs::create_dir_all(tmp.path().join("my-skill").join("evals").join("workspace")).unwrap();
 
         let result = read_latest_benchmark("my-skill".into(), workspace).unwrap();
         assert!(result.is_none());
@@ -1040,11 +1096,7 @@ mod benchmark_tests {
     fn returns_latest_iteration() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap().to_string();
-        let evals_dir = tmp
-            .path()
-            .join("my-skill")
-            .join("evals")
-            .join("workspace");
+        let evals_dir = tmp.path().join("my-skill").join("evals").join("workspace");
 
         // Create iteration-1 with lower pass rate
         let iter1 = evals_dir.join("iteration-1");

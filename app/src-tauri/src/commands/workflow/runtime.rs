@@ -177,6 +177,8 @@ async fn run_workflow_step_inner(
             .into_owned(),
         ),
         runtime_provider: workflow_one_shot_runtime_provider(),
+        task_kind: None,
+        user_message_suffix: None,
     };
 
     log::debug!(
@@ -544,6 +546,8 @@ pub async fn run_answer_evaluator(
             .into_owned(),
         ),
         runtime_provider: workflow_one_shot_runtime_provider(),
+        task_kind: None,
+        user_message_suffix: None,
     };
 
     log::debug!(

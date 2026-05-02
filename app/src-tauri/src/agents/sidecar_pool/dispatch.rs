@@ -1272,6 +1272,8 @@ mod tests {
             plugin_slug: "skills".to_string(),
             transcript_log_dir: None,
             runtime_provider: None,
+            task_kind: None,
+            user_message_suffix: None,
         }
     }
 

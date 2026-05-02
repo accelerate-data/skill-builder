@@ -4,6 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAgentStore } from "@/stores/agent-store";
 import { AgentRunFooter } from "@/components/agent-run-footer";
 import { DisplayItemList } from "@/components/agent-items/display-item-list";
+import { ConversationEventList } from "@/components/agent-items/conversation-event-list";
 
 interface AgentOutputPanelProps {
   agentId: string;
@@ -11,7 +12,11 @@ interface AgentOutputPanelProps {
 
 export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
   const displayItems = useAgentStore((s) => s.runs[agentId]?.displayItems);
+  const conversationEvents = useAgentStore(
+    (s) => s.runs[agentId]?.conversationEvents,
+  );
   const hasRun = useAgentStore((s) => agentId in s.runs);
+  const hasConversationEvents = (conversationEvents?.length ?? 0) > 0;
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -21,7 +26,7 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
 
   useEffect(() => {
     scrollToBottom();
-  }, [displayItems?.length, scrollToBottom]);
+  }, [conversationEvents?.length, displayItems?.length, scrollToBottom]);
 
   if (!hasRun) {
     return (
@@ -37,7 +42,11 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden py-2 gap-0">
       <ScrollArea className="min-h-0 flex-1">
         <div ref={scrollRef} className="flex flex-col px-4 py-1">
-          <DisplayItemList items={displayItems ?? []} />
+          {hasConversationEvents ? (
+            <ConversationEventList events={conversationEvents ?? []} />
+          ) : (
+            <DisplayItemList items={displayItems ?? []} />
+          )}
           <div ref={bottomRef} />
         </div>
       </ScrollArea>

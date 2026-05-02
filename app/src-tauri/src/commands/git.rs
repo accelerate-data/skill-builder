@@ -20,7 +20,12 @@ pub fn get_skill_history(
     limit: Option<usize>,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillCommit>, String> {
-    log::info!("[get_skill_history] skill={} plugin={} limit={:?}", skill_name, plugin_slug, limit);
+    log::info!(
+        "[get_skill_history] skill={} plugin={} limit={:?}",
+        skill_name,
+        plugin_slug,
+        limit
+    );
     let output_root = resolve_output_root(&db, &workspace_path)?;
     let root = Path::new(&output_root);
     if !root.join(".git").exists() {
@@ -37,33 +42,39 @@ pub fn restore_skill_version(
     sha: String,
     db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
-    log::info!("[restore_skill_version] skill={} plugin={} sha={}", skill_name, plugin_slug, sha);
+    log::info!(
+        "[restore_skill_version] skill={} plugin={} sha={}",
+        skill_name,
+        plugin_slug,
+        sha
+    );
     let output_root = resolve_output_root(&db, &workspace_path)?;
     let root = Path::new(&output_root);
     crate::git::restore_version(root, &sha, &skill_name, &plugin_slug)?;
     // Commit the restore as a new version
     let short_sha = if sha.len() >= 8 { &sha[..8] } else { &sha };
     let msg = format!("{}: restored to {}", skill_name, short_sha);
-    let committed = crate::git::commit_all(root, &msg).map_err(|e| {
-        format!(
-            "Filesystem restored but git commit failed ({}): {}",
-            msg, e
-        )
-    })?;
+    let committed = crate::git::commit_all(root, &msg)
+        .map_err(|e| format!("Filesystem restored but git commit failed ({}): {}", msg, e))?;
     // Tag the restore with the next patch version.
     // Even if commit_all returned None (content identical to HEAD), we still
     // bump and tag HEAD so the user always sees a new version number.
-    let current_version = crate::git::latest_skill_semver(root, &plugin_slug, &skill_name).unwrap_or_else(|_| "0.0.0".to_string());
+    let current_version = crate::git::latest_skill_semver(root, &plugin_slug, &skill_name)
+        .unwrap_or_else(|_| "0.0.0".to_string());
     let new_version = crate::git::bump_patch(&current_version);
-    crate::git::create_skill_version_tag(root, &plugin_slug, &skill_name, &new_version).map_err(|e| {
-        format!(
-            "Restore committed but version tag failed (v{}): {}",
-            new_version, e
-        )
-    })?;
+    crate::git::create_skill_version_tag(root, &plugin_slug, &skill_name, &new_version).map_err(
+        |e| {
+            format!(
+                "Restore committed but version tag failed (v{}): {}",
+                new_version, e
+            )
+        },
+    )?;
     log::info!(
         "[restore_skill_version] skill={} new_version={} new_commit={}",
-        skill_name, new_version, committed.is_some()
+        skill_name,
+        new_version,
+        committed.is_some()
     );
     Ok(new_version)
 }
@@ -76,13 +87,24 @@ pub fn get_skill_files_at_sha(
     sha: String,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillFileContent>, String> {
-    log::info!("[get_skill_files_at_sha] skill={} plugin={} sha={}", skill_name, plugin_slug, sha);
+    log::info!(
+        "[get_skill_files_at_sha] skill={} plugin={} sha={}",
+        skill_name,
+        plugin_slug,
+        sha
+    );
     let output_root = resolve_output_root(&db, &workspace_path)?;
     let root = Path::new(&output_root);
-    let pairs = crate::git::get_skill_files_at_sha(root, &skill_name, &plugin_slug, &sha).map_err(|e| {
-        log::error!("[get_skill_files_at_sha] skill={} sha={} error={}", skill_name, sha, e);
-        e
-    })?;
+    let pairs =
+        crate::git::get_skill_files_at_sha(root, &skill_name, &plugin_slug, &sha).map_err(|e| {
+            log::error!(
+                "[get_skill_files_at_sha] skill={} sha={} error={}",
+                skill_name,
+                sha,
+                e
+            );
+            e
+        })?;
     Ok(pairs
         .into_iter()
         .map(|(path, content)| SkillFileContent { path, content })
@@ -92,8 +114,8 @@ pub fn get_skill_files_at_sha(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
     use crate::db::create_test_db_for_tests;
+    use std::sync::Mutex;
     use tempfile::tempdir;
 
     /// Build an in-memory `Db` with an optional `skills_path` setting.
@@ -164,7 +186,10 @@ mod tests {
             history.len()
         );
         assert!(!history[0].sha.is_empty(), "commit SHA must not be empty");
-        assert!(!history[0].timestamp.is_empty(), "commit timestamp must not be empty");
+        assert!(
+            !history[0].timestamp.is_empty(),
+            "commit timestamp must not be empty"
+        );
     }
 
     #[test]
@@ -173,21 +198,32 @@ mod tests {
         let repo_path = dir.path();
 
         // Two skills with the same name in different plugins.
-        init_skill_repo_plugin(repo_path, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "shared-skill", "# default");
+        init_skill_repo_plugin(
+            repo_path,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "shared-skill",
+            "# default",
+        );
         let other_dir = repo_path.join("other-plugin").join("shared-skill");
         std::fs::create_dir_all(&other_dir).unwrap();
         std::fs::write(other_dir.join("SKILL.md"), "# other").unwrap();
         crate::git::commit_all(repo_path, "shared-skill: other-plugin initial").unwrap();
 
         let default_history = crate::git::get_history(
-            repo_path, "shared-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 100
-        ).unwrap();
-        let other_history = crate::git::get_history(
-            repo_path, "shared-skill", "other-plugin", 100
-        ).unwrap();
+            repo_path,
+            "shared-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            100,
+        )
+        .unwrap();
+        let other_history =
+            crate::git::get_history(repo_path, "shared-skill", "other-plugin", 100).unwrap();
 
         // Each plugin's history must contain only its own commits.
-        assert!(!default_history.is_empty(), "default plugin must have history");
+        assert!(
+            !default_history.is_empty(),
+            "default plugin must have history"
+        );
         assert!(!other_history.is_empty(), "other plugin must have history");
         // Their most recent commit SHAs must differ (different commits touch different paths).
         assert_ne!(
@@ -209,7 +245,12 @@ mod tests {
             if !root.join(".git").exists() {
                 Ok(Vec::<crate::types::SkillCommit>::new())
             } else {
-                crate::git::get_history(root, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 100)
+                crate::git::get_history(
+                    root,
+                    "my-skill",
+                    crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+                    100,
+                )
             }
         };
         assert!(result.is_ok());
@@ -225,7 +266,8 @@ mod tests {
         let repo_path = dir.path();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let sha_v1 = init_skill_repo_plugin(repo_path, plugin, "restore-skill", "# Original content");
+        let sha_v1 =
+            init_skill_repo_plugin(repo_path, plugin, "restore-skill", "# Original content");
 
         // Second commit: change the file.
         let skill_dir = repo_path.join(plugin).join("restore-skill");
@@ -296,7 +338,8 @@ mod tests {
         assert_eq!(current, "0.0.0");
         let new_version = crate::git::bump_patch(&current);
         assert_eq!(new_version, "0.0.1");
-        crate::git::create_skill_version_tag(repo_path, plugin, "notag-skill", &new_version).unwrap();
+        crate::git::create_skill_version_tag(repo_path, plugin, "notag-skill", &new_version)
+            .unwrap();
         let latest = crate::git::latest_skill_semver(repo_path, plugin, "notag-skill").unwrap();
         assert_eq!(latest, "0.0.1");
     }

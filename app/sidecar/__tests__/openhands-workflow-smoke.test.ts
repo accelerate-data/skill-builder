@@ -65,18 +65,39 @@ function makeMockChild(
     const structuredOutput = captureRequest(request);
     stdout.write(
       JSON.stringify({
-        type: "openhands_event",
-        event_kind: "message",
-        content: `Running ${request.agentName}`,
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "starting",
         timestamp: Date.now(),
       }) + "\n",
     );
     stdout.write(
       JSON.stringify({
-        type: "openhands_result",
-        status: "success",
+        type: "conversation_event",
+        runtime: "openhands",
+        event_class: "MessageEvent",
+        event: {
+          source: "agent",
+          llm_message: {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: `Running ${request.agentName}`,
+              },
+            ],
+          },
+        },
+        timestamp: Date.now(),
+      }) + "\n",
+    );
+    stdout.write(
+      JSON.stringify({
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
         result_text: JSON.stringify(structuredOutput),
-        structured_output: null,
+        error_detail: null,
         timestamp: Date.now(),
       }) + "\n",
     );
@@ -115,12 +136,16 @@ function baseRequest(
   };
 }
 
-function runResult(messages: Record<string, unknown>[]) {
+function terminalState(messages: Record<string, unknown>[]) {
   return messages.find(
     (message) =>
-      message.type === "agent_event" &&
-      (message.event as Record<string, unknown>)?.type === "run_result",
-  )?.event as Record<string, unknown> | undefined;
+      message.type === "conversation_state" &&
+      message.status === "completed",
+  ) as Record<string, unknown> | undefined;
+}
+
+function conversationEvents(messages: Record<string, unknown>[]) {
+  return messages.filter((message) => message.type === "conversation_event");
 }
 
 const mockSpawn = vi.mocked(childProcess.spawn);
@@ -229,13 +254,15 @@ describe("OpenHands workflow smoke", () => {
       ).toBe(true);
       expect(JSON.stringify(capturedRequests)).not.toContain("AskUserQuestion");
 
-      expect(runResult(step0.messages)).toMatchObject({
+      expect(conversationEvents(step0.messages)).toHaveLength(1);
+      expect(conversationEvents(step3.messages)).toHaveLength(1);
+      expect(terminalState(step0.messages)).toMatchObject({
         status: "completed",
-        resultText: expect.stringContaining("dimensions_selected"),
+        result_text: expect.stringContaining("dimensions_selected"),
       });
-      expect(runResult(step3.messages)).toMatchObject({
+      expect(terminalState(step3.messages)).toMatchObject({
         status: "completed",
-        resultText: expect.stringContaining("skill_md"),
+        result_text: expect.stringContaining("skill_md"),
       });
     } finally {
       rmSync(root, { recursive: true, force: true });

@@ -30,7 +30,6 @@ fn map_skill_master_row(row: &rusqlite::Row) -> rusqlite::Result<SkillMasterRow>
     })
 }
 
-
 pub fn slugify_plugin_name(name: &str) -> String {
     let mut slug = String::with_capacity(name.len());
     let mut last_dash = false;
@@ -124,7 +123,11 @@ pub fn delete_plugin_by_slug(conn: &Connection, slug: &str) -> Result<(), String
 }
 
 /// Update a plugin's display_name by slug.
-pub fn update_plugin_display_name(conn: &Connection, slug: &str, display_name: &str) -> Result<(), String> {
+pub fn update_plugin_display_name(
+    conn: &Connection,
+    slug: &str,
+    display_name: &str,
+) -> Result<(), String> {
     conn.execute(
         "UPDATE plugins SET display_name = ?2, updated_at = datetime('now') || 'Z' WHERE slug = ?1",
         rusqlite::params![slug, display_name],
@@ -151,25 +154,30 @@ pub fn list_plugins(conn: &Connection) -> Result<Vec<crate::types::LibraryPlugin
              ORDER BY is_default DESC, display_name ASC",
         )
         .map_err(|e| format!("list_plugins: {}", e))?;
-    let rows = stmt.query_map([], |row| {
-        Ok(crate::types::LibraryPlugin {
-            id: row.get(0)?,
-            slug: row.get(1)?,
-            display_name: row.get(2)?,
-            version: row.get(3)?,
-            source_type: row.get(4)?,
-            source_url: row.get(5)?,
-            is_default: row.get::<_, i32>(6)? != 0,
-            upgrade_locked: row.get::<_, i32>(7)? != 0,
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(crate::types::LibraryPlugin {
+                id: row.get(0)?,
+                slug: row.get(1)?,
+                display_name: row.get(2)?,
+                version: row.get(3)?,
+                source_type: row.get(4)?,
+                source_url: row.get(5)?,
+                is_default: row.get::<_, i32>(6)? != 0,
+                upgrade_locked: row.get::<_, i32>(7)? != 0,
+            })
         })
-    })
-    .map_err(|e| format!("list_plugins query: {}", e))?;
+        .map_err(|e| format!("list_plugins query: {}", e))?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("list_plugins collect: {}", e))
 }
 
 /// Set the `upgrade_locked` flag on a plugin by slug.
-pub fn set_plugin_upgrade_locked(conn: &Connection, slug: &str, locked: bool) -> Result<(), String> {
+pub fn set_plugin_upgrade_locked(
+    conn: &Connection,
+    slug: &str,
+    locked: bool,
+) -> Result<(), String> {
     conn.execute(
         "UPDATE plugins SET upgrade_locked = ?2, updated_at = datetime('now') || 'Z' WHERE slug = ?1",
         rusqlite::params![slug, if locked { 1i32 } else { 0i32 }],
@@ -206,7 +214,15 @@ pub fn create_plugin(
         slug = format!("{base_slug}-{suffix}");
         suffix += 1;
     }
-    let id = ensure_plugin(conn, &slug, display_name, source_type, source_url, version, false)?;
+    let id = ensure_plugin(
+        conn,
+        &slug,
+        display_name,
+        source_type,
+        source_url,
+        version,
+        false,
+    )?;
     Ok((id, slug))
 }
 
@@ -243,7 +259,12 @@ fn upsert_skill_impl(
     plugin_slug: &str,
     update_source: bool,
 ) -> Result<i64, String> {
-    log::debug!("upsert_skill: name={} skill_source={} update_source={}", name, skill_source, update_source);
+    log::debug!(
+        "upsert_skill: name={} skill_source={} update_source={}",
+        name,
+        skill_source,
+        update_source
+    );
     let plugin_id = resolve_plugin_id(conn, plugin_slug)?;
     let sql = if update_source {
         "INSERT INTO skills (name, skill_source, plugin_id, purpose, updated_at)
@@ -261,11 +282,14 @@ fn upsert_skill_impl(
              updated_at = datetime('now'),
              deleted_at = NULL"
     };
-    conn.execute(sql, rusqlite::params![name, skill_source, plugin_id, purpose])
-        .map_err(|e| {
-            log::error!("upsert_skill: failed to upsert '{}': {}", name, e);
-            e.to_string()
-        })?;
+    conn.execute(
+        sql,
+        rusqlite::params![name, skill_source, plugin_id, purpose],
+    )
+    .map_err(|e| {
+        log::error!("upsert_skill: failed to upsert '{}': {}", name, e);
+        e.to_string()
+    })?;
     conn.query_row(
         "SELECT id FROM skills WHERE name = ?1 AND plugin_id = ?2",
         rusqlite::params![name, plugin_id],
@@ -315,12 +339,10 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
             e.to_string()
         })?;
 
-    let rows = stmt
-        .query_map([], map_skill_master_row)
-        .map_err(|e| {
-            log::error!("list_all_skills: query failed: {}", e);
-            e.to_string()
-        })?;
+    let rows = stmt.query_map([], map_skill_master_row).map_err(|e| {
+        log::error!("list_all_skills: query failed: {}", e);
+        e.to_string()
+    })?;
 
     let result: Vec<SkillMasterRow> = rows.collect::<Result<Vec<_>, _>>().map_err(|e| {
         log::error!("list_all_skills: failed to collect rows: {}", e);
@@ -382,7 +404,10 @@ pub fn get_skill_master_in_plugin(
         )
         .map_err(|e| e.to_string())?;
 
-    let result = stmt.query_row(rusqlite::params![skill_name, plugin_slug], map_skill_master_row);
+    let result = stmt.query_row(
+        rusqlite::params![skill_name, plugin_slug],
+        map_skill_master_row,
+    );
 
     match result {
         Ok(row) => Ok(Some(row)),
@@ -398,7 +423,11 @@ pub fn delete_skill(conn: &Connection, name: &str) -> Result<(), String> {
     delete_skill_in_plugin(conn, name, DEFAULT_PLUGIN_SLUG)
 }
 
-pub fn delete_skill_in_plugin(conn: &Connection, name: &str, plugin_slug: &str) -> Result<(), String> {
+pub fn delete_skill_in_plugin(
+    conn: &Connection,
+    name: &str,
+    plugin_slug: &str,
+) -> Result<(), String> {
     log::info!("delete_skill: name={}", name);
     conn.execute(
         "UPDATE skills
@@ -427,7 +456,10 @@ pub fn get_skill_master_id(conn: &Connection, skill_name: &str) -> Result<Option
 
 /// Look up a skill's row ID across all plugins (not just the default one).
 /// Used by lock acquisition, which must work for imported and marketplace skills.
-pub fn get_skill_master_id_any_plugin(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
+pub fn get_skill_master_id_any_plugin(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<Option<i64>, String> {
     conn.query_row(
         "SELECT id FROM skills WHERE name = ?1 AND COALESCE(deleted_at, '') = '' LIMIT 1",
         rusqlite::params![skill_name],
@@ -462,14 +494,15 @@ pub fn move_skill_to_plugin(
 ) -> Result<(), String> {
     let target_plugin_id = get_plugin_id_by_slug(conn, to_plugin_slug)?
         .ok_or_else(|| format!("Unknown plugin slug '{}'", to_plugin_slug))?;
-    let changed = conn.execute(
-        "UPDATE skills
+    let changed = conn
+        .execute(
+            "UPDATE skills
          SET plugin_id = ?3, updated_at = datetime('now') || 'Z'
          WHERE name = ?1
            AND plugin_id = COALESCE((SELECT id FROM plugins WHERE slug = ?2), -1)",
-        rusqlite::params![skill_name, from_plugin_slug, target_plugin_id],
-    )
-    .map_err(|e| format!("move_skill_to_plugin: {}", e))?;
+            rusqlite::params![skill_name, from_plugin_slug, target_plugin_id],
+        )
+        .map_err(|e| format!("move_skill_to_plugin: {}", e))?;
     if changed == 0 {
         return Err(format!(
             "move_skill_to_plugin: skill '{}' not found in plugin '{}' (0 rows affected)",
@@ -572,9 +605,18 @@ pub fn get_tags_for_skills(
     Ok(map)
 }
 
-pub fn set_skill_tags(conn: &Connection, skill_name: &str, plugin_slug: &str, tags: &[String]) -> Result<(), String> {
-    let s_id = get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)?
-        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
+pub fn set_skill_tags(
+    conn: &Connection,
+    skill_name: &str,
+    plugin_slug: &str,
+    tags: &[String],
+) -> Result<(), String> {
+    let s_id = get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)?.ok_or_else(|| {
+        format!(
+            "Skill '{}' not found in plugin '{}'",
+            skill_name, plugin_slug
+        )
+    })?;
 
     conn.execute(
         "DELETE FROM skill_tags WHERE skill_id = ?1",
@@ -620,45 +662,86 @@ mod tests {
         let conn = create_test_db_for_tests();
         // Default plugin is created by migrations; verify upgrade_locked defaults to 0.
         let plugins = list_plugins(&conn).expect("list_plugins should succeed");
-        assert!(!plugins.is_empty(), "at least the default plugin should exist");
+        assert!(
+            !plugins.is_empty(),
+            "at least the default plugin should exist"
+        );
         for p in &plugins {
-            assert!(!p.upgrade_locked, "upgrade_locked should default to false for plugin '{}'", p.slug);
+            assert!(
+                !p.upgrade_locked,
+                "upgrade_locked should default to false for plugin '{}'",
+                p.slug
+            );
         }
     }
 
     #[test]
     fn set_plugin_upgrade_locked_toggles_flag() {
         let conn = create_test_db_for_tests();
-        ensure_plugin(&conn, "test-pkg", "Test Pkg", "marketplace", Some("https://example.com/pkg"), None, false)
-            .expect("ensure_plugin");
+        ensure_plugin(
+            &conn,
+            "test-pkg",
+            "Test Pkg",
+            "marketplace",
+            Some("https://example.com/pkg"),
+            None,
+            false,
+        )
+        .expect("ensure_plugin");
 
         // Lock it
         set_plugin_upgrade_locked(&conn, "test-pkg", true).expect("set locked");
         let plugins = list_plugins(&conn).expect("list_plugins");
-        let p = plugins.iter().find(|p| p.slug == "test-pkg").expect("plugin exists");
-        assert!(p.upgrade_locked, "upgrade_locked should be true after locking");
+        let p = plugins
+            .iter()
+            .find(|p| p.slug == "test-pkg")
+            .expect("plugin exists");
+        assert!(
+            p.upgrade_locked,
+            "upgrade_locked should be true after locking"
+        );
 
         // Unlock it
         set_plugin_upgrade_locked(&conn, "test-pkg", false).expect("set unlocked");
         let plugins = list_plugins(&conn).expect("list_plugins");
-        let p = plugins.iter().find(|p| p.slug == "test-pkg").expect("plugin exists");
-        assert!(!p.upgrade_locked, "upgrade_locked should be false after unlocking");
+        let p = plugins
+            .iter()
+            .find(|p| p.slug == "test-pkg")
+            .expect("plugin exists");
+        assert!(
+            !p.upgrade_locked,
+            "upgrade_locked should be false after unlocking"
+        );
     }
 
     #[test]
     fn lock_plugin_for_skill_locks_marketplace_plugin() {
         let conn = create_test_db_for_tests();
         // Create a marketplace plugin and a skill in it.
-        ensure_plugin(&conn, "mkt-pkg", "Mkt Pkg", "marketplace", Some("https://example.com/mkt"), None, false)
-            .expect("ensure_plugin");
+        ensure_plugin(
+            &conn,
+            "mkt-pkg",
+            "Mkt Pkg",
+            "marketplace",
+            Some("https://example.com/mkt"),
+            None,
+            false,
+        )
+        .expect("ensure_plugin");
         upsert_skill_in_plugin(&conn, "mkt-skill", "marketplace", "domain", "mkt-pkg")
             .expect("upsert skill");
 
         lock_plugin_for_skill(&conn, "mkt-skill").expect("lock_plugin_for_skill");
 
         let plugins = list_plugins(&conn).expect("list_plugins");
-        let p = plugins.iter().find(|p| p.slug == "mkt-pkg").expect("plugin exists");
-        assert!(p.upgrade_locked, "marketplace plugin should be locked after editing a skill");
+        let p = plugins
+            .iter()
+            .find(|p| p.slug == "mkt-pkg")
+            .expect("plugin exists");
+        assert!(
+            p.upgrade_locked,
+            "marketplace plugin should be locked after editing a skill"
+        );
     }
 
     #[test]
@@ -670,41 +753,73 @@ mod tests {
         lock_plugin_for_skill(&conn, "builder-skill").expect("lock_plugin_for_skill");
 
         let plugins = list_plugins(&conn).expect("list_plugins");
-        let default_plugin = plugins.iter().find(|p| p.is_default).expect("default plugin exists");
-        assert!(!default_plugin.upgrade_locked, "non-marketplace plugin must not be locked");
+        let default_plugin = plugins
+            .iter()
+            .find(|p| p.is_default)
+            .expect("default plugin exists");
+        assert!(
+            !default_plugin.upgrade_locked,
+            "non-marketplace plugin must not be locked"
+        );
     }
 
     #[test]
     fn get_skill_master_id_any_plugin_finds_imported_skill() {
         let conn = create_test_db_for_tests();
-        ensure_plugin(&conn, "ext-plugin", "Ext Plugin", "marketplace", Some("https://example.com/ext"), None, false)
-            .expect("ensure_plugin");
+        ensure_plugin(
+            &conn,
+            "ext-plugin",
+            "Ext Plugin",
+            "marketplace",
+            Some("https://example.com/ext"),
+            None,
+            false,
+        )
+        .expect("ensure_plugin");
         upsert_skill_in_plugin(&conn, "ext-skill", "marketplace", "domain", "ext-plugin")
             .expect("upsert skill");
 
         // get_skill_master_id (default-plugin-only) should NOT find it
         let default_id = get_skill_master_id(&conn, "ext-skill").expect("query ok");
-        assert!(default_id.is_none(), "default-plugin lookup must not find skills in other plugins");
+        assert!(
+            default_id.is_none(),
+            "default-plugin lookup must not find skills in other plugins"
+        );
 
         // get_skill_master_id_any_plugin SHOULD find it
         let any_id = get_skill_master_id_any_plugin(&conn, "ext-skill").expect("query ok");
-        assert!(any_id.is_some(), "any-plugin lookup must find skills in non-default plugins");
+        assert!(
+            any_id.is_some(),
+            "any-plugin lookup must find skills in non-default plugins"
+        );
     }
 
     #[test]
     fn plugin_aware_operations_work_for_non_default_plugin() {
         let conn = create_test_db_for_tests();
         // Create a non-default plugin and a skill in it.
-        ensure_plugin(&conn, "mkt-ops", "Mkt Ops", "marketplace", Some("https://example.com/mkt"), None, false)
-            .expect("ensure_plugin");
+        ensure_plugin(
+            &conn,
+            "mkt-ops",
+            "Mkt Ops",
+            "marketplace",
+            Some("https://example.com/mkt"),
+            None,
+            false,
+        )
+        .expect("ensure_plugin");
         upsert_skill_in_plugin(&conn, "mkt-op-skill", "marketplace", "domain", "mkt-ops")
             .expect("upsert skill");
 
         // set_skill_tags with explicit plugin_slug should succeed
-        set_skill_tags(&conn, "mkt-op-skill", "mkt-ops", &["tag-a".into(), "tag-b".into()])
-            .expect("set_skill_tags for non-default plugin");
-        let tags = get_tags_for_skills(&conn, &vec!["mkt-op-skill".to_string()])
-            .expect("get_tags");
+        set_skill_tags(
+            &conn,
+            "mkt-op-skill",
+            "mkt-ops",
+            &["tag-a".into(), "tag-b".into()],
+        )
+        .expect("set_skill_tags for non-default plugin");
+        let tags = get_tags_for_skills(&conn, &vec!["mkt-op-skill".to_string()]).expect("get_tags");
         assert_eq!(tags.get("mkt-op-skill").map(|v| v.len()), Some(2));
 
         // get_skill_master_id_in_plugin should find it
@@ -713,7 +828,10 @@ mod tests {
 
         // default-plugin lookup must NOT find it
         let default_id = get_skill_master_id(&conn, "mkt-op-skill").expect("query ok");
-        assert!(default_id.is_none(), "default lookup must not find non-default plugin skills");
+        assert!(
+            default_id.is_none(),
+            "default lookup must not find non-default plugin skills"
+        );
     }
 
     #[test]
@@ -724,12 +842,21 @@ mod tests {
         upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
 
         // 'my-skill' is in the default plugin, but we claim it's in 'target-plugin'
-        let result = move_skill_to_plugin(&conn, "my-skill", &target_slug, crate::skill_paths::DEFAULT_PLUGIN_SLUG);
-        assert!(result.is_err(), "must return Err when from_plugin_slug is wrong");
+        let result = move_skill_to_plugin(
+            &conn,
+            "my-skill",
+            &target_slug,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        );
+        assert!(
+            result.is_err(),
+            "must return Err when from_plugin_slug is wrong"
+        );
         let msg = result.unwrap_err();
         assert!(
             msg.contains("0 rows affected"),
-            "error should mention 0 rows affected, got: {}", msg
+            "error should mention 0 rows affected, got: {}",
+            msg
         );
     }
 
@@ -740,8 +867,13 @@ mod tests {
         let (_, target_slug) = create_plugin(&conn, "target-plugin", "local", None, None).unwrap();
         upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
 
-        move_skill_to_plugin(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &target_slug)
-            .expect("move should succeed");
+        move_skill_to_plugin(
+            &conn,
+            "my-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            &target_slug,
+        )
+        .expect("move should succeed");
 
         // The JOIN-derived plugin_slug in get_skill_master_in_plugin should reflect the new plugin
         let master = get_skill_master_in_plugin(&conn, "my-skill", &target_slug)

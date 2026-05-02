@@ -36,10 +36,12 @@ fn main() {
         })
     } else {
         let mut buf = String::new();
-        std::io::stdin().read_to_string(&mut buf).unwrap_or_else(|e| {
-            eprintln!("Failed to read stdin: {}", e);
-            process::exit(2);
-        });
+        std::io::stdin()
+            .read_to_string(&mut buf)
+            .unwrap_or_else(|e| {
+                eprintln!("Failed to read stdin: {}", e);
+                process::exit(2);
+            });
         buf
     };
 

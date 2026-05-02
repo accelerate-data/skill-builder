@@ -95,7 +95,13 @@ pub fn detect_furthest_step_with_options(
                         "[detect_furthest_step] skill='{}': step {} has partial output, cleaning up",
                         skill_name, step_id
                     );
-                    clean_step_output(workspace_path, skill_name, plugin_slug, step_id, skills_path);
+                    clean_step_output(
+                        workspace_path,
+                        skill_name,
+                        plugin_slug,
+                        step_id,
+                        skills_path,
+                    );
                 }
             }
             // Stop at first incomplete step — later steps can't be valid
@@ -305,7 +311,11 @@ mod tests {
         std::fs::create_dir_all(&output_dir).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
-        assert!(has_skill_output(SLUG, "my-skill", tmp.path().to_str().unwrap()));
+        assert!(has_skill_output(
+            SLUG,
+            "my-skill",
+            tmp.path().to_str().unwrap()
+        ));
     }
 
     #[test]
@@ -314,7 +324,11 @@ mod tests {
         let output_dir = tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
 
-        assert!(has_skill_output(SLUG, "my-skill", tmp.path().to_str().unwrap()));
+        assert!(has_skill_output(
+            SLUG,
+            "my-skill",
+            tmp.path().to_str().unwrap()
+        ));
     }
 
     #[test]
@@ -322,7 +336,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join(SLUG).join("my-skill")).unwrap();
 
-        assert!(!has_skill_output(SLUG, "my-skill", tmp.path().to_str().unwrap()));
+        assert!(!has_skill_output(
+            SLUG,
+            "my-skill",
+            tmp.path().to_str().unwrap()
+        ));
     }
 
     #[test]
@@ -331,7 +349,11 @@ mod tests {
         let output_dir = tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(output_dir.join("context")).unwrap();
 
-        assert!(!has_skill_output(SLUG, "my-skill", tmp.path().to_str().unwrap()));
+        assert!(!has_skill_output(
+            SLUG,
+            "my-skill",
+            tmp.path().to_str().unwrap()
+        ));
     }
 
     #[test]

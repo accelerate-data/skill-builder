@@ -54,7 +54,11 @@ pub struct SkillMdInfo {
 pub fn parse_skill_md(skill_path: &Path) -> Result<SkillMdInfo, String> {
     let skill_md_path = skill_path.join("SKILL.md");
     let content = std::fs::read_to_string(&skill_md_path).map_err(|e| {
-        format!("Failed to read SKILL.md at {}: {}", skill_md_path.display(), e)
+        format!(
+            "Failed to read SKILL.md at {}: {}",
+            skill_md_path.display(),
+            e
+        )
     })?;
 
     // Normalize CRLF
@@ -124,10 +128,7 @@ pub fn parse_skill_md(skill_path: &Path) -> Result<SkillMdInfo, String> {
 
 /// Stratified train/test split. Separates by should_trigger,
 /// shuffles each group with fixed seed, takes holdout fraction as test.
-pub fn split_eval_set(
-    eval_set: &[EvalQuery],
-    holdout: f64,
-) -> (Vec<EvalQuery>, Vec<EvalQuery>) {
+pub fn split_eval_set(eval_set: &[EvalQuery], holdout: f64) -> (Vec<EvalQuery>, Vec<EvalQuery>) {
     let mut rng = rand::rngs::SmallRng::seed_from_u64(42);
 
     let mut trigger: Vec<EvalQuery> = eval_set
@@ -228,10 +229,16 @@ pub async fn run_loop(
         eval_queries.len(),
         model
     );
-    write_log_line(&loop_log, &format!(
-        "RUN_START skill_path={} plugin={} queries={} model={}",
-        skill_path.display(), plugin_slug, eval_queries.len(), model
-    ));
+    write_log_line(
+        &loop_log,
+        &format!(
+            "RUN_START skill_path={} plugin={} queries={} model={}",
+            skill_path.display(),
+            plugin_slug,
+            eval_queries.len(),
+            model
+        ),
+    );
 
     let skill_info = parse_skill_md(skill_path)?;
     let mut current_description = skill_info.description.clone();
@@ -251,10 +258,15 @@ pub async fn run_loop(
         test_set.len(),
         HOLDOUT
     );
-    write_log_line(&loop_log, &format!(
-        "SPLIT train={} test={} holdout={}",
-        train_set.len(), test_set.len(), HOLDOUT
-    ));
+    write_log_line(
+        &loop_log,
+        &format!(
+            "SPLIT train={} test={} holdout={}",
+            train_set.len(),
+            test_set.len(),
+            HOLDOUT
+        ),
+    );
 
     let mut history: Vec<IterationRecord> = Vec::new();
     let mut exit_reason = String::new();
@@ -266,11 +278,14 @@ pub async fn run_loop(
         "[run_loop] baseline iteration 0 description=\"{}\"",
         &current_description[..current_description.len().min(80)]
     );
-    write_log_line(&loop_log, &format!(
-        "ITERATION_START iteration=0/{} description=\"{}\"",
-        MAX_ITERATIONS,
-        &current_description[..current_description.len().min(80)]
-    ));
+    write_log_line(
+        &loop_log,
+        &format!(
+            "ITERATION_START iteration=0/{} description=\"{}\"",
+            MAX_ITERATIONS,
+            &current_description[..current_description.len().min(80)]
+        ),
+    );
 
     let baseline_test_obj = eval::run_eval(
         &test_set,
@@ -304,26 +319,33 @@ pub async fn run_loop(
         test_total: baseline_test_total,
     });
 
-    if let Err(e) = app.emit("description:progress", &serde_json::json!({
-        "type": "progress",
-        "iteration": 0,
-        "description": current_description,
-        "train_passed": serde_json::Value::Null,
-        "train_total": serde_json::Value::Null,
-        "test_passed": baseline_test_passed,
-        "test_total": baseline_test_total,
-    })) {
+    if let Err(e) = app.emit(
+        "description:progress",
+        &serde_json::json!({
+            "type": "progress",
+            "iteration": 0,
+            "description": current_description,
+            "train_passed": serde_json::Value::Null,
+            "train_total": serde_json::Value::Null,
+            "test_passed": baseline_test_passed,
+            "test_total": baseline_test_total,
+        }),
+    ) {
         log::debug!("[run_loop] emit error: {}", e);
     }
 
     log::info!(
         "[run_loop] baseline test score: {}/{}",
-        baseline_test_passed, baseline_test_total
+        baseline_test_passed,
+        baseline_test_total
     );
-    write_log_line(&eval_log, &format!(
-        "EVAL_COMPLETE iteration=0 train=N/A test={}/{}",
-        baseline_test_passed, baseline_test_total
-    ));
+    write_log_line(
+        &eval_log,
+        &format!(
+            "EVAL_COMPLETE iteration=0 train=N/A test={}/{}",
+            baseline_test_passed, baseline_test_total
+        ),
+    );
 
     if should_exit_early(baseline_test_passed, baseline_test_total) {
         exit_reason = "all_passed_baseline".to_string();
@@ -337,20 +359,26 @@ pub async fn run_loop(
                 return Err("Optimization cancelled".to_string());
             }
 
-            write_log_line(&loop_log, &format!(
-                "ITERATION_START iteration={}/{} description=\"{}\"",
-                iteration, MAX_ITERATIONS,
-                &current_description[..current_description.len().min(80)]
-            ));
+            write_log_line(
+                &loop_log,
+                &format!(
+                    "ITERATION_START iteration={}/{} description=\"{}\"",
+                    iteration,
+                    MAX_ITERATIONS,
+                    &current_description[..current_description.len().min(80)]
+                ),
+            );
 
             // ── Step 1: Train eval of current description ──────────────────────
             log::info!(
                 "[run_loop] iteration {}/{} train eval on current description",
-                iteration, MAX_ITERATIONS
+                iteration,
+                MAX_ITERATIONS
             );
-            write_log_line(&eval_log, &format!(
-                "TRAIN_EVAL_START iteration={}", iteration
-            ));
+            write_log_line(
+                &eval_log,
+                &format!("TRAIN_EVAL_START iteration={}", iteration),
+            );
 
             let train_eval = eval::run_eval(
                 &train_set,
@@ -374,10 +402,13 @@ pub async fn run_loop(
             let train_passed = train_eval.results.iter().filter(|r| r.pass).count();
             let train_total = train_eval.results.len();
 
-            write_log_line(&eval_log, &format!(
-                "TRAIN_EVAL_COMPLETE iteration={} train={}/{}",
-                iteration, train_passed, train_total
-            ));
+            write_log_line(
+                &eval_log,
+                &format!(
+                    "TRAIN_EVAL_COMPLETE iteration={} train={}/{}",
+                    iteration, train_passed, train_total
+                ),
+            );
 
             // ── Step 2: Improve ────────────────────────────────────────────────
             let history_entries: Vec<HistoryEntry> = history
@@ -391,10 +422,13 @@ pub async fn run_loop(
                 })
                 .collect();
 
-            write_log_line(&improve_log, &format!(
-                "IMPROVE_START iteration={} model={} skill={}",
-                iteration, model, skill_info.name
-            ));
+            write_log_line(
+                &improve_log,
+                &format!(
+                    "IMPROVE_START iteration={} model={} skill={}",
+                    iteration, model, skill_info.name
+                ),
+            );
 
             let candidate = match improve::improve_description(
                 &skill_info.name,
@@ -408,28 +442,37 @@ pub async fn run_loop(
             .await
             {
                 Ok(d) => {
-                    write_log_line(&improve_log, &format!(
-                        "IMPROVE_OK iteration={} chars={} description=\"{}\"",
-                        iteration, d.len(), &d[..d.len().min(80)]
-                    ));
+                    write_log_line(
+                        &improve_log,
+                        &format!(
+                            "IMPROVE_OK iteration={} chars={} description=\"{}\"",
+                            iteration,
+                            d.len(),
+                            &d[..d.len().min(80)]
+                        ),
+                    );
                     d
                 }
                 Err(e) => {
-                    write_log_line(&improve_log, &format!(
-                        "IMPROVE_FAIL iteration={} error={}", iteration, e
-                    ));
+                    write_log_line(
+                        &improve_log,
+                        &format!("IMPROVE_FAIL iteration={} error={}", iteration, e),
+                    );
                     return Err(e);
                 }
             };
             log::info!(
                 "[run_loop] iteration {} candidate ({} chars): \"{}\"",
-                iteration, candidate.len(), &candidate[..candidate.len().min(80)]
+                iteration,
+                candidate.len(),
+                &candidate[..candidate.len().min(80)]
             );
 
             // ── Step 3: Test eval of candidate ─────────────────────────────────
             log::info!(
                 "[run_loop] iteration {}/{} test eval on candidate",
-                iteration, MAX_ITERATIONS
+                iteration,
+                MAX_ITERATIONS
             );
 
             let test_eval = eval::run_eval(
@@ -454,32 +497,50 @@ pub async fn run_loop(
             let test_passed = test_eval.results.iter().filter(|r| r.pass).count();
             let test_total = test_eval.results.len();
 
-            write_log_line(&eval_log, &format!(
-                "EVAL_COMPLETE iteration={} train={}/{} test={}/{}",
-                iteration, train_passed, train_total, test_passed, test_total
-            ));
+            write_log_line(
+                &eval_log,
+                &format!(
+                    "EVAL_COMPLETE iteration={} train={}/{} test={}/{}",
+                    iteration, train_passed, train_total, test_passed, test_total
+                ),
+            );
 
             // ── Step 4: Gate ───────────────────────────────────────────────────
             let prev_best = best_test_passed;
             if should_accept_candidate(test_passed, best_test_passed) {
                 best_test_passed = test_passed;
                 current_description = candidate.clone();
-                write_log_line(&improve_log, &format!(
-                    "CANDIDATE_ACCEPTED iteration={} train={}/{} test={}/{} prev_best_test={}",
-                    iteration, train_passed, train_total, test_passed, test_total, prev_best
-                ));
+                write_log_line(
+                    &improve_log,
+                    &format!(
+                        "CANDIDATE_ACCEPTED iteration={} train={}/{} test={}/{} prev_best_test={}",
+                        iteration, train_passed, train_total, test_passed, test_total, prev_best
+                    ),
+                );
                 log::info!(
                     "[run_loop] candidate accepted: test={}/{} (prev best={})",
-                    test_passed, test_total, prev_best
+                    test_passed,
+                    test_total,
+                    prev_best
                 );
             } else {
-                write_log_line(&improve_log, &format!(
-                    "CANDIDATE_REJECTED iteration={} train={}/{} test={}/{} best_test={}",
-                    iteration, train_passed, train_total, test_passed, test_total, best_test_passed
-                ));
+                write_log_line(
+                    &improve_log,
+                    &format!(
+                        "CANDIDATE_REJECTED iteration={} train={}/{} test={}/{} best_test={}",
+                        iteration,
+                        train_passed,
+                        train_total,
+                        test_passed,
+                        test_total,
+                        best_test_passed
+                    ),
+                );
                 log::info!(
                     "[run_loop] candidate rejected: test={}/{} did not exceed best={}",
-                    test_passed, test_total, best_test_passed
+                    test_passed,
+                    test_total,
+                    best_test_passed
                 );
             }
 
@@ -493,21 +554,28 @@ pub async fn run_loop(
                 test_total,
             });
 
-            if let Err(e) = app.emit("description:progress", &serde_json::json!({
-                "type": "progress",
-                "iteration": iteration,
-                "description": candidate,
-                "train_passed": train_passed,
-                "train_total": train_total,
-                "test_passed": test_passed,
-                "test_total": test_total,
-            })) {
+            if let Err(e) = app.emit(
+                "description:progress",
+                &serde_json::json!({
+                    "type": "progress",
+                    "iteration": iteration,
+                    "description": candidate,
+                    "train_passed": train_passed,
+                    "train_total": train_total,
+                    "test_passed": test_passed,
+                    "test_total": test_total,
+                }),
+            ) {
                 log::debug!("[run_loop] emit error: {}", e);
             }
 
             log::info!(
                 "[run_loop] iteration {} scores: train={}/{} test={}/{}",
-                iteration, train_passed, train_total, test_passed, test_total
+                iteration,
+                train_passed,
+                train_total,
+                test_passed,
+                test_total
             );
 
             // Early exit if all test queries pass
@@ -519,7 +587,10 @@ pub async fn run_loop(
 
             if iteration == MAX_ITERATIONS {
                 exit_reason = format!("max_iterations ({})", MAX_ITERATIONS);
-                write_log_line(&loop_log, &format!("MAX_ITERATIONS_REACHED reason={}", exit_reason));
+                write_log_line(
+                    &loop_log,
+                    &format!("MAX_ITERATIONS_REACHED reason={}", exit_reason),
+                );
                 break;
             }
 
@@ -549,10 +620,15 @@ pub async fn run_loop(
         })
         .collect();
 
-    write_log_line(&loop_log, &format!(
-        "RUN_COMPLETE exit_reason={} iterations={} best_score={}",
-        exit_reason, history.len(), best_score
-    ));
+    write_log_line(
+        &loop_log,
+        &format!(
+            "RUN_COMPLETE exit_reason={} iterations={} best_score={}",
+            exit_reason,
+            history.len(),
+            best_score
+        ),
+    );
 
     Ok(serde_json::json!({
         "ok": true,
@@ -591,14 +667,38 @@ mod tests {
     #[test]
     fn test_split_eval_set_stratified() {
         let queries = vec![
-            EvalQuery { query: "trigger1".to_string(), should_trigger: true },
-            EvalQuery { query: "trigger2".to_string(), should_trigger: true },
-            EvalQuery { query: "trigger3".to_string(), should_trigger: true },
-            EvalQuery { query: "trigger4".to_string(), should_trigger: true },
-            EvalQuery { query: "trigger5".to_string(), should_trigger: true },
-            EvalQuery { query: "no1".to_string(), should_trigger: false },
-            EvalQuery { query: "no2".to_string(), should_trigger: false },
-            EvalQuery { query: "no3".to_string(), should_trigger: false },
+            EvalQuery {
+                query: "trigger1".to_string(),
+                should_trigger: true,
+            },
+            EvalQuery {
+                query: "trigger2".to_string(),
+                should_trigger: true,
+            },
+            EvalQuery {
+                query: "trigger3".to_string(),
+                should_trigger: true,
+            },
+            EvalQuery {
+                query: "trigger4".to_string(),
+                should_trigger: true,
+            },
+            EvalQuery {
+                query: "trigger5".to_string(),
+                should_trigger: true,
+            },
+            EvalQuery {
+                query: "no1".to_string(),
+                should_trigger: false,
+            },
+            EvalQuery {
+                query: "no2".to_string(),
+                should_trigger: false,
+            },
+            EvalQuery {
+                query: "no3".to_string(),
+                should_trigger: false,
+            },
         ];
 
         let (train, test) = split_eval_set(&queries, 0.4);
@@ -616,10 +716,22 @@ mod tests {
     #[test]
     fn test_split_eval_set_deterministic() {
         let queries = vec![
-            EvalQuery { query: "a".to_string(), should_trigger: true },
-            EvalQuery { query: "b".to_string(), should_trigger: true },
-            EvalQuery { query: "c".to_string(), should_trigger: false },
-            EvalQuery { query: "d".to_string(), should_trigger: false },
+            EvalQuery {
+                query: "a".to_string(),
+                should_trigger: true,
+            },
+            EvalQuery {
+                query: "b".to_string(),
+                should_trigger: true,
+            },
+            EvalQuery {
+                query: "c".to_string(),
+                should_trigger: false,
+            },
+            EvalQuery {
+                query: "d".to_string(),
+                should_trigger: false,
+            },
         ];
 
         let (train1, test1) = split_eval_set(&queries, 0.4);
@@ -636,10 +748,16 @@ mod tests {
 
     #[test]
     fn test_should_accept_candidate() {
-        assert!(should_accept_candidate(4, 3), "strict improvement should accept");
+        assert!(
+            should_accept_candidate(4, 3),
+            "strict improvement should accept"
+        );
         assert!(!should_accept_candidate(3, 3), "tie should reject");
         assert!(!should_accept_candidate(2, 3), "regression should reject");
-        assert!(should_accept_candidate(1, 0), "any improvement from 0 should accept");
+        assert!(
+            should_accept_candidate(1, 0),
+            "any improvement from 0 should accept"
+        );
     }
 
     // ── AC 4: minimum test-set size guard ────────────────────────────────────
@@ -651,15 +769,24 @@ mod tests {
 
     #[test]
     fn validate_test_set_rejects_one_query() {
-        let one = vec![EvalQuery { query: "q".to_string(), should_trigger: true }];
+        let one = vec![EvalQuery {
+            query: "q".to_string(),
+            should_trigger: true,
+        }];
         assert!(validate_test_set_size(&one).is_err());
     }
 
     #[test]
     fn validate_test_set_accepts_minimum_size() {
         let two = vec![
-            EvalQuery { query: "q1".to_string(), should_trigger: true },
-            EvalQuery { query: "q2".to_string(), should_trigger: false },
+            EvalQuery {
+                query: "q1".to_string(),
+                should_trigger: true,
+            },
+            EvalQuery {
+                query: "q2".to_string(),
+                should_trigger: false,
+            },
         ];
         assert!(validate_test_set_size(&two).is_ok());
     }
@@ -674,13 +801,19 @@ mod tests {
 
     #[test]
     fn early_exit_does_not_trigger_when_partial_or_none() {
-        assert!(!should_exit_early(4, 5), "partial pass should not exit early");
+        assert!(
+            !should_exit_early(4, 5),
+            "partial pass should not exit early"
+        );
         assert!(!should_exit_early(0, 5), "all fail should not exit early");
     }
 
     #[test]
     fn early_exit_does_not_trigger_on_empty_test_set() {
-        assert!(!should_exit_early(0, 0), "0/0 must not be treated as all-pass");
+        assert!(
+            !should_exit_early(0, 0),
+            "0/0 must not be treated as all-pass"
+        );
     }
 
     // ── AC 6: score calculation edge cases ────────────────────────────────────
@@ -688,20 +821,36 @@ mod tests {
     #[test]
     fn score_handling_all_pass_all_fail_partial() {
         // all pass — gate accepts strict improvement
-        assert!(should_accept_candidate(5, 4), "all-pass scenario: 5/5 > 4/5 accepts");
+        assert!(
+            should_accept_candidate(5, 4),
+            "all-pass scenario: 5/5 > 4/5 accepts"
+        );
         // all fail — gate rejects (0 not > 0)
-        assert!(!should_accept_candidate(0, 0), "all-fail from baseline: 0 not > 0");
+        assert!(
+            !should_accept_candidate(0, 0),
+            "all-fail from baseline: 0 not > 0"
+        );
         // partial — improvement accepted
-        assert!(should_accept_candidate(3, 2), "partial improvement accepted");
+        assert!(
+            should_accept_candidate(3, 2),
+            "partial improvement accepted"
+        );
         // partial — no improvement
-        assert!(!should_accept_candidate(2, 3), "partial regression rejected");
+        assert!(
+            !should_accept_candidate(2, 3),
+            "partial regression rejected"
+        );
     }
 
     #[test]
     fn test_parse_skill_md_inline_description() {
         let tmp = tempfile::tempdir().unwrap();
         let skill_md = tmp.path().join("SKILL.md");
-        std::fs::write(&skill_md, "---\nname: My Skill\ndescription: \"A test skill\"\n---\n# Body\n").unwrap();
+        std::fs::write(
+            &skill_md,
+            "---\nname: My Skill\ndescription: \"A test skill\"\n---\n# Body\n",
+        )
+        .unwrap();
 
         let info = parse_skill_md(tmp.path()).unwrap();
         assert_eq!(info.name, "My Skill");
