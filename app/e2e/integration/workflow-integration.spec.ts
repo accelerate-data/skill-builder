@@ -177,10 +177,16 @@ test.describe("Sidecar Integration — Dashboard Create Skill", { tag: "@integra
     await page.addInitScript((workspaceDir: string) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         get_settings: {
-          anthropic_api_key: "sk-ant-test",
+          model_settings: {
+            provider: "anthropic",
+            model: "claude-sonnet-4-5",
+            api_key: "sk-ant-test",
+            base_url: null,
+            reasoning_effort: "auto",
+            usage_id: "workflow",
+          },
           workspace_path: workspaceDir,
           skills_path: workspaceDir,
-          preferred_model: "sonnet",
           log_level: "info",
         },
         check_workspace_path: true,
@@ -246,10 +252,16 @@ function buildOverrides(
   return {
     ...WORKFLOW_OVERRIDES,
     get_settings: {
-      anthropic_api_key: "sk-ant-test",
+      model_settings: {
+        provider: "anthropic",
+        model: "claude-sonnet-4-5",
+        api_key: "sk-ant-test",
+        base_url: null,
+        reasoning_effort: "auto",
+        usage_id: "workflow",
+      },
       workspace_path: bridge.workspaceDir,
       skills_path: bridge.workspaceDir,
-      preferred_model: "sonnet",
       log_level: "info",
     },
     run_workflow_step: agentId,

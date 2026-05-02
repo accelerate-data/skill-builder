@@ -261,10 +261,42 @@ impl ModelSettings {
 
     pub(crate) fn selected_workflow_llm(&self) -> Result<WorkflowLlmConfig, String> {
         let model_settings = self.clone().normalized();
-        let model = model_settings.model.ok_or_else(|| {
+        let provider = model_settings
+            .provider
+            .as_deref()
+            .unwrap_or("anthropic")
+            .to_ascii_lowercase();
+        let model = model_settings.model.clone().ok_or_else(|| {
             "Model not configured. Select a model in Settings before running workflow steps."
                 .to_string()
         })?;
+
+        if let Some(base_url) = model_settings.base_url.as_deref() {
+            validate_model_base_url(base_url)?;
+        }
+        validate_model_numbers(&model_settings)?;
+        let reasoning_effort = match model_settings.reasoning_effort.as_deref() {
+            None | Some("auto") => None,
+            Some("low" | "medium" | "high") => model_settings.reasoning_effort,
+            Some(_) => {
+                return Err(
+                    "Reasoning effort must be one of auto, low, medium, or high.".to_string(),
+                )
+            }
+        };
+
+        let local_model = provider == "ollama"
+            || model.starts_with("ollama/")
+            || model_settings
+                .base_url
+                .as_deref()
+                .is_some_and(is_local_model_base_url);
+        if !local_model && model_settings.api_key.is_none() {
+            return Err(
+                "Add an API key or configure a local provider base URL before running workflow agents."
+                    .to_string(),
+            );
+        }
 
         Ok(WorkflowLlmConfig {
             model,
@@ -275,13 +307,63 @@ impl ModelSettings {
             max_output_tokens: model_settings.max_output_tokens,
             timeout_seconds: model_settings.timeout_seconds,
             num_retries: model_settings.num_retries,
-            reasoning_effort: model_settings.reasoning_effort,
+            reasoning_effort,
             extra_headers: model_settings.extra_headers,
             input_cost_per_token: model_settings.input_cost_per_token,
             output_cost_per_token: model_settings.output_cost_per_token,
-            usage_id: model_settings.usage_id,
+            usage_id: Some("workflow".to_string()),
         })
     }
+}
+
+fn validate_model_base_url(base_url: &str) -> Result<(), String> {
+    let url = reqwest::Url::parse(base_url)
+        .map_err(|_| "Base URL must be a valid HTTP(S) URL.".to_string())?;
+    match url.scheme() {
+        "http" | "https" => Ok(()),
+        _ => Err("Base URL must be a valid HTTP(S) URL.".to_string()),
+    }
+}
+
+fn is_local_model_base_url(base_url: &str) -> bool {
+    reqwest::Url::parse(base_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+        .is_some_and(|host| host == "localhost" || host == "127.0.0.1" || host == "::1")
+}
+
+fn validate_model_numbers(settings: &ModelSettings) -> Result<(), String> {
+    if let Some(temperature) = settings.temperature {
+        if !temperature.is_finite() || !(0.0..=2.0).contains(&temperature) {
+            return Err("Temperature must be between 0 and 2.".to_string());
+        }
+    }
+    if let Some(tokens) = settings.max_output_tokens {
+        if tokens == 0 {
+            return Err("Max output tokens must be greater than 0.".to_string());
+        }
+    }
+    if let Some(timeout) = settings.timeout_seconds {
+        if timeout == 0 {
+            return Err("Timeout must be greater than 0 seconds.".to_string());
+        }
+    }
+    if let Some(retries) = settings.num_retries {
+        if retries > 10 {
+            return Err("Number of retries must be 10 or less.".to_string());
+        }
+    }
+    if let Some(cost) = settings.input_cost_per_token {
+        if !cost.is_finite() || cost < 0.0 {
+            return Err("Input cost per token must be zero or greater.".to_string());
+        }
+    }
+    if let Some(cost) = settings.output_cost_per_token {
+        if !cost.is_finite() || cost < 0.0 {
+            return Err("Output cost per token must be zero or greater.".to_string());
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -395,7 +477,7 @@ impl Default for AppSettings {
         Self {
             anthropic_api_key: None,
             model_settings: ModelSettings::default(),
-            openhands_provider: Some("anthropic".to_string()),
+            openhands_provider: None,
             openhands_api_key: None,
             openhands_model: None,
             openhands_base_url: None,

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { reloadWithOverrides, waitForAppReady } from "../helpers/app-helpers";
-import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "../helpers/test-paths";
+import { E2E_MODEL_SETTINGS, E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "../helpers/test-paths";
 
 const SAMPLE_PLUGINS = [
   {
@@ -34,7 +34,7 @@ const SAMPLE_PLUGINS = [
 
 const BASE_OVERRIDES = {
   get_settings: {
-    anthropic_api_key: "sk-ant-test",
+    model_settings: E2E_MODEL_SETTINGS,
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
   },

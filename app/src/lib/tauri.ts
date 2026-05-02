@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, DiscoveryResolutionAction } from "@/lib/types";
+import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, DiscoveryResolutionAction, ModelSettings } from "@/lib/types";
 import type { EvalQuery } from "@/lib/description-optimization";
 import type { TauriCommandInvocation, TauriCommandResult } from "@/lib/tauri-command-types";
 
@@ -39,6 +39,9 @@ export const updateGithubIdentity = (
 
 export const testApiKey = (apiKey: string) =>
   invokeCommand("test_api_key", { apiKey });
+
+export const testModelConnection = (settings: ModelSettings) =>
+  invokeCommand("test_model_connection", { settings });
 
 export const getDataDir = () => invokeCommand("get_data_dir", {});
 

@@ -155,6 +155,26 @@ print(json.dumps(captured, sort_keys=True))
     });
   }, 30_000);
 
+  it("omits auto reasoning effort from SDK LLM kwargs", () => {
+    const result = runPython(
+      runnerImportScript(`
+print(json.dumps(runner._build_llm_kwargs({
+    "llm": {
+        "model": "anthropic/claude-sonnet-4-6",
+        "apiKey": "sk-secret",
+        "reasoningEffort": "auto"
+    }
+}), sort_keys=True))
+`),
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      api_key: "sk-secret",
+      model: "anthropic/claude-sonnet-4-6",
+    });
+  }, 30_000);
+
   it("extracts final text from OpenHands conversation state events", () => {
     const result = runPython(
       runnerImportScript(`

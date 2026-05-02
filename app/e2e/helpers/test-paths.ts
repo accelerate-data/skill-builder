@@ -13,6 +13,14 @@ export const E2E_WORKSPACE_PATH = joinE2ePath("workspace");
 export const E2E_SKILLS_PATH = joinE2ePath("skills");
 export const E2E_DEFAULT_SKILLS_PATH = joinE2ePath("default-skills");
 export const E2E_PREFERRED_MODEL = "claude-sonnet-4-6";
+export const E2E_MODEL_SETTINGS = {
+  provider: "anthropic",
+  model: E2E_PREFERRED_MODEL,
+  api_key: "sk-ant-test",
+  base_url: null,
+  reasoning_effort: "auto",
+  usage_id: "workflow",
+};
 
 export function workspaceSkillPath(skillName: string): string {
   return joinE2ePath("workspace", skillName);

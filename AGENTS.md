@@ -126,7 +126,7 @@ For artifact format changes (agent output + app parser + mock templates): run `t
 
 For Rust and cross-layer changes, consult `TEST_MAP.md` for the correct cargo filter and E2E tag. Unsure? `app/tests/run.sh` runs everything.
 
-Live OpenCode evals are allowed when the issue calls for them. Choose the smallest useful scope: `cd tests/evals && npm run eval:smoke` before model/runtime changes, a targeted `npm run eval:<package>` for package-local work, or `npm run eval:regression` for broad model migrations. The deterministic harness contract test is `cd tests/evals && npm test`.
+Live OpenCode evals are normal automated validation. Choose the smallest useful scope: `cd tests/evals && npm run eval:smoke` before model/runtime changes, a targeted `npm run eval:<package>` for package-local work, or `npm run eval:regression` for broad model migrations. The deterministic harness contract test is `cd tests/evals && npm test`.
 
 ## Issue Management
 

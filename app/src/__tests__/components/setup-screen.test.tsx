@@ -64,9 +64,9 @@ describe("SetupScreen", () => {
     await waitFor(() => {
       expect(screen.getByText("Welcome to Skill Builder")).toBeInTheDocument();
     });
-    expect(screen.getByLabelText("API Key")).toBeInTheDocument();
+    expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Skills Folder")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Test/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Test/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Browse/i })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Get Started/i }),
@@ -82,50 +82,15 @@ describe("SetupScreen", () => {
     });
   });
 
-  it("disables Get Started when API key is empty", async () => {
+  it("enables Get Started when default skills path is loaded", async () => {
     render(<SetupScreen onComplete={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Welcome to Skill Builder")).toBeInTheDocument();
+      const input = screen.getByLabelText("Skills Folder") as HTMLInputElement;
+      expect(input.value).toBe("/Users/test/skill-builder");
     });
 
-    expect(screen.getByRole("button", { name: /Get Started/i })).toBeDisabled();
-  });
-
-  it("enables Get Started when both fields are filled", async () => {
-    const user = userEvent.setup();
-    render(<SetupScreen onComplete={vi.fn()} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Welcome to Skill Builder")).toBeInTheDocument();
-    });
-
-    await user.type(screen.getByLabelText("API Key"), "sk-ant-test");
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Get Started/i }),
-      ).not.toBeDisabled();
-    });
-  });
-
-  it("Test button calls test_api_key", async () => {
-    const user = userEvent.setup();
-    mockInvokeCommands({ test_api_key: true });
-    render(<SetupScreen onComplete={vi.fn()} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Welcome to Skill Builder")).toBeInTheDocument();
-    });
-
-    await user.type(screen.getByLabelText("API Key"), "sk-ant-test");
-    await user.click(screen.getByRole("button", { name: /Test/i }));
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("test_api_key", {
-        apiKey: "sk-ant-test",
-      });
-    });
+    expect(screen.getByRole("button", { name: /Get Started/i })).not.toBeDisabled();
   });
 
   it("Browse button opens directory picker and updates skills path", async () => {
@@ -177,24 +142,13 @@ describe("SetupScreen", () => {
       expect(screen.getByText("Welcome to Skill Builder")).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("API Key"), "sk-ant-test");
     await user.click(screen.getByRole("button", { name: /Get Started/i }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
         settings: expect.objectContaining({
-          anthropic_api_key: null,
-          model_settings: expect.objectContaining({
-            provider: "anthropic",
-            model: "claude-sonnet-4-5",
-            api_key: "sk-ant-test",
-            base_url: null,
-          }),
+          model_settings: null,
           skills_path: "/Users/test/skill-builder",
-          openhands_provider: null,
-          openhands_api_key: null,
-          openhands_model: null,
-          preferred_model: null,
         }),
       });
       expect(onComplete).toHaveBeenCalled();
@@ -213,25 +167,10 @@ describe("SetupScreen", () => {
       expect(screen.getByText("Welcome to Skill Builder")).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("API Key"), "sk-ant-test");
     await user.click(screen.getByRole("button", { name: /Get Started/i }));
 
     await waitFor(() => {
       expect(useSettingsStore.getState().isConfigured).toBe(true);
-    });
-  });
-
-  it("pre-populates API key from store when already set", async () => {
-    useSettingsStore
-      .getState()
-      .setSettings({ modelSettings: { api_key: "sk-ant-existing" } });
-    render(<SetupScreen />);
-
-    await waitFor(() => {
-      const input = screen.getByLabelText(
-        "API Key",
-      ) as HTMLInputElement;
-      expect(input.value).toBe("sk-ant-existing");
     });
   });
 
@@ -254,9 +193,6 @@ describe("SetupScreen", () => {
       const input = screen.getByLabelText("Skills Folder") as HTMLInputElement;
       expect(input.value).toBe("/Users/test/skill-builder");
     });
-
-    // Type API key
-    await user.type(screen.getByLabelText("API Key"), "sk-ant-test");
 
     // Clear skills path
     await user.clear(screen.getByLabelText("Skills Folder"));

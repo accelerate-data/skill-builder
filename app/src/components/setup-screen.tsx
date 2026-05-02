@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { toast } from "@/lib/toast";
-import { Loader2, Eye, EyeOff, CheckCircle2, FolderSearch } from "lucide-react";
+import { Loader2, FolderSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,11 +9,9 @@ import { useSettingsStore } from "@/stores/settings-store";
 import {
   getSettings,
   saveSettings,
-  testApiKey,
   getDefaultSkillsPath,
 } from "@/lib/tauri";
 import { normalizeDirectoryPickerPath } from "@/lib/utils";
-import type { ModelSettings } from "@/lib/types";
 
 interface SetupScreenProps {
   /** @deprecated No longer needed -- the parent reads isConfigured from the store. */
@@ -21,13 +19,8 @@ interface SetupScreenProps {
 }
 
 export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
-  const existingApiKey = useSettingsStore((s) => s.modelSettings.api_key);
   const existingSkillsPath = useSettingsStore((s) => s.skillsPath);
-  const [apiKey, setApiKey] = useState(existingApiKey ?? "");
-  const [showApiKey, setShowApiKey] = useState(false);
   const [skillsPath, setSkillsPath] = useState(existingSkillsPath ?? "");
-  const [testing, setTesting] = useState(false);
-  const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const setStoreSettings = useSettingsStore((s) => s.setSettings);
 
@@ -45,24 +38,6 @@ export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
     }
   }, [existingSkillsPath]);
 
-  const handleTestApiKey = async () => {
-    if (!apiKey) return;
-    setTesting(true);
-    setApiKeyValid(null);
-    try {
-      await testApiKey(apiKey);
-      setApiKeyValid(true);
-      toast.success("API key is valid");
-    } catch (err) {
-      setApiKeyValid(false);
-      toast.error(err instanceof Error ? err.message : String(err), {
-        duration: Infinity,
-      });
-    } finally {
-      setTesting(false);
-    }
-  };
-
   const handleBrowseSkillsPath = async () => {
     const folder = await open({
       directory: true,
@@ -74,45 +49,15 @@ export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
   };
 
   const handleContinue = async () => {
-    if (!apiKey || !skillsPath) return;
+    if (!skillsPath) return;
     setSaving(true);
     try {
       const existing = await getSettings();
-      const existingModelSettings: Partial<ModelSettings> = existing.model_settings ?? {};
-      const modelSettings = {
-        provider: existingModelSettings.provider ?? "anthropic",
-        model: existingModelSettings.model ?? "claude-sonnet-4-5",
-        api_key: existingModelSettings.api_key ?? apiKey,
-        base_url: existingModelSettings.base_url ?? null,
-        api_version: existingModelSettings.api_version ?? null,
-        temperature: existingModelSettings.temperature ?? null,
-        max_output_tokens: existingModelSettings.max_output_tokens ?? null,
-        timeout_seconds: existingModelSettings.timeout_seconds ?? 300,
-        num_retries: existingModelSettings.num_retries ?? 5,
-        reasoning_effort: existingModelSettings.reasoning_effort ?? "auto",
-        extra_headers: existingModelSettings.extra_headers ?? null,
-        input_cost_per_token: existingModelSettings.input_cost_per_token ?? null,
-        output_cost_per_token: existingModelSettings.output_cost_per_token ?? null,
-        usage_id: existingModelSettings.usage_id ?? "workflow",
-      };
       await saveSettings({
         ...existing,
-        anthropic_api_key: null,
-        model_settings: modelSettings,
         skills_path: skillsPath,
-        openhands_provider: null,
-        openhands_api_key: null,
-        openhands_model: null,
-        openhands_base_url: null,
-        preferred_model: null,
       });
       setStoreSettings({
-        modelSettings,
-        anthropicApiKey: null,
-        openhandsProvider: null,
-        openhandsApiKey: null,
-        openhandsModel: null,
-        preferredModel: null,
         skillsPath,
       });
       onComplete?.();
@@ -126,7 +71,7 @@ export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
     }
   };
 
-  const canContinue = !!apiKey && !!skillsPath && !saving;
+  const canContinue = !!skillsPath && !saving;
 
   return (
     <div
@@ -158,74 +103,11 @@ export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
             Welcome to Skill Builder
           </h1>
           <p className="text-sm text-muted-foreground">
-            Set up your API key and skills folder to get started.
+            Choose where Skill Builder should store your skills.
           </p>
         </div>
 
         <div className="flex flex-col gap-5">
-          {/* API Key */}
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="setup-api-key">API Key</Label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Input
-                  id="setup-api-key"
-                  type={showApiKey ? "text" : "password"}
-                  placeholder="sk-ant-..."
-                  value={apiKey}
-                  onChange={(e) => {
-                    setApiKey(e.target.value);
-                    setApiKeyValid(null);
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className="absolute right-2 top-1/2 -translate-y-1/2"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                >
-                  {showApiKey ? (
-                    <EyeOff className="size-3.5" />
-                  ) : (
-                    <Eye className="size-3.5" />
-                  )}
-                </Button>
-              </div>
-              <Button
-                variant={apiKeyValid ? "default" : "outline"}
-                size="sm"
-                onClick={handleTestApiKey}
-                disabled={testing || !apiKey}
-                className={apiKeyValid ? "text-white" : ""}
-                style={
-                  apiKeyValid
-                    ? { background: "var(--color-seafoam)", color: "white" }
-                    : undefined
-                }
-              >
-                {testing ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : apiKeyValid ? (
-                  <CheckCircle2 className="size-3.5" />
-                ) : null}
-                {apiKeyValid ? "Valid" : "Test"}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              For Anthropic models, get your key at{" "}
-              <a
-                href="https://console.anthropic.com"
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-2"
-              >
-                console.anthropic.com
-              </a>
-            </p>
-          </div>
-
-          {/* Skills Folder */}
           <div className="flex flex-col gap-2">
             <Label htmlFor="setup-skills-path">Skills Folder</Label>
             <div className="flex gap-2">

@@ -2,16 +2,14 @@ import { test, expect } from "@playwright/test";
 import { E2E_DEFAULT_SKILLS_PATH, E2E_SKILLS_PATH } from "../helpers/test-paths";
 
 test.describe("Setup Screen", { tag: "@setup" }, () => {
-  test("shows setup screen when API key is missing", async ({ page }) => {
-    // Override settings to have no API key
+  test("does not show setup screen when only API key is missing", async ({ page }) => {
     await page.addInitScript((overrides) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
     }, {
       get_settings: {
-        anthropic_api_key: null,
+        model_settings: null,
         workspace_path: null,
         skills_path: E2E_SKILLS_PATH,
-        preferred_model: null,
         log_level: "info",
       },
     });
@@ -21,11 +19,8 @@ test.describe("Setup Screen", { tag: "@setup" }, () => {
     await splash.waitFor({ state: "attached", timeout: 5_000 });
     await splash.waitFor({ state: "detached", timeout: 10_000 });
 
-    // Setup screen should appear
-    await expect(page.getByTestId("setup-screen")).toBeVisible();
-    await expect(page.getByText("Welcome to Skill Builder")).toBeVisible();
-    await expect(page.getByLabel("Anthropic API Key")).toBeVisible();
-    await expect(page.getByLabel("Skills Folder")).toBeVisible();
+    await expect(page.getByTestId("setup-screen")).not.toBeVisible();
+    await expect(page.getByText("Skills").first()).toBeVisible();
   });
 
   test("completing setup navigates to dashboard", async ({ page }) => {
@@ -33,10 +28,9 @@ test.describe("Setup Screen", { tag: "@setup" }, () => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
     }, {
       get_settings: {
-        anthropic_api_key: null,
+        model_settings: null,
         workspace_path: null,
         skills_path: null,
-        preferred_model: null,
         log_level: "info",
       },
       get_default_skills_path: E2E_DEFAULT_SKILLS_PATH,
@@ -47,8 +41,6 @@ test.describe("Setup Screen", { tag: "@setup" }, () => {
     await splash.waitFor({ state: "attached", timeout: 5_000 });
     await splash.waitFor({ state: "detached", timeout: 10_000 });
 
-    // Fill both fields
-    await page.getByLabel("Anthropic API Key").fill("sk-ant-test");
     await page.getByRole("button", { name: "Get Started" }).click();
 
     // Setup screen should disappear, dashboard should load

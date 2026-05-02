@@ -19,6 +19,7 @@ import type {
   LibraryPlugin,
   MarketplaceImportResult,
   MarketplaceUpdateResult,
+  ModelSettings,
   ModelInfo,
   PendingEval,
   ResearchStepOutput,
@@ -182,6 +183,7 @@ export interface TauriCommandMap {
     result: void;
   };
   test_api_key: { args: { apiKey: string }; result: boolean };
+  test_model_connection: { args: { settings: ModelSettings }; result: boolean };
   get_data_dir: { args: NoArgs; result: string };
   get_default_skills_path: { args: NoArgs; result: string };
   list_models: { args: { apiKey: string }; result: ModelInfo[] };

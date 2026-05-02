@@ -22,11 +22,16 @@ import {
  */
 export const REFINE_OVERRIDES: Record<string, unknown> = {
   get_settings: {
-    anthropic_api_key: "sk-ant-test",
+    model_settings: {
+      provider: "anthropic",
+      model: E2E_PREFERRED_MODEL,
+      api_key: "sk-ant-test",
+      base_url: null,
+      reasoning_effort: "auto",
+      usage_id: "workflow",
+    },
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
-    preferred_model: E2E_PREFERRED_MODEL,
-    openhands_model: `anthropic/${E2E_PREFERRED_MODEL}`,
   },
   check_workspace_path: true,
   list_skills: [

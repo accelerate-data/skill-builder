@@ -34,7 +34,7 @@ vi.mock("@tanstack/react-router", () => ({
 // --- Store mocks ---
 const settingsStoreState = vi.hoisted(() => ({
   workspacePath: "/workspace",
-  preferredModel: null as string | null,
+  modelSettings: { model: null as string | null },
   availableModels: [] as unknown[],
 }));
 
@@ -145,7 +145,7 @@ describe("WorkspaceRefine", () => {
     refineStoreState.selectedModifiedFile = null;
     refineStoreState.isRunning = false;
     refineStoreState.activeAgentId = null;
-    settingsStoreState.preferredModel = null;
+    settingsStoreState.modelSettings.model = null;
   });
 
   it("renders the chat panel by default for the selected skill", async () => {

@@ -19,11 +19,16 @@ import {
  */
 export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
   get_settings: {
-    anthropic_api_key: "sk-ant-test",
+    model_settings: {
+      provider: "anthropic",
+      model: "claude-sonnet-4-5",
+      api_key: "sk-ant-test",
+      base_url: null,
+      reasoning_effort: "auto",
+      usage_id: "workflow",
+    },
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
-    preferred_model: "sonnet",
-    openhands_model: "anthropic/sonnet",
   },
   check_workspace_path: true,
   list_skills: [

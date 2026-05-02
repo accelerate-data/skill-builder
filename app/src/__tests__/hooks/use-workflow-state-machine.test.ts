@@ -117,7 +117,9 @@ const mockSetActiveAgent = vi.fn();
 const mockClearRuns = vi.fn();
 const mockAgentStartRun = vi.fn();
 const mockSettingsState = vi.hoisted(() => ({
-  preferredModel: "test-settings-model" as string | null,
+  modelSettings: {
+    model: "test-settings-model" as string | null,
+  },
 }));
 let mockActiveAgentId: string | null = null;
 let mockRuns: Record<
@@ -205,7 +207,7 @@ describe("useWorkflowStateMachine", () => {
       gateLoading: false,
       disabledSteps: [],
     };
-    mockSettingsState.preferredModel = "test-settings-model";
+    mockSettingsState.modelSettings.model = "test-settings-model";
   });
 
   it("handleStartAgentStep calls runWorkflowStep and marks step in_progress", async () => {
@@ -251,7 +253,7 @@ describe("useWorkflowStateMachine", () => {
   });
 
   it("handleStartAgentStep stops before mutating workflow state when model is missing", async () => {
-    mockSettingsState.preferredModel = null;
+    mockSettingsState.modelSettings.model = null;
     const { toast } = await import("@/lib/toast");
 
     const { result } = renderHook(() =>

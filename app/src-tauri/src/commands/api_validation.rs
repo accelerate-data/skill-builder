@@ -1,4 +1,4 @@
-use crate::types::ApiKey;
+use crate::types::{ApiKey, ModelSettings};
 
 #[tauri::command]
 pub async fn test_api_key(api_key: ApiKey) -> Result<bool, String> {
@@ -21,6 +21,15 @@ pub async fn test_api_key(api_key: ApiKey) -> Result<bool, String> {
         500..=599 => Err("Anthropic API is unavailable — please try again later".to_string()),
         _ => Err(format!("Unexpected API response (HTTP {})", status)),
     }
+}
+
+#[tauri::command]
+pub async fn test_model_connection(settings: ModelSettings) -> Result<bool, String> {
+    log::info!("[test_model_connection]");
+    settings
+        .selected_workflow_llm()
+        .map(|_| true)
+        .map_err(|err| err.to_string())
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]

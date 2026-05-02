@@ -202,7 +202,7 @@ cd app && cargo test --manifest-path src-tauri/Cargo.toml reconciliation
 
 - [x] **Step 3: Run deterministic eval harness only if agent/eval contracts changed**
 
-This issue does not touch agent prompts, eval fixtures, or model-backed smoke suites. The deterministic eval harness contract was expanded for the newly migrated command list and run with `cd tests/evals && npm test`. Do not run `test:agents:smoke` unless explicitly requested.
+This issue does not touch agent prompts, eval fixtures, or model-backed smoke suites. The deterministic eval harness contract was expanded for the newly migrated command list and run with `cd tests/evals && npm test`. Run `test:agents:smoke` when prompt, agent, or runtime behavior changes.
 
 ## Task 5: Linear Update and Commit
 

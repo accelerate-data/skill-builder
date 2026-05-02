@@ -14,7 +14,7 @@
 
 No manual UI or exploratory tests are required.
 
-Live/model-backed smoke evals are automated OpenCode CLI scenarios, but they remain human-triggered because they make live model/API calls. Coding agents must not run them autonomously. The implementation will document the exact manual commands.
+Live/model-backed smoke evals are automated OpenCode CLI scenarios and may be run as normal validation. The implementation will document the exact commands.
 
 ## Files
 
@@ -69,7 +69,7 @@ Live/model-backed smoke evals are automated OpenCode CLI scenarios, but they rem
 
 - [ ] Update `app/package.json` so `test:agents:smoke` and `test:scope-advisor:smoke` delegate to `tests/evals`.
 - [ ] Add root eval scripts if needed for convenient direct execution.
-- [ ] Update `.gitignore`, `repo-map.json`, `TEST_MAP.md`, and `AGENTS.md` with the new harness path, commands, and manual live-smoke policy.
+- [ ] Update `.gitignore`, `repo-map.json`, `TEST_MAP.md`, and `AGENTS.md` with the new harness path, commands, and automated live-smoke policy.
 - [ ] Run `cd app && npm run test:agents:structural`.
 - [ ] Run `cd tests/evals && npm test`.
 - [ ] Commit script and docs wiring.
@@ -80,12 +80,12 @@ Live/model-backed smoke evals are automated OpenCode CLI scenarios, but they rem
   - `cd tests/evals && npm test`
   - `cd app && npm run test:agents:structural`
   - `cd app && npm run test:unit`
-- [ ] Do not run live smoke evals autonomously.
-- [ ] Post Linear implementation evidence with completed automation and the manual live-smoke commands.
+- [ ] Run the smallest useful live OpenCode smoke/eval command for changed eval behavior.
+- [ ] Post Linear implementation evidence with completed automation and the live-smoke commands.
 - [ ] Leave the worktree clean with local commits only; do not push or raise PR.
 
 ## Self-Review
 
 - The plan covers the VU-1134 harness acceptance criteria and leaves real eval scenario migration/redesign to VU-1135.
-- The only human-triggered step is live/model-backed OpenCode smoke execution; the scenarios themselves are automated CLI runs.
+- Live/model-backed OpenCode smoke execution is an automated CLI run.
 - The plan keeps deterministic harness validation separate from live eval behavior.

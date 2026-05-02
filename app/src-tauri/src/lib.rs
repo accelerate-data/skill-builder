@@ -297,6 +297,7 @@ pub fn run() {
             commands::settings::update_user_settings,
             commands::settings::update_github_identity,
             commands::api_validation::test_api_key,
+            commands::api_validation::test_model_connection,
             commands::api_validation::list_models,
             commands::lifecycle::set_log_level,
             commands::lifecycle::get_log_file_path,

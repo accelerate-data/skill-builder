@@ -19,7 +19,7 @@
 
 ## Manual Tests
 
-No manual tests required. The affected behavior is covered through TypeScript contract checks, Vitest wrapper/component tests, Rust command tests, and mocked E2E tags `@description` and `@evals`. Live model smoke evals are not required and remain manual by repo policy unless explicitly requested.
+No manual tests required. The affected behavior is covered through TypeScript contract checks, Vitest wrapper/component tests, Rust command tests, and mocked E2E tags `@description` and `@evals`. Live OpenCode evals are automated checks; run them when prompt, agent, or runtime behavior changes.
 
 ## File Map
 

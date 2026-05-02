@@ -15,16 +15,11 @@ describe("useSettingsStore", () => {
     expect(state.isConfigured).toBe(false);
   });
 
-  it("setSettings with model settings and skillsPath sets isConfigured to true", () => {
+  it("setSettings with skillsPath sets isConfigured to true", () => {
     useSettingsStore.getState().setSettings({
-      modelSettings: {
-        model: "claude-sonnet-4-5",
-        api_key: "sk-ant-test-key",
-      },
       skillsPath: "/some/skills",
     });
     const state = useSettingsStore.getState();
-    expect(state.modelSettings.api_key).toBe("sk-ant-test-key");
     expect(state.skillsPath).toBe("/some/skills");
     expect(state.isConfigured).toBe(true);
   });
@@ -41,7 +36,7 @@ describe("useSettingsStore", () => {
     expect(state.isConfigured).toBe(false);
   });
 
-  it("setSettings without apiKey keeps isConfigured false", () => {
+  it("setSettings without skillsPath keeps isConfigured false", () => {
     useSettingsStore.getState().setSettings({
       workspacePath: "/some/path",
     });
@@ -68,28 +63,17 @@ describe("useSettingsStore", () => {
     expect(state.isConfigured).toBe(true);
   });
 
-  it("does not treat legacy OpenHands fields as model configuration", () => {
+  it("treats skillsPath as configured even when canonical model is missing", () => {
     useSettingsStore.getState().setSettings({
-      anthropicApiKey: "sk-ant-test-key",
-      openhandsProvider: "openai",
-      openhandsApiKey: null,
-      openhandsModel: "openai/gpt-4o",
+      modelSettings: {
+        provider: "anthropic",
+        model: null,
+        api_key: "sk-ant-test-key",
+      },
       skillsPath: "/some/skills",
     });
 
-    expect(useSettingsStore.getState().isConfigured).toBe(false);
-  });
-
-  it("does not treat a legacy Anthropic key as model configuration", () => {
-    useSettingsStore.getState().setSettings({
-      anthropicApiKey: "sk-ant-test-key",
-      openhandsProvider: "anthropic",
-      openhandsApiKey: null,
-      openhandsModel: "anthropic/claude-sonnet-4-6",
-      skillsPath: "/some/skills",
-    });
-
-    expect(useSettingsStore.getState().isConfigured).toBe(false);
+    expect(useSettingsStore.getState().isConfigured).toBe(true);
   });
 
   it("setSettings stores dashboardViewMode", () => {

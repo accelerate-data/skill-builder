@@ -9,17 +9,16 @@ import {
 /** Common overrides for a configured workspace on the settings page. */
 export const BASE_SETTINGS_OVERRIDES: Record<string, unknown> = {
   get_settings: {
-    anthropic_api_key: null,
     model_settings: {
       provider: "anthropic",
       model: E2E_PREFERRED_MODEL,
       api_key: "sk-ant-test-e2e",
       base_url: null,
+      reasoning_effort: "auto",
+      usage_id: "workflow",
     },
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
-    preferred_model: null,
-    openhands_model: null,
   },
   check_workspace_path: true,
   list_skills: [],
