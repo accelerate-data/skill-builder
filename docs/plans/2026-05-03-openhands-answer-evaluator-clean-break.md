@@ -35,9 +35,9 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - Ensure Rust only loads and substitutes the prompt template; do not embed prompt body text in Rust code.
 - Make the answer-evaluator prompt explicitly instruct the shared `skill-creator` agent to use the bundled `answer-evaluator` skill.
 - Ensure the deployed `.agents/skills/answer-evaluator/SKILL.md` is available to the shared agent.
-- Create one canonical shared schema reference at `agent-sources/workspace/skills/shared/schemas.md`.
-- Fix both research and answer-evaluator skill references to use the shared schema file.
-- Remove stale `old-schemas.md` duplicates from both research and answer-evaluator references.
+- Preserve the workspace shared schema reference already added at `agent-sources/workspace/skills/shared/schemas.md`.
+- Keep both workspace research and answer-evaluator skill references pointed at the shared schema file.
+- Remove stale plugin-side `old-schemas.md` duplicates from research and answer-evaluator references.
 - Preserve backend output-format validation for answer-evaluator JSON.
 
 **Out of scope**
@@ -54,9 +54,11 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - `app/sidecar/openhands/runner.py` currently hardcodes `skill-creator` in request validation and agent instruction loading. For this plan, that hardcoding is acceptable for answer evaluation because the clean-break approach uses the same agent and a different skill, not a new agent.
 - `agent-sources/prompts/answer-evaluator.txt` exists and is loaded by `build_evaluator_prompt(...)`.
 - `agent-sources/prompts/research.txt` exists and is loaded by `build_step0_prompt(...)`.
-- `agent-sources/workspace/skills/answer-evaluator/SKILL.md` tells the model to read `../shared/schemas.md`, but no workspace shared schema file currently exists.
-- `agent-sources/workspace/skills/research/SKILL.md` and `research/references/consolidation-handoff.md` also reference shared schemas, but workspace skills still carry stale `old-schemas.md` files.
-- Plugin-side `agent-sources/plugins/skill-content-researcher/skills/shared/schemas.md` already exists and should be the source for the workspace shared copy.
+- `agent-sources/workspace/skills/shared/schemas.md` now exists in the VU-1145 branch and is the workspace shared schema reference for workflow skills.
+- `agent-sources/workspace/skills/answer-evaluator/SKILL.md` references `../shared/schemas.md`, which resolves to the workspace shared schema.
+- `agent-sources/workspace/skills/research/SKILL.md` references `../shared/schemas.md`, and `research/references/consolidation-handoff.md` references `../../shared/schemas.md`; both resolve to the same workspace shared schema.
+- Workspace `old-schemas.md` files for research and answer-evaluator were already removed in the VU-1145 branch.
+- Plugin-side `agent-sources/plugins/skill-content-researcher/skills/shared/schemas.md` already exists, but stale plugin-side `old-schemas.md` files still need removal.
 
 ## File Structure
 
@@ -72,16 +74,16 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
   - Add Rust tests for answer-evaluator prompt rendering and native config.
 - Modify: `app/sidecar/__tests__/openhands-runner.test.ts`
   - Add guard coverage that answer evaluation does not require a separate OpenHands agent.
-- Create: `agent-sources/workspace/skills/shared/schemas.md`
-  - Canonical workspace shared schema reference.
+- Verify: `agent-sources/workspace/skills/shared/schemas.md`
+  - Canonical workspace shared schema reference already exists; keep it intact.
 - Modify: `agent-sources/workspace/skills/research/SKILL.md`
   - Keep `../shared/schemas.md` references and remove stale old-schema language.
 - Modify: `agent-sources/workspace/skills/research/references/consolidation-handoff.md`
   - Keep `../../shared/schemas.md` references.
 - Modify: `agent-sources/workspace/skills/answer-evaluator/SKILL.md`
   - Keep `../shared/schemas.md` references and clarify direct skill execution.
-- Delete: `agent-sources/workspace/skills/research/references/old-schemas.md`
-- Delete: `agent-sources/workspace/skills/answer-evaluator/references/old-schemas.md`
+- Already deleted: `agent-sources/workspace/skills/research/references/old-schemas.md`
+- Already deleted: `agent-sources/workspace/skills/answer-evaluator/references/old-schemas.md`
 - Keep/align: `agent-sources/plugins/skill-content-researcher/skills/shared/schemas.md`
 - Delete: `agent-sources/plugins/skill-content-researcher/skills/research/references/old-schemas.md`
 - Delete: `agent-sources/plugins/skill-content-researcher/skills/answer-evaluator/references/old-schemas.md`
@@ -239,20 +241,14 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
 
 Expected: answer-evaluator native config tests pass.
 
-## Task 4: Add Shared Workspace Schema Reference
+## Task 4: Validate Existing Shared Workspace Schema Reference
 
-- [ ] **Step 1: Create workspace shared schema file**
+- [ ] **Step 1: Verify workspace shared schema file exists**
 
-Create:
+Verify:
 
 ```text
 agent-sources/workspace/skills/shared/schemas.md
-```
-
-Copy the canonical semantic schema content from:
-
-```text
-agent-sources/plugins/skill-content-researcher/skills/shared/schemas.md
 ```
 
 - [ ] **Step 2: Keep workspace research references pointed at shared schema**
@@ -272,9 +268,9 @@ Verify:
 agent-sources/workspace/skills/answer-evaluator/SKILL.md -> ../shared/schemas.md
 ```
 
-- [ ] **Step 4: Delete stale workspace old schema files**
+- [ ] **Step 4: Verify stale workspace old schema files are absent**
 
-Delete:
+Verify these paths do not exist:
 
 ```text
 agent-sources/workspace/skills/research/references/old-schemas.md
@@ -289,7 +285,7 @@ Run:
 cd app && npm run test:agents:structural
 ```
 
-Expected: no broken local reference paths.
+Expected: no broken local reference paths. This is a validation step for the already-landed workspace schema cleanup, not new implementation work.
 
 ## Task 5: Remove Plugin-Side Old Schema Duplicates
 
