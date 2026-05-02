@@ -15,7 +15,7 @@
 - Linear issue: VU-1138
 - Functional spec: skipped by explicit user instruction; no `docs/functional/` directory exists in this checkout.
 - Design docs: `docs/design/skill-import/README.md`, `docs/design/skills-marketplace/README.md`, `docs/design/skills/README.md`, `docs/design/skill-scope-review/README.md`
-- Implementation plan: `docs/plan/2026-05-01-vu-1138-typed-skill-library-command-map.md`
+- Implementation plan: `docs/plans/2026-05-01-vu-1138-typed-skill-library-command-map.md`
 - Manual tests: No manual tests required.
 
 ## Files

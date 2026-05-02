@@ -189,6 +189,7 @@
     "agent-sources/claude/": "Legacy Claude adapter templates used by remaining non-OpenHands CLAUDE.md rebuild paths.",
     "agent-sources/plugins/": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent",
     "docs/design/": "Architecture decision records and design specs: agent-specs, backend-design, startup-recon, workflow-state, clarifications-rendering, skill-tester, skills-marketplace, and more. Primary reference for non-obvious design decisions.",
+    "docs/plans/": "Implementation plans and execution notes. Not published end-user help content.",
     "docs/user-guide/": "VitePress user documentation, deployed via docs.yml to GitHub Pages",
     "docs/references/": "Vendored external reference docs (e.g. Anthropic API snapshots)",
     ".claude/rules/": "Shared agent rules (agent-agnostic, detailed policy). Referenced from AGENTS.md.",

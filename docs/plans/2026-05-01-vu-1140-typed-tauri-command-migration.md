@@ -20,7 +20,7 @@
   - `docs/design/write-eval-test-refine-loop/README.md`
   - `docs/design/workflow-state/README.md`
   - `docs/design/workspace-ui-refinement/README.md`
-- Implementation plan: `docs/plan/2026-05-01-vu-1140-typed-tauri-command-migration.md`
+- Implementation plan: `docs/plans/2026-05-01-vu-1140-typed-tauri-command-migration.md`
 - Manual checks: No manual tests required. All VU-1140 scenarios are automatable via compile-time type checks, static guard/eval assertions, unit tests, Rust tests, and mocked Playwright E2E tags.
 
 ## Files
@@ -265,7 +265,7 @@ Expected: targeted and full-suite checks pass, or any failure is isolated and fi
 - [x] Commit all changes:
 
 ```bash
-git add app/src/lib/tauri-command-types.ts app/src/lib/tauri-command-types.typecheck.ts app/src/lib/tauri.ts app/src/__tests__/guards/tauri-command-policy.test.ts app/e2e/helpers/workflow-helpers.ts tests/evals/assertions/tauri-command-contract.test.js docs/plan/2026-05-01-vu-1140-typed-tauri-command-migration.md
+git add app/src/lib/tauri-command-types.ts app/src/lib/tauri-command-types.typecheck.ts app/src/lib/tauri.ts app/src/__tests__/guards/tauri-command-policy.test.ts app/e2e/helpers/workflow-helpers.ts tests/evals/assertions/tauri-command-contract.test.js docs/plans/2026-05-01-vu-1140-typed-tauri-command-migration.md
 git commit -m "VU-1140: migrate refine and gate Tauri wrappers"
 ```
 

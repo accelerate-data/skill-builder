@@ -382,7 +382,7 @@ git commit -m "VU-927: guard typed Tauri command policy"
 **Files:**
 
 - Modify: `.claude/rules/codegen.md`
-- Modify: `docs/superpowers/plans/2026-05-01-vu-927-typed-tauri-commands.md`
+- Modify: `docs/plans/2026-05-01-vu-927-typed-tauri-commands.md`
 - Potentially modify: `app/src/lib/tauri-command-types.ts`, `app/src/lib/tauri.ts` if final validation finds a missed Settings command.
 
 - [x] **Step 1: Document the typed command convention**
@@ -434,7 +434,7 @@ Expected: no `repo-map.json` update needed because this issue adds no stores, pa
 Run:
 
 ```bash
-npx markdownlint-cli2 ".claude/rules/codegen.md" "TEST_MAP.md" "docs/superpowers/plans/2026-05-01-vu-927-typed-tauri-commands.md"
+npx markdownlint-cli2 ".claude/rules/codegen.md" "TEST_MAP.md" "docs/plans/2026-05-01-vu-927-typed-tauri-commands.md"
 bash app/scripts/lint-agent-docs.sh
 ```
 
@@ -452,7 +452,7 @@ Implemented typed Tauri command proof of concept for the Settings command area.
 Source traceability:
 - Functional spec: not_applicable
 - Related design: `docs/design/data-contracts/README.md`
-- Implementation plan: `docs/superpowers/plans/2026-05-01-vu-927-typed-tauri-commands.md`
+- Implementation plan: `docs/plans/2026-05-01-vu-927-typed-tauri-commands.md`
 
 Verification:
 - `cd app && npx tsc --noEmit`
@@ -466,7 +466,7 @@ Manual tests: none required; scenarios are covered by automation and determinist
 - [x] **Step 6: Final commit**
 
 ```bash
-git add .claude/rules/codegen.md docs/superpowers/plans/2026-05-01-vu-927-typed-tauri-commands.md
+git add .claude/rules/codegen.md docs/plans/2026-05-01-vu-927-typed-tauri-commands.md
 git commit -m "VU-927: document typed command workflow"
 ```
 
@@ -487,7 +487,7 @@ git commit -m "VU-927: document typed command workflow"
 - `cd app && npm run test:unit`
 - `cd app && npm run test:guard`
 - `cd tests/evals && npm test`
-- `npx markdownlint-cli2 ".claude/rules/codegen.md" "TEST_MAP.md" "docs/superpowers/plans/2026-05-01-vu-927-typed-tauri-commands.md"`
+- `npx markdownlint-cli2 ".claude/rules/codegen.md" "TEST_MAP.md" "docs/plans/2026-05-01-vu-927-typed-tauri-commands.md"`
 - `bash app/scripts/lint-agent-docs.sh`
 
 No live Promptfoo smoke evals and no manual tests are required for this issue.
