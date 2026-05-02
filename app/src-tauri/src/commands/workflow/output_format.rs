@@ -62,14 +62,94 @@ pub(crate) fn extract_research_json_from_conversation_state(
         return Err("OpenHands research conversation_state has empty result_text".to_string());
     }
 
-    let json_text = strip_single_json_markdown_fence(trimmed);
-    let parsed: serde_json::Value = serde_json::from_str(json_text)
-        .map_err(|e| format!("OpenHands research result_text invalid JSON: {}", e))?;
+    let parsed = parse_research_result_text(trimmed)?;
     if !parsed.is_object() {
         return Err("OpenHands research result_text must be a JSON object".to_string());
     }
 
     Ok(parsed)
+}
+
+fn parse_research_result_text(text: &str) -> Result<serde_json::Value, String> {
+    let json_text = strip_single_json_markdown_fence(text);
+    match serde_json::from_str::<serde_json::Value>(json_text) {
+        Ok(parsed) => Ok(parsed),
+        Err(parse_error) => {
+            let mut fallback_object = None;
+            for candidate in top_level_json_object_candidates(json_text)
+                .into_iter()
+                .rev()
+            {
+                let Ok(parsed) = serde_json::from_str::<serde_json::Value>(candidate) else {
+                    continue;
+                };
+                if !parsed.is_object() {
+                    continue;
+                }
+                if parsed.get("status").and_then(|value| value.as_str())
+                    == Some("research_complete")
+                    && parsed.get("research_output").is_some()
+                {
+                    return Ok(parsed);
+                }
+                fallback_object.get_or_insert(parsed);
+            }
+
+            if let Some(parsed) = fallback_object {
+                return Ok(parsed);
+            }
+
+            Err(format!(
+                "OpenHands research result_text invalid JSON: {}",
+                parse_error
+            ))
+        }
+    }
+}
+
+fn top_level_json_object_candidates(text: &str) -> Vec<&str> {
+    let mut candidates = Vec::new();
+    let mut depth = 0usize;
+    let mut start = None;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (idx, ch) in text.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '{' => {
+                if depth == 0 {
+                    start = Some(idx);
+                }
+                depth += 1;
+            }
+            '}' => {
+                if depth == 0 {
+                    continue;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    if let Some(start_idx) = start.take() {
+                        candidates.push(&text[start_idx..idx + ch.len_utf8()]);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    candidates
 }
 
 fn strip_single_json_markdown_fence(text: &str) -> &str {

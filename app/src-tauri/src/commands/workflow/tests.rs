@@ -283,6 +283,37 @@ fn research_json_extraction_parses_one_markdown_json_fence() {
 }
 
 #[test]
+fn research_json_extraction_parses_json_after_visible_dimension_table() {
+    let state = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed",
+        "result_text": r#"
+| Dimension | Score | Reason |
+| --------- | ----- | ------ |
+| `entities` | N/A | Insufficient context to score |
+
+{
+  "status": "research_complete",
+  "dimensions_selected": 0,
+  "question_count": 0,
+  "research_output": {
+    "version": "1",
+    "metadata": {},
+    "sections": [],
+    "notes": [],
+    "answer_evaluator_notes": []
+  }
+}
+"#
+    });
+
+    let parsed = extract_research_json_from_conversation_state(&state).unwrap();
+
+    assert_eq!(parsed["status"], "research_complete");
+    assert_eq!(parsed["dimensions_selected"], 0);
+}
+
+#[test]
 fn research_json_extraction_rejects_missing_empty_non_object_error_and_invalid_json() {
     let missing = serde_json::json!({
         "type": "conversation_state",
