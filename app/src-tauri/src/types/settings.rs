@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 // ─── Security newtypes ──────────────────────────────────────────────────────
 
@@ -100,9 +101,194 @@ fn default_true() -> bool {
     true
 }
 
+fn trimmed_opt(value: Option<String>) -> Option<String> {
+    value.and_then(|v| {
+        let trimmed = v.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    })
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ModelSettings {
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub api_key: Option<crate::types::SecretString>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub api_version: Option<String>,
+    #[serde(default)]
+    pub temperature: Option<f64>,
+    #[serde(default)]
+    pub max_output_tokens: Option<u32>,
+    #[serde(default)]
+    pub timeout_seconds: Option<u32>,
+    #[serde(default)]
+    pub num_retries: Option<u32>,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
+    #[serde(default)]
+    pub extra_headers: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub input_cost_per_token: Option<f64>,
+    #[serde(default)]
+    pub output_cost_per_token: Option<f64>,
+    #[serde(default)]
+    pub usage_id: Option<String>,
+}
+
+impl std::fmt::Debug for ModelSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModelSettings")
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("api_key", &"[REDACTED]")
+            .field("base_url", &self.base_url)
+            .field("api_version", &self.api_version)
+            .field("temperature", &self.temperature)
+            .field("max_output_tokens", &self.max_output_tokens)
+            .field("timeout_seconds", &self.timeout_seconds)
+            .field("num_retries", &self.num_retries)
+            .field("reasoning_effort", &self.reasoning_effort)
+            .field(
+                "extra_headers",
+                &self
+                    .extra_headers
+                    .as_ref()
+                    .map(|headers| headers.keys().collect::<Vec<_>>()),
+            )
+            .field("input_cost_per_token", &self.input_cost_per_token)
+            .field("output_cost_per_token", &self.output_cost_per_token)
+            .field("usage_id", &self.usage_id)
+            .finish()
+    }
+}
+
+impl Default for ModelSettings {
+    fn default() -> Self {
+        Self {
+            provider: None,
+            model: None,
+            api_key: None,
+            base_url: None,
+            api_version: None,
+            temperature: None,
+            max_output_tokens: None,
+            timeout_seconds: None,
+            num_retries: None,
+            reasoning_effort: None,
+            extra_headers: None,
+            input_cost_per_token: None,
+            output_cost_per_token: None,
+            usage_id: Some("workflow".to_string()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkflowLlmConfig {
+    pub model: String,
+    #[serde(rename = "apiKey", skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<crate::types::SecretString>,
+    #[serde(rename = "baseUrl", skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    #[serde(rename = "apiVersion", skip_serializing_if = "Option::is_none")]
+    pub api_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
+    #[serde(rename = "maxOutputTokens", skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u32>,
+    #[serde(rename = "timeoutSeconds", skip_serializing_if = "Option::is_none")]
+    pub timeout_seconds: Option<u32>,
+    #[serde(rename = "numRetries", skip_serializing_if = "Option::is_none")]
+    pub num_retries: Option<u32>,
+    #[serde(rename = "reasoningEffort", skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    #[serde(rename = "extraHeaders", skip_serializing_if = "Option::is_none")]
+    pub extra_headers: Option<HashMap<String, String>>,
+    #[serde(rename = "inputCostPerToken", skip_serializing_if = "Option::is_none")]
+    pub input_cost_per_token: Option<f64>,
+    #[serde(rename = "outputCostPerToken", skip_serializing_if = "Option::is_none")]
+    pub output_cost_per_token: Option<f64>,
+    #[serde(rename = "usageId", skip_serializing_if = "Option::is_none")]
+    pub usage_id: Option<String>,
+}
+
+impl ModelSettings {
+    pub(crate) fn normalized(mut self) -> Self {
+        self.provider = trimmed_opt(self.provider);
+        self.model = trimmed_opt(self.model);
+        self.api_key = self.api_key.and_then(|key| {
+            let trimmed = key.expose().trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(crate::types::SecretString::new(trimmed))
+            }
+        });
+        self.base_url = trimmed_opt(self.base_url);
+        self.api_version = trimmed_opt(self.api_version);
+        self.reasoning_effort = trimmed_opt(self.reasoning_effort);
+        self.usage_id = trimmed_opt(self.usage_id);
+        self.extra_headers = self.extra_headers.and_then(|headers| {
+            let normalized: HashMap<String, String> = headers
+                .into_iter()
+                .filter_map(|(key, value)| {
+                    let key = key.trim().to_string();
+                    let value = value.trim().to_string();
+                    if key.is_empty() || value.is_empty() {
+                        None
+                    } else {
+                        Some((key, value))
+                    }
+                })
+                .collect();
+            if normalized.is_empty() {
+                None
+            } else {
+                Some(normalized)
+            }
+        });
+        self
+    }
+
+    pub(crate) fn selected_workflow_llm(&self) -> Result<WorkflowLlmConfig, String> {
+        let model_settings = self.clone().normalized();
+        let model = model_settings.model.ok_or_else(|| {
+            "Model not configured. Select a model in Settings before running workflow steps."
+                .to_string()
+        })?;
+
+        Ok(WorkflowLlmConfig {
+            model,
+            api_key: model_settings.api_key,
+            base_url: model_settings.base_url,
+            api_version: model_settings.api_version,
+            temperature: model_settings.temperature,
+            max_output_tokens: model_settings.max_output_tokens,
+            timeout_seconds: model_settings.timeout_seconds,
+            num_retries: model_settings.num_retries,
+            reasoning_effort: model_settings.reasoning_effort,
+            extra_headers: model_settings.extra_headers,
+            input_cost_per_token: model_settings.input_cost_per_token,
+            output_cost_per_token: model_settings.output_cost_per_token,
+            usage_id: model_settings.usage_id,
+        })
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub anthropic_api_key: Option<String>,
+    #[serde(default)]
+    pub model_settings: ModelSettings,
     #[serde(default)]
     pub openhands_provider: Option<String>,
     #[serde(default)]
@@ -170,6 +356,7 @@ impl std::fmt::Debug for AppSettings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppSettings")
             .field("anthropic_api_key", &"[REDACTED]")
+            .field("model_settings", &self.model_settings)
             .field("openhands_provider", &self.openhands_provider)
             .field("openhands_api_key", &"[REDACTED]")
             .field("openhands_model", &self.openhands_model)
@@ -207,6 +394,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             anthropic_api_key: None,
+            model_settings: ModelSettings::default(),
             openhands_provider: Some("anthropic".to_string()),
             openhands_api_key: None,
             openhands_model: None,

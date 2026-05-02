@@ -1,6 +1,6 @@
 use super::migrations::*;
 use super::*;
-use crate::types::{AppSettings, ImportedSkill};
+use crate::types::{AppSettings, ImportedSkill, ModelSettings};
 
 fn create_test_db() -> Connection {
     create_test_db_for_tests()
@@ -19,6 +19,7 @@ fn test_write_and_read_settings() {
     let conn = create_test_db();
     let settings = AppSettings {
         anthropic_api_key: Some("sk-test-key".to_string()),
+        model_settings: ModelSettings::default(),
         openhands_provider: Some("anthropic".to_string()),
         openhands_api_key: Some("sk-test-key".to_string()),
         openhands_model: Some("anthropic/sonnet".to_string()),
@@ -61,6 +62,7 @@ fn test_write_and_read_settings_with_skills_path() {
     let conn = create_test_db();
     let settings = AppSettings {
         anthropic_api_key: Some("sk-test".to_string()),
+        model_settings: ModelSettings::default(),
         openhands_provider: Some("anthropic".to_string()),
         openhands_api_key: Some("sk-test".to_string()),
         openhands_model: None,
@@ -102,6 +104,7 @@ fn test_overwrite_settings() {
     let conn = create_test_db();
     let v1 = AppSettings {
         anthropic_api_key: Some("key-1".to_string()),
+        model_settings: ModelSettings::default(),
         openhands_provider: Some("anthropic".to_string()),
         openhands_api_key: Some("key-1".to_string()),
         openhands_model: None,
@@ -136,6 +139,7 @@ fn test_overwrite_settings() {
 
     let v2 = AppSettings {
         anthropic_api_key: Some("key-2".to_string()),
+        model_settings: ModelSettings::default(),
         openhands_provider: Some("anthropic".to_string()),
         openhands_api_key: Some("key-2".to_string()),
         openhands_model: Some("anthropic/opus".to_string()),

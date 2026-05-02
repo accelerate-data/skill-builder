@@ -14,11 +14,8 @@ use super::guards::{
 };
 use super::output_format::answer_evaluator_output_format;
 use super::prompt::{build_evaluator_prompt, build_prompt, build_step0_prompt};
-use super::settings::{WorkflowSettings, read_workflow_settings};
-use super::step_config::{
-    build_betas, get_step_config, thinking_budget_for_step, tools_for_agent,
-    workflow_output_format_for_step,
-};
+use super::settings::{read_workflow_settings, WorkflowSettings};
+use super::step_config::{get_step_config, tools_for_agent, workflow_output_format_for_step};
 use super::user_context::write_user_context_file;
 
 pub(crate) fn workflow_one_shot_runtime_provider() -> Option<String> {
@@ -60,11 +57,6 @@ async fn run_workflow_step_inner(
     workflow_session_id: Option<String>,
 ) -> Result<String, String> {
     let step = get_step_config(step_id)?;
-    let thinking_budget = if settings.extended_thinking {
-        thinking_budget_for_step(step_id)
-    } else {
-        None
-    };
     // Write user-context.md to workspace directory so sub-agents can read it.
     // Refreshed before every step to pick up mid-workflow settings edits.
     write_user_context_file(
@@ -136,9 +128,10 @@ async fn run_workflow_step_inner(
         // comes from the OpenHands agent name; structured contracts are
         // enforced via output_format below.
         system_prompt: None,
-        model: Some(settings.preferred_model.clone()),
-        model_base_url: settings.model_base_url.clone(),
-        api_key: settings.api_key.clone(),
+        llm: Some(settings.llm.clone()),
+        model: None,
+        model_base_url: None,
+        api_key: crate::types::SecretString::new("openhands-llm-config".to_string()),
         workspace_root_dir: workspace_path.replace('\\', "/"),
         workspace_skill_dir: resolve_workspace_skill_dir(
             Path::new(workspace_path),
@@ -152,20 +145,11 @@ async fn run_workflow_step_inner(
         // Compatibility field retained while other runtime paths still share
         // SidecarConfig; OpenHands one-shot workflow ignores it.
         permission_mode: None,
-        betas: build_betas(
-            thinking_budget,
-            &settings.preferred_model,
-            settings.interleaved_thinking_beta,
-        ),
-        thinking: thinking_budget.map(|budget| {
-            serde_json::json!({
-                "type": "enabled",
-                "budgetTokens": budget
-            })
-        }),
-        // model is always set explicitly; suppress fallback_model to avoid SDK errors.
+        betas: None,
+        thinking: None,
+        // Workflow model configuration is carried by llm; suppress legacy fields.
         fallback_model: None,
-        effort: settings.sdk_effort.clone(),
+        effort: None,
         output_format: workflow_output_format_for_step(step_id),
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
@@ -449,22 +433,13 @@ pub async fn run_answer_evaluator(
 
     // Read settings from DB — same pattern as read_workflow_settings but without
     // step-specific validation (this is a gate, not a workflow step).
-    let (
-        api_key,
-        skills_path,
-        plugin_slug,
-        industry,
-        function_role,
-        intake_json,
-        preferred_model,
-        model_base_url,
-    ) = {
+    let (llm, skills_path, plugin_slug, industry, function_role, intake_json) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
             e.to_string()
         })?;
-        let (model, key, model_base_url) = crate::db::selected_openhands_runtime(&settings)
+        let llm = crate::db::selected_workflow_llm(&settings)
             .inspect_err(|e| log::error!("run_answer_evaluator: {}", e))?;
         let _wp = settings.workspace_path.ok_or_else(|| {
             log::error!("run_answer_evaluator: workspace_path not configured");
@@ -483,16 +458,7 @@ pub async fn run_answer_evaluator(
             .flatten()
             .map(|m| m.plugin_slug)
             .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-        (
-            key,
-            sp,
-            slug,
-            settings.industry,
-            settings.function_role,
-            ij,
-            model,
-            model_base_url,
-        )
+        (llm, sp, slug, settings.industry, settings.function_role, ij)
     };
 
     // Write user-context.md so the agent can read it (same as workflow steps)
@@ -529,9 +495,10 @@ pub async fn run_answer_evaluator(
         mode: Some("one-shot".to_string()),
         prompt,
         system_prompt: None,
-        model: Some(preferred_model),
-        model_base_url,
-        api_key,
+        llm: Some(llm),
+        model: None,
+        model_base_url: None,
+        api_key: crate::types::SecretString::new("openhands-llm-config".to_string()),
         workspace_root_dir: workspace_path.replace('\\', "/"),
         workspace_skill_dir: resolve_workspace_skill_dir(
             Path::new(&workspace_path),
@@ -547,7 +514,7 @@ pub async fn run_answer_evaluator(
         permission_mode: None,
         betas: None,
         thinking: None,
-        // When model is set explicitly, fallback_model must differ — suppress it.
+        // Workflow model configuration is carried by llm; suppress legacy fields.
         fallback_model: None,
         effort: None,
         output_format: Some(answer_evaluator_output_format()),
