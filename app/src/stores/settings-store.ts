@@ -1,9 +1,10 @@
 import { create } from "zustand";
-import type { MarketplaceRegistry, ModelInfo } from "@/lib/types";
+import type { MarketplaceRegistry, ModelInfo, ModelSettings } from "@/lib/types";
 
 export type { ModelInfo };
 
 interface SettingsState {
+  modelSettings: ModelSettings;
   anthropicApiKey: string | null;
   openhandsProvider: string | null;
   openhandsApiKey: string | null;
@@ -37,6 +38,22 @@ interface SettingsState {
 }
 
 const initialState = {
+  modelSettings: {
+    provider: "anthropic",
+    model: null,
+    api_key: null,
+    base_url: null,
+    api_version: null,
+    temperature: null,
+    max_output_tokens: null,
+    timeout_seconds: 300,
+    num_retries: 5,
+    reasoning_effort: "auto",
+    extra_headers: null,
+    input_cost_per_token: null,
+    output_cost_per_token: null,
+    usage_id: "workflow",
+  } as ModelSettings,
   anthropicApiKey: null,
   openhandsProvider: "anthropic",
   openhandsApiKey: null,
@@ -70,13 +87,19 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   ...initialState,
   setSettings: (settings) =>
     set((state) => {
-      const next = { ...state, ...settings };
-      const provider = next.openhandsProvider ?? "anthropic";
+      const next = {
+        ...state,
+        ...settings,
+        modelSettings: {
+          ...state.modelSettings,
+          ...(settings.modelSettings ?? {}),
+        },
+      };
+      const provider = next.modelSettings.provider ?? "anthropic";
       const cloudProviderRequiresKey = provider !== "ollama";
-      const hasProviderKey =
-        !!next.openhandsApiKey || (provider === "anthropic" && !!next.anthropicApiKey);
+      const hasProviderKey = !!next.modelSettings.api_key;
       const hasRuntimeConfig =
-        !!next.openhandsModel && (!cloudProviderRequiresKey || hasProviderKey);
+        !!next.modelSettings.model && (!cloudProviderRequiresKey || hasProviderKey);
       return {
         ...next,
         isConfigured: !!next.skillsPath && hasRuntimeConfig,

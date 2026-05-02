@@ -19,54 +19,39 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useSettingsStore } from "@/stores/settings-store";
-import { listModels, testApiKey } from "@/lib/tauri";
+import type { ModelSettings } from "@/lib/types";
+import type { ModelSettingsPatch } from "@/hooks/use-settings-form";
+import { testApiKey } from "@/lib/tauri";
 
 interface SdkSectionProps {
-  apiKey: string | null;
-  setApiKey: (v: string | null) => void;
-  openhandsProvider: string;
-  setOpenhandsProvider: (v: string) => void;
-  openhandsApiKey: string | null;
-  setOpenhandsApiKey: (v: string | null) => void;
-  openhandsModel: string;
-  setOpenhandsModel: (v: string) => void;
-  openhandsBaseUrl: string | null;
-  setOpenhandsBaseUrl: (v: string | null) => void;
-  preferredModel: string;
-  setPreferredModel: (v: string) => void;
-  extendedThinking: boolean;
-  setExtendedThinking: (v: boolean) => void;
-  interleavedThinkingBeta: boolean;
-  setInterleavedThinkingBeta: (v: boolean) => void;
-  sdkEffort: string;
-  setSdkEffort: (v: string) => void;
+  modelSettings: ModelSettings;
+  updateModelSettings: (patch: ModelSettingsPatch) => void;
+  saveModelSettings: (patch: ModelSettingsPatch) => void;
   refinePromptSuggestions: boolean;
   setRefinePromptSuggestions: (v: boolean) => void;
   maxDimensions: number;
   setMaxDimensions: (v: number) => void;
-  autoSave: (overrides: Record<string, unknown>) => void;
+  autoSave: (overrides: {
+    refinePromptSuggestions?: boolean;
+    maxDimensions?: number;
+  }) => void | Promise<void>;
+}
+
+const PROVIDER_DEFAULT_MODELS: Record<string, string> = {
+  anthropic: "claude-sonnet-4-5",
+  openai: "gpt-4o",
+  google: "gemini-2.5-pro",
+  ollama: "llama3.1",
+};
+
+function clean(value: string): string | null {
+  return value.trim() || null;
 }
 
 export function SdkSection({
-  apiKey,
-  setApiKey,
-  openhandsProvider,
-  setOpenhandsProvider,
-  openhandsApiKey,
-  setOpenhandsApiKey,
-  openhandsModel,
-  setOpenhandsModel,
-  openhandsBaseUrl,
-  setOpenhandsBaseUrl,
-  preferredModel,
-  setPreferredModel,
-  extendedThinking,
-  setExtendedThinking,
-  interleavedThinkingBeta,
-  setInterleavedThinkingBeta,
-  sdkEffort,
-  setSdkEffort,
+  modelSettings,
+  updateModelSettings,
+  saveModelSettings,
   refinePromptSuggestions,
   setRefinePromptSuggestions,
   maxDimensions,
@@ -76,37 +61,21 @@ export function SdkSection({
   const [showApiKey, setShowApiKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null);
-  const availableModels = useSettingsStore((s) => s.availableModels);
-  const setStoreSettings = useSettingsStore((s) => s.setSettings);
-  const apiKeyRequired = openhandsProvider !== "ollama";
 
-  const fetchModels = async (key: string) => {
-    try {
-      const models = await listModels(key);
-      setStoreSettings({ availableModels: models ?? [] });
-      if (!preferredModel && models?.[0]?.id) {
-        setPreferredModel(models[0].id);
-        autoSave({ preferredModel: models[0].id });
-      }
-    } catch (err) {
-      console.warn("[settings] Could not fetch model list:", err);
-    }
-  };
+  const provider = modelSettings.provider ?? "anthropic";
+  const apiKeyRequired = provider !== "ollama";
 
   const handleTestApiKey = async () => {
-    if (!openhandsApiKey) {
+    if (!modelSettings.api_key) {
       toast.error("Enter an API key first", { duration: Infinity });
       return;
     }
     setTesting(true);
     setApiKeyValid(null);
     try {
-      await testApiKey(openhandsApiKey);
+      await testApiKey(modelSettings.api_key);
       setApiKeyValid(true);
       toast.success("API key is valid");
-      if (openhandsProvider === "anthropic") {
-        fetchModels(openhandsApiKey);
-      }
     } catch (err) {
       console.error("settings: API key test failed", err);
       setApiKeyValid(false);
@@ -120,24 +89,33 @@ export function SdkSection({
 
   return (
     <div className="space-y-6 p-6">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold">Models</h2>
+        <p className="text-sm text-muted-foreground">
+          Configure the language model used by workflow agents.
+        </p>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>API Configuration</CardTitle>
+          <CardTitle>Model</CardTitle>
           <CardDescription>
-            Configure the LiteLLM provider used by OpenHands workflow agents.
+            Workflow agents run in the app workspace using OpenHands. Model
+            settings are stored in Skill Builder settings.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="grid gap-2">
-            <Label htmlFor="openhands-provider">Provider</Label>
+            <Label htmlFor="model-provider">Provider</Label>
             <Select
-              value={openhandsProvider || "anthropic"}
+              value={provider}
               onValueChange={(val) => {
-                setOpenhandsProvider(val);
-                autoSave({ openhandsProvider: val });
+                const nextModel = modelSettings.model ?? PROVIDER_DEFAULT_MODELS[val] ?? null;
+                updateModelSettings({ provider: val, model: nextModel });
+                saveModelSettings({ provider: val, model: nextModel });
               }}
             >
-              <SelectTrigger id="openhands-provider" className="w-64">
+              <SelectTrigger id="model-provider" className="w-64">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -149,30 +127,37 @@ export function SdkSection({
             </Select>
           </div>
 
+          <div className="grid gap-2">
+            <Label htmlFor="model-id">Model</Label>
+            <Input
+              id="model-id"
+              placeholder={PROVIDER_DEFAULT_MODELS[provider] ?? "provider/model-id"}
+              value={modelSettings.model ?? ""}
+              onChange={(e) => updateModelSettings({ model: e.target.value })}
+              onBlur={(e) => saveModelSettings({ model: clean(e.target.value) })}
+            />
+            {modelSettings.model ? (
+              <span className="text-xs text-muted-foreground">
+                {modelSettings.model}
+              </span>
+            ) : null}
+          </div>
+
           <div className="flex flex-col gap-2">
-            <Label htmlFor="api-key">API Key</Label>
+            <Label htmlFor="model-api-key">API Key</Label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Input
-                  id="api-key"
+                  id="model-api-key"
                   type={showApiKey ? "text" : "password"}
-                  placeholder={openhandsProvider === "anthropic" ? "sk-ant-..." : "Provider API key"}
-                  value={openhandsApiKey || ""}
+                  placeholder={provider === "anthropic" ? "sk-ant-..." : "Provider API key"}
+                  value={modelSettings.api_key ?? ""}
                   required={apiKeyRequired}
                   onChange={(e) => {
-                    const value = e.target.value || null;
-                    setOpenhandsApiKey(value);
-                    if (openhandsProvider === "anthropic") {
-                      setApiKey(value);
-                    }
+                    updateModelSettings({ api_key: e.target.value });
+                    setApiKeyValid(null);
                   }}
-                  onBlur={(e) => {
-                    const value = e.target.value || null;
-                    autoSave({
-                      openhandsApiKey: value,
-                      apiKey: openhandsProvider === "anthropic" ? value : apiKey,
-                    });
-                  }}
+                  onBlur={(e) => saveModelSettings({ api_key: clean(e.target.value) })}
                 />
                 <Button
                   type="button"
@@ -192,7 +177,7 @@ export function SdkSection({
                 variant={apiKeyValid ? "default" : "outline"}
                 size="sm"
                 onClick={handleTestApiKey}
-                disabled={testing || !openhandsApiKey || openhandsProvider !== "anthropic"}
+                disabled={testing || !modelSettings.api_key}
                 className={apiKeyValid ? "text-white" : ""}
                 style={
                   apiKeyValid
@@ -211,32 +196,13 @@ export function SdkSection({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="openhands-model">Model</Label>
+            <Label htmlFor="model-base-url">Base URL</Label>
             <Input
-              id="openhands-model"
-              placeholder={
-                openhandsProvider === "ollama"
-                  ? "llama3.1"
-                  : openhandsProvider === "openai"
-                    ? "gpt-4o"
-                    : openhandsProvider === "google"
-                      ? "gemini-2.5-pro"
-                      : "anthropic/claude-sonnet-4-6"
-              }
-              value={openhandsModel || ""}
-              onChange={(e) => setOpenhandsModel(e.target.value)}
-              onBlur={(e) => autoSave({ openhandsModel: e.target.value || null })}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="openhands-base-url">Base URL</Label>
-            <Input
-              id="openhands-base-url"
-              placeholder={openhandsProvider === "ollama" ? "http://localhost:11434" : "Optional"}
-              value={openhandsBaseUrl || ""}
-              onChange={(e) => setOpenhandsBaseUrl(e.target.value || null)}
-              onBlur={(e) => autoSave({ openhandsBaseUrl: e.target.value || null })}
+              id="model-base-url"
+              placeholder={provider === "ollama" ? "http://localhost:11434" : "Optional"}
+              value={modelSettings.base_url ?? ""}
+              onChange={(e) => updateModelSettings({ base_url: e.target.value })}
+              onBlur={(e) => saveModelSettings({ base_url: clean(e.target.value) })}
             />
           </div>
         </CardContent>
@@ -244,106 +210,83 @@ export function SdkSection({
 
       <Card>
         <CardHeader>
-          <CardTitle>Anthropic Model List</CardTitle>
+          <CardTitle>Model Details</CardTitle>
           <CardDescription>
-            Optional legacy Anthropic model picker. OpenHands uses the model
-            field above.
+            Runtime capabilities are resolved by OpenHands for the selected
+            model.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-3">
-            <Select
-              value={
-                preferredModel ||
-                (availableModels.length > 0 ? availableModels[0].id : "")
-              }
-              onValueChange={(val) => {
-                setPreferredModel(val);
-                autoSave({ preferredModel: val });
-              }}
-            >
-              <SelectTrigger className="w-64">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {availableModels.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.displayName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <CardContent className="grid gap-3 text-sm md:grid-cols-2">
+          <div className="flex justify-between gap-4 rounded-md border p-3">
+            <span className="text-muted-foreground">Tool calling</span>
+            <span>Detected at runtime</span>
+          </div>
+          <div className="flex justify-between gap-4 rounded-md border p-3">
+            <span className="text-muted-foreground">Reasoning</span>
+            <span>Auto</span>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Agent Features</CardTitle>
+          <CardTitle>Request Settings</CardTitle>
           <CardDescription>
-            Configure agent capabilities for skill building.
+            Generic request options passed to the OpenHands LLM configuration.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="timeout-seconds">Timeout</Label>
+            <Input
+              id="timeout-seconds"
+              type="number"
+              min={1}
+              value={modelSettings.timeout_seconds ?? ""}
+              onChange={(e) => updateModelSettings({ timeout_seconds: Number(e.target.value) || null })}
+              onBlur={(e) => saveModelSettings({ timeout_seconds: Number(e.target.value) || null })}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="num-retries">Retries</Label>
+            <Input
+              id="num-retries"
+              type="number"
+              min={0}
+              value={modelSettings.num_retries ?? ""}
+              onChange={(e) => updateModelSettings({ num_retries: Number(e.target.value) || null })}
+              onBlur={(e) => saveModelSettings({ num_retries: Number(e.target.value) || null })}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Capabilities</CardTitle>
+          <CardDescription>
+            Model capability preferences. Unsupported options are ignored by the
+            runtime.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-0.5">
-              <Label htmlFor="extended-thinking">
-                Extended thinking (deeper reasoning)
-              </Label>
-              <span className="text-sm text-muted-foreground">
-                Enable deeper reasoning for agents. Increases cost by ~$1-2 per
-                skill build.
-              </span>
-            </div>
-            <Switch
-              id="extended-thinking"
-              checked={extendedThinking}
-              onCheckedChange={(checked) => {
-                setExtendedThinking(checked);
-                autoSave({ extendedThinking: checked });
-              }}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-0.5">
-              <Label htmlFor="interleaved-thinking-beta">
-                Interleaved thinking beta
-              </Label>
-              <span className="text-sm text-muted-foreground">
-                Enable interleaved thinking beta when thinking is enabled on
-                supported non-Opus models.
-              </span>
-            </div>
-            <Switch
-              id="interleaved-thinking-beta"
-              checked={interleavedThinkingBeta}
-              onCheckedChange={(checked) => {
-                setInterleavedThinkingBeta(checked);
-                autoSave({ interleavedThinkingBeta: checked });
-              }}
-            />
-          </div>
-
           <div className="grid gap-2">
             <Label>Reasoning effort</Label>
             <Select
-              value={sdkEffort || "_default"}
+              value={modelSettings.reasoning_effort ?? "auto"}
               onValueChange={(val) => {
-                const effort = val === "_default" ? "" : val;
-                setSdkEffort(effort);
-                autoSave({ sdkEffort: effort || null });
+                updateModelSettings({ reasoning_effort: val });
+                saveModelSettings({ reasoning_effort: val });
               }}
             >
               <SelectTrigger className="w-64">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="_default">Default</SelectItem>
+                <SelectItem value="auto">Auto</SelectItem>
                 <SelectItem value="low">Low</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
                 <SelectItem value="high">High</SelectItem>
-                <SelectItem value="max">Max</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -351,10 +294,11 @@ export function SdkSection({
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-0.5">
               <Label htmlFor="refine-prompt-suggestions">
-                Refine prompt suggestions
+                Prompt suggestions
               </Label>
               <span className="text-sm text-muted-foreground">
-                Enable SDK prompt suggestions during refine chat sessions.
+                Allow refine chat sessions to request prompt suggestions when
+                supported.
               </span>
             </div>
             <Switch
@@ -364,6 +308,37 @@ export function SdkSection({
                 setRefinePromptSuggestions(checked);
                 autoSave({ refinePromptSuggestions: checked });
               }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Advanced</CardTitle>
+          <CardDescription>
+            Optional model API overrides.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="api-version">API version</Label>
+            <Input
+              id="api-version"
+              placeholder="Optional"
+              value={modelSettings.api_version ?? ""}
+              onChange={(e) => updateModelSettings({ api_version: e.target.value })}
+              onBlur={(e) => saveModelSettings({ api_version: clean(e.target.value) })}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="usage-id">Usage ID</Label>
+            <Input
+              id="usage-id"
+              placeholder="workflow"
+              value={modelSettings.usage_id ?? ""}
+              onChange={(e) => updateModelSettings({ usage_id: e.target.value })}
+              onBlur={(e) => saveModelSettings({ usage_id: clean(e.target.value) })}
             />
           </div>
         </CardContent>

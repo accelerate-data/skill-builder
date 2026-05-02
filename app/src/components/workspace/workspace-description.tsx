@@ -75,7 +75,7 @@ export function WorkspaceDescription({
   onRunningChange,
   onApply,
 }: WorkspaceDescriptionProps) {
-  const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const selectedModel = useSettingsStore((s) => s.modelSettings.model);
 
   const [queries, setQueries] = useState<EvalQuery[]>([]);
   const [isGeneratingQueries, setIsGeneratingQueries] = useState(false);
@@ -175,7 +175,7 @@ export function WorkspaceDescription({
     },
   });
 
-  const model = preferredModel;
+  const model = selectedModel;
 
   /** Fire-and-forget file log for description optimization events */
   const logToFile = (message: string) => {

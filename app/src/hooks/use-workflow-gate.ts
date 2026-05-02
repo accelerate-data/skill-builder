@@ -67,7 +67,7 @@ export function useWorkflowGate({
   const setGateLoading = useWorkflowStore((s) => s.setGateLoading);
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   const agentStartRun = useAgentStore((s) => s.startRun);
-  const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const selectedModel = useSettingsStore((s) => s.modelSettings.model);
 
   const gateAgentIdRef = useRef<string | null>(null);
 
@@ -79,7 +79,7 @@ export function useWorkflowGate({
 
     let model: string;
     try {
-      model = requireSettingsModel(preferredModel);
+      model = requireSettingsModel(selectedModel);
     } catch (err) {
       console.error("[workflow] Gate evaluation skipped:", err);
       toast.warning("Answer evaluation skipped — proceeding to next step", {
@@ -109,7 +109,7 @@ export function useWorkflowGate({
   }, [
     workspacePath,
     skillName,
-    preferredModel,
+    selectedModel,
     currentStep,
     setGateLoading,
     agentStartRun,

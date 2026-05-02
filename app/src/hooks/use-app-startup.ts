@@ -3,8 +3,8 @@ import { useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, listModels } from "@/lib/tauri";
-import type { AppSettings, DiscoveredSkill, OrphanSkill } from "@/lib/types";
+import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel } from "@/lib/tauri";
+import type { AppSettings, DiscoveredSkill, ModelSettings, OrphanSkill } from "@/lib/types";
 import { checkForMarketplaceUpdates } from "./use-marketplace-updates";
 import { queryKeys } from "@/lib/queries/query-keys";
 import { fetchGithubUser } from "@/lib/queries/auth";
@@ -32,15 +32,29 @@ export interface UseAppStartupReturn extends StartupState {
 }
 
 export function settingsToStorePatch(s: AppSettings) {
-  const openhandsProvider = s.openhands_provider ?? "anthropic";
-  const legacyAnthropicKey =
-    openhandsProvider === "anthropic" ? s.anthropic_api_key : null;
+  const modelSettings: ModelSettings = {
+    provider: s.model_settings?.provider ?? "anthropic",
+    model: s.model_settings?.model ?? null,
+    api_key: s.model_settings?.api_key ?? null,
+    base_url: s.model_settings?.base_url ?? null,
+    api_version: s.model_settings?.api_version ?? null,
+    temperature: s.model_settings?.temperature ?? null,
+    max_output_tokens: s.model_settings?.max_output_tokens ?? null,
+    timeout_seconds: s.model_settings?.timeout_seconds ?? 300,
+    num_retries: s.model_settings?.num_retries ?? 5,
+    reasoning_effort: s.model_settings?.reasoning_effort ?? "auto",
+    extra_headers: s.model_settings?.extra_headers ?? null,
+    input_cost_per_token: s.model_settings?.input_cost_per_token ?? null,
+    output_cost_per_token: s.model_settings?.output_cost_per_token ?? null,
+    usage_id: s.model_settings?.usage_id ?? "workflow",
+  };
 
   return {
+    modelSettings,
     anthropicApiKey: s.anthropic_api_key,
-    openhandsProvider,
-    openhandsApiKey: s.openhands_api_key ?? legacyAnthropicKey,
-    openhandsModel: s.openhands_model ?? s.preferred_model,
+    openhandsProvider: s.openhands_provider ?? null,
+    openhandsApiKey: s.openhands_api_key ?? null,
+    openhandsModel: s.openhands_model ?? null,
     openhandsBaseUrl: s.openhands_base_url ?? null,
     workspacePath: s.workspace_path,
     skillsPath: s.skills_path,
@@ -88,12 +102,6 @@ export function useAppStartup(): UseAppStartupReturn {
       if (cancelledRef.current) return;
       setSettings(settingsToStorePatch(s));
       setSettingsLoaded(true);
-      // Fetch available models in the background — no need to await
-      if (s.anthropic_api_key) {
-        listModels(s.anthropic_api_key)
-          .then((models) => { if (!cancelledRef.current) setSettings({ availableModels: models }); })
-          .catch((err) => console.warn("[app-layout] Could not fetch model list:", err));
-      }
       // Check for marketplace updates in the background, and refresh stored registry names
       // from marketplace.json if they have changed since the registry was added.
       const enabledRegistries = (s.marketplace_registries ?? []).filter(r => r.enabled);

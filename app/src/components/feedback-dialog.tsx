@@ -131,7 +131,7 @@ export function parseEnrichmentResponse(content: string): EnrichedIssue | null {
 // ---------------------------------------------------------------------------
 
 export function FeedbackDialog() {
-  const preferredModel = useSettingsStore((s) => s.preferredModel)
+  const selectedModel = useSettingsStore((s) => s.modelSettings.model)
 
   // --- App version ---
   const [appVersion, setAppVersion] = useState("unknown")
@@ -222,7 +222,7 @@ export function FeedbackDialog() {
       await startOneShotAgent(
         agentId,
         prompt,
-        requireSettingsModel(preferredModel),
+        requireSettingsModel(selectedModel),
         cwd,
         [],           // No tools — pure text analysis
         3,

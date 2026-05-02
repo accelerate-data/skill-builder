@@ -94,7 +94,7 @@ export function WorkspaceEvals({
   const pluginSlug = skill.plugin_slug;
   const skillsPath =
     useSettingsStore((s) => s.skillsPath) ?? workspacePath ?? "";
-  const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const selectedModel = useSettingsStore((s) => s.modelSettings.model);
 
   const [evals, setEvals] = useState<TestCase[]>([]);
   const [iterations, setIterations] = useState<IterationMeta[]>([]);
@@ -381,7 +381,7 @@ export function WorkspaceEvals({
         userContextFile,
       );
       const agentId = crypto.randomUUID();
-      const model = requireSettingsModel(preferredModel);
+      const model = requireSettingsModel(selectedModel);
       const cwd = skillWorkspace;
 
       await startOneShotAgent(
@@ -489,7 +489,7 @@ export function WorkspaceEvals({
         regenUserContextFile,
       );
       const agentId = crypto.randomUUID();
-      const model = requireSettingsModel(preferredModel);
+      const model = requireSettingsModel(selectedModel);
       const cwd = skillWorkspace;
 
       await startOneShotAgent(
@@ -653,7 +653,7 @@ export function WorkspaceEvals({
     const evalIds = [...selectedRunIds].sort((a, b) => a - b);
     let model: string;
     try {
-      model = requireSettingsModel(preferredModel);
+      model = requireSettingsModel(selectedModel);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return;

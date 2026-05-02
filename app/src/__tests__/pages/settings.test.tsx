@@ -130,6 +130,7 @@ import {
 
 const defaultSettings: AppSettings = {
   anthropic_api_key: null,
+  model_settings: null,
   openhands_provider: null,
   openhands_api_key: null,
   openhands_model: null,
@@ -155,10 +156,16 @@ const defaultSettings: AppSettings = {
 };
 
 const populatedSettings: AppSettings = {
-  anthropic_api_key: "sk-ant-existing-key",
-  openhands_provider: "anthropic",
-  openhands_api_key: "sk-ant-existing-key",
-  openhands_model: "anthropic/claude-sonnet-4-6",
+  anthropic_api_key: null,
+  model_settings: {
+    provider: "anthropic",
+    model: "claude-sonnet-4-5",
+    api_key: "sk-ant-existing-key",
+    base_url: null,
+  },
+  openhands_provider: null,
+  openhands_api_key: null,
+  openhands_model: null,
   openhands_base_url: null,
   workspace_path: "/home/user/workspace",
   skills_path: null,
@@ -192,6 +199,22 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
   });
   // Populate the settings store with the mock settings
   useSettingsStore.setState({
+    modelSettings: {
+      provider: settings.model_settings?.provider ?? "anthropic",
+      model: settings.model_settings?.model ?? null,
+      api_key: settings.model_settings?.api_key ?? null,
+      base_url: settings.model_settings?.base_url ?? null,
+      api_version: settings.model_settings?.api_version ?? null,
+      temperature: settings.model_settings?.temperature ?? null,
+      max_output_tokens: settings.model_settings?.max_output_tokens ?? null,
+      timeout_seconds: settings.model_settings?.timeout_seconds ?? 300,
+      num_retries: settings.model_settings?.num_retries ?? 5,
+      reasoning_effort: settings.model_settings?.reasoning_effort ?? "auto",
+      extra_headers: settings.model_settings?.extra_headers ?? null,
+      input_cost_per_token: settings.model_settings?.input_cost_per_token ?? null,
+      output_cost_per_token: settings.model_settings?.output_cost_per_token ?? null,
+      usage_id: settings.model_settings?.usage_id ?? "workflow",
+    },
     anthropicApiKey: settings.anthropic_api_key,
     openhandsProvider: settings.openhands_provider,
     openhandsApiKey: settings.openhands_api_key,
@@ -262,7 +285,7 @@ describe("SettingsPage", () => {
     });
 
     expect(screen.getByRole("button", { name: /General/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /OpenHands/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Models/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Plugins/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Marketplace/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitHub/i })).toBeInTheDocument();
@@ -285,8 +308,12 @@ describe("SettingsPage", () => {
   it("initializes settings from store snapshot", () => {
     // Populate store with specific values
     const testSettings: Partial<AppSettings> = {
-      anthropic_api_key: "sk-ant-test-key",
-      preferred_model: "opus",
+      model_settings: {
+        provider: "anthropic",
+        model: "claude-opus-4-5",
+        api_key: "sk-ant-test-key",
+        base_url: null,
+      },
       log_level: "debug",
     };
     setupDefaultMocks(testSettings);
@@ -305,7 +332,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/OpenHands/i);
+    await switchToSection(/Models/i);
 
     // API key field (password input)
     const apiKeyInput = screen.getByPlaceholderText("sk-ant-...");
@@ -321,7 +348,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/OpenHands/i);
+    await switchToSection(/Models/i);
 
     await user.selectOptions(screen.getByLabelText(/Provider/i), "openai");
     await user.clear(screen.getByLabelText(/Model/i));
@@ -332,8 +359,11 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(updateUserSettings).toHaveBeenCalledWith(
         expect.objectContaining({
-          openhands_provider: "openai",
-          openhands_model: "gpt-4o",
+          model_settings: expect.objectContaining({
+            provider: "openai",
+            model: "gpt-4o",
+          }),
+          openhands_model: null,
         }),
       );
     });
@@ -343,10 +373,12 @@ describe("SettingsPage", () => {
     const user = userEvent.setup();
     setupDefaultMocks({
       ...populatedSettings,
-      openhands_provider: "ollama",
-      openhands_api_key: null,
-      openhands_model: "llama3.1",
-      openhands_base_url: "http://localhost:11434",
+      model_settings: {
+        provider: "ollama",
+        api_key: null,
+        model: "llama3.1",
+        base_url: "http://localhost:11434",
+      },
     });
     renderWithQueryClient(<SettingsPage />);
 
@@ -354,7 +386,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/OpenHands/i);
+    await switchToSection(/Models/i);
 
     expect(screen.getByLabelText(/API Key/i)).not.toBeRequired();
     const baseUrlInput = screen.getByLabelText(/Base URL/i);
@@ -366,9 +398,12 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(updateUserSettings).toHaveBeenCalledWith(
         expect.objectContaining({
-          openhands_provider: "ollama",
-          openhands_api_key: null,
-          openhands_base_url: "http://localhost:11435",
+          model_settings: expect.objectContaining({
+            provider: "ollama",
+            api_key: null,
+            base_url: "http://localhost:11435",
+          }),
+          openhands_base_url: null,
         }),
       );
     });
@@ -396,7 +431,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/OpenHands/i);
+    await switchToSection(/Models/i);
 
     const testButtons = screen.getAllByRole("button", { name: /Test/i });
     // First "Test" button is the Anthropic API key test button
@@ -408,7 +443,7 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("auto-saves when Extended Thinking toggle is changed", async () => {
+  it("auto-saves when prompt suggestions toggle is changed", async () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
     renderWithQueryClient(<SettingsPage />);
@@ -417,15 +452,15 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/OpenHands/i);
+    await switchToSection(/Models/i);
 
-    const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
-    await user.click(thinkingSwitch);
+    const promptSuggestionsSwitch = screen.getByRole("switch", { name: /Prompt suggestions/i });
+    await user.click(promptSuggestionsSwitch);
 
     const { updateUserSettings } = await import("@/lib/tauri");
     await waitFor(() => {
       expect(updateUserSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ extended_thinking: true }),
+        expect.objectContaining({ refine_prompt_suggestions: false }),
       );
     });
   });
@@ -439,7 +474,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/OpenHands/i);
+    await switchToSection(/Models/i);
 
     const apiKeyInput = screen.getByPlaceholderText("sk-ant-...");
     await user.clear(apiKeyInput);
@@ -449,7 +484,10 @@ describe("SettingsPage", () => {
     const { updateUserSettings } = await import("@/lib/tauri");
     await waitFor(() => {
       expect(updateUserSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ anthropic_api_key: "sk-ant-new-key" }),
+        expect.objectContaining({
+          anthropic_api_key: null,
+          model_settings: expect.objectContaining({ api_key: "sk-ant-new-key" }),
+        }),
       );
     });
   });
@@ -463,10 +501,10 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/OpenHands/i);
+    await switchToSection(/Models/i);
 
-    const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
-    await user.click(thinkingSwitch);
+    const promptSuggestionsSwitch = screen.getByRole("switch", { name: /Prompt suggestions/i });
+    await user.click(promptSuggestionsSwitch);
 
     await waitFor(() => {
       expect(screen.getByText("Saved")).toBeInTheDocument();
@@ -486,10 +524,10 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToSection(/OpenHands/i);
+    await switchToSection(/Models/i);
 
-    const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
-    await user.click(thinkingSwitch);
+    const promptSuggestionsSwitch = screen.getByRole("switch", { name: /Prompt suggestions/i });
+    await user.click(promptSuggestionsSwitch);
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(

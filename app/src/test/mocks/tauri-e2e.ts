@@ -16,11 +16,17 @@ const E2E_SKILLS_PATH = `${E2E_ROOT}/skills`;
 const E2E_DEFAULT_SKILLS_PATH = `${E2E_ROOT}/default-skills`;
 
 const defaultSettings = {
-  anthropic_api_key: "sk-ant-test-e2e",
+  anthropic_api_key: null,
+  model_settings: {
+    provider: "anthropic",
+    model: "sonnet",
+    api_key: "sk-ant-test-e2e",
+    base_url: null,
+  },
   workspace_path: null,
   skills_path: E2E_SKILLS_PATH,
-  preferred_model: "sonnet",
-  openhands_model: "anthropic/sonnet",
+  preferred_model: null,
+  openhands_model: null,
   log_level: "info",
 };
 

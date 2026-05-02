@@ -9,31 +9,35 @@ describe("useSettingsStore", () => {
 
   it("has null fields and isConfigured=false in initial state", () => {
     const state = useSettingsStore.getState();
-    expect(state.anthropicApiKey).toBeNull();
+    expect(state.modelSettings.api_key).toBeNull();
     expect(state.workspacePath).toBeNull();
     expect(state.dashboardViewMode).toBeNull();
     expect(state.isConfigured).toBe(false);
   });
 
-  it("setSettings with apiKey and skillsPath sets isConfigured to true", () => {
+  it("setSettings with model settings and skillsPath sets isConfigured to true", () => {
     useSettingsStore.getState().setSettings({
-      anthropicApiKey: "sk-ant-test-key",
-      openhandsModel: "anthropic/claude-sonnet-4-6",
+      modelSettings: {
+        model: "claude-sonnet-4-5",
+        api_key: "sk-ant-test-key",
+      },
       skillsPath: "/some/skills",
     });
     const state = useSettingsStore.getState();
-    expect(state.anthropicApiKey).toBe("sk-ant-test-key");
+    expect(state.modelSettings.api_key).toBe("sk-ant-test-key");
     expect(state.skillsPath).toBe("/some/skills");
     expect(state.isConfigured).toBe(true);
   });
 
-  it("setSettings with apiKey only keeps isConfigured false (skillsPath required)", () => {
+  it("setSettings with model settings only keeps isConfigured false (skillsPath required)", () => {
     useSettingsStore.getState().setSettings({
-      anthropicApiKey: "sk-ant-test-key",
-      openhandsModel: "anthropic/claude-sonnet-4-6",
+      modelSettings: {
+        model: "claude-sonnet-4-5",
+        api_key: "sk-ant-test-key",
+      },
     });
     const state = useSettingsStore.getState();
-    expect(state.anthropicApiKey).toBe("sk-ant-test-key");
+    expect(state.modelSettings.api_key).toBe("sk-ant-test-key");
     expect(state.isConfigured).toBe(false);
   });
 
@@ -48,21 +52,23 @@ describe("useSettingsStore", () => {
 
   it("setSettings preserves existing fields not included in update", () => {
     useSettingsStore.getState().setSettings({
-      anthropicApiKey: "sk-ant-test-key",
-      openhandsModel: "anthropic/claude-sonnet-4-6",
+      modelSettings: {
+        model: "claude-sonnet-4-5",
+        api_key: "sk-ant-test-key",
+      },
       skillsPath: "/some/skills",
     });
     useSettingsStore.getState().setSettings({
       workspacePath: "/some/path",
     });
     const state = useSettingsStore.getState();
-    expect(state.anthropicApiKey).toBe("sk-ant-test-key");
+    expect(state.modelSettings.api_key).toBe("sk-ant-test-key");
     expect(state.workspacePath).toBe("/some/path");
     expect(state.skillsPath).toBe("/some/skills");
     expect(state.isConfigured).toBe(true);
   });
 
-  it("does not treat a legacy Anthropic key as OpenAI provider configuration", () => {
+  it("does not treat legacy OpenHands fields as model configuration", () => {
     useSettingsStore.getState().setSettings({
       anthropicApiKey: "sk-ant-test-key",
       openhandsProvider: "openai",
@@ -74,7 +80,7 @@ describe("useSettingsStore", () => {
     expect(useSettingsStore.getState().isConfigured).toBe(false);
   });
 
-  it("allows a legacy Anthropic key for Anthropic provider configuration", () => {
+  it("does not treat a legacy Anthropic key as model configuration", () => {
     useSettingsStore.getState().setSettings({
       anthropicApiKey: "sk-ant-test-key",
       openhandsProvider: "anthropic",
@@ -83,7 +89,7 @@ describe("useSettingsStore", () => {
       skillsPath: "/some/skills",
     });
 
-    expect(useSettingsStore.getState().isConfigured).toBe(true);
+    expect(useSettingsStore.getState().isConfigured).toBe(false);
   });
 
   it("setSettings stores dashboardViewMode", () => {
@@ -100,8 +106,10 @@ describe("useSettingsStore", () => {
 
   it("reset returns to initial state", () => {
     useSettingsStore.getState().setSettings({
-      anthropicApiKey: "sk-ant-test-key",
-      openhandsModel: "anthropic/claude-sonnet-4-6",
+      modelSettings: {
+        model: "claude-sonnet-4-5",
+        api_key: "sk-ant-test-key",
+      },
       workspacePath: "/some/path",
       skillsPath: "/some/skills",
     });
@@ -111,7 +119,7 @@ describe("useSettingsStore", () => {
     useSettingsStore.getState().reset();
 
     const state = useSettingsStore.getState();
-    expect(state.anthropicApiKey).toBeNull();
+    expect(state.modelSettings.api_key).toBeNull();
     expect(state.workspacePath).toBeNull();
     expect(state.isConfigured).toBe(false);
   });

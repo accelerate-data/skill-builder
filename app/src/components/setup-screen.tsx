@@ -13,6 +13,7 @@ import {
   getDefaultSkillsPath,
 } from "@/lib/tauri";
 import { normalizeDirectoryPickerPath } from "@/lib/utils";
+import type { ModelSettings } from "@/lib/types";
 
 interface SetupScreenProps {
   /** @deprecated No longer needed -- the parent reads isConfigured from the store. */
@@ -20,7 +21,7 @@ interface SetupScreenProps {
 }
 
 export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
-  const existingApiKey = useSettingsStore((s) => s.anthropicApiKey);
+  const existingApiKey = useSettingsStore((s) => s.modelSettings.api_key);
   const existingSkillsPath = useSettingsStore((s) => s.skillsPath);
   const [apiKey, setApiKey] = useState(existingApiKey ?? "");
   const [showApiKey, setShowApiKey] = useState(false);
@@ -77,25 +78,41 @@ export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
     setSaving(true);
     try {
       const existing = await getSettings();
+      const existingModelSettings: Partial<ModelSettings> = existing.model_settings ?? {};
+      const modelSettings = {
+        provider: existingModelSettings.provider ?? "anthropic",
+        model: existingModelSettings.model ?? "claude-sonnet-4-5",
+        api_key: existingModelSettings.api_key ?? apiKey,
+        base_url: existingModelSettings.base_url ?? null,
+        api_version: existingModelSettings.api_version ?? null,
+        temperature: existingModelSettings.temperature ?? null,
+        max_output_tokens: existingModelSettings.max_output_tokens ?? null,
+        timeout_seconds: existingModelSettings.timeout_seconds ?? 300,
+        num_retries: existingModelSettings.num_retries ?? 5,
+        reasoning_effort: existingModelSettings.reasoning_effort ?? "auto",
+        extra_headers: existingModelSettings.extra_headers ?? null,
+        input_cost_per_token: existingModelSettings.input_cost_per_token ?? null,
+        output_cost_per_token: existingModelSettings.output_cost_per_token ?? null,
+        usage_id: existingModelSettings.usage_id ?? "workflow",
+      };
       await saveSettings({
         ...existing,
-        anthropic_api_key: apiKey,
+        anthropic_api_key: null,
+        model_settings: modelSettings,
         skills_path: skillsPath,
-        openhands_provider: existing.openhands_provider ?? "anthropic",
-        openhands_api_key: existing.openhands_api_key ?? apiKey,
-        openhands_model:
-          existing.openhands_model ??
-          existing.preferred_model ??
-          "anthropic/claude-sonnet-4-6",
+        openhands_provider: null,
+        openhands_api_key: null,
+        openhands_model: null,
+        openhands_base_url: null,
+        preferred_model: null,
       });
       setStoreSettings({
-        anthropicApiKey: apiKey,
-        openhandsProvider: existing.openhands_provider ?? "anthropic",
-        openhandsApiKey: existing.openhands_api_key ?? apiKey,
-        openhandsModel:
-          existing.openhands_model ??
-          existing.preferred_model ??
-          "anthropic/claude-sonnet-4-6",
+        modelSettings,
+        anthropicApiKey: null,
+        openhandsProvider: null,
+        openhandsApiKey: null,
+        openhandsModel: null,
+        preferredModel: null,
         skillsPath,
       });
       onComplete?.();
@@ -148,7 +165,7 @@ export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
         <div className="flex flex-col gap-5">
           {/* API Key */}
           <div className="flex flex-col gap-2">
-            <Label htmlFor="setup-api-key">Anthropic API Key</Label>
+            <Label htmlFor="setup-api-key">API Key</Label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Input
@@ -196,7 +213,7 @@ export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Get your key at{" "}
+              For Anthropic models, get your key at{" "}
               <a
                 href="https://console.anthropic.com"
                 target="_blank"
