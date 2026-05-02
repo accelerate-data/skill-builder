@@ -791,6 +791,45 @@ print(json.dumps({"stdout": stdout.getvalue(), "stderr": stderr.getvalue()}, sor
     });
   }, 30_000);
 
+  it("emits startup JSONL before loading slow OpenHands imports", () => {
+    const result = runPython(
+      runnerImportScript(`
+request = {
+    "mode": "one-shot",
+    "prompt": "build",
+    "llm": {
+        "model": "anthropic/claude-sonnet-4-6",
+        "apiKey": "sk-secret",
+    },
+}
+
+def slow_imports():
+    raise KeyboardInterrupt
+
+runner._ensure_openhands_imports = slow_imports
+stdout = io.StringIO()
+stderr = io.StringIO()
+with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+    runner.run(request)
+
+print(json.dumps({"stdout": stdout.getvalue(), "stderr": stderr.getvalue()}, sort_keys=True))
+`),
+    );
+
+    expect(result.status).toBe(0);
+    const captured = JSON.parse(result.stdout) as {
+      stdout: string;
+      stderr: string;
+    };
+    const records = parseJsonl(captured.stdout);
+    expect(records.map((record) => record.status).filter(Boolean)).toEqual([
+      "starting",
+      "running",
+      "cancelled",
+    ]);
+    expect(captured.stderr).toContain("SDK run cancelled");
+  }, 30_000);
+
   it("rejects requests without llm config", () => {
     const result = runPython(
       runnerImportScript(`
