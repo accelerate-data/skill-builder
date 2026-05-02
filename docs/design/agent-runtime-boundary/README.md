@@ -286,32 +286,26 @@ extraction the explicit primary mechanism removes the divergence.
 
 ### Extraction responsibility
 
-Each runtime adapter's event processor is responsible for JSON extraction from
-result text when `outputFormat` is set:
+The Python runner is not responsible for JSON extraction. It runs OpenHands and
+emits the final assistant text in terminal `conversation_state.result_text`.
 
-- **Claude adapter**: `MessageProcessor.processResultMessage` calls
-  `extractJsonFromText` on `raw.result` and `this.lastOutputText` when
-  `requireStructuredOutput` is true. This is gated on `hasOutputFormat` in the
-  constructor.
-- **OpenHands adapter**: `OpenHandsEventProcessor` applies the same
-  `extractJsonFromText` logic to `openhands_result.result_text` when
-  `hasOutputFormat` is true. The Python runner always returns plain text —
-  structured output extraction is not the runner's responsibility.
+App code that owns a JSON-contract task extracts one JSON object from that
+terminal text and then passes the object to Rust typed validation. The older
+Claude adapter still uses `MessageProcessor.processResultMessage` for this same
+text-extraction contract on Claude SDK result messages.
 
 ### Failure contract
 
 If `outputFormat` is set and no parseable JSON is found in the result text after
-all extraction attempts, the adapter emits a `run_result` with
-`status: "error"` and `resultSubtype: "structured_output_missing"`. This
-contract is the same across both adapters and is unchanged by this design.
+all extraction attempts, the run fails with `structured_output_missing` or the
+equivalent terminal `conversation_state` error. No artifacts are materialized.
 
 ### What this means for callers
 
-Rust callers that set `outputFormat` in `SidecarConfig` do not need to change.
-The field continues to travel through the Rust → Node boundary. The sidecar
-uses it as the extraction signal and discards it before building any provider
-request. Callers must not expect the model to receive schema constraints from
-this field.
+Rust callers that set `outputFormat` in `SidecarConfig` use it as an app-owned
+contract signal. The field may travel through the Rust -> Node boundary for
+compatibility, but callers must not expect the model or SDK to receive schema
+constraints from it.
 
 ## State And Transitions
 
@@ -358,7 +352,7 @@ created -> active -> closed
 | `app/sidecar/config.ts` | Sidecar request validation shape, including optional runtime mode and `outputFormat` signal. |
 | `app/sidecar/message-processor.ts` | Claude SDK-message to app-protocol mapper. Extracts JSON from result text when `outputFormat` is set. |
 | `app/sidecar/openhands/runner.py` | Python spike runner — reads one JSON request from stdin, emits raw JSONL events on stdout. |
-| `app/sidecar/openhands-event-processor.ts` | OpenHands event-to-sidecar-envelope mapper. Extracts JSON from result text when `outputFormat` is set, matching `MessageProcessor` behavior. |
+| `app/sidecar/openhands-event-processor.ts` | OpenHands event forwarder. Tracks terminal `conversation_state`; JSON-contract parsing happens in app task code after terminal state. |
 | `app/sidecar/runtime/openhands-runtime.ts` | OpenHands one-shot runtime adapter behind `AgentRuntime`. |
 | `app/sidecar/run-metadata-accumulator.ts` | Current `run_result` summary construction. |
 | `app/sidecar/persistent-mode.ts` | Sidecar request demultiplexer that rejects mode mismatches and routes one-shot requests through the runtime boundary. |

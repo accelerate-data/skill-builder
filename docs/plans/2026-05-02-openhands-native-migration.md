@@ -198,7 +198,7 @@ runner-contract tasks were completed by VU-1146.
 - [ ] Set `load_public_skills=False`.
 - [ ] Keep tools on `Agent(tools=...)`, not `AgentContext`.
 - [ ] Emit progress/tool/file/status JSONL events before terminal result whenever OpenHands exposes them.
-- [ ] Keep `structured_output_missing` extraction and retry/error behavior in Node, not Python.
+- [ ] Keep structured-output missing/extraction error behavior outside Python. The runner emits terminal text; app code extracts JSON from `conversation_state.result_text` and Rust validates the typed contract.
 
 **Verification:**
 

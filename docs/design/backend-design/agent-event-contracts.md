@@ -172,17 +172,17 @@ This means frontend payload types have the shape
 
 When a workflow step completes, the SDK result message may include:
 
-- `structured_output` — parsed JSON object from SDK constrained decoding
-- `result` — text field containing the agent's final output
+- `result` or `result_text` — text containing the agent's final output
+- `structured_output` — optional parsed JSON from runtimes that provide one; OpenHands does not provide this
 
-For `outputFormat` runs, the sidecar requires `structured_output`. If it is absent, the sidecar emits `status: "error"` with `errorSubtype: "structured_output_missing"`; it does not parse JSON from `result` text as fallback. Regression coverage for the previously observed nested-schema SDK issue lives in `app/sidecar/__tests__/sdk-output-format.integration.test.ts`.
+For JSON-contract runs, the app extracts a JSON object from the terminal result text and forwards that object to Rust validation. If no parseable JSON object is present, the run fails with `errorSubtype: "structured_output_missing"` or the equivalent terminal `conversation_state` error.
 
 The `result` text field is used when:
 
 - The run has no structured-output contract
 - The agent returned an error (non-JSON output)
 
-Rust is the final validator — it deserializes `structured_output` into typed contract structs.
+Rust is the final validator — it deserializes the extracted JSON object into typed contract structs.
 
 ---
 

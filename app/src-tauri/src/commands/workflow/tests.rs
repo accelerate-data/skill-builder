@@ -1248,7 +1248,7 @@ fn test_build_prompt_without_author_info() {
 #[test]
 fn test_build_prompt_does_not_include_schema_file_path() {
     // Schema file paths are no longer injected into the prompt. Workflow steps
-    // use SDK outputFormat for structured contracts.
+    // use app-side outputFormat contracts and Rust validation.
     for step_id in [1u32, 2, 3] {
         let prompt = build_prompt(&PromptParams {
             skill_name: "s",

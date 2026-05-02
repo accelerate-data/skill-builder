@@ -2,10 +2,10 @@
 //!
 //! Reads the canonical Rust contract types and produces:
 //! - TypeScript type definitions (via Specta) for frontend + sidecar
-//! - JSON Schema constants (via Schemars) for SDK outputFormat
-//!   Flat schemas for Anthropic API: top-level fields only, nested types
+//! - JSON Schema constants (via Schemars) for app-side output contracts
+//!   Flat schemas: top-level fields only, nested types
 //!   collapsed to `{ "type": "object" }`. Deep validation is done by
-//!   Rust's typed serde deserialization, not the SDK schema.
+//!   Rust's typed serde deserialization, not provider-native schema handling.
 
 use std::fs;
 use std::path::Path;
@@ -26,8 +26,8 @@ fn deep_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
 }
 
 /// Generate an **inlined** JSON Schema: all `$ref` pointers resolved into the
-/// schema body, no `definitions` block. The SDK's `outputFormat` cannot handle
-/// `$ref`/`definitions` but CAN enforce arbitrarily nested inline schemas.
+/// schema body, no `definitions` block. The app keeps these schemas inline so
+/// prompt contracts and validation artifacts can use the same shape.
 ///
 /// Recursive types (e.g. `Question.refinements: Vec<Question>`) are capped at
 /// one level of nesting — the recursive `$ref` is replaced with `{"type":"array"}`
@@ -40,9 +40,9 @@ fn inline_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
         .unwrap_or(serde_json::json!({}));
     let mut resolving = std::collections::HashSet::new();
     let mut result = inline_resolve(&deep, &definitions, &mut resolving);
-    // Post-process for SDK compatibility:
+    // Post-process for compact app contract schemas:
     // 1. Drop definitions (everything is inlined)
-    // 2. Drop $schema (SDK doesn't expect it in outputFormat)
+    // 2. Drop $schema
     // 3. Drop description (reduces token overhead)
     // 4. Ensure additionalProperties: false on root (SDK requires it)
     if let Some(obj) = result.as_object_mut() {
@@ -362,11 +362,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  wrote {}", frontend_path.display());
     println!("  wrote {}", sidecar_path.display());
 
-    // ── 3. Export flat JSON Schema constants for SDK outputFormat ───────────
+    // ── 3. Export flat JSON Schema constants for app output contracts ───────
     //
     // Flat schemas: top-level fields + types only, nested objects as
-    // { "type": "object" }. The SDK's constrained decoding enforces the
-    // envelope; Rust typed deserialization validates the full payload.
+    // { "type": "object" }. The prompt contract carries the envelope; Rust
+    // typed deserialization validates the full payload.
 
     let schemas: Vec<(&str, serde_json::Value)> = vec![
         ("RESEARCH_STEP", flat_schema_for::<ResearchStepOutput>()),
@@ -382,9 +382,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
         ("CLARIFICATIONS", flat_schema_for::<ClarificationsFile>()),
         // Inlined schemas: all $ref resolved into the body, no definitions block.
-        // The SDK's outputFormat cannot handle $ref/definitions but CAN enforce
-        // arbitrarily nested inline schemas. Recursive types (Question.refinements)
-        // are capped at one level.
+        // Recursive types (Question.refinements) are capped at one level.
         (
             "RESEARCH_STEP_INLINE",
             inline_schema_for::<ResearchStepOutput>(),

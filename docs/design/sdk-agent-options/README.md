@@ -162,6 +162,7 @@ Decision candidate: **keep** (`effort` configurable, `fallbackModel` derived).
 
 - Set only for agents with strict JSON response contracts.
 - Schemas are **inline JSON Schema** generated from Rust contract structs by `cargo run --bin codegen`. All `$ref` are resolved; `additionalProperties: false` on every object. No `$schema` or `definitions` block.
+- In the OpenHands runtime this is an app-side contract signal, not an SDK option. The schema is used in task prompts and Rust validation; it is not forwarded to the OpenHands SDK.
 - Contract-set coverage includes:
   - Workflow JSON-contract agents: `skill-content-researcher:research-orchestrator` (step 0), `skill-content-researcher:detailed-research` (step 1, direct agent), `skill-content-researcher:confirm-decisions` (step 2, direct agent)
   - Answer evaluator flow (`answer-evaluator`) via explicit `answer_evaluator_output_format()`
@@ -170,8 +171,7 @@ Decision candidate: **keep** (`effort` configurable, `fallbackModel` derived).
   - Workflow non-contract agents: `skill-creator:generate-skill` (step 3, flat schema)
   - Refine conversational flow: `rewrite-skill`
   - Test conversational/text agents: `test-plan-with`, `test-plan-without`, `test-evaluator`
-- `structured_output` is required for `outputFormat` runs. The sidecar does not parse JSON from `result` text as a recovery path; if the SDK omits `structured_output`, the run emits `structured_output_missing`.
-- Regression coverage for the previously observed nested-schema SDK issue ([anthropics/claude-agent-sdk-typescript#277](https://github.com/anthropics/claude-agent-sdk-typescript/issues/277)) lives in `app/sidecar/__tests__/sdk-output-format.integration.test.ts`.
+- For OpenHands, the terminal `conversation_state.result_text` carries the final assistant message. The app extracts a JSON object from that text and Rust deserializes it into the typed contract. If extraction or validation fails, the run fails with a structured-output error.
 
 Decision candidate: **keep selective** (avoid forcing JSON on conversational/text agents).
 
