@@ -63,7 +63,8 @@ targeted package script when the issue only touches one package's contract.
 3. Targeted package evals for the changed runtime, workflow, or prompt surface
 4. `npm run eval:regression` for model/runtime migrations
 
-No manual validation is required for this suite. A failing live eval should be
-triaged against this inventory before a scenario is dropped or rewritten.
-Live eval scripts are skipped unless an issue explicitly requests model-backed
-validation; `npm test` provides the deterministic static and harness gate.
+No manual validation is required for this suite. Live eval scripts are automated
+OpenCode checks and may be run as normal validation whenever prompt, agent, or
+runtime behavior changes. A failing live eval should be triaged against this
+inventory before a scenario is dropped or rewritten. `npm test` provides the
+deterministic static and harness gate.

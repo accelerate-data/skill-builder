@@ -284,48 +284,52 @@ git add app/src-tauri/src/skill_paths.rs app/src-tauri/src/marketplace_manifest.
 git commit -m "Deploy workflow artifacts in OpenHands agents layout"
 ```
 
-## Task 5: Add LiteLLM Provider Settings
+## Task 5: Add Catalog-Driven OpenHands Model Settings
 
 **Files:**
 
-- Modify: `app/src-tauri/src/types/settings.rs`
-- Modify: `app/src-tauri/src/db/migrations.rs`
-- Modify: `app/src-tauri/src/db/settings.rs`
-- Modify: `app/src-tauri/src/commands/settings.rs`
-- Modify: `app/src-tauri/src/commands/workflow/settings.rs`
+- Create: `app/src/lib/model-catalog.ts`
 - Modify: `app/src/hooks/use-settings-form.ts`
-- Modify: `app/src/pages/settings.tsx`
+- Modify: `app/src/components/settings/sdk-section.tsx`
 - Modify: `app/src/lib/types.ts`
-- Test: `app/src-tauri/src/db/tests.rs`
+- Test: `app/src/__tests__/lib/model-catalog.test.ts`
 - Test: `app/src/__tests__/pages/settings.test.tsx`
 - Test: `app/src/__tests__/hooks/use-settings-form.test.ts`
 
-- [ ] Add settings fields for OpenHands/LiteLLM:
-
-```rust
-pub openhands_provider: Option<String>,
-pub openhands_api_key: Option<String>,
-pub openhands_model: Option<String>,
-pub openhands_base_url: Option<String>,
-```
-
-- [ ] Add a migration that preserves existing Anthropic values by setting `openhands_provider = "anthropic"` and `openhands_model` to `anthropic/{preferred_model}` only when the existing model is not already provider-prefixed.
-- [ ] In `read_workflow_settings`, read the selected OpenHands key/model/base URL. Keep a clear error if no key is configured for cloud providers.
-- [ ] In `runtime.rs`, pass the full LiteLLM provider string in `model`, the provider key in `api_key`, and `modelBaseUrl` when present.
-- [ ] Update the Settings page with provider choices for Anthropic, OpenAI, Google, and Ollama. Ollama must not require an API key and must allow a base URL.
-- [ ] Add frontend tests for provider selection, provider-prefixed model strings, and Ollama base URL save behavior.
+- [ ] Add `app/src/lib/model-catalog.ts` with pure helpers:
+  - fetch/read the `models.dev` catalog shape from `https://models.dev/api.json`;
+  - normalize providers from top-level catalog keys;
+  - filter providers to models with text output;
+  - filter models to required capabilities: `reasoning: true` and `tool_call: true`;
+  - build full runtime model IDs as `${provider.id}/${model.id}`;
+  - resolve base URL defaults from provider `api`, app-owned local defaults such as Ollama, or blank when OpenHands/LiteLLM should use its built-in endpoint.
+- [ ] Add unit tests proving catalog parsing, capability filtering, provider/model runtime IDs, API-key env labels, and base URL default behavior.
+- [ ] Update `SdkSection` so Provider and Model are dropdowns backed by the catalog helpers. Keep a custom model entry path for models or providers not in `models.dev`.
+- [ ] Group the settings UI by ownership:
+  - `Provider`: provider dropdown, API key, API-key env hint, Test button, and Base URL.
+  - `Model`: required Reasoning and Tool calling indicators, model dropdown/custom entry, and saved runtime model ID.
+  - `Model Details`: read-only catalog metadata only.
+  - `Request Options`: Reasoning effort, Temperature, Max output tokens, Timeout, and Retries.
+  - `Advanced Provider Overrides`: Provider API version, extra headers, and optional cost overrides.
+- [ ] Show required capability indicators before the model selector. They must be checked, disabled/grey, and always filter the model list to reasoning plus tool-calling models.
+- [ ] Show model details from catalog metadata: reasoning, tool calling, structured output, temperature support, context/output limits, modalities, and pricing.
+- [ ] Rename the API version field to `Provider API version`; do not imply this is an OpenHands or OpenCode API version.
+- [ ] Do not expose OpenHands internal `usageId` in the UI. Workflow runtime projection must set `usageId` internally to `workflow`.
+- [ ] Default `base_url` from provider `api` when present, from app-owned local defaults for local providers, and otherwise keep it blank.
+- [ ] Persist the full provider-prefixed model string in `model_settings.model`; store `model_settings.provider` only as UI metadata.
+- [ ] Add frontend tests for catalog-backed provider selection, grouped field placement, required capability filtering, full provider-prefixed model persistence, base URL defaulting, model detail rendering, Provider API version labelling, hidden `Usage ID`, and the custom model fallback.
 - [ ] Run:
 
 ```bash
-cargo test --manifest-path app/src-tauri/Cargo.toml db:: settings
-cd app && npm run test:unit -- settings.test.tsx use-settings-form.test.ts
+cd app && npx vitest run src/__tests__/lib/model-catalog.test.ts src/__tests__/pages/settings.test.tsx src/__tests__/hooks/use-settings-form.test.ts
+cd app && npm run test:unit
 ```
 
 - [ ] Commit:
 
 ```bash
-git add app/src-tauri/src/types/settings.rs app/src-tauri/src/db app/src-tauri/src/commands/settings.rs app/src-tauri/src/commands/workflow/settings.rs app/src-tauri/src/commands/workflow/runtime.rs app/src/hooks/use-settings-form.ts app/src/pages/settings.tsx app/src/lib/types.ts app/src/__tests__
-git commit -m "Add OpenHands LiteLLM provider settings"
+git add app/src/lib/model-catalog.ts app/src/components/settings/sdk-section.tsx app/src/hooks/use-settings-form.ts app/src/lib/types.ts app/src/__tests__ docs/design/model-settings/README.md docs/superpowers/plans/2026-05-02-openhands-native-migration.md
+git commit -m "Add catalog-driven OpenHands model settings"
 ```
 
 ## Task 6: Bundle And Resolve `openhands-runner`

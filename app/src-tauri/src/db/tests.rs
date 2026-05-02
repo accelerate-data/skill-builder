@@ -188,7 +188,7 @@ fn test_migration_is_idempotent() {
 }
 
 #[test]
-fn test_openhands_settings_migration_backfills_legacy_anthropic_model() {
+fn test_openhands_settings_migration_does_not_backfill_legacy_model() {
     let conn = Connection::open_in_memory().unwrap();
     ensure_migration_table(&conn).unwrap();
     run_migrations(&conn).unwrap();
@@ -201,11 +201,9 @@ fn test_openhands_settings_migration_backfills_legacy_anthropic_model() {
     run_openhands_settings_migration(&conn).unwrap();
 
     let settings = read_settings(&conn).unwrap();
-    assert_eq!(settings.openhands_provider.as_deref(), Some("anthropic"));
-    assert_eq!(
-        settings.openhands_model.as_deref(),
-        Some("anthropic/claude-sonnet-4-6")
-    );
+    assert!(settings.model_settings.model.is_none());
+    assert!(settings.openhands_provider.is_none());
+    assert!(settings.openhands_model.is_none());
     assert_eq!(settings.anthropic_api_key.as_deref(), Some("sk-legacy"));
 }
 

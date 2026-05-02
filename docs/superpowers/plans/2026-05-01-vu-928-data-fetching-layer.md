@@ -1666,4 +1666,4 @@ Fixes VU-928
   - Agent stream cache integration: Task 6.
   - Stale data races eliminated by query keys/cache semantics: Task 4 tests, Task 9 search/verification.
 - No live model smoke tests are required for this issue.
-- `test:agents:smoke` must not be run unless explicitly requested.
+- `test:agents:smoke` is automated OpenCode validation; run it when prompt, agent, or runtime behavior changes.

@@ -1,12 +1,69 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor, act, within } from "@testing-library/react";
 import { renderWithQueryClient } from "@/test/query-test-utils";
 import userEvent from "@testing-library/user-event";
 import { mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
 
 import type { AppSettings } from "@/lib/types";
+
+const modelCatalogFixture = {
+  anthropic: {
+    id: "anthropic",
+    name: "Anthropic",
+    api: null,
+    env: ["ANTHROPIC_API_KEY"],
+    doc: "https://docs.anthropic.com",
+    models: {
+      "claude-sonnet-4-5": {
+        id: "claude-sonnet-4-5",
+        name: "Claude Sonnet 4.5",
+        reasoning: true,
+        tool_call: true,
+        structured_output: true,
+        temperature: true,
+        limit: { context: 200000, output: 64000 },
+        cost: { input: 3, output: 15 },
+        modalities: { input: ["text"], output: ["text"] },
+      },
+      "claude-basic": {
+        id: "claude-basic",
+        name: "Claude Basic",
+        reasoning: false,
+        tool_call: true,
+        modalities: { output: ["text"] },
+      },
+      "claude-no-tools": {
+        id: "claude-no-tools",
+        name: "Claude No Tools",
+        reasoning: true,
+        tool_call: false,
+        modalities: { output: ["text"] },
+      },
+    },
+  },
+  openrouter: {
+    id: "openrouter",
+    name: "OpenRouter",
+    api: "https://openrouter.ai/api/v1",
+    env: ["OPENROUTER_API_KEY"],
+    doc: "https://openrouter.ai/docs",
+    models: {
+      "openai/gpt-5": {
+        id: "openai/gpt-5",
+        name: "GPT-5",
+        reasoning: true,
+        tool_call: true,
+        structured_output: true,
+        temperature: true,
+        limit: { context: 400000, output: 128000 },
+        cost: { input: 1.25, output: 10 },
+        modalities: { input: ["text"], output: ["text"] },
+      },
+    },
+  },
+};
 
 // Mock toast wrapper
 vi.mock("@/lib/toast", () => ({
@@ -90,12 +147,22 @@ vi.mock("@/components/ui/select", () => ({
   SelectSeparator: () => null,
 }));
 
-
 // Mock @/lib/tauri functions that the settings page imports
 vi.mock("@/lib/tauri", () => ({
-  getDataDir: vi.fn(() => Promise.resolve("/Users/test/Library/Application Support/com.skill-builder.app")),
+  getDataDir: vi.fn(() =>
+    Promise.resolve(
+      "/Users/test/Library/Application Support/com.skill-builder.app",
+    ),
+  ),
   checkMarketplaceUrl: vi.fn(() => Promise.resolve("Test Registry")),
-  parseGitHubUrl: vi.fn(() => Promise.resolve({ owner: "test", repo: "repo", branch: "main", subpath: null })),
+  parseGitHubUrl: vi.fn(() =>
+    Promise.resolve({
+      owner: "test",
+      repo: "repo",
+      branch: "main",
+      subpath: null,
+    }),
+  ),
   githubStartDeviceFlow: vi.fn(),
   githubPollForToken: vi.fn(),
   githubGetUser: vi.fn(() => Promise.resolve(null)),
@@ -104,6 +171,7 @@ vi.mock("@/lib/tauri", () => ({
   listModels: vi.fn(() => Promise.resolve([])),
   updateGithubIdentity: vi.fn(() => Promise.resolve(undefined)),
   testApiKey: vi.fn(() => Promise.resolve(true)),
+  testModelConnection: vi.fn(() => Promise.resolve(true)),
   setLogLevel: vi.fn(() => Promise.resolve(undefined)),
 }));
 
@@ -112,7 +180,9 @@ vi.mock("@/components/github-login-dialog", () => ({
 }));
 
 vi.mock("@/components/imported-skills-tab", () => ({
-  ImportedSkillsTab: () => <div data-testid="skills-page">Imported Skills Content</div>,
+  ImportedSkillsTab: () => (
+    <div data-testid="skills-page">Imported Skills Content</div>
+  ),
 }));
 
 vi.mock("@/components/feedback-dialog", () => ({
@@ -126,21 +196,14 @@ import {
   githubGetUser as _githubGetUser,
   updateGithubIdentity as _updateGithubIdentity,
   updateUserSettings as _updateUserSettings,
+  testModelConnection as _testModelConnection,
 } from "@/lib/tauri";
 
 const defaultSettings: AppSettings = {
-  anthropic_api_key: null,
   model_settings: null,
-  openhands_provider: null,
-  openhands_api_key: null,
-  openhands_model: null,
-  openhands_base_url: null,
   workspace_path: null,
   skills_path: null,
-  preferred_model: null,
   log_level: "info",
-  extended_context: false,
-  extended_thinking: false,
   splash_shown: false,
   github_oauth_token: null,
   github_user_login: null,
@@ -156,23 +219,15 @@ const defaultSettings: AppSettings = {
 };
 
 const populatedSettings: AppSettings = {
-  anthropic_api_key: null,
   model_settings: {
     provider: "anthropic",
     model: "claude-sonnet-4-5",
     api_key: "sk-ant-existing-key",
     base_url: null,
   },
-  openhands_provider: null,
-  openhands_api_key: null,
-  openhands_model: null,
-  openhands_base_url: null,
   workspace_path: "/home/user/workspace",
   skills_path: null,
-  preferred_model: "sonnet",
   log_level: "info",
-  extended_context: false,
-  extended_thinking: false,
   splash_shown: false,
   github_oauth_token: null,
   github_user_login: null,
@@ -211,22 +266,15 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
       num_retries: settings.model_settings?.num_retries ?? 5,
       reasoning_effort: settings.model_settings?.reasoning_effort ?? "auto",
       extra_headers: settings.model_settings?.extra_headers ?? null,
-      input_cost_per_token: settings.model_settings?.input_cost_per_token ?? null,
-      output_cost_per_token: settings.model_settings?.output_cost_per_token ?? null,
+      input_cost_per_token:
+        settings.model_settings?.input_cost_per_token ?? null,
+      output_cost_per_token:
+        settings.model_settings?.output_cost_per_token ?? null,
       usage_id: settings.model_settings?.usage_id ?? "workflow",
     },
-    anthropicApiKey: settings.anthropic_api_key,
-    openhandsProvider: settings.openhands_provider,
-    openhandsApiKey: settings.openhands_api_key,
-    openhandsModel: settings.openhands_model,
-    openhandsBaseUrl: settings.openhands_base_url,
     workspacePath: settings.workspace_path,
     skillsPath: settings.skills_path,
-    preferredModel: settings.preferred_model,
     logLevel: settings.log_level,
-    extendedThinking: settings.extended_thinking,
-    interleavedThinkingBeta: settings.interleaved_thinking_beta ?? true,
-    sdkEffort: settings.sdk_effort,
     refinePromptSuggestions: settings.refine_prompt_suggestions ?? true,
     maxDimensions: settings.max_dimensions ?? 5,
     industry: settings.industry,
@@ -244,18 +292,38 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
 
 /** Helper to switch to a specific settings section after page loads */
 async function switchToSection(sectionName: RegExp | string) {
-  const pattern = sectionName instanceof RegExp ? sectionName : new RegExp(sectionName, "i");
+  const pattern =
+    sectionName instanceof RegExp ? sectionName : new RegExp(sectionName, "i");
   const button = screen.getByRole("button", { name: pattern });
   const user = userEvent.setup();
   await user.click(button);
 }
 
+function getSettingsCard(title: string) {
+  const titleNode = screen.getByText(title, {
+    selector: '[data-slot="card-title"]',
+  });
+  const card = titleNode.closest('[data-slot="card"]');
+  expect(card).not.toBeNull();
+  return within(card as HTMLElement);
+}
+
 describe("SettingsPage", () => {
   beforeEach(() => {
     resetTauriMocks();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(modelCatalogFixture),
+        }),
+      ),
+    );
     mockNavigate.mockClear();
     // Reset module-level mocks so test-specific overrides don't leak
     vi.mocked(_updateUserSettings).mockReset().mockResolvedValue(undefined);
+    vi.mocked(_testModelConnection).mockReset().mockResolvedValue(true);
     vi.mocked(_githubGetUser).mockReset().mockResolvedValue(null);
     vi.mocked(_updateGithubIdentity).mockReset().mockResolvedValue(undefined);
     useSettingsStore.getState().reset();
@@ -272,8 +340,13 @@ describe("SettingsPage", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /back to dashboard/i }));
-    expect(mockNavigate).toHaveBeenCalledWith({ to: "/", search: { tab: undefined } });
+    await user.click(
+      screen.getByRole("button", { name: /back to dashboard/i }),
+    );
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/",
+      search: { tab: undefined },
+    });
   });
 
   it("renders all 6 sections in left nav", async () => {
@@ -284,12 +357,20 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: /General/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /General/i }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Models/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Plugins/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Marketplace/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Plugins/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Marketplace/i }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitHub/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Advanced/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Advanced/i }),
+    ).toBeInTheDocument();
   });
 
   it("renders General section card sections by default", async () => {
@@ -350,23 +431,186 @@ describe("SettingsPage", () => {
 
     await switchToSection(/Models/i);
 
-    await user.selectOptions(screen.getByLabelText(/Provider/i), "openai");
-    await user.clear(screen.getByLabelText(/Model/i));
-    await user.type(screen.getByLabelText(/Model/i), "gpt-4o");
-    await user.tab();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("option", { name: "OpenRouter" }),
+      ).toBeInTheDocument();
+    });
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /^Provider$/i }),
+      "openrouter",
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Base URL/i)).toHaveValue(
+        "https://openrouter.ai/api/v1",
+      );
+    });
+    await user.selectOptions(
+      screen.getByLabelText(/^Model$/i),
+      "openrouter/openai/gpt-5",
+    );
 
     const { updateUserSettings } = await import("@/lib/tauri");
     await waitFor(() => {
       expect(updateUserSettings).toHaveBeenCalledWith(
         expect.objectContaining({
           model_settings: expect.objectContaining({
-            provider: "openai",
-            model: "gpt-4o",
+            provider: "openrouter",
+            model: "openrouter/openai/gpt-5",
+            base_url: "https://openrouter.ai/api/v1",
           }),
-          openhands_model: null,
         }),
       );
     });
+    expect(vi.mocked(updateUserSettings).mock.calls[0][0]).not.toHaveProperty(
+      "openhands_model",
+    );
+  });
+
+  it("groups model settings fields into the expected sections", async () => {
+    setupDefaultMocks(populatedSettings);
+    renderWithQueryClient(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await switchToSection(/Models/i);
+
+    await screen.findByText("Provider", {
+      selector: '[data-slot="card-title"]',
+    });
+
+    const providerSection = getSettingsCard("Provider");
+    expect(
+      providerSection.getByRole("combobox", { name: /^Provider$/i }),
+    ).toBeInTheDocument();
+    expect(providerSection.getByLabelText(/API Key/i)).toBeInTheDocument();
+    expect(providerSection.getByLabelText(/Base URL/i)).toBeInTheDocument();
+
+    const modelSection = getSettingsCard("Model");
+    const reasoning = modelSection.getByRole("checkbox", {
+      name: /Reasoning/i,
+    });
+    const toolCalling = modelSection.getByRole("checkbox", {
+      name: /Tool calling/i,
+    });
+    expect(reasoning).toBeChecked();
+    expect(reasoning).toBeDisabled();
+    expect(toolCalling).toBeChecked();
+    expect(toolCalling).toBeDisabled();
+    expect(
+      modelSection.getByRole("combobox", { name: /^Model$/i }),
+    ).toBeInTheDocument();
+    expect(
+      reasoning.compareDocumentPosition(
+        modelSection.getByRole("combobox", { name: /^Model$/i }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    const modelDetailsSection = getSettingsCard("Model Details");
+    expect(modelDetailsSection.getByText("200,000 tokens")).toBeInTheDocument();
+    const toolCallingSupport = modelDetailsSection.getByRole("checkbox", {
+      name: /Tool calling supported/i,
+    });
+    const reasoningSupport = modelDetailsSection.getByRole("checkbox", {
+      name: /Reasoning supported/i,
+    });
+    expect(toolCallingSupport).toBeChecked();
+    expect(toolCallingSupport).toBeDisabled();
+    expect(reasoningSupport).toBeChecked();
+    expect(reasoningSupport).toBeDisabled();
+
+    const requestOptionsSection = getSettingsCard("Request Options");
+    expect(
+      requestOptionsSection.getByText(/Reasoning effort/i),
+    ).toBeInTheDocument();
+    expect(
+      requestOptionsSection.getByLabelText(/Timeout/i),
+    ).toBeInTheDocument();
+    expect(
+      requestOptionsSection.getByLabelText(/Retries/i),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByRole("switch", { name: /Prompt suggestions/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Capabilities", {
+        selector: '[data-slot="card-title"]',
+      }),
+    ).not.toBeInTheDocument();
+
+    const advancedSection = getSettingsCard("Advanced Provider Overrides");
+    expect(
+      advancedSection.getByLabelText(/Provider API version/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Usage ID/i)).not.toBeInTheDocument();
+  });
+
+  it("populates provider and model dropdowns from the catalog and filters unsupported models", async () => {
+    setupDefaultMocks(populatedSettings);
+    renderWithQueryClient(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await switchToSection(/Models/i);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("option", { name: "Anthropic" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "OpenRouter" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("option", { name: "Claude Sonnet 4.5" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Claude Basic" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Claude No Tools" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows catalog API key help and selected model details", async () => {
+    setupDefaultMocks(populatedSettings);
+    renderWithQueryClient(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await switchToSection(/Models/i);
+
+    expect(await screen.findByText(/ANTHROPIC_API_KEY/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /Tool calling supported/i }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /Reasoning supported/i }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /Structured output supported/i }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /Temperature supported/i }),
+    ).toBeChecked();
+    expect(screen.getAllByText("Supported", { selector: "span" })).toHaveLength(
+      4,
+    );
+    expect(screen.getByText("200,000 tokens")).toBeInTheDocument();
+    expect(screen.getByText("64,000 tokens")).toBeInTheDocument();
+    expect(screen.getByText(/\$3 input/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$15 output/i)).toBeInTheDocument();
+    expect(screen.getByText(/Structured output/i)).toBeInTheDocument();
+    expect(screen.getByText(/Temperature/i)).toBeInTheDocument();
   });
 
   it("allows Ollama without an API key and saves base URL", async () => {
@@ -403,10 +647,12 @@ describe("SettingsPage", () => {
             api_key: null,
             base_url: "http://localhost:11435",
           }),
-          openhands_base_url: null,
         }),
       );
     });
+    expect(vi.mocked(updateUserSettings).mock.calls[0][0]).not.toHaveProperty(
+      "openhands_base_url",
+    );
   });
 
   it("shows 'Not configured' when no skills folder path", async () => {
@@ -421,8 +667,9 @@ describe("SettingsPage", () => {
     expect(screen.getByText("Not configured")).toBeInTheDocument();
   });
 
-  it("calls invoke with test_api_key when Test button is clicked", async () => {
+  it("calls model connection validation when Test button is clicked", async () => {
     const user = userEvent.setup();
+    const { toast } = await import("@/lib/toast");
     setupDefaultMocks(populatedSettings);
     renderWithQueryClient(<SettingsPage />);
 
@@ -437,9 +684,44 @@ describe("SettingsPage", () => {
     // First "Test" button is the Anthropic API key test button
     await user.click(testButtons[0]);
 
-    const { testApiKey } = await import("@/lib/tauri");
+    const { testModelConnection } = await import("@/lib/tauri");
     await waitFor(() => {
-      expect(testApiKey).toHaveBeenCalledWith("sk-ant-existing-key");
+      expect(testModelConnection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          api_key: "sk-ant-existing-key",
+          model: "claude-sonnet-4-5",
+        }),
+      );
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Valid/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows an error toast when model connection validation fails", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("@/lib/toast");
+    vi.mocked(_testModelConnection).mockRejectedValueOnce(
+      new Error("Invalid API key"),
+    );
+    setupDefaultMocks(populatedSettings);
+    renderWithQueryClient(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await switchToSection(/Models/i);
+    await user.click(screen.getByRole("button", { name: /^Test$/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "Invalid API key",
+        expect.objectContaining({ duration: Infinity }),
+      );
     });
   });
 
@@ -454,7 +736,9 @@ describe("SettingsPage", () => {
 
     await switchToSection(/Models/i);
 
-    const promptSuggestionsSwitch = screen.getByRole("switch", { name: /Prompt suggestions/i });
+    const promptSuggestionsSwitch = screen.getByRole("switch", {
+      name: /Prompt suggestions/i,
+    });
     await user.click(promptSuggestionsSwitch);
 
     const { updateUserSettings } = await import("@/lib/tauri");
@@ -485,11 +769,15 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(updateUserSettings).toHaveBeenCalledWith(
         expect.objectContaining({
-          anthropic_api_key: null,
-          model_settings: expect.objectContaining({ api_key: "sk-ant-new-key" }),
+          model_settings: expect.objectContaining({
+            api_key: "sk-ant-new-key",
+          }),
         }),
       );
     });
+    expect(vi.mocked(updateUserSettings).mock.calls[0][0]).not.toHaveProperty(
+      "anthropic_api_key",
+    );
   });
 
   it("shows Saved indicator after auto-save", async () => {
@@ -503,7 +791,9 @@ describe("SettingsPage", () => {
 
     await switchToSection(/Models/i);
 
-    const promptSuggestionsSwitch = screen.getByRole("switch", { name: /Prompt suggestions/i });
+    const promptSuggestionsSwitch = screen.getByRole("switch", {
+      name: /Prompt suggestions/i,
+    });
     await user.click(promptSuggestionsSwitch);
 
     await waitFor(() => {
@@ -526,7 +816,9 @@ describe("SettingsPage", () => {
 
     await switchToSection(/Models/i);
 
-    const promptSuggestionsSwitch = screen.getByRole("switch", { name: /Prompt suggestions/i });
+    const promptSuggestionsSwitch = screen.getByRole("switch", {
+      name: /Prompt suggestions/i,
+    });
     await user.click(promptSuggestionsSwitch);
 
     await waitFor(() => {
@@ -600,7 +892,9 @@ describe("SettingsPage", () => {
 
     expect(screen.getByText("Storage")).toBeInTheDocument();
     expect(screen.queryByText("Workspace Folder")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Clear/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Clear/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not render Clear button when workspace path is not set", async () => {
@@ -613,7 +907,9 @@ describe("SettingsPage", () => {
 
     await switchToSection(/Advanced/i);
 
-    expect(screen.queryByRole("button", { name: /Clear/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Clear/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("includes skills_path in auto-save payload when browsing", async () => {
@@ -664,7 +960,9 @@ describe("SettingsPage", () => {
   it("normalizes duplicated Windows browse dialog paths with spaces", async () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
-    vi.mocked(mockOpen).mockResolvedValueOnce("C:\\Users\\me\\Skill Builder\\Skill Builder\\");
+    vi.mocked(mockOpen).mockResolvedValueOnce(
+      "C:\\Users\\me\\Skill Builder\\Skill Builder\\",
+    );
     renderWithQueryClient(<SettingsPage />);
 
     await waitFor(() => {
@@ -678,9 +976,13 @@ describe("SettingsPage", () => {
 
     const { updateUserSettings } = await import("@/lib/tauri");
     await waitFor(() => {
-      expect(screen.getByText("C:\\Users\\me\\Skill Builder")).toBeInTheDocument();
+      expect(
+        screen.getByText("C:\\Users\\me\\Skill Builder"),
+      ).toBeInTheDocument();
       expect(updateUserSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ skills_path: "C:\\Users\\me\\Skill Builder" }),
+        expect.objectContaining({
+          skills_path: "C:\\Users\\me\\Skill Builder",
+        }),
       );
     });
   });
@@ -737,7 +1039,9 @@ describe("SettingsPage", () => {
 
     expect(screen.getByText("Data Directory")).toBeInTheDocument();
     expect(
-      screen.getByText("/Users/test/Library/Application Support/com.skill-builder.app")
+      screen.getByText(
+        "/Users/test/Library/Application Support/com.skill-builder.app",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -767,7 +1071,9 @@ describe("SettingsPage", () => {
     await switchToSection(/Advanced/i);
 
     expect(screen.getByText("Logging")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: /Log Level/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: /Log Level/i }),
+    ).toBeInTheDocument();
   });
 
   it("calls set_log_level when log level is changed", async () => {
@@ -824,7 +1130,9 @@ describe("SettingsPage", () => {
 
     expect(screen.getByText("Logging")).toBeInTheDocument();
     expect(
-      screen.getByText(/Chat transcripts \(JSONL\) are always captured regardless of level\./i)
+      screen.getByText(
+        /Chat transcripts \(JSONL\) are always captured regardless of level\./i,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -880,7 +1188,9 @@ describe("SettingsPage", () => {
 
     expect(screen.getByText("GitHub Account")).toBeInTheDocument();
     expect(screen.getAllByText("Not connected").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /Sign in with GitHub/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Sign in with GitHub/i }),
+    ).toBeInTheDocument();
   });
 
   it("shows checking state while auth status is loading", async () => {
@@ -895,8 +1205,12 @@ describe("SettingsPage", () => {
     await switchToSection(/GitHub/i);
 
     expect(screen.getByText("Checking")).toBeInTheDocument();
-    expect(screen.getByText("Checking GitHub connection...")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Sign in with GitHub/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Checking GitHub connection..."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Sign in with GitHub/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows user info when logged in", async () => {
@@ -919,7 +1233,9 @@ describe("SettingsPage", () => {
     expect(screen.getByText("octocat@github.com")).toBeInTheDocument();
     expect(screen.getByText("Connected")).toBeInTheDocument();
     expect(screen.getByText(/Last checked/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Sign Out/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Sign Out/i }),
+    ).toBeInTheDocument();
     // Should NOT show "Not connected"
     expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
   });
@@ -935,7 +1251,9 @@ describe("SettingsPage", () => {
     expect(screen.queryByTestId("skills-page")).not.toBeInTheDocument();
 
     act(() => {
-      useSettingsStore.getState().setPendingUpgradeOpen({ skills: ["my-skill"] });
+      useSettingsStore
+        .getState()
+        .setPendingUpgradeOpen({ skills: ["my-skill"] });
     });
 
     await waitFor(() => {

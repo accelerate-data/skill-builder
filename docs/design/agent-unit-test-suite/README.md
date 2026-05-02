@@ -117,7 +117,7 @@ When changed files match these patterns, coding agents should auto-run the mappe
 | `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` |
 | Artifact-format files (`app/sidecar/mock-templates/**`, `app/e2e/fixtures/agent-responses/**`) | `cd app && npm run test:unit` |
 
-Promptfoo smoke evals are manual by default (`npm run test:agents:smoke`) because they are live API calls.
+Promptfoo smoke evals are automated OpenCode checks (`npm run test:agents:smoke`) and may be run as normal validation.
 
 ## CI Expectations
 

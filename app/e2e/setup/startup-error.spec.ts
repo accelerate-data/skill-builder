@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { waitForAppReady } from "../helpers/app-helpers";
 import { simulateAgentInitError } from "../helpers/agent-simulator";
-import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "../helpers/test-paths";
+import { E2E_MODEL_SETTINGS, E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "../helpers/test-paths";
 import { WORKFLOW_OVERRIDES } from "../helpers/workflow-helpers";
 
 test.describe("Startup Error (agent-init-error)", { tag: "@setup" }, () => {
@@ -33,7 +33,7 @@ test.describe("Startup Error (agent-init-error)", { tag: "@setup" }, () => {
     }, {
       ...WORKFLOW_OVERRIDES,
       get_settings: {
-        anthropic_api_key: "sk-ant-test",
+        model_settings: E2E_MODEL_SETTINGS,
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
       },

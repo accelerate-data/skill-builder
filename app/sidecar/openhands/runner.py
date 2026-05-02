@@ -219,11 +219,14 @@ def _build_llm_kwargs(request: dict[str, Any]) -> dict[str, Any]:
         "usageId": "usage_id",
     }
 
-    return {
+    kwargs = {
         kwarg: llm_config[field]
         for field, kwarg in field_map.items()
         if llm_config.get(field) is not None
     }
+    if kwargs.get("reasoning_effort") == "auto":
+        del kwargs["reasoning_effort"]
+    return kwargs
 
 
 def run_via_openhands_sdk(request: dict[str, Any]) -> str:

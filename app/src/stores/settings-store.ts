@@ -5,18 +5,9 @@ export type { ModelInfo };
 
 interface SettingsState {
   modelSettings: ModelSettings;
-  anthropicApiKey: string | null;
-  openhandsProvider: string | null;
-  openhandsApiKey: string | null;
-  openhandsModel: string | null;
-  openhandsBaseUrl: string | null;
   workspacePath: string | null;
   skillsPath: string | null;
-  preferredModel: string | null;
   logLevel: string;
-  extendedThinking: boolean;
-  interleavedThinkingBeta: boolean;
-  sdkEffort: string | null;
   refinePromptSuggestions: boolean;
   githubOauthToken: string | null;
   githubUserLogin: string | null;
@@ -54,18 +45,9 @@ const initialState = {
     output_cost_per_token: null,
     usage_id: "workflow",
   } as ModelSettings,
-  anthropicApiKey: null,
-  openhandsProvider: "anthropic",
-  openhandsApiKey: null,
-  openhandsModel: null,
-  openhandsBaseUrl: null,
   workspacePath: null,
   skillsPath: null,
-  preferredModel: null,
   logLevel: "info",
-  extendedThinking: false,
-  interleavedThinkingBeta: true,
-  sdkEffort: null,
   refinePromptSuggestions: true,
   githubOauthToken: null,
   githubUserLogin: null,
@@ -95,14 +77,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
           ...(settings.modelSettings ?? {}),
         },
       };
-      const provider = next.modelSettings.provider ?? "anthropic";
-      const cloudProviderRequiresKey = provider !== "ollama";
-      const hasProviderKey = !!next.modelSettings.api_key;
-      const hasRuntimeConfig =
-        !!next.modelSettings.model && (!cloudProviderRequiresKey || hasProviderKey);
       return {
         ...next,
-        isConfigured: !!next.skillsPath && hasRuntimeConfig,
+        isConfigured: !!next.skillsPath,
       };
     }),
   setPendingUpgradeOpen: (value) => set({ pendingUpgradeOpen: value }),

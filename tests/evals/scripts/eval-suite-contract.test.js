@@ -140,6 +140,7 @@ test('scenario inventory records a decision for every eval package', () => {
 
   assert.match(inventory, /Model-Change Validation Order/);
   assert.match(inventory, /No manual validation is required/);
+  assert.match(inventory, /Live eval scripts are automated/);
 });
 
 test('eval suite no longer references provider files or the Claude agent sdk', () => {

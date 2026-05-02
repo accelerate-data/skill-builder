@@ -79,8 +79,8 @@ describe("useSettingsForm", () => {
         base_url: null,
       }),
     );
-    expect(payload.preferred_model).toBeNull();
-    expect(payload.openhands_model).toBeNull();
+    expect(payload).not.toHaveProperty("preferred_model");
+    expect(payload).not.toHaveProperty("openhands_model");
   });
 
   it("autoSave persists canonical model settings and updates store", async () => {
@@ -104,9 +104,9 @@ describe("useSettingsForm", () => {
         base_url: "http://localhost:11434",
       }),
     );
-    expect(payload.openhands_provider).toBeNull();
-    expect(payload.openhands_api_key).toBeNull();
-    expect(payload.openhands_base_url).toBeNull();
+    expect(payload).not.toHaveProperty("openhands_provider");
+    expect(payload).not.toHaveProperty("openhands_api_key");
+    expect(payload).not.toHaveProperty("openhands_base_url");
     expect(useSettingsStore.getState().modelSettings.provider).toBe("ollama");
     expect(useSettingsStore.getState().modelSettings.base_url).toBe("http://localhost:11434");
   });

@@ -13,7 +13,12 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/stores/settings-store", () => ({
   useSettingsStore: vi.fn((selector) =>
-    selector({ workspacePath: "/workspace", isConfigured: true, availableModels: [], preferredModel: null }),
+    selector({
+      workspacePath: "/workspace",
+      isConfigured: true,
+      availableModels: [],
+      modelSettings: { model: null },
+    }),
   ),
 }));
 

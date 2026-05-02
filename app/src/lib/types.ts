@@ -51,7 +51,7 @@ export interface ModelSettings {
 }
 
 export interface AppSettings {
-  anthropic_api_key: string | null
+  anthropic_api_key?: string | null
   model_settings?: ModelSettings | null
   openhands_provider?: string | null
   openhands_api_key?: string | null
@@ -59,10 +59,10 @@ export interface AppSettings {
   openhands_base_url?: string | null
   workspace_path: string | null
   skills_path: string | null
-  preferred_model: string | null
+  preferred_model?: string | null
   log_level: string
-  extended_context: boolean
-  extended_thinking: boolean
+  extended_context?: boolean
+  extended_thinking?: boolean
   interleaved_thinking_beta?: boolean | null
   sdk_effort?: string | null
   fallback_model?: string | null

@@ -51,18 +51,9 @@ export function settingsToStorePatch(s: AppSettings) {
 
   return {
     modelSettings,
-    anthropicApiKey: s.anthropic_api_key,
-    openhandsProvider: s.openhands_provider ?? null,
-    openhandsApiKey: s.openhands_api_key ?? null,
-    openhandsModel: s.openhands_model ?? null,
-    openhandsBaseUrl: s.openhands_base_url ?? null,
     workspacePath: s.workspace_path,
     skillsPath: s.skills_path,
-    preferredModel: s.preferred_model,
     logLevel: s.log_level,
-    extendedThinking: s.extended_thinking,
-    interleavedThinkingBeta: s.interleaved_thinking_beta ?? true,
-    sdkEffort: s.sdk_effort,
     refinePromptSuggestions: s.refine_prompt_suggestions ?? true,
     maxDimensions: s.max_dimensions ?? 5,
     industry: s.industry,

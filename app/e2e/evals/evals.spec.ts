@@ -151,10 +151,16 @@ test.describe("Evals tab — sidecar integration", { tag: "@evals-integration" }
     await navigateToEvalsTab(page, {
       ...EVALS_OVERRIDES,
       get_settings: {
-        anthropic_api_key: "sk-ant-test",
+        model_settings: {
+          provider: "anthropic",
+          model: "claude-sonnet-4-5",
+          api_key: "sk-ant-test",
+          base_url: null,
+          reasoning_effort: "auto",
+          usage_id: "workflow",
+        },
         workspace_path: bridge.workspaceDir,
         skills_path: bridge.workspaceDir,
-        preferred_model: "sonnet",
       },
       create_next_iteration_dir: [1, iterDir],
     });

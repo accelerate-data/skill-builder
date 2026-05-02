@@ -57,7 +57,7 @@ vi.mock("@/components/github-login-dialog", () => ({
 }));
 
 const mockSettingsState = {
-  preferredModel: "claude-opus-4-6",
+  modelSettings: { model: "claude-opus-4-6" },
   setSettings: vi.fn(),
 };
 

@@ -24,7 +24,7 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   });
 
   test("shows error toast when API key is rejected", async ({ page }) => {
-    // Override test_api_key to throw (rejected key)
+    // Override model connection validation to throw (rejected key)
     await page.evaluate(() => {
       const overrides =
         (window as unknown as Record<string, unknown>)
@@ -32,7 +32,7 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ =
         {
           ...overrides,
-          test_api_key: "__throw__:Invalid API key",
+          test_model_connection: "__throw__:Invalid API key",
         };
     });
 
@@ -52,7 +52,6 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   }) => {
     await reloadWithOverrides(page, {
       get_settings: {
-        anthropic_api_key: null,
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
         model_settings: {
@@ -60,6 +59,8 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
           model: "claude-sonnet-4-5",
           api_key: "sk-ant-test",
           base_url: null,
+          reasoning_effort: "auto",
+          usage_id: "workflow",
         },
       },
       check_workspace_path: true,
@@ -126,7 +127,6 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   }) => {
     await reloadWithOverrides(page, {
       get_settings: {
-        anthropic_api_key: null,
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
         model_settings: {
@@ -134,6 +134,8 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
           model: "claude-sonnet-4-5",
           api_key: "sk-ant-test",
           base_url: null,
+          reasoning_effort: "auto",
+          usage_id: "workflow",
         },
         marketplace_registries: [
           {
@@ -180,7 +182,6 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   }) => {
     await reloadWithOverrides(page, {
       get_settings: {
-        anthropic_api_key: null,
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
         model_settings: {
@@ -188,6 +189,8 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
           model: "claude-sonnet-4-5",
           api_key: "sk-ant-test",
           base_url: null,
+          reasoning_effort: "auto",
+          usage_id: "workflow",
         },
         log_level: "info",
       },

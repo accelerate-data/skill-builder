@@ -9,7 +9,10 @@ import type { SkillSummary } from "@/lib/tauri";
 
 vi.mock("@/stores/settings-store", () => ({
   useSettingsStore: vi.fn((selector) =>
-    selector({ workspacePath: "/workspace", preferredModel: "claude-sonnet-4-6" }),
+    selector({
+      workspacePath: "/workspace",
+      modelSettings: { model: "claude-sonnet-4-6" },
+    }),
   ),
 }));
 

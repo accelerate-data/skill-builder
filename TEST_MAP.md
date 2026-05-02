@@ -16,8 +16,8 @@ Use the tables below for cases tooling cannot infer safely.
 | Sidecar | `cd app/sidecar && npx vitest run` | `app/sidecar/__tests__/` | Free |
 | Agent structural | `cd app && npm run test:agents:structural` | `app/agent-tests/` plus `agent-sources/` | Free |
 | Eval harness contracts | `cd tests/evals && npm test` | `tests/evals/scripts/`, `tests/evals/assertions/` | Free |
-| Live agent smoke | `cd app && npm run test:agents:smoke` | `tests/evals/` | Live model/API call; explicit user approval only |
-| Live eval smoke | `cd tests/evals && npm run eval:smoke` | `tests/evals/packages/` | Live model/API call; explicit user approval only |
+| Live agent smoke | `cd app && npm run test:agents:smoke` | `tests/evals/` | Automated OpenCode eval; run when prompt, agent, or runtime behavior changes |
+| Live eval smoke | `cd tests/evals && npm run eval:smoke` | `tests/evals/packages/` | Automated OpenCode eval; run when prompt, agent, or runtime behavior changes |
 
 ## Directory Boundaries
 
@@ -37,11 +37,11 @@ Use the tables below for cases tooling cannot infer safely.
 | `app/src/**` | `cd app && npm run test:unit` | Prefer `npm run test:changed` for narrower local feedback when appropriate. |
 | `app/src/__tests__/guards/**`, `app/src/lib/tauri-command-types.ts`, `app/src/lib/tauri-command-types.typecheck.ts` | `cd app && npm run test:guard` | Also run affected unit tests. |
 | `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` | Restart `npm run dev` after sidecar changes. |
-| `agent-sources/plugins/**/agents/*.md`, `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` | Structural only; live smoke requires explicit approval. |
+| `agent-sources/plugins/**/agents/*.md`, `agent-sources/workspace/**` | `cd app && npm run test:agents:structural`; run the affected OpenCode eval package or smoke subset | Structural plus live automated eval coverage for changed prompt behavior. |
 | `app/sidecar/mock-templates/**`, `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` | `canonical-format.test.ts` is the canary for format drift. |
 | `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` | Generated command-contract surface. |
 | `app/src-tauri/src/**` | Use the Rust map below | Add the mapped E2E tag when the command is UI-facing. |
-| `tests/evals/**` | `cd tests/evals && npm test` | Do not run live eval scripts without explicit approval. |
+| `tests/evals/**` | `cd tests/evals && npm test`; run affected `npm run eval:<package>` scripts when behavior changes | Live eval scripts are automated OpenCode checks and may be run as normal validation. |
 | Shared infrastructure listed below | `cd app && bash tests/run.sh` | Full suite; these files affect multiple layers. |
 
 ## Shared Infrastructure

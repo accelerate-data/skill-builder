@@ -304,7 +304,7 @@ fn persist_settings(
     settings: AppSettings,
     log_scope: &str,
 ) -> Result<(), String> {
-    let mut settings = crate::db::normalize_openhands_settings(settings);
+    let mut settings = crate::db::normalize_model_settings(settings);
 
     // Normalize skills_path before persisting
     if let Some(ref sp) = settings.skills_path {
@@ -377,17 +377,28 @@ fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
         };
     }
     // Skip: API keys and OAuth token/login/avatar/email (auth-managed or sensitive)
-    cmp_opt!(openhands_provider, "openhands_provider");
-    cmp_opt!(openhands_model, "openhands_model");
-    cmp_opt!(openhands_base_url, "openhands_base_url");
+    if old.model_settings.model != new.model_settings.model
+        || old.model_settings.provider != new.model_settings.provider
+        || old.model_settings.base_url != new.model_settings.base_url
+        || old.model_settings.api_version != new.model_settings.api_version
+        || old.model_settings.temperature != new.model_settings.temperature
+        || old.model_settings.max_output_tokens != new.model_settings.max_output_tokens
+        || old.model_settings.timeout_seconds != new.model_settings.timeout_seconds
+        || old.model_settings.num_retries != new.model_settings.num_retries
+        || old.model_settings.reasoning_effort != new.model_settings.reasoning_effort
+        || old.model_settings.extra_headers.as_ref().map(|h| h.keys().collect::<Vec<_>>())
+            != new.model_settings.extra_headers.as_ref().map(|h| h.keys().collect::<Vec<_>>())
+        || old.model_settings.input_cost_per_token != new.model_settings.input_cost_per_token
+        || old.model_settings.output_cost_per_token != new.model_settings.output_cost_per_token
+        || old.model_settings.usage_id != new.model_settings.usage_id
+        || old.model_settings.api_key.as_ref().map(|key| key.expose().is_empty())
+            != new.model_settings.api_key.as_ref().map(|key| key.expose().is_empty())
+    {
+        changes.push("model_settings=updated".to_string());
+    }
     cmp_opt!(skills_path, "skills_path");
-    cmp_opt!(preferred_model, "preferred_model");
     cmp_val!(log_level, "log_level");
     cmp_bool!(extended_context, "extended_context");
-    cmp_bool!(extended_thinking, "extended_thinking");
-    cmp_bool!(interleaved_thinking_beta, "interleaved_thinking_beta");
-    cmp_opt!(sdk_effort, "sdk_effort");
-    cmp_opt!(fallback_model, "fallback_model");
     cmp_bool!(refine_prompt_suggestions, "refine_prompt_suggestions");
     cmp_opt!(marketplace_url, "marketplace_url");
     if old.marketplace_registries.len() != new.marketplace_registries.len() {

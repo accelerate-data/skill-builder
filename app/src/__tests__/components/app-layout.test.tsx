@@ -91,10 +91,16 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
 
 const defaultSettings: AppSettings = {
-  anthropic_api_key: "sk-ant-test",
+  model_settings: {
+    provider: "anthropic",
+    model: "claude-sonnet-4-5",
+    api_key: "sk-ant-test",
+    base_url: null,
+    reasoning_effort: "auto",
+    usage_id: "workflow",
+  },
   workspace_path: "/home/user/workspace",
   skills_path: "/home/user/skills",
-  preferred_model: "sonnet",
   log_level: "info",
   extended_context: false,
   extended_thinking: false,
@@ -431,18 +437,24 @@ describe("AppLayout", () => {
     expect(calls).toContain("reconcile_startup");
   });
 
-  it("shows setup screen when API key is missing", async () => {
-    // SetupScreen mock auto-completes, but we can verify it was rendered
+  it("skips setup screen when only API key is missing", async () => {
     mockInvokeCommands({
-      get_settings: { ...defaultSettings, anthropic_api_key: null },
+      get_settings: {
+        ...defaultSettings,
+        model_settings: {
+          ...defaultSettings.model_settings,
+          api_key: null,
+        },
+      },
       reconcile_startup: emptyReconciliation,
     });
 
     render(<AppLayout />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("setup-screen")).toBeInTheDocument();
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
     });
+    expect(screen.queryByTestId("setup-screen")).not.toBeInTheDocument();
   });
 
   it("shows setup screen when skills path is missing", async () => {

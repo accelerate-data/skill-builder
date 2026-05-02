@@ -198,8 +198,10 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Hydrate settings so workflow handlers don't bail
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
-      anthropicApiKey: "sk-test",
-      preferredModel: "sonnet",
+      modelSettings: {
+        model: "sonnet",
+        api_key: "sk-test",
+      },
     });
 
     mockToast.success.mockClear();
@@ -576,8 +578,10 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
-      anthropicApiKey: "sk-test",
-      preferredModel: "sonnet",
+      modelSettings: {
+        model: "sonnet",
+        api_key: "sk-test",
+      },
     });
 
     mockToast.success.mockClear();
@@ -674,8 +678,10 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
-      anthropicApiKey: "sk-test",
-      preferredModel: "sonnet",
+      modelSettings: {
+        model: "sonnet",
+        api_key: "sk-test",
+      },
     });
 
     mockToast.success.mockClear();
@@ -1575,8 +1581,10 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
-      anthropicApiKey: "sk-test",
-      preferredModel: "sonnet",
+      modelSettings: {
+        model: "sonnet",
+        api_key: "sk-test",
+      },
     });
 
     mockToast.success.mockClear();
@@ -1781,8 +1789,10 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
-      anthropicApiKey: "sk-test",
-      preferredModel: "sonnet",
+      modelSettings: {
+        model: "sonnet",
+        api_key: "sk-test",
+      },
     });
 
     mockToast.success.mockClear();
@@ -1878,8 +1888,10 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
-      anthropicApiKey: "sk-test",
-      preferredModel: "sonnet",
+      modelSettings: {
+        model: "sonnet",
+        api_key: "sk-test",
+      },
     });
 
     mockToast.success.mockClear();
@@ -2007,8 +2019,10 @@ describe("WorkflowPage — review mode default state", () => {
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
-      anthropicApiKey: "sk-test",
-      preferredModel: "sonnet",
+      modelSettings: {
+        model: "sonnet",
+        api_key: "sk-test",
+      },
     });
 
     mockToast.success.mockClear();
@@ -2078,8 +2092,10 @@ describe("step reset behavior regressions", () => {
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
-      anthropicApiKey: "sk-test",
-      preferredModel: "sonnet",
+      modelSettings: {
+        model: "sonnet",
+        api_key: "sk-test",
+      },
     });
 
     mockToast.success.mockClear();
@@ -2422,8 +2438,10 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
-      anthropicApiKey: "sk-test",
-      preferredModel: "sonnet",
+      modelSettings: {
+        model: "sonnet",
+        api_key: "sk-test",
+      },
     });
 
     mockToast.success.mockClear();
@@ -2839,8 +2857,10 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
-      anthropicApiKey: "sk-test",
-      preferredModel: "sonnet",
+      modelSettings: {
+        model: "sonnet",
+        api_key: "sk-test",
+      },
     });
 
     mockToast.success.mockClear();
@@ -2921,8 +2941,10 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
-      anthropicApiKey: "sk-test",
-      preferredModel: "sonnet",
+      modelSettings: {
+        model: "sonnet",
+        api_key: "sk-test",
+      },
     });
 
     mockToast.success.mockClear();
@@ -3559,8 +3581,10 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
-      anthropicApiKey: "sk-test",
-      preferredModel: "sonnet",
+      modelSettings: {
+        model: "sonnet",
+        api_key: "sk-test",
+      },
     });
 
     mockToast.success.mockClear();

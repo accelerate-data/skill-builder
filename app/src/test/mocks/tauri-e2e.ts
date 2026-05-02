@@ -16,17 +16,16 @@ const E2E_SKILLS_PATH = `${E2E_ROOT}/skills`;
 const E2E_DEFAULT_SKILLS_PATH = `${E2E_ROOT}/default-skills`;
 
 const defaultSettings = {
-  anthropic_api_key: null,
   model_settings: {
     provider: "anthropic",
-    model: "sonnet",
+    model: "claude-sonnet-4-5",
     api_key: "sk-ant-test-e2e",
     base_url: null,
+    reasoning_effort: "auto",
+    usage_id: "workflow",
   },
   workspace_path: null,
   skills_path: E2E_SKILLS_PATH,
-  preferred_model: null,
-  openhands_model: null,
   log_level: "info",
 };
 
@@ -34,7 +33,7 @@ const mockResponses: Record<string, unknown> = {
   get_settings: defaultSettings,
   save_settings: undefined,
   update_user_settings: undefined,
-  test_api_key: true,
+  test_model_connection: true,
   set_log_level: undefined,
   get_default_skills_path: E2E_DEFAULT_SKILLS_PATH,
   get_data_dir: `${E2E_ROOT}/data`,
