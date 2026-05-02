@@ -1,6 +1,8 @@
-Return JSON only for a Skill Builder workflow step 0 run.
+Return raw JSON only for a Skill Builder workflow step 0 `workflow.research` run.
 
 Rendered app prompt context:
+- agent_name: skill-creator
+- task_kind: workflow.research
 - skill_name: fabric-dbt-standards
 - workspace_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
 - context_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context
@@ -10,6 +12,8 @@ Rendered app prompt context:
 - modified_date: 2026-05-01
 - max_dimensions: 5
 - user-context.md is the only workspace input
+
+Prompt source: agent-sources/prompts/research.txt
 
 Required JSON shape:
 {

@@ -4,7 +4,11 @@ description: ALWAYS use this skill when producing clarification questions for an
 user_invocable: false
 ---
 
-# Research Skill needs
+# Research Skill
+
+This skill runs inside the single `skill-creator` OpenHands agent for the
+`workflow.research` task. All dimension scoring, selected-dimension research,
+and consolidation happen inline in this same run.
 
 Given a `purpose`, produce clarification questions which can be used for writing the skill.
 The overall flow is as follows
@@ -222,7 +226,7 @@ For each dimension:
 
 ## Step 8 — Return final payload
 
-**CRITICAL — your final message MUST be ONLY a raw JSON object.** No markdown, no explanation, no summary, no code fences, no wrapping text. If you write anything other than a valid JSON object, the backend will REJECT your output and the entire step will FAIL. The required output schema is provided in the system prompt of the orchestrator that invoked this skill.
+**CRITICAL — your final message MUST be ONLY a raw JSON object.** No markdown, no explanation, no summary, no code fences, no wrapping text. If you write anything other than a valid JSON object, the backend will REJECT your output and the entire step will FAIL. The required output schema is provided in the app-owned research prompt that invoked this skill.
 
 **NEVER abbreviate or truncate the JSON output.** Every question object MUST include ALL required fields: `id`, `title`, `text`, `must_answer`, `choices`, `refinements`. Do NOT use `"..."` as a placeholder for any field or value. Do NOT omit fields to save tokens. The backend performs strict schema validation — any missing required field will cause the entire step to FAIL.
 

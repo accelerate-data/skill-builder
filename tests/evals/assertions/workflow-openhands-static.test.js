@@ -16,8 +16,9 @@ function readEval(relativePath) {
 
 test('active workflow prompt surfaces stay OpenHands-native', () => {
   const activeWorkflowFiles = [
-    'agent-sources/workspace/prompts/workflow-step.txt',
-    'agent-sources/workspace/prompts/answer-evaluator.txt',
+    'agent-sources/prompts/research.txt',
+    'agent-sources/prompts/workflow-step.txt',
+    'agent-sources/prompts/answer-evaluator.txt',
     'app/src-tauri/src/commands/workflow/prompt.rs',
     'app/src-tauri/src/commands/workflow/runtime.rs',
     'app/src-tauri/src/commands/workflow/step_config.rs',
@@ -48,28 +49,33 @@ test('active workflow prompt surfaces stay OpenHands-native', () => {
       );
     }
   }
+
+  assert.equal(
+    fs.existsSync(path.join(REPO_ROOT, 'agent-sources/workspace/prompts')),
+    false,
+    'app-owned workflow prompts must not live under agent-sources/workspace/prompts',
+  );
 });
 test('deterministic eval packages cover OpenHands workflow agent topology', () => {
-  const activeAgentFiles = [
-    'agent-sources/plugins/skill-content-researcher/agents/research-agent.md',
-    'agent-sources/plugins/skill-content-researcher/agents/answer-evaluator.md',
-    'agent-sources/plugins/skill-creator/agents/skill-writer-agent.md',
-  ];
+  const activeAgentFiles = ['agent-sources/workspace/agents/skill-creator.md'];
   for (const relativePath of activeAgentFiles) {
     assert.ok(fs.existsSync(path.join(REPO_ROOT, relativePath)), `${relativePath} must exist`);
   }
 
   const packageEvidence = [
     readEval('packages/skill-content-researcher-research/prompt.txt'),
-    readEval('packages/skill-content-researcher-answer-evaluator/promptfooconfig.json'),
-    readEval('packages/skill-content-researcher-confirm-decisions/prompt.txt'),
-    readEval('packages/skill-creator-generate-skill/prompt.txt'),
+    readEval('packages/skill-content-researcher-research/promptfooconfig.json'),
+    readEval('packages/workspace-workflow-step-prompt/prompt.txt'),
+    readEval('packages/workspace-workflow-step-prompt/promptfooconfig.json'),
   ].join('\n');
 
-  for (const agentName of ['research-agent', 'answer-evaluator', 'skill-writer-agent']) {
+  for (const token of ['skill-creator', 'workflow.research', 'agent-sources/prompts/research.txt']) {
     assert.ok(
-      packageEvidence.includes(agentName),
-      `eval prompt/config coverage must mention ${agentName}`,
+      packageEvidence.includes(token),
+      `eval prompt/config coverage must mention ${token}`,
     );
   }
+
+  assert.equal(packageEvidence.includes('agent-sources/workspace/prompts'), false);
+  assert.equal(packageEvidence.includes('research-agent'), false);
 });

@@ -276,6 +276,18 @@ agent-sources/prompts/scope-review.txt
   -> Conversation.send_message(...)
 ```
 
+For workflow research:
+
+```text
+agent-sources/prompts/research.txt
+  -> Rust renders skill name, workspace directory, user-context.md path,
+     context directory, and maximum research dimensions
+  -> SidecarConfig.prompt with agentName "skill-creator"
+     and taskKind "workflow.research"
+  -> runner request["prompt"]
+  -> Conversation.send_message(...)
+```
+
 There are no task-specific file agents in `.agents/agents/`. The only
 file-based agent is `skill-creator.md`.
 
@@ -325,6 +337,16 @@ Lifecycle:
 
 One-shot is not one OpenHands `Agent.step()`. A single task may require several
 OpenHands reasoning/action iterations before completion.
+
+Workflow research is the first backend-materialized workflow one-shot. It uses
+`skill-creator` with `taskKind: "workflow.research"` and the
+`agent-sources/prompts/research.txt` user-message template. While the run is
+active, OpenHands `conversation_event` records stream directly to the UI for
+reasoning, tool calls, observations, and status updates. When the terminal
+`conversation_state` arrives, Rust extracts `result_text`, validates the raw
+research JSON envelope, and materializes `context/clarifications.json`. The
+frontend observes the streamed events and materialization result; it does not
+perform legacy step 0 structured-output materialization.
 
 ## Multi-Message Conversations
 

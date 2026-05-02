@@ -1,0 +1,19 @@
+EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
+
+Use the research skill to produce workflow step 0 clarification output for this skill.
+
+Skill name: {{skill_name}}
+Workspace directory: {{workspace_dir}}
+User context file: {{workspace_dir}}/user-context.md
+Context directory: {{workspace_dir}}/context
+Maximum research dimensions before scope warning: {{max_dimensions}}
+
+All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
+
+Return only a raw JSON object with this envelope:
+{
+  "status": "research_complete",
+  "dimensions_selected": number,
+  "question_count": number,
+  "research_output": { ...canonical clarifications.json object... }
+}

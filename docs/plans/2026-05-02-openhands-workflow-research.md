@@ -128,7 +128,7 @@ Expected: new tests fail because the code still routes step 0 through `research-
 
 ## Task 2: Externalize The Research Prompt
 
-- [ ] Create `agent-sources/prompts/research.txt` with a single user-message template:
+- [x] Create `agent-sources/prompts/research.txt` with a single user-message template:
 
 ```text
 EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
@@ -170,7 +170,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow::tests::r
 
 Expected: prompt tests pass; config tests still fail until runtime routing is changed.
 
-- [ ] Add or update deterministic assertions proving workflow prompt templates
+- [x] Add or update deterministic assertions proving workflow prompt templates
   are rendered from `agent-sources/prompts/**`, not
   `agent-sources/workspace/prompts/**`.
 
@@ -185,13 +185,13 @@ prompt layout.
 
 ## Task 3: Simplify The Research Skill For One-Agent Execution
 
-- [ ] Update `agent-sources/workspace/skills/research/SKILL.md` to make the execution model explicit:
+- [x] Update `agent-sources/workspace/skills/research/SKILL.md` to make the execution model explicit:
   - say this skill runs inside the single `skill-creator` OpenHands agent;
   - say all dimension scoring, selected-dimension research, and consolidation happen inline in this same run;
   - remove references to downstream agents except the existing data-field note that `answer_evaluator_notes` is populated later by the workflow;
   - keep the final JSON envelope and strict schema requirements.
-- [ ] Update `agent-sources/workspace/skills/research/references/scoring-rubric.md` so “dimension research agent” becomes “dimension research focus”.
-- [ ] Update `agent-sources/workspace/skills/research/references/consolidation-handoff.md` so “dimension sub-agent outputs” becomes “dimension research notes”.
+- [x] Update `agent-sources/workspace/skills/research/references/scoring-rubric.md` so “dimension research agent” becomes “dimension research focus”.
+- [x] Update `agent-sources/workspace/skills/research/references/consolidation-handoff.md` so “dimension sub-agent outputs” becomes “dimension research notes”.
 - [ ] Run:
 
 ```bash
@@ -331,14 +331,14 @@ cd tests/evals && npm run eval:workspace-workflow-step-prompt
 Expected: failures, if any, identify stale `research-agent`,
 `skill-writer-agent`, or `agent-sources/workspace/prompts/**` assumptions.
 
-- [ ] Update `tests/evals/packages/skill-content-researcher-research` so it
+- [x] Update `tests/evals/packages/skill-content-researcher-research` so it
   validates the simplified single-agent research skill behavior and the
   `workflow.research` final JSON envelope.
-- [ ] Update `tests/evals/packages/workspace-workflow-step-prompt` if the old
+- [x] Update `tests/evals/packages/workspace-workflow-step-prompt` if the old
   shared `workflow-step.txt` package no longer covers the new step 0
   `research.txt` prompt. Prefer extending the existing package over adding a
   new one.
-- [ ] Update `tests/evals/assertions/workflow-openhands-static.test.js` so it
+- [x] Update `tests/evals/assertions/workflow-openhands-static.test.js` so it
   reads active prompt files from `agent-sources/prompts/**` and asserts the
   OpenHands topology no longer depends on `research-agent` for step 0.
 - [ ] Run:
@@ -376,13 +376,13 @@ cd app && npm run dev
 
 ## Task 11: Docs, Plan, And Repo Map Audit
 
-- [ ] Update `docs/design/openhands-sdk-runner/README.md` to document:
+- [x] Update `docs/design/openhands-sdk-runner/README.md` to document:
   - workflow research uses `skill-creator` with `task_kind = "workflow.research"`;
   - research streams `conversation_event` records directly to the UI;
   - Rust extracts terminal `conversation_state.result_text`, validates, and materializes output;
   - the frontend no longer materializes step 0 output.
-- [ ] Update `docs/plans/2026-05-02-openhands-native-migration.md` to mark this child issue as the workflow research migration slice.
-- [ ] Audit `repo-map.json` only if files are added/removed in mapped directories.
+- [x] Update `docs/plans/2026-05-02-openhands-native-migration.md` to mark this child issue as the workflow research migration slice.
+- [x] Audit `repo-map.json` only if files are added/removed in mapped directories.
 - [ ] Run:
 
 ```bash

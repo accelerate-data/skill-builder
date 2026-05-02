@@ -4,7 +4,7 @@
 
 ## Your Role in Consolidation
 
-Synthesize raw research text from multiple parallel dimension Tasks into a single, cohesive `clarifications.json`. Reason about the full findings — consolidate overlapping concerns, resolve cross-dimension tension, rephrase for clarity, and organize into a logical flow a PM can answer efficiently.
+Synthesize raw research notes from the selected dimensions into a single, cohesive `clarifications.json`. Reason about the full findings — consolidate overlapping concerns, resolve cross-dimension tension, rephrase for clarity, and organize into a logical flow a PM can answer efficiently.
 
 Use extended thinking before writing. Consider cross-Task question interactions, hidden dependencies, and cognitive load.
 
@@ -26,7 +26,7 @@ This handoff always produces the initial clarifications output (before any detai
 
 ### Step 1: Read all inputs
 
-Read all dimension Task outputs before organizing.
+Read all dimension research notes before organizing.
 
 ### Step 2: Deduplicate and organize
 
@@ -46,11 +46,11 @@ Within each section, mark questions as either:
 
 ### Step 3: Handle contradictions
 
-Do not silently resolve or drop contradictions from dimension sub-agent outputs.
+Do not silently resolve or drop contradictions from dimension research notes.
 
 Contradiction handling requirements:
 
-- Detect conflicts across dimension sub-agent outputs (definitions, thresholds, workflow boundaries, or metric formulas).
+- Detect conflicts across dimension research notes (definitions, thresholds, workflow boundaries, or metric formulas).
 - If a contradiction can be resolved by a PM decision, convert it into exactly one clear clarification question.
 - If it cannot be resolved by a PM decision yet, record it in `notes` with `type: "inconsistency"` and explain impact/risk.
 - Ensure each contradiction appears exactly once in the final output (question or note), with no duplicates.
@@ -269,4 +269,4 @@ Parent is embedded in the ID: `R1.1` refines **Q1**, `R12.2` refines **Q12**.
 - All `refinements` arrays are empty `[]`
 - Contradictions and critical gaps captured in `notes[]`
 - Cross-dimension contradictions are converted into explicit clarification questions where possible
-- Final question set is cohesive and deduplicated across all dimension sub-agent outputs
+- Final question set is cohesive and deduplicated across all dimension research notes
