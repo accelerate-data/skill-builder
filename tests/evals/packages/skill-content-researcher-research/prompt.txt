@@ -23,17 +23,9 @@ Return raw JSON only. Use this exact envelope shape:
       "must_answer_count": 0,
       "priority_questions": [],
       "scope_recommendation": false,
+      "scope_reason": null,
       "warning": null,
-      "error": null,
-      "research_plan": {
-        "purpose": "organization specific data engineering standards",
-        "domain": "data-engineering",
-        "topic_relevance": "relevant",
-        "dimensions_evaluated": 0,
-        "dimensions_selected": 0,
-        "dimension_scores": [],
-        "selected_dimensions": []
-      }
+      "error": null
     },
     "sections": [],
     "notes": [],
@@ -43,3 +35,7 @@ Return raw JSON only. Use this exact envelope shape:
 
 Do not put `sections`, `notes`, or `answer_evaluator_notes` inside
 `research_output.metadata`; they are top-level fields inside `research_output`.
+
+Do not include legacy planning or scoring fields anywhere in the output:
+`dimensions_selected`, `research_plan`, `research_lens`, `dimension_scores`,
+`selected_dimensions`, `topic_relevance`, or `dimensions_evaluated`.

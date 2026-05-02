@@ -8,11 +8,11 @@
   ],
   "tests": [
     {
-      "description": "[smoke] workflow-step prompt passes app paths",
+      "description": "[smoke] workflow-step prompt passes app paths and final-only contract",
       "assert": [
         {
           "type": "javascript",
-          "value": "let trimmed = output.trim(); const fenced = trimmed.match(/^```(?:json)?\\s*([\\s\\S]*?)\\s*```$/i); if (fenced) trimmed = fenced[1].trim(); if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return false; const data = JSON.parse(trimmed); data.status === 'research_complete' && Number.isInteger(data.dimensions_selected) && Number.isInteger(data.question_count) && data.research_output && data.research_output.version === '1' && data.research_output.metadata && Array.isArray(data.research_output.sections)"
+          "value": "(() => { const trimmed = output.trim(); if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return false; const data = JSON.parse(trimmed); const forbidden = new Set(['research_plan', 'research_lens', 'dimension_scores', 'selected_dimensions', 'topic_relevance', 'dimensions_evaluated']); const walk = (value) => { if (Array.isArray(value)) return value.every(walk); if (value && typeof value === 'object') return Object.entries(value).every(([key, child]) => !forbidden.has(key) && walk(child)); return true; }; return data.status === 'research_complete' && Number.isInteger(data.dimensions_selected) && Number.isInteger(data.question_count) && data.research_output && data.research_output.version === '1' && data.research_output.metadata && !('research_plan' in data.research_output.metadata) && Array.isArray(data.research_output.sections) && walk(data); })()"
         }
       ]
     }

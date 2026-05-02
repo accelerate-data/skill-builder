@@ -64,26 +64,29 @@ in JSON Schema alone.
 
 - `metadata.warning` and `metadata.error` are separate channels.
 - When present, each must include non-empty `code` and `message`.
-- Warning codes: `scope_guard_triggered` (orchestrator preflight),
-  `all_dimensions_low_score` (scoring completed, no viable dimensions).
+- Warning codes: `scope_guard_triggered` for insufficient context, low topic
+  usefulness, or no high-value organization-specific clarification topics.
 - Error codes: `missing_user_context`, `invalid_research_output`.
 
-## Research Plan
+## Research Flow Privacy
 
-- `metadata.research_plan` must be present and schema-valid.
-- `metadata.research_plan.selected_dimensions` must be an array of
-  `{ name, focus }` objects (empty array only when no dimensions are
-  selected).
-- `metadata.research_plan.dimension_scores[]` elements must have
-  `name`, `score`, `reason`, and `focus` fields.
+- The research skill may privately score topic usefulness, decide which
+  research lenses are relevant, and rank candidate clarification topics.
+- The returned payload must not include `research_plan`, `research_lens`,
+  `dimension_scores`, `selected_dimensions`, `topic_relevance`,
+  `dimensions_evaluated`, scoring summaries, or consolidation handoff fields.
+- The returned payload should contain only final clarification output plus
+  scope, warning, error, and note channels when applicable.
 
 ## Orchestrator Envelope
 
 - `status` is always `"research_complete"` -- it signals phase
   completion, not outcome. Outcome is communicated via
   `research_output.metadata.*`.
-- `dimensions_selected` must equal
-  `research_output.metadata.research_plan.dimensions_selected`.
+- `dimensions_selected` is a compatibility field required by the workflow
+  envelope schema. It counts relevant private lenses used to form the final
+  questions, or `0` for scope/error outputs. It must not be paired with
+  selected lens or dimension details in the returned payload.
 - `question_count` must equal
   `research_output.metadata.question_count`.
 
@@ -92,5 +95,4 @@ in JSON Schema alone.
 - Zero counts and empty `sections` for all guard/error paths.
 - `metadata.scope_recommendation: true` for scope-triggered returns;
   `false` for hard errors.
-- `metadata.research_plan` present with minimal values:
-  `topic_relevance: "not_relevant"`, zero counts, empty arrays.
+- Do not include `metadata.research_plan` in minimal outputs.
