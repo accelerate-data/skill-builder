@@ -248,10 +248,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
         outputText_result: "Agent completed",
         structuredOutput: {
           status: "research_complete",
-          dimensions_selected: 1,
           question_count: 1,
-          research_plan_markdown: "# Research Plan",
-          clarifications_json: {
+          research_output: {
             version: "1",
             metadata: {
               question_count: 0,
@@ -727,10 +725,8 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
         outputText_result: "Agent completed",
         structuredOutput: {
           status: "research_complete",
-          dimensions_selected: 1,
           question_count: 1,
-          research_plan_markdown: "# Research Plan",
-          clarifications_json: {
+          research_output: {
             version: "1",
             metadata: {
               question_count: 0,

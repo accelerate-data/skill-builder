@@ -326,7 +326,7 @@ describe("OpenHands runner live SDK integration", () => {
           agentName: "skill-creator",
           taskKind: "workflow.research",
           prompt:
-            'Return exactly this raw JSON object and nothing else: {"status":"research_complete","dimensions_selected":1,"question_count":0,"research_output":{"version":"1","metadata":{},"sections":[],"notes":[]}}',
+            'Return exactly this raw JSON object and nothing else: {"status":"research_complete","question_count":0,"research_output":{"version":"1","metadata":{},"sections":[],"notes":[]}}',
           llm: {
             model: config.model,
             apiKey: config.apiKey,

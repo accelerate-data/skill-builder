@@ -403,7 +403,9 @@ describe("buildStructuredMockResult", () => {
     const payload = result as Record<string, unknown>;
     expect(payload.status).toBe("research_complete");
     expect(typeof payload.question_count).toBe("number");
-    expect(typeof payload.dimensions_selected).toBe("number");
+    expect(payload).not.toHaveProperty("dimensions_selected");
+    expect(payload).not.toHaveProperty("research_plan");
+    expect(payload).not.toHaveProperty("research_lens");
     expect(typeof payload.research_output).toBe("object");
     const researchOutput = payload.research_output as Record<string, unknown>;
     expect(researchOutput.version).toBe("1");
