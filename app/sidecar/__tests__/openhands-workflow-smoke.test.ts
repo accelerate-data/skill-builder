@@ -188,7 +188,6 @@ describe("OpenHands workflow smoke", () => {
             if (request.taskKind === "workflow.research") {
               return {
                 status: "research_complete",
-                dimensions_selected: 3,
                 question_count: 2,
                 research_output: { version: "1", sections: [], notes: [] },
               };
@@ -242,7 +241,7 @@ describe("OpenHands workflow smoke", () => {
       expect(conversationEvents(step0.messages)).toHaveLength(1);
       expect(terminalState(step0.messages)).toMatchObject({
         status: "completed",
-        result_text: expect.stringContaining("dimensions_selected"),
+        result_text: expect.stringContaining("research_output"),
       });
     } finally {
       rmSync(root, { recursive: true, force: true });

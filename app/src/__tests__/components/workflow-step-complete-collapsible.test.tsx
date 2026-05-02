@@ -23,20 +23,10 @@ import { WorkflowStepComplete } from "@/components/step-complete";
 
 const researchPlanMd = `---
 purpose: Test purpose
-dimensions_evaluated: 2
-dimensions_selected: 1
 ---
 
-## Dimension Scores
-| Dimension | Score | Reason |
-| --- | --- | --- |
-| depth | 5 | test |
-| breadth | 3 | test |
-
-## Selected Dimensions
-| Dimension |
-| --- |
-| depth |
+## Research Summary
+The research step produced clarification questions and notes.
 `;
 
 const clarificationsJson = JSON.stringify({

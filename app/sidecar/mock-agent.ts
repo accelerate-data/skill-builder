@@ -493,21 +493,10 @@ export async function buildStructuredMockResult(
       !Array.isArray(clarifications.metadata)
         ? (clarifications.metadata as JsonObject)
         : {};
-    const researchPlan =
-      metadata.research_plan &&
-      typeof metadata.research_plan === "object" &&
-      !Array.isArray(metadata.research_plan)
-        ? (metadata.research_plan as JsonObject)
-        : {};
     const questionCount =
       typeof metadata.question_count === "number" ? metadata.question_count : 0;
-    const dimensionsSelected =
-      typeof researchPlan.dimensions_selected === "number"
-        ? researchPlan.dimensions_selected
-        : 0;
     return {
       status: "research_complete",
-      dimensions_selected: dimensionsSelected,
       question_count: questionCount,
       research_output: clarifications,
     };
