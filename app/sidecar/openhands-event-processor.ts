@@ -31,6 +31,13 @@ interface OpenHandsEvent {
   timestamp?: number;
 }
 
+interface OpenHandsSdkEvent {
+  type: "openhands_sdk_event";
+  event_class: string;
+  event?: unknown;
+  timestamp?: number;
+}
+
 interface OpenHandsResult {
   type: "openhands_result";
   status: "success" | "error";
@@ -78,6 +85,8 @@ export class OpenHandsEventProcessor {
 
     if (msgType === "openhands_event") {
       this.processEvent(parsed as unknown as OpenHandsEvent, sink);
+    } else if (msgType === "openhands_sdk_event") {
+      this.processSdkEvent(parsed as unknown as OpenHandsSdkEvent, sink);
     } else if (msgType === "openhands_result") {
       this.processResult(parsed as unknown as OpenHandsResult, sink);
     } else {
@@ -149,6 +158,165 @@ export class OpenHandsEventProcessor {
         timestamp,
       });
     }
+  }
+
+  private processSdkEvent(record: OpenHandsSdkEvent, sink: RuntimeSink): void {
+    const timestamp = record.timestamp ?? Date.now();
+    const eventClass = record.event_class ?? "UnknownSdkEvent";
+    const event = asRecord(record.event);
+
+    sink.emitRaw({
+      type: "system",
+      subtype: "openhands_sdk_event",
+      event_class: eventClass,
+      event: record.event ?? null,
+      timestamp,
+    });
+
+    if (eventClass === "MessageEvent") {
+      this.emitSdkMessageEvent(event, timestamp, sink);
+    } else if (eventClass === "ActionEvent") {
+      this.emitSdkActionEvent(event, timestamp, sink);
+    } else if (
+      eventClass === "ObservationEvent" ||
+      eventClass === "UserRejectObservation"
+    ) {
+      this.emitSdkObservationEvent(
+        event,
+        timestamp,
+        sink,
+        eventClass === "UserRejectObservation",
+      );
+    } else if (eventClass === "AgentErrorEvent") {
+      this.emitSdkAgentErrorEvent(event, timestamp, sink);
+    } else if (eventClass === "ConversationErrorEvent") {
+      this.emitSdkConversationErrorEvent(event, timestamp, sink);
+    }
+  }
+
+  private emitSdkMessageEvent(
+    event: Record<string, unknown>,
+    timestamp: number,
+    sink: RuntimeSink,
+  ): void {
+    const source = getString(event, "source", "role");
+    const text = getString(event, "message", "content", "text");
+    if (!text || source === "user") return;
+
+    sink.emitDisplayItem({
+      id: randomUUID(),
+      type: "output",
+      timestamp,
+      outputText: text,
+    });
+  }
+
+  private emitSdkActionEvent(
+    event: Record<string, unknown>,
+    timestamp: number,
+    sink: RuntimeSink,
+  ): void {
+    const reasoning = [
+      getString(event, "thought"),
+      getString(event, "reasoning_content"),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join("\n\n");
+    if (reasoning) {
+      sink.emitDisplayItem({
+        id: randomUUID(),
+        type: "thinking",
+        timestamp,
+        thinkingText: reasoning,
+      });
+    }
+
+    const toolName =
+      getString(event, "tool_name", "toolName", "tool") ??
+      getString(asRecord(event.action), "tool_name", "toolName", "tool") ??
+      getString(event, "action") ??
+      "OpenHandsAction";
+    const toolInput = buildToolInput(event);
+    const securityRisk = getString(event, "security_risk", "securityRisk");
+    if (securityRisk) {
+      toolInput.securityRisk = securityRisk;
+    }
+    const action = getString(event, "action");
+    if (action) {
+      toolInput.action = action;
+    }
+
+    sink.emitDisplayItem({
+      id: randomUUID(),
+      type: "tool_call",
+      timestamp,
+      toolName,
+      toolUseId: getString(event, "tool_call_id", "toolUseId", "id"),
+      toolInput,
+      toolSummary: buildToolSummary(event, securityRisk),
+      toolStatus: getToolStatus(event, "pending"),
+    });
+  }
+
+  private emitSdkObservationEvent(
+    event: Record<string, unknown>,
+    timestamp: number,
+    sink: RuntimeSink,
+    forcedError: boolean,
+  ): void {
+    const isError = forcedError || observationIsError(event);
+    const content =
+      getEventContent(event) ?? (isError ? "OpenHands observation failed" : "");
+
+    sink.emitDisplayItem({
+      id: randomUUID(),
+      type: "tool_call",
+      timestamp,
+      toolName:
+        getString(event, "tool_name", "toolName", "tool") ??
+        "OpenHandsObservation",
+      toolUseId: getString(event, "tool_call_id", "toolUseId", "id"),
+      toolStatus: isError ? "error" : "ok",
+      toolSummary: getString(event, "summary"),
+      toolResult: {
+        content,
+        isError,
+      },
+    });
+  }
+
+  private emitSdkAgentErrorEvent(
+    event: Record<string, unknown>,
+    timestamp: number,
+    sink: RuntimeSink,
+  ): void {
+    sink.emitDisplayItem({
+      id: randomUUID(),
+      type: "tool_call",
+      timestamp,
+      toolName:
+        getString(event, "tool_name", "toolName", "tool") ?? "OpenHandsAgent",
+      toolUseId: getString(event, "tool_call_id", "toolUseId", "id"),
+      toolStatus: "error",
+      toolSummary: getString(event, "summary"),
+      toolResult: {
+        content: getEventContent(event) ?? "OpenHands agent error",
+        isError: true,
+      },
+    });
+  }
+
+  private emitSdkConversationErrorEvent(
+    event: Record<string, unknown>,
+    timestamp: number,
+    sink: RuntimeSink,
+  ): void {
+    sink.emitDisplayItem({
+      id: randomUUID(),
+      type: "error",
+      timestamp,
+      errorMessage: getEventContent(event) ?? "OpenHands conversation error",
+    });
   }
 
   private processResult(result: OpenHandsResult, sink: RuntimeSink): void {
@@ -229,4 +397,93 @@ export class OpenHandsEventProcessor {
     );
     sink.emitAgentEvent(finalRunResult);
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function getString(
+  record: Record<string, unknown>,
+  ...keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function getEventContent(record: Record<string, unknown>): string | undefined {
+  return (
+    getString(
+      record,
+      "content",
+      "message",
+      "error",
+      "error_message",
+      "observation",
+      "result",
+    ) ??
+    stringifyContent(record.output)
+  );
+}
+
+function stringifyContent(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
+  }
+  if (value && typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return undefined;
+}
+
+function buildToolInput(record: Record<string, unknown>): Record<string, unknown> {
+  const input = asRecord(
+    record.tool_input ??
+      record.toolInput ??
+      record.input ??
+      record.args ??
+      record.parameters,
+  );
+  return { ...input };
+}
+
+function buildToolSummary(
+  record: Record<string, unknown>,
+  securityRisk: string | undefined,
+): string | undefined {
+  const summary = getString(record, "summary");
+  return summary ?? (securityRisk ? `Security risk: ${securityRisk}` : undefined);
+}
+
+function getToolStatus(
+  record: Record<string, unknown>,
+  fallback: DisplayItem["toolStatus"],
+): DisplayItem["toolStatus"] {
+  const status = getString(record, "status");
+  if (status === "ok" || status === "error" || status === "pending") {
+    return status;
+  }
+  if (status === "success" || status === "completed" || status === "complete") {
+    return "ok";
+  }
+  if (status === "failed" || status === "failure") {
+    return "error";
+  }
+  return fallback;
+}
+
+function observationIsError(record: Record<string, unknown>): boolean {
+  if (record.success === false || record.is_error === true || record.isError === true) {
+    return true;
+  }
+  const status = getString(record, "status");
+  return status === "error" || status === "failed" || status === "failure";
 }

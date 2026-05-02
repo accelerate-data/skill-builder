@@ -62,6 +62,12 @@ function getRunResult(messages: Record<string, unknown>[]) {
   );
 }
 
+function getRawSdkEvents(messages: Record<string, unknown>[]) {
+  return messages.filter(
+    (m) => m.type === "system" && m.subtype === "openhands_sdk_event",
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Happy path fixture tests
 // ---------------------------------------------------------------------------
@@ -90,8 +96,14 @@ describe("OpenHandsEventProcessor — happy path fixture", () => {
     const toolItem = displayItems.find((i) => i.type === "tool_call");
     expect(toolItem).toBeDefined();
     expect(toolItem!.toolName).toBe("BashTool");
-    expect(toolItem!.toolStatus).toBe("ok");
+    expect(toolItem!.toolStatus).toBe("pending");
+    expect(toolItem!.toolUseId).toBe("call-fixture-1");
     expect(toolItem!.toolSummary).toContain("Executing");
+
+    // Should preserve SDK events as raw system envelopes
+    const rawSdkEvents = getRawSdkEvents(messages);
+    expect(rawSdkEvents).toHaveLength(2);
+    expect(rawSdkEvents[0]!.event_class).toBe("MessageEvent");
 
     // Should have result display item
     const resultItem = displayItems.find((i) => i.type === "result");
@@ -106,6 +118,247 @@ describe("OpenHandsEventProcessor — happy path fixture", () => {
 
     // Processor should report result emitted
     expect(processor.hasEmittedResult()).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OpenHands SDK callback events
+// ---------------------------------------------------------------------------
+
+describe("OpenHandsEventProcessor — OpenHands SDK events", () => {
+  it("preserves SDK MessageEvent records and maps visible text to output", () => {
+    const processor = new OpenHandsEventProcessor(makeContext());
+    const { messages, sink } = makeSink();
+
+    processor.processLine(
+      JSON.stringify({
+        type: "openhands_sdk_event",
+        event_class: "MessageEvent",
+        event: {
+          source: "agent",
+          message: "I found the scope constraints.",
+        },
+        timestamp: 1714550400000,
+      }),
+      sink,
+    );
+
+    expect(getRawSdkEvents(messages)).toMatchObject([
+      {
+        type: "system",
+        subtype: "openhands_sdk_event",
+        event_class: "MessageEvent",
+        event: {
+          source: "agent",
+          message: "I found the scope constraints.",
+        },
+        timestamp: 1714550400000,
+      },
+    ]);
+
+    const displayItems = getDisplayItems(messages);
+    expect(displayItems).toMatchObject([
+      {
+        type: "output",
+        outputText: "I found the scope constraints.",
+        timestamp: 1714550400000,
+      },
+    ]);
+  });
+
+  it("maps SDK ActionEvent reasoning, tool call details, and security risk", () => {
+    const processor = new OpenHandsEventProcessor(makeContext());
+    const { messages, sink } = makeSink();
+
+    processor.processLine(
+      JSON.stringify({
+        type: "openhands_sdk_event",
+        event_class: "ActionEvent",
+        event: {
+          tool_name: "BashTool",
+          tool_call_id: "toolu_123",
+          action: "run",
+          summary: "Run scope validation checks",
+          thought: "Need to inspect the candidate skill first.",
+          reasoning_content: "Use read-only commands before proposing changes.",
+          tool_input: { command: "ls -la" },
+          security_risk: "low: read-only command",
+        },
+        timestamp: 1714550401000,
+      }),
+      sink,
+    );
+
+    const displayItems = getDisplayItems(messages);
+    expect(displayItems).toMatchObject([
+      {
+        type: "thinking",
+        thinkingText:
+          "Need to inspect the candidate skill first.\n\nUse read-only commands before proposing changes.",
+      },
+      {
+        type: "tool_call",
+        toolName: "BashTool",
+        toolUseId: "toolu_123",
+        toolStatus: "pending",
+        toolSummary: "Run scope validation checks",
+        toolInput: {
+          action: "run",
+          command: "ls -la",
+          securityRisk: "low: read-only command",
+        },
+      },
+    ]);
+    expect(getRawSdkEvents(messages)).toHaveLength(1);
+  });
+
+  it("maps SDK ObservationEvent records to visible successful tool results", () => {
+    const processor = new OpenHandsEventProcessor(makeContext());
+    const { messages, sink } = makeSink();
+
+    processor.processLine(
+      JSON.stringify({
+        type: "openhands_sdk_event",
+        event_class: "ObservationEvent",
+        event: {
+          tool_name: "BashTool",
+          tool_call_id: "toolu_123",
+          content: "README.md\nSKILL.md",
+          success: true,
+        },
+        timestamp: 1714550402000,
+      }),
+      sink,
+    );
+
+    expect(getDisplayItems(messages)).toMatchObject([
+      {
+        type: "tool_call",
+        toolName: "BashTool",
+        toolUseId: "toolu_123",
+        toolStatus: "ok",
+        toolResult: {
+          content: "README.md\nSKILL.md",
+          isError: false,
+        },
+      },
+    ]);
+    expect(getRawSdkEvents(messages)).toHaveLength(1);
+  });
+
+  it("maps SDK AgentErrorEvent and UserRejectObservation to visible tool errors", () => {
+    const processor = new OpenHandsEventProcessor(makeContext());
+    const { messages, sink } = makeSink();
+
+    processor.processLine(
+      JSON.stringify({
+        type: "openhands_sdk_event",
+        event_class: "AgentErrorEvent",
+        event: {
+          tool_name: "FileEditTool",
+          tool_call_id: "toolu_error",
+          error: "Patch failed to apply",
+        },
+        timestamp: 1714550403000,
+      }),
+      sink,
+    );
+    processor.processLine(
+      JSON.stringify({
+        type: "openhands_sdk_event",
+        event_class: "UserRejectObservation",
+        event: {
+          tool_name: "BashTool",
+          tool_call_id: "toolu_rejected",
+          message: "User rejected command execution",
+        },
+        timestamp: 1714550404000,
+      }),
+      sink,
+    );
+
+    expect(getDisplayItems(messages)).toMatchObject([
+      {
+        type: "tool_call",
+        toolName: "FileEditTool",
+        toolUseId: "toolu_error",
+        toolStatus: "error",
+        toolResult: {
+          content: "Patch failed to apply",
+          isError: true,
+        },
+      },
+      {
+        type: "tool_call",
+        toolName: "BashTool",
+        toolUseId: "toolu_rejected",
+        toolStatus: "error",
+        toolResult: {
+          content: "User rejected command execution",
+          isError: true,
+        },
+      },
+    ]);
+    expect(getRawSdkEvents(messages)).toHaveLength(2);
+  });
+
+  it("maps SDK ConversationErrorEvent to a visible error without emitting run_result", () => {
+    const processor = new OpenHandsEventProcessor(makeContext());
+    const { messages, sink } = makeSink();
+
+    processor.processLine(
+      JSON.stringify({
+        type: "openhands_sdk_event",
+        event_class: "ConversationErrorEvent",
+        event: {
+          error: "Conversation callback failed",
+        },
+        timestamp: 1714550405000,
+      }),
+      sink,
+    );
+
+    expect(getDisplayItems(messages)).toMatchObject([
+      {
+        type: "error",
+        errorMessage: "Conversation callback failed",
+        timestamp: 1714550405000,
+      },
+    ]);
+    expect(getRunResult(messages)).toBeUndefined();
+    expect(getRawSdkEvents(messages)).toHaveLength(1);
+  });
+
+  it("keeps SDK progress events ordered before the terminal openhands_result", () => {
+    const processor = new OpenHandsEventProcessor(makeContext());
+    const { messages, sink } = makeSink();
+
+    processor.processLine(
+      JSON.stringify({
+        type: "openhands_sdk_event",
+        event_class: "MessageEvent",
+        event: { message: "Working..." },
+        timestamp: 1714550400000,
+      }),
+      sink,
+    );
+    processor.processLine(
+      JSON.stringify({
+        type: "openhands_result",
+        status: "success",
+        result_text: "Done",
+        structured_output: null,
+        timestamp: 1714550401000,
+      }),
+      sink,
+    );
+
+    expect(messages.map((m) => m.type)).toEqual([
+      "system",
+      "display_item",
+      "display_item",
+      "agent_event",
+    ]);
   });
 });
 
