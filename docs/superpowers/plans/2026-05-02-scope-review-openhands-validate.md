@@ -1,6 +1,6 @@
 # OpenHands Scope Review Validate Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make the create-skill `Validate` button work in OpenHands clean-break mode by moving scope review from the direct Anthropic API path onto the shared OpenHands SDK runner.
 
@@ -83,14 +83,14 @@ runtime.
 
 ## Branch And Worktree
 
-- [ ] Create the implementation branch from the VU-1145 accumulation branch:
+- [x] Create the implementation branch from the VU-1145 accumulation branch:
 
 ```bash
 cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-clean-break-agent-runtime
 ./scripts/worktree.sh feature/vu-1145-openhands-scope-review-validate
 ```
 
-- [ ] Implement and test in the new worktree.
+- [x] Implement and test in the new worktree.
 - [ ] Merge the completed branch back into `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime` after tests pass.
 
 ## File Structure
@@ -124,31 +124,31 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 
 ## Task 1: Externalize Scope Review Prompt
 
-- [ ] Move the current embedded scope-review prompt from `scope_review.rs` into `agent-sources/prompts/scope-review.txt`.
-- [ ] Replace the direct Rust `format!(...)` prompt body with an `include_str!` template and a small renderer that fills:
+- [x] Move the current embedded scope-review prompt from `scope_review.rs` into `agent-sources/prompts/scope-review.txt`.
+- [x] Replace the direct Rust `format!(...)` prompt body with an `include_str!` template and a small renderer that fills:
   - `skill_name`
   - `description`
   - `purpose`
   - `context_questions`
   - `industry`
   - reference document snippets
-- [ ] Create `agent-sources/prompts/skill-creator-user-suffix.txt` with the no-op invariant:
+- [x] Create `agent-sources/prompts/skill-creator-user-suffix.txt` with the no-op invariant:
 
 ```text
 Follow the current user message exactly. Do not infer a different task than the one stated in the message.
 ```
 
-- [ ] Keep `agent-sources/workspace/**` limited to OpenHands runtime files:
+- [x] Keep `agent-sources/workspace/**` limited to OpenHands runtime files:
   `agents/**` and `skills/**`. Keep app-owned task prompts in
   `agent-sources/prompts/**` and legacy Claude templates in
   `agent-sources/claude/**`.
 
-- [ ] Add Rust tests that render a scope-review prompt and assert it contains the submitted values and the required JSON response shape.
-- [ ] Run: `cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill::scope_review`
+- [x] Add Rust tests that render a scope-review prompt and assert it contains the submitted values and the required JSON response shape.
+- [x] Run: `cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill::scope_review`
 
 ## Task 2: Define The Clean-Break Runner Request
 
-- [ ] Define the OpenHands one-shot runner request around the fields the SDK
+- [x] Define the OpenHands one-shot runner request around the fields the SDK
   path actually needs:
   - `mode`
   - `prompt`
@@ -161,22 +161,22 @@ Follow the current user message exactly. Do not infer a different task than the 
   - `allowedTools`
   - `maxTurns`
   - `outputFormat`
-- [ ] Keep frontend-to-Rust command semantics stable, but change Rust
+- [x] Keep frontend-to-Rust command semantics stable, but change Rust
   `SidecarConfig`, Node `SidecarConfig`, and runtime request types as needed to
   avoid carrying Claude-only fields through OpenHands requests.
-- [ ] Add a backend-owned OpenHands one-shot request builder/API that accepts
+- [x] Add a backend-owned OpenHands one-shot request builder/API that accepts
   app-agent fields (`agentName`, task kind, prompt, tools, output format,
   persistence context) plus the resolved runtime context. Validate must use this
   API instead of hand-assembling Claude-era sidecar fields.
-- [ ] Add a backend-owned one-shot execution helper that dispatches through the
+- [x] Add a backend-owned one-shot execution helper that dispatches through the
   sidecar pool, owns diagnostics allocation, and waits for terminal
   `conversation_state`.
   Validate must use this helper instead of embedding one-shot listener plumbing
   in the feature command.
-- [ ] Validate `userMessageSuffix` as an optional string in `app/sidecar/config.ts`.
-- [ ] Keep `agentName` fixed to `skill-creator` for OpenHands scope-review requests.
-- [ ] Add sidecar config/runtime tests proving `userMessageSuffix`, `taskKind: "scope_review"`, `llm`, and `agentName: "skill-creator"` are serialized to the runner.
-- [ ] Run:
+- [x] Validate `userMessageSuffix` as an optional string in `app/sidecar/config.ts`.
+- [x] Keep `agentName` fixed to `skill-creator` for OpenHands scope-review requests.
+- [x] Add sidecar config/runtime tests proving `userMessageSuffix`, `taskKind: "scope_review"`, `llm`, and `agentName: "skill-creator"` are serialized to the runner.
+- [x] Run:
 
 ```bash
 cd app/sidecar && npx vitest run __tests__/config.test.ts __tests__/runtime-types.test.ts __tests__/openhands-runtime.test.ts
@@ -184,33 +184,33 @@ cd app/sidecar && npx vitest run __tests__/config.test.ts __tests__/runtime-type
 
 ## Task 3: Update Python OpenHands Runner Contract
 
-- [ ] In `runner.py`, read `.agents/agents/skill-creator.md`, strip YAML frontmatter, and pass the markdown body as `AgentContext.system_message_suffix`.
-- [ ] Treat a missing `skill-creator.md` as an error; do not run with an empty
+- [x] In `runner.py`, read `.agents/agents/skill-creator.md`, strip YAML frontmatter, and pass the markdown body as `AgentContext.system_message_suffix`.
+- [x] Treat a missing `skill-creator.md` as an error; do not run with an empty
   agent identity.
-- [ ] In `runner.py`, call OpenHands `load_skills_from_dir(str(Path(workspace_skill_dir) / ".agents" / "skills"))`.
-- [ ] Pass `list(agent_skills.values())` to `AgentContext.skills`.
-- [ ] Set `load_public_skills=False`.
-- [ ] Pass `request.get("userMessageSuffix") or ""` to `AgentContext.user_message_suffix`.
-- [ ] Keep tools on `Agent(tools=...)`, not `AgentContext`.
-- [ ] Construct an explicit SDK local workspace:
+- [x] In `runner.py`, call OpenHands `load_skills_from_dir(str(Path(workspace_skill_dir) / ".agents" / "skills"))`.
+- [x] Pass `list(agent_skills.values())` to `AgentContext.skills`.
+- [x] Set `load_public_skills=False`.
+- [x] Pass `request.get("userMessageSuffix") or ""` to `AgentContext.user_message_suffix`.
+- [x] Keep tools on `Agent(tools=...)`, not `AgentContext`.
+- [x] Construct an explicit SDK local workspace:
 
 ```python
 workspace = LocalWorkspace(working_dir=workspace_skill_dir)
 ```
 
-- [ ] Pass the `LocalWorkspace` object to `Conversation`, disable the default
+- [x] Pass the `LocalWorkspace` object to `Conversation`, disable the default
   visualizer so stdout remains JSONL-only, and set `delete_on_close=False` so
   the app-managed workspace is not removed.
-- [ ] Register a `Conversation(callbacks=[...])` SDK event callback that emits
+- [x] Register a `Conversation(callbacks=[...])` SDK event callback that emits
   redacted `conversation_event` JSONL lines for all SDK events before terminal
   conversation state.
-- [ ] Emit `conversation_state(status="starting")` before SDK setup and
+- [x] Emit `conversation_state(status="starting")` before SDK setup and
   `conversation_state(status="running")` once the conversation starts running.
-- [ ] Emit exactly one terminal `conversation_state(status="completed" |
+- [x] Emit exactly one terminal `conversation_state(status="completed" |
   "error" | "cancelled")`.
-- [ ] Do not emit `openhands_event`, `openhands_result`, `display_item`, or
+- [x] Do not emit `openhands_event`, `openhands_result`, `display_item`, or
   `run_result` from the Python runner.
-- [ ] Run one-shot scope review as a single-message `Conversation`:
+- [x] Run one-shot scope review as a single-message `Conversation`:
 
 ```python
 conversation = Conversation(
@@ -225,11 +225,11 @@ conversation.send_message(request["prompt"])
 result = conversation.run()
 ```
 
-- [ ] Add runner tests for frontmatter stripping, skill loading, disabled public
+- [x] Add runner tests for frontmatter stripping, skill loading, disabled public
   skills, user suffix passing, `LocalWorkspace` construction,
   `Conversation(callbacks=...)`, `delete_on_close=False`, and
   `Conversation.send_message`.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd app/sidecar && npx vitest run __tests__/openhands-runner.test.ts
@@ -238,16 +238,16 @@ cd app/sidecar && python3 -m py_compile openhands/runner.py
 
 ## Task 4: Route `review_skill_scope` Through OpenHands
 
-- [ ] Remove the direct `reqwest` call to `https://api.anthropic.com/v1/messages`.
-- [ ] Read runtime workspace and LLM through a backend API such as
+- [x] Remove the direct `reqwest` call to `https://api.anthropic.com/v1/messages`.
+- [x] Read runtime workspace and LLM through a backend API such as
   `read_initialized_runtime_context`.
-- [ ] Validate that startup deployed root `.agents/agents/skill-creator.md` and
+- [x] Validate that startup deployed root `.agents/agents/skill-creator.md` and
   `.agents/skills/**`; if not, return an app-visible initialization error.
-- [ ] Do not read `settings.anthropic_api_key`, `settings.preferred_model`, or any legacy Claude/Anthropic fallback for this command.
-- [ ] Use the initialized workspace root as both `workspaceRootDir` and
+- [x] Do not read `settings.anthropic_api_key`, `settings.preferred_model`, or any legacy Claude/Anthropic fallback for this command.
+- [x] Use the initialized workspace root as both `workspaceRootDir` and
   `workspaceSkillDir` for Validate. Do not create the candidate skill workspace
   during validation.
-- [ ] Build a one-shot OpenHands invocation through the shared request
+- [x] Build a one-shot OpenHands invocation through the shared request
   builder/API with:
   - `runtimeProvider: "openhands"`
   - `mode: "one-shot"`
@@ -264,8 +264,8 @@ cd app/sidecar && python3 -m py_compile openhands/runner.py
   `conversation_state.structured_output`, falling back to JSON parsed from
   `conversation_state.result_text`.
 - [x] Reject malformed structured results instead of defaulting to `focused`.
-- [ ] Preserve existing error behavior exposed to `useScopeAdvisor`: failures reset advisor state and keep the create dialog behavior unchanged.
-- [ ] Run:
+- [x] Preserve existing error behavior exposed to `useScopeAdvisor`: failures reset advisor state and keep the create dialog behavior unchanged.
+- [x] Run:
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill::scope_review
@@ -291,12 +291,12 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill::scope_revie
 
 ## Task 5: Preserve Create Dialog Semantics
 
-- [ ] Keep `useScopeAdvisor.triggerCheck()` as the only path that calls `reviewSkillScope`.
-- [ ] Do not require validation before `Next`.
-- [ ] Do not change the advisory statuses or suggestion chip behavior.
-- [ ] Do not add a progress transcript to the create dialog.
-- [ ] Keep failure display behavior consistent with the current hook.
-- [ ] Run:
+- [x] Keep `useScopeAdvisor.triggerCheck()` as the only path that calls `reviewSkillScope`.
+- [x] Do not require validation before `Next`.
+- [x] Do not change the advisory statuses or suggestion chip behavior.
+- [x] Do not add a progress transcript to the create dialog.
+- [x] Keep failure display behavior consistent with the current hook.
+- [x] Run:
 
 ```bash
 cd app && npx vitest run src/__tests__/hooks/use-scope-advisor.test.ts src/__tests__/components/new-skill-dialog.test.tsx src/__tests__/components/scope-advisor.test.tsx
@@ -304,24 +304,24 @@ cd app && npx vitest run src/__tests__/hooks/use-scope-advisor.test.ts src/__tes
 
 ## Task 6: OpenHands Conversation Events In The App
 
-- [ ] Add OpenHands conversation event and state TypeScript types for the app
+- [x] Add OpenHands conversation event and state TypeScript types for the app
   boundary.
-- [ ] Route `conversation_event` through Rust and frontend IPC without mapping it
+- [x] Route `conversation_event` through Rust and frontend IPC without mapping it
   to `display_item`.
-- [ ] Treat terminal `conversation_state` as the Rust sidecar-pool completion
+- [x] Treat terminal `conversation_state` as the Rust sidecar-pool completion
   signal for OpenHands requests.
-- [ ] Update frontend agent state to keep OpenHands conversation events for
+- [x] Update frontend agent state to keep OpenHands conversation events for
   OpenHands runs.
-- [ ] Replace the OpenHands use of `DisplayItemList` with
+- [x] Replace the OpenHands use of `DisplayItemList` with
   `ConversationEventList`.
-- [ ] Add event renderers for `MessageEvent`, `ActionEvent`,
+- [x] Add event renderers for `MessageEvent`, `ActionEvent`,
   `ObservationEvent`, `AgentErrorEvent`, `ConversationErrorEvent`, and unknown
   SDK events.
-- [ ] Ensure action events expose tool calls, reasoning/thought content, tool
+- [x] Ensure action events expose tool calls, reasoning/thought content, tool
   call ids, summaries, and security risk when present.
-- [ ] Ensure observation and agent error events render tool result/error
+- [x] Ensure observation and agent error events render tool result/error
   visibility rather than disappearing into raw logs only.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd app/sidecar && npx vitest run __tests__/openhands-runtime.test.ts __tests__/openhands-runner.test.ts
@@ -358,7 +358,7 @@ test is skipped in the normal sidecar suite.
 
 ## Final Verification
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 markdownlint docs/design/openhands-sdk-runner/README.md docs/design/openhands-native-migration/README.md docs/superpowers/plans/2026-05-02-scope-review-openhands-validate.md
