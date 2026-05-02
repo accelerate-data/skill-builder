@@ -4,7 +4,6 @@ use crate::agents::sidecar::{
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 const SCOPE_REVIEW_PROMPT: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -219,12 +218,8 @@ pub async fn review_skill_scope(
     .await
     .inspect_err(|e| log::error!("[review_skill_scope] sidecar request failed: {}", e))?;
 
-    let result = match read_scope_review_result_from_transcripts(&run.transcript_dir).await {
-        Ok(result) => result,
-        Err(error) => {
-            return Err(error);
-        }
-    };
+    let result = parse_scope_review_result_from_conversation_state(&run.conversation_state)?;
+
     log::info!(
         "[review_skill_scope] result: status={} suggestions={}",
         result.status,
@@ -233,90 +228,58 @@ pub async fn review_skill_scope(
     Ok(result)
 }
 
-async fn read_scope_review_result_from_transcripts(
-    transcript_dir: &Path,
+fn parse_scope_review_result_from_conversation_state(
+    state: &serde_json::Value,
 ) -> Result<ScopeReviewResult, String> {
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
-    loop {
-        match try_read_scope_review_result_from_transcripts(transcript_dir) {
-            Ok(result) => return Ok(result),
-            Err(message) if message == "No scope review result in sidecar transcript" => {
-                if tokio::time::Instant::now() >= deadline {
-                    return Err(message);
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            }
-            Err(message) => return Err(message),
-        }
+    if state.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+        return Err("Scope review result was not an OpenHands conversation_state".to_string());
+    }
+
+    match state.get("status").and_then(|v| v.as_str()) {
+        Some("completed") => parse_completed_scope_review_output(state),
+        Some("error") | Some("cancelled") => Err(state
+            .get("error_detail")
+            .or_else(|| state.get("errorDetail"))
+            .and_then(|v| v.as_str())
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("Scope review failed")
+            .to_string()),
+        Some(status) => Err(format!(
+            "Scope review did not reach terminal status: {}",
+            status
+        )),
+        None => Err("Scope review conversation_state missing status".to_string()),
     }
 }
 
-fn try_read_scope_review_result_from_transcripts(
-    transcript_dir: &Path,
+fn parse_completed_scope_review_output(
+    state: &serde_json::Value,
 ) -> Result<ScopeReviewResult, String> {
-    let entries = std::fs::read_dir(transcript_dir)
-        .map_err(|e| format!("Failed to read scope review transcript: {}", e))?;
-    for entry in entries {
-        let path = entry
-            .map_err(|e| format!("Failed to read scope review transcript entry: {}", e))?
-            .path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
-            continue;
-        }
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read scope review transcript: {}", e))?;
-        for line in content.lines() {
-            let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
-                continue;
-            };
-            let Some(event) = value.get("event") else {
-                continue;
-            };
-            if event.get("type").and_then(|v| v.as_str()) != Some("run_result") {
-                continue;
-            }
-            if event.get("status").and_then(|v| v.as_str()) != Some("success") {
-                let errors = event
-                    .get("resultErrors")
-                    .and_then(|v| v.as_array())
-                    .map(|values| {
-                        values
-                            .iter()
-                            .filter_map(|value| value.as_str())
-                            .collect::<Vec<_>>()
-                            .join("; ")
-                    })
-                    .filter(|value| !value.is_empty())
-                    .unwrap_or_else(|| "Scope review failed".to_string());
-                return Err(errors);
-            }
-            let text = event
-                .get("resultText")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| "No text in scope review response".to_string())?;
-            return parse_scope_review_result_text(text);
-        }
+    if let Some(structured_output) = state
+        .get("structured_output")
+        .or_else(|| state.get("structuredOutput"))
+        .filter(|value| value.is_object())
+    {
+        return parse_scope_review_result_value(structured_output)
+            .map_err(|e| format!("Failed to parse structured scope review output: {}", e));
     }
 
-    Err("No scope review result in sidecar transcript".to_string())
+    let Some(result_text) = state
+        .get("result_text")
+        .or_else(|| state.get("resultText"))
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return Err("Scope review completed without parseable output".to_string());
+    };
+
+    parse_scope_review_result_text(result_text)
+        .map_err(|e| format!("Scope review completed without parseable output: {}", e))
 }
 
-fn parse_scope_review_result_text(text: &str) -> Result<ScopeReviewResult, String> {
-    let cleaned = text.trim();
-    let cleaned = cleaned
-        .strip_prefix("```json")
-        .or_else(|| cleaned.strip_prefix("```"))
-        .unwrap_or(cleaned);
-    let cleaned = cleaned.strip_suffix("```").unwrap_or(cleaned).trim();
-
-    let parsed: serde_json::Value = serde_json::from_str(cleaned).map_err(|e| {
-        log::error!(
-            "[review_skill_scope] Failed to parse result: raw text={}",
-            text
-        );
-        format!("Failed to parse result: {}", e)
-    })?;
-
+fn parse_scope_review_result_value(
+    parsed: &serde_json::Value,
+) -> Result<ScopeReviewResult, String> {
     let valid_statuses = [
         "focused",
         "too-broad",
@@ -355,6 +318,25 @@ fn parse_scope_review_result_text(text: &str) -> Result<ScopeReviewResult, Strin
         reason,
         suggested_skills,
     })
+}
+
+fn parse_scope_review_result_text(text: &str) -> Result<ScopeReviewResult, String> {
+    let cleaned = text.trim();
+    let cleaned = cleaned
+        .strip_prefix("```json")
+        .or_else(|| cleaned.strip_prefix("```"))
+        .unwrap_or(cleaned);
+    let cleaned = cleaned.strip_suffix("```").unwrap_or(cleaned).trim();
+
+    let parsed: serde_json::Value = serde_json::from_str(cleaned).map_err(|e| {
+        log::error!(
+            "[review_skill_scope] Failed to parse result: raw text={}",
+            text
+        );
+        format!("Failed to parse result: {}", e)
+    })?;
+
+    parse_scope_review_result_value(&parsed)
 }
 
 #[cfg(test)]
@@ -447,6 +429,65 @@ mod tests {
         assert_eq!(result.reason, "Covers multiple workflows.");
         assert_eq!(result.suggested_skills.len(), 1);
         assert_eq!(result.suggested_skills[0].name, "renewal-risk");
+    }
+
+    #[test]
+    fn parses_completed_scope_review_from_result_text() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": r#"{"status":"too-broad","reason":"Covers multiple workflows.","suggested_skills":[{"name":"renewal-risk","description":"Focuses on renewal risk."}]}"#
+        });
+
+        let result = parse_scope_review_result_from_conversation_state(&state).unwrap();
+
+        assert_eq!(result.status, "too-broad");
+        assert_eq!(result.reason, "Covers multiple workflows.");
+        assert_eq!(result.suggested_skills[0].name, "renewal-risk");
+    }
+
+    #[test]
+    fn prefers_structured_output_over_result_text() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "structured_output": {
+                "status": "focused",
+                "reason": "Single workflow.",
+                "suggested_skills": []
+            },
+            "result_text": r#"{"status":"too-broad","reason":"Fallback text.","suggested_skills":[]}"#
+        });
+
+        let result = parse_scope_review_result_from_conversation_state(&state).unwrap();
+
+        assert_eq!(result.status, "focused");
+        assert_eq!(result.reason, "Single workflow.");
+    }
+
+    #[test]
+    fn rejects_completed_scope_review_without_parseable_output() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed"
+        });
+
+        let error = parse_scope_review_result_from_conversation_state(&state).unwrap_err();
+
+        assert!(error.contains("Scope review completed without parseable output"));
+    }
+
+    #[test]
+    fn surfaces_terminal_error_detail() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "error",
+            "error_detail": "schema validation failed"
+        });
+
+        let error = parse_scope_review_result_from_conversation_state(&state).unwrap_err();
+
+        assert_eq!(error, "schema validation failed");
     }
 
     #[test]
