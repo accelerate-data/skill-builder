@@ -243,6 +243,7 @@ describe("OpenHands runner live SDK integration", () => {
           },
           workspaceRootDir: workspaceDir,
           workspaceSkillDir: workspaceDir,
+          persistenceDir: path.join(workspaceDir, "logs", "scope-review"),
           allowedTools: [],
           maxTurns: 3,
         });
@@ -339,6 +340,7 @@ describe("OpenHands runner live SDK integration", () => {
           },
           workspaceRootDir: workspaceDir,
           workspaceSkillDir: workspaceDir,
+          persistenceDir: path.join(workspaceDir, "logs", "workflow-research"),
           allowedTools: ["file_editor", "terminal"],
           maxTurns: 5,
           outputFormat: { type: "json_schema", json_schema: { name: "ResearchStepOutput" } },

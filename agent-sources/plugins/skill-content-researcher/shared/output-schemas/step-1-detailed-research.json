@@ -42,7 +42,7 @@
             "section_count": 0,
             "title": ""
           },
-          "description": "Metadata block with counts, priority questions, and optional scope/research info.",
+          "description": "Metadata block with counts, priority questions, and optional scope info.",
           "properties": {
             "duplicates_removed": {
               "format": "int64",
@@ -96,97 +96,6 @@
               "default": 0,
               "format": "int64",
               "type": "integer"
-            },
-            "research_plan": {
-              "anyOf": [
-                {
-                  "additionalProperties": false,
-                  "description": "Research plan with dimension scoring.",
-                  "properties": {
-                    "dimension_scores": {
-                      "default": [],
-                      "items": {
-                        "additionalProperties": false,
-                        "description": "A scored dimension in the research plan.",
-                        "properties": {
-                          "focus": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "reason": {
-                            "type": "string"
-                          },
-                          "score": {
-                            "format": "double",
-                            "type": "number"
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "score",
-                          "reason"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "dimensions_evaluated": {
-                      "default": 0,
-                      "format": "int64",
-                      "type": "integer"
-                    },
-                    "dimensions_selected": {
-                      "default": 0,
-                      "format": "int64",
-                      "type": "integer"
-                    },
-                    "domain": {
-                      "type": "string"
-                    },
-                    "purpose": {
-                      "type": "string"
-                    },
-                    "selected_dimensions": {
-                      "default": [],
-                      "items": {
-                        "additionalProperties": false,
-                        "description": "A dimension selected for deeper research.",
-                        "properties": {
-                          "focus": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "focus"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "topic_relevance": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "purpose",
-                    "domain",
-                    "topic_relevance"
-                  ],
-                  "type": "object"
-                },
-                {
-                  "type": "null"
-                }
-              ]
             },
             "scope_next_action": {
               "type": [

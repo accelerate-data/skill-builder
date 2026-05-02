@@ -205,7 +205,7 @@ Turn the remaining high-value candidates into concise clarification questions.
 
 Question rules:
 
-- Prefer 4-7 total questions.
+- Prefer 10-20 total questions.
 - Keep only questions that the user can answer from organization knowledge.
 - Mark must-answer questions when the answer changes core behavior, trigger
   conditions, required inputs, or required outputs.

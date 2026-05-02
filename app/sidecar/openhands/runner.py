@@ -390,9 +390,15 @@ def run_via_openhands_sdk(request: dict[str, Any]) -> str:
             agent_context=agent_context,
         )
         workspace = LocalWorkspace(working_dir=workspace_skill_dir)
+        persistence_dir = request.get("persistenceDir")
+        if not isinstance(persistence_dir, str) or not persistence_dir.strip():
+            raise RuntimeError("OpenHands runner requires persistenceDir")
+        Path(persistence_dir).mkdir(parents=True, exist_ok=True)
+
         conversation = Conversation(
             agent=agent,
             workspace=workspace,
+            persistence_dir=persistence_dir,
             callbacks=[lambda event: emit_conversation_event(event, secrets)],
             max_iteration_per_run=parse_max_iterations(request),
             visualizer=None,
