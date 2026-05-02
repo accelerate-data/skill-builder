@@ -9,8 +9,8 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   });
 
   test("can type API key and test it", async ({ page }) => {
-    // API key input is in the "OpenHands" section, not the default "General" section.
-    await page.getByRole("button", { name: "OpenHands" }).click();
+    await page.getByRole("button", { name: "Models" }).click();
+    await expect(page.getByText("Anthropic Model List")).toHaveCount(0);
     const input = page.getByPlaceholder("sk-ant-...");
     await input.fill("sk-ant-test-key");
 
@@ -36,7 +36,7 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
         };
     });
 
-    await page.getByRole("button", { name: "OpenHands" }).click();
+    await page.getByRole("button", { name: "Models" }).click();
     const input = page.getByPlaceholder("sk-ant-...");
     await input.fill("sk-ant-invalid-key");
 
@@ -52,10 +52,15 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   }) => {
     await reloadWithOverrides(page, {
       get_settings: {
-        anthropic_api_key: "sk-ant-test",
+        anthropic_api_key: null,
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
-        openhands_model: "anthropic/claude-sonnet-4-6",
+        model_settings: {
+          provider: "anthropic",
+          model: "claude-sonnet-4-5",
+          api_key: "sk-ant-test",
+          base_url: null,
+        },
       },
       check_workspace_path: true,
       save_settings: undefined,
@@ -121,10 +126,15 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   }) => {
     await reloadWithOverrides(page, {
       get_settings: {
-        anthropic_api_key: "sk-ant-test",
+        anthropic_api_key: null,
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
-        openhands_model: "anthropic/claude-sonnet-4-6",
+        model_settings: {
+          provider: "anthropic",
+          model: "claude-sonnet-4-5",
+          api_key: "sk-ant-test",
+          base_url: null,
+        },
         marketplace_registries: [
           {
             name: "Vibedata Skills",
@@ -170,10 +180,15 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   }) => {
     await reloadWithOverrides(page, {
       get_settings: {
-        anthropic_api_key: "sk-ant-test",
+        anthropic_api_key: null,
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
-        openhands_model: "anthropic/claude-sonnet-4-6",
+        model_settings: {
+          provider: "anthropic",
+          model: "claude-sonnet-4-5",
+          api_key: "sk-ant-test",
+          base_url: null,
+        },
         log_level: "info",
       },
       check_workspace_path: true,

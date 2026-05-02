@@ -5,6 +5,7 @@ import type { AppSettings } from "@/lib/types";
 function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     anthropic_api_key: null,
+    model_settings: null,
     openhands_provider: null,
     openhands_api_key: null,
     openhands_model: null,
@@ -36,39 +37,39 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
 }
 
 describe("settingsToStorePatch", () => {
-  it("uses legacy Anthropic API key only for Anthropic provider", () => {
+  it("hydrates canonical model settings", () => {
     const patch = settingsToStorePatch(
       makeSettings({
-        anthropic_api_key: "sk-ant-legacy",
-        openhands_provider: "anthropic",
-        openhands_api_key: null,
+        model_settings: {
+          provider: "anthropic",
+          model: "claude-sonnet-4-5",
+          api_key: "sk-ant-test",
+          base_url: null,
+        },
       }),
     );
 
-    expect(patch.openhandsApiKey).toBe("sk-ant-legacy");
+    expect(patch.modelSettings).toEqual(
+      expect.objectContaining({
+        provider: "anthropic",
+        model: "claude-sonnet-4-5",
+        api_key: "sk-ant-test",
+        base_url: null,
+      }),
+    );
   });
 
-  it("does not hydrate OpenAI provider from legacy Anthropic API key", () => {
+  it("does not hydrate canonical config from legacy OpenHands fields", () => {
     const patch = settingsToStorePatch(
       makeSettings({
         anthropic_api_key: "sk-ant-legacy",
         openhands_provider: "openai",
-        openhands_api_key: null,
+        openhands_api_key: "sk-openai",
+        openhands_model: "gpt-4o",
       }),
     );
 
-    expect(patch.openhandsApiKey).toBeNull();
-  });
-
-  it("prefers explicit OpenHands API key for non-Anthropic provider", () => {
-    const patch = settingsToStorePatch(
-      makeSettings({
-        anthropic_api_key: "sk-ant-legacy",
-        openhands_provider: "google",
-        openhands_api_key: "sk-google",
-      }),
-    );
-
-    expect(patch.openhandsApiKey).toBe("sk-google");
+    expect(patch.modelSettings.api_key).toBeNull();
+    expect(patch.modelSettings.model).toBeNull();
   });
 });

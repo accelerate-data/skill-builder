@@ -4,12 +4,10 @@ import { useSettingsStore } from "@/stores/settings-store";
 
 const mocks = vi.hoisted(() => ({
   updateUserSettings: vi.fn(),
-  listModels: vi.fn(),
 }));
 
 vi.mock("@/lib/tauri", () => ({
   updateUserSettings: mocks.updateUserSettings,
-  listModels: mocks.listModels,
 }));
 
 vi.mock("@/lib/toast", () => ({
@@ -22,30 +20,26 @@ describe("useSettingsForm", () => {
   beforeEach(() => {
     mocks.updateUserSettings.mockReset();
     mocks.updateUserSettings.mockResolvedValue(undefined);
-    mocks.listModels.mockReset();
-    mocks.listModels.mockResolvedValue([]);
     useSettingsStore.getState().reset();
   });
 
   it("initializes fields from store snapshot", () => {
     useSettingsStore.getState().setSettings({
-      anthropicApiKey: "sk-test",
-      openhandsProvider: "openai",
-      openhandsApiKey: "sk-openai",
-      openhandsModel: "gpt-4o",
-      openhandsBaseUrl: "https://models.example.com/v1",
-      preferredModel: "claude-sonnet-4-6",
+      modelSettings: {
+        provider: "openai",
+        model: "gpt-4o",
+        api_key: "sk-openai",
+        base_url: "https://models.example.com/v1",
+      },
       logLevel: "debug",
     });
 
     const { result } = renderHook(() => useSettingsForm());
 
-    expect(result.current.apiKey).toBe("sk-test");
-    expect(result.current.openhandsProvider).toBe("openai");
-    expect(result.current.openhandsApiKey).toBe("sk-openai");
-    expect(result.current.openhandsModel).toBe("gpt-4o");
-    expect(result.current.openhandsBaseUrl).toBe("https://models.example.com/v1");
-    expect(result.current.preferredModel).toBe("claude-sonnet-4-6");
+    expect(result.current.modelSettings.provider).toBe("openai");
+    expect(result.current.modelSettings.api_key).toBe("sk-openai");
+    expect(result.current.modelSettings.model).toBe("gpt-4o");
+    expect(result.current.modelSettings.base_url).toBe("https://models.example.com/v1");
     expect(result.current.logLevel).toBe("debug");
   });
 
@@ -61,37 +55,60 @@ describe("useSettingsForm", () => {
     expect(payload.log_level).toBe("warn");
   });
 
-  it("autoSave applies overrides over local state", async () => {
-    useSettingsStore.getState().setSettings({ preferredModel: "old-model" });
+  it("autoSave applies model settings overrides over local state", async () => {
+    useSettingsStore.getState().setSettings({
+      modelSettings: {
+        provider: "anthropic",
+        model: "old-model",
+        api_key: "sk-test",
+        base_url: null,
+      },
+    });
     const { result } = renderHook(() => useSettingsForm());
 
     await act(async () => {
-      await result.current.autoSave({ preferredModel: "new-model" });
+      await result.current.saveModelSettings({ model: "claude-sonnet-4-5" });
     });
 
     const payload = mocks.updateUserSettings.mock.calls[0][0];
-    expect(payload.preferred_model).toBe("new-model");
+    expect(payload.model_settings).toEqual(
+      expect.objectContaining({
+        provider: "anthropic",
+        model: "claude-sonnet-4-5",
+        api_key: "sk-test",
+        base_url: null,
+      }),
+    );
+    expect(payload.preferred_model).toBeNull();
+    expect(payload.openhands_model).toBeNull();
   });
 
-  it("autoSave persists OpenHands provider fields and updates store", async () => {
+  it("autoSave persists canonical model settings and updates store", async () => {
     const { result } = renderHook(() => useSettingsForm());
 
     await act(async () => {
-      await result.current.autoSave({
-        openhandsProvider: "ollama",
-        openhandsApiKey: null,
-        openhandsModel: "llama3.1",
-        openhandsBaseUrl: "http://localhost:11434",
+      await result.current.saveModelSettings({
+        provider: "ollama",
+        api_key: null,
+        model: "llama3.1",
+        base_url: "http://localhost:11434",
       });
     });
 
     const payload = mocks.updateUserSettings.mock.calls[0][0];
-    expect(payload.openhands_provider).toBe("ollama");
+    expect(payload.model_settings).toEqual(
+      expect.objectContaining({
+        provider: "ollama",
+        api_key: null,
+        model: "llama3.1",
+        base_url: "http://localhost:11434",
+      }),
+    );
+    expect(payload.openhands_provider).toBeNull();
     expect(payload.openhands_api_key).toBeNull();
-    expect(payload.openhands_model).toBe("llama3.1");
-    expect(payload.openhands_base_url).toBe("http://localhost:11434");
-    expect(useSettingsStore.getState().openhandsProvider).toBe("ollama");
-    expect(useSettingsStore.getState().openhandsBaseUrl).toBe("http://localhost:11434");
+    expect(payload.openhands_base_url).toBeNull();
+    expect(useSettingsStore.getState().modelSettings.provider).toBe("ollama");
+    expect(useSettingsStore.getState().modelSettings.base_url).toBe("http://localhost:11434");
   });
 
   it("redacts API keys in successful auto-save logs", async () => {
@@ -99,16 +116,12 @@ describe("useSettingsForm", () => {
     const { result } = renderHook(() => useSettingsForm());
 
     await act(async () => {
-      await result.current.autoSave({
-        apiKey: "sk-ant-secret",
-        openhandsApiKey: "sk-openai-secret",
-      });
+      await result.current.saveModelSettings({ api_key: "sk-openai-secret" });
     });
 
     expect(logSpy).toHaveBeenCalledWith(
-      "[settings] Saved: apiKey=[redacted], openhandsApiKey=[redacted]",
+      "[settings] Saved: modelSettings.api_key=[redacted]",
     );
-    expect(logSpy.mock.calls.join("\n")).not.toContain("sk-ant-secret");
     expect(logSpy.mock.calls.join("\n")).not.toContain("sk-openai-secret");
     logSpy.mockRestore();
   });
@@ -130,12 +143,10 @@ describe("useSettingsForm", () => {
 
     act(() => {
       result.current.setLogLevel("debug");
-      result.current.setExtendedThinking(true);
       result.current.setMaxDimensions(10);
     });
 
     expect(result.current.logLevel).toBe("debug");
-    expect(result.current.extendedThinking).toBe(true);
     expect(result.current.maxDimensions).toBe(10);
   });
 });

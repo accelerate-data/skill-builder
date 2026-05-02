@@ -20,7 +20,7 @@ import { useSettingsForm } from "@/hooks/use-settings-form"
 
 const sections = [
   { id: "general", label: "General" },
-  { id: "skill-building", label: "OpenHands" },
+  { id: "skill-building", label: "Models" },
   { id: "skills", label: "Plugins" },
   { id: "marketplace", label: "Marketplace" },
   { id: "github", label: "GitHub" },
@@ -113,24 +113,9 @@ export default function SettingsPage() {
 
           {activeSection === "skill-building" && (
             <SdkSection
-              apiKey={form.apiKey}
-              setApiKey={form.setApiKey}
-              openhandsProvider={form.openhandsProvider}
-              setOpenhandsProvider={form.setOpenhandsProvider}
-              openhandsApiKey={form.openhandsApiKey}
-              setOpenhandsApiKey={form.setOpenhandsApiKey}
-              openhandsModel={form.openhandsModel}
-              setOpenhandsModel={form.setOpenhandsModel}
-              openhandsBaseUrl={form.openhandsBaseUrl}
-              setOpenhandsBaseUrl={form.setOpenhandsBaseUrl}
-              preferredModel={form.preferredModel}
-              setPreferredModel={form.setPreferredModel}
-              extendedThinking={form.extendedThinking}
-              setExtendedThinking={form.setExtendedThinking}
-              interleavedThinkingBeta={form.interleavedThinkingBeta}
-              setInterleavedThinkingBeta={form.setInterleavedThinkingBeta}
-              sdkEffort={form.sdkEffort}
-              setSdkEffort={form.setSdkEffort}
+              modelSettings={form.modelSettings}
+              updateModelSettings={form.updateModelSettings}
+              saveModelSettings={form.saveModelSettings}
               refinePromptSuggestions={form.refinePromptSuggestions}
               setRefinePromptSuggestions={form.setRefinePromptSuggestions}
               maxDimensions={form.maxDimensions}

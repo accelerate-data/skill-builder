@@ -1,22 +1,31 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useCallback, useRef } from "react"
 import { toast } from "@/lib/toast"
-import type { AppSettings, MarketplaceRegistry } from "@/lib/types"
+import type { AppSettings, MarketplaceRegistry, ModelSettings } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
-import { listModels, updateUserSettings } from "@/lib/tauri"
+import { updateUserSettings } from "@/lib/tauri"
+
+const DEFAULT_MODEL_SETTINGS: ModelSettings = {
+  provider: "anthropic",
+  model: null,
+  api_key: null,
+  base_url: null,
+  api_version: null,
+  temperature: null,
+  max_output_tokens: null,
+  timeout_seconds: 300,
+  num_retries: 5,
+  reasoning_effort: "auto",
+  extra_headers: null,
+  input_cost_per_token: null,
+  output_cost_per_token: null,
+  usage_id: "workflow",
+}
 
 /** Fields managed by the settings form (local state mirroring the store). */
 export interface SettingsFormFields {
-  apiKey: string | null
-  openhandsProvider: string
-  openhandsApiKey: string | null
-  openhandsModel: string
-  openhandsBaseUrl: string | null
+  modelSettings: ModelSettings
   skillsPath: string | null
-  preferredModel: string
   logLevel: string
-  extendedThinking: boolean
-  interleavedThinkingBeta: boolean
-  sdkEffort: string | null
   refinePromptSuggestions: boolean
   maxDimensions: number
   industry: string | null
@@ -24,13 +33,38 @@ export interface SettingsFormFields {
   autoUpdate: boolean
 }
 
+export type ModelSettingsPatch = Partial<ModelSettings>
+
 export type AutoSaveOverrides = Partial<
-  SettingsFormFields & { marketplaceRegistries: MarketplaceRegistry[] }
+  Omit<SettingsFormFields, "modelSettings"> & {
+    marketplaceRegistries: MarketplaceRegistry[]
+  }
 >
 
-const SECRET_OVERRIDE_KEYS = new Set(["apiKey", "openhandsApiKey"])
+const SECRET_OVERRIDE_KEYS = new Set(["api_key", "modelSettings.api_key"])
+
+function normalizeModelSettings(settings: Partial<ModelSettings>): ModelSettings {
+  return {
+    ...DEFAULT_MODEL_SETTINGS,
+    ...settings,
+    provider: settings.provider ?? DEFAULT_MODEL_SETTINGS.provider,
+    model: settings.model?.trim() || null,
+    api_key: settings.api_key?.trim() || null,
+    base_url: settings.base_url?.trim() || null,
+    api_version: settings.api_version?.trim() || null,
+    reasoning_effort: settings.reasoning_effort ?? DEFAULT_MODEL_SETTINGS.reasoning_effort,
+    usage_id: settings.usage_id?.trim() || DEFAULT_MODEL_SETTINGS.usage_id,
+  }
+}
 
 function formatSavedOverride(key: string, value: unknown): string {
+  if (key === "modelSettings" && value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([modelKey, modelValue]) =>
+        formatSavedOverride(`modelSettings.${modelKey}`, modelValue),
+      )
+      .join(", ")
+  }
   if (SECRET_OVERRIDE_KEYS.has(key)) {
     return `${key}=${value ? "[redacted]" : "null"}`
   }
@@ -41,20 +75,11 @@ export function useSettingsForm() {
   const store = useSettingsStore.getState()
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
 
-  // Local form fields — initialized from store snapshot
-  const [apiKey, setApiKey] = useState<string | null>(store.anthropicApiKey ?? null)
-  const [openhandsProvider, setOpenhandsProvider] = useState(store.openhandsProvider ?? "anthropic")
-  const [openhandsApiKey, setOpenhandsApiKey] = useState<string | null>(
-    store.openhandsApiKey ?? (store.openhandsProvider === "anthropic" ? store.anthropicApiKey : null) ?? null,
+  const [modelSettings, setModelSettings] = useState<ModelSettings>(
+    normalizeModelSettings(store.modelSettings),
   )
-  const [openhandsModel, setOpenhandsModel] = useState(store.openhandsModel ?? store.preferredModel ?? "")
-  const [openhandsBaseUrl, setOpenhandsBaseUrl] = useState<string | null>(store.openhandsBaseUrl ?? null)
   const [skillsPath, setSkillsPath] = useState<string | null>(store.skillsPath ?? null)
-  const [preferredModel, setPreferredModel] = useState(store.preferredModel ?? "")
   const [logLevel, setLogLevel] = useState(store.logLevel ?? "info")
-  const [extendedThinking, setExtendedThinking] = useState(store.extendedThinking ?? false)
-  const [interleavedThinkingBeta, setInterleavedThinkingBeta] = useState(store.interleavedThinkingBeta ?? true)
-  const [sdkEffort, setSdkEffort] = useState<string>(store.sdkEffort ?? "")
   const [refinePromptSuggestions, setRefinePromptSuggestions] = useState(store.refinePromptSuggestions ?? true)
   const [maxDimensions, setMaxDimensions] = useState(store.maxDimensions ?? 5)
   const [industry, setIndustry] = useState(store.industry ?? "")
@@ -63,41 +88,34 @@ export function useSettingsForm() {
   const [saved, setSaved] = useState(false)
 
   const workspacePath = store.workspacePath ?? null
-
-  // Use a ref for the saved timeout so we can clear it
   const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  // Fetch models on mount if API key exists
-  useEffect(() => {
-    const key = apiKey || useSettingsStore.getState().anthropicApiKey
-    if (key) {
-      listModels(key)
-        .then((models) => setStoreSettings({ availableModels: models ?? [] }))
-        .catch((err) => console.warn("[settings] Could not fetch model list:", err))
-    }
-  }, [])
-
-  const autoSave = useCallback(async (overrides: AutoSaveOverrides) => {
-    // Read current local state via closure, apply overrides
+  const persistSettings = useCallback(async (
+    overrides: AutoSaveOverrides,
+    nextModelSettings: ModelSettings,
+    logOverrides: Record<string, unknown> = overrides,
+  ) => {
     const resolve = <T,>(key: keyof AutoSaveOverrides, fallback: T): T =>
       overrides[key] !== undefined ? (overrides[key] as T) : fallback
 
     const storeSnapshot = useSettingsStore.getState()
 
     const settings: AppSettings = {
-      anthropic_api_key: resolve("apiKey", apiKey),
-      openhands_provider: resolve("openhandsProvider", openhandsProvider),
-      openhands_api_key: resolve("openhandsApiKey", openhandsApiKey),
-      openhands_model: resolve("openhandsModel", openhandsModel),
-      openhands_base_url: resolve("openhandsBaseUrl", openhandsBaseUrl),
+      anthropic_api_key: null,
+      model_settings: nextModelSettings,
+      openhands_provider: null,
+      openhands_api_key: null,
+      openhands_model: null,
+      openhands_base_url: null,
       workspace_path: workspacePath,
       skills_path: resolve("skillsPath", skillsPath),
-      preferred_model: resolve("preferredModel", preferredModel),
+      preferred_model: null,
       log_level: resolve("logLevel", logLevel),
       extended_context: false,
-      extended_thinking: resolve("extendedThinking", extendedThinking),
-      interleaved_thinking_beta: resolve("interleavedThinkingBeta", interleavedThinkingBeta),
-      sdk_effort: resolve("sdkEffort", sdkEffort) || null,
+      extended_thinking: false,
+      interleaved_thinking_beta: null,
+      sdk_effort: null,
+      fallback_model: null,
       refine_prompt_suggestions: resolve("refinePromptSuggestions", refinePromptSuggestions),
       max_dimensions: resolve("maxDimensions", maxDimensions),
       splash_shown: false,
@@ -115,19 +133,21 @@ export function useSettingsForm() {
 
     try {
       await updateUserSettings(settings)
+      setModelSettings(nextModelSettings)
       setStoreSettings({
-        anthropicApiKey: settings.anthropic_api_key,
-        openhandsProvider: settings.openhands_provider ?? "anthropic",
-        openhandsApiKey: settings.openhands_api_key ?? null,
-        openhandsModel: settings.openhands_model ?? null,
-        openhandsBaseUrl: settings.openhands_base_url ?? null,
+        modelSettings: nextModelSettings,
+        anthropicApiKey: null,
+        openhandsProvider: null,
+        openhandsApiKey: null,
+        openhandsModel: null,
+        openhandsBaseUrl: null,
         workspacePath: settings.workspace_path,
         skillsPath: settings.skills_path,
-        preferredModel: settings.preferred_model,
+        preferredModel: null,
         logLevel: settings.log_level,
-        extendedThinking: settings.extended_thinking,
-        interleavedThinkingBeta: settings.interleaved_thinking_beta,
-        sdkEffort: settings.sdk_effort,
+        extendedThinking: false,
+        interleavedThinkingBeta: false,
+        sdkEffort: null,
         refinePromptSuggestions: settings.refine_prompt_suggestions,
         maxDimensions: settings.max_dimensions,
         marketplaceRegistries: settings.marketplace_registries,
@@ -135,9 +155,14 @@ export function useSettingsForm() {
         functionRole: settings.function_role,
         autoUpdate: settings.auto_update,
       })
-      const changed = Object.entries(overrides)
+      const changedEntries: Array<[string, unknown]> = [
+        ...Object.entries(overrides),
+        ...Object.entries(logOverrides).filter(([k]) => !(k in overrides)),
+      ]
+      const changed = changedEntries
         .filter(([, v]) => v !== undefined)
         .map(([k, v]) => formatSavedOverride(k, v))
+        .filter(Boolean)
         .join(", ")
       console.log(`[settings] Saved: ${changed}`)
       setSaved(true)
@@ -151,27 +176,39 @@ export function useSettingsForm() {
         context: { operation: "settings_auto_save" },
       })
     }
-  }, [apiKey, openhandsProvider, openhandsApiKey, openhandsModel, openhandsBaseUrl, skillsPath, preferredModel, logLevel, extendedThinking, interleavedThinkingBeta, sdkEffort, refinePromptSuggestions, maxDimensions, industry, functionRole, autoUpdate, workspacePath, setStoreSettings])
+  }, [skillsPath, logLevel, refinePromptSuggestions, maxDimensions, industry, functionRole, autoUpdate, workspacePath, setStoreSettings])
+
+  const autoSave = useCallback(async (overrides: AutoSaveOverrides) => {
+    await persistSettings(overrides, modelSettings)
+  }, [modelSettings, persistSettings])
+
+  const updateModelSettings = useCallback((patch: ModelSettingsPatch) => {
+    setModelSettings((current) => normalizeModelSettings({ ...current, ...patch }))
+  }, [])
+
+  const saveModelSettings = useCallback(async (patch: ModelSettingsPatch) => {
+    const nextModelSettings = normalizeModelSettings({ ...modelSettings, ...patch })
+    await persistSettings({}, nextModelSettings, { modelSettings: patch })
+  }, [modelSettings, persistSettings])
 
   return {
-    // Fields + setters
-    apiKey, setApiKey,
-    openhandsProvider, setOpenhandsProvider,
-    openhandsApiKey, setOpenhandsApiKey,
-    openhandsModel, setOpenhandsModel,
-    openhandsBaseUrl, setOpenhandsBaseUrl,
-    skillsPath, setSkillsPath,
-    preferredModel, setPreferredModel,
-    logLevel, setLogLevel,
-    extendedThinking, setExtendedThinking,
-    interleavedThinkingBeta, setInterleavedThinkingBeta,
-    sdkEffort, setSdkEffort,
-    refinePromptSuggestions, setRefinePromptSuggestions,
-    maxDimensions, setMaxDimensions,
-    industry, setIndustry,
-    functionRole, setFunctionRole,
-    autoUpdate, setAutoUpdate,
-    // Shared
+    modelSettings,
+    updateModelSettings,
+    saveModelSettings,
+    skillsPath,
+    setSkillsPath,
+    logLevel,
+    setLogLevel,
+    refinePromptSuggestions,
+    setRefinePromptSuggestions,
+    maxDimensions,
+    setMaxDimensions,
+    industry,
+    setIndustry,
+    functionRole,
+    setFunctionRole,
+    autoUpdate,
+    setAutoUpdate,
     autoSave,
     saved,
   }

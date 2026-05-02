@@ -83,7 +83,7 @@ async function loadSkillFiles(
 
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const workspacePath = useSettingsStore((s) => s.workspacePath);
-  const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const selectedModel = useSettingsStore((s) => s.modelSettings.model);
   const availableModels = useSettingsStore((s) => s.availableModels);
 
   const selectedSkill = useRefineStore((s) => s.selectedSkill);
@@ -286,7 +286,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
       let model: string;
       try {
-        model = requireSettingsModel(preferredModel);
+        model = requireSettingsModel(selectedModel);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : String(err), {
           duration: Infinity,
@@ -330,7 +330,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         });
       }
     },
-    [selectedSkill, workspacePath, preferredModel],
+    [selectedSkill, workspacePath, selectedModel],
   );
 
   const handleCancel = useCallback(async () => {
@@ -576,7 +576,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     };
   }, [isRunning]);
 
-  const activeModel = preferredModel;
+  const activeModel = selectedModel;
   const modelLabel = activeModel
     ? (availableModels.find((m) => m.id === activeModel)?.displayName ??
       deriveModelLabel(activeModel))

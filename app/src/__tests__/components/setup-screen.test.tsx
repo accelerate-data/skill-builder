@@ -35,6 +35,7 @@ import { SetupScreen } from "@/components/setup-screen";
 
 const baseSettings = {
   anthropic_api_key: null,
+  model_settings: null,
   workspace_path: null,
   skills_path: null,
   preferred_model: null,
@@ -63,7 +64,7 @@ describe("SetupScreen", () => {
     await waitFor(() => {
       expect(screen.getByText("Welcome to Skill Builder")).toBeInTheDocument();
     });
-    expect(screen.getByLabelText("Anthropic API Key")).toBeInTheDocument();
+    expect(screen.getByLabelText("API Key")).toBeInTheDocument();
     expect(screen.getByLabelText("Skills Folder")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Test/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Browse/i })).toBeInTheDocument();
@@ -99,7 +100,7 @@ describe("SetupScreen", () => {
       expect(screen.getByText("Welcome to Skill Builder")).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("Anthropic API Key"), "sk-ant-test");
+    await user.type(screen.getByLabelText("API Key"), "sk-ant-test");
 
     await waitFor(() => {
       expect(
@@ -117,7 +118,7 @@ describe("SetupScreen", () => {
       expect(screen.getByText("Welcome to Skill Builder")).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("Anthropic API Key"), "sk-ant-test");
+    await user.type(screen.getByLabelText("API Key"), "sk-ant-test");
     await user.click(screen.getByRole("button", { name: /Test/i }));
 
     await waitFor(() => {
@@ -176,17 +177,24 @@ describe("SetupScreen", () => {
       expect(screen.getByText("Welcome to Skill Builder")).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("Anthropic API Key"), "sk-ant-test");
+    await user.type(screen.getByLabelText("API Key"), "sk-ant-test");
     await user.click(screen.getByRole("button", { name: /Get Started/i }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
         settings: expect.objectContaining({
-          anthropic_api_key: "sk-ant-test",
+          anthropic_api_key: null,
+          model_settings: expect.objectContaining({
+            provider: "anthropic",
+            model: "claude-sonnet-4-5",
+            api_key: "sk-ant-test",
+            base_url: null,
+          }),
           skills_path: "/Users/test/skill-builder",
-          openhands_provider: "anthropic",
-          openhands_api_key: "sk-ant-test",
-          openhands_model: "anthropic/claude-sonnet-4-6",
+          openhands_provider: null,
+          openhands_api_key: null,
+          openhands_model: null,
+          preferred_model: null,
         }),
       });
       expect(onComplete).toHaveBeenCalled();
@@ -205,7 +213,7 @@ describe("SetupScreen", () => {
       expect(screen.getByText("Welcome to Skill Builder")).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("Anthropic API Key"), "sk-ant-test");
+    await user.type(screen.getByLabelText("API Key"), "sk-ant-test");
     await user.click(screen.getByRole("button", { name: /Get Started/i }));
 
     await waitFor(() => {
@@ -216,12 +224,12 @@ describe("SetupScreen", () => {
   it("pre-populates API key from store when already set", async () => {
     useSettingsStore
       .getState()
-      .setSettings({ anthropicApiKey: "sk-ant-existing" });
+      .setSettings({ modelSettings: { api_key: "sk-ant-existing" } });
     render(<SetupScreen />);
 
     await waitFor(() => {
       const input = screen.getByLabelText(
-        "Anthropic API Key",
+        "API Key",
       ) as HTMLInputElement;
       expect(input.value).toBe("sk-ant-existing");
     });
@@ -248,7 +256,7 @@ describe("SetupScreen", () => {
     });
 
     // Type API key
-    await user.type(screen.getByLabelText("Anthropic API Key"), "sk-ant-test");
+    await user.type(screen.getByLabelText("API Key"), "sk-ant-test");
 
     // Clear skills path
     await user.clear(screen.getByLabelText("Skills Folder"));

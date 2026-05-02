@@ -33,8 +33,26 @@ export interface MarketplaceRegistry {
   enabled: boolean
 }
 
+export interface ModelSettings {
+  provider: string | null
+  model: string | null
+  api_key: string | null
+  base_url: string | null
+  api_version?: string | null
+  temperature?: number | null
+  max_output_tokens?: number | null
+  timeout_seconds?: number | null
+  num_retries?: number | null
+  reasoning_effort?: string | null
+  extra_headers?: Record<string, string> | null
+  input_cost_per_token?: number | null
+  output_cost_per_token?: number | null
+  usage_id?: string | null
+}
+
 export interface AppSettings {
   anthropic_api_key: string | null
+  model_settings?: ModelSettings | null
   openhands_provider?: string | null
   openhands_api_key?: string | null
   openhands_model?: string | null
@@ -45,7 +63,7 @@ export interface AppSettings {
   log_level: string
   extended_context: boolean
   extended_thinking: boolean
-  interleaved_thinking_beta?: boolean
+  interleaved_thinking_beta?: boolean | null
   sdk_effort?: string | null
   fallback_model?: string | null
   refine_prompt_suggestions?: boolean
