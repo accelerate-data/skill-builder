@@ -99,7 +99,7 @@
     },
     "frontend_stores": {
       "path": "app/src/stores/",
-      "description": "Zustand state stores for UI/runtime state: agent (+ agent-display-buffer), refine, settings, skill, test, usage, workflow. Server state lives under app/src/lib/queries/."
+      "description": "Zustand state stores for UI/runtime state: agent-store (+ agent-display-buffer), refine-store, settings-store, skill-store, test-store, usage-store, workflow-store. Server state lives under app/src/lib/queries/."
     },
     "frontend_hooks": {
       "path": "app/src/hooks/",

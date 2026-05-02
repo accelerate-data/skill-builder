@@ -11,6 +11,11 @@ const ANSWER_EVALUATOR_TEMPLATE: &str = include_str!(concat!(
     "/../../agent-sources/prompts/answer-evaluator.txt"
 ));
 
+const RESEARCH_PROMPT_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/research.txt"
+));
+
 /// Parameters for [`build_prompt`].
 pub(crate) struct PromptParams<'a> {
     pub skill_name: &'a str,
@@ -78,22 +83,11 @@ pub(crate) fn build_step0_prompt(
     let workspace_dir =
         resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    format!(
-        "EXECUTE IMMEDIATELY — do not ask questions, do not greet the user, do not offer options. \
-         You are `research-agent`. Use your configured research instructions and reference materials to produce clarification questions. \
-         If a concrete reference path is needed, search from the workspace root for `shared/schemas.md` and `references/dimensions/*.md`; read only the specific files required for the selected research dimensions. \
-         Write the clarifications JSON to `context/clarifications.json`, then return a `ResearchStepOutput` as your final response. \
-         Your final response MUST be ONLY a raw JSON object — no markdown, no code fences, no explanation. \
-         Required final response shape: status `research_complete`, dimensions_selected, question_count, and research_output containing the clarifications JSON. \
-         Context for the research run: \
-         The skill name is: {}. The workspace directory is: {}. \
-         The user context file is at: {}/user-context.md. \
-         The context directory is: {}/context. \
-         All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. \
-         Read only the specific files named in your instructions and write files directly. \
-         The maximum research dimensions before scope warning is: {}.",
-        skill_name, workspace_str, workspace_str, workspace_str, max_dimensions,
-    )
+    RESEARCH_PROMPT_TEMPLATE
+        .trim_end_matches('\n')
+        .replace("{{skill_name}}", skill_name)
+        .replace("{{workspace_dir}}", &workspace_str)
+        .replace("{{max_dimensions}}", &max_dimensions.to_string())
 }
 
 /// Build the lighter prompt used by the answer-evaluator agent.

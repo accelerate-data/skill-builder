@@ -75,6 +75,13 @@ export function getDisplayStatus(
   return "running";
 }
 
+export function getAgentActivityCount(run: {
+  displayItems: unknown[];
+  conversationEvents?: unknown[];
+}): number {
+  return run.displayItems.length + (run.conversationEvents?.length ?? 0);
+}
+
 export function AgentStatusHeader({
   agentId,
   title = "Agent Output",
@@ -87,7 +94,7 @@ export function AgentStatusHeader({
   const workflowInitStartTime = useWorkflowStore((s) => s.initStartTime);
 
   const displayStatus = run
-    ? getDisplayStatus(run.status, run.displayItems.length, workflowIsInitializing)
+    ? getDisplayStatus(run.status, getAgentActivityCount(run), workflowIsInitializing)
     : null;
 
   // Force re-render every second while running or initializing so elapsed time updates

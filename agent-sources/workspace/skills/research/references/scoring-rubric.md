@@ -48,7 +48,7 @@ Then construct the scoring JSON object internally using the canonical format in 
 
 ## Tailored Focus Line Guidelines
 
-1–2 sentence instruction to the dimension research agent. Must be specific enough to begin researching immediately.
+1-2 sentence instruction to the dimension research focus. Must be specific enough to begin researching immediately.
 
 **Good:** "Identify sales pipeline metrics like coverage ratio, win rate, velocity, and where standard formulas diverge from company-specific definitions — e.g. whether win rate counts all closes or only qualified-stage entries."
 

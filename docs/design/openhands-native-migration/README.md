@@ -6,7 +6,7 @@
 
 Skill Builder currently uses `@anthropic-ai/claude-agent-sdk` and the Claude Code CLI binary as its agent runtime. This design describes a clean-break migration to OpenHands as the native runtime — covering both the **runtime layer** (replacing the execution engine behind the existing sidecar boundary) and the **agent layer** (replacing Claude Code-specific agent and skill files with OpenHands-native equivalents and simplifying the workflow topology).
 
-The migration replaces the Claude SDK binary with a PyInstaller-bundled `openhands-runner` binary, adopts OpenHands file-based agent and AgentSkills conventions, and simplifies the workflow to one top-level OpenHands agent named `skill-creator`. Workflow phases, scope review, and other one-shot jobs are app-owned task prompts handled by that agent. The sidecar boundary, JSONL protocol, and all app-owned runtime contracts are preserved.
+The migration replaces the Claude SDK binary with a PyInstaller-bundled `openhands-runner` binary, adopts OpenHands file-based agent and AgentSkills conventions, and simplifies the workflow to one top-level OpenHands agent named `skill-creator`. Workflow phases, scope review, and other one-shot jobs are app-owned task prompts handled by that agent. OpenHands calls use a direct Rust -> Python runner boundary; Node is not part of the OpenHands runtime path. The JSONL protocol and all app-owned runtime contracts are preserved.
 
 The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary/README.md`. The concrete OpenHands SDK invocation contract is detailed in `docs/design/openhands-sdk-runner/README.md`. This document is the umbrella migration design.
 
@@ -41,7 +41,7 @@ The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary
 | PyInstaller single binary for the OpenHands runner. | Tauri already bundles a native binary (the Claude CLI). The same infra handles a PyInstaller-built `openhands-runner`. No Docker, no system Python, no `uv` first-launch step. |
 | One top-level OpenHands agent, `skill-creator`. | OpenHands `Agent` is the reasoning/action executor and `Conversation` is the stateful run boundary. Skill Builder should create one agent identity and vary task prompts, tools, and output schemas per request. |
 | One-shot runs are single-message conversations. | A one-shot run is not a single OpenHands `step()`. It is a `Conversation` with one user message, no app-owned follow-up questions, and a bounded `run(max_iterations=...)` lifecycle. |
-| Progress visibility is mandatory. | The UI must keep showing users that the agent is working. OpenHands reasoning/progress events, tool calls, file operations, and status updates must stream through the existing `display_item` and `agent_event` envelopes before the terminal `run_result`. |
+| Progress visibility is mandatory. | The UI must keep showing users that the agent is working. OpenHands reasoning/progress events, tool calls, file operations, and status updates must stream as `conversation_event` records before terminal `conversation_state`. |
 | Workspace agent and skills mirror OpenHands `.agents/**`. | `agent-sources/workspace/**` is copied into `.agents/**`; only `.agents/agents/skill-creator.md` and `.agents/skills/**` are runtime workspace files. |
 | Task prompts are app-owned templates. | Task-specific instructions live under `agent-sources/prompts/**`, are compiled/rendered by Rust, and are sent as explicit `Conversation.send_message(...)` content. They are not copied into `.agents/**`. |
 | Tool availability is request scoped. | The one `skill-creator` agent can run with different allowed tool sets per one-shot task. The runner enforces the request's tool list when constructing the OpenHands `Agent`. |
@@ -61,8 +61,8 @@ The app depends on a set of execution contracts that must hold regardless of whi
 |---|---|---|
 | One-shot steps cannot interrupt for user input | `AskUserQuestion` absent from `allowedTools` for steps 0–3 | One-shot conversation requests omit the app-owned question tool and the runner rejects it for `mode: "one-shot"` |
 | Structured JSON is required for steps 0–3 | Prompt instructions; parser validates terminal result payload | Same prompt instructions; extract JSON from terminal `conversation_state.result_text`, then Rust validates the typed contract |
-| Artifact parsing errors are app-visible | Parser emits `run_result` error event over JSONL | Unchanged — same JSONL protocol, same `run_result` envelope |
-| Users can see work in progress | Claude SDK messages become display items and agent events while the run is active | OpenHands conversation events are streamed as normalized display items and agent events for one-shot and multi-message conversations |
+| Artifact parsing errors are app-visible | Parser emits terminal failure over JSONL | OpenHands tasks emit terminal `conversation_state(status="error")` with `error_detail` |
+| Users can see work in progress | Runtime messages stream while the run is active | OpenHands conversation events stream as `conversation_event` records for one-shot and multi-message conversations |
 | Per-step turn budget is enforced | `max_turns` in `SidecarConfig` | `max_iterations` in `RunConfig`, populated from the same `max_turns` field |
 | Tool availability is scoped per task | `allowedTools` in `SidecarConfig`, per step | Request-level tool list used to construct the OpenHands `Agent` |
 
@@ -75,7 +75,7 @@ future feature that calls agents.
 |---|---|---|
 | Workspace | App startup + Rust runtime API | `init_workspace` creates the workspace and deploys root `.agents` artifacts. Runtime callers use the initialized path and fail if it is missing; they do not create validation or task workspaces opportunistically. |
 | LLM | Rust settings projection | Runtime callers use `WorkflowLlmConfig` produced by backend code such as `selected_workflow_llm`; frontend settings fields are storage/UI inputs, not runtime invocation contracts. |
-| Agent invocation | Rust agent runtime API | Product features choose `agentName`, task kind, mode (`one-shot` or `streaming`), prompt, tool set, output schema, and persistence context. The runtime API supplies workspace, LLM, sidecar path, transcript wiring, event forwarding, and terminal wait handling. Feature commands own task-specific result parsing. |
+| Agent invocation | Rust agent runtime API | Product features choose `agentName`, task kind, mode (`one-shot` or `streaming`), prompt, tool set, output schema, and persistence context. The runtime API supplies workspace, LLM, bundled runner path, transcript wiring, event forwarding, and terminal wait handling. Feature commands own task-specific result parsing. |
 
 Create-skill `Validate` is the first caller of these boundaries. Because it
 runs before a skill exists, it uses the initialized workspace root as the
@@ -124,12 +124,15 @@ step_config.rs → task kind + prompt + schema
 Each item above is a separate one-shot conversation: the runner constructs the
 same top-level `skill-creator` agent, sends one rendered task prompt, streams
 conversation events as normalized app-visible progress, runs to completion with
-a bounded iteration count, and returns one terminal `run_result`. The app can
+a bounded iteration count, and returns terminal `conversation_state`. The app can
 later use the same runner to create a long-lived conversation for refine chat;
 that mode keeps the same agent and workspace but permits repeated
 `send_message` calls and the app-owned question tool.
 
-The sidecar boundary, JSONL protocol, and `run_result`/`display_item` envelope shapes are unchanged. Rust and React do not observe the agent runtime change.
+The app JSONL protocol remains the boundary, but OpenHands-native requests use
+`conversation_event` for progress and terminal `conversation_state` for
+lifecycle/results. Legacy `run_result` and `display_item` envelopes are not part
+of migrated OpenHands flows.
 
 ## Progress Visibility Contract
 
@@ -138,7 +141,7 @@ watch the agent work instead of waiting on an opaque spinner. This applies to
 both execution modes:
 
 - **One-shot:** scope review, workflow steps, answer evaluation, eval runs, and
-  background analysis stream progress until the terminal `run_result`.
+  background analysis stream progress until terminal `conversation_state`.
 - **Conversation:** refine chat or future interactive sessions stream the same
   event types across multiple user messages.
 
@@ -152,10 +155,12 @@ The runner must emit JSONL progress events for:
 - warnings, validation failures, and retry attempts;
 - terminal success, error, canceled, or max-turns status.
 
-The Node `OpenHandsEventProcessor` maps those raw OpenHands events into the
-existing app protocol. React should continue to render the normalized
-`display_item`, `agent_event`, `refine_question`, and `run_result` envelopes; it
-must not consume OpenHands-native event shapes directly.
+Rust spawns the bundled OpenHands runner directly and forwards runner stdout
+JSONL into the app event stream. React renders `conversation_event` records for
+activity and waits for terminal `conversation_state` to update lifecycle and
+materialized outputs. Stderr remains redacted diagnostic app logging and is not
+emitted as frontend activity. Cancellation for migrated one-shot OpenHands runs
+targets the Rust-spawned runner process directly.
 
 ## Agent Model
 
@@ -163,7 +168,7 @@ OpenHands still constructs an `Agent`, but Skill Builder owns the agent
 identity. The runner always creates one top-level agent named `skill-creator`.
 OpenHands `Conversation` is the stateful execution boundary: a one-shot request
 creates a conversation, sends one prompt, runs until finish, extracts the final
-message, emits a terminal `run_result`, and exits.
+message, emits terminal `conversation_state`, and exits.
 
 Only `skill-creator.md` lives in `<workspace-dir>/.agents/agents/`. Task
 instructions are app-owned prompt templates under `agent-sources/prompts/**`.

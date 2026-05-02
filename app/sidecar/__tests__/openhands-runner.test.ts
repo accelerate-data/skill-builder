@@ -244,11 +244,11 @@ class TerminalTool:
 class FileEditorTool:
     name = "FileEditorTool"
 
-class BrowserToolSet:
-    name = "browser_tool_set"
-
 class TaskTrackerTool:
     name = "TaskTrackerTool"
+
+class BrowserToolSet:
+    name = "browser_tool_set"
 
 runner.Tool = Tool
 runner.TerminalTool = TerminalTool

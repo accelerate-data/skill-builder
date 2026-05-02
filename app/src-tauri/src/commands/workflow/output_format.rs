@@ -5,6 +5,169 @@ use crate::commands::workflow_artifacts::{
     ResearchStepOutput,
 };
 
+pub(crate) fn extract_research_json_from_conversation_state(
+    state: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    if state.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+        return Err("OpenHands research result was not a conversation_state".to_string());
+    }
+
+    match state.get("status").and_then(|v| v.as_str()) {
+        Some("completed") => {}
+        Some("error") => {
+            let detail = state
+                .get("error_detail")
+                .or_else(|| state.get("errorDetail"))
+                .and_then(|v| v.as_str())
+                .filter(|detail| !detail.trim().is_empty())
+                .unwrap_or("OpenHands research run failed");
+            return Err(format!(
+                "OpenHands research conversation_state failed: {}",
+                detail
+            ));
+        }
+        Some("cancelled") | Some("canceled") => {
+            let detail = state
+                .get("error_detail")
+                .or_else(|| state.get("errorDetail"))
+                .and_then(|v| v.as_str())
+                .filter(|detail| !detail.trim().is_empty())
+                .unwrap_or("OpenHands research run cancelled");
+            return Err(format!(
+                "OpenHands research conversation_state cancelled: {}",
+                detail
+            ));
+        }
+        Some(status) => {
+            return Err(format!(
+                "OpenHands research conversation_state status must be completed but got '{}'",
+                status
+            ));
+        }
+        None => {
+            return Err("OpenHands research conversation_state missing status".to_string());
+        }
+    }
+
+    let result_text = state
+        .get("result_text")
+        .or_else(|| state.get("resultText"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            "OpenHands research conversation_state missing result_text/resultText".to_string()
+        })?;
+
+    let trimmed = result_text.trim();
+    if trimmed.is_empty() {
+        return Err("OpenHands research conversation_state has empty result_text".to_string());
+    }
+
+    let parsed = parse_research_result_text(trimmed)?;
+    if !parsed.is_object() {
+        return Err("OpenHands research result_text must be a JSON object".to_string());
+    }
+
+    Ok(parsed)
+}
+
+fn parse_research_result_text(text: &str) -> Result<serde_json::Value, String> {
+    let json_text = strip_single_json_markdown_fence(text);
+    match serde_json::from_str::<serde_json::Value>(json_text) {
+        Ok(parsed) => Ok(parsed),
+        Err(parse_error) => {
+            let mut fallback_object = None;
+            for candidate in top_level_json_object_candidates(json_text)
+                .into_iter()
+                .rev()
+            {
+                let Ok(parsed) = serde_json::from_str::<serde_json::Value>(candidate) else {
+                    continue;
+                };
+                if !parsed.is_object() {
+                    continue;
+                }
+                if parsed.get("status").and_then(|value| value.as_str())
+                    == Some("research_complete")
+                    && parsed.get("research_output").is_some()
+                {
+                    return Ok(parsed);
+                }
+                fallback_object.get_or_insert(parsed);
+            }
+
+            if let Some(parsed) = fallback_object {
+                return Ok(parsed);
+            }
+
+            Err(format!(
+                "OpenHands research result_text invalid JSON: {}",
+                parse_error
+            ))
+        }
+    }
+}
+
+fn top_level_json_object_candidates(text: &str) -> Vec<&str> {
+    let mut candidates = Vec::new();
+    let mut depth = 0usize;
+    let mut start = None;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (idx, ch) in text.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '{' => {
+                if depth == 0 {
+                    start = Some(idx);
+                }
+                depth += 1;
+            }
+            '}' => {
+                if depth == 0 {
+                    continue;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    if let Some(start_idx) = start.take() {
+                        candidates.push(&text[start_idx..idx + ch.len_utf8()]);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    candidates
+}
+
+fn strip_single_json_markdown_fence(text: &str) -> &str {
+    let Some(after_opening) = text.strip_prefix("```") else {
+        return text;
+    };
+    let Some(before_closing) = after_opening.strip_suffix("```") else {
+        return text;
+    };
+
+    let inner = before_closing.trim();
+    if let Some(rest) = inner.strip_prefix("json") {
+        rest.trim_start_matches([' ', '\t', '\r', '\n']).trim()
+    } else {
+        inner
+    }
+}
+
 pub(crate) fn materialize_workflow_step_output_value(
     skill_root: &Path,
     step_id: u32,

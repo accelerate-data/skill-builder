@@ -59,6 +59,7 @@ mkdir -p "${DIST_DIR}" "${BUILD_DIR}" "${SPEC_DIR}"
   --collect-submodules "openhands.tools.browser_use" \
   --collect-data "binaryornot" \
   --collect-data "litellm" \
+  --collect-submodules "openhands.tools.browser_use" \
   --add-data "${OPENHANDS_SDK_DIR}/agent/prompts${DATA_SEP}openhands/sdk/agent/prompts" \
   --add-data "${OPENHANDS_SDK_DIR}/context/condenser/prompts${DATA_SEP}openhands/sdk/context/condenser/prompts" \
   --add-data "${OPENHANDS_SDK_DIR}/context/prompts/templates${DATA_SEP}openhands/sdk/context/prompts/templates" \

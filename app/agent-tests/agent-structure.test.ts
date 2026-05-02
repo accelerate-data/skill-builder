@@ -30,6 +30,12 @@ const OBSOLETE_WORKFLOW_AGENT_PATHS = [
   "skill-creator/agents/generate-skill.md",
 ] as const;
 
+const AGENT_SKILL_ROOTS = [
+  path.join(REPO_ROOT, "agent-sources", "workspace", "skills"),
+  path.join(PLUGINS_DIR, "skill-content-researcher", "skills"),
+  path.join(PLUGINS_DIR, "skill-creator", "skills"),
+] as const;
+
 /** Resolve the .md file path for any agent (top-level or plugin). */
 function resolveAgentPath(agentName: string): string {
   if ((OPENHANDS_WORKFLOW_AGENTS as readonly string[]).includes(agentName)) {
@@ -65,6 +71,18 @@ function frontmatterBlock(filePath: string): string {
   const content = fs.readFileSync(filePath, "utf8");
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   return match?.[1] ?? "";
+}
+
+function findSkillFiles(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) => {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) return findSkillFiles(entryPath);
+      return entry.name === "SKILL.md" ? [entryPath] : [];
+    })
+    .sort();
 }
 
 // ── Agent files ────────────────────────────────────────────────────────────
@@ -126,6 +144,34 @@ describe("agent files", () => {
 
     expect(missing).toEqual([]);
     expect(obsolete).toEqual([]);
+  });
+});
+
+describe("AgentSkill frontmatter", () => {
+  it("does not use colons in description values", () => {
+    const offenders = AGENT_SKILL_ROOTS.flatMap(findSkillFiles).flatMap((file) => {
+      const block = frontmatterBlock(file);
+      return block
+        .split(/\r?\n/)
+        .map((line, index) => ({ file, line, lineNumber: index + 2 }))
+        .filter(({ line }) => /^description:\s+.*:/.test(line));
+    });
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("does not use unquoted single-line values containing YAML mapping separators", () => {
+    const offenders = AGENT_SKILL_ROOTS.flatMap(findSkillFiles).flatMap((file) => {
+      const block = frontmatterBlock(file);
+      return block
+        .split(/\r?\n/)
+        .map((line, index) => ({ file, line, lineNumber: index + 2 }))
+        .filter(({ line }) =>
+          /^[A-Za-z_][A-Za-z0-9_-]*:\s+[^'"|>][^#]*:\s+/.test(line),
+        );
+    });
+
+    expect(offenders).toEqual([]);
   });
 });
 

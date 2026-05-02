@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -16,6 +17,74 @@ import { requireSettingsModel } from "@/lib/models";
 import { type StepConfig } from "@/lib/workflow-step-configs";
 import { toast } from "@/lib/toast";
 import { useWorkflowGate } from "@/hooks/use-workflow-gate";
+
+const RESEARCH_MATERIALIZATION_WAIT_MS = 5000;
+
+interface WorkflowStepMaterializedPayload {
+  agentId: string;
+  skillName?: string;
+  stepId: number;
+  success: boolean;
+  errorDetail?: string;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function getString(
+  record: Record<string, unknown>,
+  ...keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string") return value;
+  }
+  return undefined;
+}
+
+function getNumber(
+  record: Record<string, unknown>,
+  ...keys: string[]
+): number | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function getBoolean(
+  record: Record<string, unknown>,
+  ...keys: string[]
+): boolean | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") return value;
+  }
+  return undefined;
+}
+
+function normalizeWorkflowStepMaterializedPayload(
+  payload: unknown,
+): WorkflowStepMaterializedPayload | null {
+  const record = asRecord(payload);
+  if (!record) return null;
+  const agentId = getString(record, "agent_id", "agentId");
+  const stepId = getNumber(record, "step_id", "stepId");
+  const success = getBoolean(record, "success");
+  if (!agentId || stepId === undefined || success === undefined) return null;
+
+  return {
+    agentId,
+    skillName: getString(record, "skill_name", "skillName"),
+    stepId,
+    success,
+    errorDetail: getString(record, "error_detail", "errorDetail"),
+  };
+}
 
 interface UseWorkflowStateMachineOptions {
   /** Skill name from route params */
@@ -100,6 +169,15 @@ export function useWorkflowStateMachine({
 
   // Refs for cross-effect communication
   const prevReviewModeRef = useRef<boolean | null>(null);
+  const researchMaterializationRef = useRef<
+    Record<string, WorkflowStepMaterializedPayload>
+  >({});
+  const pendingResearchCompletionRef = useRef<Record<string, { step: number }>>(
+    {},
+  );
+  const researchMaterializationTimeoutsRef = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
 
   // Current state selectors
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
@@ -139,6 +217,207 @@ export function useWorkflowStateMachine({
     },
     [],
   );
+
+  const clearResearchMaterializationTimeout = useCallback((agentId: string) => {
+    const timeout = researchMaterializationTimeoutsRef.current[agentId];
+    if (timeout) {
+      clearTimeout(timeout);
+      delete researchMaterializationTimeoutsRef.current[agentId];
+    }
+  }, []);
+
+  const failWorkflowStep = useCallback(
+    (step: number, message: string) => {
+      updateStepStatus(step, "error");
+      setRunning(false);
+      setActiveAgent(null);
+      const workflowState = useWorkflowStore.getState();
+      if (workflowState.isInitializing) {
+        workflowState.clearInitializing();
+      }
+      toast.error(message, { duration: Infinity });
+    },
+    [setActiveAgent, setRunning, updateStepStatus],
+  );
+
+  const verifyOutputFiles = useCallback(
+    async (
+      step: number,
+      options: { optimisticOnError?: boolean } = {},
+    ): Promise<boolean> => {
+      const optimisticOnError = options.optimisticOnError ?? true;
+      if (!workspacePath || !skillName) return true;
+      try {
+        const hasOutput = await verifyStepOutput(workspacePath, skillName, step);
+        if (!hasOutput) return false;
+      } catch {
+        return optimisticOnError;
+      }
+      return true;
+    },
+    [skillName, workspacePath],
+  );
+
+  const finalizeCompletedStep = useCallback(
+    async (step: number) => {
+      if (skillName) {
+        try {
+          const disabled = await getDisabledSteps(skillName);
+          useWorkflowStore.getState().setDisabledSteps(disabled);
+        } catch {
+          // Non-fatal
+        }
+      }
+
+      // Guard against race with reset: if the step was reset while async operations
+      // were in flight, abort rather than overwriting the reset state with "completed".
+      if (useWorkflowStore.getState().steps[step]?.status !== "in_progress") {
+        console.warn(
+          "[workflow] finish() aborted for step %d — step was reset during async completion",
+          step,
+        );
+        return;
+      }
+
+      updateStepStatus(step, "completed");
+      setRunning(false);
+    },
+    [skillName, setRunning, updateStepStatus],
+  );
+
+  const resolveResearchCompletion = useCallback(
+    async (agentId: string, step: number) => {
+      clearResearchMaterializationTimeout(agentId);
+      delete pendingResearchCompletionRef.current[agentId];
+
+      const materialization = researchMaterializationRef.current[agentId];
+      if (materialization?.success === false) {
+        failWorkflowStep(
+          step,
+          `Step ${step + 1} backend materialization failed: ${
+            materialization.errorDetail ?? "Unknown error"
+          }`,
+        );
+        return;
+      }
+
+      if (materialization?.success === true) {
+        await finalizeCompletedStep(step);
+        return;
+      }
+
+      const hasOutput = await verifyOutputFiles(step, {
+        optimisticOnError: false,
+      });
+      if (hasOutput) {
+        await finalizeCompletedStep(step);
+        return;
+      }
+
+      pendingResearchCompletionRef.current[agentId] = { step };
+      researchMaterializationTimeoutsRef.current[agentId] = setTimeout(() => {
+        void (async () => {
+          delete pendingResearchCompletionRef.current[agentId];
+          delete researchMaterializationTimeoutsRef.current[agentId];
+
+          const latest = researchMaterializationRef.current[agentId];
+          if (latest?.success === false) {
+            failWorkflowStep(
+              step,
+              `Step ${step + 1} backend materialization failed: ${
+                latest.errorDetail ?? "Unknown error"
+              }`,
+            );
+            return;
+          }
+          if (
+            latest?.success === true ||
+            (await verifyOutputFiles(step, { optimisticOnError: false }))
+          ) {
+            await finalizeCompletedStep(step);
+            return;
+          }
+          failWorkflowStep(
+            step,
+            `Step ${step + 1} completed but backend materialization did not produce output files`,
+          );
+        })();
+      }, RESEARCH_MATERIALIZATION_WAIT_MS);
+    },
+    [
+      clearResearchMaterializationTimeout,
+      failWorkflowStep,
+      finalizeCompletedStep,
+      verifyOutputFiles,
+    ],
+  );
+
+  useEffect(
+    () => () => {
+      for (const timeout of Object.values(
+        researchMaterializationTimeoutsRef.current,
+      )) {
+        clearTimeout(timeout);
+      }
+      researchMaterializationTimeoutsRef.current = {};
+      pendingResearchCompletionRef.current = {};
+    },
+    [],
+  );
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    listen<unknown>("workflow-step-materialized", (event) => {
+      const payload = normalizeWorkflowStepMaterializedPayload(event.payload);
+      if (!payload || payload.stepId !== 0) return;
+      if (payload.skillName && payload.skillName !== skillName) return;
+
+      researchMaterializationRef.current[payload.agentId] = payload;
+      const pending = pendingResearchCompletionRef.current[payload.agentId];
+      if (payload.success && pending) {
+        void resolveResearchCompletion(payload.agentId, pending.step);
+        return;
+      }
+
+      if (!payload.success) {
+        clearResearchMaterializationTimeout(payload.agentId);
+        delete pendingResearchCompletionRef.current[payload.agentId];
+        const { currentStep: step, steps: currentSteps } =
+          useWorkflowStore.getState();
+        if (
+          pending ||
+          (currentSteps[step]?.status === "in_progress" &&
+            useAgentStore.getState().activeAgentId === payload.agentId)
+        ) {
+          const failedStep = pending?.step ?? step;
+          failWorkflowStep(
+            failedStep,
+            `Step ${failedStep + 1} backend materialization failed: ${
+              payload.errorDetail ?? "Unknown error"
+            }`,
+          );
+        }
+      }
+    }).then((cleanup) => {
+      if (disposed) {
+        cleanup();
+      } else {
+        unlisten = cleanup;
+      }
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [
+    clearResearchMaterializationTimeout,
+    failWorkflowStep,
+    resolveResearchCompletion,
+    skillName,
+  ]);
 
   // --- Auto-advance logic ---
 
@@ -326,6 +605,11 @@ export function useWorkflowStateMachine({
       setActiveAgent(null);
 
       const finish = async () => {
+        if (step === 0) {
+          await resolveResearchCompletion(completedAgentId, step);
+          return;
+        }
+
         const cfg = stepConfigs[step];
         if (cfg && completedAgentId) {
           const structuredOutput =
@@ -363,48 +647,18 @@ export function useWorkflowStateMachine({
           }
         }
 
-        if (workspacePath && skillName) {
-          try {
-            const hasOutput = await verifyStepOutput(
-              workspacePath,
-              skillName,
-              step,
-            );
-            if (!hasOutput) {
-              updateStepStatus(step, "error");
-              setRunning(false);
-              toast.error(
-                `Step ${step + 1} completed but produced no output files`,
-                { duration: Infinity },
-              );
-              return;
-            }
-          } catch {
-            // Verification failed — proceed optimistically
-          }
-        }
-
-        if (skillName) {
-          try {
-            const disabled = await getDisabledSteps(skillName);
-            useWorkflowStore.getState().setDisabledSteps(disabled);
-          } catch {
-            // Non-fatal
-          }
-        }
-
-        // Guard against race with reset: if the step was reset while async operations
-        // were in flight, abort rather than overwriting the reset state with "completed".
-        if (useWorkflowStore.getState().steps[step]?.status !== "in_progress") {
-          console.warn(
-            "[workflow] finish() aborted for step %d — step was reset during async completion",
-            step,
+        const hasOutput = await verifyOutputFiles(step);
+        if (!hasOutput) {
+          updateStepStatus(step, "error");
+          setRunning(false);
+          toast.error(
+            `Step ${step + 1} completed but produced no output files`,
+            { duration: Infinity },
           );
           return;
         }
 
-        updateStepStatus(step, "completed");
-        setRunning(false);
+        await finalizeCompletedStep(step);
       };
 
       finish();
@@ -435,6 +689,9 @@ export function useWorkflowStateMachine({
     activeRunStatus,
     activeAgentId,
     extractStructuredResultPayload,
+    resolveResearchCompletion,
+    verifyOutputFiles,
+    finalizeCompletedStep,
     updateStepStatus,
     setRunning,
     setActiveAgent,
