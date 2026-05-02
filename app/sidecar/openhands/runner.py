@@ -153,6 +153,7 @@ try:
     from openhands.sdk.conversation.response_utils import get_agent_final_response  # type: ignore[import]
     from openhands.sdk.skills import load_skills_from_dir  # type: ignore[import]
     from openhands.sdk.workspace import LocalWorkspace  # type: ignore[import]
+    from openhands.tools.browser_use import BrowserToolSet  # type: ignore[import]
     from openhands.tools.file_editor import FileEditorTool  # type: ignore[import]
     from openhands.tools.task_tracker import TaskTrackerTool  # type: ignore[import]
     from openhands.tools.terminal import TerminalTool  # type: ignore[import]
@@ -166,7 +167,7 @@ except ImportError as exc:
     get_agent_final_response = None  # type: ignore[assignment]
     LocalWorkspace = None  # type: ignore[assignment]
     load_skills_from_dir = None  # type: ignore[assignment]
-    FileEditorTool = TaskTrackerTool = TerminalTool = None  # type: ignore[assignment]
+    BrowserToolSet = FileEditorTool = TaskTrackerTool = TerminalTool = None  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +268,13 @@ def _build_tools(request: dict[str, Any]) -> list[Any]:
         {"read", "write", "edit", "glob", "grep", "file_editor", "fileeditortool"}
     ):
         tools.append(Tool(name=FileEditorTool.name))
+    if BrowserToolSet is not None and (
+        include_all
+        or requested.intersection(
+            {"browser", "browser_tool_set", "browsertoolset", "browser_use"}
+        )
+    ):
+        tools.append(Tool(name=BrowserToolSet.name))
     tools.append(Tool(name=TaskTrackerTool.name))
     return tools
 

@@ -4,7 +4,8 @@ use crate::types::StepConfig;
 /// Values must match the `tools:` frontmatter in the corresponding agent `.md` file.
 pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
     let tools: &[&str] = match agent_name {
-        "research-agent" | "skill-writer-agent" => &["file_editor", "terminal"],
+        "research-agent" => &["file_editor", "terminal", "browser_tool_set"],
+        "skill-writer-agent" => &["file_editor", "terminal"],
         "answer-evaluator" => &["file_editor"],
         _ => &["file_editor", "terminal"],
     };

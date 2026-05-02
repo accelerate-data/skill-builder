@@ -120,10 +120,11 @@ Start by understanding the user's intent. The user may need to fill the gaps, an
 
 Proactively ask questions about edge cases, input/output formats, example files, success criteria, and dependencies.
 
-Check available MCPs when they are useful for research, such as searching docs,
-finding similar skills, or looking up best practices. Incorporate useful context
-inline before constructing the clarification payload so the user does not have
-to provide details the available material already answers.
+Use the browser toolset when external web context is useful for research, such
+as searching documentation, finding similar skills, or looking up current best
+practices. Incorporate useful context inline before constructing the
+clarification payload so the user does not have to provide details the available
+material already answers.
 
 ## Step 3 — Select Dimension Set
 

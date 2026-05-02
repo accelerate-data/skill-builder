@@ -229,6 +229,48 @@ print(json.dumps(captured, sort_keys=True))
     expect(captured.skills_dir).toMatch(/\/\.agents\/skills$/);
   }, 30_000);
 
+  it("maps browser_tool_set requests to the OpenHands BrowserToolSet tool", () => {
+    const result = runPython(
+      runnerImportScript(`
+class Tool:
+    def __init__(self, name):
+        self.name = name
+
+class TerminalTool:
+    name = "TerminalTool"
+
+class FileEditorTool:
+    name = "FileEditorTool"
+
+class BrowserToolSet:
+    name = "browser_tool_set"
+
+class TaskTrackerTool:
+    name = "TaskTrackerTool"
+
+runner.Tool = Tool
+runner.TerminalTool = TerminalTool
+runner.FileEditorTool = FileEditorTool
+runner.BrowserToolSet = BrowserToolSet
+runner.TaskTrackerTool = TaskTrackerTool
+runner._OPENHANDS_IMPORT_ERROR = None
+
+tools = runner._build_tools({
+    "allowedTools": ["file_editor", "terminal", "browser_tool_set"],
+})
+print(json.dumps([tool.name for tool in tools]))
+`),
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual([
+      "TerminalTool",
+      "FileEditorTool",
+      "browser_tool_set",
+      "TaskTrackerTool",
+    ]);
+  }, 30_000);
+
   it("emits redacted JSONL for SDK callback events using the conversation_event protocol", () => {
     const result = runPython(
       runnerImportScript(`

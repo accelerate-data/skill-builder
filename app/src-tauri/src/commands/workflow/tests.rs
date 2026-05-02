@@ -147,10 +147,13 @@ fn test_workflow_step_tools_are_one_shot_safe() {
     let forbidden_tools = ["AskUserQuestion", "Agent", "Skill"];
     for step_id in 0..=3 {
         let config = get_step_config(step_id).unwrap();
+        let expected_tools = match step_id {
+            0 | 1 => vec!["file_editor", "terminal", "browser_tool_set"],
+            _ => vec!["file_editor", "terminal"],
+        };
         assert_eq!(
-            config.allowed_tools,
-            vec!["file_editor", "terminal"],
-            "workflow step {step_id} must use OpenHands file and terminal tools"
+            config.allowed_tools, expected_tools,
+            "workflow step {step_id} must use the expected OpenHands tools"
         );
         assert!(
             !config
