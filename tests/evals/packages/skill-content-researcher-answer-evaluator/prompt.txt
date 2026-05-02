@@ -1,4 +1,4 @@
-Eval mode: evaluate only the inline clarifications JSON below. Do not read files, inspect directories, launch tools, or write files. Return the final JSON verdict immediately.
+Eval mode: use the bundled `answer-evaluator` skill behavior for the OpenHands `skill-creator` task kind `workflow.answer_evaluator`. Evaluate only the inline clarifications JSON below. Do not read files, inspect directories, launch tools, or write files. Return the final JSON verdict immediately.
 
 The workspace directory is `/tmp/skill-builder/workspace/skills/fabric-dbt-standards`.
 The context directory is `/tmp/skill-builder/workspace/skills/fabric-dbt-standards/context`.
@@ -49,6 +49,8 @@ Contract constraints:
 - gate_decision must be one of: "run_research", "revise"
 - "TBD" is a vague answer, not an empty answer
 - answered_count counts only clear plus needs_refinement answers
+- verdict is based on answered_count / total_count: "sufficient" only when the ratio is at least 0.85, "mixed" when the ratio is at least 0.5, otherwise "insufficient"
+- gate_decision is "revise" only when contradictory_count is greater than 0 or verdict is "insufficient"; otherwise it is "run_research"
 - per_question must be an array, not an object/map
 - each per_question entry must use fields `question_id` and `verdict`
 - per_question must contain entries for Q1, Q2, and Q3

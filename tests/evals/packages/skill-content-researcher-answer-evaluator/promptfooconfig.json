@@ -12,7 +12,7 @@
       "assert": [
         {
           "type": "javascript",
-          "value": "const match = output.match(/\\{[\\s\\S]*\\}/); if (!match) return false; const data = JSON.parse(match[0]); ['sufficient','mixed','insufficient'].includes(data.verdict) && data.answered_count === 2 && data.vague_count >= 1 && data.total_count === 3 && ['run_research','revise'].includes(data.gate_decision) && Array.isArray(data.per_question) && data.per_question.length === 3 && data.per_question.some((q) => q.question_id === 'Q3' && q.verdict === 'vague')"
+          "value": "(() => { let trimmed = output.trim(); const fenced = trimmed.match(/^```(?:json)?\\s*([\\s\\S]*?)\\s*```$/i); if (fenced) trimmed = fenced[1].trim(); if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return false; const data = JSON.parse(trimmed); const verdicts = new Map(Array.isArray(data.per_question) ? data.per_question.map((q) => [q.question_id, q.verdict]) : []); return data.verdict === 'mixed' && data.answered_count === 2 && data.empty_count === 0 && data.vague_count === 1 && data.contradictory_count === 0 && data.total_count === 3 && data.gate_decision === 'run_research' && typeof data.reasoning === 'string' && data.reasoning.length > 0 && Array.isArray(data.per_question) && data.per_question.length === 3 && verdicts.get('Q1') === 'clear' && verdicts.get('Q2') === 'clear' && verdicts.get('Q3') === 'vague'; })()"
         }
       ]
     }
