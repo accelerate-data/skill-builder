@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DecisionsOutput",
+  "description": "Structured output produced by the OpenHands decision-confirmation workflow step.",
+  "additionalProperties": false,
+  "type": "object",
+  "required": ["version", "metadata", "decisions"],
+  "properties": {
+    "version": { "type": "string" },
+    "metadata": { "$ref": "#/$defs/DecisionsMetadata" },
+    "decisions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Decision" }
+    }
+  },
+  "$defs": {
+    "DecisionsMetadata": {
+      "description": "Top-level metadata block for a decisions file.",
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "decision_count": { "type": "integer", "format": "int64", "default": 0 },
+        "conflicts_resolved": { "type": "integer", "format": "int64", "default": 0 },
+        "round": { "type": "integer", "format": "int64", "default": 0 },
+        "contradictory_inputs": {
+          "anyOf": [
+            { "$ref": "#/$defs/ContradictoryInputs" },
+            { "type": "null" }
+          ]
+        },
+        "scope_recommendation": { "type": ["boolean", "null"] }
+      }
+    },
+    "ContradictoryInputs": {
+      "description": "Union type for contradictory inputs: true (active) or a revised-state string.",
+      "anyOf": [
+        { "type": "boolean" },
+        { "type": "string" }
+      ]
+    },
+    "Decision": {
+      "description": "A single decision entry.",
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["id", "title", "original_question", "decision", "implication", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "original_question": { "type": "string" },
+        "decision": { "type": "string" },
+        "implication": { "type": "string" },
+        "status": { "$ref": "#/$defs/DecisionStatus" }
+      }
+    },
+    "DecisionStatus": {
+      "description": "Status of a single decision.",
+      "type": "string",
+      "enum": ["resolved", "conflict-resolved", "needs-review", "revised"]
+    }
+  }
+}
