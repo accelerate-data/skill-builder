@@ -56,9 +56,7 @@ function buildRunnerCommand(request: OneShotRunRequest): {
 const ENV_ALLOWLIST = ["PATH", "HOME", "PYTHONPATH"] as const;
 
 function buildRunnerEnv(request: OneShotRunRequest): Record<string, string> {
-  const env: Record<string, string> = {
-    ANTHROPIC_API_KEY: request.apiKey,
-  };
+  const env: Record<string, string> = {};
   for (const key of ENV_ALLOWLIST) {
     const val = process.env[key];
     if (val !== undefined) env[key] = val;
@@ -66,22 +64,36 @@ function buildRunnerEnv(request: OneShotRunRequest): Record<string, string> {
   return env;
 }
 
-function redactApiKey(text: string, apiKey: string): string {
-  if (apiKey.length === 0) return text;
-  return text.replaceAll(apiKey, "[REDACTED]");
+function redactSecrets(text: string, secrets: string[]): string {
+  let redacted = text;
+  for (const secret of secrets) {
+    if (secret.length > 0) {
+      redacted = redacted.replaceAll(secret, "[REDACTED]");
+    }
+  }
+  return redacted;
+}
+
+function llmSecrets(request: OneShotRunRequest): string[] {
+  return [
+    request.llm?.apiKey,
+    ...Object.values(request.llm?.extraHeaders ?? {}),
+  ].filter((value): value is string => typeof value === "string");
 }
 
 function buildRunnerRequest(
   request: OneShotRunRequest,
 ): Record<string, unknown> {
+  if (!request.llm) {
+    throw new Error("OpenHands runtime requests require llm config");
+  }
+
   return {
     mode: request.mode,
     prompt: request.prompt,
     systemPrompt: request.systemPrompt,
-    model: request.model,
-    modelBaseUrl: request.modelBaseUrl,
     agentName: request.agentName,
-    apiKey: request.apiKey,
+    llm: request.llm,
     workspaceRootDir: request.workspaceRootDir,
     workspaceSkillDir: request.workspaceSkillDir,
     allowedTools: request.allowedTools,
@@ -101,9 +113,13 @@ export class OpenHandsRuntime implements AgentRuntime {
     signal?: AbortSignal,
   ): Promise<void> {
     assertOneShotHasNoUserQuestions(request);
+    if (!request.llm) {
+      throw new Error("OpenHands runtime requests require llm config");
+    }
 
     const runner = buildRunnerCommand(request);
     const env = buildRunnerEnv(request);
+    const secrets = llmSecrets(request);
 
     process.stderr.write(
       `[openhands-runtime] event=spawn runner=${runner.command}${runner.args.length > 0 ? ` ${runner.args.join(" ")}` : ""}\n`,
@@ -157,7 +173,7 @@ export class OpenHandsRuntime implements AgentRuntime {
         stderrBuffer = lines.pop() ?? "";
         for (const line of lines) {
           if (line.length > 0) {
-            const redactedLine = redactApiKey(line, request.apiKey);
+            const redactedLine = redactSecrets(line, secrets);
             sink.emitRaw({
               type: "system",
               subtype: "sdk_stderr",
@@ -197,7 +213,7 @@ export class OpenHandsRuntime implements AgentRuntime {
           sink.emitRaw({
             type: "system",
             subtype: "sdk_stderr",
-            data: redactApiKey(stderrBuffer, request.apiKey),
+            data: redactSecrets(stderrBuffer, secrets),
             timestamp: Date.now(),
           });
           stderrBuffer = "";
@@ -248,7 +264,7 @@ export class OpenHandsRuntime implements AgentRuntime {
       });
 
       child.on("error", (err: Error) => {
-        const redactedMessage = redactApiKey(err.message, request.apiKey);
+        const redactedMessage = redactSecrets(err.message, secrets);
         process.stderr.write(
           `[openhands-runtime] event=spawn_error message=${redactedMessage}\n`,
         );

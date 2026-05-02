@@ -29,15 +29,18 @@ def emit(obj: dict[str, Any]) -> None:
     print(json.dumps(obj, separators=(",", ":")), flush=True)
 
 
-def _redact(text: str, api_key: str) -> str:
-    """Replace api_key occurrences in text with [REDACTED] to prevent key leakage over stdout."""
-    if api_key and api_key in text:
-        return text.replace(api_key, "[REDACTED]")
-    return text
+def _redact(text: str, secrets: str | list[str]) -> str:
+    """Replace secret occurrences in text with [REDACTED] to prevent leakage over stdout."""
+    redacted = text
+    values = [secrets] if isinstance(secrets, str) else secrets
+    for secret in values:
+        if secret and secret in redacted:
+            redacted = redacted.replace(secret, "[REDACTED]")
+    return redacted
 
 
-def _print_redacted_exception(exc: Exception, api_key: str) -> None:
-    print(_redact(traceback.format_exc(), api_key), file=sys.stderr, end="")
+def _print_redacted_exception(exc: Exception, secrets: list[str]) -> None:
+    print(_redact(traceback.format_exc(), secrets), file=sys.stderr, end="")
 
 
 def now_ms() -> int:
@@ -105,9 +108,12 @@ def parse_request(raw: str) -> dict[str, Any]:
         raise ValueError(f"Invalid JSON on stdin: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError("Request must be a JSON object")
-    for required in ("prompt", "apiKey"):
+    for required in ("prompt",):
         if required not in data:
             raise ValueError(f"Missing required field: {required!r}")
+    llm_config = data.get("llm")
+    if not isinstance(llm_config, dict):
+        raise ValueError("OpenHands runner request missing llm config")
     # Accept absent mode as "one-shot" — the Node adapter may not always set it explicitly.
     mode = data.get("mode", "one-shot")
     if mode != "one-shot":
@@ -120,6 +126,20 @@ def parse_max_iterations(request: dict[str, Any]) -> int:
     if not isinstance(raw_max_turns, int) or raw_max_turns <= 0:
         raise ValueError("maxTurns must be a positive integer")
     return raw_max_turns
+
+
+def _redaction_secrets(request: dict[str, Any]) -> list[str]:
+    llm_config = request.get("llm")
+    if not isinstance(llm_config, dict):
+        return []
+    secrets: list[str] = []
+    api_key = llm_config.get("apiKey")
+    if isinstance(api_key, str):
+        secrets.append(api_key)
+    extra_headers = llm_config.get("extraHeaders")
+    if isinstance(extra_headers, dict):
+        secrets.extend(value for value in extra_headers.values() if isinstance(value, str))
+    return secrets
 
 
 # ---------------------------------------------------------------------------
@@ -176,25 +196,50 @@ def _build_tools(request: dict[str, Any]) -> list[Any]:
     return tools
 
 
+def _build_llm_kwargs(request: dict[str, Any]) -> dict[str, Any]:
+    llm_config = request.get("llm")
+    if not isinstance(llm_config, dict):
+        raise ValueError("OpenHands runner request missing llm config")
+    if not isinstance(llm_config.get("model"), str) or not llm_config["model"]:
+        raise ValueError("OpenHands runner llm.model must be a non-empty string")
+
+    field_map = {
+        "model": "model",
+        "apiKey": "api_key",
+        "baseUrl": "base_url",
+        "apiVersion": "api_version",
+        "temperature": "temperature",
+        "maxOutputTokens": "max_output_tokens",
+        "timeoutSeconds": "timeout",
+        "numRetries": "num_retries",
+        "reasoningEffort": "reasoning_effort",
+        "extraHeaders": "extra_headers",
+        "inputCostPerToken": "input_cost_per_token",
+        "outputCostPerToken": "output_cost_per_token",
+        "usageId": "usage_id",
+    }
+
+    return {
+        kwarg: llm_config[field]
+        for field, kwarg in field_map.items()
+        if llm_config.get(field) is not None
+    }
+
+
 def run_via_openhands_sdk(request: dict[str, Any]) -> str:
     if any(x is None for x in [Agent, AgentContext, Conversation, LLM, Tool]):
         raise RuntimeError(_OPENHANDS_IMPORT_ERROR or "OpenHands SDK not available")
 
     prompt: str = request["prompt"]
-    model: str = request.get("model") or "anthropic/claude-sonnet-4-6"
-    model_base_url: str | None = request.get("modelBaseUrl")
     agent_name: str | None = request.get("agentName")
-    api_key: str = request["apiKey"]
     workspace_skill_dir: str = request.get("workspaceSkillDir") or request.get("workspaceRootDir") or "."
+    llm_kwargs = _build_llm_kwargs(request)
 
     print(
-        f"[openhands-runner] starting SDK conversation model={model} agent={agent_name or 'default'}",
+        f"[openhands-runner] starting SDK conversation model={llm_kwargs['model']} agent={agent_name or 'default'}",
         file=sys.stderr,
     )
 
-    llm_kwargs: dict[str, Any] = {"model": model, "api_key": api_key}
-    if model_base_url:
-        llm_kwargs["base_url"] = model_base_url
     llm = LLM(**llm_kwargs)
 
     agent_instructions = _read_agent_file(workspace_skill_dir, agent_name)
@@ -251,7 +296,7 @@ def _extract_final_text(source: Any) -> str:
 def run(request: dict[str, Any]) -> None:
     result_text: str = ""
     run_error: str | None = None
-    api_key = request.get("apiKey", "")
+    secrets = _redaction_secrets(request)
 
     try:
         result_text = run_via_openhands_sdk(request)
@@ -262,11 +307,11 @@ def run(request: dict[str, Any]) -> None:
         )
     except Exception as exc:
         print(
-            f"[openhands-runner] SDK run failed: {_redact(str(exc), api_key)}",
+            f"[openhands-runner] SDK run failed: {_redact(str(exc), secrets)}",
             file=sys.stderr,
         )
-        _print_redacted_exception(exc, api_key)
-        run_error = _redact(str(exc), api_key)
+        _print_redacted_exception(exc, secrets)
+        run_error = _redact(str(exc), secrets)
 
     if run_error is not None:
         emit_result(status="error", error_message=run_error)
@@ -299,17 +344,17 @@ def main() -> None:
     try:
         run(request)
     except Exception as exc:
-        api_key = request.get("apiKey", "") if "request" in locals() else ""
+        secrets = _redaction_secrets(request) if "request" in locals() else []
         print(
-            f"[openhands-runner] unexpected error: {_redact(str(exc), api_key)}",
+            f"[openhands-runner] unexpected error: {_redact(str(exc), secrets)}",
             file=sys.stderr,
         )
-        _print_redacted_exception(exc, api_key)
+        _print_redacted_exception(exc, secrets)
         emit_result(
             status="error",
             error_message=_redact(
                 str(exc),
-                api_key,
+                secrets,
             ),
         )
 

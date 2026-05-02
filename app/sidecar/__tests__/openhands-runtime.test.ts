@@ -22,6 +22,14 @@ function makeRequest(
     allowUserQuestions: false,
     prompt: "test prompt",
     apiKey: "sk-test",
+    llm: {
+      model: "claude-sonnet-4-5",
+      apiKey: "sk-llm-test",
+      baseUrl: "https://models.example.com/v1",
+      timeoutSeconds: 300,
+      numRetries: 5,
+      reasoningEffort: "high",
+    },
     workspaceRootDir: "/tmp/test",
     workspaceSkillDir: "/tmp/test",
     context: {
@@ -171,7 +179,25 @@ describe("OpenHandsRuntime.runOnce", () => {
     const request = makeRequest({
       agentName: "skill-writer-agent",
       model: "anthropic/claude-sonnet-4-6",
+      apiKey: "sk-top-level",
       modelBaseUrl: "https://models.example.com/v1",
+      llm: {
+        model: "claude-sonnet-4-5",
+        apiKey: "sk-llm-test",
+        baseUrl: "https://models.example.com/v1",
+        apiVersion: "2024-10-01",
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+        timeoutSeconds: 300,
+        numRetries: 5,
+        reasoningEffort: "high",
+        extraHeaders: {
+          "x-provider-routing": "secure-route",
+        },
+        inputCostPerToken: 0.000003,
+        outputCostPerToken: 0.000015,
+        usageId: "workflow",
+      },
       workspaceRootDir: "/tmp/workspace-root",
       workspaceSkillDir: "/tmp/workspace-root/plugin/skill",
       allowedTools: ["file_editor", "terminal"],
@@ -225,7 +251,26 @@ describe("OpenHandsRuntime.runOnce", () => {
     expect(serialized.prompt).toBe("test prompt");
     expect(serialized.mode).toBe("one-shot");
     expect(serialized.agentName).toBe("skill-writer-agent");
-    expect(serialized.modelBaseUrl).toBe("https://models.example.com/v1");
+    expect(serialized).not.toHaveProperty("model");
+    expect(serialized).not.toHaveProperty("apiKey");
+    expect(serialized).not.toHaveProperty("modelBaseUrl");
+    expect(serialized.llm).toEqual({
+      model: "claude-sonnet-4-5",
+      apiKey: "sk-llm-test",
+      baseUrl: "https://models.example.com/v1",
+      apiVersion: "2024-10-01",
+      temperature: 0.2,
+      maxOutputTokens: 4096,
+      timeoutSeconds: 300,
+      numRetries: 5,
+      reasoningEffort: "high",
+      extraHeaders: {
+        "x-provider-routing": "secure-route",
+      },
+      inputCostPerToken: 0.000003,
+      outputCostPerToken: 0.000015,
+      usageId: "workflow",
+    });
     expect(serialized.maxTurns).toBe(50);
     expect(serialized.allowedTools).toEqual(["file_editor", "terminal"]);
     expect(serialized.workspaceRootDir).toBe("/tmp/workspace-root");
@@ -467,7 +512,7 @@ describe("OpenHandsRuntime.runOnce", () => {
     child.kill = vi.fn();
 
     setImmediate(() => {
-      stderr.write("request failed for sk-test\n");
+      stderr.write("request failed for sk-llm-test\n");
       stderr.end();
       stdout.write(
         JSON.stringify({
@@ -493,7 +538,64 @@ describe("OpenHandsRuntime.runOnce", () => {
     const stderrMessages = messages.filter(
       (m) => m.type === "system" && m.subtype === "sdk_stderr",
     );
-    expect(JSON.stringify(stderrMessages)).not.toContain("sk-test");
+    expect(JSON.stringify(stderrMessages)).not.toContain("sk-llm-test");
+    expect(JSON.stringify(stderrMessages)).toContain("[REDACTED]");
+  });
+
+  it("redacts llm extra header values from child stderr system events", async () => {
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const stdin = new PassThrough();
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: typeof stdout;
+      stderr: typeof stderr;
+      stdin: typeof stdin;
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.stdout = stdout;
+    child.stderr = stderr;
+    child.stdin = stdin;
+    child.kill = vi.fn();
+
+    setImmediate(() => {
+      stderr.write("provider rejected secure-route\n");
+      stderr.end();
+      stdout.write(
+        JSON.stringify({
+          type: "openhands_result",
+          status: "success",
+          result_text: "ok",
+          structured_output: null,
+          timestamp: Date.now(),
+        }) + "\n",
+      );
+      stdout.end();
+      child.emit("close", 0);
+    });
+
+    mockSpawn.mockReturnValue(
+      child as unknown as ReturnType<typeof childProcess.spawn>,
+    );
+
+    const runtime = new OpenHandsRuntime();
+    const { messages, sink } = makeSink();
+    await runtime.runOnce(
+      makeRequest({
+        llm: {
+          model: "claude-sonnet-4-5",
+          apiKey: "sk-llm-test",
+          extraHeaders: {
+            "x-provider-routing": "secure-route",
+          },
+        },
+      }),
+      sink,
+    );
+
+    const stderrMessages = messages.filter(
+      (m) => m.type === "system" && m.subtype === "sdk_stderr",
+    );
+    expect(JSON.stringify(stderrMessages)).not.toContain("secure-route");
     expect(JSON.stringify(stderrMessages)).toContain("[REDACTED]");
   });
 });
@@ -510,6 +612,10 @@ describe("OpenHandsRuntime.startStreamingSession", () => {
           allowUserQuestions: true,
           prompt: "hello",
           apiKey: "sk-test",
+          llm: {
+            model: "claude-sonnet-4-5",
+            apiKey: "sk-llm-test",
+          },
           workspaceRootDir: "/tmp",
           workspaceSkillDir: "/tmp",
           context: {
