@@ -11,11 +11,12 @@ use super::guards::{
     validate_decisions_exist_inner, workflow_step_runtime_label,
 };
 use super::output_format::{
-    answer_evaluator_output_format, materialize_answer_evaluation_output_value,
-    materialize_workflow_step_output_value, publish_commit_and_tag_generated_skill,
+    answer_evaluator_output_format, extract_research_json_from_conversation_state,
+    materialize_answer_evaluation_output_value, materialize_workflow_step_output_value,
+    publish_commit_and_tag_generated_skill,
 };
 use super::prompt::{build_prompt, build_step0_prompt, PromptParams};
-use super::runtime::workflow_one_shot_runtime_provider;
+use super::runtime::{build_workflow_research_sidecar_config, workflow_one_shot_runtime_provider};
 use super::step_config::{
     build_betas, get_step_config, thinking_budget_for_step, tools_for_agent,
     workflow_output_format_for_step,
@@ -53,6 +54,24 @@ fn valid_clarifications_value() -> serde_json::Value {
         ],
         "notes": []
     })
+}
+
+fn test_workflow_llm_config() -> crate::types::WorkflowLlmConfig {
+    crate::types::WorkflowLlmConfig {
+        model: "gpt-4.1".to_string(),
+        api_key: Some(crate::types::SecretString::new("test-key".to_string())),
+        base_url: None,
+        api_version: None,
+        temperature: None,
+        max_output_tokens: None,
+        timeout_seconds: None,
+        num_retries: None,
+        reasoning_effort: None,
+        extra_headers: None,
+        input_cost_per_token: None,
+        output_cost_per_token: None,
+        usage_id: None,
+    }
 }
 
 #[test]
@@ -171,6 +190,202 @@ fn test_workflow_step_config_uses_openhands_runtime_provider() {
         workflow_one_shot_runtime_provider().as_deref(),
         Some("openhands")
     );
+}
+
+#[test]
+fn research_prompt_renders_app_owned_openhands_task_context() {
+    let prompt = build_step0_prompt("lead-conversion", "/tmp/workspace", DEFAULT_PLUGIN_SLUG, 4);
+
+    assert!(prompt.contains("Skill name: lead-conversion"));
+    assert!(prompt.contains("/tmp/workspace/skills/lead-conversion"));
+    assert!(
+        prompt.contains("User context file: /tmp/workspace/skills/lead-conversion/user-context.md")
+    );
+    assert!(prompt.contains("Context directory: /tmp/workspace/skills/lead-conversion/context"));
+    assert!(prompt.contains("Maximum research dimensions before scope warning: 4"));
+    assert!(
+        !prompt.contains("research-agent"),
+        "step 0 prompt should route through skill-creator, not research-agent"
+    );
+    assert!(
+        !prompt.to_ascii_lowercase().contains("subagent"),
+        "step 0 research prompt should describe single-agent execution"
+    );
+    assert!(
+        !prompt.to_ascii_lowercase().contains("delegate"),
+        "step 0 research prompt should not ask for delegated research"
+    );
+}
+
+#[test]
+fn research_sidecar_config_uses_skill_creator_openhands_contract() {
+    let config = build_workflow_research_sidecar_config(
+        "lead-conversion",
+        "prompt",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        test_workflow_llm_config(),
+        Some("session-1".to_string()),
+    );
+
+    assert_eq!(config.runtime_provider.as_deref(), Some("openhands"));
+    assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
+    assert_eq!(config.task_kind.as_deref(), Some("workflow.research"));
+    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert_eq!(
+        config.allowed_tools,
+        Some(vec!["file_editor".to_string(), "terminal".to_string()])
+    );
+    assert_eq!(config.skill_name.as_deref(), Some("lead-conversion"));
+    assert_eq!(config.step_id, Some(0));
+    assert_eq!(config.run_source.as_deref(), Some("workflow"));
+    assert_eq!(
+        config.workspace_root_dir, "/tmp/workspace",
+        "workspace_root_dir must stay the initialized workspace root"
+    );
+    assert_eq!(
+        config.workspace_skill_dir, "/tmp/workspace/skills/lead-conversion",
+        "workspace run dir must be the skill-scoped workspace"
+    );
+    assert!(
+        config.output_format.is_some(),
+        "step 0 must carry app-side output schema metadata"
+    );
+    assert!(
+        config.required_plugins.is_none(),
+        "OpenHands one-shot config should rely on workspace .agents layout"
+    );
+    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
+}
+
+#[test]
+fn research_json_extraction_parses_raw_completed_result_text() {
+    let state = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed",
+        "result_text": r#"{"status":"research_complete","dimensions_selected":1,"question_count":0,"research_output":{"version":"1","metadata":{},"sections":[],"notes":[]}}"#
+    });
+
+    let parsed = extract_research_json_from_conversation_state(&state).unwrap();
+    assert_eq!(parsed["status"], "research_complete");
+}
+
+#[test]
+fn research_json_extraction_parses_one_markdown_json_fence() {
+    let state = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed",
+        "resultText": "```json\n{\"status\":\"research_complete\"}\n```"
+    });
+
+    let parsed = extract_research_json_from_conversation_state(&state).unwrap();
+    assert_eq!(parsed["status"], "research_complete");
+}
+
+#[test]
+fn research_json_extraction_rejects_missing_empty_non_object_error_and_invalid_json() {
+    let missing = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed"
+    });
+    assert!(extract_research_json_from_conversation_state(&missing)
+        .unwrap_err()
+        .contains("missing result_text"));
+
+    let empty = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed",
+        "result_text": "   "
+    });
+    assert!(extract_research_json_from_conversation_state(&empty)
+        .unwrap_err()
+        .contains("empty result_text"));
+
+    let non_object = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed",
+        "result_text": "[]"
+    });
+    assert!(extract_research_json_from_conversation_state(&non_object)
+        .unwrap_err()
+        .contains("must be a JSON object"));
+
+    let terminal_error = serde_json::json!({
+        "type": "conversation_state",
+        "status": "error",
+        "error_detail": "research failed"
+    });
+    assert_eq!(
+        extract_research_json_from_conversation_state(&terminal_error).unwrap_err(),
+        "OpenHands research conversation_state failed: research failed"
+    );
+
+    let invalid = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed",
+        "result_text": "{not json}"
+    });
+    assert!(extract_research_json_from_conversation_state(&invalid)
+        .unwrap_err()
+        .contains("invalid JSON"));
+}
+
+#[test]
+fn research_materialization_from_conversation_state_writes_clarifications() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    let payload = serde_json::json!({
+        "status": "research_complete",
+        "dimensions_selected": 1,
+        "question_count": 0,
+        "research_output": valid_clarifications_value()
+    });
+    let state = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed",
+        "result_text": serde_json::to_string(&payload).unwrap()
+    });
+
+    let parsed = extract_research_json_from_conversation_state(&state).unwrap();
+    materialize_workflow_step_output_value(&skill_root, 0, &parsed).unwrap();
+
+    assert!(skill_root.join("context/clarifications.json").exists());
+}
+
+mod research {
+    use super::*;
+
+    #[test]
+    fn openhands_contract_and_terminal_materialization_smoke() {
+        let config = build_workflow_research_sidecar_config(
+            "lead-conversion",
+            "prompt",
+            "/tmp/workspace",
+            DEFAULT_PLUGIN_SLUG,
+            test_workflow_llm_config(),
+            None,
+        );
+        assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
+        assert_eq!(config.task_kind.as_deref(), Some("workflow.research"));
+
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 1,
+            "question_count": 0,
+            "research_output": valid_clarifications_value()
+        });
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": serde_json::to_string(&payload).unwrap()
+        });
+
+        let parsed = extract_research_json_from_conversation_state(&state).unwrap();
+        materialize_workflow_step_output_value(&skill_root, 0, &parsed).unwrap();
+        assert!(skill_root.join("context/clarifications.json").exists());
+    }
 }
 
 #[test]
@@ -1349,14 +1564,15 @@ fn test_build_step0_prompt_uses_openhands_native_research_routing() {
         4,
     );
 
-    assert!(prompt.contains("research-agent"));
-    assert!(prompt.contains("ResearchStepOutput"));
-    assert!(prompt.contains("context/clarifications.json"));
+    assert!(prompt.contains("Skill name: my-skill"));
+    assert!(prompt.contains("Maximum research dimensions before scope warning: 4"));
+    assert!(prompt.contains("research_output"));
 
     for forbidden in [
-        "Skill",
-        "Agent",
-        "Task",
+        "research-agent",
+        "subagent",
+        "delegate",
+        "ResearchStepOutput",
         "AskUserQuestion",
         ".claude/plugins",
         "skill-content-researcher:research",

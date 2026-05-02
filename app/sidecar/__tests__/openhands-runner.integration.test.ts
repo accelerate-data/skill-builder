@@ -48,6 +48,19 @@ Return concise validation results for scope review requests.
 `,
     "utf8",
   );
+  const researchDir = path.join(workspaceDir, ".agents", "skills", "research");
+  mkdirSync(researchDir, { recursive: true });
+  writeFileSync(
+    path.join(researchDir, "SKILL.md"),
+    `---
+name: research
+description: Workflow research smoke skill for OpenHands SDK integration tests.
+---
+
+Return only the requested workflow research JSON object.
+`,
+    "utf8",
+  );
   return workspaceDir;
 }
 
@@ -177,6 +190,70 @@ describe("OpenHands runner live SDK integration", () => {
         expect(String(terminalStates[0].result_text ?? "")).toContain(
           "SDK_EVENT_SMOKE_OK",
         );
+      } finally {
+        rmSync(workspaceDir, { recursive: true, force: true });
+      }
+    },
+    180_000,
+  );
+
+  it.skipIf(!hasLiveConfig())(
+    "runs workflow.research through skill-creator and returns parseable research JSON",
+    async () => {
+      const workspaceDir = createWorkspace();
+      const apiKey = process.env.SKILL_BUILDER_OPENHANDS_API_KEY as string;
+      const model = process.env.SKILL_BUILDER_OPENHANDS_MODEL as string;
+      const baseUrl = process.env.SKILL_BUILDER_OPENHANDS_BASE_URL;
+      const apiVersion = process.env.SKILL_BUILDER_OPENHANDS_API_VERSION;
+
+      try {
+        const result = await runRunner({
+          mode: "one-shot",
+          agentName: "skill-creator",
+          taskKind: "workflow.research",
+          prompt:
+            'Return exactly this raw JSON object and nothing else: {"status":"research_complete","dimensions_selected":1,"question_count":0,"research_output":{"version":"1","metadata":{},"sections":[],"notes":[]}}',
+          llm: {
+            model,
+            apiKey,
+            ...(baseUrl ? { baseUrl } : {}),
+            ...(apiVersion ? { apiVersion } : {}),
+            timeoutSeconds: 120,
+            numRetries: 1,
+          },
+          workspaceRootDir: workspaceDir,
+          workspaceSkillDir: workspaceDir,
+          allowedTools: ["file_editor", "terminal"],
+          maxTurns: 5,
+          outputFormat: { type: "json_schema", json_schema: { name: "ResearchStepOutput" } },
+        });
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).not.toContain(apiKey);
+        expect(result.stderr).not.toContain(apiKey);
+
+        const records = parseJsonl(result.stdout);
+        expect(records.some((record) => record.type === "conversation_event")).toBe(true);
+        const terminalState = records.find(
+          (record) =>
+            record.type === "conversation_state" &&
+            record.status === "completed",
+        );
+        expect(terminalState).toMatchObject({
+          type: "conversation_state",
+          runtime: "openhands",
+          agent_id: "skill-creator",
+          status: "completed",
+        });
+
+        const resultText = String(terminalState?.result_text ?? "").trim();
+        const fenced = resultText.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+        const jsonText = fenced ? fenced[1].trim() : resultText;
+        const parsed = JSON.parse(jsonText);
+        expect(parsed).toMatchObject({
+          status: "research_complete",
+          research_output: { version: "1" },
+        });
       } finally {
         rmSync(workspaceDir, { recursive: true, force: true });
       }

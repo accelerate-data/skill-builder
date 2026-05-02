@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-use crate::agents::sidecar::SidecarConfig;
+use serde::Serialize;
+use tauri::{Emitter, Listener};
+
+use crate::agents::sidecar::{OpenHandsOneShotConfigParams, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 use crate::skill_paths::resolve_workspace_skill_dir;
@@ -12,7 +15,10 @@ use super::evaluation::workflow_step_log_name;
 use super::guards::{
     make_agent_id, parse_decisions_guard, parse_scope_recommendation, workflow_step_runtime_label,
 };
-use super::output_format::answer_evaluator_output_format;
+use super::output_format::{
+    answer_evaluator_output_format, extract_research_json_from_conversation_state,
+    materialize_workflow_step_output_value,
+};
 use super::prompt::{build_evaluator_prompt, build_prompt, build_step0_prompt};
 use super::settings::{read_workflow_settings, WorkflowSettings};
 use super::step_config::{get_step_config, tools_for_agent, workflow_output_format_for_step};
@@ -32,12 +38,149 @@ pub struct WorkflowStepRun {
 
 /// Manages active workflow step one-shot runs. Registered as Tauri managed state.
 /// Allows `cancel_workflow_step` to look up the skill sidecar for a given agent.
-pub struct WorkflowStepRunManager(pub Mutex<HashMap<String, WorkflowStepRun>>);
+pub struct WorkflowStepRunManager(pub Arc<Mutex<HashMap<String, WorkflowStepRun>>>);
 
 impl WorkflowStepRunManager {
     pub fn new() -> Self {
-        Self(Mutex::new(HashMap::new()))
+        Self(Arc::new(Mutex::new(HashMap::new())))
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct WorkflowStepMaterializedPayload {
+    agent_id: String,
+    skill_name: String,
+    step_id: u32,
+    success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_detail: Option<String>,
+}
+
+pub(crate) fn build_workflow_research_sidecar_config(
+    skill_name: &str,
+    prompt: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+    llm: crate::types::WorkflowLlmConfig,
+    workflow_session_id: Option<String>,
+) -> SidecarConfig {
+    let workspace_root_dir = workspace_path.replace('\\', "/");
+    let workspace_run_dir =
+        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
+            .to_string_lossy()
+            .replace('\\', "/");
+
+    let mut config =
+        crate::agents::sidecar::build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+            prompt: prompt.to_string(),
+            llm,
+            workspace_root_dir,
+            workspace_run_dir,
+            agent_name: "skill-creator".to_string(),
+            task_kind: Some("workflow.research".to_string()),
+            user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+            allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
+            max_turns: 50,
+            output_format: workflow_output_format_for_step(0),
+            skill_name: Some(skill_name.to_string()),
+            step_id: Some(0),
+            run_source: Some("workflow".to_string()),
+            plugin_slug: plugin_slug.to_string(),
+        });
+    config.workflow_session_id = workflow_session_id;
+    config.transcript_log_dir = Some(
+        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
+            .join("logs")
+            .to_string_lossy()
+            .into_owned(),
+    );
+    config
+}
+
+const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/skill-creator-user-suffix.txt"
+));
+
+fn parse_target_conversation_state(
+    payload: &str,
+    target_agent_id: &str,
+) -> Option<serde_json::Value> {
+    let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+    if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
+        return None;
+    }
+
+    let message = value.get("message")?;
+    if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+        return None;
+    }
+
+    match message.get("status").and_then(|v| v.as_str()) {
+        Some("completed" | "error" | "cancelled" | "canceled") => Some(message.clone()),
+        _ => None,
+    }
+}
+
+fn install_research_materialization_listener(
+    app: &tauri::AppHandle,
+    runs: &WorkflowStepRunManager,
+    agent_id: &str,
+    skill_name: &str,
+    workspace_skill_dir: String,
+) -> tauri::EventId {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
+    let target_agent_id = agent_id.to_string();
+    let tx_message = tx.clone();
+    let listener_id = app.listen("agent-message", move |event| {
+        if let Some(state) = parse_target_conversation_state(event.payload(), &target_agent_id) {
+            let _ = tx_message.send(state);
+        }
+    });
+
+    let app_handle = app.clone();
+    let runs_map = runs.0.clone();
+    let listener_to_remove = listener_id;
+    let agent_id = agent_id.to_string();
+    let skill_name = skill_name.to_string();
+    tokio::spawn(async move {
+        let result = match rx.recv().await {
+            Some(state) => {
+                let parsed =
+                    extract_research_json_from_conversation_state(&state).and_then(|payload| {
+                        materialize_workflow_step_output_value(
+                            Path::new(&workspace_skill_dir),
+                            0,
+                            &payload,
+                        )
+                    });
+                parsed.map(|_| ())
+            }
+            None => Err("Workflow research materialization listener closed".to_string()),
+        };
+
+        app_handle.unlisten(listener_to_remove);
+        if let Ok(mut map) = runs_map.lock() {
+            map.remove(&agent_id);
+        }
+
+        let payload = WorkflowStepMaterializedPayload {
+            agent_id: agent_id.clone(),
+            skill_name,
+            step_id: 0,
+            success: result.is_ok(),
+            error_detail: result.err(),
+        };
+        if let Err(e) = app_handle.emit("workflow-step-materialized", &payload) {
+            log::warn!(
+                "[workflow_research_materialize] failed to emit event for agent={}: {}",
+                agent_id,
+                e
+            );
+        }
+    });
+
+    listener_id
 }
 
 // ─── run_workflow_step_inner ─────────────────────────────────────────────────
@@ -57,7 +200,7 @@ async fn run_workflow_step_inner(
     workflow_session_id: Option<String>,
 ) -> Result<String, String> {
     let step = get_step_config(step_id)?;
-    // Write user-context.md to workspace directory so sub-agents can read it.
+    // Write user-context.md to the workspace directory so the runtime agent can read it.
     // Refreshed before every step to pick up mid-workflow settings edits.
     write_user_context_file(
         workspace_path,
@@ -121,64 +264,75 @@ async fn run_workflow_step_inner(
         step_id
     );
 
-    let config = SidecarConfig {
-        mode: Some("one-shot".to_string()),
-        prompt,
-        // Do not set a string systemPrompt for workflow steps. Agent identity
-        // comes from the OpenHands agent name; structured contracts are
-        // enforced via output_format below.
-        system_prompt: None,
-        llm: Some(settings.llm.clone()),
-        model: None,
-        model_base_url: None,
-        api_key: crate::types::SecretString::new("openhands-llm-config".to_string()),
-        workspace_root_dir: workspace_path.replace('\\', "/"),
-        workspace_skill_dir: resolve_workspace_skill_dir(
-            Path::new(workspace_path),
-            &settings.plugin_slug,
+    let config = if step_id == 0 {
+        build_workflow_research_sidecar_config(
             skill_name,
+            &prompt,
+            workspace_path,
+            &settings.plugin_slug,
+            settings.llm.clone(),
+            workflow_session_id,
         )
-        .to_string_lossy()
-        .replace('\\', "/"),
-        allowed_tools: Some(step.allowed_tools),
-        max_turns: Some(step.max_turns),
-        // Compatibility field retained while other runtime paths still share
-        // SidecarConfig; OpenHands one-shot workflow ignores it.
-        permission_mode: None,
-        betas: None,
-        thinking: None,
-        // Workflow model configuration is carried by llm; suppress legacy fields.
-        fallback_model: None,
-        effort: None,
-        output_format: workflow_output_format_for_step(step_id),
-        prompt_suggestions: None,
-        path_to_claude_code_executable: None,
-        path_to_openhands_runner: None,
-        agent_name: Some(agent_name),
-        // Retained so existing sidecar config parsing accepts workflow runs;
-        // OpenHands resolves workflow instructions from the `.agents` layout.
-        required_plugins: Some(required_plugins),
-        setting_sources: None,
-        conversation_history: None,
-        skill_name: Some(skill_name.to_string()),
-        step_id: Some(step_id as i32),
-        workflow_session_id,
-        usage_session_id: None,
-        run_source: Some("workflow".to_string()),
-        plugin_slug: settings.plugin_slug.clone(),
-        transcript_log_dir: Some(
-            crate::skill_paths::workspace_skill_dir(
+    } else {
+        SidecarConfig {
+            mode: Some("one-shot".to_string()),
+            prompt,
+            // Do not set a string systemPrompt for workflow steps. Agent identity
+            // comes from the OpenHands agent name; structured contracts are
+            // enforced via output_format below.
+            system_prompt: None,
+            llm: Some(settings.llm.clone()),
+            model: None,
+            model_base_url: None,
+            api_key: crate::types::SecretString::new("openhands-llm-config".to_string()),
+            workspace_root_dir: workspace_path.replace('\\', "/"),
+            workspace_skill_dir: resolve_workspace_skill_dir(
                 Path::new(workspace_path),
                 &settings.plugin_slug,
                 skill_name,
             )
-            .join("logs")
             .to_string_lossy()
-            .into_owned(),
-        ),
-        runtime_provider: workflow_one_shot_runtime_provider(),
-        task_kind: None,
-        user_message_suffix: None,
+            .replace('\\', "/"),
+            allowed_tools: Some(step.allowed_tools),
+            max_turns: Some(step.max_turns),
+            // Compatibility field retained while other runtime paths still share
+            // SidecarConfig; OpenHands one-shot workflow ignores it.
+            permission_mode: None,
+            betas: None,
+            thinking: None,
+            // Workflow model configuration is carried by llm; suppress legacy fields.
+            fallback_model: None,
+            effort: None,
+            output_format: workflow_output_format_for_step(step_id),
+            prompt_suggestions: None,
+            path_to_claude_code_executable: None,
+            path_to_openhands_runner: None,
+            agent_name: Some(agent_name),
+            // Retained so existing sidecar config parsing accepts workflow runs;
+            // OpenHands resolves workflow instructions from the `.agents` layout.
+            required_plugins: Some(required_plugins),
+            setting_sources: None,
+            conversation_history: None,
+            skill_name: Some(skill_name.to_string()),
+            step_id: Some(step_id as i32),
+            workflow_session_id,
+            usage_session_id: None,
+            run_source: Some("workflow".to_string()),
+            plugin_slug: settings.plugin_slug.clone(),
+            transcript_log_dir: Some(
+                crate::skill_paths::workspace_skill_dir(
+                    Path::new(workspace_path),
+                    &settings.plugin_slug,
+                    skill_name,
+                )
+                .join("logs")
+                .to_string_lossy()
+                .into_owned(),
+            ),
+            runtime_provider: workflow_one_shot_runtime_provider(),
+            task_kind: None,
+            user_message_suffix: None,
+        }
     };
 
     log::debug!(
@@ -186,6 +340,30 @@ async fn run_workflow_step_inner(
         agent_id,
         config.workspace_skill_dir,
     );
+
+    let materialization_listener = if step_id == 0 {
+        Some(install_research_materialization_listener(
+            app,
+            runs,
+            &agent_id,
+            skill_name,
+            config.workspace_skill_dir.clone(),
+        ))
+    } else {
+        None
+    };
+
+    // Register before dispatch so a fast terminal conversation_state can clean
+    // up the active run entry through the backend materialization listener.
+    {
+        let mut map = runs.0.lock().map_err(|e| e.to_string())?;
+        map.insert(
+            agent_id.clone(),
+            WorkflowStepRun {
+                skill_name: skill_name.to_string(),
+            },
+        );
+    }
 
     let transcript_log_dir = config.transcript_log_dir.clone();
     pool.send_request(
@@ -202,19 +380,14 @@ async fn run_workflow_step_inner(
             agent_id,
             e
         );
+        if let Some(listener_id) = materialization_listener {
+            app.unlisten(listener_id);
+        }
+        if let Ok(mut map) = runs.0.lock() {
+            map.remove(&agent_id);
+        }
         e
     })?;
-
-    // Register active one-shot run so cancel_workflow_step can route cancel.
-    {
-        let mut map = runs.0.lock().map_err(|e| e.to_string())?;
-        map.insert(
-            agent_id.clone(),
-            WorkflowStepRun {
-                skill_name: skill_name.to_string(),
-            },
-        );
-    }
 
     Ok(agent_id)
 }

@@ -109,7 +109,7 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 
 ## Task 1: Add Research Runtime Contract Tests
 
-- [ ] Add Rust tests in `app/src-tauri/src/commands/workflow/tests.rs` proving the desired step 0 OpenHands contract:
+- [x] Add Rust tests in `app/src-tauri/src/commands/workflow/tests.rs` proving the desired step 0 OpenHands contract:
   - rendered research prompt contains `skill_name`, `workspace_dir`, `context_dir`, `user-context.md`, and max dimensions;
   - rendered research prompt does not contain `research-agent`, `subagent`, or `delegate`;
   - config uses `runtimeProvider = "openhands"`;
@@ -118,13 +118,13 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
   - config uses `mode = "one-shot"`;
   - config uses `allowedTools = ["file_editor", "terminal"]`;
   - config carries `outputFormat` only as app-side schema metadata.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow::tests::research
 ```
 
-Expected: new tests fail because the code still routes step 0 through `research-agent` and the hard-coded prompt.
+Result: passed as part of `cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow`.
 
 ## Task 2: Externalize The Research Prompt
 
@@ -152,7 +152,7 @@ Return only a raw JSON object with this envelope:
 }
 ```
 
-- [ ] Modify `app/src-tauri/src/commands/workflow/prompt.rs` to add:
+- [x] Modify `app/src-tauri/src/commands/workflow/prompt.rs` to add:
 
 ```rust
 const RESEARCH_PROMPT_TEMPLATE: &str = include_str!(concat!(
@@ -161,14 +161,14 @@ const RESEARCH_PROMPT_TEMPLATE: &str = include_str!(concat!(
 ));
 ```
 
-- [ ] Replace the `format!(...)` body in `build_step0_prompt(...)` with template rendering using the same normalized `workspace_str` currently computed by the function.
-- [ ] Run:
+- [x] Replace the `format!(...)` body in `build_step0_prompt(...)` with template rendering using the same normalized `workspace_str` currently computed by the function.
+- [x] Run:
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow::tests::research
 ```
 
-Expected: prompt tests pass; config tests still fail until runtime routing is changed.
+Result: passed as part of `cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow`.
 
 - [x] Add or update deterministic assertions proving workflow prompt templates
   are rendered from `agent-sources/prompts/**`, not
@@ -192,7 +192,7 @@ prompt layout.
   - keep the final JSON envelope and strict schema requirements.
 - [x] Update `agent-sources/workspace/skills/research/references/scoring-rubric.md` so “dimension research agent” becomes “dimension research focus”.
 - [x] Update `agent-sources/workspace/skills/research/references/consolidation-handoff.md` so “dimension sub-agent outputs” becomes “dimension research notes”.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 rg -n "subagent|sub-agent|delegate|delegation|dimension agent|dimension sub-agent" agent-sources/workspace/skills/research
@@ -200,7 +200,7 @@ rg -n "subagent|sub-agent|delegate|delegation|dimension agent|dimension sub-agen
 
 Expected: no matches except acceptable historical references in files explicitly marked old/deprecated, if any.
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd app && npm run test:agents:structural
@@ -210,21 +210,21 @@ Expected: agent-source structural tests pass.
 
 ## Task 4: Add Backend Research JSON Extraction
 
-- [ ] Add a Rust helper that extracts the final research JSON from terminal OpenHands `conversation_state.result_text`.
-- [ ] The helper must:
+- [x] Add a Rust helper that extracts the final research JSON from terminal OpenHands `conversation_state.result_text`.
+- [x] The helper must:
   - require `type = "conversation_state"`;
   - require `status = "completed"`;
   - read `result_text` or `resultText`;
   - strip a single surrounding Markdown JSON fence if present;
   - parse a JSON object;
   - reject missing, empty, non-object, or invalid JSON with a clear error.
-- [ ] Add tests for:
+- [x] Add tests for:
   - raw JSON object text;
   - fenced JSON;
   - missing `result_text`;
   - terminal `error` with `error_detail`;
   - invalid JSON.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow::tests::research
@@ -234,8 +234,8 @@ Expected: JSON extraction tests pass.
 
 ## Task 5: Build The OpenHands Research Request
 
-- [ ] Add a step 0 research request builder in `app/src-tauri/src/commands/workflow/runtime.rs` or a small sibling module if the file becomes too large.
-- [ ] Use `crate::agents::sidecar::build_openhands_one_shot_config(...)` with:
+- [x] Add a step 0 research request builder in `app/src-tauri/src/commands/workflow/runtime.rs` or a small sibling module if the file becomes too large.
+- [x] Use `crate::agents::sidecar::build_openhands_one_shot_config(...)` with:
   - `agent_name: "skill-creator"`;
   - `task_kind: Some("workflow.research")`;
   - `user_message_suffix: Some(skill-creator user suffix)`;
@@ -247,8 +247,8 @@ Expected: JSON extraction tests pass.
   - `run_source: Some("workflow".to_string())`;
   - `workspace_root_dir` from the initialized workspace path;
   - `workspace_run_dir` as the skill-scoped workspace directory.
-- [ ] Keep step 1-3 routing unchanged in this issue.
-- [ ] Run:
+- [x] Keep step 1-3 routing unchanged in this issue.
+- [x] Run:
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow::tests::research
@@ -258,16 +258,16 @@ Expected: research config tests pass.
 
 ## Task 6: Add Nonblocking Backend Materialization For Research
 
-- [ ] Preserve the current `run_workflow_step(...) -> agent_id` frontend contract so the UI can register the active run immediately and show streaming events.
-- [ ] Start the OpenHands request as step 0, return `agent_id` immediately, and install a backend terminal listener before dispatching the sidecar request.
-- [ ] When terminal `conversation_state` arrives for that `agent_id`:
+- [x] Preserve the current `run_workflow_step(...) -> agent_id` frontend contract so the UI can register the active run immediately and show streaming events.
+- [x] Start the OpenHands request as step 0, return `agent_id` immediately, and install a backend terminal listener before dispatching the sidecar request.
+- [x] When terminal `conversation_state` arrives for that `agent_id`:
   - extract research JSON from `result_text`;
   - call `materialize_workflow_step_output_value(&workspace_skill_dir, 0, &payload)`;
   - emit a new Tauri event such as `workflow-step-materialized` with `{ agent_id, skill_name, step_id: 0, success: true }`;
   - on parse/materialization failure, emit the same event with `success: false` and `error_detail`, and ensure the run finishes as an error.
-- [ ] Remove the `WorkflowStepRunManager` entry after terminal completion, error, or shutdown.
-- [ ] Keep cleanup and guard behavior from `run_workflow_step(...)` unchanged.
-- [ ] Run:
+- [x] Remove the `WorkflowStepRunManager` entry after terminal completion, error, or shutdown.
+- [x] Keep cleanup and guard behavior from `run_workflow_step(...)` unchanged.
+- [x] Run:
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
@@ -277,22 +277,22 @@ Expected: all workflow Rust tests pass.
 
 ## Task 7: Update Frontend Research Completion Semantics
 
-- [ ] Update `app/src/lib/workflow-step-configs.ts` so step 0 no longer requires legacy frontend structured output.
-- [ ] Add a typed listener for `workflow-step-materialized` in the workflow state machine or a focused hook.
-- [ ] For step 0:
+- [x] Update `app/src/lib/workflow-step-configs.ts` so step 0 no longer requires legacy frontend structured output.
+- [x] Add a typed listener for `workflow-step-materialized` in the workflow state machine or a focused hook.
+- [x] For step 0:
   - keep calling `agentStartRun(agentId, model)` immediately after `runWorkflowStep(...)`;
   - keep rendering OpenHands `conversation_event` records through the existing agent stream;
   - when the run completes, do not call `materializeWorkflowStepOutput(...)`;
   - require either the successful `workflow-step-materialized` event or `verifyStepOutput(...)` success before marking the step completed;
   - show `error_detail` when backend materialization fails.
-- [ ] Keep steps 1-3 on the existing structured-output/materialize path until their own migration issues.
-- [ ] Add tests in `app/src/__tests__/pages/workflow.test.tsx` for:
+- [x] Keep steps 1-3 on the existing structured-output/materialize path until their own migration issues.
+- [x] Add tests in `app/src/__tests__/pages/workflow.test.tsx` for:
   - step 0 OpenHands `conversation_event` tool/reasoning records are visible while the run is active;
   - step 0 terminal `conversation_state` plus successful materialization completes the step;
   - step 0 does not call `materializeWorkflowStepOutput(...)`;
   - failed backend materialization shows an error and leaves the step in error state;
   - steps 1 and 3 still call `materializeWorkflowStepOutput(...)`.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd app && npx vitest run src/__tests__/pages/workflow.test.tsx src/__tests__/hooks/use-agent-stream.test.ts
@@ -302,15 +302,15 @@ Expected: workflow UI tests pass.
 
 ## Task 8: Verify Event Visibility End To End
 
-- [ ] Add or update a test fixture that emits:
+- [x] Add or update a test fixture that emits:
   - `conversation_event` with reasoning text;
   - `conversation_event` with a file read or edit tool call;
   - `conversation_event` with an observation;
   - terminal `conversation_state`;
   - `agent-exit`.
-- [ ] Prove the UI displays the reasoning/tool/observation rows before completion.
-- [ ] Prove the terminal result is not displayed as a legacy `display_item` result.
-- [ ] Run:
+- [x] Prove the UI displays the reasoning/tool/observation rows before completion.
+- [x] Prove the terminal result is not displayed as a legacy `display_item` result.
+- [x] Run:
 
 ```bash
 cd app && npx vitest run src/__tests__/components/agent-output-panel.test.tsx src/__tests__/pages/workflow.test.tsx
@@ -320,7 +320,7 @@ Expected: OpenHands event display tests pass.
 
 ## Task 9: Update Existing Evals And Run Research Smoke
 
-- [ ] Review the existing eval inventory before changing eval coverage:
+- [x] Review the existing eval inventory before changing eval coverage:
 
 ```bash
 cd tests/evals && npm test
@@ -341,7 +341,7 @@ Expected: failures, if any, identify stale `research-agent`,
 - [x] Update `tests/evals/assertions/workflow-openhands-static.test.js` so it
   reads active prompt files from `agent-sources/prompts/**` and asserts the
   OpenHands topology no longer depends on `research-agent` for step 0.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd tests/evals && npm test
@@ -351,28 +351,34 @@ cd tests/evals && npm run eval:workspace-workflow-step-prompt
 
 Expected: deterministic assertions and targeted existing eval packages pass.
 
-## Task 10: Live OpenHands Research Smoke
+## Task 10: Automated OpenHands Research Smoke
 
-- [ ] Build the sidecar/runner if needed:
+- [x] Build the sidecar/runner if needed:
 
 ```bash
 cd app && npm run sidecar:build
 ```
 
-- [ ] Run the app in dev mode with real OpenHands settings configured:
+- [x] Add env-gated live OpenHands SDK integration coverage for
+  `agentName = "skill-creator"` and `taskKind = "workflow.research"`:
 
 ```bash
-cd app && npm run dev
+cd app/sidecar && npx vitest run __tests__/openhands-runner.integration.test.ts __tests__/openhands-workflow-smoke.test.ts
 ```
 
-- [ ] In the UI, create or reuse a focused test skill and start workflow step 0.
-- [ ] Confirm:
-  - tool calls and reasoning/progress events appear while the run is active;
-  - the request does not hang after the agent returns;
-  - `context/clarifications.json` exists in the skill workspace;
-  - the UI advances to the completed research step state;
-  - failures show an app-visible error message instead of silently hanging.
-- [ ] Capture the transcript log path in the PR notes.
+- [x] Confirm the automated suite covers:
+  - OpenHands `conversation_event` records before terminal state;
+  - terminal `conversation_state.result_text` extraction;
+  - parseable research JSON, including fenced JSON tolerance;
+  - backend `context/clarifications.json` materialization;
+  - UI completion and error behavior without frontend `materializeWorkflowStepOutput(...)`.
+- [ ] Run the env-gated live SDK case with
+  `SKILL_BUILDER_OPENHANDS_MODEL` and `SKILL_BUILDER_OPENHANDS_API_KEY`
+  configured, then capture the transcript/log evidence in the PR notes.
+
+Result: local automated command passed with the live SDK cases skipped because
+the required OpenHands env vars were not present in this shell. No manual-only
+test remains; the live provider smoke is automated but credential-gated.
 
 ## Task 11: Docs, Plan, And Repo Map Audit
 
@@ -383,7 +389,7 @@ cd app && npm run dev
   - the frontend no longer materializes step 0 output.
 - [x] Update `docs/plans/2026-05-02-openhands-native-migration.md` to mark this child issue as the workflow research migration slice.
 - [x] Audit `repo-map.json` only if files are added/removed in mapped directories.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 npx markdownlint docs/design/openhands-sdk-runner/README.md docs/plans/2026-05-02-openhands-native-migration.md docs/plans/2026-05-02-openhands-workflow-research.md
@@ -393,7 +399,7 @@ Expected: markdownlint passes.
 
 ## Task 12: Final Verification And Commit
 
-- [ ] Run the targeted verification set:
+- [x] Run the targeted verification set:
 
 ```bash
 cd app && npm run test:agents:structural
@@ -402,14 +408,14 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
 cd tests/evals && npm test
 ```
 
-- [ ] Run broader checks if the implementation changes shared event types or generated command types:
+- [x] Run broader checks if the implementation changes shared event types or generated command types:
 
 ```bash
 cd app && npm run codegen
 cd app && npm run test:unit
 ```
 
-- [ ] Commit and push from the child worktree:
+- [x] Commit and push from the child worktree:
 
 ```bash
 git status --short
