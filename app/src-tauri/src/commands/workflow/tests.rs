@@ -16,7 +16,10 @@ use super::output_format::{
     publish_commit_and_tag_generated_skill,
 };
 use super::prompt::{build_prompt, build_step0_prompt, PromptParams};
-use super::runtime::{build_workflow_research_sidecar_config, workflow_one_shot_runtime_provider};
+use super::runtime::{
+    build_answer_evaluator_sidecar_config, build_workflow_research_sidecar_config,
+    workflow_one_shot_runtime_provider,
+};
 use super::step_config::{
     build_betas, get_step_config, thinking_budget_for_step, tools_for_agent,
     workflow_output_format_for_step,
@@ -260,6 +263,51 @@ fn research_sidecar_config_uses_skill_creator_openhands_contract() {
         "OpenHands one-shot config should rely on workspace .agents layout"
     );
     assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
+}
+
+#[test]
+fn answer_evaluator_prompt_renders_clean_break_skill_routing() {
+    let prompt = super::prompt::build_evaluator_prompt(
+        "sales-analytics",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        "/tmp/skills",
+    );
+
+    assert!(prompt.contains("Use the answer-evaluator skill"));
+    assert!(prompt.contains("Skill name: sales-analytics"));
+    assert!(prompt.contains("/tmp/workspace"));
+    assert!(prompt.contains("/user-context.md"));
+    assert!(prompt.contains("/context"));
+    assert!(prompt
+        .to_ascii_lowercase()
+        .contains("return only a raw json object"));
+    assert!(!prompt.contains("You are answer-evaluator"));
+}
+
+#[test]
+fn answer_evaluator_sidecar_config_uses_skill_creator_openhands_contract() {
+    let config = build_answer_evaluator_sidecar_config(
+        "sales-analytics",
+        "prompt",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        test_workflow_llm_config(),
+    );
+
+    assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
+    assert_eq!(config.runtime_provider.as_deref(), Some("openhands"));
+    assert_eq!(config.run_source.as_deref(), Some("gate-eval"));
+    assert_eq!(config.output_format, Some(answer_evaluator_output_format()));
+    assert_eq!(
+        config.task_kind.as_deref(),
+        Some("workflow.answer_evaluator")
+    );
+    assert!(config.path_to_claude_code_executable.is_none());
+    assert_eq!(
+        config.allowed_tools,
+        Some(tools_for_agent("answer-evaluator"))
+    );
 }
 
 #[test]
