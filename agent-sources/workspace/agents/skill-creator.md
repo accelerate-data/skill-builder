@@ -4,6 +4,7 @@ description: OpenHands-native worker for one-shot and conversational skill-build
 tools:
   - file_editor
   - terminal
+  - browser_tool_set
 skills:
   - answer-evaluator
   - research

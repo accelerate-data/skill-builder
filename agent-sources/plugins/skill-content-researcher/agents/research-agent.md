@@ -7,6 +7,7 @@ description: >
 tools:
   - file_editor
   - terminal
+  - browser_tool_set
 skills:
   - research
 ---

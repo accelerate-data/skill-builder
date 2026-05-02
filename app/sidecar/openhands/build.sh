@@ -56,6 +56,7 @@ mkdir -p "${DIST_DIR}" "${BUILD_DIR}" "${SPEC_DIR}"
 "${PYTHON_BIN}" -m PyInstaller \
   --onefile \
   --clean \
+  --collect-submodules "openhands.tools.browser_use" \
   --collect-data "binaryornot" \
   --collect-data "litellm" \
   --add-data "${OPENHANDS_SDK_DIR}/agent/prompts${DATA_SEP}openhands/sdk/agent/prompts" \
