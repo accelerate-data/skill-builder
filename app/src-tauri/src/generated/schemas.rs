@@ -1158,4 +1158,3 @@ pub const DECISIONS_INLINE_SCHEMA: &str = r###"{
   "title": "DecisionsOutput",
   "type": "object"
 }"###;
-
