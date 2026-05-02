@@ -15,18 +15,20 @@
 ## Source Context
 
 - Parent Linear issue: `VU-1145`
-- Current child issue: `VU-1147`
+- Current child issue: `VU-1148`
 - Primary design: `docs/design/openhands-native-migration/README.md`
 - SDK runner design: `docs/design/openhands-sdk-runner/README.md`
 - Runtime boundary design: `docs/design/agent-runtime-boundary/README.md`
 - Model settings design: `docs/design/model-settings/README.md`
 - Validate child plan: `docs/plans/2026-05-02-scope-review-openhands-validate.md`
 - Event-shape child plan: `docs/plans/2026-05-02-openhands-event-shape-hardening.md`
+- Workflow research child plan: `docs/plans/2026-05-02-openhands-workflow-research.md`
 
 ## Current State Snapshot
 
-This snapshot reflects the VU-1145 accumulation branch after VU-1146 merged
-back and while VU-1147 is being implemented as the next child branch.
+This snapshot reflects the VU-1145 accumulation branch after VU-1146 and
+VU-1147 merged back. VU-1148 is the next child branch and migrates workflow
+step 0 Research.
 
 | Area | Status | Evidence |
 |---|---|---|
@@ -38,7 +40,8 @@ back and while VU-1147 is being implemented as the next child branch.
 | Workspace startup/deploy | Done for root OpenHands workspace | App startup creates/refeshes the workspace and deploys `agent-sources/workspace/**`; task prompts live under `agent-sources/prompts/**` and are read by code, not copied into runtime `.agents`. |
 | Workflow routing | Not done | `app/src-tauri/src/commands/workflow/step_config.rs` still routes to `research-agent`, `skill-writer-agent`, and `answer-evaluator`. |
 | Create-skill Validate | Done | VU-1146 routes Validate through the shared OpenHands one-shot runner and parses the terminal `conversation_state` result. |
-| Event-shape hardening | In progress | VU-1147 hardens real SDK event rendering, nested tool/message extraction, parallel `ActionEvent` grouping, and raw payload preservation before workflow research migration. |
+| Event-shape hardening | Done | VU-1147 hardens real SDK event rendering, nested tool/message extraction, parallel `ActionEvent` grouping, and raw payload preservation before workflow research migration. |
+| Workflow research | Planned | VU-1148 migrates step 0 Research to the OpenHands one-shot runtime, keeps OpenHands events visible while running, and moves terminal JSON extraction/materialization into Rust. |
 | Model settings UI | Mostly done | `app/src/lib/model-catalog.ts` and `app/src/components/settings/sdk-section.tsx` use `models.dev`, provider/model dropdowns, reasoning/tool-calling filters, model details, and hidden backend-owned `usageId`. Verify request-option controls during the final settings pass, but do not block workflow migration on this unless tests reveal a runtime LLM projection gap. |
 | Eval coverage | Partial | Promptfoo/OpenCode packages exist and static OpenHands assertions exist, but packages still name `research-agent` / `skill-writer-agent` and there is not yet an automated live OpenHands workflow smoke for step 0 and step 3. |
 | Repo docs/map | Partial | Runtime/model designs have been updated. `repo-map.json` still describes mixed Claude/OpenHands runtime and old plugin-hosted agent prompts. |
@@ -50,7 +53,7 @@ into the VU-1145 accumulation branch:
 
 - [x] VU-1146 Scope Review Validate. This proves the shared one-shot
   OpenHands runner, workspace, LLM, agent, and result boundary.
-- [ ] VU-1147 Event Shape Hardening. This must land before workflow research
+- [x] VU-1147 Event Shape Hardening. This must land before workflow research
   so the UI can display real OpenHands messages, reasoning, tool calls,
   observations, errors, internal events, and parallel action batches.
 
@@ -163,10 +166,51 @@ markdownlint docs/design/openhands-sdk-runner/README.md docs/plans/2026-05-02-op
 
 **Merge-back gate:**
 
-- [ ] VU-1147 branch is merged into VU-1145.
-- [ ] Workflow research migration starts only after this gate is complete.
+- [x] VU-1147 branch is merged into VU-1145.
+- [x] Workflow research migration starts only after this gate is complete.
 
-## Slice 3: Harden Remaining OpenHands Runner Contract
+## Slice 3: VU-1148 Workflow Research One-Shot
+
+This slice migrates workflow step 0 Research first. Later workflow steps remain
+on their current path until their own migration slices.
+
+**Plan:** `docs/plans/2026-05-02-openhands-workflow-research.md`
+
+**Branch:**
+
+```bash
+./scripts/worktree.sh feature/vu-1148-openhands-workflow-research
+```
+
+**Required behavior:**
+
+- [ ] Step 0 routes to `agentName: "skill-creator"` and
+  `taskKind: "workflow.research"`.
+- [ ] Step 0 uses an app-owned prompt template at
+  `agent-sources/prompts/research.txt`.
+- [ ] The research skill describes a single-agent inline flow and does not
+  refer to subagents, delegated dimension agents, or sub-agent outputs.
+- [ ] OpenHands `conversation_event` records remain visible in the UI while
+  the research run is active.
+- [ ] Rust extracts the final JSON from terminal
+  `conversation_state.result_text`, validates it, and materializes
+  `context/clarifications.json`.
+- [ ] Frontend step 0 no longer calls `materializeWorkflowStepOutput(...)`.
+
+**Verification:**
+
+```bash
+cd app && npm run test:agents:structural
+cd app && npx vitest run src/__tests__/pages/workflow.test.tsx src/__tests__/hooks/use-agent-stream.test.ts src/__tests__/components/agent-output-panel.test.tsx
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
+```
+
+**Merge-back gate:**
+
+- [ ] VU-1148 branch is merged into VU-1145.
+- [ ] Workflow step 0 can complete a live OpenHands smoke without hanging.
+
+## Slice 4: Harden Remaining OpenHands Runner Contract
 
 This slice covers residual runner hardening that is not already done by
 VU-1146 or VU-1147. Re-check the code before implementing; many original
@@ -207,7 +251,7 @@ cd app/sidecar && npx vitest run __tests__/runtime-types.test.ts __tests__/confi
 cd app/sidecar && python3 -m py_compile openhands/runner.py
 ```
 
-## Slice 4: Move Agent Sources To Final OpenHands Layout
+## Slice 5: Move Remaining Agent Sources To Final OpenHands Layout
 
 This slice changes prompt/source ownership without changing workflow semantics.
 
@@ -242,9 +286,9 @@ cd app && npm run test:agents:structural
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
 ```
 
-## Slice 5: Route Workflow Steps Through `skill-creator`
+## Slice 6: Route Remaining Workflow Steps Through `skill-creator`
 
-This slice changes workflow runtime behavior after the final source layout exists.
+This slice changes workflow runtime behavior for steps not covered by VU-1148.
 
 **Files:**
 
@@ -257,7 +301,9 @@ This slice changes workflow runtime behavior after the final source layout exist
 
 **Required behavior:**
 
-- [ ] Step 0 routes to `agentName: "skill-creator"`, `taskKind: "research"`, `promptTemplate: "research.txt"`, output `context/clarifications.json`.
+- [ ] Step 0 is out of this slice; VU-1148 owns
+  `agentName: "skill-creator"`, `taskKind: "workflow.research"`,
+  `promptTemplate: "research.txt"`, and `context/clarifications.json`.
 - [ ] Step 1 routes to `agentName: "skill-creator"`, `taskKind: "research_refinement"`, `promptTemplate: "research-refinement.txt"`, output `context/clarifications.json`.
 - [ ] Answer evaluation routes to `agentName: "skill-creator"`, `taskKind: "answer_evaluation"`, `promptTemplate: "answer-evaluation.txt"`, output `context/answer-evaluation.json`.
 - [ ] Step 2 routes to `agentName: "skill-creator"`, `taskKind: "decision_confirmation"`, `promptTemplate: "decision-confirmation.txt"`, output `context/decisions.json`.
@@ -274,7 +320,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
 cd app && npm run test:unit
 ```
 
-## Slice 6: Verify And Patch Model Settings Gaps
+## Slice 7: Verify And Patch Model Settings Gaps
 
 Do not redo the model-settings implementation. It is mostly present; this slice closes the remaining gaps against the design.
 
@@ -308,7 +354,7 @@ cd app && npm run test:unit
 cargo test --manifest-path app/src-tauri/Cargo.toml db::settings types::settings
 ```
 
-## Slice 7: Remove Workflow Claude Runtime Compatibility
+## Slice 8: Remove Workflow Claude Runtime Compatibility
 
 Run this only after workflow steps, scope review, and answer evaluation all use the OpenHands runner.
 
@@ -344,7 +390,7 @@ cd app && npm run test:unit
 cargo test --manifest-path app/src-tauri/Cargo.toml
 ```
 
-## Slice 8: Add Automated OpenHands Smoke And Eval Coverage
+## Slice 9: Add Automated OpenHands Smoke And Eval Coverage
 
 This slice is required before final VU-1145 PR readiness.
 
@@ -375,7 +421,7 @@ cd tests/evals && npm test
 cd tests/evals && npm run eval:smoke
 ```
 
-## Slice 9: Final Docs, Repo Map, And Release Readiness
+## Slice 10: Final Docs, Repo Map, And Release Readiness
 
 Run this after all implementation slices have merged back into VU-1145.
 
@@ -412,6 +458,7 @@ node scripts/verify-release-stage.mjs
 
 - [ ] VU-1145 acceptance criteria are checked against the final diff.
 - [x] VU-1146 has merged back into VU-1145.
+- [x] VU-1147 has merged back into VU-1145.
 - [ ] `docs/design/openhands-native-migration/README.md` matches the implemented runtime decisions.
 - [ ] `docs/design/openhands-sdk-runner/README.md` matches the Python runner call shape.
 - [ ] `repo-map.json` reflects added, removed, and renamed sidecar/runtime/agent files.
