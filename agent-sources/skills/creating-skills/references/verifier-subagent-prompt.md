@@ -17,7 +17,10 @@ Check whether the generated skill:
   expectations from the generation brief
 - gives future agents executable guidance rather than a narrative task recap
 - includes references only when they are useful and not redundant
-- includes eval definitions when the behavior is objectively checkable
+- includes eval definitions at the caller-provided eval path when the behavior
+  is objectively checkable
+- does not invent alternate eval paths or put app eval definitions in the skill
+  package when the caller provided a separate eval path
 - avoids lifecycle actions that do not belong in generation, including running
   evals, benchmark aggregation, review viewer generation, blind comparison,
   commits, tags, or releases
