@@ -1511,32 +1511,32 @@ Two refinements landed after Task 12 was exercised live. Both already implemente
 
 ### Slice A: revert misguided fix + set `OH_CONVERSATIONS_PATH` at server spawn
 
-- [ ] **14.1: Revert** the dead `persistence_dir` field on `OpenHandsOneShotRequest` and `StartConversationRequest` in `app/src-tauri/src/agents/openhands_server/types.rs`. Delete the two `start_conversation_request_*persistence_dir*` unit tests — they asserted wire serialization of a field Pydantic silently drops.
+- [x] **14.1: Revert** the dead `persistence_dir` field on `OpenHandsOneShotRequest` and `StartConversationRequest` in `app/src-tauri/src/agents/openhands_server/types.rs`. Delete the two `start_conversation_request_*persistence_dir*` unit tests — they asserted wire serialization of a field Pydantic silently drops.
 
-- [ ] **14.2: Revert** the `config.persistence_dir = Some(persistence_path...)` lines added in `dispatch_openhands_one_shot` and `dispatch_openhands_refine_turn` in commit `e8622297`. The `mut config: SidecarConfig` parameter goes back to `config: SidecarConfig`. `create_openhands_persistence_dir` stays — its returned path is now informational only (per-run dirs become organizational placeholders).
+- [x] **14.2: Revert** the `config.persistence_dir = Some(persistence_path...)` lines added in `dispatch_openhands_one_shot` and `dispatch_openhands_refine_turn` in commit `e8622297`. The `mut config: SidecarConfig` parameter goes back to `config: SidecarConfig`. `create_openhands_persistence_dir` stays — its returned path is now informational only (per-run dirs become organizational placeholders).
 
-- [ ] **14.3: Add `compute_conversations_path() -> Option<PathBuf>`** in `app/src-tauri/src/agents/openhands_server/process.rs`. Resolves to `dirs::data_dir() / "com.vibedata.skill-builder" / "workspace" / "conversations"`. Returns `None` only on platforms where `dirs::data_dir()` fails — falls back to SDK default with a warning log.
+- [x] **14.3: Add `compute_conversations_path() -> Option<PathBuf>`** in `app/src-tauri/src/agents/openhands_server/process.rs`. Resolves to `dirs::data_dir() / "com.vibedata.skill-builder" / "workspace" / "conversations"`. Returns `None` only on platforms where `dirs::data_dir()` fails — falls back to SDK default with a warning log.
 
-- [ ] **14.4: In `process.rs::start_once`**, call `compute_conversations_path()` and set `OH_CONVERSATIONS_PATH=<absolute>` on the spawn `tokio_command` via `.env(...)`. Place after the existing `OH_SECRET_KEY` env var so the OH_-prefix block stays grouped.
+- [x] **14.4: In `process.rs::start_once`**, call `compute_conversations_path()` and set `OH_CONVERSATIONS_PATH=<absolute>` on the spawn `tokio_command` via `.env(...)`. Place after the existing `OH_SECRET_KEY` env var so the OH_-prefix block stays grouped.
 
-- [ ] **14.5: Unit test** `compute_conversations_path_resolves_under_data_dir` in `process.rs` — asserts the returned path ends with `com.vibedata.skill-builder/workspace/conversations`.
+- [x] **14.5: Unit test** `compute_conversations_path_resolves_under_data_dir` in `process.rs` — asserts the returned path ends with `com.vibedata.skill-builder/workspace/conversations`.
 
-- [ ] **14.6: Unit test** `start_once_sets_conversations_path_env_var` (or equivalent) by extracting the env-var setting into a small testable helper. The helper takes the spawn command + computed path and applies the env var; the test asserts the resulting command's env table contains `OH_CONVERSATIONS_PATH` at the expected absolute value.
+- [x] **14.6: Unit test** `start_once_sets_conversations_path_env_var` (or equivalent) by extracting the env-var setting into a small testable helper. The helper takes the spawn command + computed path and applies the env var; the test asserts the resulting command's env table contains `OH_CONVERSATIONS_PATH` at the expected absolute value.
 
 ### Slice B: replace `ensure_workspace_prompts` boolean cache with two-tier SHA-gated cache
 
 Independent of Slice A — operates on `commands/workflow/deploy.rs`, not `agents/openhands_server/`.
 
-- [ ] **14.7: Add `compute_dir_sha(roots: &[&Path]) -> Result<String, String>`** in `commands/workflow/deploy.rs` (or a small private module). Walks each root in sorted order with `walkdir`, hashes `(path_string, b"\0", file_bytes)` per file into a single `Sha256`, returns hex digest. `sha2`, `walkdir`, and `hex` are already in the dependency graph.
+- [x] **14.7: Add `compute_dir_sha(roots: &[&Path]) -> Result<String, String>`** in `commands/workflow/deploy.rs` (or a small private module). Walks each root in sorted order with `walkdir`, hashes `(path_string, b"\0", file_bytes)` per file into a single `Sha256`, returns hex digest. `sha2`, `walkdir`, and `hex` are already in the dependency graph.
 
-- [ ] **14.8: Define `WorkspaceDeployCache` struct** with `source_sha: Option<String>` and `per_skill_sha: HashMap<String /* skill_dir abs */, String>`. Replace `static COPIED_WORKSPACES: Mutex<Option<HashSet<String>>>` with `Mutex<Option<HashMap<String /* workspace */, WorkspaceDeployCache>>>`.
+- [x] **14.8: Define `WorkspaceDeployCache` struct** with `source_sha: Option<String>` and `per_skill_sha: HashMap<String /* skill_dir abs */, String>`. Replace `static COPIED_WORKSPACES: Mutex<Option<HashSet<String>>>` with `Mutex<Option<HashMap<String /* workspace */, WorkspaceDeployCache>>>`.
 
-- [ ] **14.9: Rewrite `ensure_workspace_prompts`** to fire two tiers on every call:
+- [x] **14.9: Rewrite `ensure_workspace_prompts`** to fire two tiers on every call:
   - **Tier 1 (source → root)**: compute current source SHA. If it differs from cached `source_sha`, copy source → `<workspace>/.agents/`, update `source_sha`, **clear** `per_skill_sha`.
   - **Tier 2 (root → per-skill)**: compute current root SHA from `<workspace>/.agents/`. For the dispatched skill (or all discovered skills if no specific skill is supplied), if root SHA differs from `per_skill_sha[skill_dir]`, copy `<workspace>/.agents/` → `<workspace>/<plugin>/<skill>/.agents/`, update `per_skill_sha[skill_dir]`.
   - Preserve the existing public function signatures so callers (refine, workflow, eval, scope review) need no changes.
 
-- [ ] **14.10: Add tests in `deploy.rs`**:
+- [x] **14.10: Add tests in `deploy.rs`**:
   - `compute_dir_sha_is_stable_across_walks` — same input → same output regardless of OS walk order
   - `compute_dir_sha_changes_when_byte_changes`
   - `compute_dir_sha_changes_when_file_added`
@@ -1548,7 +1548,7 @@ Independent of Slice A — operates on `commands/workflow/deploy.rs`, not `agent
 
 ### Slice C: validation
 
-- [ ] **14.11: `cargo build` + `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` + `cargo test agents::openhands_server commands::workflow::deploy` + `npm run test:unit` all green.**
+- [x] **14.11: `cargo build` + `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` + `cargo test agents::openhands_server commands::workflow::deploy` + `npm run test:unit` all green.**
 
 - [ ] **14.12: Manual smoke** — start `npm run dev` from the VU-1155 worktree (clean restart so Tauri rebuilds Rust). Run a refine turn on any skill. Verify:
   - `<workspace>/conversations/<conversation_id_hex>/{base_state.json + events/event-NNNNN-*.json}` exists and the event count roughly matches the chat's display item count (filter classes excepted).
