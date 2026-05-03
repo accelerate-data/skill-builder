@@ -16,16 +16,19 @@ use super::output_format::{
     publish_commit_and_tag_generated_skill,
 };
 use super::prompt::{
-    build_prompt, build_step0_prompt, build_step1_prompt, build_step2_prompt, PromptParams,
+    build_prompt, build_step0_prompt, build_step1_prompt, build_step2_prompt,
+    build_step3_prompt, PromptParams,
 };
 use super::runtime::{
     build_answer_evaluator_sidecar_config, build_workflow_confirm_decisions_sidecar_config,
-    build_workflow_detailed_research_sidecar_config, build_workflow_research_sidecar_config,
-    workflow_one_shot_runtime_provider, workflow_step_uses_native_openhands_dispatch,
+    build_workflow_detailed_research_sidecar_config, build_workflow_generate_skill_sidecar_config,
+    build_workflow_research_sidecar_config, workflow_one_shot_runtime_provider,
+    workflow_step_uses_native_openhands_dispatch,
 };
 use super::step_config::{
     build_betas, confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
-    thinking_budget_for_step, tools_for_agent, workflow_output_format_for_step,
+    skill_generation_workflow_tools, thinking_budget_for_step, tools_for_agent,
+    workflow_output_format_for_step,
 };
 use super::user_context::{format_user_context, write_user_context_file};
 
@@ -127,7 +130,7 @@ fn test_step_config_canonical_agent_names() {
     assert_eq!(get_step_config(0).unwrap().agent_name, "skill-creator");
     assert_eq!(get_step_config(1).unwrap().agent_name, "skill-creator");
     assert_eq!(get_step_config(2).unwrap().agent_name, "skill-creator");
-    assert_eq!(get_step_config(3).unwrap().agent_name, "skill-writer-agent");
+    assert_eq!(get_step_config(3).unwrap().agent_name, "skill-creator");
 }
 
 #[test]
@@ -163,7 +166,7 @@ fn test_step_config_canonical_required_plugins() {
     );
     assert_eq!(
         get_step_config(3).unwrap().required_plugins,
-        vec!["skill-content-researcher", "skill-creator"]
+        vec!["skill-creator"]
     );
 }
 
@@ -231,7 +234,7 @@ fn test_research_steps_use_native_openhands_dispatch() {
     assert!(workflow_step_uses_native_openhands_dispatch(0));
     assert!(workflow_step_uses_native_openhands_dispatch(1));
     assert!(workflow_step_uses_native_openhands_dispatch(2));
-    assert!(!workflow_step_uses_native_openhands_dispatch(3));
+    assert!(workflow_step_uses_native_openhands_dispatch(3));
 }
 
 #[test]
@@ -440,7 +443,9 @@ fn answer_evaluator_prompt_renders_clean_break_skill_routing() {
         "/tmp/skills",
     );
 
-    assert!(prompt.contains("Use the answer-evaluator skill"));
+    assert!(prompt.contains("answer-evaluator workflow gate"));
+    assert!(prompt.contains("Do not invoke"));
+    assert!(prompt.contains("answer-evaluator skill"));
     assert!(prompt.contains("We are writing the skill sales-analytics."));
     assert!(prompt.contains("/tmp/workspace"));
     assert!(prompt.contains("/user-context.md"));
@@ -721,6 +726,62 @@ fn confirm_decisions_sidecar_config_uses_skill_creator_openhands_contract() {
         "workspace run dir must be the skill-scoped workspace"
     );
     assert_eq!(config.output_format, workflow_output_format_for_step(2));
+    assert!(
+        config.required_plugins.is_none(),
+        "OpenHands one-shot config should rely on workspace .agents layout"
+    );
+    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
+    assert!(config.path_to_claude_code_executable.is_none());
+}
+
+#[test]
+fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
+    let prompt = build_step3_prompt(
+        "pipeline-value",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        "/tmp/skills",
+        Some("octocat"),
+        Some("2026-05-01T12:00:00Z"),
+    );
+
+    assert!(prompt.contains("workflow.skill_generation"));
+    assert!(prompt.contains("We are writing the skill named `pipeline-value`."));
+    assert!(prompt.contains("Workspace directory: `/tmp/workspace/skills/pipeline-value`"));
+    assert!(prompt.contains("Skill output directory: `/tmp/skills/skills/pipeline-value`"));
+    assert!(prompt.contains("Use the `creating-skills` skill"));
+    assert!(prompt.contains("context/decisions.json"));
+    assert!(prompt.contains("context/clarifications.json"));
+    assert!(prompt.contains("fresh-context verification"));
+    assert!(prompt.contains("Do not invoke a separate validator skill"));
+    assert!(prompt.contains("Do not invoke a legacy writer agent"));
+    assert!(prompt.contains("\"version_bump\": \"1.0.0\""));
+    assert!(prompt.contains("fresh-context-verifier-review"));
+}
+
+#[test]
+fn skill_generation_sidecar_config_uses_skill_creator_openhands_contract() {
+    let config = build_workflow_generate_skill_sidecar_config(
+        "pipeline-value",
+        "prompt",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        test_workflow_llm_config(),
+        Some("session-1".to_string()),
+    );
+
+    assert_eq!(config.runtime_provider.as_deref(), Some("openhands"));
+    assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
+    assert_eq!(config.task_kind.as_deref(), Some("workflow.skill_generation"));
+    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert_eq!(config.allowed_tools, Some(skill_generation_workflow_tools()));
+    assert_eq!(config.max_turns, Some(500));
+    assert_eq!(config.skill_name.as_deref(), Some("pipeline-value"));
+    assert_eq!(config.step_id, Some(3));
+    assert_eq!(config.run_source.as_deref(), Some("workflow"));
+    assert_eq!(config.workspace_root_dir, "/tmp/workspace");
+    assert_eq!(config.workspace_skill_dir, "/tmp/workspace/skills/pipeline-value");
+    assert_eq!(config.output_format, workflow_output_format_for_step(3));
     assert!(
         config.required_plugins.is_none(),
         "OpenHands one-shot config should rely on workspace .agents layout"
@@ -2343,6 +2404,7 @@ fn test_copy_agents_to_claude_dir() {
 fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     let workspace_agents_src = tempfile::tempdir().unwrap();
     let workspace_skills_src = tempfile::tempdir().unwrap();
+    let bundled_skills_src = tempfile::tempdir().unwrap();
     let workspace = tempfile::tempdir().unwrap();
     let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
         workspace.path(),
@@ -2371,15 +2433,6 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         "# Researching Skill Requirements",
     )
     .unwrap();
-    std::fs::create_dir_all(workspace_skills_src.path().join("answer-evaluator")).unwrap();
-    std::fs::write(
-        workspace_skills_src
-            .path()
-            .join("answer-evaluator")
-            .join("SKILL.md"),
-        "# Answer Evaluator",
-    )
-    .unwrap();
     std::fs::create_dir_all(workspace_skills_src.path().join("skill-creator")).unwrap();
     std::fs::write(
         workspace_skills_src
@@ -2389,6 +2442,24 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         "# Skill Creator",
     )
     .unwrap();
+    std::fs::create_dir_all(bundled_skills_src.path().join("creating-skills")).unwrap();
+    std::fs::write(
+        bundled_skills_src
+            .path()
+            .join("creating-skills")
+            .join("SKILL.md"),
+        "# Creating Skills",
+    )
+    .unwrap();
+    std::fs::create_dir_all(bundled_skills_src.path().join("skill-test")).unwrap();
+    std::fs::write(
+        bundled_skills_src
+            .path()
+            .join("skill-test")
+            .join("SKILL.md"),
+        "# Skill Test",
+    )
+    .unwrap();
 
     let claude_template = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(claude_template.path(), "# Claude").unwrap();
@@ -2396,6 +2467,7 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     copy_prompts_sync(
         workspace_agents_src.path(),
         workspace_skills_src.path(),
+        bundled_skills_src.path(),
         claude_template.path(),
         workspace.path().to_str().unwrap(),
     )
@@ -2410,12 +2482,18 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     assert!(workspace_skill_dir
         .join(".agents/skills/researching-skill-requirements/SKILL.md")
         .is_file());
-    assert!(workspace_skill_dir
+    assert!(!workspace_skill_dir
         .join(".agents/skills/answer-evaluator/SKILL.md")
-        .is_file());
+        .exists());
     assert!(workspace_skill_dir
         .join(".agents/skills/skill-creator/SKILL.md")
         .is_file());
+    assert!(workspace_skill_dir
+        .join(".agents/skills/creating-skills/SKILL.md")
+        .is_file());
+    assert!(!workspace_skill_dir
+        .join(".agents/skills/skill-test/SKILL.md")
+        .exists());
     assert!(workspace
         .path()
         .join(".agents/agents/skill-creator.md")
@@ -2424,9 +2502,13 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         .path()
         .join(".agents/skills/researching-skill-requirements/SKILL.md")
         .is_file());
-    assert!(workspace
+    assert!(!workspace
         .path()
         .join(".agents/skills/answer-evaluator/SKILL.md")
+        .exists());
+    assert!(workspace
+        .path()
+        .join(".agents/skills/creating-skills/SKILL.md")
         .is_file());
     assert!(!workspace_skill_dir.join("CLAUDE.md").exists());
     assert!(!workspace.path().join("CLAUDE.md").exists());

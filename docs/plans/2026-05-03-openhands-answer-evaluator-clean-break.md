@@ -1,10 +1,15 @@
 # OpenHands Answer Evaluator Clean-Break Implementation Plan
 
+> **Superseded scope note:** VU-1152 extends the clean-break approach so the
+> answer-evaluator gate is prompt-owned instead of a bundled skill. Keep the
+> single `skill-creator` OpenHands agent and `workflow.answer_evaluator` task
+> kind, but fold the fixed classification and JSON contract into
+> `agent-sources/prompts/answer-evaluator.txt`.
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Migrate answer evaluation onto the OpenHands-native clean-break workflow path while keeping one OpenHands runtime agent, `skill-creator`, and invoking the bundled `answer-evaluator` skill through an app-owned prompt.
+**Goal:** Migrate answer evaluation onto the OpenHands-native clean-break workflow path while keeping one OpenHands runtime agent, `skill-creator`, and keeping the fixed answer-evaluator gate contract in an app-owned prompt.
 
-**Architecture:** Do not create a new OpenHands agent for answer evaluation. The OpenHands runner should continue to execute the shared `skill-creator` agent, but the answer-evaluator run must use a task-specific user prompt that tells that agent to use the bundled `answer-evaluator` skill and return only the answer-evaluation JSON. App-owned prompts live in `agent-sources/prompts/**`; reusable skill instructions and references live under the deployed `.agents/skills/**` layout.
+**Architecture:** Do not create a new OpenHands agent or bundled skill for answer evaluation. The OpenHands runner should continue to execute the shared `skill-creator` agent, but the answer-evaluator run must use a task-specific user prompt that contains the gate classification rules and returns only the answer-evaluation JSON. App-owned prompts live in `agent-sources/prompts/**`; reusable skill instructions and references live under the deployed `.agents/skills/**` layout only when they are reusable outside one app gate.
 
 **Tech Stack:** Tauri Rust workflow commands, Python OpenHands SDK runner, OpenHands `.agents` workspace layout, bundled AgentSkills, Vitest sidecar tests, cargo workflow tests, agent structural tests.
 

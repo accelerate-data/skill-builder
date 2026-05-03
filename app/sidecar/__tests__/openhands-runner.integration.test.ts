@@ -167,10 +167,16 @@ Return concise validation results for scope review requests.
 `,
     "utf8",
   );
-  const researchDir = path.join(workspaceDir, ".agents", "skills", "research");
+  for (const skillName of ["researching-skill-requirements", "skill-creator"]) {
+    cpSync(
+      path.join(repoRoot, "agent-sources", "workspace", "skills", skillName),
+      path.join(workspaceDir, ".agents", "skills", skillName),
+      { recursive: true },
+    );
+  }
   cpSync(
-    path.join(repoRoot, "agent-sources", "workspace", "skills", "research"),
-    researchDir,
+    path.join(repoRoot, "agent-sources", "skills", "creating-skills"),
+    path.join(workspaceDir, ".agents", "skills", "creating-skills"),
     { recursive: true },
   );
   return workspaceDir;

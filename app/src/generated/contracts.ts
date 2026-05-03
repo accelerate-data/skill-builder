@@ -113,7 +113,7 @@ export type DetailedResearchOutput = { status: string; refinement_count: number;
  * rewrite-skill:   `{ status: "rewritten", skipped?: true, commit_summary?, version_bump?, call_trace }`
  * benchmark-skill:  `{ status: "complete"|"partial"|"skipped", benchmark_path?, call_trace }`
  */
-export type GenerateSkillOutput = { status: string; benchmark_path?: string | null; skipped?: boolean | null; commit_summary?: string | null; version_bump?: string | null }
+export type GenerateSkillOutput = { status: string; benchmark_path?: string | null; skipped?: boolean | null; commit_summary?: string | null; version_bump?: string | null; call_trace?: string[] | null }
 
 /**
  * Initialization progress event.

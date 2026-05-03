@@ -136,7 +136,7 @@ test.describe("Sidecar Integration — Generate Skill Step", { tag: "@integratio
     const agentId = "int-agent-generate-001";
     const skillName = "test-skill";
 
-    // Step 3 (generate-skill) uses a different step id and agent name.
+    // Step 3 uses the shared OpenHands skill-creator agent with a task kind.
     await navigateToWorkflowUpdateMode(page, {
       ...buildOverrides(bridge, skillName, agentId),
       // Override get_workflow_state so the page renders as if steps 0-2 are done.
@@ -152,7 +152,11 @@ test.describe("Sidecar Integration — Generate Skill Step", { tag: "@integratio
 
     await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 8_000 });
 
-    await bridge.runAgent(page, "skill-creator:generate-skill", agentId, { skillName, stepId: 3 });
+    await bridge.runAgent(page, "skill-creator", agentId, {
+      skillName,
+      stepId: 3,
+      taskKind: "workflow.skill_generation",
+    });
 
     // The mock sidecar copies mock-templates/outputs/step3/SKILL.md.
     const skillMd = bridge.readWorkspaceFile(`${skillName}/SKILL.md`);

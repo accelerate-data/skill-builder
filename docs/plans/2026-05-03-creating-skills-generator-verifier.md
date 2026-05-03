@@ -7,7 +7,9 @@
 
 **Goal:** Create a focused OpenHands skill-writing path for workflow step 3 by
 copying only the creation guidance into `agent-sources/skills/creating-skills`
-and updating generation to use a Generator-Verifier loop.
+and updating generation to use a Generator-Verifier loop. As part of the same
+clean-break scope, move answer-evaluator behavior out of a bundled skill and
+into the app-owned answer-evaluator prompt.
 
 **Architecture:** Keep one OpenHands top-level agent, `skill-creator`. The
 app-owned step 3 prompt reads `user-context.md`, `clarifications.json`, and
@@ -19,6 +21,9 @@ with a fresh-context verifier subagent before returning.
 Step 3 generation must use the native Rust-owned OpenHands one-shot runtime
 path. It must not invoke the legacy Node/TS sidecar, Claude-sidecar
 compatibility path, or plugin-hosted `skill-writer-agent` as the runtime agent.
+Answer evaluation must use the same single `skill-creator` OpenHands agent,
+but its fixed app gate logic belongs in `agent-sources/prompts/answer-evaluator.txt`,
+not in a deployed `answer-evaluator` skill.
 
 **Design doc:** `docs/design/creating-skills-generator-verifier/README.md`
 
@@ -58,6 +63,11 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - Update step 3 clean-break prompt wiring to use the focused creation skill.
 - Move step 3 generation away from the legacy Node/TS sidecar path and onto the
   Rust-owned OpenHands one-shot runtime path.
+- Fold the app-specific answer-evaluator classification and JSON gate contract
+  into `agent-sources/prompts/answer-evaluator.txt`.
+- Remove the bundled answer-evaluator skill from the workspace skill list; it
+  has fixed app files, fixed JSON, and backend materialization semantics rather
+  than reusable skill guidance.
 - Add structural and eval coverage for the new contract.
 
 **Out of scope**
@@ -69,6 +79,7 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - Standalone description optimization.
 - Refine/rewrite behavior.
 - Changing step 0, step 1, or step 2 semantics.
+- Changing the answer-evaluator backend output schema or materialization path.
 
 ## Current Code To Review
 
@@ -79,6 +90,13 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
     not govern clean-break step 3.
 - `agent-sources/workspace/agents/skill-creator.md`
   - Shared OpenHands agent identity and workflow overview.
+- `agent-sources/prompts/answer-evaluator.txt`
+  - App-owned prompt for the answer-evaluator gate. This prompt should own the
+    fixed file paths, classification rules, counts, verdict rules, and JSON
+    envelope.
+- `agent-sources/workspace/skills/answer-evaluator/SKILL.md`
+  - Current bundled skill to remove. Its content is app-specific gate logic and
+    should be folded into the prompt.
 - `agent-sources/plugins/skill-creator/agents/skill-writer-agent.md`
   - Current step 2/3 instructions. Step 3 still says to follow the broad
     `skill-creator` skill.
@@ -343,7 +361,42 @@ Assert the output:
 If step 3 mock outputs include broad legacy lifecycle language, update them to
 match the focused generation contract.
 
-## Task 7: Run Quality Gates
+## Task 7: Fold Answer Evaluator Into The App Prompt
+
+- [ ] **Step 1: Move evaluator logic into `agent-sources/prompts/answer-evaluator.txt`**
+
+The prompt must include:
+
+- exact input files: `user-context.md` and `context/clarifications.json`;
+- no-write and no-workflow-advance rules;
+- `answer_text` as the single source of truth;
+- verdict classes: `clear`, `needs_refinement`, `not_answered`, `vague`,
+  `contradictory`;
+- count rules for `answered_count`, `empty_count`, `vague_count`,
+  `contradictory_count`, and `total_count`;
+- `verdict` thresholds and automatic `gate_decision`;
+- the final raw JSON envelope.
+
+- [ ] **Step 2: Remove the bundled evaluator skill**
+
+Delete `agent-sources/workspace/skills/answer-evaluator/SKILL.md` and remove
+`answer-evaluator` from the `skills:` list in
+`agent-sources/workspace/agents/skill-creator.md`.
+
+- [ ] **Step 3: Update tests and eval copy**
+
+Update structural tests, OpenHands static eval assertions, and
+`skill-content-researcher-answer-evaluator` eval prompt wording so they refer
+to prompt-owned answer-evaluator behavior rather than a bundled
+`answer-evaluator` skill.
+
+- [ ] **Step 4: Preserve backend gate semantics**
+
+Do not change `run_answer_evaluator`, `workflow.answer_evaluator`, or the
+answer-evaluator output schema/materialization contract except where tests need
+to stop asserting that a bundled evaluator skill is loaded.
+
+## Task 8: Run Quality Gates
 
 - [ ] **Step 1: Run agent structural tests**
 
@@ -369,7 +422,13 @@ cd tests/evals && npm test
 cd tests/evals && npm run eval:skill-creator-generate-skill
 ```
 
-- [ ] **Step 5: Run markdown lint for changed docs**
+- [ ] **Step 5: Run the affected answer-evaluator live eval**
+
+```bash
+cd tests/evals && npm run eval:skill-content-researcher-answer-evaluator
+```
+
+- [ ] **Step 6: Run markdown lint for changed docs**
 
 ```bash
 npx markdownlint-cli2 docs/design/creating-skills-generator-verifier/README.md docs/plans/2026-05-03-creating-skills-generator-verifier.md
@@ -396,5 +455,8 @@ existing command.
 - [ ] Generator-Verifier loop runs in fresh context and re-verifies once after
       material fixes.
 - [ ] Base eval definitions are generated but not executed.
+- [ ] Answer-evaluator behavior is prompt-owned, not a bundled workspace skill.
+- [ ] Answer-evaluator still returns the existing backend gate JSON with
+      `verdict`, counts, `gate_decision`, and `per_question`.
 - [ ] Structural tests, Rust workflow tests, eval harness tests, markdownlint,
       and the affected live eval pass.

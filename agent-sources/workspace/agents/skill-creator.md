@@ -6,10 +6,9 @@ tools:
   - terminal
   - browser_tool_set
 skills:
-  - answer-evaluator
+  - creating-skills
   - researching-skill-requirements
   - skill-creator
-  - skill-validator
 ---
 
 # Skill Creator Agent
