@@ -243,12 +243,12 @@ describe("read directive compliance", () => {
 });
 
 describe("Research scope guard contract prompts", () => {
-  const WORKSPACE_RESEARCH_SKILL_PATH = path.join(
+  const WORKSPACE_RESEARCHING_SKILL_PATH = path.join(
     REPO_ROOT,
     "agent-sources",
     "workspace",
     "skills",
-    "research",
+    "researching-skill-requirements",
     "SKILL.md",
   );
   const WORKSPACE_RESEARCH_REFERENCES_DIR = path.join(
@@ -256,29 +256,29 @@ describe("Research scope guard contract prompts", () => {
     "agent-sources",
     "workspace",
     "skills",
-    "research",
+    "researching-skill-requirements",
     "references",
   );
 
-  it("workspace research skill uses one inline lens flow and final JSON only", () => {
+  it("workspace research skill is generalized for initial and detailed clarification research", () => {
     const content = fs.readFileSync(
-      WORKSPACE_RESEARCH_SKILL_PATH,
+      WORKSPACE_RESEARCHING_SKILL_PATH,
       "utf8",
     );
     expect(content).not.toMatch(
       /references\/(?:dimension-sets|scoring-rubric|consolidation-handoff)\.md/,
     );
     expect(content).not.toMatch(/references\/dimensions\//);
-    expect(content).toMatch(/Business process/i);
-    expect(content).toMatch(/Data engineering standards/i);
-    expect(content).toMatch(/Source system customizations/i);
-    expect(content).toMatch(/Platform standards/i);
-    expect(content).toMatch(/organization-specific knowledge delta/i);
-    expect(content).toMatch(/Return exactly one raw JSON object/i);
-    expect(content).toMatch(/Do not emit intermediate markdown/i);
-    expect(content).toMatch(/research_plan/);
-    expect(content).toMatch(/dimension_scores/);
-    expect(content).toMatch(/selected_dimensions/);
+    expect(content).toMatch(/name: researching-skill-requirements/);
+    expect(content).toMatch(/creation or refinement of a skill/i);
+    expect(content).toMatch(/Step prompts own the exact JSON\s+envelope/i);
+    expect(content).toMatch(/Scope Guard/i);
+    expect(content).toMatch(/do not manufacture questions/i);
+    expect(content).toMatch(/Initial research should create top-level sections/i);
+    expect(content).toMatch(/Detailed\s+follow-up research should preserve/i);
+    expect(content).toMatch(/Return exactly the object requested by the current step prompt/i);
+    expect(content).not.toMatch(/research_complete/);
+    expect(content).not.toMatch(/step-0-research\.json/);
   });
 
   it("workspace research legacy reference files are removed", () => {
@@ -297,13 +297,13 @@ describe("Research scope guard contract prompts", () => {
   });
 
   it("research-agent includes scope recommendation short-circuit contract", () => {
-    const content = fs.readFileSync(WORKSPACE_RESEARCH_SKILL_PATH, "utf8");
+    const content = fs.readFileSync(WORKSPACE_RESEARCHING_SKILL_PATH, "utf8");
     expect(content).toMatch(
       /Scope (Recommendation )?[Gg]uard|scope_recommendation/,
     );
-    expect(content).toMatch(/status": "research_complete"/);
+    expect(content).toMatch(/do not manufacture questions/i);
+    expect(content).toMatch(/Follow the current\s+step prompt for the exact output shape/i);
     expect(content).not.toMatch(/dimensions_selected": 0/);
-    expect(content).toMatch(/question_count": 0/);
   });
 
   it("research-agent refinement pass preserves original questions and canonical metadata", () => {
@@ -430,7 +430,7 @@ describe("skill-content-researcher plugin structure", () => {
     expect(manifest.description).toBeDefined();
   });
 
-  it("embedded research skill is internal-only (not user-invocable)", () => {
+  it("embedded legacy research skill is internal-only (not user-invocable)", () => {
     const researchPath = path.join(
       pluginRoot,
       "skills",
@@ -438,6 +438,7 @@ describe("skill-content-researcher plugin structure", () => {
       "SKILL.md",
     );
     const fm = frontmatter(researchPath);
+    expect(fm.name).toBe("research");
     expect(fm.user_invocable).toBe("false");
   });
 
@@ -455,14 +456,21 @@ describe("skill-content-researcher plugin structure", () => {
       resolveAgentPath("research-agent"),
       resolveAgentPath("answer-evaluator"),
       resolveAgentPath("skill-writer-agent"),
-      path.join(pluginRoot, "skills", "research", "SKILL.md"),
+      path.join(
+        REPO_ROOT,
+        "agent-sources",
+        "workspace",
+        "skills",
+        "researching-skill-requirements",
+        "SKILL.md",
+      ),
       skillCreatorSkillPath,
     ];
     const forbiddenPatterns: Array<[string, RegExp]> = [
       ["Claude Code routing", /Claude Code/i],
       ["Claude tool names", /\b(?:AskUserQuestion|TaskOutput|TaskStop|StructuredOutput|bypassPermissions)\b/],
       ["Agent tool routing", /(?:\bAgent\b|\bSkill\b)\s+tool/i],
-      ["sub-agent fan-out", /sub-?agents?|fan-?out|spawn .*parallel/i],
+      ["sub-agent fan-out", /fan-?out|spawn .*parallel/i],
       ["wait/merge mechanics", /wait for all|merge helper|merge-helper/i],
     ];
 

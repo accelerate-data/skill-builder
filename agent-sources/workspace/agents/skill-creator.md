@@ -7,7 +7,7 @@ tools:
   - browser_tool_set
 skills:
   - answer-evaluator
-  - research
+  - researching-skill-requirements
   - skill-creator
   - skill-validator
 ---
