@@ -52,10 +52,14 @@ All questions must be single-select. Do not ask "select all that apply",
 
 Every question must have 2-4 mutually exclusive concrete choices plus final
 `"Other (please specify)"` with `is_other: true`.
+Do not omit the final Other choice, even when the listed choices seem
+exhaustive.
 
 Use canonical question fields only: `id`, `title`, `text`, `must_answer`,
 `choices`, and `refinements`. Do not use `options`, `label`, `required`, or
 `kind`.
+Question IDs must be strings like `"Q1"`, `"Q2"`, and `"Q3"`; never use numeric
+question IDs.
 
 Question objects must be nested directly inside `sections[].questions`. Do not
 return a top-level `research_output.questions` array, and do not put question ID
@@ -63,5 +67,8 @@ references inside `sections[].questions`.
 Every section `id` must be an integer, starting at 1 and increasing by 1. Do
 not use string section IDs.
 
-Every note must be an object with string `type`, string `title`, and string
-`body`; do not return note strings.
+`answer_evaluator_notes` must always be exactly `[]` in Step 0 research output.
+Do not put self-review notes, validation notes, or evaluator notes in
+`answer_evaluator_notes`; that field is populated only after the user answers.
+Every `notes` item must be an object with string `type`, string `title`, and
+string `body`; do not return note strings.
