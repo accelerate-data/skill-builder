@@ -11,8 +11,6 @@ use std::sync::Mutex;
 /// picked up until the app is restarted.
 pub(crate) static COPIED_WORKSPACES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
-const OPENHANDS_BUNDLED_SKILL_NAMES: &[&str] = &["creating-skills"];
-
 /// Public wrapper for `resolve_prompt_source_dirs` — used by `workspace.rs`
 /// to pass the bundled CLAUDE.md path into `rebuild_claude_md`.
 pub fn resolve_prompt_source_dirs_public(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf) {
@@ -207,30 +205,18 @@ pub async fn ensure_workspace_prompts(
     // (AppHandle is !Send so it cannot cross the spawn_blocking boundary)
     let (agents_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
     let workspace_skills_dir = resolve_workspace_skills_dir(app_handle);
-    let bundled_skills_dir = resolve_bundled_skills_dir(app_handle);
 
-    if !agents_dir.is_dir()
-        && !claude_md.is_file()
-        && !workspace_skills_dir.is_dir()
-        && !bundled_skills_dir.is_dir()
-    {
+    if !agents_dir.is_dir() && !claude_md.is_file() && !workspace_skills_dir.is_dir() {
         return Ok(()); // No sources found anywhere — skip silently
     }
 
     let workspace = workspace_path.to_string();
     let agents = agents_dir.clone();
     let workspace_skills = workspace_skills_dir.clone();
-    let bundled_skills = bundled_skills_dir.clone();
     let cmd = claude_md.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        copy_prompts_sync(
-            &agents,
-            &workspace_skills,
-            &bundled_skills,
-            &cmd,
-            &workspace,
-        )
+        copy_prompts_sync(&agents, &workspace_skills, &cmd, &workspace)
     })
     .await
     .map_err(|e| format!("Prompt copy task failed: {}", e))?;
@@ -254,15 +240,13 @@ pub async fn ensure_workspace_prompts(
 pub(crate) fn copy_prompts_sync(
     agents_dir: &Path,
     workspace_skills_dir: &Path,
-    bundled_skills_dir: &Path,
     _claude_md: &Path,
     workspace_path: &str,
 ) -> Result<(), String> {
-    if agents_dir.is_dir() || workspace_skills_dir.is_dir() || bundled_skills_dir.is_dir() {
+    if agents_dir.is_dir() || workspace_skills_dir.is_dir() {
         copy_workspace_sources_to_openhands_layout(
             agents_dir,
             workspace_skills_dir,
-            bundled_skills_dir,
             Path::new(workspace_path),
         )?;
     }
@@ -284,23 +268,12 @@ pub fn ensure_workspace_prompts_sync(
 
     let (agents_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
     let workspace_skills_dir = resolve_workspace_skills_dir(app_handle);
-    let bundled_skills_dir = resolve_bundled_skills_dir(app_handle);
 
-    if !agents_dir.is_dir()
-        && !claude_md.is_file()
-        && !workspace_skills_dir.is_dir()
-        && !bundled_skills_dir.is_dir()
-    {
+    if !agents_dir.is_dir() && !claude_md.is_file() && !workspace_skills_dir.is_dir() {
         return Ok(());
     }
 
-    copy_prompts_sync(
-        &agents_dir,
-        &workspace_skills_dir,
-        &bundled_skills_dir,
-        &claude_md,
-        workspace_path,
-    )?;
+    copy_prompts_sync(&agents_dir, &workspace_skills_dir, &claude_md, workspace_path)?;
     mark_workspace_copied(workspace_path);
     Ok(())
 }
@@ -310,12 +283,10 @@ pub fn ensure_workspace_prompts_sync(
 pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> Result<(), String> {
     let (agents_dir, _) = resolve_prompt_source_dirs(app_handle);
     let workspace_skills_dir = resolve_workspace_skills_dir(app_handle);
-    let bundled_skills_dir = resolve_bundled_skills_dir(app_handle);
-    if agents_dir.is_dir() || workspace_skills_dir.is_dir() || bundled_skills_dir.is_dir() {
+    if agents_dir.is_dir() || workspace_skills_dir.is_dir() {
         copy_workspace_sources_to_openhands_layout(
             &agents_dir,
             &workspace_skills_dir,
-            &bundled_skills_dir,
             Path::new(workspace_path),
         )?;
     }
@@ -325,20 +296,13 @@ pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> R
 fn copy_workspace_sources_to_openhands_layout(
     agents_src: &Path,
     workspace_skills_src: &Path,
-    bundled_skills_src: &Path,
     workspace: &Path,
 ) -> Result<(), String> {
-    copy_workspace_sources_to_openhands_dir(
-        agents_src,
-        workspace_skills_src,
-        bundled_skills_src,
-        workspace,
-    )?;
+    copy_workspace_sources_to_openhands_dir(agents_src, workspace_skills_src, workspace)?;
     for workspace_skill_dir in discover_workspace_skill_dirs(workspace)? {
         copy_workspace_sources_to_openhands_dir(
             agents_src,
             workspace_skills_src,
-            bundled_skills_src,
             &workspace_skill_dir,
         )?;
     }
@@ -348,15 +312,10 @@ fn copy_workspace_sources_to_openhands_layout(
 fn copy_workspace_sources_to_openhands_dir(
     agents_src: &Path,
     workspace_skills_src: &Path,
-    bundled_skills_src: &Path,
     target_dir: &Path,
 ) -> Result<(), String> {
     copy_workspace_agents_to_openhands_layout(agents_src, target_dir)?;
-    copy_workspace_agent_skills_to_openhands_layout(
-        workspace_skills_src,
-        bundled_skills_src,
-        target_dir,
-    )?;
+    copy_workspace_agent_skills_to_openhands_layout(workspace_skills_src, target_dir)?;
     Ok(())
 }
 
@@ -434,7 +393,6 @@ fn copy_workspace_agents_to_openhands_layout(
 
 fn copy_workspace_agent_skills_to_openhands_layout(
     workspace_skills_src: &Path,
-    bundled_skills_src: &Path,
     target_dir: &Path,
 ) -> Result<(), String> {
     let skills_dir = crate::skill_paths::workspace_agent_skills_dir(target_dir);
@@ -459,25 +417,6 @@ fn copy_workspace_agent_skills_to_openhands_layout(
         }
     }
 
-    copy_openhands_bundled_skills_to_layout(bundled_skills_src, &skills_dir)?;
-    Ok(())
-}
-
-fn copy_openhands_bundled_skills_to_layout(
-    bundled_skills_src: &Path,
-    skills_dir: &Path,
-) -> Result<(), String> {
-    if !bundled_skills_src.is_dir() {
-        return Ok(());
-    }
-
-    for skill_name in OPENHANDS_BUNDLED_SKILL_NAMES {
-        let skill_path = bundled_skills_src.join(skill_name);
-        if !skill_path.is_dir() {
-            continue;
-        }
-        copy_directory_recursive(&skill_path, &skills_dir.join(skill_name))?;
-    }
     Ok(())
 }
 
@@ -616,17 +555,10 @@ mod tests {
             &skills.join("researching-skill-requirements/SKILL.md"),
             "# Researching Skill Requirements",
         );
-        write_file(&skills.join("skill-creator/SKILL.md"), "# Skill Creator");
-        skills
-    }
-
-    fn bundled_openhands_skills_fixture(root: &Path) -> PathBuf {
-        let skills = root.join("sources").join("skills");
         write_file(
             &skills.join("creating-skills/SKILL.md"),
             "# Creating Skills",
         );
-        write_file(&skills.join("skill-test/SKILL.md"), "# Skill Test");
         skills
     }
 
@@ -649,13 +581,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let agents = bundled_workspace_agents_fixture(tmp.path());
         let skills = bundled_workspace_skills_fixture(tmp.path());
-        let bundled_skills = bundled_openhands_skills_fixture(tmp.path());
         let workspace = tmp.path().join("workspace");
         let skill_dir = workspace.join("plugin/new-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
 
-        copy_workspace_sources_to_openhands_layout(&agents, &skills, &bundled_skills, &workspace)
-            .unwrap();
+        copy_workspace_sources_to_openhands_layout(&agents, &skills, &workspace).unwrap();
 
         assert!(workspace.join(".agents/agents/skill-creator.md").is_file());
         assert!(workspace
@@ -664,9 +594,6 @@ mod tests {
         assert!(workspace
             .join(".agents/skills/creating-skills/SKILL.md")
             .is_file());
-        assert!(!workspace
-            .join(".agents/skills/skill-test/SKILL.md")
-            .exists());
         assert!(skill_dir.join(".agents/agents/skill-creator.md").is_file());
         assert!(skill_dir
             .join(".agents/skills/researching-skill-requirements/SKILL.md")
