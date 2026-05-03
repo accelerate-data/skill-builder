@@ -2,13 +2,13 @@ import { memo, useEffect, useState } from "react";
 import { Loader2, StopCircle } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useAgentStore } from "@/stores/agent-store";
-import { DisplayItemList } from "@/components/agent-items/display-item-list";
+import { ConversationEventList } from "@/components/agent-items/conversation-event-list";
 
 interface AgentTurnInlineProps {
   agentId: string;
-  /** Render only display items starting from this index. */
+  /** Render only conversation events starting from this index. */
   fromIndex?: number;
-  /** Render only display items up to (not including) this index. */
+  /** Render only conversation events up to (not including) this index. */
   toIndex?: number;
 }
 
@@ -43,19 +43,19 @@ export const AgentTurnInline = memo(function AgentTurnInline({
   fromIndex,
   toIndex,
 }: AgentTurnInlineProps) {
-  const { displayItems, status } = useAgentStore(
+  const { conversationEvents, status } = useAgentStore(
     useShallow((s) => ({
-      displayItems: s.runs[agentId]?.displayItems,
+      conversationEvents: s.runs[agentId]?.conversationEvents,
       status: s.runs[agentId]?.status,
     })),
   );
 
-  if (!displayItems) return null;
+  if (!conversationEvents) return null;
 
   const sliced =
     fromIndex !== undefined || toIndex !== undefined
-      ? displayItems.slice(fromIndex ?? 0, toIndex)
-      : displayItems;
+      ? conversationEvents.slice(fromIndex ?? 0, toIndex)
+      : conversationEvents;
   const isSliced = fromIndex !== undefined || toIndex !== undefined;
   // Tail slice: fromIndex set, no toIndex — this is the last visible part of the turn
   const isTailSlice = fromIndex !== undefined && toIndex === undefined;
@@ -70,7 +70,7 @@ export const AgentTurnInline = memo(function AgentTurnInline({
 
   return (
     <div data-agent-id={agentId} className="flex min-w-0 w-full flex-col gap-2 overflow-hidden">
-      <DisplayItemList items={sliced} />
+      <ConversationEventList events={sliced} />
       {!isSliced && status === "running" && sliced.length > 0 && (
         <div className="flex items-center gap-1.5 py-1 text-muted-foreground/80">
           <Loader2 className="size-3 animate-spin" />
