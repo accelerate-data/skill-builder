@@ -536,6 +536,38 @@ fn research_json_extraction_parses_json_after_visible_dimension_table() {
 }
 
 #[test]
+fn research_json_extraction_repairs_missing_commas_between_array_objects() {
+    let state = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed",
+        "result_text": r#"{
+  "status": "research_complete",
+  "question_count": 2,
+  "research_output": {
+    "version": "1",
+    "metadata": {},
+    "sections": [
+      {"id":1,"title":"Inputs","questions":[]}
+      {"id":2,"title":"Outputs","questions":[]}
+    ],
+    "notes": []
+  }
+}"#
+    });
+
+    let parsed = extract_research_json_from_conversation_state(&state).unwrap();
+
+    assert_eq!(parsed["status"], "research_complete");
+    assert_eq!(
+        parsed["research_output"]["sections"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[test]
 fn research_json_extraction_rejects_missing_empty_non_object_error_and_invalid_json() {
     let missing = serde_json::json!({
         "type": "conversation_state",

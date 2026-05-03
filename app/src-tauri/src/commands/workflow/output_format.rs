@@ -99,12 +99,78 @@ fn parse_research_result_text(text: &str) -> Result<serde_json::Value, String> {
                 return Ok(parsed);
             }
 
+            if let Some(repaired) = repair_missing_commas_between_json_values(json_text) {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&repaired) {
+                    if parsed.is_object() {
+                        log::warn!(
+                            "[materialize_step] repaired OpenHands research result_text with missing JSON commas"
+                        );
+                        return Ok(parsed);
+                    }
+                }
+            }
+
             Err(format!(
                 "OpenHands research result_text invalid JSON: {}",
                 parse_error
             ))
         }
     }
+}
+
+fn repair_missing_commas_between_json_values(text: &str) -> Option<String> {
+    let mut repaired = String::with_capacity(text.len());
+    let mut changed = false;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut last_significant: Option<char> = None;
+
+    for ch in text.chars() {
+        if in_string {
+            repaired.push(ch);
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+                last_significant = Some('"');
+            }
+            continue;
+        }
+
+        if ch == '"' {
+            if last_significant.is_some_and(json_value_can_precede_missing_comma) {
+                repaired.push(',');
+                changed = true;
+            }
+            in_string = true;
+            repaired.push(ch);
+            continue;
+        }
+
+        if !ch.is_whitespace() {
+            if json_value_can_start(ch)
+                && last_significant.is_some_and(json_value_can_precede_missing_comma)
+            {
+                repaired.push(',');
+                changed = true;
+            }
+            last_significant = Some(ch);
+        }
+
+        repaired.push(ch);
+    }
+
+    changed.then_some(repaired)
+}
+
+fn json_value_can_start(ch: char) -> bool {
+    matches!(ch, '{' | '[' | '"' | '-' | '0'..='9' | 't' | 'f' | 'n')
+}
+
+fn json_value_can_precede_missing_comma(ch: char) -> bool {
+    matches!(ch, '}' | ']' | '"')
 }
 
 fn top_level_json_object_candidates(text: &str) -> Vec<&str> {
