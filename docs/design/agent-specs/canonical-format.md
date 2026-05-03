@@ -270,7 +270,7 @@ The research planner now represents the research plan **inside the `research_out
 }
 ```
 
-The precise field‑level schema for `research_output` is defined in the Rust contract struct `app/src-tauri/src/contracts/clarifications.rs` (canonical type definition) and the agent-facing reference at `agent-sources/plugins/skill-content-researcher/shared/schemas.md`. Generated JSON Schema files are at `agent-sources/plugins/skill-content-researcher/shared/output-schemas/` (inline, no `$ref`) and `output-deep-schemas/` (with `$defs`/`$ref` for readability). Runtime enforcement uses Serde deserialization against the Rust types. If `schemas.md` and this example diverge, treat the Rust contract types as authoritative.
+The precise field-level schema for `research_output` is defined in the Rust contract struct `app/src-tauri/src/contracts/clarifications.rs` (canonical type definition) and the agent-facing reference at `agent-sources/workspace/skills/shared/schemas.md`. Generated inline JSON Schema files are at `agent-sources/workspace/skills/shared/output-schemas/`. Runtime enforcement uses Serde deserialization against the Rust types. If `schemas.md` and this example diverge, treat the Rust contract types as authoritative.
 
 ## Structured Output Extraction Flow
 

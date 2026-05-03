@@ -65,11 +65,11 @@ A separate Rust binary (`app/src-tauri/src/bin/codegen.rs`) runs as `npm run cod
 1. Imports all contract types from `app_lib::contracts`
 2. Uses Specta to export TypeScript → `app/src/generated/contracts.ts` + `app/sidecar/generated/contracts.ts`
 3. Uses Schemars to export JSON Schema → `app/src-tauri/src/generated/schemas.rs` (Rust const strings for app output contracts)
-4. Writes inline JSON Schema files → `agent-sources/plugins/skill-content-researcher/shared/output-schemas/` (agents Read these at runtime)
+4. Writes inline JSON Schema files → `agent-sources/workspace/skills/shared/output-schemas/` (agents Read these at runtime)
 
 A companion `validate-output` binary (`app/src-tauri/src/bin/validate_output.rs`) validates JSON from stdin against step-specific contract structs.
 
-Deep schemas with `$ref`/`$defs` are maintained separately at `shared/output-deep-schemas/` for human readability.
+Agent-facing workflow schemas are generated as inline JSON Schema at `shared/output-schemas/` so agents and runtime tests use one schema shape.
 
 Wired into `app/scripts/dev.mjs` before `sidecar:build`. CI freshness check: `npm run codegen && git diff --exit-code`.
 
@@ -192,7 +192,6 @@ Semantic validation: `validate_business_rules()` methods on contract structs for
 | `app/sidecar/generated/contracts.ts` | Generated sidecar TypeScript |
 | `app/src-tauri/src/generated/schemas.rs` | Generated inline JSON Schema const strings for app prompts and validation |
 | `agent-sources/.../shared/output-schemas/` | Generated inline JSON Schema files (agents Read at runtime) |
-| `agent-sources/.../shared/output-deep-schemas/` | Deep JSON Schema with `$ref`/`$defs` (human-readable) |
 | `agent-sources/.../shared/schemas.md` | Semantic rules supplement (what JSON Schema cannot express) |
 | `app/sidecar/message-processor.ts` | Structured output extraction + missing-output error handling |
 | `app/sidecar/lib/result-extraction.ts` | Display markdown extraction from structured output |

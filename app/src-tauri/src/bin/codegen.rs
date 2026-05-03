@@ -415,10 +415,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ── 4. Export inline JSON Schema files for agent reference ────────────
     //
     // Agents read these at runtime to know the exact output structure expected.
-    // Deployed to the skill-content-researcher plugin's shared references.
+    // Deployed to the workspace shared references used by the OpenHands clean-break path.
 
-    let agent_schema_dir = project_root()
-        .join("../agent-sources/plugins/skill-content-researcher/shared/output-schemas");
+    let agent_schema_dir =
+        project_root().join("../agent-sources/workspace/skills/shared/output-schemas");
 
     let agent_schemas: Vec<(&str, &str)> = vec![
         ("step-0-research.json", "RESEARCH_STEP_INLINE"),

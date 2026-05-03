@@ -192,8 +192,7 @@ Rust is the final validator — it deserializes the extracted JSON object into t
 - Canonical Rust contract types (workflow outputs): `app/src-tauri/src/contracts/workflow_outputs.rs`
 - Rust emit logic: `app/src-tauri/src/agents/events.rs`
 - Generated TypeScript types: `app/src/generated/contracts.ts`, `app/sidecar/generated/contracts.ts`
-- Generated JSON Schema (inline): `agent-sources/plugins/skill-content-researcher/shared/output-schemas/`
-- Generated JSON Schema (deep, with `$ref`): `agent-sources/plugins/skill-content-researcher/shared/output-deep-schemas/`
+- Generated JSON Schema (inline, no `$ref`): `agent-sources/workspace/skills/shared/output-schemas/`
 - Sidecar message processing: `app/sidecar/message-processor.ts`
 - Sidecar JSON extraction: `app/sidecar/lib/result-extraction.ts`
 - Frontend listener registration: `app/src/hooks/use-agent-stream.ts`

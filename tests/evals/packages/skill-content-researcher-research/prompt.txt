@@ -35,6 +35,33 @@ Return raw JSON only. Use this exact envelope shape:
 Do not put `sections`, `notes`, or `answer_evaluator_notes` inside
 `research_output.metadata`; they are top-level fields inside `research_output`.
 
+Replace the zero counts and empty arrays with useful initial clarification
+questions for the provided context. This context is in scope and should produce
+at least one section and at least one question.
+
 Do not include legacy planning or scoring fields anywhere in the output:
 `dimensions_selected`, `research_plan`, `research_lens`, `dimension_scores`,
 `selected_dimensions`, `topic_relevance`, or `dimensions_evaluated`.
+
+The initial research pass must not add refinement questions. Set
+`metadata.refinement_count` to 0 and every question `refinements` array to
+`[]`.
+
+All questions must be single-select. Do not ask "select all that apply",
+"choose all", or any multi-select question.
+
+Every question must have 2-4 mutually exclusive concrete choices plus final
+`"Other (please specify)"` with `is_other: true`.
+
+Use canonical question fields only: `id`, `title`, `text`, `must_answer`,
+`choices`, and `refinements`. Do not use `options`, `label`, `required`, or
+`kind`.
+
+Question objects must be nested directly inside `sections[].questions`. Do not
+return a top-level `research_output.questions` array, and do not put question ID
+references inside `sections[].questions`.
+Every section `id` must be an integer, starting at 1 and increasing by 1. Do
+not use string section IDs.
+
+Every note must be an object with string `type`, string `title`, and string
+`body`; do not return note strings.
