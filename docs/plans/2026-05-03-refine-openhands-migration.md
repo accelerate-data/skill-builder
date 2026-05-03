@@ -1501,42 +1501,62 @@ Two refinements landed after Task 12 was exercised live. Both already implemente
 
 ---
 
-## Task 14: Pass persistence_dir to the OpenHands SDK so the per-event JSON audit tree lands on disk
+## Task 14: OpenHands workspace management — conversations path and `.agents/` SHA cache
 
-**Spec:** new requirement surfaced during VU-1155 manual smoke.
+**Spec:** `docs/design/openhands-workspace-management/README.md`
 
-**Symptom:** `~/Library/Application Support/com.vibedata.skill-builder/workspace/skills/{skill}/logs/{agent_id}-{ts}/` is empty for every run after the OpenHands runtime migration. Concrete examples on disk at the time of writing:
+**Replaces** the earlier (incorrect) Task 14 framing that tried to add `persistence_dir` to `StartConversationRequest`. That field is silently dropped by Pydantic; the SDK's `_StartConversationRequestBase` has no `persistence_dir` field. Verified live — the SDK echoed back its compiled-in default `'workspace/conversations/<conv_id>'` regardless of what we sent. Mechanism is the **server-level** `OH_CONVERSATIONS_PATH` env var set at spawn.
 
-- `workspace/skills/pipeline-analysis/logs/pipeline-analysis-research-1777810046880-2026-05-03T20-07-26/` — empty
-- `workspace/skills/analyzing-bookings/logs/analyzing-bookings-research-1777810441398-2026-05-03T20-14-01/` — empty
-- `workspace/skills/measuring-pipeline-value/logs/refine-measuring-pipeline-value-1777805777627-2026-05-03T18-56-17/` — empty
+**This task covers two coordinated changes** to OpenHands workspace management on the VU-1155 branch:
 
-The hr-analytics May 2 / measuring-pipeline-value May 3 transcripts that fed the VU-1155 fixture tests exist because earlier code paths wrote them. The audit trail for newer runs lives only in memory (`run.conversationEvents`); restarting the app loses it.
+### Slice A: revert misguided fix + set `OH_CONVERSATIONS_PATH` at server spawn
 
-**Root cause:** `agents/openhands_server/mod.rs::create_openhands_persistence_dir` creates the directory and `transcript_log_dir` is threaded through `dispatch_openhands_one_shot` and `dispatch_openhands_refine_turn`, but the path is never passed to the OpenHands Agent Server's `create_conversation` request body, so the SDK's conversation-log writer has nowhere to write. The `SidecarConfig.persistence_dir` field exists but isn't plumbed through `OpenHandsOneShotRequest::try_from_sidecar_config` or `StartConversationRequest::from_one_shot`.
+- [ ] **14.1: Revert** the dead `persistence_dir` field on `OpenHandsOneShotRequest` and `StartConversationRequest` in `app/src-tauri/src/agents/openhands_server/types.rs`. Delete the two `start_conversation_request_*persistence_dir*` unit tests — they asserted wire serialization of a field Pydantic silently drops.
 
-**Files:**
-- Modify: `app/src-tauri/src/agents/openhands_server/types.rs` — add a `persistence_dir: Option<String>` (or whatever the SDK calls it) field to `StartConversationRequest`. Plumb through `OpenHandsOneShotRequest::try_from_sidecar_config` from `SidecarConfig.persistence_dir`.
-- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs` — set `config.persistence_dir = Some(persistence_path.to_string_lossy().into_owned())` in both `dispatch_openhands_one_shot` (around line 87) and `dispatch_openhands_refine_turn` (around line 310), before calling `OpenHandsOneShotRequest::try_from_sidecar_config`.
-- Test: serialization test that `StartConversationRequest` includes the persistence path.
+- [ ] **14.2: Revert** the `config.persistence_dir = Some(persistence_path...)` lines added in `dispatch_openhands_one_shot` and `dispatch_openhands_refine_turn` in commit `e8622297`. The `mut config: SidecarConfig` parameter goes back to `config: SidecarConfig`. `create_openhands_persistence_dir` stays — its returned path is now informational only (per-run dirs become organizational placeholders).
 
-### Subtasks
+- [ ] **14.3: Add `compute_conversations_path() -> Option<PathBuf>`** in `app/src-tauri/src/agents/openhands_server/process.rs`. Resolves to `dirs::data_dir() / "com.vibedata.skill-builder" / "workspace" / "conversations"`. Returns `None` only on platforms where `dirs::data_dir()` fails — falls back to SDK default with a warning log.
 
-- [ ] **14.1: Inspect the OpenHands Agent Server `create_conversation` API** for the pinned version. Determine the exact field name (`persistence_dir`, `persist_path`, `conversation_log_dir`, etc.) by reading the SDK source or the OpenAPI spec. Document it in the design spec's Wire-Format note.
+- [ ] **14.4: In `process.rs::start_once`**, call `compute_conversations_path()` and set `OH_CONVERSATIONS_PATH=<absolute>` on the spawn `tokio_command` via `.env(...)`. Place after the existing `OH_SECRET_KEY` env var so the OH_-prefix block stays grouped.
 
-- [ ] **14.2: Add the field to `StartConversationRequest`** in `types.rs` with the correct serde rename. Default to `None` so any non-OpenHands callers stay compatible.
+- [ ] **14.5: Unit test** `compute_conversations_path_resolves_under_data_dir` in `process.rs` — asserts the returned path ends with `com.vibedata.skill-builder/workspace/conversations`.
 
-- [ ] **14.3: Plumb `SidecarConfig.persistence_dir` through `OpenHandsOneShotRequest::try_from_sidecar_config`** so the request body inherits the persistence dir from the sidecar config.
+- [ ] **14.6: Unit test** `start_once_sets_conversations_path_env_var` (or equivalent) by extracting the env-var setting into a small testable helper. The helper takes the spawn command + computed path and applies the env var; the test asserts the resulting command's env table contains `OH_CONVERSATIONS_PATH` at the expected absolute value.
 
-- [ ] **14.4: Set `config.persistence_dir`** in both dispatch entry points immediately after `create_openhands_persistence_dir` returns. The persistence path returned by that helper becomes the value passed to the SDK.
+### Slice B: replace `ensure_workspace_prompts` boolean cache with two-tier SHA-gated cache
 
-- [ ] **14.5: Serialization test** in `types.rs` (or `mod.rs`) that constructs a `SidecarConfig` with a persistence_dir, runs through `try_from_sidecar_config` and `from_one_shot`, and asserts the serialized JSON body contains the persistence path under the correct field name.
+Independent of Slice A — operates on `commands/workflow/deploy.rs`, not `agents/openhands_server/`.
 
-- [ ] **14.6: Manual smoke** — start `npm run dev` from the VU-1155 worktree (must be a clean restart so Tauri builds the new Rust binary), run a refine turn, verify the per-run logs dir is populated with the SDK's native per-event JSON tree (`{persistence_dir}/{conversation_id}/base_state.json + events/event-NNNNN-{uuid}.json`) and that the event count matches the chat's display count. **Note:** the earlier `.jsonl` fixtures came from an older Skill Builder-side writer path that no longer runs; the SDK natively writes per-event JSON, not JSONL. We accept the SDK's native format.
+- [ ] **14.7: Add `compute_dir_sha(roots: &[&Path]) -> Result<String, String>`** in `commands/workflow/deploy.rs` (or a small private module). Walks each root in sorted order with `walkdir`, hashes `(path_string, b"\0", file_bytes)` per file into a single `Sha256`, returns hex digest. `sha2`, `walkdir`, and `hex` are already in the dependency graph.
 
-- [ ] **14.7: No backfill.** Existing empty directories from previous runs are not recoverable; this task only fixes new runs.
+- [ ] **14.8: Define `WorkspaceDeployCache` struct** with `source_sha: Option<String>` and `per_skill_sha: HashMap<String /* skill_dir abs */, String>`. Replace `static COPIED_WORKSPACES: Mutex<Option<HashSet<String>>>` with `Mutex<Option<HashMap<String /* workspace */, WorkspaceDeployCache>>>`.
 
-This task can ship as part of the VU-1155 PR or as a separate follow-up — recommend separate, since it's an orthogonal bug. The VU-1155 design spec already calls it out under "Known limitations / follow-ups".
+- [ ] **14.9: Rewrite `ensure_workspace_prompts`** to fire two tiers on every call:
+  - **Tier 1 (source → root)**: compute current source SHA. If it differs from cached `source_sha`, copy source → `<workspace>/.agents/`, update `source_sha`, **clear** `per_skill_sha`.
+  - **Tier 2 (root → per-skill)**: compute current root SHA from `<workspace>/.agents/`. For the dispatched skill (or all discovered skills if no specific skill is supplied), if root SHA differs from `per_skill_sha[skill_dir]`, copy `<workspace>/.agents/` → `<workspace>/<plugin>/<skill>/.agents/`, update `per_skill_sha[skill_dir]`.
+  - Preserve the existing public function signatures so callers (refine, workflow, eval, scope review) need no changes.
+
+- [ ] **14.10: Add tests in `deploy.rs`**:
+  - `compute_dir_sha_is_stable_across_walks` — same input → same output regardless of OS walk order
+  - `compute_dir_sha_changes_when_byte_changes`
+  - `compute_dir_sha_changes_when_file_added`
+  - `compute_dir_sha_changes_when_file_removed`
+  - `cache_hit_when_source_unchanged` — second call no-ops (use a copy-counter mock or check filesystem mtime)
+  - `cache_invalidates_when_source_changes` — modify a source file → second call redeploys
+  - `tier_1_invalidation_clears_per_skill_cache` — source SHA change wipes per-skill SHAs
+  - `tier_2_invalidation_per_skill_only` — manual edit to one per-skill `.agents/` triggers tier-2 only for that skill
+
+### Slice C: validation
+
+- [ ] **14.11: `cargo build` + `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` + `cargo test agents::openhands_server commands::workflow::deploy` + `npm run test:unit` all green.**
+
+- [ ] **14.12: Manual smoke** — start `npm run dev` from the VU-1155 worktree (clean restart so Tauri rebuilds Rust). Run a refine turn on any skill. Verify:
+  - `<workspace>/conversations/<conversation_id_hex>/{base_state.json + events/event-NNNNN-*.json}` exists and the event count roughly matches the chat's display item count (filter classes excepted).
+  - `<workspace>/<plugin>/<skill>/.agents/` exists and matches `<workspace>/.agents/` byte-for-byte.
+  - Edit `agent-sources/workspace/agents/skill-creator.md`, drive another refine turn — verify both `<workspace>/.agents/skill-creator.md` and the per-skill `<workspace>/<plugin>/<skill>/.agents/skill-creator.md` reflect the edit (no app restart).
+  - Existing skills the user hasn't accessed in this session do not have updated per-skill `.agents/` until they're touched (lazy tier 2).
+
+This task lands as part of the VU-1155 PR (the user surfaced the gap during VU-1155 review and the fix is one localized change to a function that VU-1155 already wires into refine via `send_refine_message`).
 
 ---
 
