@@ -2353,13 +2353,18 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     )
     .unwrap();
     std::fs::write(workspace_agents_src.path().join("README.txt"), "skip me").unwrap();
-    std::fs::create_dir_all(workspace_skills_src.path().join("research")).unwrap();
+    std::fs::create_dir_all(
+        workspace_skills_src
+            .path()
+            .join("researching-skill-requirements"),
+    )
+    .unwrap();
     std::fs::write(
         workspace_skills_src
             .path()
-            .join("research")
+            .join("researching-skill-requirements")
             .join("SKILL.md"),
-        "# Research",
+        "# Researching Skill Requirements",
     )
     .unwrap();
     std::fs::create_dir_all(workspace_skills_src.path().join("answer-evaluator")).unwrap();
@@ -2399,7 +2404,7 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         .join(".agents/agents/README.txt")
         .exists());
     assert!(workspace_skill_dir
-        .join(".agents/skills/research/SKILL.md")
+        .join(".agents/skills/researching-skill-requirements/SKILL.md")
         .is_file());
     assert!(workspace_skill_dir
         .join(".agents/skills/answer-evaluator/SKILL.md")
@@ -2413,7 +2418,7 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         .is_file());
     assert!(workspace
         .path()
-        .join(".agents/skills/research/SKILL.md")
+        .join(".agents/skills/researching-skill-requirements/SKILL.md")
         .is_file());
     assert!(workspace
         .path()

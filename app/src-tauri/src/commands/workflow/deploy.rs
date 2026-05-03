@@ -557,7 +557,10 @@ mod tests {
 
     fn bundled_workspace_skills_fixture(root: &Path) -> PathBuf {
         let skills = root.join("sources").join("workspace").join("skills");
-        write_file(&skills.join("research/SKILL.md"), "# Research");
+        write_file(
+            &skills.join("researching-skill-requirements/SKILL.md"),
+            "# Researching Skill Requirements",
+        );
         write_file(&skills.join("skill-creator/SKILL.md"), "# Skill Creator");
         skills
     }
@@ -588,9 +591,13 @@ mod tests {
         copy_workspace_sources_to_openhands_layout(&agents, &skills, &workspace).unwrap();
 
         assert!(workspace.join(".agents/agents/skill-creator.md").is_file());
-        assert!(workspace.join(".agents/skills/research/SKILL.md").is_file());
+        assert!(workspace
+            .join(".agents/skills/researching-skill-requirements/SKILL.md")
+            .is_file());
         assert!(skill_dir.join(".agents/agents/skill-creator.md").is_file());
-        assert!(skill_dir.join(".agents/skills/research/SKILL.md").is_file());
+        assert!(skill_dir
+            .join(".agents/skills/researching-skill-requirements/SKILL.md")
+            .is_file());
         assert!(workspace_openhands_layout_complete(
             workspace.to_string_lossy().as_ref()
         ));
