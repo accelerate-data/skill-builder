@@ -29,3 +29,4 @@
 | [skill-scope-review/](skill-scope-review/README.md) | Skill scope review: advisory LLM check during skill creation — detects overly broad skills and suggests gerund-named alternatives |
 | [write-eval-test-refine-loop/](write-eval-test-refine-loop/README.md) | Write → Eval → Test → Refine loop: one-shot skill generation, batch eval with with/without comparison, feedback capture, iterative improvement, description optimization |
 | [refine-openhands-migration/](refine-openhands-migration/README.md) | Refine tab migration from Claude Code sidecar streaming to OpenHands multi-turn conversation: lifecycle, cancel vs close, new Rust infrastructure |
+| [openhands-event-display-projection/](openhands-event-display-projection/README.md) | Product-wide rendering rule for OpenHands `conversation_event` payloads: agent-store projection into `DisplayItem`, lossless mapping, uniform consumption across Refine chat, Workflow output, feedback dialog, status header |
