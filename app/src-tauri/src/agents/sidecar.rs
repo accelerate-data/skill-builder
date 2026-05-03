@@ -597,7 +597,6 @@ fn parse_openhands_one_shot_terminal_state(
 /// mechanics for each migrated OpenHands feature.
 pub async fn run_openhands_one_shot(
     app: &tauri::AppHandle,
-    _pool: &crate::agents::sidecar_pool::SidecarPool,
     params: OpenHandsOneShotRunParams,
 ) -> Result<OpenHandsOneShotRun, String> {
     let config = params.config;

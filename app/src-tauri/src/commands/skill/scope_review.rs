@@ -1,7 +1,6 @@
 use crate::agents::sidecar::{
     OpenHandsOneShotConfigParams, OpenHandsOneShotRunParams, SidecarConfig,
 };
-use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
 
@@ -149,7 +148,6 @@ pub(crate) fn build_scope_review_sidecar_config(
 #[allow(clippy::too_many_arguments)]
 pub async fn review_skill_scope(
     app: tauri::AppHandle,
-    pool: tauri::State<'_, SidecarPool>,
     skill_name: String,
     description: String,
     purpose: String,
@@ -207,7 +205,6 @@ pub async fn review_skill_scope(
 
     let run = crate::agents::sidecar::run_openhands_one_shot(
         &app,
-        &pool,
         OpenHandsOneShotRunParams {
             agent_id_prefix: format!("{}-scope-review", skill_name),
             config,
