@@ -33,33 +33,44 @@ export default function ScopeAdvisor({ advisorState, onChipSelect }: ScopeAdviso
   }
 
   const bannerMessage = ADVISOR_BANNER[status]
+  const isError = status === "error"
+  const bannerClasses = isError
+    ? "border-destructive/50 bg-destructive/10 text-destructive"
+    : "border-amber-500/50 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300"
+  const reasonClasses = isError
+    ? "text-destructive"
+    : "text-amber-700 dark:text-amber-400"
+  const buttonClasses = isError
+    ? "text-destructive hover:bg-destructive/10"
+    : "text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900/30"
+  const canShowSuggestions = suggestions.length > 0
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
+      <div className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${bannerClasses}`}>
         <div className="flex flex-col gap-0.5">
           <span>⚠ {bannerMessage}</span>
-          {reason && (
-            <span className="text-xs text-amber-700 dark:text-amber-400">{reason}</span>
-          )}
+          {reason && <span className={`text-xs ${reasonClasses}`}>{reason}</span>}
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="ml-2 h-6 w-6 shrink-0 p-0 text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900/30"
-          onClick={onTogglePanel}
-          aria-label={panelExpanded ? "Collapse suggestions" : "Expand suggestions"}
-        >
-          {panelExpanded ? (
-            <ChevronUp className="size-4" />
-          ) : (
-            <ChevronDown className="size-4" />
-          )}
-        </Button>
+        {canShowSuggestions && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={`ml-2 h-6 w-6 shrink-0 p-0 ${buttonClasses}`}
+            onClick={onTogglePanel}
+            aria-label={panelExpanded ? "Collapse suggestions" : "Expand suggestions"}
+          >
+            {panelExpanded ? (
+              <ChevronUp className="size-4" />
+            ) : (
+              <ChevronDown className="size-4" />
+            )}
+          </Button>
+        )}
       </div>
 
-      {panelExpanded && (
+      {panelExpanded && canShowSuggestions && (
         <div className="flex flex-col gap-2 rounded-md border bg-card p-3">
           <div className="flex flex-col gap-2">
             {suggestions.map((s, i) => (

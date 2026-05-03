@@ -234,7 +234,7 @@ describe("useScopeAdvisor", () => {
     expect(result.current.status).toBe("focused")
   })
 
-  it("triggerCheck on error resets status to idle", async () => {
+  it("triggerCheck on error surfaces the failure", async () => {
     reviewSkillScopeMock.mockRejectedValue(new Error("network error"))
     const { result } = renderHook(() => useScopeAdvisor(defaultCreateOpts))
 
@@ -243,7 +243,9 @@ describe("useScopeAdvisor", () => {
       await Promise.resolve()
     })
 
-    expect(result.current.status).toBe("idle")
+    expect(result.current.status).toBe("error")
+    expect(result.current.reason).toBe("network error")
+    expect(result.current.suggestions).toEqual([])
   })
 
   it("onChipClick returns correct suggestion, sets currentChipIndex, adds to copiedIndices, sets status to focused", async () => {

@@ -3,16 +3,17 @@
 > **Status:** Draft
 > **Runtime update:** The PyInstaller `openhands-runner` execution model in
 > this document is superseded by
-> `docs/design/openhands-agent-server-runtime/README.md`. The agent topology,
-> prompt ownership, `.agents/**` workspace layout, and app-facing event
-> semantics remain useful where they do not conflict with the Agent Server
+> `docs/design/openhands-agent-server-runtime/README.md`. Treat runner, JSONL,
+> and bundled-binary sections below as historical context only. The agent
+> topology, prompt ownership, `.agents/**` workspace layout, and app-facing
+> event semantics remain useful where they do not conflict with the Agent Server
 > runtime design.
 
 ## Overview
 
 Skill Builder currently uses `@anthropic-ai/claude-agent-sdk` and the Claude Code CLI binary as its agent runtime. This design describes a clean-break migration to OpenHands as the native runtime — covering both the **runtime layer** (replacing the execution engine behind the existing sidecar boundary) and the **agent layer** (replacing Claude Code-specific agent and skill files with OpenHands-native equivalents and simplifying the workflow topology).
 
-The migration replaces the Claude SDK binary with a PyInstaller-bundled `openhands-runner` binary, adopts OpenHands file-based agent and AgentSkills conventions, and simplifies the workflow to one top-level OpenHands agent named `skill-creator`. Workflow phases, scope review, and other one-shot jobs are app-owned task prompts handled by that agent. OpenHands calls use a direct Rust -> Python runner boundary; Node is not part of the OpenHands runtime path. The JSONL protocol and all app-owned runtime contracts are preserved.
+Historically, this design replaced the Claude SDK binary with a PyInstaller-bundled `openhands-runner` binary, adopted OpenHands file-based agent and AgentSkills conventions, and simplified the workflow to one top-level OpenHands agent named `skill-creator`. Workflow phases, scope review, and other one-shot jobs remain app-owned task prompts handled by that agent. The active VU-1153 runtime uses a Rust-managed local OpenHands Agent Server over REST and WebSockets; Node and the old Python stdout runner are not part of the OpenHands runtime path.
 
 The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary/README.md`. The concrete OpenHands SDK invocation contract is detailed in `docs/design/openhands-sdk-runner/README.md`. This document is the umbrella migration design.
 
@@ -24,7 +25,9 @@ The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary
 - How Claude Code agent/skill files map to OpenHands file-based agents and AgentSkills.
 - The simplified inline research pattern replacing parallel sub-agent fan-out.
 - Multi-model support through the LiteLLM provider string model.
-- OpenHands-native runtime packaging via PyInstaller single binary.
+- OpenHands-native runtime packaging. The PyInstaller runner packaging option
+  is retained below only as historical context; VU-1153 uses the local
+  OpenHands Agent Server package.
 - The output layout change from `.claude/plugins/` to `.agents/`.
 - Which app-owned runtime contracts are preserved and how they are enforced in OpenHands.
 - Preserving visible run progress: reasoning/progress messages, tool calls, file operations, and terminal status for both one-shot and multi-message conversations.
@@ -44,7 +47,7 @@ The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary
 |---|---|
 | Clean break from Claude SDK, not from Skill Builder's runtime invariants. | Removing the Claude SDK dependency does not remove the execution contracts the app depends on: structured output, one-shot step isolation, artifact visibility, per-agent tool constraints. These are explicitly re-expressed in OpenHands terms. |
 | No dual-runtime compatibility. | Maintaining two parallel execution paths adds indefinite carrying cost. A branch release with a 1-month test window validates OpenHands before it becomes the default. |
-| PyInstaller single binary for the OpenHands runner. | Tauri already bundles a native binary (the Claude CLI). The same infra handles a PyInstaller-built `openhands-runner`. No Docker, no system Python, no `uv` first-launch step. |
+| Rust-managed local OpenHands Agent Server. | The active VU-1153 runtime starts the pinned Agent Server package on a random loopback port and calls it over REST/WebSocket. The old PyInstaller runner option is historical only. |
 | One top-level OpenHands agent, `skill-creator`. | OpenHands `Agent` is the reasoning/action executor and `Conversation` is the stateful run boundary. Skill Builder should create one agent identity and vary task prompts, tools, and output schemas per request. |
 | One-shot runs are single-message conversations. | A one-shot run is not a single OpenHands `step()`. It is a `Conversation` with one user message, no app-owned follow-up questions, and a bounded `run(max_iterations=...)` lifecycle. |
 | Progress visibility is mandatory. | The UI must keep showing users that the agent is working. OpenHands reasoning/progress events, tool calls, file operations, and status updates must stream as `conversation_event` records before terminal `conversation_state`. |
@@ -116,15 +119,16 @@ All tool names (`Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash`, `Agent`, `Skill
 ## Target Architecture
 
 ```text
-step_config.rs → task kind + prompt + schema
-  └── openhands-runner
-      └── Agent(name: skill-creator)
-          └── Conversation(workspace: skill workspace)
-              ├── step 0 task: scope/research initial pass
-              ├── answer-evaluation task: answer quality review
-              ├── step 1 task: research refinement pass
-              ├── step 2 task: decision confirmation
-              └── step 3 task: skill generation
+step_config.rs -> task kind + prompt + schema
+  -> Rust OpenHands Agent Server runtime
+    -> local Agent Server on 127.0.0.1:<random>
+      -> Agent(name: skill-creator)
+        -> Conversation(workspace: skill workspace)
+          -> step 0 task: scope/research initial pass
+          -> answer-evaluation task: answer quality review
+          -> step 1 task: research refinement pass
+          -> step 2 task: decision confirmation
+          -> step 3 task: skill generation
 ```
 
 Each item above is a separate one-shot conversation: the runner constructs the
@@ -300,11 +304,22 @@ OpenHands routes all LLM calls through LiteLLM. The `model` field in `SidecarCon
 | Google | `google/gemini-2.0-flash` | `GEMINI_API_KEY` |
 | Ollama (local) | `ollama/llama3.2` | None (base URL) |
 
-The `apiKey` field in `SidecarConfig` carries the selected provider's key. A `modelBaseUrl` field is added for local/custom endpoints. The sidecar passes `model`, `apiKey`, and `modelBaseUrl` to `openhands-runner`; the runner builds the OpenHands `LLMConfig` directly from those fields. Provider-specific storage can remain a Settings UI concern, but the runner contract is model string plus key plus optional base URL.
+The `apiKey` field in `SidecarConfig` carries the selected provider's key. A
+`modelBaseUrl` field is added for local/custom endpoints. In the superseding
+Agent Server runtime, Rust projects the selected model settings into the
+conversation request sent to the local OpenHands Agent Server. Provider-specific
+storage remains a Settings UI concern, while the runtime contract is model
+string plus key plus optional base URL.
 
-## Runtime Packaging
+## Historical Runtime Packaging
 
-The `openhands-runner` binary is built with PyInstaller at CI time and bundled as a Tauri external binary resource, replacing the Claude CLI binary and `pathToClaudeCodeExecutable` in `sidecar.rs`.
+> Superseded by the Agent Server runtime. This section records the abandoned
+> PyInstaller runner option for migration history only.
+
+The abandoned `openhands-runner` binary option would have built a PyInstaller
+artifact at CI time and bundled it as a Tauri external binary resource,
+replacing the Claude CLI binary and `pathToClaudeCodeExecutable` in
+`sidecar.rs`.
 
 ```text
 app/src-tauri/
@@ -317,9 +332,13 @@ app/src-tauri/
 
 The build script (`app/sidecar/openhands/build.sh`) runs `pyinstaller runner.py --onefile --name openhands-runner` per platform. Binary size is approximately 80–150 MB per platform, comparable to the Claude CLI binary.
 
-`resolve_sdk_cli_path` in Rust is replaced by `resolve_openhands_runner_path`, which resolves the bundled binary path using Tauri's resource resolver.
+That approach would have replaced `resolve_sdk_cli_path` in Rust with
+`resolve_openhands_runner_path`, resolving the bundled binary path through
+Tauri's resource resolver.
 
-If startup latency from PyInstaller initialization is unacceptable in testing, the fallback is a `uv`-managed venv with a first-launch install step. The decision between these approaches is made at CI validation time, not deferred to production.
+This branch no longer uses that packaging decision. The clean-break runtime
+starts the pinned OpenHands Agent Server package locally and calls it over
+REST/WebSocket.
 
 ## Output Layout
 
@@ -348,9 +367,9 @@ Refine streaming remains broken until a custom `AskUserQuestion` tool is impleme
 
 | Artifact | Removed because |
 |---|---|
-| `@anthropic-ai/claude-agent-sdk` npm package | Runtime replaced by `openhands-runner` binary |
-| Claude Code CLI binary in Tauri resources | Replaced by `openhands-runner` |
-| `pathToClaudeCodeExecutable` in `SidecarConfig` | Replaced by `resolve_openhands_runner_path` |
+| `@anthropic-ai/claude-agent-sdk` npm package | OpenHands workflow runtime moved to Rust-managed Agent Server |
+| Claude Code CLI binary in Tauri resources | OpenHands workflow runtime moved to Rust-managed Agent Server |
+| `pathToClaudeCodeExecutable` in `SidecarConfig` | OpenHands workflow runtime no longer resolves a local runner binary |
 | `permissionMode` in `SidecarConfig` | Claude Code-specific concept with no OpenHands equivalent; task-level tool scoping covers the same ground |
 | `requiredPlugins` in `SidecarConfig` | Replaced by `.agents/skills/` deployment plus app-owned task prompt selection |
 | `.claude/plugins/` output layout | Replaced by `.agents/` |
@@ -367,10 +386,8 @@ Refine streaming remains broken until a custom `AskUserQuestion` tool is impleme
 
 | File | Purpose |
 |---|---|
-| `app/sidecar/openhands/runner.py` | OpenHands runner — reads one JSON request, emits JSONL events |
-| `app/sidecar/runtime/openhands-runtime.ts` | Spawns runner binary, maps JSONL to runtime sink |
-| `app/sidecar/openhands-event-processor.ts` | Maps OpenHands events to sidecar protocol envelopes |
-| `app/src-tauri/src/agents/sidecar.rs` | `SidecarConfig` carrying rendered prompt, user suffix, model settings, task tools, and workspace paths |
+| `app/src-tauri/src/agents/openhands_server/` | Rust-managed local Agent Server process, REST client, WebSocket event stream, and one-shot facade |
+| `app/src-tauri/src/agents/sidecar.rs` | Shared `SidecarConfig` carrying rendered prompt, user suffix, model settings, task tools, and workspace paths |
 | `app/src-tauri/src/commands/workflow/step_config.rs` | Step-to-task routing table |
 | `agent-sources/workspace/agents/skill-creator.md` | One file-based OpenHands agent copied into `.agents/agents/` |
 | `agent-sources/workspace/skills/` | File-based AgentSkills copied into `.agents/skills/` |

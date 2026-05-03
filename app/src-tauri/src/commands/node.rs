@@ -110,18 +110,9 @@ pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, St
     };
     checks.push(sidecar);
 
-    // 3. OpenHands runner native binary (openhands-runner / openhands-runner.exe)
-    let runner = match crate::agents::sidecar::resolve_openhands_runner_path_public(&app) {
-        Ok(path) => dep_ok("openhands_runner", "OpenHands runner", path),
-        Err(e) => dep_fail(
-            "openhands_runner",
-            "missing_dependency",
-            "OpenHands runner",
-            e,
-            "From the repository root run: `cd app/sidecar/openhands && ./build.sh`, then `cd ../../ && npm run sidecar:build`, and restart Skill Builder.",
-        ),
-    };
-    checks.push(runner);
+    // 3. OpenHands Agent Server Python package.
+    let agent_server = check_openhands_agent_server_available().await;
+    checks.push(agent_server);
 
     // 4. Git (required by agent runtime for version control operations)
     //    Windows: also validates git-bash for shell-compatible tool execution.
@@ -201,6 +192,85 @@ async fn check_git_available() -> DepStatus {
     }
 }
 
+async fn check_openhands_agent_server_available() -> DepStatus {
+    let output = check_python_import("openhands.agent_server").await;
+
+    match output {
+        Ok(out) if out.status.success() => dep_ok(
+            "openhands_agent_server",
+            "OpenHands Agent Server",
+            String::from_utf8_lossy(&out.stdout).trim().to_string(),
+        ),
+        Ok(out) => dep_fail(
+            "openhands_agent_server",
+            "missing_dependency",
+            "OpenHands Agent Server",
+            String::from_utf8_lossy(&out.stderr).trim().to_string(),
+            "Install uv/uvx, or install the pinned OpenHands Agent Server Python package and restart Skill Builder.",
+        ),
+        Err(e) => dep_fail(
+            "openhands_agent_server",
+            "missing_dependency",
+            "OpenHands Agent Server",
+            e.to_string(),
+            "Install uv/uvx and Python 3.12+, then restart Skill Builder.",
+        ),
+    }
+}
+
+async fn check_python_import(module_name: &str) -> std::io::Result<std::process::Output> {
+    let script = format!("import {module_name}; print({module_name}.__file__)");
+    let candidates = python_import_command_candidates();
+    let mut last_error = None;
+    let mut last_output = None;
+
+    for (program, base_args) in &candidates {
+        let mut command = tokio::process::Command::new(program);
+        command.args(base_args).arg(&script);
+        match command.output().await {
+            Ok(output) if output.status.success() => return Ok(output),
+            Ok(output) => last_output = Some(output),
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    if let Some(output) = last_output {
+        return Ok(output);
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "No Python command configured")
+    }))
+}
+
+fn python_import_command_candidates() -> Vec<(&'static str, Vec<&'static str>)> {
+    vec![
+        ("uvx", openhands_agent_server_uvx_args("-c")),
+        #[cfg(target_os = "windows")]
+        ("py", vec!["-3", "-c"]),
+        ("python", vec!["-c"]),
+        #[cfg(not(target_os = "windows"))]
+        ("python3", vec!["-c"]),
+    ]
+}
+
+fn openhands_agent_server_uvx_args(python_flag: &'static str) -> Vec<&'static str> {
+    let mut args = vec![
+        "--from",
+        crate::agents::openhands_server::process::OPENHANDS_AGENT_SERVER_PACKAGE,
+        "--with",
+        crate::agents::openhands_server::process::OPENHANDS_TOOLS_PACKAGE,
+    ];
+    for package in
+        crate::agents::openhands_server::process::OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES
+    {
+        args.push("--with");
+        args.push(package);
+    }
+    args.extend(["python", python_flag]);
+    args
+}
+
 /// Parse a version string like "v20.11.0" and check if major >= min_major.
 #[cfg(test)]
 fn parse_meets_minimum(version: &str, min_major: u32) -> bool {
@@ -246,5 +316,28 @@ mod tests {
     #[test]
     fn test_garbage_string() {
         assert!(!parse_meets_minimum("abc", 18));
+    }
+
+    #[test]
+    fn openhands_agent_server_probe_uses_pinned_uvx_package_first() {
+        let candidates = python_import_command_candidates();
+        let (program, args) = candidates.first().expect("uvx candidate");
+
+        assert_eq!(*program, "uvx");
+        assert_eq!(args.first().copied(), Some("--from"));
+        assert!(args
+            .iter()
+            .any(|arg| *arg
+                == crate::agents::openhands_server::process::OPENHANDS_AGENT_SERVER_PACKAGE));
+        assert!(args
+            .iter()
+            .any(|arg| *arg == crate::agents::openhands_server::process::OPENHANDS_TOOLS_PACKAGE));
+        for package in
+            crate::agents::openhands_server::process::OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES
+        {
+            assert!(args.iter().any(|arg| arg == package));
+        }
+        assert!(args.iter().any(|arg| *arg == "python"));
+        assert!(args.iter().any(|arg| *arg == "-c"));
     }
 }

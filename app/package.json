@@ -13,7 +13,7 @@
     "tauri": "tauri",
     "codegen": "cargo run --manifest-path src-tauri/Cargo.toml --bin codegen",
     "sidecar:install": "cd sidecar && npm install",
-    "sidecar:build": "cd sidecar && npm ci && cd openhands && PYTHON_BIN=${PYTHON:-python3} && $PYTHON_BIN -m pip install -r requirements.txt && PYTHON=$PYTHON_BIN ./build.sh && cd .. && npm run build",
+    "sidecar:build": "cd sidecar && npm ci && npm run build",
     "postinstall": "cd sidecar && npm install",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -32,8 +32,10 @@
     "test:agents": "npm run test:agents:structural && npm run test:agents:smoke",
     "test:agents:structural": "vitest run --config vitest.config.agent.ts agent-tests/agent-structure.test.ts",
     "test:agents:smoke": "cd ../tests/evals && npm run eval:agents",
+    "test:repo-map": "node --test ../scripts/verify-repo-map.test.mjs && node ../scripts/verify-repo-map.mjs ..",
     "test:scope-advisor:smoke": "cd ../tests/evals && npm run eval:scope-advisor",
     "test:evals:harness": "cd ../tests/evals && npm test",
+    "test:openhands:live-smoke": "node ../scripts/openhands-agent-server-live-smoke.mjs",
     "test:all": "npm run test:unit && npm run test:guard && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {

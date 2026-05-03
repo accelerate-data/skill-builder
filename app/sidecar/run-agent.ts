@@ -7,8 +7,8 @@ import {
   selectPluginPaths,
   toOneShotRunRequest,
 } from "./runtime/claude-runtime.js";
-import { OpenHandsRuntime } from "./runtime/openhands-runtime.js";
 import { createRecordRuntimeSink } from "./runtime/sink.js";
+import { OPENHANDS_AGENT_SERVER_ONLY_ERROR } from "./openhands-rejection.js";
 
 export { discoverInstalledPlugins, emitSystemEvent, selectPluginPaths };
 
@@ -49,22 +49,21 @@ function buildRuntimeValidationResult(
 
 /**
  * One-shot sidecar entry point.
- * The OpenHands clean break is explicit at workflow call sites via
- * runtimeProvider="openhands"; legacy non-workflow callers still omit the
- * field and continue through Claude until they are migrated separately.
+ * Legacy non-workflow callers omit runtimeProvider and continue through Claude.
+ * OpenHands now runs through the Rust-managed Agent Server path only.
  */
 export async function runAgentRequest(
   config: SidecarConfig,
   onMessage: (message: Record<string, unknown>) => void,
   externalSignal?: AbortSignal,
 ): Promise<void> {
-  const runtime =
-    config.runtimeProvider === "openhands"
-      ? new OpenHandsRuntime()
-      : new ClaudeRuntime();
+  const runtime = new ClaudeRuntime();
   const sink = createRecordRuntimeSink(onMessage);
 
   try {
+    if (config.runtimeProvider === "openhands") {
+      throw new Error(OPENHANDS_AGENT_SERVER_ONLY_ERROR);
+    }
     await runtime.runOnce(toOneShotRunRequest(config), sink, externalSignal);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

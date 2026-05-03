@@ -492,20 +492,10 @@ impl SidecarPool {
         &self,
         skill_name: &str,
         agent_id: &str,
-        mut config: SidecarConfig,
+        config: SidecarConfig,
         app_handle: &tauri::AppHandle,
         transcript_log_dir: Option<&str>,
     ) -> Result<(), String> {
-        if config.runtime_provider.as_deref() == Some("openhands")
-            && config.path_to_openhands_runner.is_none()
-        {
-            if let Ok(runner_path) =
-                crate::agents::sidecar::resolve_openhands_runner_path_public(app_handle)
-            {
-                config.path_to_openhands_runner = Some(runner_path);
-            }
-        }
-
         // Ensure we have a sidecar running
         self.get_or_spawn(skill_name, app_handle).await?;
 
@@ -1259,7 +1249,6 @@ mod tests {
             output_format: None,
             prompt_suggestions: Some(true),
             path_to_claude_code_executable: None,
-            path_to_openhands_runner: None,
             agent_name: Some("worker".to_string()),
             required_plugins: None,
             setting_sources: None,

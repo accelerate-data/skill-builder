@@ -9,11 +9,9 @@ const REQUIRED_BY_PLATFORM = {
     "sidecar/dist/package.json",
     "sidecar/dist/bootstrap.js",
     "sidecar/dist/agent-runner.js",
-    "sidecar/dist/openhands/openhands-runner.exe",
     "agent-sources/plugins/skill-creator/LICENSE.txt",
     "agent-sources/skills/skill-test/SKILL.md",
     "workspace/CLAUDE.md",
-    "workspace/prompts/workflow-step.txt",
   ],
   macos: [
     "Skill Builder.app",
@@ -21,11 +19,9 @@ const REQUIRED_BY_PLATFORM = {
     "Skill Builder.app/Contents/Resources/sidecar/dist/package.json",
     "Skill Builder.app/Contents/Resources/sidecar/dist/bootstrap.js",
     "Skill Builder.app/Contents/Resources/sidecar/dist/agent-runner.js",
-    "Skill Builder.app/Contents/Resources/sidecar/dist/openhands/openhands-runner",
     "Skill Builder.app/Contents/Resources/agent-sources/plugins/skill-creator/LICENSE.txt",
     "Skill Builder.app/Contents/Resources/agent-sources/skills/skill-test/SKILL.md",
     "Skill Builder.app/Contents/Resources/workspace/CLAUDE.md",
-    "Skill Builder.app/Contents/Resources/workspace/prompts/workflow-step.txt",
   ],
 };
 

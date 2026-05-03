@@ -68,6 +68,32 @@ describe("runAgentRequest", () => {
     );
   });
 
+  it("rejects OpenHands requests in the Node sidecar", async () => {
+    const messages: Record<string, unknown>[] = [];
+
+    await runAgentRequest(
+      baseConfig({ runtimeProvider: "openhands" }),
+      (msg) => messages.push(msg),
+    );
+
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("Rust-managed OpenHands Agent Server"),
+      }),
+    );
+    expect(findRunResult(messages)).toMatchObject({
+      event: expect.objectContaining({
+        type: "run_result",
+        status: "error",
+        resultText: expect.stringContaining(
+          "Rust-managed OpenHands Agent Server",
+        ),
+      }),
+    });
+  });
+
   it("rejects one-shot requests that include AskUserQuestion", async () => {
     const messages: Record<string, unknown>[] = [];
 

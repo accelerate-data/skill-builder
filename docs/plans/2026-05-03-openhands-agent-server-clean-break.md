@@ -25,21 +25,21 @@
 
 ## Execution Rules
 
-- [ ] Start from the current VU-1145 accumulation branch:
+- [x] Start from the current VU-1145 accumulation branch:
   `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`.
-- [ ] Create a child branch/worktree for this clean-break slice from VU-1145,
+- [x] Create a child branch/worktree for this clean-break slice from VU-1145,
   for example:
   `feature/vu-1153-replace-openhands-runner-with-rust-managed-agent-server`.
-- [ ] Raise the VU-1153 PR against
+- [x] Raise the VU-1153 PR against
   `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`, not
   against `main`.
 - [ ] Merge VU-1153 back into VU-1145 only after the deterministic tests and
   the gated local Agent Server smoke pass.
-- [ ] Replace tests before deleting the old runtime implementation.
-- [ ] Do not keep a production fallback to Node, the Python runner, or stdout JSONL.
-- [ ] Verify the pinned Agent Server package's actual OpenAPI/routes before implementing production REST calls.
-- [ ] Keep Rust as the owner of workspace folder creation, `.agents/**` deployment, app logs, cancellation, and terminal task results.
-- [ ] Commit after each passing slice.
+- [x] Replace tests before deleting the old runtime implementation.
+- [x] Do not keep a production fallback to Node, the Python runner, or stdout JSONL.
+- [x] Verify the pinned Agent Server package's actual OpenAPI/routes before implementing production REST calls.
+- [x] Keep Rust as the owner of workspace folder creation, `.agents/**` deployment, app logs, cancellation, and terminal task results.
+- [x] Commit after each passing slice.
 
 ## Phase 1: Pin And Inspect Agent Server
 
@@ -50,25 +50,25 @@
 - Modify or create: packaging/runtime dependency files selected by the implementation
 - Create: `docs/references/openhands-agent-server-api.md`
 
-- [ ] **Step 1: Choose the local server distribution**
+- [x] **Step 1: Choose the local server distribution**
 
 Verify whether the branch will bundle `openhands-agent-server` as a Python
 runtime, a standalone executable, or another supported package shape. Record the
 decision in `docs/references/openhands-agent-server-api.md`.
 
-- [ ] **Step 2: Capture the actual API surface**
+- [x] **Step 2: Capture the actual API surface**
 
 Run the pinned server locally, fetch its OpenAPI schema or route list, and
 record the exact endpoints for health, workspace binding, conversation create,
 message send, run, pause/cancel, close/delete, and WebSocket events.
 
-- [ ] **Step 3: Decide local auth behavior from the pinned version**
+- [x] **Step 3: Decide local auth behavior from the pinned version**
 
 If API-key auth is supported locally, document the startup flag/env var and
 expected `Authorization: Bearer <token>` behavior. If not supported, document
 that security for VU-1153 is loopback binding plus app-owned process lifecycle.
 
-- [ ] **Step 4: Add dependency validation test coverage**
+- [x] **Step 4: Add dependency validation test coverage**
 
 Replace tests and fixtures that assert `openhands_runner` availability with
 tests that assert the Agent Server executable/package can be resolved.
@@ -93,7 +93,7 @@ contract and no longer require `openhands_runner`.
 - Create: `app/src-tauri/src/agents/openhands_server/types.rs`
 - Modify: `app/src-tauri/src/agents/mod.rs`
 
-- [ ] **Step 1: Write process-manager tests**
+- [x] **Step 1: Write process-manager tests**
 
 Cover random port selection, health wait, startup timeout, port retry, stderr
 redaction, and shutdown using a fake command/server.
@@ -107,7 +107,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server::pr
 Expected: tests fail until the process manager exists, then pass without a real
 OpenHands server.
 
-- [ ] **Step 2: Write REST client serialization tests**
+- [x] **Step 2: Write REST client serialization tests**
 
 Use a mock HTTP server to assert that Rust sends the expected workspace binding
 and conversation request. The workflow-step request must bind
@@ -122,7 +122,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server::cl
 
 Expected: tests pass against mocked HTTP and do not spawn OpenHands.
 
-- [ ] **Step 3: Write WebSocket event adapter tests**
+- [x] **Step 3: Write WebSocket event adapter tests**
 
 Feed representative Agent Server event JSON into the adapter and assert the
 app-visible output:
@@ -141,7 +141,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server::ev
 
 Expected: event adapter tests pass without a real server.
 
-- [ ] **Step 4: Add one-shot runtime facade tests**
+- [x] **Step 4: Add one-shot runtime facade tests**
 
 Introduce a Rust facade that workflow/scope-review callers use instead of the
 sidecar runner. Test that it binds workspace, creates conversation, sends one
@@ -166,7 +166,7 @@ Expected: contract tests pass with fake process/client implementations.
 - Modify: `app/src-tauri/src/commands/workflow/tests.rs`
 - Modify: `app/src-tauri/src/commands/workflow/deploy.rs` only if deployment preconditions need tightening
 
-- [ ] **Step 1: Rewire scope review to the Rust Agent Server facade**
+- [x] **Step 1: Rewire scope review to the Rust Agent Server facade**
 
 Keep the current advisory product behavior. Change only the runtime transport.
 Tests should assert that scope review uses the initialized workspace root and
@@ -180,7 +180,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill::scope_revie
 
 Expected: scope-review tests pass without the old sidecar/runner config.
 
-- [ ] **Step 2: Rewire workflow one-shot execution**
+- [x] **Step 2: Rewire workflow one-shot execution**
 
 Route OpenHands workflow steps through the Rust Agent Server facade. Preserve
 existing prompt rendering, `.agents/**` deployment, terminal JSON extraction,
@@ -195,7 +195,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
 Expected: workflow tests pass and no workflow test asserts
 `path_to_openhands_runner` or Node sidecar routing.
 
-- [ ] **Step 3: Preserve frontend event behavior**
+- [x] **Step 3: Preserve frontend event behavior**
 
 If event field names change at the Tauri boundary, update frontend tests and
 fixtures. Prefer no frontend contract churn: keep `conversation_event` and
@@ -226,24 +226,24 @@ Expected: affected frontend unit tests pass.
 - Modify: `repo-map.json`
 - Modify: `TEST_MAP.md`
 
-- [ ] **Step 1: Delete Python runner and packaging**
+- [x] **Step 1: Delete Python runner and packaging**
 
 Remove the runner, PyInstaller build path, staged `openhands-runner` resource
 resolution, and dependency validation tied to that binary.
 
-- [ ] **Step 2: Delete Node OpenHands runtime routing**
+- [x] **Step 2: Delete Node OpenHands runtime routing**
 
 Remove OpenHands routing from persistent Node sidecar code. If no remaining
 runtime uses Node, delete the Node sidecar process boundary entirely in this
 branch. If a non-OpenHands feature still compiles through Node temporarily,
 document the remaining owner and leave no OpenHands fallback.
 
-- [ ] **Step 3: Replace sidecar tests with Rust tests**
+- [x] **Step 3: Replace sidecar tests with Rust tests**
 
 Remove sidecar tests that only prove stdin/stdout runner behavior. Keep or move
 tests that still validate app-owned prompt, event, or artifact contracts.
 
-- [ ] **Step 4: Update repo maps and test maps**
+- [x] **Step 4: Update repo maps and test maps**
 
 Make `repo-map.json` and `TEST_MAP.md` reflect the deleted files, new Rust
 runtime module, and new validation commands.
@@ -264,14 +264,14 @@ Expected: structural and Rust suites pass without the deleted runtime files.
 - Create or modify: smallest live Agent Server smoke test location selected by implementation
 - Modify: `TEST_MAP.md`
 
-- [ ] **Step 1: Add a gated live smoke**
+- [x] **Step 1: Add a gated live smoke**
 
 Add one automated smoke that starts the local Agent Server, runs a small
 one-shot conversation in a temporary workspace, verifies progress events arrive
 before terminal state, and verifies cleanup. Gate it behind the same live-runtime
 conditions used by other OpenHands/OpenCode smoke checks.
 
-- [ ] **Step 2: Run deterministic automation**
+- [x] **Step 2: Run deterministic automation**
 
 Run:
 
@@ -284,10 +284,12 @@ cd tests/evals && npm test
 
 Expected: all deterministic suites pass.
 
-- [ ] **Step 3: Run live smoke**
+- [x] **Step 3: Run live smoke**
 
 Run the new local Agent Server smoke and the smallest affected live agent smoke.
-Use the exact command added to `TEST_MAP.md`.
+Use the exact command added to `TEST_MAP.md`. The live Agent Server smoke reads
+app DB model settings by default; env vars remain available for CI or isolated
+runs.
 
 Expected: Agent Server starts on a random local port, at least one progress
 event streams, terminal state is received, and the process shuts down cleanly.
@@ -302,19 +304,19 @@ event streams, terminal state is received, and the process shuts down cleanly.
 - Modify: `README.md` if user-facing setup/dependency requirements changed
 - Modify: `AGENTS.md` only if a durable non-obvious repo memory emerges
 
-- [ ] **Step 1: Remove stale runner references**
+- [x] **Step 1: Remove stale runner references**
 
 Update docs that still describe PyInstaller runner or Node OpenHands routing as
 the target runtime. Keep historical pointers only when clearly marked
 superseded.
 
-- [ ] **Step 2: Audit repository metadata**
+- [x] **Step 2: Audit repository metadata**
 
 Verify `repo-map.json` reflects added, removed, and renamed runtime files.
 Verify `TEST_MAP.md` reflects the new test commands and no longer requires
 `cd app/sidecar && npx vitest run` for deleted OpenHands runtime code.
 
-- [ ] **Step 3: Commit and push**
+- [x] **Step 3: Commit and push**
 
 Run:
 

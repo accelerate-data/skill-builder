@@ -39,7 +39,7 @@
     {
       "name": "esbuild (sidecar)",
       "config_files": ["app/sidecar/build.js"],
-      "notes": "Compiles TypeScript sidecar to `app/sidecar/dist/` for Tauri bundling and stages an already-built OpenHands runner from `app/sidecar/dist/openhands/` when present. No hot-reload — restart `npm run dev` after editing sidecar source."
+      "notes": "Compiles TypeScript sidecar to `app/sidecar/dist/` for Tauri bundling. No hot-reload — restart `npm run dev` after editing sidecar source."
     },
     {
       "name": "GitHub Actions",
@@ -119,7 +119,7 @@
     },
     "rust_agents": {
       "path": "app/src-tauri/src/agents/",
-      "description": "Agent runtime. Files: sidecar_pool/ (directory module — pool.rs: SidecarPool struct + idle cleanup, dispatch.rs: request dispatch + streaming + shutdown, process.rs: process primitives + heartbeat + stdout handler, startup_error.rs: SidecarStartupError + terminal status), events.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), sidecar.rs (sidecar process spawning), sidecar_path.rs (resolves sidecar binary path), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
+      "description": "Agent runtime. Files: openhands_server/ (Rust-managed local OpenHands Agent Server process, REST client, WebSocket event stream, one-shot facade), sidecar_pool/ (directory module — pool.rs: SidecarPool struct + idle cleanup, dispatch.rs: request dispatch + streaming + shutdown, process.rs: process primitives + heartbeat + stdout handler, startup_error.rs: SidecarStartupError + terminal status), events.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), sidecar.rs (sidecar config plus legacy Claude sidecar spawning), sidecar_path.rs (resolves sidecar binary path), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
     },
     "sidecar_runner": {
       "path": "app/sidecar/agent-runner.ts",
@@ -131,7 +131,7 @@
     },
     "sidecar_core": {
       "path": "app/sidecar/",
-      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer, routes one-shot vs streaming requests), runtime/ (runtime boundary types, sink adapter, Claude runtime adapter, and OpenHands runtime adapter), openhands/ (Python runner plus PyInstaller build script), run-agent.ts (one-shot compatibility wrapper), stream-session.ts (async generator push pattern for multi-turn streaming), message-processor.ts (transforms SDK messages into DisplayItems and AgentEvents), message-classifier.ts (classifies SDK message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts + options.ts (sidecar config validation and Claude SDK option builder), error-labels.ts (user-facing error strings), shutdown.ts (graceful shutdown handler)"
+      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer, routes one-shot vs streaming requests; OpenHands requests fail here because they are Rust Agent Server only), runtime/ (runtime boundary types, sink adapter, Claude runtime adapter), run-agent.ts (one-shot compatibility wrapper), stream-session.ts (async generator push pattern for multi-turn streaming), message-processor.ts (transforms SDK messages into DisplayItems and AgentEvents), message-classifier.ts (classifies SDK message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts + options.ts (sidecar config validation and Claude SDK option builder), error-labels.ts (user-facing error strings), shutdown.ts (graceful shutdown handler)"
     },
     "sidecar_mock": {
       "path": "app/sidecar/mock-agent.ts",
@@ -180,7 +180,7 @@
     "app/src/test/": "Frontend test infrastructure: setup.ts (Vitest global setup), fixtures.ts (test data factories), mocks/ (Tauri invoke mocks, store mocks, router mocks). Distinguished from app/src/__tests__/ which contains the actual test files.",
     "app/src/__tests__/": "Frontend unit/integration tests, mirroring src/ structure: components/, guards/, hooks/, lib/, pages/, stores/",
     "app/src-tauri/src/": "Rust backend runtime (Tauri commands, DB, agents, types, reconciliation, support modules)",
-    "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, Claude/OpenHands runtime adapters, mock mode)",
+    "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, Claude runtime adapter, mock mode; OpenHands runs through Rust-managed Agent Server)",
     "app/sidecar/__tests__/": "Sidecar unit tests (one test file per sidecar module)",
     "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, description, evals, settings, usage, skill-tester, skills-library, integration, desktop-smoke, fixtures, helpers, setup",
     "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains eval-map.json for coding-agent navigation, bin/ad-evals.js shared CLI, scripts/framework/ reusable harness modules, suite-owned tier config, OpenCode provider config, package-level eval configs, deterministic harness tests, static assertions for code contracts including shared Tauri command policy analysis, runtime-exported Promptfoo state ignores, one-scenario-per-package smoke, and live model regression commands.",
@@ -194,12 +194,12 @@
     "docs/references/": "Vendored external reference docs (e.g. Anthropic API snapshots)",
     ".claude/rules/": "Shared agent rules (agent-agnostic, detailed policy). Referenced from AGENTS.md.",
     ".claude/repo-map.schema.json": "Schema for repo-map.json",
-    "scripts/": "Developer and automation scripts. worktree.sh is the canonical maintainer helper for creating development worktrees and bootstrapping app/eval dependencies. check-help-docs.mjs verifies app/VitePress help links against docs/user-guide. verify-release-stage.mjs verifies staged release archives include required runtime resources."
+    "scripts/": "Developer and automation scripts. worktree.sh is the canonical maintainer helper for creating development worktrees and bootstrapping app/eval dependencies. check-help-docs.mjs verifies app/VitePress help links against docs/user-guide. verify-release-stage.mjs verifies staged release archives include required runtime resources. verify-repo-map.mjs audits repo-map command/page/store inventory against the filesystem."
   },
   "dependencies_internal": {
     "frontend → rust": "Via Tauri IPC (`invoke()` from @tauri-apps/api/core)",
     "rust → sidecar": "Node.js child process, stdin/stdout JSONL protocol",
-    "sidecar → agent runtime": "Via runtime/claude-runtime.ts using @anthropic-ai/claude-agent-sdk for Claude runs, or runtime/openhands-runtime.ts spawning the packaged OpenHands runner for OpenHands runs",
+    "sidecar → agent runtime": "Via runtime/claude-runtime.ts using @anthropic-ai/claude-agent-sdk for Claude runs. OpenHands runs through the Rust-managed Agent Server path, not the Node sidecar",
     "frontend → sidecar_events": "Typed via agent-events.ts contract, received as Tauri events"
   },
   "dependencies_external": {
@@ -234,6 +234,7 @@
     "test_eval_harness_smoke": "cd tests/evals && npm run eval:smoke  # one live OpenCode/Promptfoo smoke scenario per package",
     "test_eval_harness_regression": "cd tests/evals && npm run eval:regression  # live OpenCode/Promptfoo package regression suite",
     "test_release_docs_ci_scripts": "node --test scripts/*.test.mjs",
+    "test_repo_map": "cd app && npm run test:repo-map",
     "check_help_docs": "node scripts/check-help-docs.mjs",
     "verify_release_stage": "node scripts/verify-release-stage.mjs <stage-dir> <windows|macos>",
     "create_worktree": "./scripts/worktree.sh feature/<branch-name>",

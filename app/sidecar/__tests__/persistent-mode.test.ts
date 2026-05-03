@@ -7,14 +7,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn(),
 }));
 
-// Mock child_process so OpenHandsRuntime can be exercised without Python
-vi.mock("node:child_process", () => ({
-  spawn: vi.fn(),
-}));
-
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import * as childProcess from "node:child_process";
-import { EventEmitter, PassThrough } from "node:stream";
 import {
   parseIncomingMessage,
   wrapWithRequestId,
@@ -22,7 +15,6 @@ import {
 } from "../persistent-mode.js";
 
 const mockQuery = vi.mocked(query);
-const mockSpawn = vi.mocked(childProcess.spawn);
 
 // =====================================================================
 // Unit tests: parseIncomingMessage
@@ -1385,34 +1377,7 @@ describe("runPersistent", () => {
     ).toBe(true);
   });
 
-  it("routes agent_request with runtimeProvider openhands to OpenHandsRuntime (spawn, not query)", async () => {
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-    const stdin = new PassThrough();
-    const mockChild = Object.assign(new EventEmitter(), {
-      stdout,
-      stderr,
-      stdin,
-      kill: vi.fn(),
-    });
-    mockSpawn.mockReturnValueOnce(
-      mockChild as ReturnType<typeof childProcess.spawn>,
-    );
-
-    // Close the child after it is spawned so the request completes and shutdown can drain
-    setImmediate(() => {
-      stdout.push(
-        JSON.stringify({
-          type: "openhands_result",
-          status: "success",
-          result_text: "{}",
-        }) + "\n",
-      );
-      stdout.push(null);
-      stderr.push(null);
-      mockChild.emit("close", 0);
-    });
-
+  it("rejects OpenHands agent_request in the Node sidecar", async () => {
     const input = createInputStream([
       JSON.stringify({
         type: "agent_request",
@@ -1440,7 +1405,25 @@ describe("runPersistent", () => {
       capture.restore();
     }
 
-    expect(mockSpawn).toHaveBeenCalled();
     expect(mockQuery).not.toHaveBeenCalled();
+    expect(
+      capture.lines.some((line) => {
+        const parsed = JSON.parse(line);
+        return (
+          parsed.request_id === "req_oh" &&
+          parsed.type === "error" &&
+          String(parsed.message).includes("Rust-managed OpenHands Agent Server")
+        );
+      }),
+    ).toBe(true);
+    expect(
+      capture.lines.some((line) => {
+        const parsed = JSON.parse(line);
+        return (
+          parsed.request_id === "req_oh" &&
+          parsed.type === "request_complete"
+        );
+      }),
+    ).toBe(true);
   });
 });

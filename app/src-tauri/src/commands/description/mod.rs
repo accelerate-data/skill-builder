@@ -518,7 +518,6 @@ pub async fn start_generate_desc_evals(
         output_format,
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
-        path_to_openhands_runner: None,
         required_plugins: Some(vec!["skill-creator".to_string()]),
         agent_name: None,
         setting_sources: Some(vec![]),

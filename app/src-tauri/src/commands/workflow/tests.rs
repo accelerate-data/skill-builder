@@ -229,7 +229,7 @@ fn skill_creator_agent_carries_full_skill_building_overview() {
 }
 
 #[test]
-fn test_research_steps_use_native_openhands_dispatch() {
+fn test_workflow_steps_use_native_openhands_dispatch() {
     assert!(workflow_step_uses_native_openhands_dispatch(0));
     assert!(workflow_step_uses_native_openhands_dispatch(1));
     assert!(workflow_step_uses_native_openhands_dispatch(2));
@@ -533,6 +533,38 @@ fn research_json_extraction_parses_json_after_visible_dimension_table() {
 
     assert_eq!(parsed["status"], "research_complete");
     assert!(parsed.get("dimensions_selected").is_none());
+}
+
+#[test]
+fn research_json_extraction_repairs_missing_commas_between_array_objects() {
+    let state = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed",
+        "result_text": r#"{
+  "status": "research_complete",
+  "question_count": 2,
+  "research_output": {
+    "version": "1",
+    "metadata": {},
+    "sections": [
+      {"id":1,"title":"Inputs","questions":[]}
+      {"id":2,"title":"Outputs","questions":[]}
+    ],
+    "notes": []
+  }
+}"#
+    });
+
+    let parsed = extract_research_json_from_conversation_state(&state).unwrap();
+
+    assert_eq!(parsed["status"], "research_complete");
+    assert_eq!(
+        parsed["research_output"]["sections"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
 }
 
 #[test]
