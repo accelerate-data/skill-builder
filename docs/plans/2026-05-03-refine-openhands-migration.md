@@ -1481,6 +1481,65 @@ This task is product-wide, not refine-specific. The projection runs for every Op
 
 ---
 
+## Task 13: Post-implementation refinements from manual smoke
+
+Two refinements landed after Task 12 was exercised live. Both already implemented and pushed.
+
+- [x] **13.1: Fall back to `kind` discriminator when extracting `event_class`** (commit `fba0db73`).
+
+  OpenHands SDK emits raw events with `kind: "ActionEvent"` (etc.) as the type discriminator, not `event_class`. The Rust normalizer's fallback chain was `event_class → eventClass → type → "event"` literal — every live WebSocket event hit the literal `"event"` fallback and the projection routed through the unknown-event branch (manual-smoke screenshot showed a 13-card "Tool Activity (13 unknown_event)" group). Fix added `kind` to the fallback chain in both:
+  - `app/src-tauri/src/agents/openhands_server/events.rs::normalize_server_event` — primary fix
+  - `app/src/lib/openhands-conversation-events.ts::normalizeConversationEventMessage` — defensive fallback so any in-flight events that already shipped with `event_class: "event"` but kept inner `event.kind` still recover client-side
+
+  Rust unit test added asserting `{ kind: "ActionEvent" }` normalizes to `event_class: "ActionEvent"`. JSONL fixtures the existing tests use already had `event_class` set (written by the SDK's persisted-conversation-log format, which differs from the WebSocket wire format), so the fixture tests passed even though live runs were broken.
+
+- [x] **13.2: Hide `ConversationStateUpdateEvent` from chat (audit-only)** (commit `8436d248`).
+
+  These events carry pure internal counter/state churn — token deltas, `execution_status` flips, `agent_state` transitions. Rendering each as a "Lifecycle update" card was noise; the lifecycle chip in the chat header already represents the user-facing transitions semantically. The event still lands in `run.conversationEvents` (audit trail preserved); only the projected `DisplayItem` is suppressed. SystemPromptEvent, Condensation*Event, PauseEvent, and user MessageEvent stay visible as collapsed rows because each carries genuine user-facing meaning.
+
+  Files changed: `app/src/lib/openhands-event-projection.ts::projectStateUpdateEvent` returns `{ add: [], update: [], pendingDelta: {} }`; corresponding test in `openhands-event-projection.test.ts` flipped from "produces a state_update DisplayItem" to "hides the event from chat". Design spec updated to match: `docs/design/openhands-event-display-projection/README.md` Key Decisions, Projection Contract, and the per-event-class table all reflect the narrowed editorial rule (every user-facing event becomes a DisplayItem; ConversationStateUpdateEvent is hidden).
+
+---
+
+## Task 14: Fix OpenHands persistence-dir JSONL writer
+
+**Spec:** new requirement surfaced during VU-1155 manual smoke.
+
+**Symptom:** `~/Library/Application Support/com.vibedata.skill-builder/workspace/skills/{skill}/logs/{agent_id}-{ts}/` is empty for every run after the OpenHands runtime migration. Concrete examples on disk at the time of writing:
+
+- `workspace/skills/pipeline-analysis/logs/pipeline-analysis-research-1777810046880-2026-05-03T20-07-26/` — empty
+- `workspace/skills/analyzing-bookings/logs/analyzing-bookings-research-1777810441398-2026-05-03T20-14-01/` — empty
+- `workspace/skills/measuring-pipeline-value/logs/refine-measuring-pipeline-value-1777805777627-2026-05-03T18-56-17/` — empty
+
+The hr-analytics May 2 / measuring-pipeline-value May 3 transcripts that fed the VU-1155 fixture tests exist because earlier code paths wrote them. The audit trail for newer runs lives only in memory (`run.conversationEvents`); restarting the app loses it.
+
+**Root cause:** `agents/openhands_server/mod.rs::create_openhands_persistence_dir` creates the directory and `transcript_log_dir` is threaded through `dispatch_openhands_one_shot` and `dispatch_openhands_refine_turn`, but the path is never passed to the OpenHands Agent Server's `create_conversation` request body, so the SDK's conversation-log writer has nowhere to write. The `SidecarConfig.persistence_dir` field exists but isn't plumbed through `OpenHandsOneShotRequest::try_from_sidecar_config` or `StartConversationRequest::from_one_shot`.
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/openhands_server/types.rs` — add a `persistence_dir: Option<String>` (or whatever the SDK calls it) field to `StartConversationRequest`. Plumb through `OpenHandsOneShotRequest::try_from_sidecar_config` from `SidecarConfig.persistence_dir`.
+- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs` — set `config.persistence_dir = Some(persistence_path.to_string_lossy().into_owned())` in both `dispatch_openhands_one_shot` (around line 87) and `dispatch_openhands_refine_turn` (around line 310), before calling `OpenHandsOneShotRequest::try_from_sidecar_config`.
+- Test: serialization test that `StartConversationRequest` includes the persistence path.
+
+### Subtasks
+
+- [ ] **14.1: Inspect the OpenHands Agent Server `create_conversation` API** for the pinned version. Determine the exact field name (`persistence_dir`, `persist_path`, `conversation_log_dir`, etc.) by reading the SDK source or the OpenAPI spec. Document it in the design spec's Wire-Format note.
+
+- [ ] **14.2: Add the field to `StartConversationRequest`** in `types.rs` with the correct serde rename. Default to `None` so any non-OpenHands callers stay compatible.
+
+- [ ] **14.3: Plumb `SidecarConfig.persistence_dir` through `OpenHandsOneShotRequest::try_from_sidecar_config`** so the request body inherits the persistence dir from the sidecar config.
+
+- [ ] **14.4: Set `config.persistence_dir`** in both dispatch entry points immediately after `create_openhands_persistence_dir` returns. The persistence path returned by that helper becomes the value passed to the SDK.
+
+- [ ] **14.5: Serialization test** in `types.rs` (or `mod.rs`) that constructs a `SidecarConfig` with a persistence_dir, runs through `try_from_sidecar_config` and `from_one_shot`, and asserts the serialized JSON body contains the persistence path under the correct field name.
+
+- [ ] **14.6: Manual smoke** — start `npm run dev`, run a refine turn, verify a JSONL file appears in the per-run logs dir and that its content matches the WebSocket events the chat received.
+
+- [ ] **14.7: No backfill.** Existing empty directories from previous runs are not recoverable; this task only fixes new runs.
+
+This task can ship as part of the VU-1155 PR or as a separate follow-up — recommend separate, since it's an orthogonal bug. The VU-1155 design spec already calls it out under "Known limitations / follow-ups".
+
+---
+
 ## Execution Handoff
 
 Plan complete and saved to `docs/plans/2026-05-03-refine-openhands-migration.md`. Two execution options:
