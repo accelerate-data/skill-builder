@@ -114,7 +114,6 @@ impl OpenHandsServerClient {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub async fn send_event(
         &self,
         conversation_id: &str,

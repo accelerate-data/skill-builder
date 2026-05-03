@@ -279,7 +279,6 @@ async fn run_conversation_task(
 /// Refine variant of `run_conversation_task` — identical except it does NOT
 /// delete the conversation when the run finishes. The conversation stays alive
 /// for the next turn.
-#[allow(dead_code)]
 async fn run_refine_conversation_task(
     task: OpenHandsConversationTask,
     mut cancel_rx: tokio::sync::oneshot::Receiver<()>,

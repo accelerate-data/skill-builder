@@ -21,6 +21,11 @@ const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
     "/../../agent-sources/prompts/skill-creator-user-suffix.txt"
 ));
 
+/// Maximum agentic turns per refine turn. Matches workflow step 3
+/// (skill_generation) since refine has the same shape: edit skill files,
+/// run optional tools, summarize.
+const REFINE_MAX_TURNS_PER_TURN: u32 = 500;
+
 // ─── Shared helper ───────────────────────────────────────────────────────────
 
 pub(crate) fn resolve_skills_path(db: &Db) -> Result<String, String> {
@@ -69,9 +74,12 @@ pub struct RefineSession {
     /// `send_refine_message` creates the conversation; reused for every
     /// subsequent turn so the agent retains full edit history.
     pub conversation_id: Option<String>,
-    /// agent_id of the currently running turn, if any. Cleared when the turn
-    /// terminates. Needed by `close_refine_session` to cancel a turn that is
-    /// still in flight when the user navigates away.
+    /// agent_id of the most recently dispatched turn. Set every time
+    /// `send_refine_message` runs; `cancel_refine_turn` and
+    /// `close_refine_session` use it to signal `cancel_openhands_one_shot`.
+    /// The cancel registry itself ignores stale agent_ids, so the backend
+    /// does not actively clear this field — the frontend tracks live turn
+    /// status via the `agent-message` and `agent-exit` event stream.
     pub current_agent_id: Option<String>,
     /// HEAD SHA of the skills repo when the session started.
     /// Used by `finalize_refine_run` to detect whether the agent actually committed.
@@ -202,6 +210,11 @@ pub async fn send_refine_message(
     db: tauri::State<'_, Db>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
+    // workspace_path and plugin_slug come from the frontend invocation but
+    // we resolve both server-side: workspace_path from
+    // read_initialized_runtime_context, plugin_slug from
+    // resolve_skill_plugin_slug. Kept on the IPC signature for
+    // backward compatibility with the existing tauri.ts wrapper.
     let _ = (workspace_path, plugin_slug);
 
     let (skill_name, conversation_id) = {
@@ -277,7 +290,7 @@ pub async fn send_refine_message(
         task_kind: Some("refine".to_string()),
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
         allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
-        max_turns: 500,
+        max_turns: REFINE_MAX_TURNS_PER_TURN,
         output_format: None,
         skill_name: Some(skill_name.clone()),
         step_id: Some(-10),
