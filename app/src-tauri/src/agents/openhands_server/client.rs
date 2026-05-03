@@ -393,6 +393,49 @@ mod tests {
     }
 
     #[test]
+    fn default_tool_set_includes_search_and_subagent_spawn() {
+        let mut config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
+        config.allowed_tools = None;
+        let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();
+        let payload = StartConversationRequest::from_one_shot(&request);
+        let json = serde_json::to_value(payload).unwrap();
+
+        let names: Vec<String> = json["agent"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap().to_string())
+            .collect();
+
+        for expected in [
+            "browser_tool_set",
+            "file_editor",
+            "glob",
+            "grep",
+            "planning_file_editor",
+            "task_tool_set",
+            "task_tracker",
+            "terminal",
+        ] {
+            assert!(
+                names.iter().any(|n| n == expected),
+                "expected `{expected}` in default tool set, got {names:?}"
+            );
+        }
+
+        // Built-in tools must only resolve names in BUILT_IN_TOOL_CLASSES;
+        // DelegateTool was removed because the SDK rejects it (and it's
+        // deprecated). InvokeSkillTool auto-attaches via agent_context.
+        let defaults: Vec<String> = json["agent"]["include_default_tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(defaults, vec!["FinishTool", "ThinkTool"]);
+    }
+
+    #[test]
     fn search_events_request_includes_pagination_query() {
         let client = OpenHandsServerClient::new(
             "http://127.0.0.1:43210".parse().unwrap(),

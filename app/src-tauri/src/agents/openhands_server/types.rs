@@ -173,17 +173,14 @@ impl StartConversationRequest {
                 kind: "Agent".to_string(),
                 llm: openhands_llm_json(&request.llm),
                 tools: openhands_tools(&request.workspace_skill_dir, &request.allowed_tools),
+                // `include_default_tools` only resolves names in the SDK's
+                // BUILT_IN_TOOL_CLASSES map: FinishTool, ThinkTool,
+                // InvokeSkillTool. InvokeSkillTool is auto-attached by the
+                // agent when an AgentSkills-format skill is present in
+                // agent_context.skills, so it doesn't need to be listed here.
                 include_default_tools: vec![
                     "FinishTool".to_string(),
                     "ThinkTool".to_string(),
-                    // DelegateTool exposes invoke_skill so the agent can activate
-                    // AgentSkills listed in its frontmatter. Without this the model
-                    // has no way to call `researching-skill-requirements`,
-                    // `creating-skills`, etc., and falls back to direct file_editor
-                    // use — bypassing the skill instructions entirely. This applies
-                    // to both one-shot (workflow steps, scope review) and multi-turn
-                    // (refine) since both routes go through from_one_shot.
-                    "DelegateTool".to_string(),
                 ],
                 agent_context: OpenHandsAgentContext {
                     user_message_suffix: request.user_message_suffix.clone(),
@@ -281,12 +278,32 @@ fn openhands_litellm_model(model: &str, base_url: Option<&str>) -> String {
 }
 
 fn openhands_tools(_working_dir: &str, allowed_tools: &[String]) -> Vec<OpenHandsTool> {
+    // Map sidecar `allowed_tools` (a Claude-Code-era concept) onto the
+    // OpenHands tool registry. Names match `register_tool` in the SDK's
+    // openhands.tools.* packages: snake-cased class name minus `_tool`.
+    //
+    // Only tools the agent server actually registers at boot are listed here.
+    // `tool_router.py` registers: default (terminal, file_editor, task_tracker,
+    // browser_tool_set), planning (glob, grep, planning_file_editor), and the
+    // transitive openhands.tools import that pulls in delegate, task, and
+    // task_tool_set. `apply_patch` and `tom_consult` are *not* registered, so
+    // sending them would raise KeyError from resolve_tool. `delegate` is
+    // deprecated (replaced by task_tool_set).
     let normalized = |tool: &str| match tool {
         "terminal" | "bash" | "Bash" | "TerminalTool" => Some("terminal"),
         "file_editor" | "FileEditor" | "FileEditorTool" | "Edit" | "Read" | "Write" => {
             Some("file_editor")
         }
         "task_tracker" | "TaskTrackerTool" => Some("task_tracker"),
+        "grep" | "Grep" | "GrepTool" => Some("grep"),
+        "glob" | "Glob" | "GlobTool" => Some("glob"),
+        "task_tool_set" | "TaskToolSet" => Some("task_tool_set"),
+        "browser_tool_set" | "BrowserToolSet" | "browser" | "Browser" => {
+            Some("browser_tool_set")
+        }
+        "planning_file_editor" | "PlanningFileEditorTool" | "planning" => {
+            Some("planning_file_editor")
+        }
         _ => None,
     };
     let mut names: Vec<&str> = allowed_tools
@@ -294,7 +311,24 @@ fn openhands_tools(_working_dir: &str, allowed_tools: &[String]) -> Vec<OpenHand
         .filter_map(|tool| normalized(tool))
         .collect();
     if names.is_empty() {
-        names = vec!["terminal", "file_editor", "task_tracker"];
+        // Default workspace toolkit:
+        //   terminal, file_editor, task_tracker — core "hands"
+        //   grep, glob                          — read-only code search
+        //   task_tool_set                       — sub-agent spawn (modern
+        //                                          replacement for the
+        //                                          deprecated DelegateTool)
+        //   browser_tool_set                    — web research / page reads
+        //   planning_file_editor                — structured PLAN.md edits
+        names = vec![
+            "terminal",
+            "file_editor",
+            "task_tracker",
+            "grep",
+            "glob",
+            "task_tool_set",
+            "browser_tool_set",
+            "planning_file_editor",
+        ];
     }
     names.sort_unstable();
     names.dedup();
