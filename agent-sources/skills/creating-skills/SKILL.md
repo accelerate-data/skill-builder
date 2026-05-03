@@ -24,6 +24,7 @@ inputs are:
 - confirmed decisions
 - examples, expected inputs, expected outputs, and edge cases
 - the exact output directory for generated skill files
+- the exact eval definitions path, when evals are expected
 
 Use progressive, demand-driven reading. Start with the caller's brief and
 confirmed decisions, then read supporting files only when they are needed to
@@ -65,10 +66,16 @@ Create base eval definitions when the skill has objectively verifiable behavior,
 such as file transforms, data extraction, structured output, code generation, or
 fixed workflow steps.
 
+Write eval definitions only to the exact eval path provided by the caller. If
+that parent directory does not exist yet, create it before writing the file. Do
+not invent a different eval path and do not place app eval definitions inside
+the generated skill package unless the caller explicitly asks for that.
+
 Do not run evals from this skill. The caller decides when to run quality gates.
 
 For subjective skills, document why an automated eval is not useful and include
-manual review criteria if the caller expects them.
+manual review criteria if the caller expects them. Do not create a placeholder
+eval file for subjective skills unless the caller explicitly requires one.
 
 ## Fresh-Context Verification
 
@@ -77,6 +84,7 @@ After generating files, spawn a fresh-context verifier subagent. Give it only:
 - the caller's generation brief
 - the generated `SKILL.md`
 - generated references or eval definitions that should be reviewed
+- the caller-provided eval path, when evals were expected
 - the verifier instructions from `references/verifier-subagent-prompt.md`
 
 Do not invoke a separate validator skill. Verification is owned by this

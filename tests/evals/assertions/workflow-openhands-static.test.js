@@ -141,6 +141,10 @@ test('step 3 skill generation has no legacy writer or validator runtime dependen
     'agent_name: "skill-creator"',
     'creating-skills',
     'fresh-context verification',
+    'Eval definitions file:',
+    '/evals/evals.json',
+    'If the `evals` directory does not',
+    'exist yet, create it before writing `evals.json`',
   ]) {
     assert.ok(step3RuntimeEvidence.includes(token), `step 3 runtime evidence must mention ${token}`);
   }

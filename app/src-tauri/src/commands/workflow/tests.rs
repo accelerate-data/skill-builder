@@ -749,6 +749,9 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("We are writing the skill named `pipeline-value`."));
     assert!(prompt.contains("Workspace directory: `/tmp/workspace/skills/pipeline-value`"));
     assert!(prompt.contains("Skill output directory: `/tmp/skills/skills/pipeline-value`"));
+    assert!(prompt.contains("Eval definitions file: `/tmp/workspace/skills/pipeline-value/evals/evals.json`"));
+    assert!(prompt.contains("If the `evals` directory does not"));
+    assert!(prompt.contains("exist yet, create it before writing `evals.json`."));
     assert!(prompt.contains("Use the `creating-skills` skill"));
     assert!(prompt.contains("context/decisions.json"));
     assert!(prompt.contains("context/clarifications.json"));
@@ -757,6 +760,8 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("Do not invoke a legacy writer agent"));
     assert!(prompt.contains("\"version_bump\": \"1.0.0\""));
     assert!(prompt.contains("fresh-context-verifier-review"));
+    assert!(prompt.contains("`call_trace` must be an array of string values"));
+    assert!(prompt.contains("Do not\nreturn objects inside `call_trace`."));
 }
 
 #[test]

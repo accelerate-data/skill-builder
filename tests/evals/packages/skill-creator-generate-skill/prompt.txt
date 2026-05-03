@@ -6,10 +6,11 @@ App-provided run context:
 - workspace_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
 - context_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context
 - skill_output_dir: /tmp/skill-builder/skills/skill-builder/fabric-dbt-standards
+- eval_definitions_file: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/evals/evals.json
 - user-context.md describes a Claude-compatible skill for dbt-Fabric modeling standards
 - decisions.json contains accepted decisions for layer naming, incremental models, snapshots, semantic handoff, and CI review
 
-Generate the final structured status JSON that workflow step 3 returns after creating SKILL.md, references, and evals.json. Do not include file contents.
+Generate the final structured status JSON that workflow step 3 returns after creating SKILL.md, references, and evals.json at the provided eval definitions path. Do not include file contents.
 
 Required JSON fields:
 - status: "generated"
