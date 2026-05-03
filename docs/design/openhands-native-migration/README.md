@@ -35,7 +35,7 @@ The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary
 
 **Does not cover**
 
-- Refine/streaming session migration (separate ticket — requires `AskUserQuestion` custom tool).
+- Refine/streaming session migration — implemented in `docs/design/refine-openhands-migration/README.md` via native multi-turn conversation (no `AskUserQuestion` interrupt tool required).
 - Broad eval harness redesign; this migration still adds targeted automated
   smoke/eval coverage for OpenHands workflow parity.
 - Skill import, marketplace, or GitHub-import flows.
@@ -59,7 +59,7 @@ The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary
 | Confirm-decisions logic moves into app prompts. | Step 2 and step 3 are both one-shot conversations with `skill-creator`. The rendered task prompt and output schema distinguish decision confirmation from skill generation. |
 | LiteLLM provider strings for multi-model support. | OpenHands routes all LLM calls through LiteLLM. Any provider string (`anthropic/claude-sonnet-4-6`, `openai/gpt-4o`, `google/gemini-2.0-flash`, `ollama/llama3.2`) works without runner changes. Settings adds a provider picker and per-provider API key. |
 | `AGENTS.md` is the always-on context file. | Both Claude Code and OpenHands read `AGENTS.md` natively. No change to the always-on instruction layer. |
-| `AskUserQuestion` gap is deferred. | Refine streaming depends on a custom interrupt tool. Until it is built, streaming sessions return a clear error. Workflow one-shot steps are unaffected. |
+| `AskUserQuestion` is not needed for Refine. | Refine uses OpenHands multi-turn conversation: each user message is a `MessageEvent` appended to the event log, not an interrupt. The `AskUserQuestion` custom tool would only be needed if an agent mid-turn needed to ask a question; Refine's design never requires that pattern. See `docs/design/refine-openhands-migration/README.md`. |
 | Workspace, LLM, and agent invocation are backend-owned boundaries. | App startup initializes the workspace and deploys `.agents` artifacts; Rust projects settings into `WorkflowLlmConfig`; product features invoke app agents through one-shot or streaming runtime APIs instead of constructing raw runtime details. |
 
 ## Runtime Invariants
