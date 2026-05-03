@@ -30,6 +30,8 @@ Reference docs:
   <https://docs.openhands.dev/sdk/guides/agent-server/local-server>
 - OpenHands workspace architecture:
   <https://docs.openhands.dev/sdk/arch/workspace>
+- [Tools included on every conversation](tools-included.md) — what we send in
+  `agent.tools` and `include_default_tools`, what's excluded, and why
 
 ## Design Scope
 
