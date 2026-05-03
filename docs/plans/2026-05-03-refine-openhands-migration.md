@@ -1,0 +1,1427 @@
+# Refine OpenHands Migration Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Migrate the Refine UI surface from Claude Code sidecar streaming to OpenHands Agent Server multi-turn conversation.
+
+**Architecture:** Refine becomes a persistent OpenHands conversation kept alive across user messages. Turn 1 creates the conversation; turn N appends a `MessageEvent` and re-runs. Cancel pauses the running turn but keeps the conversation; close deletes it.
+
+**Tech Stack:** Rust (Tauri commands, OpenHands client), TypeScript/React (frontend refine tab), Tauri IPC events, OpenHands Agent Server REST + WebSocket.
+
+**Design Spec:** `docs/design/refine-openhands-migration/README.md`
+
+---
+
+## File Structure
+
+| File | Responsibility |
+|---|---|
+| `app/src-tauri/src/agents/openhands_server/client.rs` | Add `send_event` async wrapper for the `/events` endpoint |
+| `app/src-tauri/src/agents/openhands_server/mod.rs` | Add `dispatch_openhands_refine_turn`, `close_openhands_refine_session`, `run_refine_conversation_task` |
+| `app/src-tauri/src/commands/refine/mod.rs` | `RefineSession` struct + Tauri commands rewritten for OpenHands |
+| `app/src-tauri/src/commands/refine/protocol.rs` | Strip Claude Code streaming artifacts; keep prompt builders |
+| `app/src-tauri/src/commands/refine/tests.rs` | Remove stale streaming tests; add new struct + prompt tests |
+| `app/src-tauri/src/lib.rs` | Remove `answer_refine_question` from command registration |
+| `agent-sources/prompts/refine-initial.txt` | Remove ROUTING + AskUserQuestion; add plain-text eval guidance |
+| `app/src/lib/tauri-command-types.ts` | Remove `answer_refine_question` command type |
+| `app/src/lib/tauri.ts` | Remove `answerStreamingRefineQuestion`; rename to `sendRefineMessage` |
+| `app/src/components/workspace/workspace-refine.tsx` | Remove sidecar cleanup, model guard, AskUserQuestion handler |
+
+---
+
+## Task 1: Add `send_event` HTTP wrapper
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/openhands_server/client.rs:38-49`
+
+- [ ] **Step 1: Add `send_event` async method**
+
+Edit `app/src-tauri/src/agents/openhands_server/client.rs`. After the existing `delete_conversation` method (line 110-116) insert:
+
+```rust
+    pub async fn send_event(
+        &self,
+        conversation_id: &str,
+        event: serde_json::Value,
+    ) -> Result<(), reqwest::Error> {
+        self.http
+            .execute(self.build_send_event_request(conversation_id, event)?)
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+```
+
+Also remove the `#[allow(dead_code)]` attribute above `build_send_event_request` (line 37) since it now has a caller.
+
+- [ ] **Step 2: Build to verify**
+
+Run: `cargo build --manifest-path app/src-tauri/Cargo.toml`
+Expected: clean build.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add app/src-tauri/src/agents/openhands_server/client.rs
+git commit -m "VU-1145: add send_event wrapper for OpenHands events endpoint
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 2: Add refine dispatch + close in `openhands_server/mod.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs` — add three new functions after `dispatch_openhands_one_shot`
+
+- [ ] **Step 1: Add `run_refine_conversation_task`**
+
+After the existing `run_conversation_task` function (line 251-277), insert:
+
+```rust
+/// Refine variant of `run_conversation_task` — identical except it does NOT
+/// delete the conversation when the run finishes. The conversation stays alive
+/// for the next turn.
+async fn run_refine_conversation_task(
+    task: OpenHandsConversationTask,
+    mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
+) -> Result<(), String> {
+    let result = run_conversation_task_inner(&task, &mut cancel_rx).await;
+    if result.is_err() {
+        let _ = task.client.pause_conversation(&task.conversation_id).await;
+    }
+    result
+}
+```
+
+- [ ] **Step 2: Add `dispatch_openhands_refine_turn`**
+
+After `run_refine_conversation_task` from Step 1, insert:
+
+```rust
+/// Dispatch a refine turn against the OpenHands Agent Server.
+///
+/// On turn 1 (`conversation_id` is `None`) creates a new conversation seeded
+/// with `config.prompt` as the initial message. On turn N (`conversation_id`
+/// is `Some`) sends `config.prompt` as a follow-up `SendMessageRequest` event
+/// and re-runs the existing conversation. Returns the conversation_id that
+/// the caller must persist for subsequent turns.
+///
+/// The conversation is NOT deleted when the run completes. The caller owns
+/// deletion via `close_openhands_refine_session`.
+pub async fn dispatch_openhands_refine_turn(
+    app: &tauri::AppHandle,
+    agent_id: &str,
+    config: SidecarConfig,
+    conversation_id: Option<String>,
+    transcript_log_dir: Option<&str>,
+) -> Result<String, String> {
+    let _ = create_openhands_persistence_dir(agent_id, &config, transcript_log_dir)?;
+    let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
+
+    let server = ensure_agent_server(Duration::from_secs(60)).await?;
+    let client = OpenHandsServerClient::new(
+        server
+            .base_url()
+            .parse()
+            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
+        Some(server.session_api_key.clone()),
+    );
+
+    let config_event = redact_openhands_config_for_log(&config, server.port);
+    super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
+
+    let conversation_id = match conversation_id {
+        Some(existing) => {
+            let event = serde_json::json!({
+                "role": "user",
+                "content": [{
+                    "type": "text",
+                    "text": request.prompt,
+                }],
+                "run": false,
+            });
+            client
+                .send_event(&existing, event)
+                .await
+                .map_err(|e| format!("Failed to send refine event to OpenHands conversation: {e}"))?;
+            existing
+        }
+        None => {
+            let start_request = StartConversationRequest::from_one_shot(&request);
+            let conversation = client
+                .create_conversation(&start_request)
+                .await
+                .map_err(|e| format!("Failed to create OpenHands refine conversation: {e}"))?;
+            extract_conversation_id(&conversation)?
+        }
+    };
+
+    let summary_context = OpenHandsRunSummaryContext::new(&request, &conversation_id);
+    let websocket_url = server.websocket_url(&conversation_id);
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    register_cancel(agent_id, cancel_tx)?;
+
+    let app_for_task = app.clone();
+    let agent_for_task = agent_id.to_string();
+    let conversation_id_clone = conversation_id.clone();
+    let session_api_key = server.session_api_key.clone();
+    tokio::spawn(async move {
+        let task = OpenHandsConversationTask {
+            app: app_for_task.clone(),
+            agent_id: agent_for_task.clone(),
+            client,
+            conversation_id: conversation_id_clone,
+            websocket_url,
+            session_api_key,
+            summary_context,
+        };
+        let result = run_refine_conversation_task(task, cancel_rx).await;
+        unregister_cancel(&agent_for_task);
+        if let Err(error) = result {
+            super::events::handle_sidecar_exit_with_detail(
+                &app_for_task,
+                &agent_for_task,
+                false,
+                Some(error),
+            );
+        }
+    });
+
+    Ok(conversation_id)
+}
+```
+
+- [ ] **Step 3: Add `close_openhands_refine_session`**
+
+After `dispatch_openhands_refine_turn` from Step 2, insert:
+
+```rust
+/// Best-effort delete of an OpenHands refine conversation.
+///
+/// Errors are logged and swallowed — the server will eventually GC abandoned
+/// conversations, so a transient failure here is not fatal.
+pub async fn close_openhands_refine_session(conversation_id: &str) -> Result<(), String> {
+    let server = ensure_agent_server(Duration::from_secs(60))
+        .await
+        .map_err(|e| format!("OpenHands Agent Server not available: {e}"))?;
+    let client = OpenHandsServerClient::new(
+        server
+            .base_url()
+            .parse()
+            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
+        Some(server.session_api_key.clone()),
+    );
+    if let Err(e) = client.delete_conversation(conversation_id).await {
+        log::warn!(
+            "[close_openhands_refine_session] failed to delete conversation {}: {}",
+            conversation_id,
+            e
+        );
+    }
+    Ok(())
+}
+```
+
+- [ ] **Step 4: Build and run existing openhands_server tests**
+
+Run: `cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server -- --nocapture`
+Expected: existing tests still pass; no new test failures.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/src-tauri/src/agents/openhands_server/mod.rs
+git commit -m "VU-1145: add OpenHands refine turn dispatch and session close
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 3: Update `RefineSession` struct
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/refine/mod.rs:91-101`
+
+- [ ] **Step 1: Replace the struct**
+
+Replace lines 91-101 of `app/src-tauri/src/commands/refine/mod.rs`:
+
+```rust
+pub struct RefineSession {
+    pub skill_name: String,
+    #[allow(dead_code)]
+    pub usage_session_id: String,
+    /// Whether the sidecar streaming session has been started.
+    /// First `send_refine_message` sends `stream_start`, subsequent sends `stream_message`.
+    pub stream_started: bool,
+    /// HEAD SHA of the skills repo when the session started.
+    /// Used by `finalize_refine_run` to detect whether the agent actually committed.
+    pub head_sha_at_start: Option<String>,
+}
+```
+
+with:
+
+```rust
+pub struct RefineSession {
+    pub skill_name: String,
+    #[allow(dead_code)]
+    pub usage_session_id: String,
+    /// OpenHands conversation id for this session. `None` until the first
+    /// `send_refine_message` creates the conversation; reused for every
+    /// subsequent turn so the agent retains full edit history.
+    pub conversation_id: Option<String>,
+    /// agent_id of the currently running turn, if any. Cleared when the turn
+    /// terminates. Needed by `close_refine_session` to cancel a turn that is
+    /// still in flight when the user navigates away.
+    pub current_agent_id: Option<String>,
+    /// HEAD SHA of the skills repo when the session started.
+    /// Used by `finalize_refine_run` to detect whether the agent actually committed.
+    pub head_sha_at_start: Option<String>,
+}
+```
+
+- [ ] **Step 2: Verify the struct compiles in isolation**
+
+Run: `cargo check --manifest-path app/src-tauri/Cargo.toml 2>&1 | head -50`
+Expected: many compile errors in `mod.rs` and `tests.rs` referring to `stream_started` — that is fine, they will be fixed in subsequent tasks. The struct itself must compile.
+
+---
+
+## Task 4: Update `refine-initial.txt` template
+
+**Files:**
+- Modify: `agent-sources/prompts/refine-initial.txt`
+
+- [ ] **Step 1: Replace the template body**
+
+Overwrite the entire file `agent-sources/prompts/refine-initial.txt` with:
+
+```
+We are refining the skill {{skill_name}}. The skill directory is: {{skill_dir}}. The context directory is: {{context_dir}}. The workspace directory is: {{workspace_dir}}. The user context file is at: {{workspace_dir}}/user-context.md — read it for purpose, description, and all user context.{{target_files_clause}}
+
+Read SKILL.md and any reference files in the references/ directory to understand the current skill before making any changes.
+
+If the user's message contains eval failure feedback (lines matching "eval `{eval_name}`: {/path/to/grading.json}"), read each grading file, triage failures as genuine skill gaps vs assertion design issues, and summarize your findings in plain text. Do not make changes until the user confirms which gaps to address.
+
+CONSTRAINT: You can only refine or validate the existing skill. Do NOT create new skills.
+
+Current request: {{user_message}}
+```
+
+- [ ] **Step 2: Confirm `{{command}}` is gone**
+
+Run: `grep -F '{{command}}' agent-sources/prompts/refine-initial.txt`
+Expected: no output (the variable was unified into `{{user_message}}`).
+
+---
+
+## Task 5: Strip Claude Code artifacts from `protocol.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/refine/protocol.rs`
+
+- [ ] **Step 1: Replace the file contents**
+
+Overwrite `app/src-tauri/src/commands/refine/protocol.rs` with:
+
+```rust
+use std::path::Path;
+
+use crate::skill_paths::resolve_skill_dir;
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
+    format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
+}
+
+pub(super) fn ensure_skill_workspace_dir(
+    workspace_path: &str,
+    plugin_slug: &str,
+    skill_name: &str,
+) {
+    // Workspace is plugin-organised: workspace_path/{plugin_slug}/skill_name/
+    let skill_workspace_dir =
+        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    if !skill_workspace_dir.exists() {
+        if let Err(e) = std::fs::create_dir_all(&skill_workspace_dir) {
+            log::warn!(
+                "[ensure_skill_workspace_dir] failed to create skill workspace dir '{}': {}",
+                skill_workspace_dir.display(),
+                e
+            );
+        } else {
+            log::debug!(
+                "[ensure_skill_workspace_dir] created skill workspace dir '{}'",
+                skill_workspace_dir.display()
+            );
+        }
+    }
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) fn build_followup_prompt(
+    user_message: &str,
+    skills_path: &str,
+    skill_name: &str,
+    target_files: Option<&[String]>,
+) -> String {
+    build_followup_prompt_for_plugin(
+        user_message,
+        skills_path,
+        DEFAULT_PLUGIN_SLUG,
+        skill_name,
+        target_files,
+    )
+}
+
+pub(super) fn build_followup_prompt_for_plugin(
+    user_message: &str,
+    skills_path: &str,
+    plugin_slug: &str,
+    skill_name: &str,
+    target_files: Option<&[String]>,
+) -> String {
+    let skill_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
+    build_followup_prompt_with_output_dir(user_message, &skill_dir, target_files)
+}
+
+const REFINE_PROMPT_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/refine-initial.txt"
+));
+
+const REFINE_FOLLOWUP_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/refine-followup.txt"
+));
+
+pub(super) fn build_refine_prompt_with_output_dir(
+    skill_name: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+    skill_output_dir: &std::path::Path,
+    user_message: &str,
+    target_files: Option<&[String]>,
+) -> String {
+    let workspace_dir =
+        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
+    let context_str = format!("{}/context", workspace_str);
+
+    let target_files_clause = match target_files {
+        Some(files) if !files.is_empty() => format!(
+            "\n\nIMPORTANT: Only edit these files (relative to skill output directory): {}. Do not modify any other files.",
+            files.join(", ")
+        ),
+        _ => String::new(),
+    };
+
+    REFINE_PROMPT_TEMPLATE
+        .replace("{{skill_name}}", skill_name)
+        .replace("{{skill_dir}}", &skill_output_str)
+        .replace("{{context_dir}}", &context_str)
+        .replace("{{workspace_dir}}", &workspace_str)
+        .replace("{{target_files_clause}}", &target_files_clause)
+        .replace("{{user_message}}", user_message)
+}
+
+pub(super) fn build_followup_prompt_with_output_dir(
+    user_message: &str,
+    skill_output_dir: &std::path::Path,
+    target_files: Option<&[String]>,
+) -> String {
+    let target_files_clause = match target_files {
+        Some(files) if !files.is_empty() => {
+            let skill_dir_str = skill_output_dir.to_string_lossy().replace('\\', "/");
+            let abs_files: Vec<String> = files
+                .iter()
+                .map(|f| format!("{}/{}", skill_dir_str, f))
+                .collect();
+            format!(
+                "IMPORTANT: Only edit these files: {}. Do not modify any other files.\n\n",
+                abs_files.join(", ")
+            )
+        }
+        _ => String::new(),
+    };
+    REFINE_FOLLOWUP_TEMPLATE
+        .trim_end_matches('\n')
+        .replace("{{target_files_clause}}", &target_files_clause)
+        .replace("{{user_message}}", user_message)
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) fn build_refine_prompt(
+    skill_name: &str,
+    workspace_path: &str,
+    skills_path: &str,
+    user_message: &str,
+    target_files: Option<&[String]>,
+) -> String {
+    build_refine_prompt_for_plugin(
+        skill_name,
+        workspace_path,
+        skills_path,
+        DEFAULT_PLUGIN_SLUG,
+        user_message,
+        target_files,
+    )
+}
+
+pub(super) fn build_refine_prompt_for_plugin(
+    skill_name: &str,
+    workspace_path: &str,
+    skills_path: &str,
+    plugin_slug: &str,
+    user_message: &str,
+    target_files: Option<&[String]>,
+) -> String {
+    let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
+    build_refine_prompt_with_output_dir(
+        skill_name,
+        workspace_path,
+        plugin_slug,
+        &skill_output_dir,
+        user_message,
+        target_files,
+    )
+}
+```
+
+- [ ] **Step 2: Verify build**
+
+Run: `cargo check --manifest-path app/src-tauri/Cargo.toml -p skill-builder 2>&1 | grep -E "error\[" | head -20`
+Expected: errors only in `commands/refine/mod.rs` and `commands/refine/tests.rs` (referencing the removed Claude Code symbols and `stream_started`). Errors will be cleared by Tasks 6–8.
+
+---
+
+## Task 6: Rewrite `send_refine_message`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/refine/mod.rs:212-281` (the `send_refine_message` function and the `OPENHANDS_REFINE_UNSUPPORTED_MESSAGE` / `openhands_refine_streaming_unsupported` helpers above it)
+
+- [ ] **Step 1: Remove the unsupported stub constants**
+
+Delete lines 19-23 of `app/src-tauri/src/commands/refine/mod.rs`:
+
+```rust
+const OPENHANDS_REFINE_UNSUPPORTED_MESSAGE: &str = "OpenHands refine streaming is not yet supported. Use workflow mode until the OpenHands AskUserQuestion tool is implemented.";
+
+fn openhands_refine_streaming_unsupported() -> bool {
+    true
+}
+```
+
+- [ ] **Step 2: Update imports**
+
+Replace the existing imports at the top of `mod.rs` (lines 7-17):
+
+```rust
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Mutex;
+
+use crate::agents::sidecar_pool::SidecarPool;
+use crate::commands::imported_skills::validate_skill_name;
+use crate::db::{self, Db};
+use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::types::RefineSessionInfo;
+
+use protocol::*;
+```
+
+with:
+
+```rust
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Mutex;
+
+use crate::agents::sidecar::{build_openhands_one_shot_config, OpenHandsOneShotConfigParams};
+use crate::commands::imported_skills::validate_skill_name;
+use crate::db::{self, Db};
+use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::types::RefineSessionInfo;
+
+use protocol::*;
+```
+
+- [ ] **Step 3: Replace `send_refine_message`**
+
+Replace lines 212-281 (the whole `send_refine_message` function) with:
+
+```rust
+// ─── send_refine_message ─────────────────────────────────────────────────────
+
+/// Send a user message to the refine agent and stream responses back.
+///
+/// Turn 1 (session has no conversation_id): writes user-context.md, creates a
+/// new OpenHands conversation seeded with the full refine prompt, runs it,
+/// and stores the conversation_id on the session.
+///
+/// Turn N (session has a conversation_id): appends the user message as a
+/// follow-up event and re-runs the existing conversation.
+///
+/// Returns the `agent_id` so the frontend can listen for `agent-message` and
+/// `agent-exit` events scoped to this turn.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn send_refine_message(
+    session_id: String,
+    user_message: String,
+    plugin_slug: String,
+    workspace_path: String,
+    target_files: Option<Vec<String>>,
+    sessions: tauri::State<'_, RefineSessionManager>,
+    db: tauri::State<'_, Db>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    let _ = (workspace_path, plugin_slug);
+
+    let (skill_name, conversation_id) = {
+        let map = sessions.0.lock().map_err(|e| {
+            log::error!("[send_refine_message] failed to acquire session lock: {}", e);
+            e.to_string()
+        })?;
+        let session = map.get(&session_id).ok_or_else(|| {
+            let active: Vec<String> = map.values().map(|s| s.skill_name.clone()).collect();
+            let msg = format!(
+                "No refine session found. Active sessions ({}): [{}]",
+                map.len(),
+                active.join(", ")
+            );
+            log::error!("[send_refine_message] {}", msg);
+            msg
+        })?;
+        (session.skill_name.clone(), session.conversation_id.clone())
+    };
+
+    log::info!(
+        "[send_refine_message] skill={} conversation_present={}",
+        skill_name,
+        conversation_id.is_some()
+    );
+
+    let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(&db)?;
+    let resolved_plugin_slug = resolve_skill_plugin_slug(&db, &skill_name)?;
+    let skills_path = resolve_skills_path(&db)?;
+    let skill_output_dir =
+        resolve_skill_dir(Path::new(&skills_path), &resolved_plugin_slug, &skill_name);
+
+    ensure_skill_workspace_dir(&runtime_ctx.workspace_path, &resolved_plugin_slug, &skill_name);
+
+    if conversation_id.is_none() {
+        write_refine_user_context(
+            &db,
+            &runtime_ctx.workspace_path,
+            &resolved_plugin_slug,
+            &skill_name,
+            &skill_output_dir,
+        )?;
+    }
+
+    let target_files_slice = target_files.as_deref();
+    let prompt = if conversation_id.is_some() {
+        build_followup_prompt_with_output_dir(&user_message, &skill_output_dir, target_files_slice)
+    } else {
+        build_refine_prompt_with_output_dir(
+            &skill_name,
+            &runtime_ctx.workspace_path,
+            &resolved_plugin_slug,
+            &skill_output_dir,
+            &user_message,
+            target_files_slice,
+        )
+    };
+
+    let skill_dir_str = skill_output_dir.to_string_lossy().replace('\\', "/");
+    let config = build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+        prompt,
+        llm: runtime_ctx.llm.clone(),
+        workspace_root_dir: skill_dir_str.clone(),
+        workspace_run_dir: skill_dir_str.clone(),
+        agent_name: "skill-creator".to_string(),
+        task_kind: Some("refine".to_string()),
+        user_message_suffix: None,
+        allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
+        max_turns: 50,
+        output_format: None,
+        skill_name: Some(skill_name.clone()),
+        step_id: Some(-10),
+        run_source: Some("refine".to_string()),
+        plugin_slug: resolved_plugin_slug.clone(),
+    });
+
+    let agent_id = format!(
+        "refine-{}-{}",
+        skill_name,
+        chrono::Utc::now().timestamp_millis()
+    );
+    let log_dir = crate::skill_paths::workspace_skill_dir(
+        Path::new(&runtime_ctx.workspace_path),
+        &resolved_plugin_slug,
+        &skill_name,
+    )
+    .join("logs")
+    .to_string_lossy()
+    .into_owned();
+
+    let returned_conversation_id = crate::agents::openhands_server::dispatch_openhands_refine_turn(
+        &app,
+        &agent_id,
+        config,
+        conversation_id,
+        Some(&log_dir),
+    )
+    .await?;
+
+    {
+        let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
+        if let Some(session) = map.get_mut(&session_id) {
+            session.conversation_id = Some(returned_conversation_id);
+            session.current_agent_id = Some(agent_id.clone());
+        }
+    }
+
+    Ok(agent_id)
+}
+
+/// Reproduce the user-context bundle that `load_refine_runtime_settings`
+/// previously assembled. Reads workflow run row, SKILL.md frontmatter, and
+/// settings, then writes `{workspace}/{plugin}/{skill}/user-context.md`.
+fn write_refine_user_context(
+    db: &Db,
+    workspace_path: &str,
+    plugin_slug: &str,
+    skill_name: &str,
+    skill_output_dir: &Path,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = db::read_settings(&conn)?;
+    let settings_author = settings
+        .github_user_email
+        .clone()
+        .or(settings.github_user_login.clone());
+    let run_row = db::get_workflow_run(&conn, skill_name).ok().flatten();
+    let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
+    let frontmatter = std::fs::read_to_string(skill_output_dir.join("SKILL.md"))
+        .ok()
+        .map(|content| crate::commands::imported_skills::parse_frontmatter_full(&content))
+        .unwrap_or_default();
+    let is_imported = run_row.is_none();
+    let purpose = if is_imported {
+        frontmatter.description.clone()
+    } else {
+        run_row.as_ref().map(|r| r.purpose.clone())
+    };
+    let author_for_context = if is_imported {
+        frontmatter.author.clone()
+    } else {
+        frontmatter
+            .author
+            .or_else(|| run_row.as_ref().and_then(|r| r.author_login.clone()))
+            .or(settings_author)
+    };
+
+    drop(conn);
+
+    crate::commands::workflow::write_user_context_file(
+        workspace_path,
+        plugin_slug,
+        skill_name,
+        &[],
+        author_for_context.as_deref(),
+        settings.industry.as_deref(),
+        settings.function_role.as_deref(),
+        intake_json.as_deref(),
+        None,
+        purpose.as_deref(),
+        frontmatter.version.as_deref(),
+        None,
+        None,
+        None,
+        None,
+        &[],
+    );
+    Ok(())
+}
+```
+
+- [ ] **Step 4: Verify build**
+
+Run: `cargo check --manifest-path app/src-tauri/Cargo.toml 2>&1 | grep -E "error\[" | head -10`
+Expected: remaining errors are in `start_refine_session`, `close_refine_session`, `cancel_refine_turn`, `answer_refine_question`, and `tests.rs` — all fixed by Tasks 7–9.
+
+---
+
+## Task 7: Rewrite `start_refine_session`, `close_refine_session`, `cancel_refine_turn`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/refine/mod.rs`
+
+- [ ] **Step 1: Replace `start_refine_session`**
+
+Replace lines 117-210 (the entire `start_refine_session` function plus the `discover_plugin_agents` helper above it AND the `REFINE_ALLOWED_PLUGINS` constant) with:
+
+```rust
+// ─── start_refine_session ────────────────────────────────────────────────────
+
+/// Initialize a refine session for a skill.
+///
+/// No OpenHands conversation is created here — the conversation is created on
+/// the first `send_refine_message` and reused for every subsequent turn.
+#[tauri::command]
+pub async fn start_refine_session(
+    skill_name: String,
+    plugin_slug: String,
+    workspace_path: String,
+    sessions: tauri::State<'_, RefineSessionManager>,
+    db: tauri::State<'_, Db>,
+) -> Result<RefineSessionInfo, String> {
+    let _ = workspace_path;
+    log::info!(
+        "[start_refine_session] skill={} plugin={}",
+        skill_name,
+        plugin_slug
+    );
+    validate_skill_name(&skill_name)?;
+
+    let skills_path = resolve_skills_path(&db).map_err(|e| {
+        log::error!("[start_refine_session] failed to resolve skills path: {}", e);
+        e
+    })?;
+
+    let skill_md = resolve_skill_output_dir(&db, &skill_name, &skills_path)?.join("SKILL.md");
+    if !skill_md.exists() {
+        let msg = format!("SKILL.md not found at {}", skill_md.display());
+        log::error!("[start_refine_session] {}", msg);
+        return Err(msg);
+    }
+
+    let mut map = sessions.0.lock().map_err(|e| {
+        log::error!("[start_refine_session] failed to acquire session lock: {}", e);
+        e.to_string()
+    })?;
+
+    if let Some(stale_id) = map
+        .iter()
+        .find(|(_, s)| s.skill_name == skill_name)
+        .map(|(id, _)| id.clone())
+    {
+        log::info!(
+            "[start_refine_session] removing stale session for skill '{}' before restart",
+            skill_name
+        );
+        map.remove(&stale_id);
+    }
+
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let created_at = chrono::Utc::now().to_rfc3339();
+    log::debug!(
+        "[start_refine_session] creating session [REDACTED] for skill '{}'",
+        skill_name
+    );
+
+    let head_sha_at_start = git2::Repository::open(Path::new(&skills_path))
+        .ok()
+        .and_then(|repo| {
+            let head = repo.head().ok()?;
+            let commit = head.peel_to_commit().ok()?;
+            Some(commit.id().to_string())
+        });
+
+    map.insert(
+        session_id.clone(),
+        RefineSession {
+            skill_name: skill_name.clone(),
+            usage_session_id: new_refine_usage_session_id(&skill_name),
+            conversation_id: None,
+            current_agent_id: None,
+            head_sha_at_start,
+        },
+    );
+
+    Ok(RefineSessionInfo {
+        session_id,
+        skill_name,
+        created_at,
+        available_agents: vec!["skill-creator".to_string()],
+    })
+}
+```
+
+- [ ] **Step 2: Replace `close_refine_session`**
+
+Replace the existing `close_refine_session` function (lines 283-331 in the original — find it by searching for `pub async fn close_refine_session`) with:
+
+```rust
+// ─── close_refine_session ────────────────────────────────────────────────────
+
+/// Close a refine session: cancel any in-flight turn, then DELETE the
+/// OpenHands conversation, then remove the session from the manager.
+#[tauri::command]
+pub async fn close_refine_session(
+    session_id: String,
+    sessions: tauri::State<'_, RefineSessionManager>,
+) -> Result<(), String> {
+    log::info!("[close_refine_session] session=[REDACTED]");
+
+    let removed = {
+        let mut map = sessions.0.lock().map_err(|e| {
+            log::error!("[close_refine_session] failed to acquire session lock: {}", e);
+            e.to_string()
+        })?;
+        map.remove(&session_id)
+    };
+
+    let Some(session) = removed else {
+        log::debug!("[close_refine_session] session [REDACTED] not found (already closed)");
+        return Ok(());
+    };
+
+    if let Some(agent_id) = session.current_agent_id.as_ref() {
+        let cancelled = crate::agents::openhands_server::cancel_openhands_one_shot(agent_id);
+        log::debug!(
+            "[close_refine_session] cancel_openhands_one_shot agent={} result={}",
+            agent_id,
+            cancelled
+        );
+    }
+
+    if let Some(conversation_id) = session.conversation_id.as_ref() {
+        log::info!(
+            "[close_refine_session] deleting conversation_id={}",
+            conversation_id
+        );
+        if let Err(e) =
+            crate::agents::openhands_server::close_openhands_refine_session(conversation_id).await
+        {
+            log::warn!(
+                "[close_refine_session] non-fatal: delete conversation failed: {}",
+                e
+            );
+        }
+    }
+
+    Ok(())
+}
+```
+
+- [ ] **Step 3: Replace `cancel_refine_turn`**
+
+Replace the existing `cancel_refine_turn` function with:
+
+```rust
+// ─── cancel_refine_turn ──────────────────────────────────────────────────────
+
+/// Cancel the in-flight refine turn (if any). The session and conversation
+/// stay alive — the next `send_refine_message` resumes on the same conversation.
+#[tauri::command]
+pub async fn cancel_refine_turn(
+    session_id: String,
+    sessions: tauri::State<'_, RefineSessionManager>,
+) -> Result<(), String> {
+    let agent_id = {
+        let map = sessions.0.lock().map_err(|e| e.to_string())?;
+        let session = map
+            .get(&session_id)
+            .ok_or_else(|| format!("Session not found: {}", session_id))?;
+        session.current_agent_id.clone()
+    };
+
+    let Some(agent_id) = agent_id else {
+        log::debug!("[cancel_refine_turn] no active turn — noop");
+        return Ok(());
+    };
+
+    log::info!("[cancel_refine_turn] cancelling agent_id={}", agent_id);
+    let cancelled = crate::agents::openhands_server::cancel_openhands_one_shot(&agent_id);
+    if !cancelled {
+        log::warn!(
+            "[cancel_refine_turn] no cancel handle registered for agent_id={}",
+            agent_id
+        );
+    }
+    Ok(())
+}
+```
+
+- [ ] **Step 4: Verify build**
+
+Run: `cargo check --manifest-path app/src-tauri/Cargo.toml 2>&1 | grep -E "error\[" | head -10`
+Expected: remaining errors are in `answer_refine_question` and `tests.rs`.
+
+---
+
+## Task 8: Remove `answer_refine_question`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/refine/mod.rs` (delete the function)
+- Modify: `app/src-tauri/src/lib.rs:395`
+
+- [ ] **Step 1: Delete `answer_refine_question`**
+
+Delete the entire `pub async fn answer_refine_question(...)` function (lines 391-442 in the original `mod.rs`).
+
+- [ ] **Step 2: Remove from command registration**
+
+Edit `app/src-tauri/src/lib.rs` and delete the line:
+
+```rust
+            commands::refine::answer_refine_question,
+```
+
+- [ ] **Step 3: Verify cargo build**
+
+Run: `cargo check --manifest-path app/src-tauri/Cargo.toml 2>&1 | grep -E "error\[" | head -10`
+Expected: only test errors remain.
+
+- [ ] **Step 4: Commit progress**
+
+```bash
+git add app/src-tauri/src/commands/refine/mod.rs app/src-tauri/src/commands/refine/protocol.rs app/src-tauri/src/lib.rs agent-sources/prompts/refine-initial.txt
+git commit -m "VU-1145: rewrite refine commands for OpenHands multi-turn
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 9: Update test suite
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/refine/tests.rs`
+
+- [ ] **Step 1: Remove stale Claude Code config tests**
+
+Delete the following test functions from `app/src-tauri/src/commands/refine/tests.rs` (search by name):
+
+```
+test_refine_streaming_is_explicitly_unsupported_for_openhands_migration
+test_refine_config_has_no_agent
+test_refine_config_includes_task_tool_for_streaming_edits
+test_refine_config_includes_all_file_tools
+test_refine_config_cwd_points_to_workspace_root
+test_refine_config_no_conversation_history
+test_refine_config_agent_id_format
+test_refine_config_sets_model_directly
+test_refine_config_uses_stream_max_turns
+test_refine_config_extended_thinking_sets_budget
+test_refine_config_no_thinking_when_disabled
+test_refine_config_output_format_is_intentionally_unset_for_chat_flow
+test_refine_config_serialization_matches_sidecar_schema
+test_refine_config_includes_persistence_identity_for_run_summary
+test_refine_config_requires_skill_creator_plugin
+test_refine_config_serialization_omits_none_fields
+test_session_stream_started_defaults_to_false
+test_session_stream_started_can_be_set
+test_completed_turn_does_not_close_or_reset_stream_started_session
+test_refine_prompt_includes_routing
+```
+
+Also delete the helper `base_refine_config(...)` and the `test_workspace_path()` function — they are no longer used.
+
+- [ ] **Step 2: Update session struct initializers**
+
+In `tests.rs`, find every `RefineSession {` literal (there are four in the original file) and replace `stream_started: false,` (or `stream_started: true,`) with both:
+
+```rust
+            conversation_id: None,
+            current_agent_id: None,
+```
+
+The four call sites are inside `test_session_create_and_lookup`, `test_session_conflict_detection`, `test_close_session_removes_entry`, and `test_skill_name_validation_rejects_traversal` was unrelated — only update the three with `RefineSession {` literals.
+
+- [ ] **Step 3: Update `test_refine_prompt_includes_metadata`**
+
+Find `test_refine_prompt_includes_metadata` and replace the `assert!(system_prompt.contains("We are writing the skill my-skill"));` line with:
+
+```rust
+    assert!(system_prompt.contains("We are refining the skill my-skill"));
+```
+
+- [ ] **Step 4: Add new tests at the bottom of the file**
+
+Append to `app/src-tauri/src/commands/refine/tests.rs`:
+
+```rust
+// ===== OpenHands refine tests =====
+
+#[test]
+fn test_refine_session_holds_conversation_and_agent_ids() {
+    let session = RefineSession {
+        skill_name: "my-skill".to_string(),
+        usage_session_id: "usage-1".to_string(),
+        conversation_id: Some("conv-123".to_string()),
+        current_agent_id: Some("agent-456".to_string()),
+        head_sha_at_start: None,
+    };
+    assert_eq!(session.conversation_id.as_deref(), Some("conv-123"));
+    assert_eq!(session.current_agent_id.as_deref(), Some("agent-456"));
+}
+
+#[test]
+fn test_refine_initial_prompt_has_no_claude_code_routing() {
+    let prompt = build_refine_prompt("my-skill", "/ws", "/sk", "edit", None);
+    assert!(
+        !prompt.contains("AskUserQuestion"),
+        "OpenHands prompt must not reference AskUserQuestion: {}",
+        prompt
+    );
+    assert!(
+        !prompt.contains("rewrite-skill"),
+        "OpenHands prompt must not direct to skill-creator:rewrite-skill agent: {}",
+        prompt
+    );
+    assert!(
+        !prompt.contains("via the Agent tool"),
+        "OpenHands prompt must not reference the Agent tool: {}",
+        prompt
+    );
+}
+
+#[test]
+fn test_refine_initial_prompt_includes_eval_feedback_guidance() {
+    let prompt = build_refine_prompt("my-skill", "/ws", "/sk", "edit", None);
+    assert!(
+        prompt.contains("eval failure feedback"),
+        "OpenHands prompt should describe how to handle eval feedback: {}",
+        prompt
+    );
+    assert!(
+        prompt.contains("plain text"),
+        "OpenHands prompt should instruct plain-text response (no tool interrupt): {}",
+        prompt
+    );
+}
+```
+
+- [ ] **Step 5: Run the test suite**
+
+Run: `cargo test --manifest-path app/src-tauri/Cargo.toml commands::refine -- --nocapture`
+Expected: all refine tests pass.
+
+- [ ] **Step 6: Run clippy**
+
+Run: `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
+Expected: no warnings.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add app/src-tauri/src/commands/refine/tests.rs
+git commit -m "VU-1145: replace Claude Code refine tests with OpenHands suite
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 10: Frontend — remove `answerRefineQuestion`, rename `sendStreamingRefineMessage`
+
+**Files:**
+- Modify: `app/src/lib/tauri-command-types.ts:358-367`
+- Modify: `app/src/lib/tauri.ts:467-510`
+- Modify: `app/src/components/workspace/workspace-refine.tsx`
+
+- [ ] **Step 1: Remove `answer_refine_question` command type**
+
+In `app/src/lib/tauri-command-types.ts`, delete the entry:
+
+```ts
+  answer_refine_question: {
+    args: {
+      sessionId: string;
+      agentId: string;
+      toolUseId: string;
+      questions: unknown;
+      answers: Record<string, unknown>;
+    };
+    result: void;
+  };
+```
+
+- [ ] **Step 2: Update `tauri.ts`**
+
+In `app/src/lib/tauri.ts`, delete the entire `answerStreamingRefineQuestion` export (the multi-line `export const answerStreamingRefineQuestion = ...`).
+
+Then rename `sendStreamingRefineMessage` to `sendRefineMessage`. The line should change from:
+
+```ts
+export const sendStreamingRefineMessage = (
+```
+
+to:
+
+```ts
+export const sendRefineMessage = (
+```
+
+- [ ] **Step 3: Update `workspace-refine.tsx` imports**
+
+In `app/src/components/workspace/workspace-refine.tsx`, change the import block:
+
+```ts
+import {
+  getSkillContentForRefine,
+  startRefineSession,
+  sendStreamingRefineMessage,
+  answerStreamingRefineQuestion,
+  cancelRefineTurn,
+  closeRefineSession,
+  finalizeRefineRun,
+  cleanBenchmarkSnapshot,
+  cleanupSkillSidecar,
+  acquireLock,
+  releaseLock,
+} from "@/lib/tauri";
+```
+
+to:
+
+```ts
+import {
+  getSkillContentForRefine,
+  startRefineSession,
+  sendRefineMessage,
+  cancelRefineTurn,
+  closeRefineSession,
+  finalizeRefineRun,
+  cleanBenchmarkSnapshot,
+  acquireLock,
+  releaseLock,
+} from "@/lib/tauri";
+```
+
+Also remove the `requireSettingsModel` import line:
+
+```ts
+import { requireSettingsModel } from "@/lib/models";
+```
+
+- [ ] **Step 4: Simplify `releaseSkillResources`**
+
+Replace the existing `releaseSkillResources` helper:
+
+```ts
+function releaseSkillResources(skillName: string, reason: string): void {
+  releaseLock(skillName).catch((e) =>
+    console.warn("[workspace-refine] non-fatal: op=releaseLock err=%s", e),
+  );
+  console.log("[workspace-refine] releaseLock: %s (%s)", skillName, reason);
+  cleanupSkillSidecar(skillName).catch((e) =>
+    console.warn(
+      "[workspace-refine] non-fatal: op=cleanupSkillSidecar err=%s",
+      e,
+    ),
+  );
+}
+```
+
+with:
+
+```ts
+function releaseSkillResources(skillName: string, reason: string): void {
+  releaseLock(skillName).catch((e) =>
+    console.warn("[workspace-refine] non-fatal: op=releaseLock err=%s", e),
+  );
+  console.log("[workspace-refine] releaseLock: %s (%s)", skillName, reason);
+}
+```
+
+- [ ] **Step 5: Update `handleSend` to remove the model guard and use `sendRefineMessage`**
+
+Inside `handleSend`, remove this block:
+
+```ts
+      let model: string;
+      try {
+        model = requireSettingsModel(selectedModel);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err), {
+          duration: Infinity,
+        });
+        return;
+      }
+```
+
+Then change the `useAgentStore.getState().registerRun(agentId, model, ...)` call to use `selectedModel ?? "openhands"` (since the backend now owns model validation):
+
+```ts
+        useAgentStore
+          .getState()
+          .registerRun(
+            agentId,
+            selectedModel ?? "openhands",
+            selectedSkill.name,
+            "refine",
+            `synthetic:refine:${selectedSkill.name}:${sessionId}`,
+          );
+```
+
+And rename the call:
+
+```ts
+        const agentId = await sendStreamingRefineMessage(
+```
+
+to:
+
+```ts
+        const agentId = await sendRefineMessage(
+```
+
+- [ ] **Step 6: Remove `handleQuestionSubmit` and its call site**
+
+Delete the entire `handleQuestionSubmit` callback (the `useCallback` block from `const handleQuestionSubmit = useCallback(...)` through the closing `}, [selectedSkill, workspacePath]);`).
+
+Then in the JSX, remove the `onQuestionSubmit={handleQuestionSubmit}` prop from `<ChatPanel>`.
+
+- [ ] **Step 7: Update `ChatPanel` interface**
+
+If `ChatPanel` requires `onQuestionSubmit` as a prop, open `app/src/components/refine/chat-panel.tsx` and make the prop optional or remove it. Inspect the file first:
+
+```bash
+grep -n "onQuestionSubmit\|RefineQuestionResponse" app/src/components/refine/chat-panel.tsx
+```
+
+If the prop is required, change the interface to drop it. If `RefineQuestionResponse` has no other consumers, leave it for now — type-only references are not runtime-breaking.
+
+- [ ] **Step 8: Remove unused `RefineQuestionResponse` and `RefineMessage` imports**
+
+If `workspace-refine.tsx` no longer uses these types, drop them from the import:
+
+```ts
+import type { RefineMessage, SkillFile } from "@/stores/refine-store";
+```
+
+becomes:
+
+```ts
+import type { SkillFile } from "@/stores/refine-store";
+```
+
+Also drop:
+
+```ts
+import type { RefineQuestionResponse } from "@/stores/refine-store";
+```
+
+- [ ] **Step 9: Run TypeScript check**
+
+Run: `cd app && npx tsc --noEmit 2>&1 | head -30`
+Expected: no errors. If errors mention `RefineQuestionResponse` or `cleanupSkillSidecar` from other files, leave those references in place (they may still be valid for other surfaces).
+
+- [ ] **Step 10: Run unit tests**
+
+Run: `cd app && npm run test:unit 2>&1 | tail -30`
+Expected: all tests pass.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add app/src/lib/tauri-command-types.ts app/src/lib/tauri.ts app/src/components/workspace/workspace-refine.tsx app/src/components/refine/chat-panel.tsx
+git commit -m "VU-1145: wire refine UI to OpenHands send_refine_message
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 11: Final validation
+
+**Files:** none (verification only).
+
+- [ ] **Step 1: Cargo build**
+
+Run: `cargo build --manifest-path app/src-tauri/Cargo.toml`
+Expected: clean build.
+
+- [ ] **Step 2: Cargo test (refine + openhands_server)**
+
+Run: `cargo test --manifest-path app/src-tauri/Cargo.toml -- commands::refine agents::openhands_server`
+Expected: all pass.
+
+- [ ] **Step 3: Cargo clippy**
+
+Run: `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
+Expected: clean.
+
+- [ ] **Step 4: TypeScript**
+
+Run: `cd app && npx tsc --noEmit`
+Expected: clean.
+
+- [ ] **Step 5: Frontend unit tests**
+
+Run: `cd app && npm run test:unit`
+Expected: all pass.
+
+- [ ] **Step 6: Repo-map audit**
+
+This change does not add or remove files in the directories tracked by `repo-map.json` (the file structure under `commands/refine/` and `agents/openhands_server/` is unchanged — only function-level edits). No `repo-map.json` update needed.
+
+- [ ] **Step 7: Manual smoke test — turn 1 (creates conversation)**
+
+Run: `cd app && MOCK_AGENTS=true npm run dev` (or run with a real OpenHands Agent Server if configured).
+
+In the running app:
+1. Open an existing skill
+2. Switch to the Refine tab
+3. Send a message — observe the `agent-message` events flow through the chat
+4. Confirm the conversation completes with a `conversation_state` terminal event
+
+- [ ] **Step 8: Manual smoke test — turn N (reuses conversation)**
+
+Continuing in the same session:
+1. Send a second user message
+2. Confirm the agent retains context (e.g. references the previous edit)
+3. Inspect logs for `[send_refine_message] ... conversation_present=true`
+
+- [ ] **Step 9: Manual smoke test — cancel and close**
+
+1. Send a long-running message
+2. Click the cancel button — confirm the chat shows the run as cancelled (status=`cancelled`)
+3. Send another message — confirm it succeeds on the same conversation
+4. Navigate away from the Refine tab — confirm logs show `[close_refine_session] deleting conversation_id=...`
+
+---
+
+## Self-Review Checklist
+
+Run before claiming completion:
+
+1. **Spec coverage** — every section of `docs/design/refine-openhands-migration/README.md` is addressed:
+   - Multi-turn lifecycle → Tasks 2, 6
+   - Cancel/close mechanics → Tasks 2, 7
+   - `dispatch_openhands_refine_turn` + `close_openhands_refine_session` → Task 2
+   - `RefineSession` field changes → Task 3
+   - Config Building → Task 6
+   - Initial Message Format (refine-initial.txt) → Task 4
+   - Turn N Message Format → covered by `build_followup_prompt_with_output_dir` (kept in Task 5)
+   - `protocol.rs` cleanup → Task 5
+   - Commands Changed → Tasks 6, 7, 8
+   - Frontend Changes → Task 10
+   - Test Suite Changes → Task 9
+   - Bug Fix: Cancel Path → already committed (events.rs + mod.rs PauseEvent + cancel_pending fix)
+
+2. **No placeholders** — every step has exact code or commands.
+
+3. **Type consistency** — `RefineSession` field names (`conversation_id`, `current_agent_id`, `head_sha_at_start`) are identical across Task 3 (struct), Tasks 6/7 (commands), and Task 9 (tests). `dispatch_openhands_refine_turn` signature matches across Tasks 2 and 6.
+
+---
+
+## Execution Handoff
+
+Plan complete and saved to `docs/plans/2026-05-03-refine-openhands-migration.md`. Two execution options:
+
+1. **Subagent-Driven (recommended)** — fresh subagent per task with two-stage review.
+2. **Inline Execution** — execute tasks in this session with checkpoints.
+
+Pick the approach when you're ready to implement.
