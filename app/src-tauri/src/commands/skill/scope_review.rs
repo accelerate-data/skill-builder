@@ -1,6 +1,5 @@
-use crate::agents::sidecar::{
-    OpenHandsOneShotConfigParams, OpenHandsOneShotRunParams, SidecarConfig,
-};
+use crate::agents::openhands_server::{self, OpenHandsOneShotRunParams};
+use crate::agents::sidecar::{OpenHandsOneShotConfigParams, SidecarConfig};
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
 
@@ -203,7 +202,7 @@ pub async fn review_skill_scope(
         llm: runtime_context.llm,
     });
 
-    let run = crate::agents::sidecar::run_openhands_one_shot(
+    let run = openhands_server::run_openhands_one_shot(
         &app,
         OpenHandsOneShotRunParams {
             agent_id_prefix: format!("{}-scope-review", skill_name),

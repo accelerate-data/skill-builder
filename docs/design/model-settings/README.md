@@ -19,7 +19,7 @@ This design replaces the transitional Anthropic/OpenHands settings shape with on
 
 - The Settings UI shape for configuring workflow agent models.
 - The app settings and DB contract for canonical model configuration.
-- How Rust, the Node sidecar, and the Python OpenHands runner pass model settings to `LLM(...)`.
+- How Rust maps persisted settings into the local OpenHands Agent Server `LLM` request.
 - The relationship between Skill Builder's workspace directory and OpenHands `Conversation.workspace`.
 - Model catalog, validation, and capability detection boundaries.
 - Clean-break behavior for existing legacy model settings.
@@ -620,9 +620,8 @@ Workflow agent runs require `ready` or `verified`. They never fallback to legacy
 | `app/src/lib/types.ts` | Frontend `AppSettings`; target home for `modelSettings`. |
 | `app/src/stores/settings-store.ts` | Frontend settings state. |
 | `app/src/components/settings/sdk-section.tsx` | Current model/API settings UI; target for replacement by `Models`. |
-| `app/sidecar/config.ts` | Sidecar request validation; target for required OpenHands `llm` config. |
-| `app/sidecar/runtime/openhands-runtime.ts` | Builds the OpenHands runner request. |
-| `app/sidecar/openhands/runner.py` | Creates OpenHands `LLM`, `Agent`, and `Conversation`. |
+| `app/src-tauri/src/agents/openhands_server/types.rs` | Converts app-owned model settings into OpenHands Agent Server `LLM`, `Agent`, and `StartConversationRequest` JSON. |
+| `app/src-tauri/src/agents/openhands_server/client.rs` | Sends authenticated Agent Server REST requests. |
 | `docs/design/agent-specs/storage.md` | Existing storage boundary: DB is settings source of truth; workspace is transient agent execution space. |
 
 ## Open Questions

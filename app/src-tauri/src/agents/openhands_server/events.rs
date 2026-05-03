@@ -43,19 +43,56 @@ fn normalize_terminal_state(
 }
 
 fn terminal_status(raw: &serde_json::Value) -> Option<&'static str> {
-    match raw.get("status").and_then(|value| value.as_str()) {
-        Some("completed" | "complete" | "success" | "succeeded") => Some("completed"),
-        Some("error" | "failed" | "failure") => Some("error"),
-        Some("cancelled" | "canceled" | "paused" | "pause") => Some("cancelled"),
-        _ => match raw.get("type").and_then(|value| value.as_str()) {
-            Some("run_completed" | "conversation_completed") => Some("completed"),
-            Some("run_failed" | "conversation_failed" | "error") => Some("error"),
-            Some("run_cancelled" | "run_canceled" | "run_paused" | "conversation_paused") => {
-                Some("cancelled")
-            }
-            _ => None,
-        },
+    let status = raw
+        .get("status")
+        .or_else(|| raw.pointer("/state/status"))
+        .or_else(|| raw.pointer("/conversation/status"))
+        .and_then(|value| value.as_str());
+    if let Some(status) = normalize_execution_status(status) {
+        return Some(status);
     }
+
+    if is_conversation_state_update(raw)
+        && matches!(
+            raw.get("key").and_then(|value| value.as_str()),
+            Some("status" | "execution_status")
+        )
+    {
+        if let Some(status) =
+            normalize_execution_status(raw.get("value").and_then(|value| value.as_str()))
+        {
+            return Some(status);
+        }
+    }
+
+    match raw.get("type").and_then(|value| value.as_str()) {
+        Some("run_completed" | "conversation_completed") => Some("completed"),
+        Some("run_failed" | "conversation_failed" | "error") => Some("error"),
+        Some("run_cancelled" | "run_canceled" | "run_paused" | "conversation_paused") => {
+            Some("cancelled")
+        }
+        _ => None,
+    }
+}
+
+fn normalize_execution_status(status: Option<&str>) -> Option<&'static str> {
+    match status {
+        Some("completed" | "complete" | "success" | "succeeded" | "finished") => Some("completed"),
+        Some("error" | "failed" | "failure" | "stuck") => Some("error"),
+        Some("cancelled" | "canceled" | "paused" | "pause" | "stopped") => Some("cancelled"),
+        _ => None,
+    }
+}
+
+fn is_conversation_state_update(raw: &serde_json::Value) -> bool {
+    matches!(
+        raw.get("event_class")
+            .or_else(|| raw.get("eventClass"))
+            .or_else(|| raw.get("kind"))
+            .or_else(|| raw.get("type"))
+            .and_then(|value| value.as_str()),
+        Some("ConversationStateUpdateEvent" | "conversation_state_update")
+    )
 }
 
 fn result_text(raw: &serde_json::Value) -> Option<String> {
@@ -153,5 +190,32 @@ mod tests {
         assert_eq!(cancelled["type"], "conversation_state");
         assert_eq!(cancelled["status"], "cancelled");
         assert_eq!(cancelled["error_detail"], "user requested pause");
+    }
+
+    #[test]
+    fn normalizes_openhands_conversation_status_updates_as_terminal_state() {
+        let finished = normalize_server_event(
+            "agent-1",
+            "conversation-1",
+            &serde_json::json!({
+                "event_class": "ConversationStateUpdateEvent",
+                "key": "status",
+                "value": "finished"
+            }),
+        );
+        assert_eq!(finished["type"], "conversation_state");
+        assert_eq!(finished["status"], "completed");
+
+        let stuck = normalize_server_event(
+            "agent-1",
+            "conversation-1",
+            &serde_json::json!({
+                "kind": "ConversationStateUpdateEvent",
+                "key": "execution_status",
+                "value": "stuck"
+            }),
+        );
+        assert_eq!(stuck["type"], "conversation_state");
+        assert_eq!(stuck["status"], "error");
     }
 }

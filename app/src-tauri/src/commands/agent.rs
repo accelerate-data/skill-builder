@@ -188,7 +188,6 @@ pub async fn start_agent(
         output_format,
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
-        path_to_openhands_runner: None,
         required_plugins: Some(derive_required_plugins(agent_name.as_deref())),
         agent_name,
         setting_sources,

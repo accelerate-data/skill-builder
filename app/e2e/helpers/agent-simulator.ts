@@ -5,8 +5,9 @@
  * so the UI reacts through its existing Zustand stores exactly as it
  * would with a real agent sidecar.
  *
- * All simulators emit DisplayItem-based events (type=display_item).
- * Legacy assistant-message format is not supported.
+ * Simulators can emit DisplayItem-based events or the OpenHands
+ * conversation_event/conversation_state shape. Legacy assistant-message format
+ * is not supported.
  */
 import type { Page } from "@playwright/test";
 

@@ -100,6 +100,7 @@ UI-facing, also run the mapped E2E tag.
 | `app/src-tauri/src/commands/lifecycle.rs` | -- | -- |
 | `app/src-tauri/src/commands/feedback.rs` | -- | -- |
 | `app/src-tauri/src/commands/node.rs` | `commands::node` | -- |
+| `app/src-tauri/src/agents/openhands_server/` | `agents::openhands_server` | `@workflow` |
 | `app/src-tauri/src/agents/sidecar.rs` | `agents::sidecar` | `@workflow` |
 | `app/src-tauri/src/agents/sidecar_pool/mod.rs` | `agents::sidecar_pool` | `@workflow` |
 | `app/src-tauri/src/db/mod.rs` | `db` | -- |
