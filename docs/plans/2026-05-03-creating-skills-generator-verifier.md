@@ -16,6 +16,10 @@ app-owned step 3 prompt reads `user-context.md`, `clarifications.json`, and
 references, and base eval definitions, then validates the generated artifacts
 with a fresh-context verifier subagent before returning.
 
+Step 3 generation must use the native Rust-owned OpenHands one-shot runtime
+path. It must not invoke the legacy Node/TS sidecar, Claude-sidecar
+compatibility path, or plugin-hosted `skill-writer-agent` as the runtime agent.
+
 **Design doc:** `docs/design/creating-skills-generator-verifier/README.md`
 
 **Tech Stack:** OpenHands AgentSkills, app-owned prompt templates, Tauri Rust
@@ -52,6 +56,8 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - Fold description drafting quality into skill generation.
 - Create base eval definitions without running them.
 - Update step 3 clean-break prompt wiring to use the focused creation skill.
+- Move step 3 generation away from the legacy Node/TS sidecar path and onto the
+  Rust-owned OpenHands one-shot runtime path.
 - Add structural and eval coverage for the new contract.
 
 **Out of scope**
@@ -76,6 +82,11 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - `agent-sources/plugins/skill-creator/agents/skill-writer-agent.md`
   - Current step 2/3 instructions. Step 3 still says to follow the broad
     `skill-creator` skill.
+- `app/src-tauri/src/commands/workflow/**`
+  - Rust-owned workflow runtime path. Step 3 should be routed here through the
+    native OpenHands provider, not through the Node/TS sidecar.
+- `app/sidecar/**`
+  - Legacy sidecar code to avoid for step 3 generation routing.
 - `agent-sources/prompts/**`
   - App-owned prompt location for clean-break workflow prompts.
 - `app/agent-tests/**`
@@ -262,13 +273,56 @@ Inspect workspace deployment code. If `agent-sources/skills/**` is not copied
 into runtime `.agents/skills/**`, add that directory to the deployment source
 without changing plugin deployment behavior.
 
-## Task 5: Align Evals And Fixtures
+## Task 5: Route Step 3 Through Native OpenHands
+
+- [ ] **Step 1: Add failing Rust routing coverage**
+
+Add or update workflow tests proving step 3 generation config uses:
+
+- `runtime_provider: "openhands"`
+- `agent_name: "skill-creator"`
+- a step 3 task kind such as `workflow.skill_generation`
+- the app-owned step 3 prompt template
+- the step 3 output format/parser contract
+
+Also assert step 3 does not use:
+
+- plugin-hosted `skill-writer-agent` as the runtime agent;
+- the legacy Node/TS sidecar path;
+- the Claude-sidecar compatibility path.
+
+- [ ] **Step 2: Implement the Rust-owned runtime path**
+
+Route step 3 generation through the same native OpenHands one-shot invocation
+pattern used by migrated workflow steps:
+
+- Rust builds the sidecar/runtime config.
+- Rust renders the app-owned prompt.
+- Rust starts the OpenHands runner directly.
+- The runner creates the single `skill-creator` OpenHands agent.
+- The backend validates and materializes the returned step 3 output.
+
+- [ ] **Step 3: Remove step 3 dependencies on legacy runtime identity**
+
+Ensure step 3 no longer depends on
+`agent-sources/plugins/skill-creator/agents/skill-writer-agent.md` as the
+runtime agent identity. The file may remain as legacy source material until the
+broader cleanup removes obsolete plugin files, but clean-break step 3 must not
+execute through it.
+
+- [ ] **Step 4: Add guard coverage for no legacy sidecar bleed**
+
+Add tests or structural guards that fail if step 3 generation is reintroduced
+through the Node/TS sidecar or any Claude compatibility runner.
+
+## Task 6: Align Evals And Fixtures
 
 - [ ] **Step 1: Update `skill-creator-generate-skill` eval prompts**
 
 Make the eval represent the clean-break step 3 path:
 
 - one `skill-creator` agent;
+- native OpenHands step 3 task routing;
 - task prompt reads user context, clarifications, and decisions;
 - generation uses `creating-skills`;
 - expected output includes `SKILL.md`, optional references, and `evals.json`;
@@ -289,7 +343,7 @@ Assert the output:
 If step 3 mock outputs include broad legacy lifecycle language, update them to
 match the focused generation contract.
 
-## Task 6: Run Quality Gates
+## Task 7: Run Quality Gates
 
 - [ ] **Step 1: Run agent structural tests**
 
@@ -333,6 +387,11 @@ existing command.
       brief into creation guidance.
 - [ ] Step 3 uses `creating-skills`, not the broad legacy `skill-creator`
       lifecycle guidance.
+- [ ] Step 3 generation routes through the native Rust-owned OpenHands one-shot
+      path with `agentName = "skill-creator"`.
+- [ ] Step 3 generation does not invoke the legacy Node/TS sidecar,
+      Claude-sidecar compatibility path, or plugin-hosted `skill-writer-agent`
+      as the runtime agent.
 - [ ] Generated descriptions are drafted carefully as trigger surfaces.
 - [ ] Generator-Verifier loop runs in fresh context and re-verifies once after
       material fixes.
