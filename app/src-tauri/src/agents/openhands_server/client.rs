@@ -408,11 +408,9 @@ mod tests {
             .collect();
 
         for expected in [
-            "browser_tool_set",
             "file_editor",
             "glob",
             "grep",
-            "planning_file_editor",
             "task_tool_set",
             "task_tracker",
             "terminal",
