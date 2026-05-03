@@ -297,14 +297,14 @@ pub async fn send_refine_message(
         run_source: Some("refine".to_string()),
         plugin_slug: resolved_plugin_slug.clone(),
     });
-    config.transcript_log_dir = Some(format!("{workspace_skill_dir_str}/logs"));
+    let log_dir = format!("{workspace_skill_dir_str}/logs");
+    config.transcript_log_dir = Some(log_dir.clone());
 
     let agent_id = format!(
         "refine-{}-{}",
         skill_name,
         chrono::Utc::now().timestamp_millis()
     );
-    let log_dir = format!("{workspace_skill_dir_str}/logs");
 
     let returned_conversation_id = crate::agents::openhands_server::dispatch_openhands_refine_turn(
         &app,
