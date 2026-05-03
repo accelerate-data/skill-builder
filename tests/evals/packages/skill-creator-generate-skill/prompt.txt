@@ -1,4 +1,4 @@
-This is the workflow step 3 prompt for the OpenHands `skill-writer-agent` generation pass. In this eval harness, do not actually launch tools or write files; synthesize the same final status JSON the app expects after the agent completes.
+This is the workflow step 3 prompt for the OpenHands `skill-creator` agent using task kind `workflow.skill_generation` and the deployed `creating-skills` skill. In this eval harness, do not actually launch tools, spawn verifier subagents, or write files; synthesize the same final status JSON the app expects after the agent completes.
 Your final response MUST be ONLY a raw JSON object - no markdown, no explanation, no wrapping.
 
 App-provided run context:
@@ -15,5 +15,5 @@ Required JSON fields:
 - status: "generated"
 - skipped: omit or false for this non-stub generation case
 - commit_summary: required string for non-stub output
-- version_bump: "minor" for new skills
-- call_trace: required array of strings containing logical steps, including read-user-context, read-decisions, use-skill-creator-skill, write-skill, write-references, and write-evals
+- version_bump: "1.0.0" for newly generated skills
+- call_trace: required array of string values containing logical steps, including read-user-context, read-decisions, read-clarifications, synthesize-generation-brief, use-creating-skills, write-skill, write-references, write-evals, and fresh-context-verifier-review. Do not return objects inside call_trace.

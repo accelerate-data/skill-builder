@@ -5,7 +5,6 @@ use crate::types::StepConfig;
 pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
     let tools: &[&str] = match agent_name {
         "research-agent" => &["file_editor", "terminal", "browser_tool_set"],
-        "skill-writer-agent" => &["file_editor", "terminal"],
         "answer-evaluator" => &["file_editor"],
         _ => &["file_editor", "terminal"],
     };
@@ -23,8 +22,11 @@ pub(crate) fn confirm_decisions_workflow_tools() -> Vec<String> {
     ["file_editor"].iter().map(|s| s.to_string()).collect()
 }
 
-fn one_shot_tools_for_agent(agent_name: &str) -> Vec<String> {
-    tools_for_agent(agent_name)
+pub(crate) fn skill_generation_workflow_tools() -> Vec<String> {
+    ["file_editor", "terminal"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 /// Canonical step configuration table.
@@ -37,7 +39,7 @@ fn one_shot_tools_for_agent(agent_name: &str) -> Vec<String> {
 /// | 0 | skill-creator | skill-content-researcher |
 /// | 1 | skill-creator | skill-content-researcher |
 /// | 2 | skill-creator | skill-content-researcher |
-/// | 3 | skill-writer-agent | skill-content-researcher, skill-creator |
+/// | 3 | skill-creator | skill-creator |
 pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => {
@@ -80,19 +82,16 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             })
         }
         3 => {
-            let agent = "skill-writer-agent";
+            let agent = "skill-creator";
             Ok(StepConfig {
                 step_id: 3,
                 name: "Generate Skill".to_string(),
-                prompt_template: "skill-writer-agent.md".to_string(),
+                prompt_template: "skill-generation.txt".to_string(),
                 output_file: "skill/SKILL.md".to_string(),
-                allowed_tools: one_shot_tools_for_agent(agent),
+                allowed_tools: skill_generation_workflow_tools(),
                 max_turns: 500,
                 agent_name: agent.to_string(),
-                required_plugins: vec![
-                    "skill-content-researcher".to_string(),
-                    "skill-creator".to_string(),
-                ],
+                required_plugins: vec!["skill-creator".to_string()],
             })
         }
         _ => Err(format!("Unknown step_id {}. Valid steps are 0-3.", step_id)),
@@ -128,7 +127,7 @@ pub(crate) fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
         0 => Some(8_000),  // research
         1 => Some(8_000),  // skill-creator detailed research
         2 => Some(32_000), // skill-creator decisions pass
-        3 => Some(16_000), // skill-writer-agent skill generation
+        3 => Some(16_000), // skill-creator skill generation
         _ => None,
     }
 }

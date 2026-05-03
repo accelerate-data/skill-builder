@@ -28,10 +28,16 @@ function baseMockConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
 // ---------------------------------------------------------------------------
 
 describe("resolveStepTemplate", () => {
-  it("maps answer-evaluator to gate-answer-evaluator", () => {
-    expect(resolveStepTemplate("answer-evaluator")).toBe(
+  it("maps skill-creator workflow.answer_evaluator to gate-answer-evaluator", () => {
+    expect(resolveStepTemplate("skill-creator", {
+      taskKind: "workflow.answer_evaluator",
+    })).toBe(
       "gate-answer-evaluator",
     );
+  });
+
+  it("does not route the legacy answer-evaluator agent name", () => {
+    expect(resolveStepTemplate("answer-evaluator")).toBeNull();
   });
 
   it("maps OpenHands research-agent by workflow step", () => {
@@ -52,11 +58,11 @@ describe("resolveStepTemplate", () => {
 
   it("does not route workflow.detailed_research for the wrong agent", () => {
     expect(
-      resolveStepTemplate("skill-writer-agent", {
+      resolveStepTemplate("rewrite-skill", {
         stepId: 1,
         taskKind: "workflow.detailed_research",
       }),
-    ).toBe("step2-confirm-decisions");
+    ).toBeNull();
     expect(
       resolveStepTemplate(undefined, {
         stepId: 1,
@@ -65,11 +71,24 @@ describe("resolveStepTemplate", () => {
     ).toBeNull();
   });
 
-  it("maps OpenHands skill-writer-agent by workflow step", () => {
-    expect(resolveStepTemplate("skill-writer-agent", { stepId: 2 })).toBe("step2-confirm-decisions");
-    expect(resolveStepTemplate("skill-writer-agent", { stepId: 3 })).toBe("step3-generate-skill");
-    expect(resolveStepTemplate("skill-creator:skill-writer-agent", { stepId: 2 })).toBe("step2-confirm-decisions");
-    expect(resolveStepTemplate("skill-creator:skill-writer-agent", { stepId: 3 })).toBe("step3-generate-skill");
+  it("routes skill-creator workflow task kinds to workflow templates", () => {
+    expect(
+      resolveStepTemplate("skill-creator", {
+        stepId: 2,
+        taskKind: "workflow.confirm_decisions",
+      }),
+    ).toBe("step2-confirm-decisions");
+    expect(
+      resolveStepTemplate("skill-creator", {
+        stepId: 3,
+        taskKind: "workflow.skill_generation",
+      }),
+    ).toBe("step3-generate-skill");
+  });
+
+  it("does not keep legacy writer aliases for workflow generation", () => {
+    expect(resolveStepTemplate("skill-writer-agent", { stepId: 3 })).toBeNull();
+    expect(resolveStepTemplate("skill-creator:skill-writer-agent", { stepId: 3 })).toBeNull();
   });
 
   it("keeps legacy research mock aliases on step0-research", () => {

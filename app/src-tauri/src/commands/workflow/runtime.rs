@@ -21,12 +21,12 @@ use super::output_format::{
 };
 use super::prompt::{
     build_evaluator_prompt, build_prompt, build_step0_prompt, build_step1_prompt,
-    build_step2_prompt,
+    build_step2_prompt, build_step3_prompt,
 };
 use super::settings::{read_workflow_settings, WorkflowSettings};
 use super::step_config::{
-    confirm_decisions_workflow_tools, get_step_config, research_workflow_tools, tools_for_agent,
-    workflow_output_format_for_step,
+    confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
+    skill_generation_workflow_tools, tools_for_agent, workflow_output_format_for_step,
 };
 use super::user_context::write_user_context_file;
 
@@ -128,6 +128,28 @@ pub(crate) fn build_workflow_confirm_decisions_sidecar_config(
     })
 }
 
+pub(crate) fn build_workflow_generate_skill_sidecar_config(
+    skill_name: &str,
+    prompt: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+    llm: crate::types::WorkflowLlmConfig,
+    workflow_session_id: Option<String>,
+) -> SidecarConfig {
+    build_skill_creator_workflow_sidecar_config(SkillCreatorWorkflowConfigParams {
+        skill_name,
+        prompt,
+        workspace_path,
+        plugin_slug,
+        llm,
+        workflow_session_id,
+        step_id: 3,
+        task_kind: "workflow.skill_generation",
+        allowed_tools: skill_generation_workflow_tools(),
+        max_turns: 500,
+    })
+}
+
 struct SkillCreatorWorkflowConfigParams<'a> {
     skill_name: &'a str,
     prompt: &'a str,
@@ -191,7 +213,7 @@ fn build_skill_creator_workflow_sidecar_config(
 }
 
 pub(crate) fn workflow_step_uses_native_openhands_dispatch(step_id: u32) -> bool {
-    matches!(step_id, 0..=2)
+    matches!(step_id, 0..=3)
 }
 
 pub(crate) fn build_answer_evaluator_sidecar_config(
@@ -366,6 +388,14 @@ async fn run_workflow_step_inner(
         ),
         1 => build_step1_prompt(skill_name, workspace_path, &settings.plugin_slug),
         2 => build_step2_prompt(skill_name, workspace_path, &settings.plugin_slug),
+        3 => build_step3_prompt(
+            skill_name,
+            workspace_path,
+            &settings.plugin_slug,
+            &settings.skills_path,
+            settings.author_login.as_deref(),
+            settings.created_at.as_deref(),
+        ),
         _ => build_prompt(&super::prompt::PromptParams {
             skill_name,
             workspace_path,
@@ -419,6 +449,14 @@ async fn run_workflow_step_inner(
             workflow_session_id,
         ),
         2 => build_workflow_confirm_decisions_sidecar_config(
+            skill_name,
+            &prompt,
+            workspace_path,
+            &settings.plugin_slug,
+            settings.llm.clone(),
+            workflow_session_id,
+        ),
+        3 => build_workflow_generate_skill_sidecar_config(
             skill_name,
             &prompt,
             workspace_path,

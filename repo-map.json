@@ -139,7 +139,7 @@
     },
     "agent_prompts": {
       "path": "agent-sources/plugins/*/agents/",
-      "description": "Plugin-hosted agent prompts: generate-skill and rewrite-skill under agent-sources/plugins/skill-creator/agents/; skill-builder, research-orchestrator, detailed-research, confirm-decisions, and answer-evaluator under agent-sources/plugins/skill-content-researcher/agents/. App-owned workflow prompt templates live under agent-sources/prompts/. Plugin-hosted skills include skill-evaluator and skill-validator under agent-sources/plugins/skill-creator/skills/"
+      "description": "Plugin-hosted agent prompts include rewrite-skill under agent-sources/plugins/skill-creator/agents/ and legacy researcher/evaluator agents under agent-sources/plugins/skill-content-researcher/agents/. App-owned workflow prompt templates live under agent-sources/prompts/. OpenHands-bundled workflow skills live under agent-sources/skills/ and are selectively deployed into .agents/skills alongside workspace skills."
     },
     "agent_plugins": {
       "path": "agent-sources/plugins/",

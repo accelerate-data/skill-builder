@@ -55,6 +55,8 @@ export interface RunAgentOptions {
   evalIds?: number[];
   /** For evaluate-skill: absolute path to the iteration directory (parsed as iter_dir: in prompt). */
   iterDir?: string;
+  /** OpenHands workflow task kind used by mock routing. */
+  taskKind?: string;
 }
 
 /**
@@ -143,7 +145,7 @@ async function sendAgentRequest(
   agentId: string,
   opts: RunAgentOptions,
 ): Promise<void> {
-  const { skillName = "test-skill", stepId = 0, runSource = "workflow", workspacePath, evalIds, iterDir } = opts;
+  const { skillName = "test-skill", stepId = 0, runSource = "workflow", workspacePath, evalIds, iterDir, taskKind } = opts;
 
   // mock-agent's parsePromptPaths extracts workspace/output dirs from these exact strings.
   const skillDir = path.join(workspaceDir, skillName);
@@ -173,6 +175,7 @@ async function sendAgentRequest(
       agentName,
       skillName,
       stepId,
+      taskKind,
       workflowSessionId: `int-wf-${agentId}`,
       usageSessionId: `int-usage-${agentId}`,
       runSource,

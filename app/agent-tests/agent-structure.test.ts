@@ -15,22 +15,23 @@ const WORKSPACE_AGENTS_DIR = path.join(
 /** Plugin-hosted agents: agent name → plugin path relative to PLUGINS_DIR */
 const PLUGIN_AGENTS: Record<string, string> = {
   "research-agent": "skill-content-researcher/agents/research-agent.md",
-  "answer-evaluator": "skill-content-researcher/agents/answer-evaluator.md",
-  "skill-writer-agent": "skill-creator/agents/skill-writer-agent.md",
   "rewrite-skill": "skill-creator/agents/rewrite-skill.md",
   grader: "skill-creator/agents/grader.md",
 };
 
 const OPENHANDS_WORKFLOW_AGENTS = ["skill-creator"] as const;
+const OPENHANDS_WORKFLOW_SKILLS = ["creating-skills"] as const;
 
 const OBSOLETE_WORKFLOW_AGENT_PATHS = [
   "skill-content-researcher/agents/skill-builder.md",
   "skill-content-researcher/agents/detailed-research.md",
   "skill-content-researcher/agents/confirm-decisions.md",
+  "skill-content-researcher/agents/answer-evaluator.md",
   "skill-creator/agents/generate-skill.md",
 ] as const;
 
 const AGENT_SKILL_ROOTS = [
+  path.join(REPO_ROOT, "agent-sources", "skills"),
   path.join(REPO_ROOT, "agent-sources", "workspace", "skills"),
   path.join(PLUGINS_DIR, "skill-content-researcher", "skills"),
   path.join(PLUGINS_DIR, "skill-creator", "skills"),
@@ -145,6 +146,15 @@ describe("agent files", () => {
     expect(missing).toEqual([]);
     expect(obsolete).toEqual([]);
   });
+
+  it("OpenHands workflow skills required by the runtime are present in bundled skill sources", () => {
+    const missing = OPENHANDS_WORKFLOW_SKILLS.filter(
+      (skill) =>
+        !fs.existsSync(path.join(REPO_ROOT, "agent-sources", "skills", skill, "SKILL.md")),
+    );
+
+    expect(missing).toEqual([]);
+  });
 });
 
 describe("AgentSkill frontmatter", () => {
@@ -199,18 +209,15 @@ describe("canonical format compliance", () => {
 // ── Read-directive compliance ───────────────────────────────────────────────
 
 describe("read directive compliance", () => {
-  const SKILL_VALIDATOR_PATH = path.join(
-    PLUGINS_DIR,
-    "skill-creator",
+  const CREATING_SKILLS_PATH = path.join(
+    REPO_ROOT,
+    "agent-sources",
     "skills",
-    "skill-validator",
+    "creating-skills",
     "SKILL.md",
   );
 
-  const TARGET_FILES = [
-    resolveAgentPath("skill-writer-agent"),
-    SKILL_VALIDATOR_PATH,
-  ];
+  const TARGET_FILES = [CREATING_SKILLS_PATH];
 
   const bannedPatterns: Array<[string, RegExp]> = [
     ["blanket 'Read all files' directive", /\bRead all files\b/i],
@@ -338,20 +345,31 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/"refinements"/);
   });
 
-  it("skill-writer-agent decision phase returns version/metadata/decisions shape", () => {
-    const content = fileContent("skill-writer-agent");
-    // Backend uses additionalProperties: false — only version, metadata, decisions allowed at top level
-    expect(content).toMatch(/"version"/);
-    expect(content).toMatch(/"metadata"/);
-    expect(content).toMatch(/"decisions"/);
-    // Agent must document the three-key constraint explicitly
-    expect(content).toMatch(/Top-level keys|version.*metadata.*decisions/i);
-  });
-
-  it("skill-writer-agent generation phase returns generated status", () => {
-    const content = fileContent("skill-writer-agent");
+  it("skill-creator generation phase routes through creating-skills", () => {
+    const agentContent = fileContent("skill-creator");
+    const skillContent = fs.readFileSync(
+      path.join(
+        REPO_ROOT,
+        "agent-sources",
+        "skills",
+        "creating-skills",
+        "SKILL.md",
+      ),
+      "utf8",
+    );
+    const promptContent = fs.readFileSync(
+      path.join(REPO_ROOT, "agent-sources", "prompts", "skill-generation.txt"),
+      "utf8",
+    );
+    const content = `${agentContent}\n${skillContent}\n${promptContent}`;
+    expect(content).toMatch(/workflow\.skill_generation/);
+    expect(content).toMatch(/creating-skills/);
     expect(content).toMatch(/status.*generated/);
+    expect(content).toMatch(/version_bump.*1\.0\.0/);
+    expect(content).toMatch(/fresh[- ]context (?:verification|verifier)/i);
     expect(content).toMatch(/call_trace/);
+    expect(agentContent).not.toMatch(/^\s+-\s+skill-validator\s*$/m);
+    expect(agentContent).not.toMatch(/^\s+-\s+answer-evaluator\s*$/m);
   });
 
   it("rewrite-skill returns rewritten status", () => {
@@ -361,11 +379,15 @@ describe("Agent output contracts (backend protocol alignment)", () => {
   });
 
   it("answer-evaluator returns verdict enum and per_question array", () => {
-    const content = fileContent("answer-evaluator");
+    const content = fs.readFileSync(
+      path.join(REPO_ROOT, "agent-sources", "prompts", "answer-evaluator.txt"),
+      "utf8",
+    );
     expect(content).toMatch(/"verdict"/);
     expect(content).toMatch(/sufficient|mixed|insufficient/);
     expect(content).toMatch(/"per_question"/);
     expect(content).toMatch(/"answered_count"/);
+    expect(content).toMatch(/Do not invoke\s+an answer-evaluator skill/i);
   });
 
   it("evaluate-skill prompt template matches SDK-enforced schema", () => {
@@ -446,6 +468,13 @@ describe("skill-content-researcher plugin structure", () => {
     const skillCreatorSkillPath = path.join(
       REPO_ROOT,
       "agent-sources",
+      "skills",
+      "creating-skills",
+      "SKILL.md",
+    );
+    const legacyPluginSkillCreatorPath = path.join(
+      REPO_ROOT,
+      "agent-sources",
       "plugins",
       "skill-creator",
       "skills",
@@ -454,8 +483,7 @@ describe("skill-content-researcher plugin structure", () => {
     );
     const activeFiles = [
       resolveAgentPath("research-agent"),
-      resolveAgentPath("answer-evaluator"),
-      resolveAgentPath("skill-writer-agent"),
+      path.join(REPO_ROOT, "agent-sources", "prompts", "answer-evaluator.txt"),
       path.join(
         REPO_ROOT,
         "agent-sources",
@@ -465,6 +493,7 @@ describe("skill-content-researcher plugin structure", () => {
         "SKILL.md",
       ),
       skillCreatorSkillPath,
+      legacyPluginSkillCreatorPath,
     ];
     const forbiddenPatterns: Array<[string, RegExp]> = [
       ["Claude Code routing", /Claude Code/i],
@@ -535,10 +564,6 @@ describe("skill-creator plugin structure", () => {
     );
     const content = fs.readFileSync(skillPath, "utf8");
     const schemaContent = fs.readFileSync(schemaPath, "utf8");
-    const skillWriterContent = fs.readFileSync(
-      resolveAgentPath("skill-writer-agent"),
-      "utf8",
-    );
     expect(content).toMatch(
       /Write the quantitative assertions at the same time as the prompts/i,
     );
@@ -549,9 +574,7 @@ describe("skill-creator plugin structure", () => {
     expect(content).toMatch(
       /Do not rewrite `evals\/evals\.json` or `eval_metadata\.json` during the run/i,
     );
-    expect(skillWriterContent).toMatch(
-      /must include a human-readable `eval_name`, a deterministic `slug`, and its fixed `expectations` at creation time/i,
-    );
+    expect(content).toMatch(/eval_name[\s\S]*slug[\s\S]*(?:expectations|assertions)/i);
     expect(schemaContent).toMatch(/evals\[\]\.eval_name/);
     expect(schemaContent).toMatch(/evals\[\]\.slug/);
     expect(schemaContent).toMatch(

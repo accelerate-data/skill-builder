@@ -1,4 +1,4 @@
-Eval mode: use the bundled `answer-evaluator` skill behavior for the OpenHands `skill-creator` task kind `workflow.answer_evaluator`. Evaluate only the inline clarifications JSON below. Do not read files, inspect directories, launch tools, or write files. Return the final JSON verdict immediately.
+Eval mode: use the app-owned answer-evaluator prompt behavior for the OpenHands `skill-creator` task kind `workflow.answer_evaluator`. This gate is prompt-owned, not a bundled skill. Evaluate only the inline clarifications JSON below. Do not read files, inspect directories, launch tools, or write files. Return the final JSON verdict immediately.
 
 The workspace directory is `/tmp/skill-builder/workspace/skills/fabric-dbt-standards`.
 The context directory is `/tmp/skill-builder/workspace/skills/fabric-dbt-standards/context`.

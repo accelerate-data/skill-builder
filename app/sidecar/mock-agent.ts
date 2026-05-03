@@ -16,7 +16,7 @@ const MOCK_SCENARIO = process.env.MOCK_SCENARIO ?? "default";
  * Map agent names to step template files.
  *
  * Workflow agents use OpenHands-native names. Step id disambiguates the shared
- * research and skill-writer agents.
+ * workflow-capable skill-creator agent.
  */
 /** @internal Exported for testing only. */
 export function resolveStepTemplate(
@@ -28,6 +28,24 @@ export function resolveStepTemplate(
     config?.taskKind === "workflow.detailed_research"
   ) {
     return "step1-detailed-research";
+  }
+  if (
+    agentName === "skill-creator" &&
+    config?.taskKind === "workflow.confirm_decisions"
+  ) {
+    return "step2-confirm-decisions";
+  }
+  if (
+    agentName === "skill-creator" &&
+    config?.taskKind === "workflow.skill_generation"
+  ) {
+    return "step3-generate-skill";
+  }
+  if (
+    agentName === "skill-creator" &&
+    config?.taskKind === "workflow.answer_evaluator"
+  ) {
+    return MOCK_SCENARIO === "contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator";
   }
 
   if (!agentName) {
@@ -49,12 +67,6 @@ export function resolveStepTemplate(
   ) {
     return config?.stepId === 1 ? "step1-detailed-research" : "step0-research";
   }
-  if (
-    agentName === "skill-writer-agent" ||
-    agentName === "skill-creator:skill-writer-agent"
-  ) {
-    return config?.stepId === 3 ? "step3-generate-skill" : "step2-confirm-decisions";
-  }
   if (agentName === "skill-content-researcher:skill-builder") {
     if (config?.stepId === 1) return "step1-detailed-research";
     if (config?.stepId === 2) return "step2-confirm-decisions";
@@ -66,7 +78,6 @@ export function resolveStepTemplate(
   if (agentName === "skill-creator:generate-skill") return "step3-generate-skill";
   if (agentName === "skill-creator:rewrite-skill") return "rewrite-skill";
   if (agentName === "skill-creator:grader" || agentName === "evaluate-skill") return "evaluate-skill";
-  if (agentName === "answer-evaluator") return MOCK_SCENARIO === "contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator";
 
   // Research orchestrator (plugin-qualified) and all sub-agents spawned by the research skill
   if (

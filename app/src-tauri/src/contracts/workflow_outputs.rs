@@ -74,6 +74,8 @@ pub struct GenerateSkillOutput {
     pub commit_summary: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version_bump: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call_trace: Option<Vec<String>>,
 }
 
 // ─── Answer Evaluator ────────────────────────────────────────────────────────
