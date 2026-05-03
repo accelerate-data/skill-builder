@@ -13,9 +13,10 @@ describe("runtime API contract", () => {
     const source = readSource("lib/tauri.ts");
 
     expect(source).toContain("export const startOneShotAgent");
-    expect(source).toContain("export const sendStreamingRefineMessage");
+    expect(source).toContain("export const sendRefineMessage");
     expect(source).not.toContain("export const startAgent");
     expect(source).not.toContain("export const answerWorkflowStepQuestion");
+    expect(source).not.toContain("export const answerStreamingRefineQuestion");
   });
 
   it("keeps non-refine UI surfaces on the one-shot agent API", () => {
@@ -29,15 +30,15 @@ describe("runtime API contract", () => {
 
       expect(source, relativePath).toContain("startOneShotAgent");
       expect(source, relativePath).not.toContain("startAgent(");
-      expect(source, relativePath).not.toContain("sendStreamingRefineMessage");
+      expect(source, relativePath).not.toContain("sendRefineMessage");
     }
   });
 
   it("keeps refine UI on the streaming refine API", () => {
     const source = readSource("components/workspace/workspace-refine.tsx");
 
-    expect(source).toContain("sendStreamingRefineMessage");
-    expect(source).toContain("answerStreamingRefineQuestion");
+    expect(source).toContain("sendRefineMessage");
+    expect(source).not.toContain("answerStreamingRefineQuestion");
     expect(source).not.toContain("startOneShotAgent");
   });
 

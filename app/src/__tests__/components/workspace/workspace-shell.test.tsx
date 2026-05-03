@@ -72,7 +72,7 @@ vi.mock("@/lib/tauri", () => ({
   cleanupSkillSidecar: vi.fn().mockResolvedValue(undefined),
   cancelDescriptionOptimization: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
-  sendStreamingRefineMessage: vi.fn().mockResolvedValue("agent-1"),
+  sendRefineMessage: vi.fn().mockResolvedValue("agent-1"),
   finalizeRefineRun: vi.fn().mockResolvedValue({ files: [], diff: null }),
   getSkillHistory: vi.fn().mockResolvedValue([]),
   readLatestBenchmark: vi.fn().mockResolvedValue(null),
