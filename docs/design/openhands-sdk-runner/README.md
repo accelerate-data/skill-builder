@@ -13,14 +13,12 @@ functional-specs: []
 
 ## Overview
 
-Skill Builder calls the OpenHands SDK through the bundled `openhands-runner`.
-Rust owns the OpenHands process lifecycle and spawns this runner directly for
-OpenHands work; Node is not part of the OpenHands runtime boundary. The runner
-always constructs one top-level OpenHands agent, `skill-creator`. One-shot work
-is a single-message OpenHands `Conversation`: the app sends one rendered task
-prompt, the runner streams progress and tool events, and the run ends with one
-terminal result. Future multi-message conversations use the same agent and SDK
-object model, but keep the `Conversation` open across messages.
+Historically, Skill Builder called the OpenHands SDK through the bundled
+`openhands-runner`. Rust owned the OpenHands process lifecycle and spawned this
+runner directly for OpenHands work; Node was not part of the OpenHands runtime
+boundary. The superseding Agent Server runtime keeps the one top-level
+OpenHands agent, `skill-creator`, but moves SDK construction and conversation
+execution behind the local OpenHands Agent Server.
 
 This document defines the exact SDK invocation contract: where the agent system
 prompt comes from, how file-based skills are loaded, how app-owned task prompts
@@ -460,7 +458,7 @@ The runner and sidecar must produce app-visible errors for:
 
 | Spec | Relationship |
 |---|---|
-| `docs/design/openhands-native-migration/README.md` | Umbrella migration design; this doc defines the SDK invocation details it relies on. |
+| `docs/design/openhands-native-migration/README.md` | Umbrella migration design; this doc records the now-superseded direct SDK runner invocation details. |
 | `docs/design/agent-runtime-boundary/README.md` | Defines one-shot versus streaming contracts and normalized app-facing event envelopes. |
 | `docs/design/model-settings/README.md` | Defines the app-owned model settings projected into OpenHands `LLM(...)`. |
 | `docs/design/skill-scope-review/README.md` | Describes the create-skill scope advisor behavior that will move onto this runner path. |
@@ -469,8 +467,8 @@ The runner and sidecar must produce app-visible errors for:
 
 | File | Purpose |
 |---|---|
-| `app/sidecar/openhands/runner.py` | Python OpenHands SDK construction and JSONL runner. |
-| `app/src-tauri/src/agents/sidecar.rs` | Rust OpenHands request builder, direct runner process manager, stdout JSONL event router, stderr logger, transcript writer, and terminal one-shot helper. |
+| `app/src-tauri/src/agents/openhands_server/` | Superseding Rust-managed Agent Server process, REST client, WebSocket event stream, and one-shot facade. |
+| `app/src-tauri/src/agents/sidecar.rs` | Shared OpenHands request/config model retained for Rust-side request construction. |
 | `app/src-tauri/src/commands/workflow/prompt.rs` | Existing pattern for compile-time prompt templates. |
 | `app/src-tauri/src/commands/skill/scope_review.rs` | Existing direct Anthropic scope-review command to migrate. |
 | `agent-sources/workspace/` | Source files copied into `.agents/**`. |
@@ -484,10 +482,9 @@ Required coverage:
 - Rust prompt rendering tests for every `agent-sources/prompts/*.txt` template.
 - Rust tests proving prompt templates are compiled/rendered and not copied into
   `.agents/**`.
-- Python runner tests proving it reads `skill-creator.md`, calls
-  `load_skills_from_dir(".agents/skills")`, disables public skills, passes
-  `user_message_suffix`, and uses `Conversation.send_message`.
-- Sidecar tests for request serialization and conversation event forwarding.
+- Rust Agent Server tests proving it binds the local workspace, sends
+  conversation requests, loads `.agents/**` through the server request, and
+  normalizes WebSocket events.
 - Automated smoke/eval proving a one-shot run emits progress before terminal
   `conversation_state`.
 

@@ -809,4 +809,16 @@ mod tests {
             Some("skill-creator")
         );
     }
+
+    #[test]
+    fn cancellation_registry_signals_and_clears_active_agent() {
+        let agent_id = format!("test-agent-{}", uuid::Uuid::new_v4());
+        let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+
+        register_cancel(&agent_id, cancel_tx).unwrap();
+
+        assert!(cancel_openhands_one_shot(&agent_id));
+        assert!(cancel_rx.try_recv().is_ok());
+        assert!(!cancel_openhands_one_shot(&agent_id));
+    }
 }

@@ -34,6 +34,7 @@
     "test:agents:smoke": "cd ../tests/evals && npm run eval:agents",
     "test:scope-advisor:smoke": "cd ../tests/evals && npm run eval:scope-advisor",
     "test:evals:harness": "cd ../tests/evals && npm test",
+    "test:openhands:live-smoke": "node ../scripts/openhands-agent-server-live-smoke.mjs",
     "test:all": "npm run test:unit && npm run test:guard && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {
