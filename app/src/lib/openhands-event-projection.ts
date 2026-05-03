@@ -544,35 +544,17 @@ function projectCondensationEvent(
 }
 
 function projectStateUpdateEvent(
-  event: OpenHandsConversationEvent,
+  _event: OpenHandsConversationEvent,
 ): ProjectionResult {
-  const key =
-    typeof event.event.key === "string"
-      ? event.event.key
-      : undefined;
-  const value = event.event.value;
-  const summary =
-    key !== undefined
-      ? `Lifecycle update: ${key}=${
-          typeof value === "string" || typeof value === "number" || typeof value === "boolean"
-            ? String(value)
-            : stringifyEventPayload(value)
-        }`
-      : "Lifecycle update";
-
-  return {
-    add: [
-      makeCollapsedToolCall({
-        id: newId(),
-        timestamp: event.timestamp,
-        toolName: "state_update",
-        toolSummary: summary,
-        content: stringifyEventPayload(event.event),
-      }),
-    ],
-    update: [],
-    pendingDelta: {},
-  };
+  // ConversationStateUpdateEvent is hidden from the chat surface — it's pure
+  // internal counter/state churn (token deltas, execution_status flips,
+  // agent_state). The lifecycle chip in the chat header already represents
+  // the user-facing transitions semantically; rendering each intermediate
+  // state diff as a row is noise.
+  //
+  // The event still lands in run.conversationEvents (audit trail preserved);
+  // only the projected DisplayItem is suppressed.
+  return { add: [], update: [], pendingDelta: {} };
 }
 
 function projectErrorEvent(
