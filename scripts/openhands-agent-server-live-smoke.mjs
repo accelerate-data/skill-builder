@@ -93,6 +93,7 @@ try {
   const observed = {
     progress: false,
     terminal: false,
+    terminalStatus: undefined,
     terminalEvent: undefined,
   };
 
@@ -107,6 +108,11 @@ try {
   }
   if (!observed.terminal) {
     throw new Error("Agent Server smoke did not observe terminal state.");
+  }
+  if (["error", "failed", "cancelled", "canceled"].includes(observed.terminalStatus)) {
+    throw new Error(
+      `Agent Server smoke ended with ${observed.terminalStatus}: ${JSON.stringify(observed.terminalEvent)}\n${stderr.join("")}`,
+    );
   }
 
   await apiFetch(port, sessionApiKey, `/api/conversations/${conversationId}`, { method: "DELETE" });
@@ -158,7 +164,7 @@ async function createConversation({
   extraHeaders,
 }) {
   const llm = {
-    model,
+    model: normalizeOpenHandsModel(model, baseUrl),
     api_key: apiKey,
   };
   if (baseUrl) llm.base_url = baseUrl;
@@ -273,6 +279,13 @@ function normalizeBlank(value) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function normalizeOpenHandsModel(model, baseUrl) {
+  if (baseUrl && model.startsWith("opencode-go/")) {
+    return `openai/${model.slice("opencode-go/".length)}`;
+  }
+  return model;
+}
+
 async function cleanupWorkspace(workspace) {
   spawnSync("chmod", ["-R", "u+rwx", workspace], {
     encoding: "utf8",
@@ -314,6 +327,7 @@ function waitForSocketTerminal(socket, observed) {
       if (!payload) return;
       if (isTerminal(payload)) {
         observed.terminal = true;
+        observed.terminalStatus = terminalStatus(payload);
         observed.terminalEvent = payload;
         clearTimeout(timeout);
         socket.close();
@@ -336,7 +350,7 @@ function waitForSocketTerminal(socket, observed) {
 }
 
 function isTerminal(payload) {
-  const status = payload.status ?? payload.state?.status ?? payload.conversation?.status;
+  const status = terminalStatus(payload);
   if (["completed", "success", "error", "failed", "cancelled", "canceled"].includes(status)) {
     return true;
   }
@@ -348,6 +362,10 @@ function isTerminal(payload) {
     ["status", "execution_status"].includes(key) &&
     ["finished", "error", "stuck", "cancelled", "canceled"].includes(value)
   );
+}
+
+function terminalStatus(payload) {
+  return payload.status ?? payload.state?.status ?? payload.conversation?.status ?? payload.value;
 }
 
 function parseJson(text) {

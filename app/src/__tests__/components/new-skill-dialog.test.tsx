@@ -315,6 +315,8 @@ describe("SkillDialog (create mode)", () => {
     await waitFor(() => {
       expect(screen.queryByText("Analyzing skill details…")).not.toBeInTheDocument();
     });
+    expect(screen.getByText(/Validation failed\./)).toBeInTheDocument();
+    expect(screen.getByText("scope review unavailable")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Validate/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Next/i })).toBeEnabled();
   });
