@@ -50,6 +50,7 @@ const mockMaterializeAnswerEvaluationOutput = vi.fn((..._args: unknown[]) =>
 const mockGetContextFileContent = vi.fn((..._args: unknown[]) =>
   Promise.resolve(null),
 );
+const mockLogFrontend = vi.fn((..._args: unknown[]) => Promise.resolve());
 
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn((...args) => mockRunWorkflowStep(...args)),
@@ -75,7 +76,7 @@ vi.mock("@/lib/tauri", () => ({
   writeFile: vi.fn((...args) => mockWriteFile(...args)),
   logGateDecision: vi.fn((...args) => mockLogGateDecision(...args)),
   getContextFileContent: vi.fn((...args) => mockGetContextFileContent(...args)),
-  logFrontend: vi.fn(),
+  logFrontend: vi.fn((...args) => mockLogFrontend(...args)),
 }));
 
 vi.mock("@/lib/models", () => ({
@@ -517,6 +518,61 @@ describe("useWorkflowStateMachine", () => {
     expect(mockSetRunning).toHaveBeenCalledWith(true);
     // pendingAutoStartStep should be cleared after auto-start fires
     expect(result.current.pendingAutoStartStep).toBeNull();
+  });
+
+  it("clears stale auto-start when reset moves the store to a different step", async () => {
+    const stepProps = [
+      { id: 0, status: "completed", name: "Research" },
+      { id: 1, status: "pending", name: "Detailed Research" },
+    ];
+    mockWorkflowState = {
+      ...mockWorkflowState,
+      currentStep: 0,
+      reviewMode: true,
+      steps: [
+        { id: 0, status: "completed" },
+        { id: 1, status: "pending" },
+      ],
+      disabledSteps: [],
+    };
+
+    const { result, rerender } = renderHook(
+      (props) => useWorkflowStateMachine(props),
+      {
+        initialProps: {
+          ...defaultOptions,
+          currentStep: 1,
+          steps: stepProps,
+          stepConfig: STEP_CONFIGS[1],
+          reviewMode: true,
+        },
+      },
+    );
+
+    mockWorkflowState = {
+      ...mockWorkflowState,
+      currentStep: 0,
+      reviewMode: false,
+    };
+    rerender({
+      ...defaultOptions,
+      currentStep: 0,
+      steps: stepProps,
+      stepConfig: STEP_CONFIGS[0],
+      reviewMode: false,
+    });
+
+    await waitFor(() => {
+      expect(mockLogFrontend).toHaveBeenCalledWith(
+        "warn",
+        expect.stringContaining("pendingAutoStartStep=1 !== storeStep=0"),
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.pendingAutoStartStep).toBeNull();
+    });
+    expect(mockRunWorkflowStep).not.toHaveBeenCalled();
   });
 
   it("handleStartAgentStep blocks when gateLoading is true", async () => {

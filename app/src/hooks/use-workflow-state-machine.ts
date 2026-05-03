@@ -479,6 +479,7 @@ export function useWorkflowStateMachine({
         "warn",
         `[auto-start] BLOCKED: pendingAutoStartStep=${pendingAutoStartStep} !== storeStep=${storeStep} (selectorStep=${currentStep})`,
       );
+      setPendingAutoStartStep(null);
       return;
     }
     if (!isAgentType) {
@@ -804,6 +805,7 @@ export function useWorkflowStateMachine({
       `[performStepReset] resetting step ${stepId}, isRunning=${useWorkflowStore.getState().isRunning}, reviewMode=${useWorkflowStore.getState().reviewMode}`,
     );
     endActiveSession();
+    setPendingAutoStartStep(null);
     // Clear gate state so Effect A isn't blocked when auto-starting after reset.
     gate.gateAgentIdRef.current = null;
     useWorkflowStore.getState().setGateLoading(false);
