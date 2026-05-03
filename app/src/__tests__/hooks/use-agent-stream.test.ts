@@ -109,7 +109,7 @@ describe("initAgentStream", () => {
     expect(run.displayItems[0].outputText).toBe("Hello world");
   });
 
-  it("adds OpenHands conversation_event messages without requiring display items", async () => {
+  it("adds OpenHands conversation_event messages and projects them to display items", async () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     await initAgentStream();
 
@@ -131,7 +131,12 @@ describe("initAgentStream", () => {
     });
 
     const run = useAgentStore.getState().runs["agent-1"];
-    expect(run.displayItems).toHaveLength(0);
+    // Projection turns an agent MessageEvent into an output DisplayItem.
+    expect(run.displayItems).toHaveLength(1);
+    expect(run.displayItems[0]).toMatchObject({
+      type: "output",
+      outputText: "Scope looks focused.",
+    });
     expect(run.conversationEvents).toHaveLength(1);
     expect(run.conversationEvents[0]).toMatchObject({
       type: "conversation_event",

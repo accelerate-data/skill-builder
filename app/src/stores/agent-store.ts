@@ -21,6 +21,14 @@ import type {
   OpenHandsConversationState,
 } from "@/lib/openhands-conversation-events";
 import { isTerminalConversationStatus } from "@/lib/openhands-conversation-events";
+import {
+  projectConversationEvent,
+  type PendingActionEntry,
+} from "@/lib/openhands-event-projection";
+import {
+  summarizeCompletedRun,
+  summarizeErrorRun,
+} from "@/lib/openhands-result-summary";
 import { formatProviderModelId } from "@/lib/models";
 
 type PendingTerminalStatus = "completed" | "error" | "shutdown";
@@ -237,6 +245,9 @@ export interface AgentRun {
   /** OpenHands-native conversation events for clean-break runtime runs. */
   conversationEvents?: OpenHandsConversationEvent[];
   conversationState?: OpenHandsConversationState;
+  /** Pending OpenHands ActionEvents awaiting their matching ObservationEvent.
+   *  Keyed by tool_call_id. Used by the projection to pair actions ↔ observations. */
+  pendingActionsByToolCallId: Record<string, PendingActionEntry>;
   messages?: AgentMessage[];
   startTime: number;
   endTime?: number;
@@ -344,6 +355,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 status: "running" as const,
                 displayItems: [],
                 conversationEvents: [],
+                pendingActionsByToolCallId: {},
                 startTime: Date.now(),
                 contextHistory: [],
                 contextWindow: DEFAULT_CONTEXT_WINDOW,
@@ -396,6 +408,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 status: "running" as const,
                 displayItems: [],
                 conversationEvents: [],
+                pendingActionsByToolCallId: {},
                 startTime: Date.now(),
                 contextHistory: [],
                 contextWindow: DEFAULT_CONTEXT_WINDOW,
@@ -430,6 +443,16 @@ export const useAgentStore = create<AgentState>((set) => ({
           "[agent-store] event=auto_create_run operation=add_conversation_event agent_id=%s",
           agentId,
         );
+        // Project against an empty pending map for the freshly created run.
+        const projection = projectConversationEvent(event, {});
+        const nextDisplayItems: DisplayItem[] = [...projection.add];
+        const nextPending: Record<string, PendingActionEntry> = {};
+        for (const entry of projection.pendingDelta.set ?? []) {
+          nextPending[entry.key] = entry.value;
+        }
+        for (const key of projection.pendingDelta.delete ?? []) {
+          delete nextPending[key];
+        }
         return {
           runs: {
             ...state.runs,
@@ -437,8 +460,9 @@ export const useAgentStore = create<AgentState>((set) => ({
               agentId,
               model: "unknown",
               status: "running" as const,
-              displayItems: [],
+              displayItems: nextDisplayItems,
               conversationEvents: [event],
+              pendingActionsByToolCallId: nextPending,
               startTime: Date.now(),
               contextHistory: [],
               contextWindow: DEFAULT_CONTEXT_WINDOW,
@@ -449,12 +473,48 @@ export const useAgentStore = create<AgentState>((set) => ({
         };
       }
 
+      const projection = projectConversationEvent(
+        event,
+        run.pendingActionsByToolCallId,
+      );
+
+      // Apply updates: shallow-merge each patch onto the matching DisplayItem by id.
+      let nextDisplayItems: DisplayItem[] = run.displayItems;
+      if (projection.update.length > 0) {
+        const patchById = new Map(
+          projection.update.map((u) => [u.id, u.patch] as const),
+        );
+        nextDisplayItems = nextDisplayItems.map((item) => {
+          const patch = patchById.get(item.id);
+          return patch ? { ...item, ...patch } : item;
+        });
+      }
+      if (projection.add.length > 0) {
+        nextDisplayItems = [...nextDisplayItems, ...projection.add];
+      }
+
+      // Apply pending-actions delta (set first, then delete — matches projection contract).
+      let nextPending = run.pendingActionsByToolCallId;
+      const setEntries = projection.pendingDelta.set ?? [];
+      const deleteKeys = projection.pendingDelta.delete ?? [];
+      if (setEntries.length > 0 || deleteKeys.length > 0) {
+        nextPending = { ...nextPending };
+        for (const entry of setEntries) {
+          nextPending[entry.key] = entry.value;
+        }
+        for (const key of deleteKeys) {
+          delete nextPending[key];
+        }
+      }
+
       return {
         runs: {
           ...state.runs,
           [agentId]: {
             ...run,
             conversationEvents: [...(run.conversationEvents ?? []), event],
+            displayItems: nextDisplayItems,
+            pendingActionsByToolCallId: nextPending,
           },
         },
       };
@@ -481,7 +541,46 @@ export const useAgentStore = create<AgentState>((set) => ({
           ? [event.errorDetail]
           : run?.resultErrors;
 
+      // Build the synthesized terminal DisplayItem (if any) for the appropriate
+      // terminal status. Returns undefined for non-terminal transitions.
+      const buildTerminalItem = (): DisplayItem | undefined => {
+        if (event.status === "completed") {
+          const { summary } = summarizeCompletedRun(event);
+          const body =
+            typeof event.resultText === "string" &&
+            event.resultText.trim().length > 0
+              ? event.resultText
+              : summary;
+          return {
+            id:
+              typeof crypto !== "undefined" &&
+              typeof crypto.randomUUID === "function"
+                ? crypto.randomUUID()
+                : `id-${Math.random().toString(36).slice(2)}-${Date.now()}`,
+            type: "output",
+            timestamp: event.timestamp ?? Date.now(),
+            outputText: body,
+            outputText_result: summary,
+          };
+        }
+        if (event.status === "error" || event.status === "cancelled") {
+          const { summary } = summarizeErrorRun(event);
+          return {
+            id:
+              typeof crypto !== "undefined" &&
+              typeof crypto.randomUUID === "function"
+                ? crypto.randomUUID()
+                : `id-${Math.random().toString(36).slice(2)}-${Date.now()}`,
+            type: "error",
+            timestamp: event.timestamp ?? Date.now(),
+            errorMessage: summary,
+          };
+        }
+        return undefined;
+      };
+
       if (!run) {
+        const terminalItem = buildTerminalItem();
         return {
           runs: {
             ...state.runs,
@@ -489,8 +588,9 @@ export const useAgentStore = create<AgentState>((set) => ({
               agentId,
               model: "unknown",
               status: nextStatus,
-              displayItems: [],
+              displayItems: terminalItem ? [terminalItem] : [],
               conversationEvents: [],
+              pendingActionsByToolCallId: {},
               conversationState: event,
               startTime: now,
               endTime: nextEndTime,
@@ -516,6 +616,11 @@ export const useAgentStore = create<AgentState>((set) => ({
         };
       }
 
+      const terminalItem = buildTerminalItem();
+      const nextDisplayItems = terminalItem
+        ? [...run.displayItems, terminalItem]
+        : run.displayItems;
+
       return {
         runs: {
           ...state.runs,
@@ -525,6 +630,7 @@ export const useAgentStore = create<AgentState>((set) => ({
             conversationState: event,
             endTime: nextEndTime,
             resultErrors: nextResultErrors,
+            displayItems: nextDisplayItems,
           },
         },
       };
