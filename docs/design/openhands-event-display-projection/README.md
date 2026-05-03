@@ -41,7 +41,8 @@ The decision was surfaced by the VU-1155 Refine migration but applies to **every
 | Project events into `DisplayItem` at the agent-store layer rather than at the renderer | Reuses the entire `BaseItem`/`ToolItem`/`SubagentItem` component tree and the `groupDisplayItems` activity-group logic on main without forking. Renderer stays runtime-agnostic. |
 | Keep `conversationEvents` populated alongside `displayItems` | The raw native event stream is the audit trail and powers `agent-output-panel` for workflow debugging. The projection is a UI concern, not a data-model replacement. |
 | Pair `ActionEvent` + `ObservationEvent` by `tool_call_id` into one `DisplayItem` | Matches the chat-conventional "single tool call card with observation inside" pattern and matches how Claude Code's sidecar already shaped `tool_call` items. |
-| Filter SystemPromptEvent, Condensation*, ConversationStateUpdateEvent, and user MessageEvent | These are process noise. The Rust normalizer already promotes meaningful state transitions to terminal `conversation_state`. Hiding them is honest — chat is a different surface from a raw timeline. |
+| Hide `ConversationStateUpdateEvent` from chat; keep it in `conversationEvents` audit trail | Pure internal counter/state churn (token deltas, `execution_status` flips, `agent_state`). The lifecycle chip in the chat header already represents the user-facing transitions semantically; rendering each intermediate diff as a "Lifecycle update" row was noise. The Rust normalizer also promotes meaningful terminal state transitions to `conversation_state` — there is no information loss. |
+| Keep `SystemPromptEvent`, `Condensation*Event`, `PauseEvent`, and user `MessageEvent` visible as collapsed rows | Each carries genuine user-facing meaning that `ConversationStateUpdateEvent` does not — system prompt is a one-time setup the user can audit, condensations explain why context shifted mid-turn, pause is a real user action with intent, and the user MessageEvent shows the exact text dispatched (including any system suffix). All collapsed by default, low visual weight. |
 | Translate `InvokeSkillAction` to a `subagent` DisplayItem (not `tool_call`) | Semantic match: an AgentSkill activation loads a sub-context that drives subsequent actions, mirroring Claude Code's `Agent`/`Task` sub-agent invocations. The existing `SubagentItem` is the right shell. |
 | Translate `ThinkAction` to a `thinking` DisplayItem | Matches the existing `ThinkingItem` shell (Brain icon, collapsed, low contrast). Reads as agent intent, not as a tool action. |
 | Lifecycle chip on chat header, not a timeline card | `starting` / `running` / `completed` / `error` / `cancelled` is frame state, not content. A card per transition is noise. |
@@ -51,7 +52,11 @@ The decision was surfaced by the VU-1155 Refine migration but applies to **every
 
 The agent-store owns the projection. Each incoming OpenHands event is processed by `addConversationEvent` which (a) appends to `run.conversationEvents` for the audit trail AND (b) drives a derived `DisplayItem` mutation on `run.displayItems`.
 
-**No event is dropped.** Every `conversation_event` produces at least one `DisplayItem` mutation (an add or an update). The projection decides **visual weight** — high-signal events become prominent cards, low-signal events become collapsed low-contrast rows — but every native event is reachable in the rendered UI without leaving the chat surface. `conversationEvents` is preserved as the immutable raw audit trail; the projected `displayItems` is the rendered surface.
+**No event is dropped from the audit trail.** Every `conversation_event` is appended to `run.conversationEvents` exactly as received. The projection layer then decides what the chat shows.
+
+**Editorial rule for the chat surface:** every **user-facing** event becomes at least one `DisplayItem`; **pure internal-state events** (`ConversationStateUpdateEvent`) are suppressed. The projection decides **visual weight** for the rest — high-signal events (the agent's reply, errors, tool actions) become prominent cards; low-signal-but-meaningful events (system prompt, condensation, pause, user prompt echo) become collapsed low-contrast rows. Internal counter/state churn does not appear in the chat at all because the lifecycle chip already represents the user-facing transitions and the JSON diffs are not content.
+
+`conversationEvents` is preserved as the immutable raw audit trail with **all** events including the suppressed `ConversationStateUpdateEvent`s; the projected `displayItems` is the editorial chat view.
 
 ### Event → store behavior → display output
 
@@ -62,7 +67,7 @@ The agent-store owns the projection. Each incoming OpenHands event is processed 
 | `conversation_state` `status: error` / `cancelled` | Update status; append an `error` DisplayItem if `error_detail` is meaningful | "OpenHands failed: {reason}" or "Cancelled by user" |
 | `SystemPromptEvent` | Append both; project as a `tool_call`-shaped DisplayItem with `toolName: "system_prompt"`, `toolStatus: "ok"`, raw prompt text in `toolResult.content` | Collapsed "Runtime setup" row, low visual weight; expand to see the full system prompt |
 | `Condensation*Event` | Append both; project as a `tool_call`-shaped DisplayItem with `toolName: "condensation"` | Collapsed "Context condensed" row; expand to see the summary if present |
-| `ConversationStateUpdateEvent` | Append both; project as a `tool_call`-shaped DisplayItem with `toolName: "state_update"` | Collapsed "Lifecycle update" row; expand to see the key/value transition. Terminal transitions still surface as the lifecycle chip via `conversation_state` |
+| `ConversationStateUpdateEvent` | Append to `conversationEvents` only; **no DisplayItem** | **Hidden from chat.** Lifecycle chip in the chat header carries the user-facing transitions; intermediate token/state diffs are not content. Audit trail in `conversationEvents` is intact for any future dev-tools surface. |
 | `MessageEvent` `source: user` | Append to `conversationEvents`; append a collapsed `tool_call`-shaped DisplayItem with `toolName: "task_sent"` | Collapsed "Task sent" row; expand to see the full prompt that was dispatched |
 | `MessageEvent` `source: agent` (mid-run) | Append both | `output` DisplayItem with parsed-summary or markdown |
 | `ActionEvent` (no observation yet) | Pending tool/subagent/thinking DisplayItem keyed on `tool_call_id` | Card in `pending` state with verb-target summary |
@@ -191,7 +196,18 @@ Mutating in place preserves React keys and any user-controlled expand state.
 | `app/src/components/refine/agent-turn-inline.tsx` | Reverts to `DisplayItemList` |
 | `app/src/components/refine/chat-panel.tsx` | Adds lifecycle chip |
 
+## Wire-format note: `kind` is the SDK's discriminator
+
+OpenHands SDK events arrive on the WebSocket with `kind: "ActionEvent"` (etc.) as the type discriminator, not `event_class`. The Rust normalizer in `app/src-tauri/src/agents/openhands_server/events.rs::normalize_server_event` and the frontend normalizer in `app/src/lib/openhands-conversation-events.ts::normalizeConversationEventMessage` both fall back to `kind` when `event_class` / `eventClass` are absent. Without this fallback every live event ends up labelled `event_class: "event"` (the literal hard-coded fallback string) and the projection routes everything through the unknown-event branch.
+
+Keep both fallback chains in sync: any future SDK that introduces a different discriminator field needs to be added in both places.
+
+## Known limitations / follow-ups
+
+| Issue | Symptom | Status |
+|---|---|---|
+| Persistence dirs are created but no JSONL is written | `~/Library/Application Support/com.vibedata.skill-builder/workspace/skills/{skill}/logs/{agent_id}-{ts}/` is empty for every run after the OpenHands runtime migration. The hr-analytics May 2 / measuring-pipeline-value May 3 transcripts (which fed the fixture tests) exist because earlier code paths wrote them. | Open — `create_openhands_persistence_dir` creates the dir, but the OpenHands SDK conversation-log writer is not wired to it. The audit trail lives only in memory (`run.conversationEvents`) until this is fixed. Tracked as a follow-up in the implementation plan. |
+
 ## Open Questions
 
-1. `[design]` Should the projection include a hidden `system` row for SystemPromptEvent (collapsed, never expanded by default) so power users can audit prompt setup without opening dev tools? Defer — current proposal hides them entirely; revisit when a user actually needs prompt-debug visibility in the UI.
-2. `[design]` Should `MessageEvent` from the agent during the run (not the final terminal one) render as a standalone `output` DisplayItem, or be deferred to the terminal `conversation_state` summary path? The agent rarely emits mid-run MessageEvents in practice, but if it does they should appear immediately. Initial implementation: project mid-run agent MessageEvents as `output` items; the terminal summary takes over only when there is no agent MessageEvent at end of run.
+1. `[design]` Should `MessageEvent` from the agent during the run (not the final terminal one) render as a standalone `output` DisplayItem, or be deferred to the terminal `conversation_state` summary path? The agent rarely emits mid-run MessageEvents in practice, but if it does they should appear immediately. Initial implementation: project mid-run agent MessageEvents as `output` items; the terminal summary takes over only when there is no agent MessageEvent at end of run.
