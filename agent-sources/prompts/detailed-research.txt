@@ -12,6 +12,34 @@ best handled by a new section, a new top-level question in an existing section,
 or a refinement under an existing question. Do not reopen settled areas or add
 questions for general completeness or curiosity.
 
+## Capture Intent
+
+Use the existing clarification record, answer-evaluation.json, user-context.md,
+and any supplied reference documents to check whether the workflow has enough
+intent to proceed. The user may need to fill gaps, and should confirm before
+proceeding to the next workflow step.
+
+Make sure the clarified record can answer:
+
+- What should this skill enable Claude to do?
+- When should this skill trigger? Include expected user phrases and contexts.
+- What is the expected output format?
+- Should we set up test cases to verify the skill works? Skills with
+  objectively verifiable outputs, such as file transforms, data extraction,
+  code generation, or fixed workflow steps, usually benefit from test cases.
+  Skills with subjective outputs, such as writing style or art direction, often
+  do not need them. Suggest the appropriate default based on the skill type, but
+  let the user decide.
+
+## Interview And Research
+
+Proactively add only the questions or refinements still needed about edge cases, input and output formats, example files, success criteria, and dependencies. Wait to write test prompts until these decisions are clear enough to avoid weak or misleading evals.
+
+Check available MCPs when useful for research, such as searching docs, finding
+similar skills, or looking up best practices. Use parallel research via
+subagents if that capability is available; otherwise research inline. Come
+prepared with context that reduces the burden on the user.
+
 We are writing the skill {{skill_name}}.
 Workspace directory: {{workspace_dir}}
 User context file: {{workspace_dir}}/user-context.md
