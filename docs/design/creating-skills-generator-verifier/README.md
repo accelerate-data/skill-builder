@@ -18,7 +18,8 @@ into a new focused skill under `agent-sources/skills`.
 The new skill should be a creation-time authoring helper for the single
 OpenHands `skill-creator` agent. The app-owned step 3 prompt reads workflow
 context files, synthesizes the generation brief, invokes the focused creation
-guidance, and expects generated skill files plus base eval definitions.
+guidance, and expects generated skill files. Durable eval cases are owned by the
+app Eval Workbench after generation, not by step 3.
 
 ## Design Scope
 
@@ -30,7 +31,7 @@ guidance, and expects generated skill files plus base eval definitions.
 - The Generator-Verifier loop that validates generated artifacts in fresh
   context before step 3 returns.
 - The description drafting responsibility inside generation.
-- Base eval definition creation for future human or automated review.
+- The hard boundary that step 3 does not create or suggest eval content.
 
 **Does not cover**
 
@@ -50,8 +51,8 @@ guidance, and expects generated skill files plus base eval definitions.
 | Keep workflow JSON loading in the step 3 prompt. | `clarifications.json`, `decisions.json`, and `user-context.md` are workflow artifacts. The prompt knows their exact paths and should read them before generation. The skill should receive the synthesized requirements, not rediscover workflow state. |
 | Use the same OpenHands `skill-creator` agent. | Clean-break workflow routing varies task prompts and skills, not top-level agent identities. |
 | Fold description quality into generation. | Trigger description quality is part of writing a usable skill. It should be handled while drafting `SKILL.md`, not by a separate optimization phase. |
-| Keep validation in the copied skill through a Generator-Verifier loop. | Fresh-context validation catches leakage, missing files, weak descriptions, and eval drift before the workflow materializes the generated skill. |
-| Create base eval definitions but do not run them. | Step 3 should leave useful test prompts and expectations for later review. Running or improving against evals belongs to later flows. |
+| Keep validation in the copied skill through a Generator-Verifier loop. | Fresh-context validation catches leakage, missing files, and weak descriptions before the workflow materializes the generated skill. |
+| Keep eval creation out of step 3. | Step 3 should not create generation-owned eval artifacts or semi-structured eval suggestions. The app Eval Workbench owns durable prompt cases, assertions, runs, and history after generation. |
 
 ## Target Runtime Shape
 
@@ -64,7 +65,7 @@ workflow step 3
       ├── synthesize generation brief
       └── OpenHands Agent(name: skill-creator)
           └── use creating-skills guidance
-              ├── generate SKILL.md, references, evals.json
+              ├── generate SKILL.md and references
               ├── draft trigger description carefully
               ├── spawn fresh-context verifier subagent
               ├── fix material findings
@@ -88,7 +89,6 @@ avoid generic ReAct exploration:
   - `{workspace_dir}/context/decisions.json`
   - `{skill_output_dir}/SKILL.md`
   - `{skill_output_dir}/references/`
-  - `{workspace_dir}/evals/evals.json`
 - The prompt instructs the agent to read the workflow JSONs and produce a
   concise generation brief from them.
 - The prompt instructs the agent to use the focused `creating-skills` guidance
@@ -111,7 +111,7 @@ Its frontmatter should describe when to use it, not the workflow step:
 ```yaml
 ---
 name: creating-skills
-description: Use when writing a new skill from already-clarified requirements, decisions, examples, constraints, and expected outputs, including drafting SKILL.md, shipped references, base eval definitions, and validating generated files.
+description: Use when writing a new skill from already-clarified requirements, decisions, examples, constraints, and expected outputs, including drafting SKILL.md, shipped references, and validating generated files.
 ---
 ```
 
@@ -124,15 +124,19 @@ provided:
 - trigger contexts and exclusions;
 - expected outputs;
 - tools or external resources the skill may need;
-- validation and eval expectations.
+- validation expectations.
 
 The skill should generate:
 
 - `{skill_output_dir}/SKILL.md`
 - shipped references under `{skill_output_dir}/references/` only when they add
-  reusable value;
-- `{eval_dir}/evals.json` with base eval definitions, stable slugs, prompts, and
-  fixed expectations.
+  reusable value.
+
+It should not create `evals/evals.json`, iteration folders, review HTML, or
+Promptfoo config files during skill generation. It should also avoid prompt
+cases, assertion ideas, trigger/non-trigger eval examples, or manual eval
+criteria. Eval creation is an explicit app Eval Workbench workflow after the
+skill exists.
 
 ## Generator-Verifier Loop
 
@@ -167,10 +171,10 @@ The verifier should check:
 - The body implements the confirmed decisions and expected outputs.
 - Required tools, inputs, outputs, and constraints are clear.
 - Reference files are necessary, linked, and shipped under `references/`.
-- Base evals exist with stable names, slugs, prompts, and expectations.
 - Workflow artifacts such as `clarifications.json` and `decisions.json` do not
   leak into shipped skill instructions.
-- No eval execution, benchmark aggregation, review viewer, commit, tag, blind
+- No eval definitions, eval suggestions, iteration folders, Promptfoo configs,
+  eval execution, benchmark aggregation, review viewer, commit, tag, blind
   comparison, or description optimization artifact was created.
 
 ## Output And Failure Behavior
@@ -188,7 +192,6 @@ Step 3 should keep its existing JSON envelope:
     "read clarifications when needed",
     "used creating-skills",
     "wrote SKILL.md",
-    "wrote evals.json",
     "verified generated files"
   ]
 }

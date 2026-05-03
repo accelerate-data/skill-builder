@@ -7,12 +7,17 @@
       "name": "npm",
       "lockfile": "app/package-lock.json",
       "manifest": "app/package.json",
-      "workspaces": ["app/sidecar"]
+      "workspaces": ["app/sidecar", "app/promptfoo-sidecar"]
     },
     {
       "name": "npm (sidecar)",
       "lockfile": "app/sidecar/package-lock.json",
       "manifest": "app/sidecar/package.json"
+    },
+    {
+      "name": "npm (promptfoo sidecar)",
+      "lockfile": "app/promptfoo-sidecar/package-lock.json",
+      "manifest": "app/promptfoo-sidecar/package.json"
     },
     {
       "name": "npm (evals)",
@@ -28,7 +33,10 @@
   "build_systems": [
     {
       "name": "Tauri 2",
-      "config_files": ["app/src-tauri/tauri.conf.json", "app/src-tauri/Cargo.toml"],
+      "config_files": [
+        "app/src-tauri/tauri.conf.json",
+        "app/src-tauri/Cargo.toml"
+      ],
       "notes": "Bundles frontend (Vite), Rust backend, sidecar dist, and agent-sources as app resources. Identifier: com.vibedata.skill-builder. CSP allows Anthropic API + GitHub API. Dev port: DEV_PORT (default 1420), HMR on DEV_PORT+1."
     },
     {
@@ -40,6 +48,14 @@
       "name": "esbuild (sidecar)",
       "config_files": ["app/sidecar/build.js"],
       "notes": "Compiles TypeScript sidecar to `app/sidecar/dist/` for Tauri bundling. No hot-reload — restart `npm run dev` after editing sidecar source."
+    },
+    {
+      "name": "tsc (Promptfoo sidecar)",
+      "config_files": [
+        "app/promptfoo-sidecar/tsconfig.json",
+        "app/promptfoo-sidecar/vitest.config.ts"
+      ],
+      "notes": "Compiles the embedded Promptfoo sidecar TypeScript runner to app/promptfoo-sidecar/dist/ for Tauri bundling."
     },
     {
       "name": "GitHub Actions",
@@ -86,7 +102,8 @@
     "rust_backend": "app/src-tauri/src/main.rs",
     "rust_lib": "app/src-tauri/src/lib.rs",
     "sidecar": "app/sidecar/agent-runner.ts",
-    "sidecar_build": "app/sidecar/build.js"
+    "sidecar_build": "app/sidecar/build.js",
+    "promptfoo_sidecar": "app/promptfoo-sidecar/src/runner.ts"
   },
   "modules": {
     "frontend_components": {
@@ -111,15 +128,15 @@
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
-      "description": "Tauri command handlers. Flat files: agent, api_validation, evals (list_test_cases, save_test_case, delete_test_case, list_iterations), feedback, files, git, github_auth, lifecycle, mod, node, reconciliation, settings, sidecar_lifecycle, test_utils, usage, workflow_artifacts, workflow_lifecycle, workflow_session, workspace. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, guards, prompt, runtime, evaluation, settings, tests, user_context), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands, updates), skill/ (crud, export, metadata, suggestions, scope_review, tests), refine/ (content, diff, output, protocol, tests), documents/ (list_documents, list_skills_for_documents, add_document_file, add_document_url, add_document_folder, update_document, delete_document), description/ (mod.rs: run_optimization_loop/cancel/apply_description/eval-query persistence commands; loop_runner.rs: iterative improve→eval→gate loop; eval.rs: parallel sidecar-pool eval with per-run isolated workspaces; improve.rs: Claude API description improvement)"
+      "description": "Tauri command handlers. Flat files: agent, api_validation, evals (legacy test-case and eval-artifact commands), feedback, files, git, github_auth, lifecycle, mod, node, reconciliation, settings, sidecar_lifecycle, test_utils, usage, workflow_artifacts, workflow_lifecycle, workflow_session, workspace. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, guards, prompt, runtime, evaluation, settings, tests, user_context), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands, updates), skill/ (crud, export, metadata, suggestions, scope_review, tests), refine/ (content, diff, output, protocol, tests), documents/ (list_documents, list_skills_for_documents, add_document_file, add_document_url, add_document_folder, update_document, delete_document), description/ (legacy description optimization/eval-query commands), eval_workbench/ (Promptfoo-backed workbench prompt-set, run, description-candidate, and refine-brief command scaffold)."
     },
     "rust_db": {
       "path": "app/src-tauri/src/db/",
-      "description": "SQLite schema, migrations (code-only), and query helpers. Sub-modules: mod.rs (Db struct, init_db, pub use re-exports), migrations.rs (NUMBERED_MIGRATIONS + migration functions), skills.rs (skill CRUD/workflow runs/steps/tags + plugin CRUD: create_plugin, ensure_plugin, list_plugins, delete_plugin_by_slug, move_skill_to_plugin, plugins table management), usage.rs (persist_agent_run/usage queries), settings.rs (read/write settings), imported_skills.rs (imported skill CRUD/hash tracking), locks.rs (skill locks/check_pid_alive), workflow.rs (workflow sessions), documents.rs (document store CRUD: db_insert_document, db_list_documents, db_get_document, db_update_document_scope, db_delete_document, db_documents_for_skill), tests.rs (all DB tests)."
+      "description": "SQLite schema, migrations (code-only), and query helpers. Sub-modules: mod.rs (Db struct, init_db, pub use re-exports), migrations.rs (NUMBERED_MIGRATIONS + migration functions), skills.rs (skill CRUD/workflow runs/steps/tags + plugin CRUD: create_plugin, ensure_plugin, list_plugins, delete_plugin_by_slug, move_skill_to_plugin, plugins table management), usage.rs (persist_agent_run/usage queries), settings.rs (read/write settings), imported_skills.rs (imported skill CRUD/hash tracking), locks.rs (skill locks/check_pid_alive), workflow.rs (workflow sessions), documents.rs (document store CRUD), eval_workbench.rs (Promptfoo workbench prompt sets, cases, runs, results, and description candidates), tests.rs (all DB tests)."
     },
     "rust_agents": {
       "path": "app/src-tauri/src/agents/",
-      "description": "Agent runtime. Files: openhands_server/ (Rust-managed local OpenHands Agent Server process, REST client, WebSocket event stream, one-shot facade), sidecar_pool/ (directory module — pool.rs: SidecarPool struct + idle cleanup, dispatch.rs: request dispatch + streaming + shutdown, process.rs: process primitives + heartbeat + stdout handler, startup_error.rs: SidecarStartupError + terminal status), events.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), sidecar.rs (sidecar config plus legacy Claude sidecar spawning), sidecar_path.rs (resolves sidecar binary path), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
+      "description": "Agent runtime. Files: openhands_server/ (Rust-managed local OpenHands Agent Server process, REST client, WebSocket event stream, one-shot facade), promptfoo_sidecar/ (embedded Promptfoo sidecar path resolver and JSONL protocol scaffold), sidecar_pool/ (directory module — pool.rs: SidecarPool struct + idle cleanup, dispatch.rs: request dispatch + streaming + shutdown, process.rs: process primitives + heartbeat + stdout handler, startup_error.rs: SidecarStartupError + terminal status), events.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), sidecar.rs (sidecar config plus legacy Claude sidecar spawning), sidecar_path.rs (resolves legacy sidecar binary path), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
     },
     "sidecar_runner": {
       "path": "app/sidecar/agent-runner.ts",
@@ -172,6 +189,10 @@
     "frontend_test_utils": {
       "path": "app/src/test/",
       "description": "Frontend test infrastructure: setup.ts (global Vitest setup), fixtures.ts (shared test data factories), query-test-utils.tsx (TanStack Query render helper), mocks/ (Tauri invoke mocks, store mocks, router mocks used across unit and component tests)."
+    },
+    "promptfoo_sidecar": {
+      "path": "app/promptfoo-sidecar/",
+      "description": "Embedded Node/TypeScript sidecar for Promptfoo orchestration. src/runner.ts reads JSONL requests and streams JSONL events, protocol.ts defines request/event contracts, result-normalizer.ts normalizes Promptfoo results, and src/__tests__/ covers the protocol and normalizer."
     }
   },
   "key_directories": {
@@ -194,13 +215,15 @@
     "docs/references/": "Vendored external reference docs (e.g. Anthropic API snapshots)",
     ".claude/rules/": "Shared agent rules (agent-agnostic, detailed policy). Referenced from AGENTS.md.",
     ".claude/repo-map.schema.json": "Schema for repo-map.json",
-    "scripts/": "Developer and automation scripts. worktree.sh is the canonical maintainer helper for creating development worktrees and bootstrapping app/eval dependencies. check-help-docs.mjs verifies app/VitePress help links against docs/user-guide. verify-release-stage.mjs verifies staged release archives include required runtime resources. verify-repo-map.mjs audits repo-map command/page/store inventory against the filesystem."
+    "scripts/": "Developer and automation scripts. worktree.sh is the canonical maintainer helper for creating development worktrees and bootstrapping app/eval dependencies. check-help-docs.mjs verifies app/VitePress help links against docs/user-guide. verify-release-stage.mjs verifies staged release archives include required runtime resources. verify-repo-map.mjs audits repo-map command/page/store inventory against the filesystem.",
+    "app/promptfoo-sidecar/": "Embedded Promptfoo sidecar package compiled to dist/ and bundled as promptfoo-sidecar/dist in Tauri resources."
   },
   "dependencies_internal": {
     "frontend → rust": "Via Tauri IPC (`invoke()` from @tauri-apps/api/core)",
     "rust → sidecar": "Node.js child process, stdin/stdout JSONL protocol",
     "sidecar → agent runtime": "Via runtime/claude-runtime.ts using @anthropic-ai/claude-agent-sdk for Claude runs. OpenHands runs through the Rust-managed Agent Server path, not the Node sidecar",
-    "frontend → sidecar_events": "Typed via agent-events.ts contract, received as Tauri events"
+    "frontend → sidecar_events": "Typed via agent-events.ts contract, received as Tauri events",
+    "rust → promptfoo sidecar": "Node.js child process, stdin/stdout JSONL protocol; Rust owns OpenHands execution and persistence while the sidecar owns Promptfoo orchestration."
   },
   "dependencies_external": {
     "runtime": {
@@ -247,7 +270,9 @@
     "cargo_check": "cargo check --manifest-path app/src-tauri/Cargo.toml",
     "lint_md": "markdownlint <file>",
     "lint_agent_docs": "bash app/scripts/lint-agent-docs.sh",
-    "sidecar_build": "cd app && npm run sidecar:build"
+    "sidecar_build": "cd app && npm run sidecar:build",
+    "promptfoo_sidecar_build": "cd app && npm run promptfoo-sidecar:build",
+    "promptfoo_sidecar_test": "cd app/promptfoo-sidecar && npm test"
   },
   "conventions": {
     "typescript_files": "kebab-case (skill-card.tsx, settings-store.ts)",

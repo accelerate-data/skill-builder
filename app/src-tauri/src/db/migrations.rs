@@ -46,6 +46,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (41, run_reset_legacy_tags_migrated),
     (42, run_performance_indexes_migration),
     (43, run_openhands_settings_migration),
+    (44, run_eval_workbench_migration),
 ];
 
 pub(super) fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -183,6 +184,71 @@ pub(super) fn run_openhands_settings_migration(_conn: &Connection) -> Result<(),
     // clean break: legacy Anthropic/OpenHands fields are not backfilled into the
     // canonical `model_settings` object.
     Ok(())
+}
+
+pub(super) fn run_eval_workbench_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS eval_prompt_sets (
+            id TEXT PRIMARY KEY,
+            plugin_slug TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS eval_prompt_cases (
+            id TEXT PRIMARY KEY,
+            prompt_set_id TEXT NOT NULL REFERENCES eval_prompt_sets(id) ON DELETE CASCADE,
+            prompt TEXT NOT NULL,
+            expected TEXT,
+            should_trigger INTEGER,
+            assertions_json TEXT NOT NULL,
+            sort_order INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS eval_runs (
+            id TEXT PRIMARY KEY,
+            prompt_set_id TEXT NOT NULL REFERENCES eval_prompt_sets(id) ON DELETE CASCADE,
+            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            status TEXT NOT NULL,
+            summary_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            completed_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS eval_run_results (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES eval_runs(id) ON DELETE CASCADE,
+            case_id TEXT NOT NULL,
+            candidate_id TEXT NOT NULL,
+            passed INTEGER NOT NULL,
+            score REAL NOT NULL,
+            output_json TEXT NOT NULL,
+            reason TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS description_candidates (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES eval_runs(id) ON DELETE CASCADE,
+            label TEXT NOT NULL,
+            description TEXT NOT NULL,
+            rationale TEXT,
+            rank INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_eval_prompt_sets_skill_mode
+            ON eval_prompt_sets(plugin_slug, skill_name, mode, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_eval_prompt_cases_set_order
+            ON eval_prompt_cases(prompt_set_id, sort_order);
+        CREATE INDEX IF NOT EXISTS idx_eval_runs_prompt_set_mode_created
+            ON eval_runs(prompt_set_id, mode, created_at);
+        CREATE INDEX IF NOT EXISTS idx_eval_run_results_run
+            ON eval_run_results(run_id);
+        CREATE INDEX IF NOT EXISTS idx_description_candidates_run_rank
+            ON description_candidates(run_id, rank);",
+    )
 }
 
 pub(super) fn run_plugin_ownership_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
