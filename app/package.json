@@ -32,6 +32,7 @@
     "test:agents": "npm run test:agents:structural && npm run test:agents:smoke",
     "test:agents:structural": "vitest run --config vitest.config.agent.ts agent-tests/agent-structure.test.ts",
     "test:agents:smoke": "cd ../tests/evals && npm run eval:agents",
+    "test:repo-map": "node --test ../scripts/verify-repo-map.test.mjs && node ../scripts/verify-repo-map.mjs ..",
     "test:scope-advisor:smoke": "cd ../tests/evals && npm run eval:scope-advisor",
     "test:evals:harness": "cd ../tests/evals && npm test",
     "test:openhands:live-smoke": "node ../scripts/openhands-agent-server-live-smoke.mjs",
