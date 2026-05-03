@@ -1,6 +1,12 @@
 # OpenHands-Native Migration
 
 > **Status:** Draft
+> **Runtime update:** The PyInstaller `openhands-runner` execution model in
+> this document is superseded by
+> `docs/design/openhands-agent-server-runtime/README.md`. The agent topology,
+> prompt ownership, `.agents/**` workspace layout, and app-facing event
+> semantics remain useful where they do not conflict with the Agent Server
+> runtime design.
 
 ## Overview
 
