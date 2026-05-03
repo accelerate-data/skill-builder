@@ -9,10 +9,91 @@
   "tests": [
     {
       "description": "[smoke] research emits final-only canonical clarifications",
+      "vars": {
+        "skill_name": "fabric-dbt-standards",
+        "skill_slug": "fabric-dbt-standards",
+        "user_context": "Purpose is organization specific data engineering standards. Description asks for a skill for analytics engineers building dbt models on Microsoft Fabric, but the team has not yet defined its bronze/silver/gold rules, reconciliation expectations, data quality rules, dlt handoff, deployment standards, or CI review expectations.",
+        "scope_instruction": "This context is in scope and should produce at least one section and at least one question."
+      },
       "assert": [
         {
           "type": "javascript",
           "value": "(() => { const trimmed = output.trim(); if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return false; const data = JSON.parse(trimmed); const forbidden = new Set(['dimensions_selected', 'research_plan', 'research_lens', 'dimension_scores', 'selected_dimensions', 'topic_relevance', 'dimensions_evaluated', 'options', 'label', 'required', 'kind']); const walk = (value) => { if (Array.isArray(value)) return value.every(walk); if (value && typeof value === 'object') return Object.entries(value).every(([key, child]) => !forbidden.has(key) && walk(child)); return true; }; const sections = data.research_output && Array.isArray(data.research_output.sections) ? data.research_output.sections : []; const questions = sections.flatMap((s) => Array.isArray(s.questions) ? s.questions : []); const allSectionsCanonical = sections.every((s) => Number.isInteger(s.id) && typeof s.title === 'string' && Array.isArray(s.questions) && s.questions.every((q) => q && typeof q === 'object' && !Array.isArray(q))); const allRefinementsEmpty = questions.every((q) => Array.isArray(q.refinements) && q.refinements.length === 0); const text = JSON.stringify(data).toLowerCase(); const noMultiSelectLanguage = !text.includes('select all') && !text.includes('choose all') && !text.includes('all that apply') && !text.includes('multiple answers'); const choicesAreSingleSelectShape = questions.every((q) => typeof q.id === 'string' && typeof q.title === 'string' && typeof q.text === 'string' && typeof q.must_answer === 'boolean' && Array.isArray(q.choices) && q.choices.length >= 3 && q.choices.length <= 5 && q.choices.filter((c) => c && typeof c.id === 'string' && typeof c.text === 'string' && c.is_other === true).length === 1); const notes = Array.isArray(data.research_output?.notes) ? data.research_output.notes : []; const evaluatorNotes = Array.isArray(data.research_output?.answer_evaluator_notes) ? data.research_output.answer_evaluator_notes : []; const noteShape = [...notes, ...evaluatorNotes].every((n) => n && typeof n.type === 'string' && typeof n.title === 'string' && typeof n.body === 'string'); return data.status === 'research_complete' && !('dimensions_selected' in data) && Number.isInteger(data.question_count) && data.research_output && !('questions' in data.research_output) && data.research_output.version === '1' && data.research_output.metadata && data.question_count === questions.length && data.research_output.metadata.question_count === questions.length && questions.length > 0 && sections.length > 0 && allSectionsCanonical && data.research_output.metadata.refinement_count === 0 && Array.isArray(data.research_output.metadata.priority_questions) && !('research_plan' in data.research_output.metadata) && Array.isArray(data.research_output.sections) && Array.isArray(data.research_output.notes) && Array.isArray(data.research_output.answer_evaluator_notes) && allRefinementsEmpty && noMultiSelectLanguage && choicesAreSingleSelectShape && noteShape && walk(data); })()"
+        }
+      ]
+    },
+    {
+      "description": "[positive] business-process research asks business-rule questions not file-format contracts",
+      "vars": {
+        "skill_name": "measuring-pipeline-value",
+        "skill_slug": "measuring-pipeline-value",
+        "user_context": "Purpose is business process knowledge. Description asks for a skill that helps analytics engineers model Salesforce opportunity pipeline value in a Fabric Lakehouse and dbt workspace. The skill should capture opportunity stages, weighted amount calculations, booking logic, sales reporting hierarchy, forecast categories, and reconciliation to finance bookings. Source data may come from Salesforce exports today, but the skill is not an extraction or file-ingestion skill.",
+        "scope_instruction": "This context is in scope and should produce at least one section and at least one question."
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { const data = JSON.parse(output.trim()); const sections = data.research_output?.sections || []; const questions = sections.flatMap((s) => s.questions || []); const text = questions.map((q) => `${q.title} ${q.text} ${(q.choices || []).map((c) => c.text).join(' ')}`).join(' ').toLowerCase(); const businessTerms = ['metric', 'calculation', 'stage', 'hierarchy', 'reconciliation', 'booking', 'forecast'].filter((term) => text.includes(term)).length; const modelingTerms = ['fabric', 'lakehouse', 'dbt', 'model'].filter((term) => text.includes(term)).length; const badFormatContract = /(csv|json|soql|file format|upload|spreadsheet).{0,40}(input|contract|format|required|provide)|what file format/i.test(text); return data.status === 'research_complete' && questions.length > 0 && businessTerms >= 3 && modelingTerms >= 1 && !badFormatContract; })()"
+        }
+      ]
+    },
+    {
+      "description": "[positive] source-customization research asks extraction and transformation questions",
+      "vars": {
+        "skill_name": "salesforce-opportunity-ingestion",
+        "skill_slug": "salesforce-opportunity-ingestion",
+        "user_context": "Purpose is source system customizations. Description asks for a skill that helps agents customize Salesforce Opportunity ingestion into a Fabric Lakehouse when Salesforce API behavior, Bulk API CSV batches, JSON responses, CDC replay IDs, custom opportunity fields, custom stage values, deleted records, rate limits, and schema drift affect transformations.",
+        "scope_instruction": "This context is in scope and should produce at least one section and at least one question."
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { const data = JSON.parse(output.trim()); const questions = (data.research_output?.sections || []).flatMap((s) => s.questions || []); const text = questions.map((q) => `${q.title} ${q.text} ${(q.choices || []).map((c) => c.text).join(' ')}`).join(' ').toLowerCase(); const sourceTerms = ['api', 'cdc', 'custom field', 'stage', 'schema drift', 'rate limit', 'transformation', 'extraction', 'field', 'ingestion'].filter((term) => text.includes(term)).length; return data.status === 'research_complete' && questions.length > 0 && sourceTerms >= 3; })()"
+        }
+      ]
+    },
+    {
+      "description": "[positive] data-engineering research asks modeling reconciliation quality dbt dlt Fabric questions",
+      "vars": {
+        "skill_name": "fabric-dbt-standards",
+        "skill_slug": "fabric-dbt-standards",
+        "user_context": "Purpose is organization specific data engineering standards. Description asks for a skill for analytics engineers building dlt pipelines and dbt models on Microsoft Fabric Lakehouse, covering bronze/silver/gold modeling rules, reconciliation concepts, data quality rules, naming conventions, incremental strategy, SCD2 snapshot guidance, deployment standards, and CI review expectations.",
+        "scope_instruction": "This context is in scope and should produce at least one section and at least one question."
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { const data = JSON.parse(output.trim()); const questions = (data.research_output?.sections || []).flatMap((s) => s.questions || []); const text = questions.map((q) => `${q.title} ${q.text} ${(q.choices || []).map((c) => c.text).join(' ')}`).join(' ').toLowerCase(); const terms = ['model', 'reconciliation', 'quality', 'dbt', 'dlt', 'fabric', 'lakehouse', 'deployment'].filter((term) => text.includes(term)).length; return data.status === 'research_complete' && questions.length > 0 && terms >= 6; })()"
+        }
+      ]
+    },
+    {
+      "description": "[positive] platform research asks Fabric Azure environment security deployment questions",
+      "vars": {
+        "skill_name": "fabric-platform-standards",
+        "skill_slug": "fabric-platform-standards",
+        "user_context": "Purpose is organization specific Azure or Fabric standards. Description asks for a skill that helps agents follow Microsoft Fabric and Azure platform standards for workspace naming, Lakehouse endpoint behavior, security boundaries, deployment topology, orchestration, monitoring, managed identities, and environment promotion.",
+        "scope_instruction": "This context is in scope and should produce at least one section and at least one question."
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { const data = JSON.parse(output.trim()); const questions = (data.research_output?.sections || []).flatMap((s) => s.questions || []); const text = questions.map((q) => `${q.title} ${q.text} ${(q.choices || []).map((c) => c.text).join(' ')}`).join(' ').toLowerCase(); const terms = ['fabric', 'azure', 'workspace', 'lakehouse', 'endpoint', 'security', 'deployment', 'orchestration', 'monitoring', 'environment'].filter((term) => text.includes(term)).length; return data.status === 'research_complete' && questions.length > 0 && terms >= 4; })()"
+        }
+      ]
+    },
+    {
+      "description": "[scope] insufficient context triggers scope recommendation",
+      "vars": {
+        "skill_name": "test-skill",
+        "skill_slug": "test-skill",
+        "user_context": "just testing",
+        "scope_instruction": "This context is insufficient and should trigger the scope guard instead of manufacturing questions."
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { const data = JSON.parse(output.trim()); const sections = data.research_output?.sections || []; return data.status === 'research_complete' && data.question_count === 0 && data.research_output?.metadata?.question_count === 0 && (data.research_output?.metadata?.scope_recommendation === true || sections.length === 0); })()"
         }
       ]
     }

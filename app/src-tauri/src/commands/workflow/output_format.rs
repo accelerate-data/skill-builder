@@ -168,6 +168,80 @@ fn strip_single_json_markdown_fence(text: &str) -> &str {
     }
 }
 
+fn validate_generated_skill_output(
+    structured_output: &serde_json::Value,
+    expected_status: &str,
+) -> Result<GenerateSkillOutput, String> {
+    let parsed = serde_json::from_value::<GenerateSkillOutput>(structured_output.clone())
+        .map_err(|e| format!("invalid generate-skill output: {}", e))?;
+    if parsed.status != expected_status {
+        return Err(format!(
+            "invalid generate-skill output: status must be '{}' but got '{}'",
+            expected_status, parsed.status
+        ));
+    }
+    if expected_status == "generated" && parsed.version_bump.as_deref() != Some("1.0.0") {
+        return Err(
+            "invalid generate-skill output: version_bump must be '1.0.0' for generated skills"
+                .to_string(),
+        );
+    }
+    if expected_status != "generated"
+        && parsed
+            .version_bump
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .is_empty()
+    {
+        return Err("invalid generate-skill output: missing version_bump".to_string());
+    }
+    match parsed.call_trace.as_ref() {
+        Some(trace) if !trace.is_empty() && trace.iter().all(|entry| !entry.trim().is_empty()) => {}
+        _ => {
+            return Err(
+                "invalid generate-skill output: call_trace must be a non-empty string array"
+                    .to_string(),
+            );
+        }
+    }
+    if expected_status == "generated" {
+        let trace = parsed.call_trace.as_ref().expect("checked above");
+        let required = [
+            "read-user-context",
+            "read-decisions",
+            "read-clarifications",
+            "synthesize-generation-brief",
+            "use-creating-skills",
+            "write-skill",
+            "fresh-context-verifier-review",
+        ];
+        if let Some(missing) = required
+            .iter()
+            .find(|entry| !trace.iter().any(|actual| actual == *entry))
+        {
+            return Err(format!(
+                "invalid generate-skill output: call_trace missing required entry '{}'",
+                missing
+            ));
+        }
+    }
+    if !parsed.skipped.unwrap_or(false)
+        && parsed
+            .commit_summary
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .is_empty()
+    {
+        return Err(
+            "invalid generate-skill output: missing commit_summary for generated output"
+                .to_string(),
+        );
+    }
+    Ok(parsed)
+}
+
 pub(crate) fn materialize_workflow_step_output_value(
     skill_root: &Path,
     step_id: u32,
@@ -289,12 +363,13 @@ pub(crate) fn materialize_workflow_step_output_value(
             match status {
                 "generated" => {
                     // generate-skill output — write a pending benchmark-meta
-                    log::info!("generate-skill completed for skill={}, skipped={}", skill_root.display(),
-                        structured_output.get("skipped").and_then(|s| s.as_bool()).unwrap_or(false));
-                    let skipped = structured_output
-                        .get("skipped")
-                        .and_then(|s| s.as_bool())
-                        .unwrap_or(false);
+                    let parsed = validate_generated_skill_output(structured_output, "generated")?;
+                    log::info!(
+                        "generate-skill completed for skill={}, skipped={}",
+                        skill_root.display(),
+                        parsed.skipped.unwrap_or(false)
+                    );
+                    let skipped = parsed.skipped.unwrap_or(false);
                     let benchmark_status = if skipped { "skipped" } else { "pending" };
                     let meta = serde_json::json!({
                         "benchmark_status": benchmark_status,
@@ -313,12 +388,13 @@ pub(crate) fn materialize_workflow_step_output_value(
                 }
                 "rewritten" => {
                     // rewrite-skill output — same handling as generate
-                    log::info!("rewrite-skill completed for skill={}, skipped={}", skill_root.display(),
-                        structured_output.get("skipped").and_then(|s| s.as_bool()).unwrap_or(false));
-                    let skipped = structured_output
-                        .get("skipped")
-                        .and_then(|s| s.as_bool())
-                        .unwrap_or(false);
+                    let parsed = validate_generated_skill_output(structured_output, "rewritten")?;
+                    log::info!(
+                        "rewrite-skill completed for skill={}, skipped={}",
+                        skill_root.display(),
+                        parsed.skipped.unwrap_or(false)
+                    );
+                    let skipped = parsed.skipped.unwrap_or(false);
                     let benchmark_status = if skipped { "skipped" } else { "pending" };
                     let meta = serde_json::json!({
                         "benchmark_status": benchmark_status,
@@ -480,15 +556,27 @@ pub(crate) fn publish_commit_and_tag_generated_skill(
             e
         )
     })?;
-    let version = crate::commands::imported_skills::parse_frontmatter_full(&published_content)
-        .version
-        .ok_or_else(|| {
-            format!(
-                "Generated skill '{}' is missing metadata.version in '{}'",
-                skill_name,
-                published_skill_md.display()
-            )
-        })?;
+    let frontmatter = crate::commands::imported_skills::parse_frontmatter_full(&published_content);
+    if !frontmatter.has_metadata_version {
+        return Err(format!(
+            "Generated skill '{}' is missing metadata.version in '{}'",
+            skill_name,
+            published_skill_md.display()
+        ));
+    }
+    let version = frontmatter.version.ok_or_else(|| {
+        format!(
+            "Generated skill '{}' is missing metadata.version in '{}'",
+            skill_name,
+            published_skill_md.display()
+        )
+    })?;
+    if version != "1.0.0" {
+        return Err(format!(
+            "Generated skill '{}' must use metadata.version 1.0.0 but found '{}'",
+            skill_name, version
+        ));
+    }
 
     let commit_message = format!("{}: generated skill", skill_name);
     match crate::git::commit_all(skills_dir, &commit_message).map_err(|e| {

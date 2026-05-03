@@ -224,7 +224,13 @@ pub async fn ensure_workspace_prompts(
     let cmd = claude_md.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        copy_prompts_sync(&agents, &workspace_skills, &bundled_skills, &cmd, &workspace)
+        copy_prompts_sync(
+            &agents,
+            &workspace_skills,
+            &bundled_skills,
+            &cmd,
+            &workspace,
+        )
     })
     .await
     .map_err(|e| format!("Prompt copy task failed: {}", e))?;
@@ -658,7 +664,9 @@ mod tests {
         assert!(workspace
             .join(".agents/skills/creating-skills/SKILL.md")
             .is_file());
-        assert!(!workspace.join(".agents/skills/skill-test/SKILL.md").exists());
+        assert!(!workspace
+            .join(".agents/skills/skill-test/SKILL.md")
+            .exists());
         assert!(skill_dir.join(".agents/agents/skill-creator.md").is_file());
         assert!(skill_dir
             .join(".agents/skills/researching-skill-requirements/SKILL.md")

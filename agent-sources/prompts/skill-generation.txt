@@ -24,11 +24,42 @@ The decisions file is the canonical input for this step. Use clarifications and
 user context only to fill in supporting details that do not conflict with the
 confirmed decisions.
 
+Before invoking `creating-skills`, synthesize a generation brief from the
+confirmed decisions. The brief must cover:
+
+- what the generated skill should enable a future agent to do
+- when the generated skill should trigger and when it should not trigger
+- expected input/output behavior, including concrete examples when available
+- confirmed metrics, business rules, calculations, transformation expectations,
+  data quality rules, reporting hierarchies, and platform standards that should
+  become durable skill guidance
+- whether base eval definitions should be written, and why
+- the exact output paths above
+- the verification contract below
+
+Pass this brief to `creating-skills` as the caller-provided generation brief,
+and keep the raw contents of `user-context.md`, `decisions.json`, and
+`clarifications.json` available in context for the skill. Do not reduce the
+handoff to only the summary brief; `creating-skills` must be able to use exact
+question wording, answers, decisions, implications, examples, and notes from the
+raw artifacts.
+
 Write the generated skill files under `{{skill_output_dir}}`. The generated
 package should include:
 
 - `SKILL.md`
 - focused reference files when they make the skill easier to use or maintain
+
+The generated `SKILL.md` must include frontmatter with a trigger-focused
+`description` and nested `metadata.version` so the publish step can validate
+and tag the generated package:
+
+---
+name: "{{skill_name}}"
+description: "Trigger-focused description"
+metadata:
+  version: "1.0.0"
+---
 
 Write base eval definitions to `{{workspace_dir}}/evals/evals.json` when the
 skill has objectively checkable behavior. If the `evals` directory does not
@@ -58,9 +89,13 @@ when future agents should load the skill, using trigger conditions and exclusion
 boundaries from the confirmed decisions. Do not run a separate description
 optimization phase.
 
-Use the verifier subagent prompt bundled inside the `creating-skills` skill for
-fresh-context verification. Incorporate material verifier findings, then run the
-verifier again until it passes or only explicitly documented minor issues remain.
+Use the verifier prompt bundled inside the `creating-skills` skill for a
+fresh-context verification pass. Give the verifier only the synthesized
+generation brief, generated files, eval path, and verifier instructions.
+Incorporate material verifier findings, then run exactly one re-verification
+pass. Do not run an unbounded verification loop. If material findings remain
+after the one re-verification pass, return `skipped: true` and explain the
+blocking findings in `commit_summary`.
 
 Do not invoke a separate validator skill.
 Do not invoke a legacy writer agent.
@@ -80,6 +115,7 @@ Return only a raw JSON object with this shape:
     "read-user-context",
     "read-decisions",
     "read-clarifications",
+    "synthesize-generation-brief",
     "use-creating-skills",
     "write-skill",
     "write-references",

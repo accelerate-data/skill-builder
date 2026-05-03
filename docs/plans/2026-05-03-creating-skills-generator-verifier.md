@@ -12,7 +12,8 @@ clean-break scope, move answer-evaluator behavior out of a bundled skill and
 into the app-owned answer-evaluator prompt. The same VU-1152 clean-break work
 also tightens the upstream research and decision process so generated skills
 stay at the correct data-platform abstraction level for dbt, dlt, Microsoft
-Fabric Lakehouse, semantic models, and ontology/business-process modeling.
+Fabric Lakehouse, source-system customization, platform standards, and
+business-process modeling.
 
 **Architecture:** Keep one OpenHands top-level agent, `skill-creator`. The
 app-owned step 3 prompt reads `user-context.md`, `clarifications.json`, and
@@ -42,6 +43,50 @@ in Step 2 confirm-decisions so research can remain exploratory while
 workflow commands, agent structural tests, Promptfoo live evals.
 
 ---
+
+## Post-Rebase Status Sweep
+
+Updated after rebasing this branch onto
+`feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`.
+
+**Already implemented**
+
+- `agent-sources/skills/creating-skills/SKILL.md` exists with creation-only
+  scope, Generator-Verifier guidance, and no standalone skill-validator usage.
+- `agent-sources/skills/creating-skills/references/verifier-subagent-prompt.md`
+  exists and is used as the fresh-context verifier prompt.
+- `agent-sources/prompts/skill-generation.txt` is the app-owned Step 3 prompt.
+  It reads user context, decisions, and clarifications; synthesizes a
+  generation brief; keeps raw artifacts in context; and instructs use of
+  `creating-skills`.
+- Step 3 runtime config routes through native OpenHands one-shot execution with
+  `agent_name: "skill-creator"` and `task_kind: "workflow.skill_generation"`.
+- `agent-sources/workspace/agents/skill-creator.md` includes the
+  workflow-wide skill-building context and lists `creating-skills` and
+  `researching-skill-requirements`.
+- `agent-sources/workspace/skills/researching-skill-requirements/SKILL.md`
+  contains purpose-specific lenses and the abstraction rule that
+  business-process skills should not default to CSV/JSON file-format questions.
+- `agent-sources/prompts/confirm_decisions.txt` contains purpose-aware
+  decision normalization and the Salesforce CSV negative/positive example.
+- `agent-sources/prompts/answer-evaluator.txt` owns the app-specific answer
+  evaluator gate logic, and `answer-evaluator` has been removed from the
+  deployed workspace skill list.
+- Step 3 mock-agent and Rust parser tests include the new `version_bump` and
+  `call_trace` contract.
+
+**Pending after rebase**
+
+- Completed: add strict publish tests proving generated `SKILL.md` must use
+  `metadata.version: 1.0.0`, not legacy top-level `version` and not another
+  metadata version.
+- Completed: loosen the confirm-decisions smoke eval assertion so it checks the
+  presence and usefulness of mandatory purpose/trigger decisions without
+  overfitting to the UI's `needs-review` status.
+- Completed: expand Step 0 research eval coverage for the supported purposes in
+  product scope: business process, data engineering, source customization, and
+  platform standards. Do not add semantic-model or ontology cases in VU-1152.
+- Completed: rerun all mapped quality gates after those pending edits.
 
 ## Linear And Branch Contract
 
@@ -75,12 +120,13 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - Move step 3 generation away from the legacy Node/TS sidecar path and onto the
   Rust-owned OpenHands one-shot runtime path.
 - Add workflow-wide data-platform context to the `skill-creator` OpenHands
-  agent system prompt.
+  agent system prompt for currently supported product flows: business process,
+  source customization, data engineering standards, and platform standards.
 - Add purpose-specific research lenses to
   `agent-sources/workspace/skills/researching-skill-requirements/SKILL.md`.
 - Add Step 2 purpose-aware decision normalization so source/export answers are
-  converted into lakehouse/dbt/dlt/semantic-model build decisions when the
-  selected purpose is business-process or data-engineering knowledge.
+  converted into lakehouse/dbt/dlt build decisions when the selected purpose is
+  business-process or data-engineering knowledge.
 - Fold the app-specific answer-evaluator classification and JSON gate contract
   into `agent-sources/prompts/answer-evaluator.txt`.
 - Remove the bundled answer-evaluator skill from the workspace skill list; it
@@ -89,6 +135,8 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - Add structural and eval coverage for the new contract.
 - Add positive and negative eval scenarios proving research/decision outputs
   preserve the intended abstraction level.
+- Keep semantic-model and ontology eval coverage out of this issue. The main
+  product does not support those flows yet.
 
 **Out of scope**
 
@@ -148,7 +196,7 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 
 ## Task 1: Add Failing Structural Coverage
 
-- [ ] **Step 1: Add a structural test for the focused skill**
+- [x] **Step 1: Add a structural test for the focused skill**
 
 Add coverage under `app/agent-tests/**` asserting:
 
@@ -160,7 +208,11 @@ Add coverage under `app/agent-tests/**` asserting:
 - the skill requires fresh-context verifier review.
 - the skill instructs re-verification once after material fixes.
 
-- [ ] **Step 2: Add forbidden legacy lifecycle assertions**
+Status: covered by direct structural assertions for the focused skill
+frontmatter, trigger-oriented description, Generator-Verifier loop, verifier
+prompt reference, return shape, and one-reverification rule.
+
+- [x] **Step 2: Add forbidden legacy lifecycle assertions**
 
 Assert the copied skill does not include or instruct:
 
@@ -172,7 +224,11 @@ Assert the copied skill does not include or instruct:
 - running evals
 - committing or tagging generated skills
 
-- [ ] **Step 3: Add prompt contract assertions for step 3**
+Status: covered by direct structural assertions that the copied skill does not
+include legacy scripts, lifecycle sections, commit/tag helpers, or release
+mechanics.
+
+- [x] **Step 3: Add prompt contract assertions for step 3**
 
 Add or update tests proving the step 3 prompt:
 
@@ -183,7 +239,7 @@ Add or update tests proving the step 3 prompt:
 - does not tell `creating-skills` to discover workflow JSON files itself;
 - keeps the existing step 3 JSON return shape.
 
-- [ ] **Step 4: Confirm tests fail before implementation**
+- [x] **Step 4: Confirm tests fail before implementation**
 
 Run:
 
@@ -195,9 +251,12 @@ Expected before implementation: structural tests fail because
 `creating-skills` does not exist and step 3 still references the broad
 `skill-creator` guidance.
 
+Status: superseded after rebase because implementation already exists. The
+post-rebase quality gates now provide the proof point.
+
 ## Task 2: Add The Focused Copied Skill
 
-- [ ] **Step 1: Create `agent-sources/skills/creating-skills/SKILL.md`**
+- [x] **Step 1: Create `agent-sources/skills/creating-skills/SKILL.md`**
 
 Use frontmatter:
 
@@ -208,7 +267,7 @@ description: Use when writing a new skill from already-clarified requirements, d
 ---
 ```
 
-- [ ] **Step 2: Copy only creation-relevant guidance**
+- [x] **Step 2: Copy only creation-relevant guidance**
 
 Use the existing "Creating a skill" section as source material, but rewrite it
 around this clean-break contract:
@@ -220,7 +279,7 @@ around this clean-break contract:
 - create base eval definitions with stable slugs and frozen expectations;
 - draft the `description` as a trigger surface.
 
-- [ ] **Step 3: Add explicit exclusions**
+- [x] **Step 3: Add explicit exclusions**
 
 State that the skill must not:
 
@@ -235,7 +294,7 @@ State that the skill must not:
 
 ## Task 3: Encode The Generator-Verifier Loop
 
-- [ ] **Step 1: Add the generator pass**
+- [x] **Step 1: Add the generator pass**
 
 The generator pass should write:
 
@@ -246,7 +305,7 @@ The generator pass should write:
 It should use the caller-provided brief and should not read
 `clarifications.json` or `decisions.json` by itself.
 
-- [ ] **Step 2: Add the verifier subagent contract**
+- [x] **Step 2: Add the verifier subagent contract**
 
 The skill should spawn a verifier subagent in fresh context with only:
 
@@ -256,13 +315,13 @@ The skill should spawn a verifier subagent in fresh context with only:
 
 The verifier should return structured findings, grouped by severity.
 
-- [ ] **Step 3: Add the fix-and-reverify rule**
+- [x] **Step 3: Add the fix-and-reverify rule**
 
 The generator should fix material findings, then re-run the verifier once.
 After the second verification pass, unresolved material findings should block
 success instead of being silently accepted.
 
-- [ ] **Step 4: Add the verifier checklist**
+- [x] **Step 4: Add the verifier checklist**
 
 Require checks for:
 
@@ -279,7 +338,7 @@ Require checks for:
 
 ## Task 4: Update Step 3 Prompt Wiring
 
-- [ ] **Step 1: Locate the clean-break step 3 prompt path**
+- [x] **Step 1: Locate the clean-break step 3 prompt path**
 
 Verify whether step 3 still uses
 `agent-sources/plugins/skill-creator/agents/skill-writer-agent.md` or has been
@@ -289,7 +348,7 @@ If it has not moved yet, move the step 3 user prompt into
 `agent-sources/prompts/skill-generation.txt` or the existing app-owned prompt
 name used by workflow runtime code.
 
-- [ ] **Step 2: Make the prompt read workflow JSON**
+- [x] **Step 2: Make the prompt read workflow JSON**
 
 The prompt should instruct the agent to read:
 
@@ -307,7 +366,7 @@ Then it should synthesize a concise generation brief containing:
 - validation and eval expectations;
 - unresolved constraints that must affect generation.
 
-- [ ] **Step 3: Make the prompt use `creating-skills`**
+- [x] **Step 3: Make the prompt use `creating-skills`**
 
 Change step 3 instructions from the broad `skill-creator` skill to the focused
 `creating-skills` guidance.
@@ -319,7 +378,7 @@ The prompt should preserve:
 - step 3 JSON output shape;
 - contradictory-input and scope-recommendation stub behavior.
 
-- [ ] **Step 4: Verify deployment of `agent-sources/skills`**
+- [x] **Step 4: Verify deployment of `agent-sources/skills`**
 
 Inspect workspace deployment code. If `agent-sources/skills/**` is not copied
 into runtime `.agents/skills/**`, add that directory to the deployment source
@@ -327,7 +386,7 @@ without changing plugin deployment behavior.
 
 ## Task 5: Route Step 3 Through Native OpenHands
 
-- [ ] **Step 1: Add failing Rust routing coverage**
+- [x] **Step 1: Add failing Rust routing coverage**
 
 Add or update workflow tests proving step 3 generation config uses:
 
@@ -343,7 +402,7 @@ Also assert step 3 does not use:
 - the legacy Node/TS sidecar path;
 - the Claude-sidecar compatibility path.
 
-- [ ] **Step 2: Implement the Rust-owned runtime path**
+- [x] **Step 2: Implement the Rust-owned runtime path**
 
 Route step 3 generation through the same native OpenHands one-shot invocation
 pattern used by migrated workflow steps:
@@ -354,7 +413,7 @@ pattern used by migrated workflow steps:
 - The runner creates the single `skill-creator` OpenHands agent.
 - The backend validates and materializes the returned step 3 output.
 
-- [ ] **Step 3: Remove step 3 dependencies on legacy runtime identity**
+- [x] **Step 3: Remove step 3 dependencies on legacy runtime identity**
 
 Ensure step 3 no longer depends on
 `agent-sources/plugins/skill-creator/agents/skill-writer-agent.md` as the
@@ -362,14 +421,14 @@ runtime agent identity. The file may remain as legacy source material until the
 broader cleanup removes obsolete plugin files, but clean-break step 3 must not
 execute through it.
 
-- [ ] **Step 4: Add guard coverage for no legacy sidecar bleed**
+- [x] **Step 4: Add guard coverage for no legacy sidecar bleed**
 
 Add tests or structural guards that fail if step 3 generation is reintroduced
 through the Node/TS sidecar or any Claude compatibility runner.
 
 ## Task 6: Align Evals And Fixtures
 
-- [ ] **Step 1: Update `skill-creator-generate-skill` eval prompts**
+- [x] **Step 1: Update `skill-creator-generate-skill` eval prompts**
 
 Make the eval represent the clean-break step 3 path:
 
@@ -381,7 +440,7 @@ Make the eval represent the clean-break step 3 path:
 - no eval execution, benchmark, blind comparison, description optimization,
   commit, or tag.
 
-- [ ] **Step 2: Update assertions**
+- [x] **Step 2: Update assertions**
 
 Assert the output:
 
@@ -390,14 +449,14 @@ Assert the output:
   `SKILL.md`, writing `evals.json`, and verifier review;
 - does not mention forbidden lifecycle actions.
 
-- [ ] **Step 3: Update mock fixtures if parser tests require it**
+- [x] **Step 3: Update mock fixtures if parser tests require it**
 
 If step 3 mock outputs include broad legacy lifecycle language, update them to
 match the focused generation contract.
 
 ## Task 7: Fold Answer Evaluator Into The App Prompt
 
-- [ ] **Step 1: Move evaluator logic into `agent-sources/prompts/answer-evaluator.txt`**
+- [x] **Step 1: Move evaluator logic into `agent-sources/prompts/answer-evaluator.txt`**
 
 The prompt must include:
 
@@ -411,20 +470,20 @@ The prompt must include:
 - `verdict` thresholds and automatic `gate_decision`;
 - the final raw JSON envelope.
 
-- [ ] **Step 2: Remove the bundled evaluator skill**
+- [x] **Step 2: Remove the bundled evaluator skill**
 
 Delete `agent-sources/workspace/skills/answer-evaluator/SKILL.md` and remove
 `answer-evaluator` from the `skills:` list in
 `agent-sources/workspace/agents/skill-creator.md`.
 
-- [ ] **Step 3: Update tests and eval copy**
+- [x] **Step 3: Update tests and eval copy**
 
 Update structural tests, OpenHands static eval assertions, and
 `skill-content-researcher-answer-evaluator` eval prompt wording so they refer
 to prompt-owned answer-evaluator behavior rather than a bundled
 `answer-evaluator` skill.
 
-- [ ] **Step 4: Preserve backend gate semantics**
+- [x] **Step 4: Preserve backend gate semantics**
 
 Do not change `run_answer_evaluator`, `workflow.answer_evaluator`, or the
 answer-evaluator output schema/materialization contract except where tests need
@@ -432,7 +491,7 @@ to stop asserting that a bundled evaluator skill is loaded.
 
 ## Task 8: Add Purpose-Aware Research And Decision Normalization
 
-- [ ] **Step 1: Add workflow-wide data-platform context**
+- [x] **Step 1: Add workflow-wide data-platform context**
 
 Update `agent-sources/workspace/agents/skill-creator.md` so the
 Skill-Building Context says Skill Builder normally creates reusable guidance
@@ -441,21 +500,20 @@ for agents building data engineering and analytics artifacts:
 - dlt pipelines;
 - dbt models;
 - Microsoft Fabric Lakehouse artifacts;
-- semantic models;
-- ontology and business-process modeling.
+- business-process modeling.
 
 State that generated skills should guide durable data artifacts and business
 logic, not default to one-off calculators over pasted CSV/JSON files.
 
-- [ ] **Step 2: Add purpose-aware research lenses**
+- [x] **Step 2: Add purpose-aware research lenses**
 
 Update
 `agent-sources/workspace/skills/researching-skill-requirements/SKILL.md` with
 purpose-specific guidance:
 
 - Business process knowledge: metrics, business rules, calculation logic,
-  reporting hierarchies, grain, dimensions, semantic-model implications,
-  reconciliation expectations, edge cases, and exclusions.
+  reporting hierarchies, grain, dimensions, lakehouse/dbt modeling
+  implications, reconciliation expectations, edge cases, and exclusions.
 - Data engineering standards: data modeling concepts, reconciliation concepts,
   data quality rules, dbt standards, dlt standards, Fabric Lakehouse standards,
   operational standards, and deployment conventions.
@@ -471,13 +529,14 @@ unless the selected purpose is explicitly source extraction, file ingestion, or
 file handling. For business-process skills, ask about conceptual source
 entities, metric semantics, modeling implications, and validation instead.
 
-- [ ] **Step 3: Add Step 2 decision normalization**
+- [x] **Step 3: Add Step 2 decision normalization**
 
 Update `agent-sources/prompts/confirm_decisions.txt` so decision confirmation
 normalizes exploratory answers into build-ready decisions:
 
 - For business-process purpose, convert source/export answers into source
-  domain, lakehouse, dbt, semantic model, and reconciliation implications.
+  domain, lakehouse, dbt, metric, calculation, reporting hierarchy, and
+  reconciliation implications.
 - For data-engineering purpose, convert general preferences into concrete
   modeling, quality, reconciliation, dbt/dlt, Fabric, and operational
   standards.
@@ -493,9 +552,9 @@ Include a negative example in the prompt:
 - Good: "The skill assumes Salesforce opportunity data is available in the
   Fabric Lakehouse and should define how opportunity stages, amounts,
   probabilities, close dates, and booking logic map into dbt models and
-  semantic measures."
+  business measures."
 
-- [ ] **Step 4: Add positive and negative eval coverage**
+- [x] **Step 4: Add positive and negative eval coverage**
 
 Update affected eval packages so the behavior is covered from both directions:
 
@@ -504,7 +563,7 @@ Update affected eval packages so the behavior is covered from both directions:
   standards for a data-engineering standards skill.
 - Positive business-process scenario: decisions should convert a pipeline-value
   skill into metrics, calculation logic, reporting hierarchies, lakehouse/dbt
-  model implications, semantic measures, and reconciliation checks.
+  model implications, and reconciliation checks.
 - Negative business-process scenario: answers that mention Salesforce CSV,
   JSON, SOQL export, Workbench, or Data Loader must not become the operating
   input contract for the generated business-process skill.
@@ -514,46 +573,125 @@ Update affected eval packages so the behavior is covered from both directions:
 Prefer deterministic eval assertions for prompt contracts and one live eval per
 affected package where model behavior is expected to change.
 
-## Task 9: Run Quality Gates
+## Task 9: Post-Rebase Remaining Work
 
-- [ ] **Step 1: Run agent structural tests**
+- [x] **Step 1: Add strict generated-version publish tests**
+
+Add Rust tests near `publish_commit_and_tag_generated_skill_creates_initial_version_tag`
+covering:
+
+- generated `SKILL.md` with legacy top-level `version: 1.0.0` and no
+  `metadata.version` is rejected;
+- generated `SKILL.md` with `metadata.version: 2.0.0` is rejected.
+
+Decision: this must be done. The implementation now enforces
+`metadata.version`, but tests need to lock the regression down.
+
+- [x] **Step 2: Loosen confirm-decisions smoke eval overfit**
+
+Update
+`tests/evals/packages/skill-content-researcher-confirm-decisions/promptfooconfig.json`
+so the smoke eval verifies:
+
+- a purpose/capability decision exists;
+- a trigger decision exists;
+- the trigger implication mentions description or trigger drafting;
+- decision statuses are valid schema statuses.
+
+Do not require those decisions to use `status: "needs-review"` in the eval
+assertion. The prompt can still ask for editable decisions; the eval should not
+be brittle to UI-specific status choices.
+
+Decision: this must be done. The current eval assertion is too app-shaped.
+
+- [x] **Step 3: Expand Step 0 research eval coverage**
+
+Refactor
+`tests/evals/packages/skill-content-researcher-research/prompt.txt` to use
+package vars for `skill_name`, `skill_slug`, and `user_context`, then add
+coverage in the package config for:
+
+- business-process research: asks about metrics, calculation logic, reporting
+  hierarchy, lakehouse/dbt modeling implications, reconciliation, edge cases,
+  and exclusions; does not turn CSV/JSON/SOQL into the operating input
+  contract;
+- data-engineering research: asks about data modeling, reconciliation, data
+  quality, dbt, dlt, Fabric Lakehouse, operations, and deployment standards;
+- source-customization research: asks about source entities, custom fields,
+  extraction mechanics, CDC/API/export behavior, source business logic, and
+  transformation implications;
+- platform research: asks about Fabric/Azure environment choices, endpoint
+  behavior, workspace/lakehouse conventions, security, deployment,
+  orchestration, and monitoring;
+- insufficient or placeholder context triggers the scope guard instead of
+  manufacturing questions.
+
+Do not add semantic-model or ontology research cases in VU-1152.
+
+Decision: this must be done. One Step 0 smoke eval is not enough for the four
+currently supported purpose lenses.
+
+- [x] **Step 4: Run an independent review after the pending edits**
+
+Use a fresh independent review after Step 1 through Step 3 above are complete.
+The reviewer should verify the current worktree and branch first, then check
+for:
+
+- no legacy Node/TS sidecar bleed in Step 3, Step 0, Step 1, Step 2, or
+  answer-evaluator runtime paths;
+- no stale bundled answer-evaluator skill dependency;
+- no eval overfitting to implementation-only prompt lines;
+- no semantic-model or ontology eval expansion in this issue.
+
+Decision: this must be done before final quality-gate closeout.
+
+Result: the first independent review found blockers in frontmatter guidance,
+Step 3 eval scope, answer-evaluator tool selection, Step 3 eval schema
+strictness, and static eval overfit. Those were fixed. A follow-up review
+confirmed those fixes except it flagged the absence of semantic-model and
+ontology Step 3 eval coverage; that absence is intentional for VU-1152 because
+the product does not support those flows yet.
+
+## Task 10: Run Quality Gates
+
+- [x] **Step 1: Run agent structural tests**
 
 ```bash
 cd app && npm run test:agents:structural
 ```
 
-- [ ] **Step 2: Run workflow Rust tests**
+- [x] **Step 2: Run workflow Rust tests**
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
 ```
 
-- [ ] **Step 3: Run eval harness contract tests**
+- [x] **Step 3: Run eval harness contract tests**
 
 ```bash
 cd tests/evals && npm test
 ```
 
-- [ ] **Step 4: Run the affected live eval**
+- [x] **Step 4: Run the affected live eval**
 
 ```bash
 cd tests/evals && npm run eval:skill-creator-generate-skill
 ```
 
-- [ ] **Step 5: Run the affected answer-evaluator live eval**
+- [x] **Step 5: Run the affected answer-evaluator live eval**
 
 ```bash
 cd tests/evals && npm run eval:skill-content-researcher-answer-evaluator
 ```
 
-- [ ] **Step 6: Run affected research and decision live evals**
+- [x] **Step 6: Run affected research and decision live evals**
 
 ```bash
 cd tests/evals && npm run eval:skill-content-researcher-research
 cd tests/evals && npm run eval:skill-content-researcher-confirm-decisions
 ```
 
-- [ ] **Step 7: Run markdown lint for changed docs**
+- [x] **Step 7: Run markdown lint for changed docs**
 
 ```bash
 npx markdownlint-cli2 docs/design/creating-skills-generator-verifier/README.md docs/plans/2026-05-03-creating-skills-generator-verifier.md
@@ -564,42 +702,51 @@ existing command.
 
 ## Acceptance Criteria
 
-- [ ] Legacy plugin skill remains unchanged.
-- [ ] `agent-sources/skills/creating-skills/SKILL.md` exists with narrow
+- [x] Legacy plugin skill remains unchanged.
+- [x] `agent-sources/skills/creating-skills/SKILL.md` exists with narrow
       creation-only scope.
-- [ ] Step 3 prompt reads workflow JSON files itself and passes a synthesized
+- [x] Step 3 prompt reads workflow JSON files itself and passes a synthesized
       brief into creation guidance.
-- [ ] Step 3 uses `creating-skills`, not the broad legacy `skill-creator`
+- [x] Step 3 uses `creating-skills`, not the broad legacy `skill-creator`
       lifecycle guidance.
-- [ ] Step 3 generation routes through the native Rust-owned OpenHands one-shot
+- [x] Step 3 generation routes through the native Rust-owned OpenHands one-shot
       path with `agentName = "skill-creator"`.
-- [ ] Step 3 generation does not invoke the legacy Node/TS sidecar,
+- [x] Step 3 generation does not invoke the legacy Node/TS sidecar,
       Claude-sidecar compatibility path, or plugin-hosted `skill-writer-agent`
       as the runtime agent.
-- [ ] `skill-creator` system prompt includes the workflow-wide data-platform
-      context for dlt, dbt, Fabric Lakehouse, semantic models, and
-      ontology/business-process modeling.
-- [ ] `researching-skill-requirements` contains purpose-specific research
+- [x] `skill-creator` system prompt includes the workflow-wide data-platform
+      context for dlt, dbt, Fabric Lakehouse, and business-process modeling.
+- [x] `researching-skill-requirements` contains purpose-specific research
       lenses for business process, data engineering, source customization, and
       platform standards.
-- [ ] Business-process research focuses on metrics, business rules,
+- [x] Business-process research focuses on metrics, business rules,
       calculation logic, reporting hierarchies, grain, dimensions,
-      semantic-model implications, reconciliation, edge cases, and exclusions.
-- [ ] Data-engineering research focuses on data modeling, reconciliation, data
+      lakehouse/dbt modeling implications, reconciliation, edge cases, and
+      exclusions.
+- [x] Data-engineering research focuses on data modeling, reconciliation, data
       quality, dbt/dlt standards, Fabric Lakehouse standards, operational
       standards, and deployment conventions.
-- [ ] Step 2 confirm-decisions normalizes source/export answers into
-      build-ready lakehouse/dbt/semantic-model decisions for business-process
+- [x] Step 2 confirm-decisions normalizes source/export answers into
+      build-ready lakehouse/dbt/business-rule decisions for business-process
       skills instead of preserving CSV/JSON/SOQL exports as the operating
       input contract.
-- [ ] Source-system customization decisions may preserve extraction mechanics
+- [x] Source-system customization decisions may preserve extraction mechanics
       when extraction is the selected purpose.
-- [ ] Generated descriptions are drafted carefully as trigger surfaces.
-- [ ] Generator-Verifier loop runs in fresh context and re-verifies once after
+- [x] Generated descriptions are drafted carefully as trigger surfaces.
+- [x] Generator-Verifier loop runs in fresh context and re-verifies once after
       material fixes.
-- [ ] Base eval definitions are generated but not executed.
-- [ ] Answer-evaluator behavior is prompt-owned, not a bundled workspace skill.
-- [ ] Answer-evaluator still returns the existing backend gate JSON with
+- [x] Base eval definitions are generated but not executed.
+- [x] Answer-evaluator behavior is prompt-owned, not a bundled workspace skill.
+- [x] Answer-evaluator still returns the existing backend gate JSON with
       `verdict`, counts, `gate_decision`, and `per_question`.
-- [ ] Structural tests, Rust workflow tests, eval harness tests, markdownlint,
+- [x] Generated-skill publishing rejects legacy top-level `version` and any
+      `metadata.version` other than `1.0.0`.
+- [x] Confirm-decisions eval assertions are not overfit to UI-specific
+      `needs-review` status while still verifying purpose/trigger decisions.
+- [x] Step 0 research eval coverage includes business process, data
+      engineering, source customization, platform standards, and scope-guard
+      scenarios.
+- [x] VU-1152 eval coverage intentionally excludes semantic-model and ontology
+      scenarios until the product supports those flows.
+- [x] Structural tests, Rust workflow tests, eval harness tests, markdownlint,
       and the affected live eval pass.

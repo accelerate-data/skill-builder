@@ -272,7 +272,8 @@ mod tests {
         let json = serde_json::json!({
             "status": "generated",
             "commit_summary": "Added new skill",
-            "version_bump": "1.0.0"
+            "version_bump": "1.0.0",
+            "call_trace": ["read-user-context", "write-skill"]
         });
 
         let parsed: GenerateSkillOutput =
@@ -280,6 +281,13 @@ mod tests {
         assert_eq!(parsed.status, "generated");
         assert_eq!(parsed.commit_summary.as_deref(), Some("Added new skill"));
         assert_eq!(parsed.version_bump.as_deref(), Some("1.0.0"));
+        assert_eq!(
+            parsed.call_trace,
+            Some(vec![
+                "read-user-context".to_string(),
+                "write-skill".to_string()
+            ])
+        );
         assert!(parsed.benchmark_path.is_none());
         assert!(parsed.skipped.is_none());
     }

@@ -143,7 +143,7 @@ test('step 2 decision prompt normalizes exploratory answers by purpose', () => {
     'platform purpose',
     'Fabric Lakehouse',
     'dbt model grain',
-    'semantic model measures',
+    'business measures',
     'The skill accepts Salesforce',
   ]) {
     assert.ok(prompt.includes(token), `confirm decisions prompt must mention ${token}`);
@@ -158,13 +158,12 @@ test('step 2 decision prompt normalizes exploratory answers by purpose', () => {
   );
 
   for (const token of [
-    '[positive] business-process pipeline export clarifications normalize to lakehouse/dbt/semantic decisions',
+    '[positive] business-process pipeline export clarifications normalize to lakehouse/dbt decisions',
     '[negative] business-process decisions must not preserve Salesforce CSV JSON SOQL as operating contract',
     '[positive] source-customization decisions preserve extraction mechanics when material',
     'Salesforce CSV exports',
     'Fabric Lakehouse',
     'dbt',
-    'semantic',
     'source-customization',
     'SOQL',
     'CDC',
@@ -187,10 +186,8 @@ test('step 3 skill generation has no legacy writer or validator runtime dependen
     'agent_name: "skill-creator"',
     'creating-skills',
     'fresh-context verification',
-    'Eval definitions file:',
-    '/evals/evals.json',
-    'If the `evals` directory does not',
-    'exist yet, create it before writing `evals.json`',
+    'eval definitions path',
+    'create it before writing the file',
   ]) {
     assert.ok(step3RuntimeEvidence.includes(token), `step 3 runtime evidence must mention ${token}`);
   }
