@@ -1477,7 +1477,7 @@ This task is product-wide, not refine-specific. The projection runs for every Op
 
 - [x] **12.9: Verify** via `cd app && npx tsc --noEmit` → `npm run test:unit`. Confirm 688+ frontend tests pass with the new projection tests added.
 
-- [ ] **12.10: Manual smoke** in `npm run dev` from the VU-1155 worktree. Open Refine on a skill, send a message: confirm chat renders the projected `Read file: ...` cards paired with their observations, lifecycle chip flips Starting → Running → Completed, final reply shows as an `OutputItem` with the structured-result summary line, no events are missing (compare card count to the JSONL line count in the corresponding `logs/` dir). Open the Workflow tab on a different skill, run a step: confirm `agent-output-panel` shows the same beautified rendering (no longer the dense raw timeline).
+- [ ] **12.10: Manual smoke** in `npm run dev` from the VU-1155 worktree. Open Refine on a skill, send a message: confirm chat renders the projected `Read file: ...` cards paired with their observations, lifecycle chip flips Starting → Running → Completed, final reply shows as an `OutputItem` with the structured-result summary line. After Task 14 lands, also confirm the per-run logs dir has the SDK's native per-event JSON tree (`{conversation_id}/base_state.json + events/event-NNNNN-*.json`) and that the event count matches the chat. Open the Workflow tab on a different skill, run a step: confirm `agent-output-panel` shows the same beautified rendering (no longer the dense raw timeline).
 
 ---
 
@@ -1501,7 +1501,7 @@ Two refinements landed after Task 12 was exercised live. Both already implemente
 
 ---
 
-## Task 14: Fix OpenHands persistence-dir JSONL writer
+## Task 14: Pass persistence_dir to the OpenHands SDK so the per-event JSON audit tree lands on disk
 
 **Spec:** new requirement surfaced during VU-1155 manual smoke.
 
@@ -1532,7 +1532,7 @@ The hr-analytics May 2 / measuring-pipeline-value May 3 transcripts that fed the
 
 - [ ] **14.5: Serialization test** in `types.rs` (or `mod.rs`) that constructs a `SidecarConfig` with a persistence_dir, runs through `try_from_sidecar_config` and `from_one_shot`, and asserts the serialized JSON body contains the persistence path under the correct field name.
 
-- [ ] **14.6: Manual smoke** — start `npm run dev`, run a refine turn, verify a JSONL file appears in the per-run logs dir and that its content matches the WebSocket events the chat received.
+- [ ] **14.6: Manual smoke** — start `npm run dev` from the VU-1155 worktree (must be a clean restart so Tauri builds the new Rust binary), run a refine turn, verify the per-run logs dir is populated with the SDK's native per-event JSON tree (`{persistence_dir}/{conversation_id}/base_state.json + events/event-NNNNN-{uuid}.json`) and that the event count matches the chat's display count. **Note:** the earlier `.jsonl` fixtures came from an older Skill Builder-side writer path that no longer runs; the SDK natively writes per-event JSON, not JSONL. We accept the SDK's native format.
 
 - [ ] **14.7: No backfill.** Existing empty directories from previous runs are not recoverable; this task only fixes new runs.
 

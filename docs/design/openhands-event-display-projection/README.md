@@ -206,7 +206,7 @@ Keep both fallback chains in sync: any future SDK that introduces a different di
 
 | Issue | Symptom | Status |
 |---|---|---|
-| Persistence dirs are created but no JSONL is written | `~/Library/Application Support/com.vibedata.skill-builder/workspace/skills/{skill}/logs/{agent_id}-{ts}/` is empty for every run after the OpenHands runtime migration. The hr-analytics May 2 / measuring-pipeline-value May 3 transcripts (which fed the fixture tests) exist because earlier code paths wrote them. | Open — `create_openhands_persistence_dir` creates the dir, but the OpenHands SDK conversation-log writer is not wired to it. The audit trail lives only in memory (`run.conversationEvents`) until this is fixed. Tracked as a follow-up in the implementation plan. |
+| Persistence dirs were created but no audit trail was written | `~/Library/Application Support/com.vibedata.skill-builder/workspace/skills/{skill}/logs/{agent_id}-{ts}/` was empty for runs after the OpenHands runtime migration. | **Fixed** in commit `e8622297` — `SidecarConfig.persistence_dir` is now plumbed through `OpenHandsOneShotRequest::try_from_sidecar_config` into the `StartConversationRequest.persistence_dir` field on the wire. The SDK now writes its native per-event JSON tree at `{persistence_dir}/{conversation_id}/base_state.json + events/event-NNNNN-{uuid}.json`. We accept the SDK's native per-event JSON format as the on-disk audit shape. The earlier `.jsonl` fixtures (hr-analytics May 2, measuring-pipeline-value May 3) came from a different, older Skill Builder writer path that no longer runs — they remain valid as test inputs because the projection only consumes parsed event payloads. |
 
 ## Open Questions
 
