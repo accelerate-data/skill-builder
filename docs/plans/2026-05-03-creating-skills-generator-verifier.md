@@ -9,7 +9,10 @@
 copying only the creation guidance into `agent-sources/skills/creating-skills`
 and updating generation to use a Generator-Verifier loop. As part of the same
 clean-break scope, move answer-evaluator behavior out of a bundled skill and
-into the app-owned answer-evaluator prompt.
+into the app-owned answer-evaluator prompt. The same VU-1152 clean-break work
+also tightens the upstream research and decision process so generated skills
+stay at the correct data-platform abstraction level for dbt, dlt, Microsoft
+Fabric Lakehouse, semantic models, and ontology/business-process modeling.
 
 **Architecture:** Keep one OpenHands top-level agent, `skill-creator`. The
 app-owned step 3 prompt reads `user-context.md`, `clarifications.json`, and
@@ -24,6 +27,14 @@ compatibility path, or plugin-hosted `skill-writer-agent` as the runtime agent.
 Answer evaluation must use the same single `skill-creator` OpenHands agent,
 but its fixed app gate logic belongs in `agent-sources/prompts/answer-evaluator.txt`,
 not in a deployed `answer-evaluator` skill.
+
+The workflow-wide `skill-creator` agent prompt should carry stable Skill
+Builder context: generated skills are normally used by data and analytics
+agents building durable pipelines and analytical artifacts, not one-off
+calculators over pasted files. Purpose-specific research lenses belong in the
+`researching-skill-requirements` skill. Purpose-specific normalization belongs
+in Step 2 confirm-decisions so research can remain exploratory while
+`decisions.json` becomes the build-ready canonical contract for Step 3.
 
 **Design doc:** `docs/design/creating-skills-generator-verifier/README.md`
 
@@ -63,12 +74,21 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - Update step 3 clean-break prompt wiring to use the focused creation skill.
 - Move step 3 generation away from the legacy Node/TS sidecar path and onto the
   Rust-owned OpenHands one-shot runtime path.
+- Add workflow-wide data-platform context to the `skill-creator` OpenHands
+  agent system prompt.
+- Add purpose-specific research lenses to
+  `agent-sources/workspace/skills/researching-skill-requirements/SKILL.md`.
+- Add Step 2 purpose-aware decision normalization so source/export answers are
+  converted into lakehouse/dbt/dlt/semantic-model build decisions when the
+  selected purpose is business-process or data-engineering knowledge.
 - Fold the app-specific answer-evaluator classification and JSON gate contract
   into `agent-sources/prompts/answer-evaluator.txt`.
 - Remove the bundled answer-evaluator skill from the workspace skill list; it
   has fixed app files, fixed JSON, and backend materialization semantics rather
   than reusable skill guidance.
 - Add structural and eval coverage for the new contract.
+- Add positive and negative eval scenarios proving research/decision outputs
+  preserve the intended abstraction level.
 
 **Out of scope**
 
@@ -78,7 +98,9 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
 - Blind comparison.
 - Standalone description optimization.
 - Refine/rewrite behavior.
-- Changing step 0, step 1, or step 2 semantics.
+- Changing Step 3 semantics to compensate for upstream research/decision
+  mistakes. Step 3 should trust canonical decisions and supporting
+  clarifications.
 - Changing the answer-evaluator backend output schema or materialization path.
 
 ## Current Code To Review
@@ -90,6 +112,18 @@ cd /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-cle
     not govern clean-break step 3.
 - `agent-sources/workspace/agents/skill-creator.md`
   - Shared OpenHands agent identity and workflow overview.
+- `agent-sources/workspace/skills/researching-skill-requirements/SKILL.md`
+  - Shared research skill used by Step 0 and Step 1. Add purpose-aware research
+    lenses here rather than duplicating them across prompts.
+- `agent-sources/prompts/research.txt`
+  - Step 0 prompt should remain focused on schema, paths, and task envelope.
+    It should rely on the research skill for purpose-aware question selection.
+- `agent-sources/prompts/detailed-research.txt`
+  - Step 1 prompt should remain focused on additive repair and schema behavior.
+    It should rely on the research skill for purpose-aware gap selection.
+- `agent-sources/prompts/confirm_decisions.txt`
+  - Step 2 prompt should normalize exploratory answers into build-ready,
+    purpose-aware decisions.
 - `agent-sources/prompts/answer-evaluator.txt`
   - App-owned prompt for the answer-evaluator gate. This prompt should own the
     fixed file paths, classification rules, counts, verdict rules, and JSON
@@ -396,7 +430,91 @@ Do not change `run_answer_evaluator`, `workflow.answer_evaluator`, or the
 answer-evaluator output schema/materialization contract except where tests need
 to stop asserting that a bundled evaluator skill is loaded.
 
-## Task 8: Run Quality Gates
+## Task 8: Add Purpose-Aware Research And Decision Normalization
+
+- [ ] **Step 1: Add workflow-wide data-platform context**
+
+Update `agent-sources/workspace/agents/skill-creator.md` so the
+Skill-Building Context says Skill Builder normally creates reusable guidance
+for agents building data engineering and analytics artifacts:
+
+- dlt pipelines;
+- dbt models;
+- Microsoft Fabric Lakehouse artifacts;
+- semantic models;
+- ontology and business-process modeling.
+
+State that generated skills should guide durable data artifacts and business
+logic, not default to one-off calculators over pasted CSV/JSON files.
+
+- [ ] **Step 2: Add purpose-aware research lenses**
+
+Update
+`agent-sources/workspace/skills/researching-skill-requirements/SKILL.md` with
+purpose-specific guidance:
+
+- Business process knowledge: metrics, business rules, calculation logic,
+  reporting hierarchies, grain, dimensions, semantic-model implications,
+  reconciliation expectations, edge cases, and exclusions.
+- Data engineering standards: data modeling concepts, reconciliation concepts,
+  data quality rules, dbt standards, dlt standards, Fabric Lakehouse standards,
+  operational standards, and deployment conventions.
+- Source system customizations: source entities, custom fields, custom
+  statuses/stages, source business logic, extraction constraints, source-to-
+  lakehouse mapping assumptions, and required transformations.
+- Platform standards: Fabric/Azure implementation choices, endpoint behavior,
+  workspace/lakehouse conventions, security, deployment, orchestration, and
+  monitoring standards.
+
+Add the abstraction rule: do not ask about CSV/JSON/user-provided file formats
+unless the selected purpose is explicitly source extraction, file ingestion, or
+file handling. For business-process skills, ask about conceptual source
+entities, metric semantics, modeling implications, and validation instead.
+
+- [ ] **Step 3: Add Step 2 decision normalization**
+
+Update `agent-sources/prompts/confirm_decisions.txt` so decision confirmation
+normalizes exploratory answers into build-ready decisions:
+
+- For business-process purpose, convert source/export answers into source
+  domain, lakehouse, dbt, semantic model, and reconciliation implications.
+- For data-engineering purpose, convert general preferences into concrete
+  modeling, quality, reconciliation, dbt/dlt, Fabric, and operational
+  standards.
+- For source-customization purpose, preserve extraction mechanics and source-
+  specific customizations when they materially affect ingestion or
+  transformation.
+- For platform purpose, preserve Fabric/Azure environment and endpoint
+  constraints.
+
+Include a negative example in the prompt:
+
+- Bad: "The skill accepts Salesforce CSV exports."
+- Good: "The skill assumes Salesforce opportunity data is available in the
+  Fabric Lakehouse and should define how opportunity stages, amounts,
+  probabilities, close dates, and booking logic map into dbt models and
+  semantic measures."
+
+- [ ] **Step 4: Add positive and negative eval coverage**
+
+Update affected eval packages so the behavior is covered from both directions:
+
+- Positive data-engineering scenario: research/decisions should mention data
+  modeling, reconciliation, data quality, dbt/dlt, and Fabric Lakehouse
+  standards for a data-engineering standards skill.
+- Positive business-process scenario: decisions should convert a pipeline-value
+  skill into metrics, calculation logic, reporting hierarchies, lakehouse/dbt
+  model implications, semantic measures, and reconciliation checks.
+- Negative business-process scenario: answers that mention Salesforce CSV,
+  JSON, SOQL export, Workbench, or Data Loader must not become the operating
+  input contract for the generated business-process skill.
+- Positive source-customization scenario: source API/export/CDC mechanics may
+  remain decisions when the selected purpose is source system customizations.
+
+Prefer deterministic eval assertions for prompt contracts and one live eval per
+affected package where model behavior is expected to change.
+
+## Task 9: Run Quality Gates
 
 - [ ] **Step 1: Run agent structural tests**
 
@@ -428,7 +546,14 @@ cd tests/evals && npm run eval:skill-creator-generate-skill
 cd tests/evals && npm run eval:skill-content-researcher-answer-evaluator
 ```
 
-- [ ] **Step 6: Run markdown lint for changed docs**
+- [ ] **Step 6: Run affected research and decision live evals**
+
+```bash
+cd tests/evals && npm run eval:skill-content-researcher-research
+cd tests/evals && npm run eval:skill-content-researcher-confirm-decisions
+```
+
+- [ ] **Step 7: Run markdown lint for changed docs**
 
 ```bash
 npx markdownlint-cli2 docs/design/creating-skills-generator-verifier/README.md docs/plans/2026-05-03-creating-skills-generator-verifier.md
@@ -451,6 +576,24 @@ existing command.
 - [ ] Step 3 generation does not invoke the legacy Node/TS sidecar,
       Claude-sidecar compatibility path, or plugin-hosted `skill-writer-agent`
       as the runtime agent.
+- [ ] `skill-creator` system prompt includes the workflow-wide data-platform
+      context for dlt, dbt, Fabric Lakehouse, semantic models, and
+      ontology/business-process modeling.
+- [ ] `researching-skill-requirements` contains purpose-specific research
+      lenses for business process, data engineering, source customization, and
+      platform standards.
+- [ ] Business-process research focuses on metrics, business rules,
+      calculation logic, reporting hierarchies, grain, dimensions,
+      semantic-model implications, reconciliation, edge cases, and exclusions.
+- [ ] Data-engineering research focuses on data modeling, reconciliation, data
+      quality, dbt/dlt standards, Fabric Lakehouse standards, operational
+      standards, and deployment conventions.
+- [ ] Step 2 confirm-decisions normalizes source/export answers into
+      build-ready lakehouse/dbt/semantic-model decisions for business-process
+      skills instead of preserving CSV/JSON/SOQL exports as the operating
+      input contract.
+- [ ] Source-system customization decisions may preserve extraction mechanics
+      when extraction is the selected purpose.
 - [ ] Generated descriptions are drafted carefully as trigger surfaces.
 - [ ] Generator-Verifier loop runs in fresh context and re-verifies once after
       material fixes.

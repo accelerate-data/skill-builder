@@ -43,6 +43,31 @@ Make sure the clarification record can answer:
 Suggest the appropriate default for tests based on the skill type, but let the
 user decide.
 
+## Purpose-Specific Lenses
+
+When the requested skill supports data-platform work, choose questions through
+the lenses that match the purpose:
+
+- Business process knowledge: clarify metrics, business rules, calculation
+  logic, reporting hierarchies, grain, dimensions, semantic-model
+  implications, reconciliation expectations, edge cases, and exclusions.
+- Data engineering standards: clarify data modeling concepts, reconciliation
+  concepts, data quality rules, dbt standards, dlt standards, Fabric Lakehouse
+  standards, operational standards, and deployment conventions.
+- Source system customizations: clarify source entities, custom fields, custom
+  statuses or stages, source business logic, extraction constraints,
+  source-to-lakehouse mapping assumptions, and required transformations.
+- Platform standards: clarify Fabric or Azure implementation choices, endpoint
+  behavior, workspace and lakehouse conventions, security, deployment,
+  orchestration, and monitoring standards.
+
+## Abstraction Rule
+
+Do not ask about CSV, JSON, or user-provided file formats unless the skill's
+purpose is explicitly source extraction, file ingestion, or file handling. For
+business-process skills, ask about conceptual source entities, metric
+semantics, modeling implications, and validation instead.
+
 ## Scope Guard
 
 Privately assess whether the available context is useful enough for

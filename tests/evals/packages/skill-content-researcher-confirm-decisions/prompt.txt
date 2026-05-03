@@ -1,50 +1,149 @@
-EXECUTE IMMEDIATELY - do not greet the user, do not ask questions, do not offer options.
+EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
 
-This is the app step-2 decision confirmation prompt for the OpenHands `skill-creator` agent using task kind `workflow.confirm_decisions` and app-owned prompt `agent-sources/prompts/confirm_decisions.txt`.
+You are in Step 2: Confirm Decisions.
 
-Skill: fabric-dbt-standards
-Workspace directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
-Context directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context
+Prompt source: agent-sources/prompts/confirm_decisions.txt
 
-Completed research context:
+Goal: convert clarified user intent into build decisions for skill generation.
+The decisions must be actionable by the skill-writing step.
+
+Reasoning focus: identify commitments the future skill writer needs, including
+scope, capability, trigger conditions, terminology, business rules,
+organizational conventions, examples, expected outputs, exclusions, edge cases,
+risks, and validation implications.
+
+We are writing the skill {{skill_name}}.
+Task kind: workflow.confirm_decisions
+Workspace directory: /tmp/skill-builder/workspace/skills/{{skill_slug}}
+User context file: /tmp/skill-builder/workspace/skills/{{skill_slug}}/user-context.md
+Clarifications file: /tmp/skill-builder/workspace/skills/{{skill_slug}}/context/clarifications.json
+Context directory: /tmp/skill-builder/workspace/skills/{{skill_slug}}/context
+
+All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
+
+In this eval harness, do not use tools. Treat the following inline blocks as the
+contents that would have been read from user-context.md and
+context/clarifications.json.
+
+user-context.md:
+{{user_context}}
+
+context/clarifications.json:
+{{clarifications_json}}
+
+The user has already answered clarification questions. Convert that
+clarification record into the canonical set of decisions that will guide the
+rest of the skill-building process.
+
+A decision is a durable, implementation-relevant conclusion inferred from the
+user's answers. It should capture what the future skill must do, when it should
+be used, what assumptions it should follow, what constraints matter, and what
+downstream skill-writing implications follow. Decisions are not a transcript,
+summary, or restatement of every answer. They are the product requirements and
+design commitments that the skill writer can act on.
+
+If clarifications.json has metadata.scope_recommendation set to true, return
+immediately:
+
 {
   "version": "1",
   "metadata": {
-    "question_count": 2,
-    "section_count": 1,
-    "refinement_count": 0,
-    "must_answer_count": 2,
-    "priority_questions": ["Q1", "Q2"],
-    "scope_recommendation": false
+    "decision_count": 0,
+    "conflicts_resolved": 0,
+    "round": 1,
+    "scope_recommendation": true
   },
-  "sections": [
-    {
-      "id": "S1",
-      "title": "Modeling standards",
-      "questions": [
-        {
-          "id": "Q1",
-          "question": "Layer naming?",
-          "answer_text": "Bronze raw sources, silver cleansed entities, gold marts with stg_, int_, dim_, fct_ prefixes."
-        },
-        {
-          "id": "Q2",
-          "question": "Snapshot policy?",
-          "answer_text": "Use dbt snapshots for SCD2 dimensions with dbt_valid_from and dbt_valid_to; avoid snapshots for facts."
-        }
-      ]
-    }
-  ],
-  "notes": ["Skill should help analytics engineers produce repo-compliant dbt-Fabric code."]
+  "decisions": []
 }
 
-Return ONLY the canonical decisions JSON object.
+Analyze the human's answers holistically across first-round questions and
+refinements. For each answered question, derive at least one decision with a
+design implication. Look for:
+- Gaps: unstated assumptions or unaddressed consequences.
+- Contradictions: conflicts between answers, including first-round answers
+  versus refinements.
+- Dependencies: answers that imply other requirements.
+- Ambiguities: note the ambiguity and its design implication.
 
-Required contract:
-- version: "1"
-- metadata.decision_count integer
-- metadata.conflicts_resolved integer
-- metadata.round: 1
-- decisions array length equals metadata.decision_count
-- every decision includes id, title, original_question, decision, implication, and status
-- status is one of resolved, conflict-resolved, or needs-review
+Purpose-aware decision normalization:
+- Treat research as exploratory and Step 2 as the normalization boundary. The
+  clarification record may contain source files, exports, implementation
+  preferences, or exploratory wording. Convert those answers into build-ready
+  operating decisions for the selected skill purpose instead of preserving raw
+  research phrasing.
+- Infer the selected purpose from user-context.md and clarifications.json. If
+  the purpose is ambiguous, infer the most likely purpose from the requested
+  skill outcome and note the ambiguity in an implication.
+- For a business-process purpose, normalize source/export/file delivery answers
+  into business-domain and lakehouse modeling commitments. Convert references
+  to CSV, JSON, SOQL, spreadsheets, or ad hoc extracts into decisions about the
+  source domain, Fabric Lakehouse assumptions, dbt model grain and layer
+  placement, semantic model measures, calculations, reporting hierarchy, and
+  reconciliation controls. Do not preserve CSV, JSON, SOQL, or file export as
+  the operating input contract for a business-process skill.
+- For a data-engineering purpose, convert general preferences into concrete
+  standards for data modeling, reconciliation, data quality, dbt or dlt usage,
+  Fabric Lakehouse layout, operations, deployment, naming, testing, ownership,
+  and observability.
+- For a source-customization purpose, preserve extraction, API, export, CDC,
+  pagination, rate-limit, authentication, schema drift, and ingestion mechanics
+  when they materially affect ingestion or transformation behavior.
+- For a platform purpose, preserve Fabric or Azure environment constraints,
+  endpoint behavior, authentication, authorization, security boundaries,
+  deployment topology, orchestration, monitoring, networking, and compatibility
+  requirements.
+
+Mandatory user-editable decisions:
+- Always include a decision for: What should this skill enable Claude to do?
+- Always include a decision for: When should this skill trigger? (what user phrases/contexts)
+- Set both decisions' status field to "needs-review" so the user can directly edit or confirm them.
+- If either question is missing from clarifications, infer a best-effort draft from user-context.md and answered questions in clarifications.json and still emit the decision as "needs-review".
+- These decisions define the SKILL frontmatter description inputs when the skill is written. Keep them concise, editable, and grounded in user context.
+- For the trigger decision, include concrete trigger contexts so downstream description drafting can avoid undertriggering.
+- For the trigger decision, include an implication note that explicitly says this decision will be used to create the skill description and that the description should follow skill-writing best practices.
+
+Build the decisions JSON from scratch every time. It is a clean snapshot, not a
+log. For contradictions, pick the most reasonable option and document the
+reasoning in implication; the user can override.
+
+Status values are exactly: "resolved", "conflict-resolved", or "needs-review".
+Always emit metadata.round as 1.
+
+Return only this structured JSON:
+
+{
+  "version": "1",
+  "metadata": {
+    "decision_count": 2,
+    "conflicts_resolved": 1,
+    "round": 1
+  },
+  "decisions": [
+    {
+      "id": "D1",
+      "title": "Customer Hierarchy Depth",
+      "original_question": "How many levels should the customer hierarchy support?",
+      "decision": "Two levels: parent company and subsidiary.",
+      "implication": "The skill should model customer hierarchy rollups consistently and call out where a source system cannot distinguish parent and subsidiary accounts.",
+      "status": "resolved"
+    },
+    {
+      "id": "D2",
+      "title": "Revenue Recognition Timing",
+      "original_question": "When should revenue be recognized: at booking, invoicing, or payment?",
+      "decision": "Use invoice date as the primary recognition event and preserve booking date for pipeline forecasting context.",
+      "implication": "The user emphasized invoicing for recognized revenue while still needing bookings for forecasting, so downstream guidance should distinguish recognized revenue from pipeline value.",
+      "status": "conflict-resolved"
+    }
+  ]
+}
+
+Canonical output requirements:
+- Top-level keys are exactly version, metadata, and decisions.
+- metadata includes decision_count, conflicts_resolved, and round.
+- Optional metadata flags are allowed only when applicable: contradictory_inputs and scope_recommendation.
+- decisions contains sequential IDs: D1, D2, D3, and so on.
+- Every decision object includes id, title, original_question, decision, implication, and status.
+- decision_count equals the number of decision objects.
+- conflicts_resolved equals the number of decisions with status "conflict-resolved".
+- Do not emit markdown, code fences, summaries, or partial objects.
