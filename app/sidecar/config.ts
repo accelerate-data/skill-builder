@@ -44,7 +44,6 @@ export interface SidecarConfig {
   };
   promptSuggestions?: boolean;
   pathToClaudeCodeExecutable?: string;
-  pathToOpenHandsRunner?: string;
   /** OpenHands-native SDK persistence directory. */
   persistenceDir?: string;
   /** Skill name this run is associated with. Used by mock agent for template discrimination. */
@@ -194,7 +193,6 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   assertOptString(c, "workflowSessionId");
   assertOptString(c, "usageSessionId");
   assertOptString(c, "pathToClaudeCodeExecutable");
-  assertOptString(c, "pathToOpenHandsRunner");
   assertOptString(c, "persistenceDir");
 
   // Optional enum fields
@@ -203,12 +201,7 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   assertOptStringIn(c, "effort", ["low", "medium", "high", "max"]);
   assertOptStringIn(c, "runSource", ["workflow", "refine", "test", "gate-eval"]);
   assertOptStringIn(c, "runtimeProvider", ["claude", "openhands"]);
-  if (c.runtimeProvider === "openhands") {
-    if (c.llm === undefined) {
-      throw new Error("Invalid SidecarConfig: openhands runtimeProvider requires llm");
-    }
-    assertOpenHandsLlmConfig(c.llm);
-  } else if (c.llm !== undefined) {
+  if (c.llm !== undefined) {
     assertOpenHandsLlmConfig(c.llm);
   }
 

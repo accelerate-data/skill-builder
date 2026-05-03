@@ -26,7 +26,7 @@ Use the tables below for cases tooling cannot infer safely.
 | `app/tests/` | App-local test runner and harness self-tests | Keep orchestration scripts here. Run from `app/`. |
 | `app/src/__tests__/` | Frontend Vitest tests | Mirror source areas by `stores`, `lib`, `hooks`, `components`, `pages`, and `guards`. |
 | `app/e2e/` | Playwright E2E specs | Use mocked Tauri commands, not bare-metal system tests. |
-| `app/sidecar/__tests__/` | Sidecar Vitest tests | Use for Node sidecar modules and runtime adapters. Live OpenHands tests should read the app DB-backed LLM settings by default; keep env vars as explicit overrides for CI or isolated runs. |
+| `app/sidecar/__tests__/` | Sidecar Vitest tests | Use for Node sidecar modules and runtime adapters. Live OpenHands tests should read the app DB-backed LLM settings by default; keep env vars as explicit overrides for CI or isolated runs. OpenHands runtime tests belong with the Rust-managed Agent Server path. |
 | `tests/evals/` | Promptfoo/OpenCode eval harness | Keep separate from `app/tests/`; it has its own package and live-model risk. Promptfoo state is exported by the eval runtime, not worktree creation. |
 
 ## Change To Test Map
@@ -36,7 +36,7 @@ Use the tables below for cases tooling cannot infer safely.
 | `AGENTS.md`, `CLAUDE.md`, `.claude/rules/**` | `npx markdownlint-cli2 <changed-md-files>` and `bash app/scripts/lint-agent-docs.sh` | Instruction docs only. |
 | `app/src/**` | `cd app && npm run test:unit` | Prefer `npm run test:changed` for narrower local feedback when appropriate. |
 | `app/src/__tests__/guards/**`, `app/src/lib/tauri-command-types.ts`, `app/src/lib/tauri-command-types.typecheck.ts` | `cd app && npm run test:guard` | Also run affected unit tests. |
-| `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` | Restart `npm run dev` after sidecar changes. For local live OpenHands validation, use the configured app DB LLM settings instead of requiring duplicate env setup; env vars are only overrides. |
+| `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` | Restart `npm run dev` after sidecar changes. OpenHands requests should not run through the Node sidecar. |
 | `agent-sources/plugins/**/agents/*.md`, `agent-sources/workspace/**` | `cd app && npm run test:agents:structural`; run the affected OpenCode eval package or smoke subset | Structural plus live automated eval coverage for changed prompt behavior. |
 | `app/sidecar/mock-templates/**`, `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` | `canonical-format.test.ts` is the canary for format drift. |
 | `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` | Generated command-contract surface. |

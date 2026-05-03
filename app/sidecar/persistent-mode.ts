@@ -5,8 +5,10 @@ import {
   ClaudeRuntime,
   toOneShotRunRequest,
 } from "./runtime/claude-runtime.js";
-import { OpenHandsRuntime } from "./runtime/openhands-runtime.js";
 import { createRecordRuntimeSink } from "./runtime/sink.js";
+
+const OPENHANDS_AGENT_SERVER_ONLY_ERROR =
+  "OpenHands requests are no longer handled by the Node sidecar; use the Rust-managed OpenHands Agent Server runtime.";
 
 /** Incoming request envelope: run an agent. */
 interface AgentRequest {
@@ -336,6 +338,16 @@ export async function runPersistent(
         continue;
       }
 
+      if (config.runtimeProvider === "openhands") {
+        writeLine(
+          wrapWithRequestId(request_id, {
+            type: "error",
+            message: OPENHANDS_AGENT_SERVER_ONLY_ERROR,
+          }),
+        );
+        continue;
+      }
+
       const session = new StreamSession(
         session_id,
         request_id,
@@ -471,12 +483,12 @@ export async function runPersistent(
 
       // Run the agent request without blocking the readline loop.
       // This lets ping/shutdown messages be processed while the agent runs.
-      const runtime =
-        config.runtimeProvider === "openhands"
-          ? new OpenHandsRuntime()
-          : new ClaudeRuntime();
+      const runtime = new ClaudeRuntime();
       const requestPromise = (async () => {
         try {
+          if (config.runtimeProvider === "openhands") {
+            throw new Error(OPENHANDS_AGENT_SERVER_ONLY_ERROR);
+          }
           await runtime.runOnce(
             toOneShotRunRequest({ ...config, mode: "one-shot" }),
             createRecordRuntimeSink((msg) => {
