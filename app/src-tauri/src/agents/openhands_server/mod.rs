@@ -326,14 +326,15 @@ pub async fn dispatch_openhands_refine_turn(
 
     let conversation_id = match conversation_id {
         Some(existing) => {
-            let event = serde_json::json!({
-                "role": "user",
-                "content": [{
-                    "type": "text",
-                    "text": request.prompt,
+            let event = serde_json::to_value(types::SendMessageRequest {
+                role: "user".to_string(),
+                content: vec![types::TextContent {
+                    content_type: "text".to_string(),
+                    text: request.prompt.clone(),
                 }],
-                "run": false,
-            });
+                run: false,
+            })
+            .map_err(|e| format!("Failed to serialize refine event: {e}"))?;
             client
                 .send_event(&existing, event)
                 .await
