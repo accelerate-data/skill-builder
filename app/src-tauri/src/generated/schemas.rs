@@ -90,6 +90,15 @@ pub const GENERATE_SKILL_SCHEMA: &str = r###"{
         "null"
       ]
     },
+    "call_trace": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
     "commit_summary": {
       "type": [
         "string",
@@ -114,6 +123,7 @@ pub const GENERATE_SKILL_SCHEMA: &str = r###"{
   },
   "required": [
     "benchmark_path",
+    "call_trace",
     "commit_summary",
     "skipped",
     "status",

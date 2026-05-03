@@ -16,16 +16,18 @@ use super::output_format::{
     publish_commit_and_tag_generated_skill,
 };
 use super::prompt::{
-    build_prompt, build_step0_prompt, build_step1_prompt, build_step2_prompt, PromptParams,
+    build_prompt, build_step0_prompt, build_step1_prompt, build_step2_prompt, build_step3_prompt,
+    PromptParams,
 };
 use super::runtime::{
     build_answer_evaluator_sidecar_config, build_workflow_confirm_decisions_sidecar_config,
-    build_workflow_detailed_research_sidecar_config, build_workflow_research_sidecar_config,
-    workflow_one_shot_runtime_provider, workflow_step_uses_native_openhands_dispatch,
+    build_workflow_detailed_research_sidecar_config, build_workflow_generate_skill_sidecar_config,
+    build_workflow_research_sidecar_config, workflow_one_shot_runtime_provider,
+    workflow_step_uses_native_openhands_dispatch,
 };
 use super::step_config::{
     build_betas, confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
-    thinking_budget_for_step, tools_for_agent, workflow_output_format_for_step,
+    skill_generation_workflow_tools, thinking_budget_for_step, workflow_output_format_for_step,
 };
 use super::user_context::{format_user_context, write_user_context_file};
 
@@ -127,7 +129,7 @@ fn test_step_config_canonical_agent_names() {
     assert_eq!(get_step_config(0).unwrap().agent_name, "skill-creator");
     assert_eq!(get_step_config(1).unwrap().agent_name, "skill-creator");
     assert_eq!(get_step_config(2).unwrap().agent_name, "skill-creator");
-    assert_eq!(get_step_config(3).unwrap().agent_name, "skill-writer-agent");
+    assert_eq!(get_step_config(3).unwrap().agent_name, "skill-creator");
 }
 
 #[test]
@@ -163,7 +165,7 @@ fn test_step_config_canonical_required_plugins() {
     );
     assert_eq!(
         get_step_config(3).unwrap().required_plugins,
-        vec!["skill-content-researcher", "skill-creator"]
+        vec!["skill-creator"]
     );
 }
 
@@ -231,7 +233,7 @@ fn test_research_steps_use_native_openhands_dispatch() {
     assert!(workflow_step_uses_native_openhands_dispatch(0));
     assert!(workflow_step_uses_native_openhands_dispatch(1));
     assert!(workflow_step_uses_native_openhands_dispatch(2));
-    assert!(!workflow_step_uses_native_openhands_dispatch(3));
+    assert!(workflow_step_uses_native_openhands_dispatch(3));
 }
 
 #[test]
@@ -440,7 +442,9 @@ fn answer_evaluator_prompt_renders_clean_break_skill_routing() {
         "/tmp/skills",
     );
 
-    assert!(prompt.contains("Use the answer-evaluator skill"));
+    assert!(prompt.contains("answer-evaluator workflow gate"));
+    assert!(prompt.contains("Do not invoke"));
+    assert!(prompt.contains("answer-evaluator skill"));
     assert!(prompt.contains("We are writing the skill sales-analytics."));
     assert!(prompt.contains("/tmp/workspace"));
     assert!(prompt.contains("/user-context.md"));
@@ -470,10 +474,7 @@ fn answer_evaluator_sidecar_config_uses_skill_creator_openhands_contract() {
         Some("workflow.answer_evaluator")
     );
     assert!(config.path_to_claude_code_executable.is_none());
-    assert_eq!(
-        config.allowed_tools,
-        Some(tools_for_agent("answer-evaluator"))
-    );
+    assert_eq!(config.allowed_tools, Some(vec!["file_editor".to_string()]));
     assert!(
         config.required_plugins.is_none(),
         "OpenHands answer evaluation should rely on workspace .agents skills"
@@ -639,11 +640,6 @@ mod research {
 }
 
 #[test]
-fn test_answer_evaluator_uses_openhands_file_editor_only() {
-    assert_eq!(tools_for_agent("answer-evaluator"), vec!["file_editor"]);
-}
-
-#[test]
 fn test_workflow_output_format_is_set_for_json_contract_workflow_steps() {
     for step_id in 0..=3 {
         assert!(
@@ -721,6 +717,87 @@ fn confirm_decisions_sidecar_config_uses_skill_creator_openhands_contract() {
         "workspace run dir must be the skill-scoped workspace"
     );
     assert_eq!(config.output_format, workflow_output_format_for_step(2));
+    assert!(
+        config.required_plugins.is_none(),
+        "OpenHands one-shot config should rely on workspace .agents layout"
+    );
+    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
+    assert!(config.path_to_claude_code_executable.is_none());
+}
+
+#[test]
+fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
+    let prompt = build_step3_prompt(
+        "pipeline-value",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        "/tmp/skills",
+        Some("octocat"),
+        Some("2026-05-01T12:00:00Z"),
+    );
+
+    assert!(prompt.contains("workflow.skill_generation"));
+    assert!(prompt.contains("We are writing the skill named `pipeline-value`."));
+    assert!(prompt.contains("Workspace directory: `/tmp/workspace/skills/pipeline-value`"));
+    assert!(prompt.contains("Skill output directory: `/tmp/skills/skills/pipeline-value`"));
+    assert!(prompt.contains(
+        "Eval definitions file: `/tmp/workspace/skills/pipeline-value/evals/evals.json`"
+    ));
+    assert!(prompt.contains("If the `evals` directory does not"));
+    assert!(prompt.contains("exist yet, create it before writing `evals.json`."));
+    assert!(prompt.contains("Use the `creating-skills` skill"));
+    assert!(prompt.contains("synthesize a generation brief"));
+    assert!(prompt.contains("Pass this brief to `creating-skills`"));
+    assert!(prompt.contains("keep the raw contents of `user-context.md`, `decisions.json`, and"));
+    assert!(prompt.contains("Do not reduce the"));
+    assert!(prompt.contains("handoff to only the summary brief"));
+    assert!(prompt.contains("metadata:"));
+    assert!(prompt.contains("  version: \"1.0.0\""));
+    assert!(prompt.contains("context/decisions.json"));
+    assert!(prompt.contains("context/clarifications.json"));
+    assert!(prompt.contains("fresh-context verification"));
+    assert!(prompt.contains("run exactly one re-verification"));
+    assert!(prompt.contains("Do not invoke a separate validator skill"));
+    assert!(prompt.contains("Do not invoke a legacy writer agent"));
+    assert!(prompt.contains("\"version_bump\": \"1.0.0\""));
+    assert!(prompt.contains("synthesize-generation-brief"));
+    assert!(prompt.contains("fresh-context-verifier-review"));
+    assert!(prompt.contains("`call_trace` must be an array of string values"));
+    assert!(prompt.contains("Do not\nreturn objects inside `call_trace`."));
+}
+
+#[test]
+fn skill_generation_sidecar_config_uses_skill_creator_openhands_contract() {
+    let config = build_workflow_generate_skill_sidecar_config(
+        "pipeline-value",
+        "prompt",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        test_workflow_llm_config(),
+        Some("session-1".to_string()),
+    );
+
+    assert_eq!(config.runtime_provider.as_deref(), Some("openhands"));
+    assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
+    assert_eq!(
+        config.task_kind.as_deref(),
+        Some("workflow.skill_generation")
+    );
+    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert_eq!(
+        config.allowed_tools,
+        Some(skill_generation_workflow_tools())
+    );
+    assert_eq!(config.max_turns, Some(500));
+    assert_eq!(config.skill_name.as_deref(), Some("pipeline-value"));
+    assert_eq!(config.step_id, Some(3));
+    assert_eq!(config.run_source.as_deref(), Some("workflow"));
+    assert_eq!(config.workspace_root_dir, "/tmp/workspace");
+    assert_eq!(
+        config.workspace_skill_dir,
+        "/tmp/workspace/skills/pipeline-value"
+    );
+    assert_eq!(config.output_format, workflow_output_format_for_step(3));
     assert!(
         config.required_plugins.is_none(),
         "OpenHands one-shot config should rely on workspace .agents layout"
@@ -1631,7 +1708,21 @@ fn test_materialize_step3_generate_writes_pending_benchmark() {
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "status": "generated",
-        "call_trace": ["read-user-context", "write-skill"]
+        "benchmark_path": null,
+        "skipped": false,
+        "commit_summary": "Create skill package with SKILL.md, references, and eval definitions",
+        "version_bump": "1.0.0",
+        "call_trace": [
+            "read-user-context",
+            "read-decisions",
+            "read-clarifications",
+            "synthesize-generation-brief",
+            "use-creating-skills",
+            "write-skill",
+            "write-references",
+            "write-evals",
+            "fresh-context-verifier-review"
+        ]
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
 
@@ -1650,7 +1741,19 @@ fn test_materialize_step3_generate_skipped_writes_skipped_benchmark() {
     let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "status": "generated",
-        "skipped": true
+        "benchmark_path": null,
+        "skipped": true,
+        "commit_summary": "Skipped because verifier found unresolved material findings",
+        "version_bump": "1.0.0",
+        "call_trace": [
+            "read-user-context",
+            "read-decisions",
+            "read-clarifications",
+            "synthesize-generation-brief",
+            "use-creating-skills",
+            "write-skill",
+            "fresh-context-verifier-review"
+        ]
     });
     materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
 
@@ -1658,6 +1761,89 @@ fn test_materialize_step3_generate_skipped_writes_skipped_benchmark() {
     let meta: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
     assert_eq!(meta["benchmark_status"], "skipped");
+}
+
+#[test]
+fn test_materialize_step3_generate_rejects_missing_version_bump() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    let payload = serde_json::json!({
+        "status": "generated",
+        "commit_summary": "Create skill package with required files",
+        "call_trace": ["read-user-context", "write-skill"]
+    });
+    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    assert!(err.contains("version_bump must be '1.0.0'"));
+}
+
+#[test]
+fn test_materialize_step3_generate_rejects_minor_version_bump() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    let payload = serde_json::json!({
+        "status": "generated",
+        "commit_summary": "Create skill package with required files",
+        "version_bump": "minor",
+        "call_trace": [
+            "read-user-context",
+            "read-decisions",
+            "read-clarifications",
+            "synthesize-generation-brief",
+            "use-creating-skills",
+            "write-skill",
+            "fresh-context-verifier-review"
+        ]
+    });
+    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    assert!(err.contains("version_bump must be '1.0.0'"));
+}
+
+#[test]
+fn test_materialize_step3_generate_rejects_missing_call_trace() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    let payload = serde_json::json!({
+        "status": "generated",
+        "commit_summary": "Create skill package with required files",
+        "version_bump": "1.0.0"
+    });
+    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    assert!(err.contains("call_trace must be a non-empty string array"));
+}
+
+#[test]
+fn test_materialize_step3_generate_rejects_object_call_trace_entries() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    let payload = serde_json::json!({
+        "status": "generated",
+        "commit_summary": "Create skill package with required files",
+        "version_bump": "1.0.0",
+        "call_trace": [{"step": "read-user-context"}]
+    });
+    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    assert!(err.contains("invalid generate-skill output"));
+}
+
+#[test]
+fn test_materialize_step3_generate_rejects_missing_required_trace_entry() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skill_root = tmp.path().join("my-skill");
+    let payload = serde_json::json!({
+        "status": "generated",
+        "commit_summary": "Create skill package with required files",
+        "version_bump": "1.0.0",
+        "call_trace": [
+            "read-user-context",
+            "read-decisions",
+            "synthesize-generation-brief",
+            "use-creating-skills",
+            "write-skill",
+            "fresh-context-verifier-review"
+        ]
+    });
+    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    assert!(err.contains("call_trace missing required entry 'read-clarifications'"));
 }
 
 #[test]
@@ -1685,6 +1871,60 @@ fn publish_commit_and_tag_generated_skill_creates_initial_version_tag() {
     assert!(
         crate::git::skill_version_tag_exists(skills.path(), "skills", "tagged-skill", "1.0.0")
             .unwrap()
+    );
+}
+
+#[test]
+fn publish_commit_and_tag_generated_skill_rejects_legacy_top_level_version() {
+    let workspace = tempfile::tempdir().unwrap();
+    let skills = tempfile::tempdir().unwrap();
+    let workspace_skill_root = workspace.path().join("skills").join("tagged-skill");
+    let generated_dir = workspace_skill_root.join("skill");
+    std::fs::create_dir_all(&generated_dir).unwrap();
+    std::fs::write(
+        generated_dir.join("SKILL.md"),
+        "---\nname: tagged-skill\nversion: 1.0.0\n---\n# Tagged Skill\n",
+    )
+    .unwrap();
+
+    let err = publish_commit_and_tag_generated_skill(
+        &workspace_skill_root,
+        skills.path(),
+        "skills",
+        "tagged-skill",
+    )
+    .unwrap_err();
+
+    assert!(
+        err.contains("missing metadata.version"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn publish_commit_and_tag_generated_skill_rejects_non_initial_metadata_version() {
+    let workspace = tempfile::tempdir().unwrap();
+    let skills = tempfile::tempdir().unwrap();
+    let workspace_skill_root = workspace.path().join("skills").join("tagged-skill");
+    let generated_dir = workspace_skill_root.join("skill");
+    std::fs::create_dir_all(&generated_dir).unwrap();
+    std::fs::write(
+        generated_dir.join("SKILL.md"),
+        "---\nname: tagged-skill\nmetadata:\n  version: 2.0.0\n---\n# Tagged Skill\n",
+    )
+    .unwrap();
+
+    let err = publish_commit_and_tag_generated_skill(
+        &workspace_skill_root,
+        skills.path(),
+        "skills",
+        "tagged-skill",
+    )
+    .unwrap_err();
+
+    assert!(
+        err.contains("must use metadata.version 1.0.0"),
+        "unexpected error: {err}"
     );
 }
 
@@ -2343,6 +2583,7 @@ fn test_copy_agents_to_claude_dir() {
 fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     let workspace_agents_src = tempfile::tempdir().unwrap();
     let workspace_skills_src = tempfile::tempdir().unwrap();
+    let bundled_skills_src = tempfile::tempdir().unwrap();
     let workspace = tempfile::tempdir().unwrap();
     let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
         workspace.path(),
@@ -2371,15 +2612,6 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         "# Researching Skill Requirements",
     )
     .unwrap();
-    std::fs::create_dir_all(workspace_skills_src.path().join("answer-evaluator")).unwrap();
-    std::fs::write(
-        workspace_skills_src
-            .path()
-            .join("answer-evaluator")
-            .join("SKILL.md"),
-        "# Answer Evaluator",
-    )
-    .unwrap();
     std::fs::create_dir_all(workspace_skills_src.path().join("skill-creator")).unwrap();
     std::fs::write(
         workspace_skills_src
@@ -2389,6 +2621,24 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         "# Skill Creator",
     )
     .unwrap();
+    std::fs::create_dir_all(bundled_skills_src.path().join("creating-skills")).unwrap();
+    std::fs::write(
+        bundled_skills_src
+            .path()
+            .join("creating-skills")
+            .join("SKILL.md"),
+        "# Creating Skills",
+    )
+    .unwrap();
+    std::fs::create_dir_all(bundled_skills_src.path().join("skill-test")).unwrap();
+    std::fs::write(
+        bundled_skills_src
+            .path()
+            .join("skill-test")
+            .join("SKILL.md"),
+        "# Skill Test",
+    )
+    .unwrap();
 
     let claude_template = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(claude_template.path(), "# Claude").unwrap();
@@ -2396,6 +2646,7 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     copy_prompts_sync(
         workspace_agents_src.path(),
         workspace_skills_src.path(),
+        bundled_skills_src.path(),
         claude_template.path(),
         workspace.path().to_str().unwrap(),
     )
@@ -2410,12 +2661,18 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     assert!(workspace_skill_dir
         .join(".agents/skills/researching-skill-requirements/SKILL.md")
         .is_file());
-    assert!(workspace_skill_dir
+    assert!(!workspace_skill_dir
         .join(".agents/skills/answer-evaluator/SKILL.md")
-        .is_file());
+        .exists());
     assert!(workspace_skill_dir
         .join(".agents/skills/skill-creator/SKILL.md")
         .is_file());
+    assert!(workspace_skill_dir
+        .join(".agents/skills/creating-skills/SKILL.md")
+        .is_file());
+    assert!(!workspace_skill_dir
+        .join(".agents/skills/skill-test/SKILL.md")
+        .exists());
     assert!(workspace
         .path()
         .join(".agents/agents/skill-creator.md")
@@ -2424,9 +2681,13 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         .path()
         .join(".agents/skills/researching-skill-requirements/SKILL.md")
         .is_file());
-    assert!(workspace
+    assert!(!workspace
         .path()
         .join(".agents/skills/answer-evaluator/SKILL.md")
+        .exists());
+    assert!(workspace
+        .path()
+        .join(".agents/skills/creating-skills/SKILL.md")
         .is_file());
     assert!(!workspace_skill_dir.join("CLAUDE.md").exists());
     assert!(!workspace.path().join("CLAUDE.md").exists());

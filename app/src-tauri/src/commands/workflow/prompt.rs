@@ -26,6 +26,11 @@ const CONFIRM_DECISIONS_TEMPLATE: &str = include_str!(concat!(
     "/../../agent-sources/prompts/confirm_decisions.txt"
 ));
 
+const SKILL_GENERATION_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/skill-generation.txt"
+));
+
 /// Parameters for [`build_prompt`].
 pub(crate) struct PromptParams<'a> {
     pub skill_name: &'a str,
@@ -140,6 +145,46 @@ pub(crate) fn build_step2_prompt(
         workspace_path,
         plugin_slug,
     )
+}
+
+/// Build the prompt for step 3 (generate skill).
+pub(crate) fn build_step3_prompt(
+    skill_name: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+    skills_path: &str,
+    author_login: Option<&str>,
+    created_at: Option<&str>,
+) -> String {
+    let workspace_dir =
+        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_output_str = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    let author_context = match author_login {
+        Some(author) => {
+            let mut context = format!("Author login: {}.", author);
+            if let Some(created) = created_at {
+                let created_date = &created[..10.min(created.len())];
+                let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                context.push_str(&format!(
+                    " Skill created date: {}. Current modified date: {}.",
+                    created_date, today
+                ));
+            }
+            context
+        }
+        None => "No author metadata was provided.".to_string(),
+    };
+
+    SKILL_GENERATION_TEMPLATE
+        .trim_end_matches('\n')
+        .replace("{{skill_name}}", skill_name)
+        .replace("{{workspace_dir}}", &workspace_str)
+        .replace("{{skill_output_dir}}", &skill_output_str)
+        .replace("{{author_context}}", &author_context)
 }
 
 /// Build the lighter prompt used by the answer-evaluator agent.

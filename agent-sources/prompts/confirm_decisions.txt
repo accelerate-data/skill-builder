@@ -60,6 +60,40 @@ Analyze the human's answers holistically across first-round questions and refine
 - Dependencies: answers that imply other requirements.
 - Ambiguities: note the ambiguity and its design implication.
 
+Purpose-aware decision normalization:
+- Treat research as exploratory and Step 2 as the normalization boundary. The
+  clarification record may contain source files, exports, implementation
+  preferences, or exploratory wording. Convert those answers into build-ready
+  operating decisions for the selected skill purpose instead of preserving raw
+  research phrasing.
+- Infer the selected purpose from user-context.md and clarifications.json. If
+  the purpose is ambiguous, infer the most likely purpose from the requested
+  skill outcome and note the ambiguity in an implication.
+- For a business-process purpose, normalize source/export/file delivery answers
+  into business-domain and lakehouse modeling commitments. Convert references
+  to CSV, JSON, SOQL, spreadsheets, or ad hoc extracts into decisions about the
+  source domain, Fabric Lakehouse assumptions, dbt model grain and layer
+  placement, business measures, calculations, reporting hierarchy, and
+  reconciliation controls. Do not preserve CSV, JSON, SOQL, or file export as
+  the operating input contract for a business-process skill.
+- For a data-engineering purpose, convert general preferences into concrete
+  standards for data modeling, reconciliation, data quality, dbt or dlt usage,
+  Fabric Lakehouse layout, operations, deployment, naming, testing, ownership,
+  and observability.
+- For a source-customization purpose, preserve extraction, API, export, CDC,
+  pagination, rate-limit, authentication, schema drift, and ingestion mechanics
+  when they materially affect ingestion or transformation behavior.
+- For a platform purpose, preserve Fabric or Azure environment constraints,
+  endpoint behavior, authentication, authorization, security boundaries,
+  deployment topology, orchestration, monitoring, networking, and compatibility
+  requirements.
+- Negative example for a business-process skill: "The skill accepts Salesforce
+  CSV exports."
+- Positive example for a business-process skill: "The skill assumes Salesforce
+  opportunity data is available in the Fabric Lakehouse and should define how
+  opportunity stages, amounts, probabilities, close dates, and booking logic
+  map into dbt models and business measures."
+
 Mandatory user-editable decisions:
 - Always include a decision for: What should this skill enable Claude to do?
 - Always include a decision for: When should this skill trigger? (what user phrases/contexts)

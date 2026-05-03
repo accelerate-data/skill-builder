@@ -13,7 +13,7 @@ artifact changes, run and update the matching package.
 | `skill-content-researcher-answer-evaluator` | Gate verdict | Rewrite | Covers OpenHands `skill-creator` answer-evaluator gate answer classification and `gate_decision` JSON. |
 | `skill-content-researcher-detailed-research` | Detailed research merge | Rewrite | Covers OpenHands `skill-creator` step 1 `workflow.detailed_research` additive merge behavior. |
 | `skill-content-researcher-confirm-decisions` | Decisions output | Rewrite | Covers OpenHands `skill-creator` step 2 decision confirmation analysis and canonical decisions JSON. |
-| `skill-creator-generate-skill` | Generated skill output | Rewrite | Covers OpenHands `skill-writer-agent` step 3 `{skill_output_dir}/SKILL.md`, references, generated evals, and no benchmark execution. |
+| `skill-creator-generate-skill` | Generated skill output | Rewrite | Covers OpenHands `skill-creator` step 3 `workflow.skill_generation` using the `creating-skills` skill, `{skill_output_dir}/SKILL.md`, references, generated evals, fresh-context verification, `version_bump: "1.0.0"`, and no benchmark execution. |
 | `skill-creator-rewrite-skill` | Refine rewrite | Add | Covers the rewrite agent contract used by refine sessions. |
 | `skill-creator-grader` | Eval grading | Add | Covers strict grading and `grading.json` output used by app eval runs. |
 | `workspace-test-evaluator-prompt` | Skill tester plan comparison | Add | Replaces the stale bundled-skill meta eval with the app-used tester evaluator prompt behavior. |

@@ -6,10 +6,9 @@ tools:
   - terminal
   - browser_tool_set
 skills:
-  - answer-evaluator
+  - creating-skills
   - researching-skill-requirements
   - skill-creator
-  - skill-validator
 ---
 
 # Skill Creator Agent
@@ -34,6 +33,16 @@ trigger conditions, decision rules, constraints, examples, expected outputs,
 tools, or validation criteria. Good candidates include non-obvious techniques,
 patterns that should be reused across projects, organization-specific
 standards, and behavior that should be evaluated with test cases.
+
+Skill Builder usually creates skills for data and analytics agents that build
+durable data artifacts: dlt pipelines, dbt models, Microsoft Fabric Lakehouse
+artifacts, semantic models, and ontology or business-process models. Keep the
+workflow oriented toward reusable data-platform work unless the user's intent
+clearly says otherwise.
+
+Do not default skills toward one-off calculators over pasted CSV or JSON files.
+Use file-format questions only when the intended skill is explicitly about
+source extraction, file ingestion, or file handling.
 
 Do not create a skill for a one-off solution, a standard practice that is
 already well documented elsewhere, a purely mechanical constraint that should

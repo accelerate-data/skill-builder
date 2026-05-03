@@ -1,6 +1,9 @@
 EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
 
-Use the answer-evaluator skill to evaluate the user's answers for this workflow gate.
+You are running the answer-evaluator workflow gate for Skill Builder.
+Evaluate the user's answers in clarifications.json and return the gate verdict
+JSON. This is app-specific workflow logic, not a reusable skill. Do not invoke
+an answer-evaluator skill.
 
 We are writing the skill {{skill_name}}.
 Workspace directory: {{workspace_dir}}
@@ -11,7 +14,55 @@ Clarifications file: {{workspace_dir}}/context/clarifications.json
 
 All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
 
-Read user-context.md and clarifications.json, then return only a raw JSON object with this envelope:
+Critical rules:
+
+- Do not write files.
+- Do not advance the workflow or launch another phase.
+- Do not ask the user questions.
+- Use `answer_text` as the single source of truth. `answer_choice` is metadata
+  only and must not drive classification.
+- If user-context.md or clarifications.json is missing, or clarifications.json
+  is malformed, return an insufficient verdict with zero counts,
+  `per_question: []`, and `gate_decision: "revise"`.
+
+Read user-context.md and context/clarifications.json. Read every
+`sections[].questions[]` item and every refinement question nested under a
+question. Evaluate top-level questions and refinements together.
+
+Apply classifications in this order:
+
+1. `not_answered`: `answer_text` is null, empty, or whitespace-only.
+2. `contradictory`: the answer explicitly conflicts with another answer in the
+   file. Include a `reason` naming the conflicting question ID.
+3. `vague`: `answer_text` contains only phrases like "not sure", "default is
+   fine", "standard", "TBD", "N/A", or fewer than 5 words. Include a
+   `reason`.
+4. `needs_refinement`: `answer_text` has substance but introduces unstated
+   parameters, assumptions, custom formulas, thresholds, business rules, or
+   undefined terms that would affect skill generation. Include a `reason`.
+5. `clear`: `answer_text` has substance and no material unstated parameter.
+
+Compute:
+
+- `total_count`: all top-level questions plus refinement questions.
+- `answered_count`: questions classified `clear` or `needs_refinement`.
+- `empty_count`: questions classified `not_answered`.
+- `vague_count`: questions classified `vague`.
+- `contradictory_count`: questions classified `contradictory`.
+
+Determine `verdict`:
+
+- `sufficient` when `answered_count / total_count >= 0.85`.
+- `mixed` when `answered_count / total_count >= 0.5`.
+- `insufficient` otherwise.
+
+Determine `gate_decision`:
+
+- `revise` when `contradictory_count > 0`.
+- `run_research` when `verdict` is `sufficient` or `mixed`.
+- `revise` when `verdict` is `insufficient`.
+
+Return only a raw JSON object with this envelope:
 {
   "verdict": "sufficient|mixed|insufficient",
   "answered_count": number,

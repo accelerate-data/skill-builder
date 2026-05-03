@@ -399,7 +399,7 @@ print(stdout.getvalue())
     expect(JSON.stringify(records[0])).not.toContain("vault-token");
   }, 30_000);
 
-  it("routes answer evaluation through skill-creator with bundled workspace skills", () => {
+  it("routes answer evaluation through skill-creator without a bundled evaluator skill", () => {
     const result = runPython(
       runnerImportScript(`
 import tempfile
@@ -410,14 +410,8 @@ workspace_dir = Path(tempfile.mkdtemp())
 agent_dir = workspace_dir / ".agents" / "agents"
 skills_dir = workspace_dir / ".agents" / "skills"
 agent_dir.mkdir(parents=True)
-(skills_dir / "answer-evaluator").mkdir(parents=True)
+skills_dir.mkdir(parents=True)
 (agent_dir / "skill-creator.md").write_text("# Skill Creator\\n\\nUse deployed skills when requested.", encoding="utf-8")
-(skills_dir / "answer-evaluator" / "SKILL.md").write_text("""---
-name: answer-evaluator
----
-
-# Answer Evaluator
-""", encoding="utf-8")
 
 class LLM:
     def __init__(self, **kwargs):
@@ -462,13 +456,13 @@ runner.Conversation = Conversation
 runner.LocalWorkspace = LocalWorkspace
 def load_skills_from_dir(value):
     captured["skills_dir"] = value
-    return ({}, {}, {"answer-evaluator": "answer-evaluator-skill"})
+    return ({}, {}, {})
 runner.load_skills_from_dir = load_skills_from_dir
 runner._OPENHANDS_IMPORT_ERROR = None
 
 request = {
     "mode": "one-shot",
-    "prompt": "Use the answer-evaluator skill to evaluate answers.",
+    "prompt": "Evaluate answer text and return the workflow.answer_evaluator JSON.",
     "llm": {"model": "anthropic/claude-sonnet-4-6"},
     "agentName": "skill-creator",
     "taskKind": "workflow.answer_evaluator",
@@ -490,8 +484,8 @@ print(json.dumps(captured, sort_keys=True))
     expect(result.status).toBe(0);
     const captured = JSON.parse(result.stdout) as Record<string, unknown>;
     expect(captured).toMatchObject({
-      prompt: "Use the answer-evaluator skill to evaluate answers.",
-      skills: ["answer-evaluator-skill"],
+      prompt: "Evaluate answer text and return the workflow.answer_evaluator JSON.",
+      skills: [],
       load_public_skills: false,
       run_called: true,
     });

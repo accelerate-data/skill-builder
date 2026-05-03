@@ -4,6 +4,12 @@ use std::path::Path;
 use super::frontmatter::parse_frontmatter_full;
 use super::helpers::copy_dir_recursive;
 
+const WORKFLOW_INTERNAL_SKILLS: &[&str] = &["creating-skills", "research"];
+
+fn is_workflow_internal_skill(skill_name: &str) -> bool {
+    WORKFLOW_INTERNAL_SKILLS.contains(&skill_name)
+}
+
 /// Remove bundled skill directories from the workspace that are no longer present in the current bundle.
 /// This is a filesystem-only operation — no DB reads or writes.
 ///
@@ -37,6 +43,9 @@ pub(crate) fn purge_stale_bundled_skills(
                 .ok()
                 .and_then(|c| parse_frontmatter_full(&c).name)
                 .unwrap_or(dir_name);
+            if is_workflow_internal_skill(&skill_name) {
+                continue;
+            }
             names.insert(skill_name);
         }
         names
@@ -171,10 +180,11 @@ pub(crate) fn seed_bundled_skills(
 
         let skill_name = fm.name.unwrap_or_else(|| dir_name.clone());
 
-        // Research is plugin-owned and must not be seeded as a bundled workspace skill.
-        if skill_name == "research" {
+        // Workflow-internal skills are deployed into the OpenHands .agents tree
+        // when needed. They must not become user-visible Claude skills.
+        if is_workflow_internal_skill(&skill_name) {
             log::debug!(
-                "seed_bundled_skills: skipping plugin-owned skill '{}'",
+                "seed_bundled_skills: skipping workflow-internal skill '{}'",
                 skill_name
             );
             continue;
