@@ -18,7 +18,7 @@ Use the tables below for cases tooling cannot infer safely.
 | Eval harness contracts | `cd tests/evals && npm test` | `tests/evals/scripts/`, `tests/evals/assertions/` | Free |
 | Live agent smoke | `cd app && npm run test:agents:smoke` | `tests/evals/` | Automated OpenCode eval; run when prompt, agent, or runtime behavior changes |
 | Live eval smoke | `cd tests/evals && npm run eval:smoke` | `tests/evals/packages/` | Automated OpenCode eval; run when prompt, agent, or runtime behavior changes |
-| OpenHands Agent Server live smoke | `cd app && OPENHANDS_AGENT_SERVER_LIVE_SMOKE=1 OPENHANDS_LIVE_SMOKE_MODEL=<provider/model> OPENHANDS_LIVE_SMOKE_API_KEY=<key> npm run test:openhands:live-smoke` | `scripts/openhands-agent-server-live-smoke.mjs` | Gated live Agent Server run; requires model credentials |
+| OpenHands Agent Server live smoke | `cd app && OPENHANDS_AGENT_SERVER_LIVE_SMOKE=1 npm run test:openhands:live-smoke` | `scripts/openhands-agent-server-live-smoke.mjs` | Gated live Agent Server run; reads app DB model settings by default, env vars may override |
 
 ## Directory Boundaries
 

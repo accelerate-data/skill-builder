@@ -30,7 +30,7 @@
 - [x] Create a child branch/worktree for this clean-break slice from VU-1145,
   for example:
   `feature/vu-1153-replace-openhands-runner-with-rust-managed-agent-server`.
-- [ ] Raise the VU-1153 PR against
+- [x] Raise the VU-1153 PR against
   `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`, not
   against `main`.
 - [ ] Merge VU-1153 back into VU-1145 only after the deterministic tests and
@@ -284,10 +284,12 @@ cd tests/evals && npm test
 
 Expected: all deterministic suites pass.
 
-- [ ] **Step 3: Run live smoke**
+- [x] **Step 3: Run live smoke**
 
 Run the new local Agent Server smoke and the smallest affected live agent smoke.
-Use the exact command added to `TEST_MAP.md`.
+Use the exact command added to `TEST_MAP.md`. The live Agent Server smoke reads
+app DB model settings by default; env vars remain available for CI or isolated
+runs.
 
 Expected: Agent Server starts on a random local port, at least one progress
 event streams, terminal state is received, and the process shuts down cleanly.
@@ -314,7 +316,7 @@ Verify `repo-map.json` reflects added, removed, and renamed runtime files.
 Verify `TEST_MAP.md` reflects the new test commands and no longer requires
 `cd app/sidecar && npx vitest run` for deleted OpenHands runtime code.
 
-- [ ] **Step 3: Commit and push**
+- [x] **Step 3: Commit and push**
 
 Run:
 
