@@ -52,6 +52,7 @@ export function flushDisplayItems(): void {
           model: "unknown",
           status: "running" as const,
           displayItems: items,
+          pendingActionsByToolCallId: {},
           startTime: Date.now(),
           contextHistory: [],
           contextWindow: DEFAULT_CONTEXT_WINDOW,
