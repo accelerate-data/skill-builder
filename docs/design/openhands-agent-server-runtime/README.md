@@ -326,3 +326,21 @@ or replaced in the same branch because they assert deleted behavior.
    `SESSION_API_KEY`/`OH_SESSION_API_KEYS_0`; Rust generates an instance token,
    sends `X-Session-API-Key` on REST calls, and sends the WebSocket auth message
    before starting the run.
+
+## Implementation Status
+
+- [x] Rust owns the local Agent Server process, random port selection, health
+  probing, API-key generation, and shutdown.
+- [x] Rust binds existing Skill Builder workspace folders into Agent Server
+  conversations through `LocalWorkspace`.
+- [x] REST request construction is covered by contract tests for conversation
+  creation, run, pause, delete, and final response retrieval.
+- [x] WebSocket events normalize to app-visible `conversation_event` progress
+  and terminal `conversation_state` records with raw payloads preserved.
+- [x] Workflow and scope-review one-shot calls route through the Rust Agent
+  Server runtime rather than the Node/Python stdout runner.
+- [x] Cancellation signals active Agent Server runs, requests pause, emits a
+  cancelled terminal state, and clears the local cancellation registry.
+- [x] A gated live smoke script exists for a real local Agent Server run.
+- [ ] The gated live smoke has been run with model credentials and observed a
+  progress event before terminal state.

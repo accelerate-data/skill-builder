@@ -662,7 +662,7 @@ fn test_refine_prompt_includes_all_three_paths() {
 #[test]
 fn test_refine_prompt_includes_metadata() {
     let system_prompt = build_refine_prompt("my-skill", "/ws", "/skills", "Fix overview", None);
-    assert!(system_prompt.contains("The skill name is: my-skill"));
+    assert!(system_prompt.contains("We are writing the skill my-skill"));
     assert!(system_prompt.contains("The workspace directory is:"));
     assert!(system_prompt.contains("The skill directory is:"));
 }
