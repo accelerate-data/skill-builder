@@ -72,7 +72,7 @@ exit 0
   };
 }
 
-test('worktree helper links Promptfoo state back to the source checkout', () => {
+test('worktree helper leaves Promptfoo state setup to the eval runtime', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-builder-worktree-'));
   const promptfooRoot = path.join(REPO_ROOT, 'tests', 'evals', '.promptfoo');
   const promptfooWasPresent = fs.existsSync(promptfooRoot);
@@ -92,11 +92,9 @@ test('worktree helper links Promptfoo state back to the source checkout', () => 
 
     const worktreePath = path.join(worktreeBase, 'feature', 'eval-state-link');
     const worktreePromptfoo = path.join(worktreePath, 'tests', 'evals', '.promptfoo');
-    const stat = fs.lstatSync(worktreePromptfoo);
 
-    assert.equal(stat.isSymbolicLink(), true);
-    assert.equal(fs.readlinkSync(worktreePromptfoo), promptfooRoot);
-    assert.match(result.stdout, /PROMPTFOO_DB: symlink /);
+    assert.equal(fs.existsSync(worktreePromptfoo), false);
+    assert.doesNotMatch(result.stdout, /PROMPTFOO_DB:/);
     const npmCalls = fs.readFileSync(logPath, 'utf8').match(/npm ci --no-audit --no-fund/g) ?? [];
     assert.equal(npmCalls.length, 2);
   } finally {

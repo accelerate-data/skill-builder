@@ -4,9 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { writeResolvedConfig } = require('./resolve-promptfoo-config');
+const { EVAL_ROOT, REPO_ROOT } = require('./roots');
 
-const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
-const EVAL_ROOT = path.join(REPO_ROOT, 'tests', 'evals');
 const PROMPTFOO_ENTRYPOINT = path.join(
   EVAL_ROOT,
   'node_modules',
@@ -18,11 +17,11 @@ const PROMPTFOO_ENTRYPOINT = path.join(
 
 const ALLOWED_ARTIFACT_PREFIXES = [
   'tests/evals/.cache/',
-  'tests/evals/.promptfoo/',
   'tests/evals/.tmp/',
   'tests/evals/output/',
   'tests/evals/results/',
 ];
+const PROMPTFOO_EVAL_RESULT_FAILURE_STATUS = 100;
 
 function runGitLines(args) {
   const output = execFileSync(
@@ -117,7 +116,7 @@ function formatViolationMessage(paths) {
   return [
     'Eval run dirtied files outside approved artifact directories:',
     ...paths.map((filePath) => `- ${filePath}`),
-    'Allowed artifact roots: tests/evals/.cache/, tests/evals/.promptfoo/, tests/evals/.tmp/, tests/evals/output/, tests/evals/results/',
+    'Allowed artifact roots: tests/evals/.cache/, tests/evals/.tmp/, tests/evals/output/, tests/evals/results/',
   ].join('\n');
 }
 
@@ -279,6 +278,8 @@ function main(
     splitPromptfooInvocations: splitInvocations = splitPromptfooInvocations,
   } = {},
 ) {
+  let finalStatus = 0;
+
   for (const invocation of splitInvocations(argv)) {
     const before = collectSnapshot();
     const status = runInvocation(invocation);
@@ -292,12 +293,12 @@ function main(
       return 1;
     }
 
-    if (status !== 0) {
-      return status;
+    if (status !== 0 && status !== PROMPTFOO_EVAL_RESULT_FAILURE_STATUS) {
+      finalStatus = finalStatus || status;
     }
   }
 
-  return 0;
+  return finalStatus;
 }
 
 if (require.main === module) {
@@ -306,6 +307,7 @@ if (require.main === module) {
 
 module.exports = {
   ALLOWED_ARTIFACT_PREFIXES,
+  PROMPTFOO_EVAL_RESULT_FAILURE_STATUS,
   collectGitSnapshot,
   detectCleanupViolations,
   formatViolationMessage,

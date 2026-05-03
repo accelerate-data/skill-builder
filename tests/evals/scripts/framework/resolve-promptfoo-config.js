@@ -3,8 +3,8 @@ const path = require('node:path');
 const yaml = require('js-yaml');
 
 const { loadEvalTierConfig, resolveEvalTier } = require('./eval-tier-config');
+const { EVAL_ROOT } = require('./roots');
 
-const EVAL_ROOT = path.resolve(__dirname, '..');
 const TMP_ROOT = path.join(EVAL_ROOT, '.tmp', 'resolved-configs');
 
 function readYaml(relativePath) {

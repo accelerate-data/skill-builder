@@ -8,12 +8,15 @@
 
 **Tech Stack:** Node.js CLI, Promptfoo, OpenCode CLI provider, TOML policy config, git common-dir state discovery, Node test runner.
 
+**Branching:** Implement this issue on `feature/vu-1154-package-promptfooopencode-eval-harness-as-shared-framework` stacked on `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`. Raise the VU-1154 PR against the VU-1145 branch, not `main`, because the shared harness proof depends on the VU-1145 OpenHands-native eval/runtime baseline.
+
 ---
 
 ## File Structure
 
 - Modify: `tests/evals/package.json` - replace hardcoded command wiring with calls to the local `ad-evals` CLI.
 - Create: `tests/evals/bin/ad-evals.js` - CLI entrypoint for `test`, `smoke`, `regression`, `run`, `view`, and `doctor`.
+- Create: `tests/evals/eval-map.json` - eval-local navigation map for coding agents that add or maintain packages.
 - Create: `tests/evals/scripts/framework/paths.js` - resolves repo root, eval root, git common dir, shared Promptfoo state, and worktree-local artifact dirs.
 - Create: `tests/evals/scripts/framework/environment.js` - prepares and exports Promptfoo/OpenCode env vars before every command.
 - Create: `tests/evals/scripts/framework/package-discovery.js` - discovers Promptfoo package configs and smoke coverage automatically.
@@ -23,7 +26,7 @@
 - Move: `tests/evals/scripts/opencode-cli-provider.js` -> `tests/evals/scripts/framework/opencode-cli-provider.js`.
 - Modify: `tests/evals/scripts/promptfoo.sh` - reduce to a compatibility wrapper around `node bin/ad-evals.js promptfoo --`.
 - Modify: `tests/evals/config/eval-tiers.toml` - keep project-overridable policy in this repo while making its schema framework-owned.
-- Modify: `tests/evals/scripts/*.test.js` - update imports and add tests for state export, command discovery, and no symlink dependency.
+- Modify: `tests/evals/scripts/*.test.js` - update imports and add tests for state export, command discovery, eval-map coverage, and no symlink dependency.
 - Modify: `scripts/worktree.sh` - remove Promptfoo symlink setup after the CLI owns state export.
 - Modify: `TEST_MAP.md` and `repo-map.json` - reflect the framework-shaped harness commands and validation boundaries.
 

@@ -2,8 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { parse } = require('smol-toml');
 
-const EVAL_ROOT = path.resolve(__dirname, '..');
-const REPO_ROOT = path.resolve(EVAL_ROOT, '..', '..');
+const { EVAL_ROOT, REPO_ROOT } = require('./roots');
 const CONFIG_PATH = path.join(EVAL_ROOT, 'config', 'eval-tiers.toml');
 const REQUIRED_TIERS = ['light', 'standard', 'high', 'x_high'];
 const REQUIRED_RUNTIME_FIELDS = [
