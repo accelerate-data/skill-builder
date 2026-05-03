@@ -1550,7 +1550,7 @@ Independent of Slice A — operates on `commands/workflow/deploy.rs`, not `agent
 
 - [x] **14.11: `cargo build` + `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` + `cargo test agents::openhands_server commands::workflow::deploy` + `npm run test:unit` all green.**
 
-- [ ] **14.12: Manual smoke** — start `npm run dev` from the VU-1155 worktree (clean restart so Tauri rebuilds Rust). Run a refine turn on any skill. Verify:
+- [x] **14.12: Manual smoke** — start `npm run dev` from the VU-1155 worktree (clean restart so Tauri rebuilds Rust). Run a refine turn on any skill. Verify:
   - `<workspace>/conversations/<conversation_id_hex>/{base_state.json + events/event-NNNNN-*.json}` exists and the event count roughly matches the chat's display item count (filter classes excepted).
   - `<workspace>/<plugin>/<skill>/.agents/` exists and matches `<workspace>/.agents/` byte-for-byte.
   - Edit `agent-sources/workspace/agents/skill-creator.md`, drive another refine turn — verify both `<workspace>/.agents/skill-creator.md` and the per-skill `<workspace>/<plugin>/<skill>/.agents/skill-creator.md` reflect the edit (no app restart).
