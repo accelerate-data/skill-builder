@@ -481,8 +481,7 @@ fn terminal_state_needs_final_response(state: &serde_json::Value) -> bool {
     state.get("status").and_then(|value| value.as_str()) == Some("completed")
         && state
             .get("result_text")
-            .and_then(|value| value.as_str())
-            .map(|text| text.trim().is_empty())
+            .map(|value| value.is_null())
             .unwrap_or(true)
         && state
             .get("structured_output")
@@ -709,9 +708,17 @@ mod tests {
             "result_text": null,
             "structured_output": {"status": "ok"}
         });
+        // Empty string is a valid intentional result; do not trigger a fallback fetch.
+        let with_empty_string = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": "",
+            "structured_output": null
+        });
 
         assert!(!terminal_state_needs_final_response(&with_text));
         assert!(!terminal_state_needs_final_response(&with_structured));
+        assert!(!terminal_state_needs_final_response(&with_empty_string));
     }
 
     #[test]
