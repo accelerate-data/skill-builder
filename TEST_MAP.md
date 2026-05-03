@@ -15,6 +15,7 @@ Use the tables below for cases tooling cannot infer safely.
 | Rust | `cargo test --manifest-path app/src-tauri/Cargo.toml` | `app/src-tauri/src/` | Free |
 | Sidecar | `cd app/sidecar && npx vitest run` | `app/sidecar/__tests__/` | Free |
 | Agent structural | `cd app && npm run test:agents:structural` | `app/agent-tests/` plus `agent-sources/` | Free |
+| Repo map audit | `cd app && npm run test:repo-map` | `repo-map.json`, `scripts/verify-repo-map.mjs` | Free |
 | Eval harness contracts | `cd tests/evals && npm test` | `tests/evals/scripts/`, `tests/evals/assertions/` | Free |
 | Live agent smoke | `cd app && npm run test:agents:smoke` | `tests/evals/` | Automated OpenCode eval; run when prompt, agent, or runtime behavior changes |
 | Live eval smoke | `cd tests/evals && npm run eval:smoke` | `tests/evals/packages/` | Automated OpenCode eval; run when prompt, agent, or runtime behavior changes |
@@ -35,6 +36,7 @@ Use the tables below for cases tooling cannot infer safely.
 | Changed path | Required validation | Notes |
 |---|---|---|
 | `AGENTS.md`, `CLAUDE.md`, `.claude/rules/**` | `npx markdownlint-cli2 <changed-md-files>` and `bash app/scripts/lint-agent-docs.sh` | Instruction docs only. |
+| `repo-map.json`, `scripts/verify-repo-map.mjs`, `scripts/verify-repo-map.test.mjs` | `cd app && npm run test:repo-map` | Verifies repo-map command/page/store inventory against the filesystem. |
 | `app/src/**` | `cd app && npm run test:unit` | Prefer `npm run test:changed` for narrower local feedback when appropriate. |
 | `app/src/__tests__/guards/**`, `app/src/lib/tauri-command-types.ts`, `app/src/lib/tauri-command-types.typecheck.ts` | `cd app && npm run test:guard` | Also run affected unit tests. |
 | `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` | Restart `npm run dev` after sidecar changes. OpenHands requests should not run through the Node sidecar. |

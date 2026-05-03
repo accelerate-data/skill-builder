@@ -194,7 +194,7 @@
     "docs/references/": "Vendored external reference docs (e.g. Anthropic API snapshots)",
     ".claude/rules/": "Shared agent rules (agent-agnostic, detailed policy). Referenced from AGENTS.md.",
     ".claude/repo-map.schema.json": "Schema for repo-map.json",
-    "scripts/": "Developer and automation scripts. worktree.sh is the canonical maintainer helper for creating development worktrees and bootstrapping app/eval dependencies. check-help-docs.mjs verifies app/VitePress help links against docs/user-guide. verify-release-stage.mjs verifies staged release archives include required runtime resources."
+    "scripts/": "Developer and automation scripts. worktree.sh is the canonical maintainer helper for creating development worktrees and bootstrapping app/eval dependencies. check-help-docs.mjs verifies app/VitePress help links against docs/user-guide. verify-release-stage.mjs verifies staged release archives include required runtime resources. verify-repo-map.mjs audits repo-map command/page/store inventory against the filesystem."
   },
   "dependencies_internal": {
     "frontend → rust": "Via Tauri IPC (`invoke()` from @tauri-apps/api/core)",
@@ -234,6 +234,7 @@
     "test_eval_harness_smoke": "cd tests/evals && npm run eval:smoke  # one live OpenCode/Promptfoo smoke scenario per package",
     "test_eval_harness_regression": "cd tests/evals && npm run eval:regression  # live OpenCode/Promptfoo package regression suite",
     "test_release_docs_ci_scripts": "node --test scripts/*.test.mjs",
+    "test_repo_map": "cd app && npm run test:repo-map",
     "check_help_docs": "node scripts/check-help-docs.mjs",
     "verify_release_stage": "node scripts/verify-release-stage.mjs <stage-dir> <windows|macos>",
     "create_worktree": "./scripts/worktree.sh feature/<branch-name>",
