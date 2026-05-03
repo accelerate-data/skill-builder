@@ -7,6 +7,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 pub const OPENHANDS_AGENT_SERVER_PACKAGE: &str = "openhands-agent-server==1.19.1";
 pub const OPENHANDS_TOOLS_PACKAGE: &str = "openhands-tools==1.19.1";
 pub const OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES: &[&str] = &["libtmux"];
+const CACHED_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone)]
 pub struct OpenHandsAgentServerHandle {
@@ -117,10 +118,24 @@ fn agent_server_registry() -> &'static OpenHandsAgentServerRegistry {
 pub async fn ensure_agent_server(timeout: Duration) -> Result<OpenHandsAgentServerHandle, String> {
     let mut registry = agent_server_registry().lock().await;
     if let Some(server) = registry.as_mut() {
-        if server.process.is_running() {
+        let process_running = server.process.is_running();
+        let health_result = if process_running {
+            server
+                .process
+                .wait_until_healthy(CACHED_HEALTH_CHECK_TIMEOUT)
+                .await
+        } else {
+            Err("cached process is not running".to_string())
+        };
+        if should_reuse_cached_server(process_running, health_result.clone()) {
             return Ok(server.handle.clone());
         }
-        log::warn!("[openhands-agent-server] cached process is not running; starting a new server");
+        if let Err(error) = &health_result {
+            log::warn!(
+                "[openhands-agent-server] cached server failed liveness probe: {error}; starting a new server"
+            );
+        }
+        let _ = server.process.shutdown().await;
         *registry = None;
     }
 
@@ -242,6 +257,10 @@ impl OpenHandsAgentServerProcess {
     }
 }
 
+fn should_reuse_cached_server(is_running: bool, health_result: Result<(), String>) -> bool {
+    is_running && health_result.is_ok()
+}
+
 pub fn select_random_local_port() -> Result<u16, String> {
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .map_err(|e| format!("Failed to reserve local OpenHands Agent Server port: {e}"))?;
@@ -340,5 +359,15 @@ mod tests {
             redacted,
             "failed with [REDACTED] and [REDACTED]; [REDACTED] again"
         );
+    }
+
+    #[test]
+    fn cached_server_reuse_requires_running_process_and_healthy_http_probe() {
+        assert!(should_reuse_cached_server(true, Ok(())));
+        assert!(!should_reuse_cached_server(false, Ok(())));
+        assert!(!should_reuse_cached_server(
+            true,
+            Err("health check failed".to_string())
+        ));
     }
 }
