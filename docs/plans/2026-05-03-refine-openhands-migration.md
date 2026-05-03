@@ -1446,9 +1446,9 @@ This task is product-wide, not refine-specific. The projection runs for every Op
 
 ### Subtasks
 
-- [ ] **12.1: Result-summary detectors** in `lib/openhands-result-summary.ts`. Pure tier-1 → tier-5 detector chain producing a one-line summary string from `result_text` / `structured_output`. Tier 1 detects `{status:"research_complete", dimensions_selected, question_count}` → "Research complete: N dimensions, M questions". Tier 2 detects answer-evaluator `{verdict, answered_count, total_count}` → "Answers {verdict}: N/M". Tier 3 detects skill-generation success markers → "Skill generated" / "Skill updated". Tier 4: first non-empty line of `result_text` capped at 80 chars. Tier 5: generic "Run completed". Unit-tested in isolation.
+- [x] **12.1: Result-summary detectors** in `lib/openhands-result-summary.ts`. Pure tier-1 → tier-5 detector chain producing a one-line summary string from `result_text` / `structured_output`. Tier 1 detects `{status:"research_complete", dimensions_selected, question_count}` → "Research complete: N dimensions, M questions". Tier 2 detects answer-evaluator `{verdict, answered_count, total_count}` → "Answers {verdict}: N/M". Tier 3 detects skill-generation success markers → "Skill generated" / "Skill updated". Tier 4: first non-empty line of `result_text` capped at 80 chars. Tier 5: generic "Run completed". Unit-tested in isolation.
 
-- [ ] **12.2: Event projection module** in `lib/openhands-event-projection.ts`. Pure function `projectConversationEvent(event, pendingActions) → { add: DisplayItem[]; update: { id, patch }[]; pendingDelta: ... }`. Implements the lossless per-event-class table from the design spec:
+- [x] **12.2: Event projection module** in `lib/openhands-event-projection.ts`. Pure function `projectConversationEvent(event, pendingActions) → { add: DisplayItem[]; update: { id, patch }[]; pendingDelta: ... }`. Implements the lossless per-event-class table from the design spec:
   - `MessageEvent` source=user → collapsed `tool_call` shape with `toolName: "task_sent"`
   - `MessageEvent` source=agent (mid-run) → `output` DisplayItem with markdown / parsed-summary
   - `ActionEvent` (file_editor) → pending `tool_call` keyed on `tool_call_id`, label per cmd: `Read file:` / `Create file:` / `Edit file:` / `Insert into`
@@ -1463,19 +1463,19 @@ This task is product-wide, not refine-specific. The projection runs for every Op
   - Unknown `event_class` → collapsed `tool_call` `toolName: "unknown_event"` row with raw payload in `toolResult.content`
   Reuses existing helpers in `lib/openhands-conversation-events.ts` (getMessageText, getToolName, getToolInput, getCommandText, etc.).
 
-- [ ] **12.3: Wire projection into `agent-store.ts`**. `addConversationEvent` now (a) appends to `run.conversationEvents` as today (audit trail preserved) AND (b) invokes the projector with the per-agent `pendingActionsByToolCallId` map and applies the returned DisplayItem add/update mutations to `run.displayItems`. `applyConversationState` on terminal status appends a synthesized `result` (or `error`) DisplayItem using the result-summary detector. Add `pendingActionsByToolCallId: Record<string, string /* displayItem.id */>` to the per-run state. Existing `addDisplayItem` continues to work for any non-OpenHands runtime that emits `display_item` directly.
+- [x] **12.3: Wire projection into `agent-store.ts`**. `addConversationEvent` now (a) appends to `run.conversationEvents` as today (audit trail preserved) AND (b) invokes the projector with the per-agent `pendingActionsByToolCallId` map and applies the returned DisplayItem add/update mutations to `run.displayItems`. `applyConversationState` on terminal status appends a synthesized `result` (or `error`) DisplayItem using the result-summary detector. Add `pendingActionsByToolCallId: Record<string, string /* displayItem.id */>` to the per-run state. Existing `addDisplayItem` continues to work for any non-OpenHands runtime that emits `display_item` directly.
 
-- [ ] **12.4: Revert `agent-turn-inline.tsx`** to read `run.displayItems` and render via `DisplayItemList`. Drop the temporary `ConversationEventList` import added in commit `5e2ed3cf`.
+- [x] **12.4: Revert `agent-turn-inline.tsx`** to read `run.displayItems` and render via `DisplayItemList`. Drop the temporary `ConversationEventList` import added in commit `5e2ed3cf`.
 
-- [ ] **12.5: Switch `agent-output-panel.tsx`** to read `run.displayItems` exclusively and render via `DisplayItemList`. Remove the dual-branch (`hasConversationEvents`) logic. Workflow now gets the same beautified projected view as refine.
+- [x] **12.5: Switch `agent-output-panel.tsx`** to read `run.displayItems` exclusively and render via `DisplayItemList`. Remove the dual-branch (`hasConversationEvents`) logic. Workflow now gets the same beautified projected view as refine.
 
-- [ ] **12.6: Update `agent-status-header.tsx`** event count to use `displayItems.length` only.
+- [x] **12.6: Update `agent-status-header.tsx`** event count to use `displayItems.length` only.
 
-- [ ] **12.7: Lifecycle chip** on the refine chat header bound to `runs[agentId]?.status`. Five states (Starting / Running / Completed / Error / Cancelled) with the colors from the design spec (muted / pacific-pulsing / seafoam / destructive / muted).
+- [x] **12.7: Lifecycle chip** on the refine chat header bound to `runs[agentId]?.status`. Five states (Starting / Running / Completed / Error / Cancelled) with the colors from the design spec (muted / pacific-pulsing / seafoam / destructive / muted).
 
-- [ ] **12.8: Unit tests** for the projector and result-summary modules using the JSONL transcripts captured under `~/Library/Application Support/com.vibedata.skill-builder/workspace/skills/measuring-pipeline-value/logs/` and `.../hr-analytics/logs/` as fixtures. Cover: paired action+observation, dangling action (pending state), dangling observation (standalone), error observation auto-expand, parallel actions sharing `llm_response_id` (verify they survive the existing `groupDisplayItems` activity grouping), each lossless filtered class produces its collapsed row.
+- [x] **12.8: Unit tests** for the projector and result-summary modules using the JSONL transcripts captured under `~/Library/Application Support/com.vibedata.skill-builder/workspace/skills/measuring-pipeline-value/logs/` and `.../hr-analytics/logs/` as fixtures. Cover: paired action+observation, dangling action (pending state), dangling observation (standalone), error observation auto-expand, parallel actions sharing `llm_response_id` (verify they survive the existing `groupDisplayItems` activity grouping), each lossless filtered class produces its collapsed row.
 
-- [ ] **12.9: Verify** via `cd app && npx tsc --noEmit` → `npm run test:unit`. Confirm 688+ frontend tests pass with the new projection tests added.
+- [x] **12.9: Verify** via `cd app && npx tsc --noEmit` → `npm run test:unit`. Confirm 688+ frontend tests pass with the new projection tests added.
 
 - [ ] **12.10: Manual smoke** in `npm run dev` from the VU-1155 worktree. Open Refine on a skill, send a message: confirm chat renders the projected `Read file: ...` cards paired with their observations, lifecycle chip flips Starting → Running → Completed, final reply shows as an `OutputItem` with the structured-result summary line, no events are missing (compare card count to the JSONL line count in the corresponding `logs/` dir). Open the Workflow tab on a different skill, run a step: confirm `agent-output-panel` shows the same beautified rendering (no longer the dense raw timeline).
 
