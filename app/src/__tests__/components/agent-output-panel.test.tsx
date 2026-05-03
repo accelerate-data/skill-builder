@@ -2,26 +2,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { useAgentStore, flushDisplayItems } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
-import {
-  normalizeConversationEventMessage,
-  type OpenHandsConversationEvent,
-} from "@/lib/openhands-conversation-events";
-import {
-  openHandsActionEventRecord,
-  openHandsAgentErrorEventRecord,
-  openHandsCondensationStartEventRecord,
-  openHandsCondensationSummaryEventRecord,
-  openHandsConversationErrorEventRecord,
-  openHandsConversationStateUpdateEventRecord,
-  openHandsMessageEventRecord,
-  openHandsObservationEventRecord,
-  openHandsParallelActionEventRecords,
-  openHandsPauseEventRecord,
-  openHandsRawPayloadEventRecord,
-  openHandsSystemPromptEventRecord,
-  openHandsUnknownEventRecord,
-  openHandsUserRejectObservationRecord,
-} from "../fixtures/openhands-conversation-events";
 
 // Polyfill scrollIntoView for jsdom
 if (!Element.prototype.scrollIntoView) {
@@ -59,24 +39,6 @@ function addDisplayItems(agentId: string, items: DisplayItem[]) {
     useAgentStore.getState().addDisplayItem(agentId, item);
   }
   flushDisplayItems();
-}
-
-function normalizeFixture(
-  record: Record<string, unknown>,
-): OpenHandsConversationEvent {
-  const event = normalizeConversationEventMessage(record);
-  if (!event) throw new Error("fixture did not normalize");
-  return event;
-}
-
-function addConversationFixtures(
-  agentId: string,
-  records: Record<string, unknown>[],
-) {
-  const store = useAgentStore.getState();
-  for (const record of records) {
-    store.addConversationEvent(agentId, normalizeFixture(record));
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -156,14 +118,21 @@ describe("AgentOutputPanel", () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders OpenHands conversation events instead of display items when present", () => {
+  it("always renders displayItems via DisplayItemList, never ConversationEventList", () => {
+    // After Task 12.5 the panel reads only displayItems. The agent-store
+    // projection (Task 12.3) translates conversation events into displayItems
+    // before rendering, so ConversationEventList is no longer a panel concern.
+    // Detailed conversation-event rendering coverage lives in
+    // openhands-event-projection.test.ts.
     useAgentStore.getState().startRun("openhands-agent", "sonnet");
     addDisplayItems("openhands-agent", [
       makeDisplayItem({
         type: "output",
-        outputText: "Legacy display item should be hidden for OpenHands.",
+        outputText: "Projected OpenHands message.",
       }),
     ]);
+    // Even when the store also has raw conversation events, the panel should
+    // not render via ConversationEventList — only displayItems are rendered.
     useAgentStore.getState().addConversationEvent("openhands-agent", {
       type: "conversation_event",
       runtime: "openhands",
@@ -171,177 +140,20 @@ describe("AgentOutputPanel", () => {
       eventClass: "MessageEvent",
       timestamp: Date.now(),
       event: {
-        source: "assistant",
-        message: "OpenHands rendered message.",
+        source: "user",
+        message: "Task message.",
       },
     });
 
     render(<AgentOutputPanel agentId="openhands-agent" />);
 
-    expect(screen.getByTestId("conversation-event-list")).toBeInTheDocument();
-    expect(screen.getByText("OpenHands rendered message.")).toBeInTheDocument();
+    // Old dual-branch behaviour would render ConversationEventList; the new
+    // single-branch panel never does.
+    expect(screen.queryByTestId("conversation-event-list")).toBeNull();
+    // The directly added displayItem is visible.
     expect(
-      screen.queryByText("Legacy display item should be hidden for OpenHands."),
-    ).not.toBeInTheDocument();
-  });
-
-  it("renders OpenHands action, observation, error, and unknown event content", () => {
-    useAgentStore.getState().startRun("openhands-agent", "sonnet");
-    const store = useAgentStore.getState();
-    store.addConversationEvent("openhands-agent", {
-      type: "conversation_event",
-      runtime: "openhands",
-      conversationId: "conv-1",
-      eventClass: "ActionEvent",
-      timestamp: Date.now(),
-      event: {
-        thought: "Need to inspect files.",
-        tool_name: "terminal",
-        command: "npm test",
-      },
-    });
-    store.addConversationEvent("openhands-agent", {
-      type: "conversation_event",
-      runtime: "openhands",
-      conversationId: "conv-1",
-      eventClass: "ObservationEvent",
-      timestamp: Date.now(),
-      event: {
-        content: "All tests passed.",
-      },
-    });
-    store.addConversationEvent("openhands-agent", {
-      type: "conversation_event",
-      runtime: "openhands",
-      conversationId: "conv-1",
-      eventClass: "AgentErrorEvent",
-      timestamp: Date.now(),
-      event: {
-        tool_name: "file_editor",
-        error: "Patch failed.",
-      },
-    });
-    store.addConversationEvent("openhands-agent", {
-      type: "conversation_event",
-      runtime: "openhands",
-      conversationId: "conv-1",
-      eventClass: "ConversationErrorEvent",
-      timestamp: Date.now(),
-      event: {
-        message: "Conversation stopped.",
-      },
-    });
-    store.addConversationEvent("openhands-agent", {
-      type: "conversation_event",
-      runtime: "openhands",
-      conversationId: "conv-1",
-      eventClass: "CustomEvent",
-      timestamp: Date.now(),
-      event: {
-        note: "Unexpected payload.",
-      },
-    });
-
-    render(<AgentOutputPanel agentId="openhands-agent" />);
-
-    expect(screen.getByText("Need to inspect files.")).toBeInTheDocument();
-    expect(screen.getByText("terminal")).toBeInTheDocument();
-    expect(screen.getByText("npm test")).toBeInTheDocument();
-    expect(screen.getByText("All tests passed.")).toBeInTheDocument();
-    expect(screen.getByText("Patch failed.")).toBeInTheDocument();
-    expect(screen.getByText("Conversation stopped.")).toBeInTheDocument();
-    expect(screen.getByText("CustomEvent")).toBeInTheDocument();
-    expect(screen.getByText(/Unexpected payload/)).toBeInTheDocument();
-  });
-
-  it("renders realistic OpenHands SDK event shapes readably", () => {
-    useAgentStore.getState().startRun("openhands-agent", "sonnet");
-    addConversationFixtures("openhands-agent", [
-      openHandsMessageEventRecord,
-      openHandsActionEventRecord,
-      openHandsObservationEventRecord,
-      openHandsUserRejectObservationRecord,
-      openHandsAgentErrorEventRecord,
-      openHandsConversationErrorEventRecord,
-      openHandsSystemPromptEventRecord,
-      openHandsCondensationStartEventRecord,
-      openHandsCondensationSummaryEventRecord,
-      openHandsConversationStateUpdateEventRecord,
-      openHandsPauseEventRecord,
-      openHandsUnknownEventRecord,
-      openHandsRawPayloadEventRecord,
-    ]);
-
-    render(<AgentOutputPanel agentId="openhands-agent" />);
-
-    expect(
-      screen.getByText("I will inspect the current workflow files."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Need the helper source before editing/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Use a focused read before patching/),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("read_file").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("call-single")).toBeInTheDocument();
-    expect(screen.getByText("resp-single")).toBeInTheDocument();
-    expect(
-      screen.getByText(/app\/src\/lib\/openhands-conversation-events\.ts/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Read 140 lines from the helper."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("User rejected the proposed file edit."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Tool execution failed.")).toBeInTheDocument();
-    expect(
-      screen.getByText("Conversation stopped after runtime error."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("System prompt prepared.")).toBeInTheDocument();
-    expect(screen.getByText("CondensationStartEvent")).toBeInTheDocument();
-    expect(
-      screen.getByText("Conversation context condensed."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "The conversation was condensed after reading helper files.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('State updated: {"phase":"running","iteration":2}'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Paused: Waiting for user input."),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("user").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("CustomSdkEvent")).toBeInTheDocument();
-    expect(screen.getByText(/Preserve unknown payloads/)).toBeInTheDocument();
-    expect(screen.getByText("RawFallbackEvent")).toBeInTheDocument();
-    expect(screen.getByText(/SDK event string fallback/)).toBeInTheDocument();
-  });
-
-  it("groups parallel OpenHands action events by llm_response_id for display", () => {
-    useAgentStore.getState().startRun("openhands-agent", "sonnet");
-    addConversationFixtures("openhands-agent", [
-      ...openHandsParallelActionEventRecords,
-      openHandsActionEventRecord,
-    ]);
-
-    render(<AgentOutputPanel agentId="openhands-agent" />);
-
-    expect(screen.getByText("Parallel Actions (2)")).toBeInTheDocument();
-    expect(
-      screen.getByText("Fetch the source and tests in parallel."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("resp-parallel")).toBeInTheDocument();
-    expect(screen.getByText("call-list")).toBeInTheDocument();
-    expect(screen.getByText("call-read-tests")).toBeInTheDocument();
-    expect(screen.getByText("list_files")).toBeInTheDocument();
-    expect(screen.getAllByText("read_file").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText("Action")).toBeInTheDocument();
-    expect(screen.getByText("resp-single")).toBeInTheDocument();
+      screen.getAllByText("Projected OpenHands message.").length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("renders tool_call display item inside tool activity group", () => {
