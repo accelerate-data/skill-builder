@@ -493,7 +493,7 @@ export const sendRefineMessage = (
   workspacePath: string,
   pluginSlug: string,
   targetFiles?: string[],
-) => invokeCommand("send_refine_message", { sessionId, userMessage, pluginSlug, workspacePath, targetFiles: targetFiles ?? null, command: null })
+) => invokeCommand("send_refine_message", { sessionId, userMessage, pluginSlug, workspacePath, targetFiles: targetFiles ?? null })
 
 export const finalizeRefineRun = (
   skillName: string,

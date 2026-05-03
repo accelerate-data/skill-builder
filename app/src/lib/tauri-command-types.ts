@@ -362,7 +362,6 @@ export interface TauriCommandMap {
       pluginSlug: string;
       workspacePath: string;
       targetFiles: string[] | null;
-      command: null;
     };
     result: string;
   };
