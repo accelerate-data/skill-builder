@@ -6,9 +6,11 @@ const yaml = require('js-yaml');
 
 const EVAL_ROOT = path.resolve(__dirname, '..');
 const PACKAGE_JSON = 'package.json';
+const EVAL_MAP = 'eval-map.json';
 const OPENCODE_CONFIG = 'opencode.json';
 const PACKAGE_ROOT = path.join(EVAL_ROOT, 'packages');
 const SCRIPT_ROOT = path.join(EVAL_ROOT, 'scripts');
+const FRAMEWORK_ROOT = path.join(SCRIPT_ROOT, 'framework');
 const LIVE_CONFIGS = [];
 const ALLOWED_TIERS = new Set(['light', 'standard', 'high', 'x_high']);
 const EXPECTED_AGENT_STEPS = {
@@ -109,21 +111,20 @@ test('every eval package has exactly one smoke scenario', () => {
       `${relativePath} must define exactly one [smoke] scenario`,
     );
   }
+
 });
 
-test('eval:smoke runs the smoke filter across every package config', () => {
-  const packageConfigs = collectPackageConfigs(PACKAGE_ROOT);
+test('eval:smoke delegates smoke package discovery to the framework CLI', () => {
   const packageJson = readJson(PACKAGE_JSON);
   const smokeScript = packageJson.scripts?.['eval:smoke'];
 
-  assert.ok(smokeScript, 'package.json must define scripts.eval:smoke');
-  assert.match(smokeScript, /--filter-pattern '\^\\\[smoke\\\]'/);
-  for (const relativePath of packageConfigs) {
-    assert.ok(
-      smokeScript.includes(`-c ${relativePath}`),
-      `eval:smoke must include ${relativePath}`,
-    );
-  }
+  assert.equal(smokeScript, 'node bin/ad-evals.js smoke');
+});
+
+test('eval:regression delegates package discovery to the framework CLI', () => {
+  const packageJson = readJson(PACKAGE_JSON);
+
+  assert.equal(packageJson.scripts?.['eval:regression'], 'node bin/ad-evals.js regression');
 });
 
 test('scenario inventory records a decision for every eval package', () => {
@@ -143,13 +144,45 @@ test('scenario inventory records a decision for every eval package', () => {
   assert.match(inventory, /Live eval scripts are automated/);
 });
 
+test('eval map gives coding agents navigation for every eval package', () => {
+  const evalMap = readJson(EVAL_MAP);
+  const packageConfigs = collectPackageConfigs(PACKAGE_ROOT);
+
+  assert.equal(evalMap.eval_root, 'tests/evals');
+  assert.ok(evalMap.agent_guidance.length > 0, 'eval map must include agent guidance');
+  assert.ok(evalMap.commands.deterministic_contracts, 'eval map must include deterministic test command');
+  assert.ok(evalMap.directories['packages/'], 'eval map must describe package ownership');
+  assert.ok(evalMap.framework_files['bin/ad-evals.js'], 'eval map must describe shared CLI');
+
+  for (const relativePath of packageConfigs) {
+    const parts = relativePath.split(path.sep).join('/').split('/');
+    const packageName = parts[1];
+    assert.ok(evalMap.packages[packageName], `eval map must include package ${packageName}`);
+    assert.equal(
+      evalMap.packages[packageName].config,
+      relativePath.split(path.sep).join('/'),
+      `eval map config mismatch for ${packageName}`,
+    );
+  }
+
+  const discoveredConfigSet = new Set(packageConfigs.map((relativePath) => (
+    relativePath.split(path.sep).join('/')
+  )));
+  for (const [packageName, packageEntry] of Object.entries(evalMap.packages)) {
+    assert.ok(
+      discoveredConfigSet.has(packageEntry.config),
+      `eval map package ${packageName} points to missing config ${packageEntry.config}`,
+    );
+  }
+});
+
 test('eval suite no longer references provider files or the Claude agent sdk', () => {
   const textFiles = [
     ...collectTextFiles(PACKAGE_ROOT),
     ...LIVE_CONFIGS,
     path.relative(EVAL_ROOT, path.join(SCRIPT_ROOT, 'promptfoo.sh')),
-    path.relative(EVAL_ROOT, path.join(SCRIPT_ROOT, 'run-promptfoo-with-guard.js')),
-    path.relative(EVAL_ROOT, path.join(SCRIPT_ROOT, 'resolve-promptfoo-config.js')),
+    path.relative(EVAL_ROOT, path.join(FRAMEWORK_ROOT, 'run-promptfoo-with-guard.js')),
+    path.relative(EVAL_ROOT, path.join(FRAMEWORK_ROOT, 'resolve-promptfoo-config.js')),
     'package.json',
   ].sort();
 
@@ -172,7 +205,7 @@ test('package configs do not declare package-local providers', () => {
     assert.equal(
       Object.prototype.hasOwnProperty.call(parsed, 'providers'),
       false,
-      `${relativePath} must receive providers from scripts/resolve-promptfoo-config.js`,
+      `${relativePath} must receive providers from scripts/framework/resolve-promptfoo-config.js`,
     );
   }
 });

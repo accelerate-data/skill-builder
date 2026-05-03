@@ -2,42 +2,81 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const OpenCodeCliProvider = require('./opencode-cli-provider');
+const OpenCodeCliProvider = require('./framework/opencode-cli-provider');
 
 test('OpenCodeCliProvider invokes opencode run with the configured eval agent', async () => {
+  const previousStateHome = process.env.XDG_STATE_HOME;
+  delete process.env.XDG_STATE_HOME;
   const calls = [];
-  const provider = new OpenCodeCliProvider({
-    config: {
-      agent: 'eval_light',
-      opencode_config: '/suite/opencode.json',
-      project_dir: '/repo',
-      format: 'default',
-      log_level: 'ERROR',
-    },
-    runner: async (args, options) => {
-      calls.push({ args, options });
-      return 'status output';
-    },
-  });
+  try {
+    const provider = new OpenCodeCliProvider({
+      config: {
+        agent: 'eval_light',
+        opencode_config: '/suite/opencode.json',
+        project_dir: '/repo',
+        format: 'default',
+        log_level: 'ERROR',
+      },
+      runner: async (args, options) => {
+        calls.push({ args, options });
+        return 'status output';
+      },
+    });
 
-  const result = await provider.callApi('run status');
+    const result = await provider.callApi('run status');
 
-  assert.deepEqual(result, { output: 'status output' });
-  assert.deepEqual(calls[0].args, [
-    'run',
-    '--agent',
-    'eval_light',
-    '--dir',
-    '/repo',
-    '--format',
-    'default',
-    '--log-level',
-    'ERROR',
-    'run status',
-  ]);
-  assert.equal(calls[0].options.cwd, path.resolve(__dirname, '..'));
-  assert.equal(calls[0].options.env.OPENCODE_CONFIG, '/suite/opencode.json');
-  assert.match(calls[0].options.env.XDG_STATE_HOME, /\.promptfoo\/opencode-runtime\/state$/);
+    assert.deepEqual(result, { output: 'status output' });
+    assert.deepEqual(calls[0].args, [
+      'run',
+      '--agent',
+      'eval_light',
+      '--dir',
+      '/repo',
+      '--format',
+      'default',
+      '--log-level',
+      'ERROR',
+      'run status',
+    ]);
+    assert.equal(calls[0].options.cwd, path.resolve(__dirname, '..'));
+    assert.equal(calls[0].options.env.OPENCODE_CONFIG, '/suite/opencode.json');
+    assert.match(calls[0].options.env.XDG_STATE_HOME, /\.tmp\/opencode-state$/);
+  } finally {
+    if (previousStateHome !== undefined) {
+      process.env.XDG_STATE_HOME = previousStateHome;
+    }
+  }
+});
+
+test('OpenCodeCliProvider preserves framework-exported OpenCode state', async () => {
+  const previousStateHome = process.env.XDG_STATE_HOME;
+  process.env.XDG_STATE_HOME = '/repo/.git/ad-evals/opencode-state';
+  try {
+    const calls = [];
+    const provider = new OpenCodeCliProvider({
+      config: {
+        agent: 'eval_light',
+        opencode_config: '/suite/opencode.json',
+        project_dir: '/repo',
+        format: 'default',
+        log_level: 'ERROR',
+      },
+      runner: async (args, options) => {
+        calls.push({ args, options });
+        return 'status output';
+      },
+    });
+
+    await provider.callApi('run status');
+
+    assert.equal(calls[0].options.env.XDG_STATE_HOME, '/repo/.git/ad-evals/opencode-state');
+  } finally {
+    if (previousStateHome === undefined) {
+      delete process.env.XDG_STATE_HOME;
+    } else {
+      process.env.XDG_STATE_HOME = previousStateHome;
+    }
+  }
 });
 
 test('OpenCodeCliProvider includes --print-logs only when configured', async () => {

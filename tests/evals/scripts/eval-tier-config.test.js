@@ -8,7 +8,7 @@ const {
   CONFIG_PATH,
   loadEvalTierConfig,
   resolveEvalTier,
-} = require('./eval-tier-config');
+} = require('./framework/eval-tier-config');
 
 const AGENT_PERMISSION = {
   read: 'allow',
@@ -24,7 +24,7 @@ const AGENT_PERMISSION = {
 test('loadEvalTierConfig returns required suite tiers and OpenCode agents', () => {
   const config = loadEvalTierConfig();
 
-  assert.equal(config.runtime.providerId, 'file://scripts/opencode-cli-provider.js');
+  assert.equal(config.runtime.providerId, 'file://scripts/framework/opencode-cli-provider.js');
   assert.equal(config.runtime.opencodeConfig, path.resolve(path.dirname(CONFIG_PATH), '..', 'opencode.json'));
   assert.equal(config.runtime.projectDir, path.resolve(path.dirname(CONFIG_PATH), '..', '..', '..'));
   assert.equal(config.runtime.format, 'default');
@@ -103,7 +103,7 @@ test('loadEvalTierConfig rejects missing runtime and tier fields', () => {
 
     const validRuntime = `
 [runtime]
-provider_id = "file://scripts/opencode-cli-provider.js"
+provider_id = "file://scripts/framework/opencode-cli-provider.js"
 opencode_config = "opencode.json"
 project_dir = "."
 format = "default"
@@ -128,7 +128,7 @@ agent = "eval_x_high"
     const missingRuntimePath = path.join(tempRoot, 'missing-runtime.toml');
     fs.writeFileSync(missingRuntimePath, `
 [runtime]
-provider_id = "file://scripts/opencode-cli-provider.js"
+provider_id = "file://scripts/framework/opencode-cli-provider.js"
 project_dir = "."
 format = "default"
 log_level = "ERROR"
@@ -318,7 +318,7 @@ ${validTiers}
     const negativeRetriesPath = path.join(tempRoot, 'negative-retries.toml');
     fs.writeFileSync(negativeRetriesPath, `
 [runtime]
-provider_id = "file://scripts/opencode-cli-provider.js"
+provider_id = "file://scripts/framework/opencode-cli-provider.js"
 opencode_config = "opencode.json"
 project_dir = "."
 format = "default"

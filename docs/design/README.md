@@ -22,6 +22,7 @@
 | [release/](release/README.md) | Release pipeline: CI/CD workflows, desktop app build, credentials |
 | [sdk-agent-options/](sdk-agent-options/README.md) | Claude Agent SDK option wiring: source trace for each option from UI/backend/hardcoded paths |
 | [agent-unit-test-suite/](agent-unit-test-suite/README.md) | Agent test stack and Promptfoo scenario operations: maintenance, single-scenario runs, and autonomous agent test policy |
+| [shared-eval-harness/](shared-eval-harness/README.md) | Shared Promptfoo/OpenCode eval harness: framework boundary, runtime state model, package contract, and extraction path |
 | [startup-recon/](startup-recon/README.md) | Startup reconciliation: three-pass state machine, discovery scenarios, ACK dialog |
 | [workflow-state/](workflow-state/README.md) | Workflow step state machine: transitions, file deletion cascade, reset vs navigate-back, disabled-step guards |
 | [workspace-ui-refinement/](workspace-ui-refinement/README.md) | Workspace UI polish: design review and improvement plan for Skills Overview, Refine, and Skill List Panel |

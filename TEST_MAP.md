@@ -27,7 +27,7 @@ Use the tables below for cases tooling cannot infer safely.
 | `app/src/__tests__/` | Frontend Vitest tests | Mirror source areas by `stores`, `lib`, `hooks`, `components`, `pages`, and `guards`. |
 | `app/e2e/` | Playwright E2E specs | Use mocked Tauri commands, not bare-metal system tests. |
 | `app/sidecar/__tests__/` | Sidecar Vitest tests | Use for Node sidecar modules and runtime adapters. Live OpenHands tests should read the app DB-backed LLM settings by default; keep env vars as explicit overrides for CI or isolated runs. |
-| `tests/evals/` | Promptfoo/OpenCode eval harness | Keep separate from `app/tests/`; it has its own package, Promptfoo state, and live-model risk. |
+| `tests/evals/` | Promptfoo/OpenCode eval harness | Keep separate from `app/tests/`; it has its own package and live-model risk. Promptfoo state is exported by the eval runtime, not worktree creation. |
 
 ## Change To Test Map
 
