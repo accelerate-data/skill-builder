@@ -10,15 +10,13 @@ pub struct OpenHandsOneShotRequest {
     pub workspace_skill_dir: String,
     pub allowed_tools: Vec<String>,
     pub max_turns: u32,
-    pub _agent_name: Option<String>,
-    pub _task_kind: Option<String>,
-    pub _output_format: Option<serde_json::Value>,
     pub user_message_suffix: Option<String>,
     pub plugin_slug: String,
     pub skill_name: Option<String>,
     pub step_id: Option<i32>,
     pub run_source: Option<String>,
     pub workflow_session_id: Option<String>,
+    pub usage_session_id: Option<String>,
 }
 
 impl OpenHandsOneShotRequest {
@@ -35,15 +33,13 @@ impl OpenHandsOneShotRequest {
             workspace_skill_dir: config.workspace_skill_dir.clone(),
             allowed_tools: config.allowed_tools.clone().unwrap_or_default(),
             max_turns: config.max_turns.unwrap_or(50),
-            _agent_name: config.agent_name.clone(),
-            _task_kind: config.task_kind.clone(),
-            _output_format: config.output_format.clone(),
             user_message_suffix: config.user_message_suffix.clone(),
             plugin_slug: config.plugin_slug.clone(),
             skill_name: config.skill_name.clone(),
             step_id: config.step_id,
             run_source: config.run_source.clone(),
             workflow_session_id: config.workflow_session_id.clone(),
+            usage_session_id: config.usage_session_id.clone(),
         })
     }
 }

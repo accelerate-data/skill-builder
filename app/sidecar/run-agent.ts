@@ -8,11 +8,9 @@ import {
   toOneShotRunRequest,
 } from "./runtime/claude-runtime.js";
 import { createRecordRuntimeSink } from "./runtime/sink.js";
+import { OPENHANDS_AGENT_SERVER_ONLY_ERROR } from "./openhands-rejection.js";
 
 export { discoverInstalledPlugins, emitSystemEvent, selectPluginPaths };
-
-const OPENHANDS_AGENT_SERVER_ONLY_ERROR =
-  "OpenHands requests are no longer handled by the Node sidecar; use the Rust-managed OpenHands Agent Server runtime.";
 
 function buildRuntimeValidationResult(
   config: SidecarConfig,

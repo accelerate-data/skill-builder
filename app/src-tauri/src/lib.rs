@@ -52,6 +52,12 @@ impl CloseGuardState {
     }
 }
 
+async fn shutdown_openhands_agent_server_for_exit() {
+    if let Err(e) = crate::agents::openhands_server::process::shutdown_agent_server().await {
+        log::warn!("[exit] OpenHands Agent Server shutdown failed: {e}");
+    }
+}
+
 fn dir_is_empty(path: &Path) -> Result<bool, io::Error> {
     Ok(fs::read_dir(path)?.next().is_none())
 }
@@ -481,16 +487,7 @@ pub fn run() {
                 if pool.is_shutdown_completed() {
                     log::info!("[exit] Sidecar shutdown already completed by graceful_shutdown, skipping");
                     if let Ok(rt) = tokio::runtime::Handle::try_current() {
-                        rt.block_on(async {
-                            if let Err(e) =
-                                crate::agents::openhands_server::process::shutdown_agent_server()
-                                    .await
-                            {
-                                log::warn!(
-                                    "[exit] OpenHands Agent Server shutdown failed: {e}"
-                                );
-                            }
-                        });
+                        rt.block_on(shutdown_openhands_agent_server_for_exit());
                     }
                     return;
                 }
@@ -502,9 +499,7 @@ pub fn run() {
                     let sidecar_result = pool
                         .shutdown_all_with_timeout(app_handle, timeout_secs)
                         .await;
-                    if let Err(e) = crate::agents::openhands_server::process::shutdown_agent_server().await {
-                        log::warn!("[exit] OpenHands Agent Server shutdown failed: {e}");
-                    }
+                    shutdown_openhands_agent_server_for_exit().await;
                     sidecar_result
                 };
 

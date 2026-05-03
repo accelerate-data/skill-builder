@@ -4,7 +4,7 @@ pub mod process;
 pub mod types;
 
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::{SinkExt, StreamExt};
 use tauri::Listener;
@@ -34,6 +34,50 @@ enum OpenHandsOneShotEvent {
     Lifecycle(Result<(), String>),
 }
 
+#[derive(Clone)]
+struct OpenHandsRunSummaryContext {
+    skill_name: String,
+    step_id: i32,
+    workflow_session_id: Option<String>,
+    usage_session_id: Option<String>,
+    run_source: Option<String>,
+    session_id: String,
+    model: String,
+    plugin_slug: String,
+    workspace_path: String,
+    started_at: Instant,
+}
+
+impl OpenHandsRunSummaryContext {
+    fn new(request: &OpenHandsOneShotRequest, conversation_id: &str) -> Self {
+        Self {
+            skill_name: request
+                .skill_name
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
+            step_id: request.step_id.unwrap_or(-1),
+            workflow_session_id: request.workflow_session_id.clone(),
+            usage_session_id: request.usage_session_id.clone(),
+            run_source: request.run_source.clone(),
+            session_id: conversation_id.to_string(),
+            model: request.llm.model.clone(),
+            plugin_slug: request.plugin_slug.clone(),
+            workspace_path: request.workspace_skill_dir.clone(),
+            started_at: Instant::now(),
+        }
+    }
+}
+
+struct OpenHandsConversationTask {
+    app: tauri::AppHandle,
+    agent_id: String,
+    client: OpenHandsServerClient,
+    conversation_id: String,
+    websocket_url: String,
+    session_api_key: String,
+    summary_context: OpenHandsRunSummaryContext,
+}
+
 pub async fn dispatch_openhands_one_shot(
     app: &tauri::AppHandle,
     agent_id: &str,
@@ -61,6 +105,7 @@ pub async fn dispatch_openhands_one_shot(
         .await
         .map_err(|e| format!("Failed to create OpenHands Agent Server conversation: {e}"))?;
     let conversation_id = extract_conversation_id(&conversation)?;
+    let summary_context = OpenHandsRunSummaryContext::new(&request, &conversation_id);
     let websocket_url = server.websocket_url(&conversation_id);
 
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
@@ -70,16 +115,16 @@ pub async fn dispatch_openhands_one_shot(
     let agent_for_task = agent_id.to_string();
     let session_api_key = server.session_api_key.clone();
     tokio::spawn(async move {
-        let result = run_conversation_task(
-            app_for_task.clone(),
-            agent_for_task.clone(),
+        let task = OpenHandsConversationTask {
+            app: app_for_task.clone(),
+            agent_id: agent_for_task.clone(),
             client,
             conversation_id,
             websocket_url,
             session_api_key,
-            cancel_rx,
-        )
-        .await;
+            summary_context,
+        };
+        let result = run_conversation_task(task, cancel_rx).await;
         unregister_cancel(&agent_for_task);
         match result {
             Ok(()) => {}
@@ -204,34 +249,26 @@ pub fn cancel_openhands_one_shot(agent_id: &str) -> bool {
 }
 
 async fn run_conversation_task(
-    app: tauri::AppHandle,
-    agent_id: String,
-    client: OpenHandsServerClient,
-    conversation_id: String,
-    websocket_url: String,
-    session_api_key: String,
+    task: OpenHandsConversationTask,
     mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
 ) -> Result<(), String> {
-    let result = run_conversation_task_inner(
-        &app,
-        &agent_id,
-        &client,
-        &conversation_id,
-        &websocket_url,
-        session_api_key,
-        &mut cancel_rx,
-    )
-    .await;
+    let result = run_conversation_task_inner(&task, &mut cancel_rx).await;
 
     if result.is_err() {
-        let _ = client.pause_conversation(&conversation_id).await;
+        let _ = task.client.pause_conversation(&task.conversation_id).await;
     }
-    let delete_result = client.delete_conversation(&conversation_id).await;
+    let delete_result = task.client.delete_conversation(&task.conversation_id).await;
     match (result, delete_result) {
         (Ok(()), Ok(())) => Ok(()),
-        (Ok(()), Err(e)) => Err(format!(
-            "Failed to delete OpenHands Agent Server conversation: {e}"
-        )),
+        (Ok(()), Err(e)) => {
+            log::warn!(
+                "[openhands-agent-server:{}] failed to delete completed conversation {}: {}",
+                task.agent_id,
+                task.conversation_id,
+                e
+            );
+            Ok(())
+        }
         (Err(error), Ok(())) => Err(error),
         (Err(error), Err(delete_error)) => Err(format!(
             "{error}; additionally failed to delete OpenHands Agent Server conversation: {delete_error}"
@@ -240,15 +277,10 @@ async fn run_conversation_task(
 }
 
 async fn run_conversation_task_inner(
-    app: &tauri::AppHandle,
-    agent_id: &str,
-    client: &OpenHandsServerClient,
-    conversation_id: &str,
-    websocket_url: &str,
-    session_api_key: String,
+    task: &OpenHandsConversationTask,
     cancel_rx: &mut tokio::sync::oneshot::Receiver<()>,
 ) -> Result<(), String> {
-    let (ws_stream, _) = tokio_tungstenite::connect_async(websocket_url)
+    let (ws_stream, _) = tokio_tungstenite::connect_async(&task.websocket_url)
         .await
         .map_err(|e| format!("Failed to connect to OpenHands Agent Server socket: {e}"))?;
     let (mut ws_write, mut ws_read) = ws_stream.split();
@@ -256,7 +288,7 @@ async fn run_conversation_task_inner(
         .send(Message::Text(
             serde_json::json!({
                 "type": "auth",
-                "session_api_key": session_api_key,
+                "session_api_key": task.session_api_key,
             })
             .to_string()
             .into(),
@@ -264,33 +296,32 @@ async fn run_conversation_task_inner(
         .await
         .map_err(|e| format!("Failed to authenticate OpenHands Agent Server socket: {e}"))?;
 
-    client
-        .run_conversation(conversation_id)
+    task.client
+        .run_conversation(&task.conversation_id)
         .await
         .map_err(|e| format!("Failed to run OpenHands Agent Server conversation: {e}"))?;
 
     let mut terminal_state: Option<serde_json::Value> = None;
-    let mut terminal_error: Option<String> = None;
     loop {
         tokio::select! {
             _ = &mut *cancel_rx => {
-                client
-                    .pause_conversation(conversation_id)
+                task.client
+                    .pause_conversation(&task.conversation_id)
                     .await
                     .map_err(|e| format!("Failed to pause OpenHands Agent Server conversation: {e}"))?;
                 let cancel_state = serde_json::json!({
                     "type": "conversation_state",
                     "runtime": "openhands",
-                    "agent_id": agent_id,
-                    "conversation_id": conversation_id,
+                    "agent_id": task.agent_id,
+                    "conversation_id": task.conversation_id,
                     "status": "cancelled",
                     "timestamp": chrono::Utc::now().timestamp_millis(),
                     "error_detail": "OpenHands one-shot run cancelled",
                     "result_text": null,
                     "structured_output": null,
                 });
-                super::events::handle_sidecar_message(app, agent_id, &cancel_state.to_string());
-                super::events::handle_agent_shutdown(app, agent_id);
+                super::events::handle_sidecar_message(&task.app, &task.agent_id, &cancel_state.to_string());
+                super::events::handle_agent_shutdown(&task.app, &task.agent_id);
                 return Ok(());
             }
             message = ws_read.next() => {
@@ -311,13 +342,13 @@ async fn run_conversation_task_inner(
                     Err(e) => {
                         log::debug!(
                             "[openhands-agent-server:{}] ignored non-json socket message: {}",
-                            agent_id,
+                            task.agent_id,
                             e
                         );
                         continue;
                     }
                 };
-                let normalized = normalize_server_event(agent_id, conversation_id, &raw);
+                let normalized = normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
                 let is_terminal = normalized
                     .get("type")
                     .and_then(|value| value.as_str())
@@ -326,7 +357,7 @@ async fn run_conversation_task_inner(
                     terminal_state = Some(normalized);
                     break;
                 } else {
-                    super::events::handle_sidecar_message(app, agent_id, &normalized.to_string());
+                    super::events::handle_sidecar_message(&task.app, &task.agent_id, &normalized.to_string());
                 }
             }
         }
@@ -334,31 +365,126 @@ async fn run_conversation_task_inner(
 
     let terminal_state = match terminal_state {
         Some(state) if terminal_state_needs_final_response(&state) => {
-            fetch_final_response_state(client, agent_id, conversation_id, Some(state)).await?
+            fetch_final_response_state(
+                &task.client,
+                &task.agent_id,
+                &task.conversation_id,
+                Some(state),
+            )
+            .await?
         }
         Some(state) => state,
-        None => fetch_final_response_state(client, agent_id, conversation_id, None).await?,
+        None => build_socket_closed_state(&task.agent_id, &task.conversation_id),
     };
 
-    if terminal_state
+    let terminal_error = if terminal_state
         .get("status")
         .and_then(|value| value.as_str())
         != Some("completed")
     {
-        terminal_error = terminal_state
+        terminal_state
             .get("error_detail")
             .and_then(|value| value.as_str())
             .map(str::to_string)
-            .or_else(|| Some("OpenHands one-shot run failed".to_string()));
-    }
-    super::events::handle_sidecar_message(app, agent_id, &terminal_state.to_string());
+            .or_else(|| Some("OpenHands one-shot run failed".to_string()))
+    } else {
+        None
+    };
+    emit_openhands_run_result(
+        &task.app,
+        &task.agent_id,
+        &terminal_state,
+        &task.summary_context,
+    );
+    super::events::handle_sidecar_message(&task.app, &task.agent_id, &terminal_state.to_string());
     super::events::handle_sidecar_exit_with_detail(
-        app,
-        agent_id,
+        &task.app,
+        &task.agent_id,
         terminal_error.is_none(),
         terminal_error,
     );
     Ok(())
+}
+
+fn build_socket_closed_state(agent_id: &str, conversation_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "type": "conversation_state",
+        "runtime": "openhands",
+        "agent_id": agent_id,
+        "conversation_id": conversation_id,
+        "status": "error",
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+        "error_detail": "OpenHands Agent Server socket closed before terminal conversation_state",
+        "result_text": null,
+        "structured_output": null,
+    })
+}
+
+fn emit_openhands_run_result(
+    app: &tauri::AppHandle,
+    agent_id: &str,
+    terminal_state: &serde_json::Value,
+    context: &OpenHandsRunSummaryContext,
+) {
+    let run_result = build_openhands_run_result_event(terminal_state, context);
+    super::events::handle_sidecar_message(app, agent_id, &run_result.to_string());
+}
+
+fn build_openhands_run_result_event(
+    terminal_state: &serde_json::Value,
+    context: &OpenHandsRunSummaryContext,
+) -> serde_json::Value {
+    let status = terminal_state
+        .get("status")
+        .and_then(|value| value.as_str())
+        .unwrap_or("error");
+    let result_text = terminal_state
+        .get("result_text")
+        .and_then(|value| value.as_str())
+        .map(str::to_string);
+    let result_errors = terminal_state
+        .get("error_detail")
+        .and_then(|value| value.as_str())
+        .filter(|detail| !detail.trim().is_empty())
+        .map(|detail| vec![detail.to_string()]);
+    let duration_ms = context
+        .started_at
+        .elapsed()
+        .as_millis()
+        .min(i64::MAX as u128) as i64;
+    serde_json::json!({
+        "type": "agent_event",
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+        "event": {
+            "type": "run_result",
+            "skillName": context.skill_name,
+            "stepId": context.step_id,
+            "workflowSessionId": context.workflow_session_id,
+            "usageSessionId": context.usage_session_id,
+            "runSource": context.run_source,
+            "sessionId": context.session_id,
+            "model": context.model,
+            "inputTokens": 0,
+            "outputTokens": 0,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "totalCostUsd": 0.0,
+            "modelUsageBreakdown": [],
+            "contextWindow": 0,
+            "resultSubtype": if status == "completed" { serde_json::Value::Null } else { serde_json::Value::String("openhands_agent_server".to_string()) },
+            "resultErrors": result_errors,
+            "stopReason": serde_json::Value::Null,
+            "numTurns": 0,
+            "durationMs": duration_ms,
+            "durationApiMs": serde_json::Value::Null,
+            "toolUseCount": 0,
+            "compactionCount": 0,
+            "status": status,
+            "resultText": result_text,
+            "workspacePath": context.workspace_path,
+            "pluginSlug": context.plugin_slug,
+        }
+    })
 }
 
 fn terminal_state_needs_final_response(state: &serde_json::Value) -> bool {
@@ -509,9 +635,6 @@ fn parse_openhands_lifecycle_state(
     payload: &str,
     target_agent_id: &str,
 ) -> Option<Result<(), String>> {
-    if !payload.contains(target_agent_id) {
-        return None;
-    }
     let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
     if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
         return None;
@@ -599,5 +722,91 @@ mod tests {
 
         assert!(!terminal_state_needs_final_response(&with_text));
         assert!(!terminal_state_needs_final_response(&with_structured));
+    }
+
+    #[test]
+    fn socket_close_without_terminal_state_is_error_state() {
+        let state = build_socket_closed_state("agent-1", "conversation-1");
+
+        assert_eq!(
+            state.get("type").and_then(|v| v.as_str()),
+            Some("conversation_state")
+        );
+        assert_eq!(state.get("status").and_then(|v| v.as_str()), Some("error"));
+        assert!(state
+            .get("error_detail")
+            .and_then(|v| v.as_str())
+            .unwrap()
+            .contains("socket closed before terminal conversation_state"));
+    }
+
+    #[test]
+    fn openhands_run_result_event_preserves_persistence_context() {
+        let context = OpenHandsRunSummaryContext {
+            skill_name: "my-skill".to_string(),
+            step_id: 2,
+            workflow_session_id: Some("workflow-1".to_string()),
+            usage_session_id: Some("usage-1".to_string()),
+            run_source: Some("workflow".to_string()),
+            session_id: "conversation-1".to_string(),
+            model: "anthropic/claude-sonnet-4-6".to_string(),
+            plugin_slug: "skill-creator".to_string(),
+            workspace_path: "/tmp/workspace/my-skill".to_string(),
+            started_at: Instant::now(),
+        };
+        let terminal_state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": "{\"status\":\"ok\"}",
+        });
+
+        let event = build_openhands_run_result_event(&terminal_state, &context);
+        let run_result = event.get("event").unwrap();
+
+        assert_eq!(
+            event.get("type").and_then(|v| v.as_str()),
+            Some("agent_event")
+        );
+        assert_eq!(
+            run_result.get("type").and_then(|v| v.as_str()),
+            Some("run_result")
+        );
+        assert_eq!(
+            run_result.get("skillName").and_then(|v| v.as_str()),
+            Some("my-skill")
+        );
+        assert_eq!(run_result.get("stepId").and_then(|v| v.as_i64()), Some(2));
+        assert_eq!(
+            run_result.get("workflowSessionId").and_then(|v| v.as_str()),
+            Some("workflow-1")
+        );
+        assert_eq!(
+            run_result.get("usageSessionId").and_then(|v| v.as_str()),
+            Some("usage-1")
+        );
+        assert_eq!(
+            run_result.get("sessionId").and_then(|v| v.as_str()),
+            Some("conversation-1")
+        );
+        assert_eq!(
+            run_result.get("model").and_then(|v| v.as_str()),
+            Some("anthropic/claude-sonnet-4-6")
+        );
+        assert_eq!(
+            run_result.get("status").and_then(|v| v.as_str()),
+            Some("completed")
+        );
+        assert_eq!(
+            run_result.get("resultText").and_then(|v| v.as_str()),
+            Some("{\"status\":\"ok\"}")
+        );
+        assert_eq!(
+            run_result.get("workspacePath").and_then(|v| v.as_str()),
+            Some("/tmp/workspace/my-skill")
+        );
+        assert_eq!(
+            run_result.get("pluginSlug").and_then(|v| v.as_str()),
+            Some("skill-creator")
+        );
     }
 }

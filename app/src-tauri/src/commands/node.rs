@@ -206,27 +206,27 @@ async fn check_openhands_agent_server_available() -> DepStatus {
             "missing_dependency",
             "OpenHands Agent Server",
             String::from_utf8_lossy(&out.stderr).trim().to_string(),
-            "Install the OpenHands Agent Server Python package and restart Skill Builder.",
+            "Install uv/uvx, or install the pinned OpenHands Agent Server Python package and restart Skill Builder.",
         ),
         Err(e) => dep_fail(
             "openhands_agent_server",
             "missing_dependency",
             "OpenHands Agent Server",
             e.to_string(),
-            "Install Python 3.12+ and the OpenHands Agent Server package, then restart Skill Builder.",
+            "Install uv/uvx and Python 3.12+, then restart Skill Builder.",
         ),
     }
 }
 
 async fn check_python_import(module_name: &str) -> std::io::Result<std::process::Output> {
     let script = format!("import {module_name}; print({module_name}.__file__)");
-    let candidates: &[(&str, &[&str])] = python_import_command_candidates();
+    let candidates = python_import_command_candidates();
     let mut last_error = None;
     let mut last_output = None;
 
-    for (program, base_args) in candidates {
+    for (program, base_args) in &candidates {
         let mut command = tokio::process::Command::new(program);
-        command.args(*base_args).arg(&script);
+        command.args(base_args).arg(&script);
         match command.output().await {
             Ok(output) if output.status.success() => return Ok(output),
             Ok(output) => last_output = Some(output),
@@ -243,14 +243,32 @@ async fn check_python_import(module_name: &str) -> std::io::Result<std::process:
     }))
 }
 
-#[cfg(target_os = "windows")]
-fn python_import_command_candidates() -> &'static [(&'static str, &'static [&'static str])] {
-    &[("py", &["-3", "-c"]), ("python", &["-c"])]
+fn python_import_command_candidates() -> Vec<(&'static str, Vec<&'static str>)> {
+    vec![
+        ("uvx", openhands_agent_server_uvx_args("-c")),
+        #[cfg(target_os = "windows")]
+        ("py", vec!["-3", "-c"]),
+        ("python", vec!["-c"]),
+        #[cfg(not(target_os = "windows"))]
+        ("python3", vec!["-c"]),
+    ]
 }
 
-#[cfg(not(target_os = "windows"))]
-fn python_import_command_candidates() -> &'static [(&'static str, &'static [&'static str])] {
-    &[("python3", &["-c"]), ("python", &["-c"])]
+fn openhands_agent_server_uvx_args(python_flag: &'static str) -> Vec<&'static str> {
+    let mut args = vec![
+        "--from",
+        crate::agents::openhands_server::process::OPENHANDS_AGENT_SERVER_PACKAGE,
+        "--with",
+        crate::agents::openhands_server::process::OPENHANDS_TOOLS_PACKAGE,
+    ];
+    for package in
+        crate::agents::openhands_server::process::OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES
+    {
+        args.push("--with");
+        args.push(package);
+    }
+    args.extend(["python", python_flag]);
+    args
 }
 
 /// Parse a version string like "v20.11.0" and check if major >= min_major.
@@ -298,5 +316,28 @@ mod tests {
     #[test]
     fn test_garbage_string() {
         assert!(!parse_meets_minimum("abc", 18));
+    }
+
+    #[test]
+    fn openhands_agent_server_probe_uses_pinned_uvx_package_first() {
+        let candidates = python_import_command_candidates();
+        let (program, args) = candidates.first().expect("uvx candidate");
+
+        assert_eq!(*program, "uvx");
+        assert_eq!(args.first().copied(), Some("--from"));
+        assert!(args
+            .iter()
+            .any(|arg| *arg
+                == crate::agents::openhands_server::process::OPENHANDS_AGENT_SERVER_PACKAGE));
+        assert!(args
+            .iter()
+            .any(|arg| *arg == crate::agents::openhands_server::process::OPENHANDS_TOOLS_PACKAGE));
+        for package in
+            crate::agents::openhands_server::process::OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES
+        {
+            assert!(args.iter().any(|arg| arg == package));
+        }
+        assert!(args.iter().any(|arg| *arg == "python"));
+        assert!(args.iter().any(|arg| *arg == "-c"));
     }
 }
