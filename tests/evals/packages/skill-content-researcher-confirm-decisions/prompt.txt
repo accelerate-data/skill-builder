@@ -78,7 +78,7 @@ Purpose-aware decision normalization:
   into business-domain and lakehouse modeling commitments. Convert references
   to CSV, JSON, SOQL, spreadsheets, or ad hoc extracts into decisions about the
   source domain, Fabric Lakehouse assumptions, dbt model grain and layer
-  placement, semantic model measures, calculations, reporting hierarchy, and
+  placement, business measures, calculations, reporting hierarchy, and
   reconciliation controls. Do not preserve CSV, JSON, SOQL, or file export as
   the operating input contract for a business-process skill.
 - For a data-engineering purpose, convert general preferences into concrete

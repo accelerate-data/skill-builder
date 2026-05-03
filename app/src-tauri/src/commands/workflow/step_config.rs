@@ -1,16 +1,5 @@
 use crate::types::StepConfig;
 
-/// Canonical allowed-tools lookup keyed by agent name.
-/// Values must match the `tools:` frontmatter in the corresponding agent `.md` file.
-pub fn tools_for_agent(agent_name: &str) -> Vec<String> {
-    let tools: &[&str] = match agent_name {
-        "research-agent" => &["file_editor", "terminal", "browser_tool_set"],
-        "answer-evaluator" => &["file_editor"],
-        _ => &["file_editor", "terminal"],
-    };
-    tools.iter().map(|s| s.to_string()).collect()
-}
-
 pub(crate) fn research_workflow_tools() -> Vec<String> {
     ["file_editor", "terminal", "browser_tool_set"]
         .iter()
@@ -27,6 +16,10 @@ pub(crate) fn skill_generation_workflow_tools() -> Vec<String> {
         .iter()
         .map(|s| s.to_string())
         .collect()
+}
+
+pub(crate) fn answer_evaluator_workflow_tools() -> Vec<String> {
+    ["file_editor"].iter().map(|s| s.to_string()).collect()
 }
 
 /// Canonical step configuration table.

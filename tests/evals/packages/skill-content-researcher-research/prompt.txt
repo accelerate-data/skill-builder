@@ -2,11 +2,17 @@ EXECUTE IMMEDIATELY - do not ask questions, do not greet the user, do not offer 
 
 This is the app step-0 research prompt for the OpenHands `skill-creator` agent using task kind `workflow.research` and app-owned prompt `agent-sources/prompts/research.txt`. Use the inline context as if it came from user-context.md and return the same structured output the app captures.
 
-We are writing the skill fabric-dbt-standards.
-Workspace directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
-Context directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context
+Use the `researching-skill-requirements` guidance: ask high-value
+clarification questions unless the context is missing, placeholder-only,
+unrelated to reusable skill behavior, or already explicitly settles the core
+intent, trigger, output, test, edge-case, and purpose-specific decisions needed
+to write the skill.
+
+We are writing the skill {{skill_name}}.
+Workspace directory: /tmp/skill-builder/workspace/skills/{{skill_slug}}
+Context directory: /tmp/skill-builder/workspace/skills/{{skill_slug}}/context
 Maximum research dimensions before scope warning: 5
-User context: Purpose is organization specific data engineering standards. Description asks for a skill for analytics engineers building dbt models on Microsoft Fabric, covering bronze/silver/gold modeling rules, naming conventions, incremental strategy, SCD2 snapshot guidance, semantic model handoff, and CI review expectations.
+User context: {{user_context}}
 
 Return raw JSON only. Do not emit markdown, code fences, summaries,
 intermediate JSON, or any text outside the final object. Use this exact
@@ -38,8 +44,8 @@ Do not put `sections`, `notes`, or `answer_evaluator_notes` inside
 `research_output.metadata`; they are top-level fields inside `research_output`.
 
 Replace the zero counts and empty arrays with useful initial clarification
-questions for the provided context. This context is in scope and should produce
-at least one section and at least one question.
+questions for the provided context unless the context is insufficient or out of
+scope for skill-building. {{scope_instruction}}
 
 Do not include legacy planning or scoring fields anywhere in the output:
 `dimensions_selected`, `research_plan`, `research_lens`, `dimension_scores`,

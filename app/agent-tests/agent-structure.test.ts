@@ -155,6 +155,49 @@ describe("agent files", () => {
 
     expect(missing).toEqual([]);
   });
+
+  it("creating-skills is focused on generation and verifier review", () => {
+    const file = path.join(
+      REPO_ROOT,
+      "agent-sources",
+      "skills",
+      "creating-skills",
+      "SKILL.md",
+    );
+    const fm = frontmatter(file);
+    const content = fs.readFileSync(file, "utf8");
+
+    expect(fm.name).toBe("creating-skills");
+    expect(fm.description).toMatch(/writing a new reusable skill/i);
+    expect(fm.description).not.toMatch(/workflow step|step \d/i);
+    expect(content).toMatch(/Fresh-Context Verification/);
+    expect(content).toMatch(/verifier-subagent-prompt\.md/);
+    expect(content).toMatch(/run exactly one\s+re-verification pass/i);
+    expect(content).toMatch(/Return the raw JSON object requested by the caller/i);
+  });
+
+  it("creating-skills does not include legacy lifecycle mechanics", () => {
+    const file = path.join(
+      REPO_ROOT,
+      "agent-sources",
+      "skills",
+      "creating-skills",
+      "SKILL.md",
+    );
+    const content = fs.readFileSync(file, "utf8");
+    const forbidden = [
+      /run_loop\.py/,
+      /generate_report\.py/,
+      /^## .*Blind comparison/im,
+      /^## .*Description Optimization/im,
+      /^## .*Benchmark/im,
+      /commit and tag/i,
+      /commit_all/,
+      /create_skill_version_tag/,
+    ];
+
+    expect(forbidden.filter((pattern) => pattern.test(content))).toEqual([]);
+  });
 });
 
 describe("AgentSkill frontmatter", () => {

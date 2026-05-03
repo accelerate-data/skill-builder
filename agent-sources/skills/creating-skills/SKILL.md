@@ -7,8 +7,10 @@ description: Use when writing a new reusable skill from clarified requirements, 
 
 Use this skill when the caller has already gathered enough requirements and
 confirmed decisions to generate a durable, reusable skill package. The caller
-provides the generation brief, the destination directory, and any workflow
-artifacts that should drive the content.
+provides a synthesized generation brief, the destination directory, and any
+workflow artifacts that should drive the content. The brief is an orientation
+layer; the raw user context, clarification answers, and decision records remain
+source material and should be used when exact wording or examples matter.
 
 Do not use this skill for clarification interviews, detailed research, decision
 confirmation, running evals, benchmark aggregation, blind comparison, release
@@ -45,6 +47,13 @@ original conversation.
 The generated skill should include:
 
 - concise frontmatter with a trigger-focused `description`
+- nested `metadata.version` in `SKILL.md` frontmatter, for example:
+
+  ```yaml
+  metadata:
+    version: "1.0.0"
+  ```
+
 - a clear statement of when to use the skill and when not to use it
 - the minimum process needed to execute the skill reliably
 - input and output expectations
@@ -79,9 +88,10 @@ eval file for subjective skills unless the caller explicitly requires one.
 
 ## Fresh-Context Verification
 
-After generating files, spawn a fresh-context verifier subagent. Give it only:
+After generating files, run a fresh-context verifier pass using
+`references/verifier-subagent-prompt.md`. Give the verifier only:
 
-- the caller's generation brief
+- the caller's synthesized generation brief
 - the generated `SKILL.md`
 - generated references or eval definitions that should be reviewed
 - the caller-provided eval path, when evals were expected
@@ -91,9 +101,10 @@ Do not invoke a separate validator skill. Verification is owned by this
 skill and runs through the reference prompt so the generator-verifier loop stays
 inside the skill-writing flow.
 
-If the verifier returns material findings, fix them and run the verifier again.
-Repeat until the verifier passes or only minor findings remain that are
-explicitly documented in the result.
+If the verifier returns material findings, fix them and run exactly one
+re-verification pass. Do not run an unbounded verification loop. If material
+findings remain after that one re-verification pass, return the caller's skipped
+result and summarize the blocker instead of publishing a weak skill.
 
 ## Return
 

@@ -73,7 +73,7 @@ Purpose-aware decision normalization:
   into business-domain and lakehouse modeling commitments. Convert references
   to CSV, JSON, SOQL, spreadsheets, or ad hoc extracts into decisions about the
   source domain, Fabric Lakehouse assumptions, dbt model grain and layer
-  placement, semantic model measures, calculations, reporting hierarchy, and
+  placement, business measures, calculations, reporting hierarchy, and
   reconciliation controls. Do not preserve CSV, JSON, SOQL, or file export as
   the operating input contract for a business-process skill.
 - For a data-engineering purpose, convert general preferences into concrete
@@ -92,7 +92,7 @@ Purpose-aware decision normalization:
 - Positive example for a business-process skill: "The skill assumes Salesforce
   opportunity data is available in the Fabric Lakehouse and should define how
   opportunity stages, amounts, probabilities, close dates, and booking logic
-  map into dbt models and semantic measures."
+  map into dbt models and business measures."
 
 Mandatory user-editable decisions:
 - Always include a decision for: What should this skill enable Claude to do?

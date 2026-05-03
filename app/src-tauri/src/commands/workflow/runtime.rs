@@ -26,7 +26,7 @@ use super::prompt::{
 use super::settings::{read_workflow_settings, WorkflowSettings};
 use super::step_config::{
     confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
-    skill_generation_workflow_tools, tools_for_agent, workflow_output_format_for_step,
+    skill_generation_workflow_tools, workflow_output_format_for_step,
 };
 use super::user_context::write_user_context_file;
 
@@ -238,7 +238,8 @@ pub(crate) fn build_answer_evaluator_sidecar_config(
             agent_name: "skill-creator".to_string(),
             task_kind: Some("workflow.answer_evaluator".to_string()),
             user_message_suffix: None,
-            allowed_tools: tools_for_agent("answer-evaluator"),
+            allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(
+            ),
             max_turns: 20,
             output_format: Some(answer_evaluator_output_format()),
             skill_name: None,

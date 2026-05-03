@@ -21,7 +21,12 @@ const MOCK_SCENARIO = process.env.MOCK_SCENARIO ?? "default";
 /** @internal Exported for testing only. */
 export function resolveStepTemplate(
   agentName: string | undefined,
-  config?: { skillName?: string; runSource?: string; stepId?: number; taskKind?: string },
+  config?: {
+    skillName?: string;
+    runSource?: string;
+    stepId?: number;
+    taskKind?: string;
+  },
 ): string | null {
   if (
     agentName === "skill-creator" &&
@@ -45,14 +50,20 @@ export function resolveStepTemplate(
     agentName === "skill-creator" &&
     config?.taskKind === "workflow.answer_evaluator"
   ) {
-    return MOCK_SCENARIO === "contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator";
+    return MOCK_SCENARIO === "contradictory"
+      ? "gate-answer-evaluator-contradictory"
+      : "gate-answer-evaluator";
   }
 
   if (!agentName) {
     // Description optimization eval-query generator: one-shot outputFormat path.
     if (config?.stepId === -12) return "description-evals-generator";
     // Eval generator: invoked without a plugin agentName; identified by skillName.
-    if (config?.skillName === "skill-evals-generator" || config?.skillName === "eval-generator") return "eval-generator";
+    if (
+      config?.skillName === "skill-evals-generator" ||
+      config?.skillName === "eval-generator"
+    )
+      return "eval-generator";
     // Test evaluator: invoked without a plugin agentName; identified by runSource="test".
     // The with/without plan agents always have agentName="data-product-builder", so this
     // branch is only reached for the evaluator.
@@ -70,14 +81,17 @@ export function resolveStepTemplate(
   if (agentName === "skill-content-researcher:skill-builder") {
     if (config?.stepId === 1) return "step1-detailed-research";
     if (config?.stepId === 2) return "step2-confirm-decisions";
-    if (config?.stepId === 3) return "step3-generate-skill";
     return "step0-research";
   }
-  if (agentName === "skill-content-researcher:detailed-research") return "step1-detailed-research";
-  if (agentName === "skill-content-researcher:confirm-decisions") return "step2-confirm-decisions";
-  if (agentName === "skill-creator:generate-skill") return "step3-generate-skill";
+  if (agentName === "skill-content-researcher:detailed-research")
+    return "step1-detailed-research";
+  if (agentName === "skill-content-researcher:confirm-decisions")
+    return "step2-confirm-decisions";
+  if (agentName === "skill-creator:generate-skill")
+    return "step3-generate-skill";
   if (agentName === "skill-creator:rewrite-skill") return "rewrite-skill";
-  if (agentName === "skill-creator:grader" || agentName === "evaluate-skill") return "evaluate-skill";
+  if (agentName === "skill-creator:grader" || agentName === "evaluate-skill")
+    return "evaluate-skill";
 
   // Research orchestrator (plugin-qualified) and all sub-agents spawned by the research skill
   if (
@@ -95,7 +109,9 @@ export function resolveStepTemplate(
     // Use "test-plan-with" only when skillName is a real skill name (not baseline sentinel, not absent).
     // Absent config is the safe default → treat as baseline.
     const skillName = config?.skillName;
-    return skillName && skillName !== "__test_baseline__" ? "test-plan-with" : "test-plan-without";
+    return skillName && skillName !== "__test_baseline__"
+      ? "test-plan-with"
+      : "test-plan-without";
   }
 
   return null;
@@ -104,12 +120,16 @@ export function resolveStepTemplate(
 /** Map step template name to the outputs subdirectory. */
 function getOutputDir(stepTemplate: string): string {
   const stepMap: Record<string, string> = {
-    "step0-research": MOCK_SCENARIO === "contradictory" ? "step0-contradictory" : "step0",
+    "step0-research":
+      MOCK_SCENARIO === "contradictory" ? "step0-contradictory" : "step0",
     "step1-detailed-research": "step1",
     "step2-confirm-decisions": "step2",
     "step3-generate-skill": "step3",
     "rewrite-skill": "refine",
-    "gate-answer-evaluator": MOCK_SCENARIO === "contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator",
+    "gate-answer-evaluator":
+      MOCK_SCENARIO === "contradictory"
+        ? "gate-answer-evaluator-contradictory"
+        : "gate-answer-evaluator",
     "eval-generator": "eval-generator",
     "evaluate-skill": "benchmark",
   };
@@ -129,34 +149,38 @@ export function parsePromptPaths(prompt: string): {
   skillOutputDir: string | null;
   skillDir: string | null;
 } {
+  const normalizePathCapture = (value: string | undefined): string | null => {
+    if (value === undefined) return null;
+    return value.trim().replace(/^`|`$/g, "").replace(/\.$/, "").trim();
+  };
   const workspaceMatch = prompt.match(
-    /(?:The workspace directory is|Workspace directory): ([^\r\n]+?)(?:\.\s|\r?\n)/,
+    /(?:The workspace directory is|Workspace directory):\s*`?([^\r\n`]+?)`?(?:\.\s|\r?\n)/,
   );
-  const workspaceDir = workspaceMatch?.[1]?.trim() ?? null;
+  const workspaceDir = normalizePathCapture(workspaceMatch?.[1]);
 
   const contextMatch = prompt.match(
-    /(?:The context directory is|Context directory): ([^\r\n]+?)(?:\.\s|\r?\n)/,
+    /(?:The context directory is|Context directory):\s*`?([^\r\n`]+?)`?(?:\.\s|\r?\n)/,
   );
   const outputMatch = prompt.match(
-    /The skill output directory \(SKILL\.md and references\/\) is: ([^\r\n]+?)\.\s/,
+    /(?:The skill output directory \(SKILL\.md and references\/\) is|Skill output directory):\s*`?([^\r\n`]+?)`?(?:\.\s|\r?\n)/,
   );
   const skillDirMatch = prompt.match(
-    /The skill directory is: ([^\r\n]+?)\.\s/,
+    /The skill directory is:\s*`?([^\r\n`]+?)`?(?:\.\s|\r?\n)/,
   );
 
   const contextDir =
-    contextMatch?.[1]?.trim() ??
+    normalizePathCapture(contextMatch?.[1]) ??
     (workspaceDir !== null ? path.join(workspaceDir, "context") : null);
-  const skillOutputDir = outputMatch?.[1]?.trim() ?? null;
+  const skillOutputDir = normalizePathCapture(outputMatch?.[1]);
 
   return {
     workspaceDir,
     contextDir,
     skillOutputDir,
-    skillDir: skillDirMatch?.[1]?.trim() ?? skillOutputDir ?? null,
+    skillDir:
+      normalizePathCapture(skillDirMatch?.[1]) ?? skillOutputDir ?? null,
   };
 }
-
 
 /** Check if a path exists (async replacement for fs.existsSync). */
 async function pathExists(p: string): Promise<boolean> {
@@ -173,7 +197,9 @@ async function pathExists(p: string): Promise<boolean> {
  * Scans existing `iteration-*` dirs under `{skillWorkspace}/evals/iterations/`
  * and returns max + 1, or 1 if none exist.
  */
-async function getNextMockIterationNumber(skillWorkspace: string): Promise<number> {
+async function getNextMockIterationNumber(
+  skillWorkspace: string,
+): Promise<number> {
   const wsDir = path.join(skillWorkspace, "evals", "workspace");
   try {
     const entries = await fs.readdir(wsDir, { withFileTypes: true });
@@ -273,7 +299,11 @@ export async function runMockAgent(
 
   const content = await fs.readFile(templatePath, "utf-8");
   const lines = content.split(/\r?\n/).filter((line) => line.trim());
-  const structuredResultOverride = await buildStructuredMockResult(stepTemplate, config, mockIterationNumber);
+  const structuredResultOverride = await buildStructuredMockResult(
+    stepTemplate,
+    config,
+    mockIterationNumber,
+  );
 
   // Process mock template messages through MessageProcessor identically to live SDK
   const processor = new MessageProcessor({
@@ -386,7 +416,8 @@ export async function writeMockOutputFiles(
     destRoot = paths.workspaceDir ?? config.workspaceSkillDir;
   } else if (stepTemplate === "step3-generate-skill") {
     // Step 3: files go to skill output dir (may differ from skill dir when skills_path is set)
-    destRoot = paths.skillOutputDir ?? paths.skillDir ?? config.workspaceSkillDir;
+    destRoot =
+      paths.skillOutputDir ?? paths.skillDir ?? config.workspaceSkillDir;
   } else if (stepTemplate === "eval-generator") {
     // Eval generator: pending-eval.json goes to {skills_path}/{skill}/evals/
     // Extract the evals directory from the absolute path embedded in the prompt.
@@ -398,11 +429,14 @@ export async function writeMockOutputFiles(
     // iter_dir = {skillWorkspace}/evals/iterations/iteration-{N}/
     // destRoot  = three dirname() calls up → {skillWorkspace}
     // iter_dir lives in the SYSTEM prompt (key-value block), not the user prompt
-    const iterMatch = (config.systemPrompt ?? config.prompt)?.match(/iter_dir:\s*(.+)/);
+    const iterMatch = (config.systemPrompt ?? config.prompt)?.match(
+      /iter_dir:\s*(.+)/,
+    );
     const iterDir = iterMatch?.[1]?.trim();
     if (iterDir) {
       destRoot = path.dirname(path.dirname(path.dirname(iterDir)));
-      const iterNum = parseInt(path.basename(iterDir).replace("iteration-", ""), 10) || 1;
+      const iterNum =
+        parseInt(path.basename(iterDir).replace("iteration-", ""), 10) || 1;
       const rewriteFrom = iterNum !== 1 ? "iteration-1" : null;
       const rewriteTo = iterNum !== 1 ? `iteration-${iterNum}` : null;
       await copyDirRecursive(srcDir, destRoot, rewriteFrom, rewriteTo);
@@ -444,9 +478,10 @@ async function copyDirRecursive(
   const entries = await fs.readdir(src, { withFileTypes: true });
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
-    const destName = (rewriteFrom && rewriteTo && entry.name === rewriteFrom)
-      ? rewriteTo
-      : entry.name;
+    const destName =
+      rewriteFrom && rewriteTo && entry.name === rewriteFrom
+        ? rewriteTo
+        : entry.name;
     const destPath = path.join(dest, destName);
 
     if (entry.isDirectory()) {
@@ -500,7 +535,8 @@ export async function buildStructuredMockResult(
 ): Promise<unknown | null> {
   const outputsRoot = path.join(__dirname, "mock-templates", "outputs");
   if (stepTemplate === "step0-research") {
-    const step0Dir = MOCK_SCENARIO === "contradictory" ? "step0-contradictory" : "step0";
+    const step0Dir =
+      MOCK_SCENARIO === "contradictory" ? "step0-contradictory" : "step0";
     const clarifications = await readJsonIfExists(
       path.join(outputsRoot, step0Dir, "context", "clarifications.json"),
     );
@@ -564,22 +600,41 @@ export async function buildStructuredMockResult(
     return {
       status: "generated",
       commit_summary: "Create initial skill with SKILL.md and reference files",
-      version_bump: "minor",
-      call_trace: ["read-user-context", "write-skill", "write-evals"],
+      benchmark_path: null,
+      skipped: false,
+      version_bump: "1.0.0",
+      call_trace: [
+        "read-user-context",
+        "read-decisions",
+        "read-clarifications",
+        "synthesize-generation-brief",
+        "use-creating-skills",
+        "write-skill",
+        "write-references",
+        "write-evals",
+        "fresh-context-verifier-review",
+      ],
     };
   }
 
   if (stepTemplate === "rewrite-skill") {
     return {
       status: "rewritten",
-      commit_summary: "Improve error handling patterns and update testing references",
+      commit_summary:
+        "Improve error handling patterns and update testing references",
       version_bump: "minor",
       call_trace: ["read-user-context", "read-existing-skill", "rewrite-skill"],
     };
   }
 
-  if (stepTemplate === "gate-answer-evaluator" || stepTemplate === "gate-answer-evaluator-contradictory") {
-    const dir = stepTemplate === "gate-answer-evaluator-contradictory" ? "gate-answer-evaluator-contradictory" : "gate-answer-evaluator";
+  if (
+    stepTemplate === "gate-answer-evaluator" ||
+    stepTemplate === "gate-answer-evaluator-contradictory"
+  ) {
+    const dir =
+      stepTemplate === "gate-answer-evaluator-contradictory"
+        ? "gate-answer-evaluator-contradictory"
+        : "gate-answer-evaluator";
     return readJsonIfExists(
       path.join(outputsRoot, dir, "answer-evaluation.json"),
     );
@@ -591,7 +646,9 @@ export async function buildStructuredMockResult(
     const iterNum = mockIterationNumber ?? 1;
 
     // Write mock analyst-notes.json to the iteration directory so Rust can read it.
-    const iterMatch = (config?.systemPrompt ?? config?.prompt)?.match(/iter_dir:\s*(.+)/);
+    const iterMatch = (config?.systemPrompt ?? config?.prompt)?.match(
+      /iter_dir:\s*(.+)/,
+    );
     const iterDir = iterMatch?.[1]?.trim();
     if (iterDir) {
       const analystNotes = [
@@ -615,13 +672,21 @@ export async function buildStructuredMockResult(
 
   if (stepTemplate === "description-evals-generator") {
     return readJsonIfExists(
-      path.join(outputsRoot, "description-evals-generator", "description-evals-result.json"),
+      path.join(
+        outputsRoot,
+        "description-evals-generator",
+        "description-evals-result.json",
+      ),
     );
   }
 
   if (stepTemplate === "description-optimization-loop") {
     return readJsonIfExists(
-      path.join(outputsRoot, "description-optimization-loop", "optimization-result.json"),
+      path.join(
+        outputsRoot,
+        "description-optimization-loop",
+        "optimization-result.json",
+      ),
     );
   }
 

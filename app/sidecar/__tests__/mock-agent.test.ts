@@ -29,11 +29,11 @@ function baseMockConfig(overrides: Partial<SidecarConfig> = {}): SidecarConfig {
 
 describe("resolveStepTemplate", () => {
   it("maps skill-creator workflow.answer_evaluator to gate-answer-evaluator", () => {
-    expect(resolveStepTemplate("skill-creator", {
-      taskKind: "workflow.answer_evaluator",
-    })).toBe(
-      "gate-answer-evaluator",
-    );
+    expect(
+      resolveStepTemplate("skill-creator", {
+        taskKind: "workflow.answer_evaluator",
+      }),
+    ).toBe("gate-answer-evaluator");
   });
 
   it("does not route the legacy answer-evaluator agent name", () => {
@@ -41,10 +41,22 @@ describe("resolveStepTemplate", () => {
   });
 
   it("maps OpenHands research-agent by workflow step", () => {
-    expect(resolveStepTemplate("research-agent", { stepId: 0 })).toBe("step0-research");
-    expect(resolveStepTemplate("research-agent", { stepId: 1 })).toBe("step1-detailed-research");
-    expect(resolveStepTemplate("skill-content-researcher:research-agent", { stepId: 0 })).toBe("step0-research");
-    expect(resolveStepTemplate("skill-content-researcher:research-agent", { stepId: 1 })).toBe("step1-detailed-research");
+    expect(resolveStepTemplate("research-agent", { stepId: 0 })).toBe(
+      "step0-research",
+    );
+    expect(resolveStepTemplate("research-agent", { stepId: 1 })).toBe(
+      "step1-detailed-research",
+    );
+    expect(
+      resolveStepTemplate("skill-content-researcher:research-agent", {
+        stepId: 0,
+      }),
+    ).toBe("step0-research");
+    expect(
+      resolveStepTemplate("skill-content-researcher:research-agent", {
+        stepId: 1,
+      }),
+    ).toBe("step1-detailed-research");
   });
 
   it("routes skill-creator workflow.detailed_research to step1 detailed research template", () => {
@@ -88,7 +100,9 @@ describe("resolveStepTemplate", () => {
 
   it("does not keep legacy writer aliases for workflow generation", () => {
     expect(resolveStepTemplate("skill-writer-agent", { stepId: 3 })).toBeNull();
-    expect(resolveStepTemplate("skill-creator:skill-writer-agent", { stepId: 3 })).toBeNull();
+    expect(
+      resolveStepTemplate("skill-creator:skill-writer-agent", { stepId: 3 }),
+    ).toBeNull();
   });
 
   it("keeps legacy research mock aliases on step0-research", () => {
@@ -97,26 +111,34 @@ describe("resolveStepTemplate", () => {
     expect(resolveStepTemplate("research-entities")).toBe("step0-research");
   });
 
-  it("keeps legacy workflow step agent aliases mapped", () => {
+  it("keeps legacy research and decision aliases mapped", () => {
     expect(resolveStepTemplate("skill-content-researcher:skill-builder")).toBe(
       "step0-research",
     );
-    expect(resolveStepTemplate("skill-content-researcher:skill-builder", { stepId: 1 })).toBe(
-      "step1-detailed-research",
-    );
-    expect(resolveStepTemplate("skill-content-researcher:skill-builder", { stepId: 2 })).toBe(
-      "step2-confirm-decisions",
-    );
-    expect(resolveStepTemplate("skill-content-researcher:skill-builder", { stepId: 3 })).toBe(
+    expect(
+      resolveStepTemplate("skill-content-researcher:skill-builder", {
+        stepId: 1,
+      }),
+    ).toBe("step1-detailed-research");
+    expect(
+      resolveStepTemplate("skill-content-researcher:skill-builder", {
+        stepId: 2,
+      }),
+    ).toBe("step2-confirm-decisions");
+    expect(
+      resolveStepTemplate("skill-content-researcher:skill-builder", {
+        stepId: 3,
+      }),
+    ).toBe("step0-research");
+    expect(
+      resolveStepTemplate("skill-content-researcher:detailed-research"),
+    ).toBe("step1-detailed-research");
+    expect(
+      resolveStepTemplate("skill-content-researcher:confirm-decisions"),
+    ).toBe("step2-confirm-decisions");
+    expect(resolveStepTemplate("skill-creator:generate-skill")).toBe(
       "step3-generate-skill",
     );
-    expect(resolveStepTemplate("skill-content-researcher:detailed-research")).toBe(
-      "step1-detailed-research",
-    );
-    expect(resolveStepTemplate("skill-content-researcher:confirm-decisions")).toBe(
-      "step2-confirm-decisions",
-    );
-    expect(resolveStepTemplate("skill-creator:generate-skill")).toBe("step3-generate-skill");
   });
 
   it("returns null for unknown agents", () => {
@@ -125,40 +147,73 @@ describe("resolveStepTemplate", () => {
   });
 
   it("maps undefined agentName + runSource=test to test-evaluator (skill test evaluator)", () => {
-    expect(resolveStepTemplate(undefined, { runSource: "test" })).toBe("test-evaluator");
-    expect(resolveStepTemplate(undefined, { runSource: "test", skillName: "my-skill" })).toBe("test-evaluator");
+    expect(resolveStepTemplate(undefined, { runSource: "test" })).toBe(
+      "test-evaluator",
+    );
+    expect(
+      resolveStepTemplate(undefined, {
+        runSource: "test",
+        skillName: "my-skill",
+      }),
+    ).toBe("test-evaluator");
   });
 
   it("maps undefined agentName + skillName=eval-generator to eval-generator (not test-evaluator)", () => {
-    expect(resolveStepTemplate(undefined, { skillName: "eval-generator", runSource: "test" })).toBe("eval-generator");
-    expect(resolveStepTemplate(undefined, { skillName: "skill-evals-generator", runSource: "test" })).toBe("eval-generator");
+    expect(
+      resolveStepTemplate(undefined, {
+        skillName: "eval-generator",
+        runSource: "test",
+      }),
+    ).toBe("eval-generator");
+    expect(
+      resolveStepTemplate(undefined, {
+        skillName: "skill-evals-generator",
+        runSource: "test",
+      }),
+    ).toBe("eval-generator");
   });
 
   it("maps description optimization eval-query generation to its structured mock template", () => {
-    expect(resolveStepTemplate(undefined, { skillName: "test-skill", stepId: -12 })).toBe(
-      "description-evals-generator",
-    );
+    expect(
+      resolveStepTemplate(undefined, { skillName: "test-skill", stepId: -12 }),
+    ).toBe("description-evals-generator");
   });
 
   it("returns null for undefined agentName without runSource=test", () => {
-    expect(resolveStepTemplate(undefined, { runSource: "workflow" })).toBeNull();
+    expect(
+      resolveStepTemplate(undefined, { runSource: "workflow" }),
+    ).toBeNull();
     expect(resolveStepTemplate(undefined, { runSource: undefined })).toBeNull();
     expect(resolveStepTemplate(undefined, {})).toBeNull();
   });
 
   it("maps data-product-builder to test-plan-with for non-baseline skill names", () => {
-    expect(resolveStepTemplate("data-product-builder", { skillName: "my-skill" })).toBe("test-plan-with");
-    expect(resolveStepTemplate("data-product-builder", { skillName: "churn-analysis" })).toBe("test-plan-with");
+    expect(
+      resolveStepTemplate("data-product-builder", { skillName: "my-skill" }),
+    ).toBe("test-plan-with");
+    expect(
+      resolveStepTemplate("data-product-builder", {
+        skillName: "churn-analysis",
+      }),
+    ).toBe("test-plan-with");
   });
 
   it("maps data-product-builder to test-plan-without for __test_baseline__ skill name", () => {
-    expect(resolveStepTemplate("data-product-builder", { skillName: "__test_baseline__" })).toBe("test-plan-without");
+    expect(
+      resolveStepTemplate("data-product-builder", {
+        skillName: "__test_baseline__",
+      }),
+    ).toBe("test-plan-without");
   });
 
   it("maps data-product-builder to test-plan-without when config is absent", () => {
     // Safe default: no config means treat as baseline
-    expect(resolveStepTemplate("data-product-builder", undefined)).toBe("test-plan-without");
-    expect(resolveStepTemplate("data-product-builder")).toBe("test-plan-without");
+    expect(resolveStepTemplate("data-product-builder", undefined)).toBe(
+      "test-plan-without",
+    );
+    expect(resolveStepTemplate("data-product-builder")).toBe(
+      "test-plan-without",
+    );
   });
 
   it("returns null for unknown bare agent names", () => {
@@ -186,9 +241,7 @@ describe("parsePromptPaths", () => {
     expect(paths.workspaceDir).toBe(
       "/Users/john.doe/.vibedata/skill-builder/my-skill",
     );
-    expect(paths.contextDir).toBe(
-      "/home/user/my-skills/my-skill/context",
-    );
+    expect(paths.contextDir).toBe("/home/user/my-skills/my-skill/context");
     expect(paths.skillOutputDir).toBe("/home/user/my-skills/my-skill");
     // When "The skill directory is" is absent, skillDir falls back to skillOutputDir for mock destRoot
     expect(paths.skillDir).toBe("/home/user/my-skills/my-skill");
@@ -201,7 +254,9 @@ describe("parsePromptPaths", () => {
       "All directories already exist — do not create any directories.";
 
     const paths = parsePromptPaths(prompt);
-    expect(paths.workspaceDir).toBe("/Users/hb/.vibedata/skill-builder/test-skill");
+    expect(paths.workspaceDir).toBe(
+      "/Users/hb/.vibedata/skill-builder/test-skill",
+    );
     expect(paths.contextDir).toBe("/Users/hb/skills/test-skill/context");
     expect(paths.skillOutputDir).toBeNull();
   });
@@ -216,7 +271,9 @@ describe("parsePromptPaths", () => {
 
     const paths = parsePromptPaths(prompt);
     expect(paths.workspaceDir).toBe("/Users/hb/workspace/skills/test-skill");
-    expect(paths.contextDir).toBe("/Users/hb/workspace/skills/test-skill/context");
+    expect(paths.contextDir).toBe(
+      "/Users/hb/workspace/skills/test-skill/context",
+    );
   });
 
   it("handles paths with dots (e.g., john.doe)", () => {
@@ -247,9 +304,27 @@ describe("parsePromptPaths", () => {
       "Derive context_dir as workspace_dir/context.";
     const paths = parsePromptPaths(prompt);
     expect(paths.workspaceDir).toBe("/Users/john/workspace/my-skill");
-    expect(paths.contextDir).toBe(path.join("/Users/john/workspace/my-skill", "context"));
+    expect(paths.contextDir).toBe(
+      path.join("/Users/john/workspace/my-skill", "context"),
+    );
     expect(paths.skillOutputDir).toBe("/Users/john/skills/my-skill");
     expect(paths.skillDir).toBe("/Users/john/skills/my-skill");
+  });
+
+  it("extracts backticked step3 prompt paths from app-owned labels", () => {
+    const prompt =
+      "Workspace directory: `/tmp/workspace/skills/pipeline-value`\n" +
+      "Skill output directory: `/tmp/skills/skills/pipeline-value`\n" +
+      "Eval definitions file: `/tmp/workspace/skills/pipeline-value/evals/evals.json`\n";
+
+    const paths = parsePromptPaths(prompt);
+
+    expect(paths.workspaceDir).toBe("/tmp/workspace/skills/pipeline-value");
+    expect(paths.contextDir).toBe(
+      path.join("/tmp/workspace/skills/pipeline-value", "context"),
+    );
+    expect(paths.skillOutputDir).toBe("/tmp/skills/skills/pipeline-value");
+    expect(paths.skillDir).toBe("/tmp/skills/skills/pipeline-value");
   });
 });
 
@@ -380,9 +455,8 @@ describe("runMockAgent", () => {
   it("happy path: known agent name with a template → emits a run_result", async () => {
     const messages: Record<string, unknown>[] = [];
     // generate-skill maps to step3-generate-skill which has a JSONL template
-    await runMockAgent(
-      baseMockConfig({ agentName: "generate-skill" }),
-      (msg) => messages.push(msg),
+    await runMockAgent(baseMockConfig({ agentName: "generate-skill" }), (msg) =>
+      messages.push(msg),
     );
 
     const runResult = messages.find(
@@ -443,7 +517,8 @@ describe("runMockAgent", () => {
     );
 
     const resultItem = messages.find(
-      (m) => m.type === "display_item" &&
+      (m) =>
+        m.type === "display_item" &&
         (m.item as Record<string, unknown> | undefined)?.type === "result",
     );
     expect(resultItem).toBeDefined();
@@ -490,24 +565,53 @@ describe("buildStructuredMockResult", () => {
   });
 
   it("returns structured payload for description eval-query generation", async () => {
-    const result = await buildStructuredMockResult("description-evals-generator");
+    const result = await buildStructuredMockResult(
+      "description-evals-generator",
+    );
     expect(result).not.toBeNull();
     const payload = result as Record<string, unknown>;
     expect(payload.status).toBe("generated");
     expect(Array.isArray(payload.queries)).toBe(true);
     const queries = payload.queries as Array<Record<string, unknown>>;
     expect(queries.length).toBeGreaterThan(0);
-    expect(queries.every((query) => typeof query.query === "string")).toBe(true);
-    expect(queries.every((query) => typeof query.should_trigger === "boolean")).toBe(true);
+    expect(queries.every((query) => typeof query.query === "string")).toBe(
+      true,
+    );
+    expect(
+      queries.every((query) => typeof query.should_trigger === "boolean"),
+    ).toBe(true);
   });
 
   it("returns structured payload for description optimization loop", async () => {
-    const result = await buildStructuredMockResult("description-optimization-loop");
+    const result = await buildStructuredMockResult(
+      "description-optimization-loop",
+    );
     expect(result).not.toBeNull();
     const payload = result as Record<string, unknown>;
     expect(payload.iterations_run).toBe(2);
     expect(typeof payload.best_description).toBe("string");
     expect(Array.isArray(payload.history)).toBe(true);
+  });
+
+  it("returns canonical structured payload for step3-generate-skill", async () => {
+    const result = await buildStructuredMockResult("step3-generate-skill");
+    expect(result).not.toBeNull();
+    const payload = result as Record<string, unknown>;
+    expect(payload.status).toBe("generated");
+    expect(payload.skipped).toBe(false);
+    expect(payload.benchmark_path).toBeNull();
+    expect(payload.version_bump).toBe("1.0.0");
+    expect(payload.call_trace).toEqual([
+      "read-user-context",
+      "read-decisions",
+      "read-clarifications",
+      "synthesize-generation-brief",
+      "use-creating-skills",
+      "write-skill",
+      "write-references",
+      "write-evals",
+      "fresh-context-verifier-review",
+    ]);
   });
 
   it("returns null for benchmark-skill", async () => {

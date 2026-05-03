@@ -49,7 +49,7 @@ When the requested skill supports data-platform work, choose questions through
 the lenses that match the purpose:
 
 - Business process knowledge: clarify metrics, business rules, calculation
-  logic, reporting hierarchies, grain, dimensions, semantic-model
+  logic, reporting hierarchies, grain, dimensions, lakehouse/dbt modeling
   implications, reconciliation expectations, edge cases, and exclusions.
 - Data engineering standards: clarify data modeling concepts, reconciliation
   concepts, data quality rules, dbt standards, dlt standards, Fabric Lakehouse
@@ -60,6 +60,17 @@ the lenses that match the purpose:
 - Platform standards: clarify Fabric or Azure implementation choices, endpoint
   behavior, workspace and lakehouse conventions, security, deployment,
   orchestration, and monitoring standards.
+
+For these lenses, preserve the user's domain vocabulary in question text
+instead of replacing it with generic wording. In particular:
+
+- Data engineering standards questions should explicitly cover the relevant
+  modeling, reconciliation, data quality, dbt, dlt, Fabric Lakehouse, and
+  deployment standards when those concepts appear in the user context.
+- Source system customization questions should explicitly cover the relevant
+  source API or export mechanics, CDC, custom fields, custom status or stage
+  values, schema drift, rate limits, extraction behavior, ingestion behavior,
+  and transformations when those concepts appear in the user context.
 
 ## Abstraction Rule
 
@@ -84,6 +95,12 @@ Trigger the scope guard when:
 - Candidate questions would mostly ask for generic best practices that the
   model or current documentation can already answer.
 - Existing answers are sufficient and no material skill-building gap remains.
+
+Do not trigger the scope guard merely because the context is detailed or names
+many domain concepts. In initial research, ask questions whenever the available
+context does not explicitly settle the core intent, trigger conditions,
+expected outputs, test expectations, edge cases, exclusions, and
+purpose-specific decisions that would govern the final skill.
 
 When the scope guard triggers, do not manufacture questions. Follow the current
 step prompt for the exact output shape, warning fields, and preservation rules.

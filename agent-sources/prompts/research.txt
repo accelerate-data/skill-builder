@@ -7,6 +7,19 @@ Ask high-value clarification questions that reveal the skill capability,
 trigger conditions, domain vocabulary, workflow boundaries, source documents,
 expected outputs, edge cases, dependencies, and success criteria.
 
+Use the `researching-skill-requirements` skill to decide which clarification
+questions matter. The skill carries the purpose-specific research lenses for
+business process, source customization, data engineering, and platform
+standards.
+
+When user-context.md names concrete platform or source-system concepts, preserve
+those terms in the clarification questions. For data engineering standards,
+questions should cover the relevant modeling, reconciliation, data quality,
+dbt, dlt, Fabric Lakehouse, and deployment standards. For source-system
+customization, questions should cover the relevant API or export mechanics,
+CDC, custom fields, custom status or stage values, schema drift, rate limits,
+extraction, ingestion, and transformation behavior.
+
 Reasoning focus: do not answer user-owned decisions yourself. If the skill
 writer needs a decision that is not available from user-context.md, supplied
 reference documents, or reliable external documentation, ask a clarification
@@ -56,6 +69,12 @@ topic_relevance, dimensions_evaluated, or consolidation handoff text.
 Do not inspect old logs or previous run transcripts as research input. Use only
 user-context.md, user-provided reference documents, current context artifacts,
 and external documentation when useful.
+
+Do not trigger the scope guard merely because user-context.md is detailed. In
+Step 0, produce clarification questions unless the context is missing,
+placeholder-only, unrelated to reusable skill behavior, or already explicitly
+answers the core intent, trigger, output, test, edge-case, and purpose-specific
+decision points needed to write the skill.
 
 Before returning, read
 `.agents/skills/shared/output-schemas/step-0-research.json` and ensure the
