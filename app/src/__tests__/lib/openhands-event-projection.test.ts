@@ -290,16 +290,18 @@ describe("projectConversationEvent", () => {
     expect(item.toolResult?.content).toBe("Older turns summarized.");
   });
 
-  it("projects ConversationStateUpdateEvent as a Lifecycle update item", () => {
+  it("hides ConversationStateUpdateEvent from the chat (audit-only)", () => {
+    // Internal counter/state churn; lifecycle chip covers user-facing
+    // transitions. Event still lands in run.conversationEvents in the store
+    // layer (audit trail preserved); the projection emits no DisplayItem.
     const event = makeEvent("ConversationStateUpdateEvent", {
       key: "agent_status",
       value: "running",
     });
     const result = projectConversationEvent(event, {});
-    expect(result.add[0].toolName).toBe("state_update");
-    expect(result.add[0].toolSummary).toBe(
-      "Lifecycle update: agent_status=running",
-    );
+    expect(result.add).toEqual([]);
+    expect(result.update).toEqual([]);
+    expect(result.pendingDelta).toEqual({});
   });
 
   it("projects unknown event_class as Unknown OpenHands event", () => {
