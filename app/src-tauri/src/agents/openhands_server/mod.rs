@@ -276,6 +276,141 @@ async fn run_conversation_task(
     }
 }
 
+/// Refine variant of `run_conversation_task` — identical except it does NOT
+/// delete the conversation when the run finishes. The conversation stays alive
+/// for the next turn.
+#[allow(dead_code)]
+async fn run_refine_conversation_task(
+    task: OpenHandsConversationTask,
+    mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
+) -> Result<(), String> {
+    let result = run_conversation_task_inner(&task, &mut cancel_rx).await;
+    if result.is_err() {
+        let _ = task.client.pause_conversation(&task.conversation_id).await;
+    }
+    result
+}
+
+/// Dispatch a refine turn against the OpenHands Agent Server.
+///
+/// On turn 1 (`conversation_id` is `None`) creates a new conversation seeded
+/// with `config.prompt` as the initial message. On turn N (`conversation_id`
+/// is `Some`) sends `config.prompt` as a follow-up `SendMessageRequest` event
+/// and re-runs the existing conversation. Returns the conversation_id that
+/// the caller must persist for subsequent turns.
+///
+/// The conversation is NOT deleted when the run completes. The caller owns
+/// deletion via `close_openhands_refine_session`.
+#[allow(dead_code)]
+pub async fn dispatch_openhands_refine_turn(
+    app: &tauri::AppHandle,
+    agent_id: &str,
+    config: SidecarConfig,
+    conversation_id: Option<String>,
+    transcript_log_dir: Option<&str>,
+) -> Result<String, String> {
+    let _ = create_openhands_persistence_dir(agent_id, &config, transcript_log_dir)?;
+    let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
+
+    let server = ensure_agent_server(Duration::from_secs(60)).await?;
+    let client = OpenHandsServerClient::new(
+        server
+            .base_url()
+            .parse()
+            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
+        Some(server.session_api_key.clone()),
+    );
+
+    let config_event = redact_openhands_config_for_log(&config, server.port);
+    super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
+
+    let conversation_id = match conversation_id {
+        Some(existing) => {
+            let event = serde_json::json!({
+                "role": "user",
+                "content": [{
+                    "type": "text",
+                    "text": request.prompt,
+                }],
+                "run": false,
+            });
+            client
+                .send_event(&existing, event)
+                .await
+                .map_err(|e| format!("Failed to send refine event to OpenHands conversation: {e}"))?;
+            existing
+        }
+        None => {
+            let start_request = StartConversationRequest::from_one_shot(&request);
+            let conversation = client
+                .create_conversation(&start_request)
+                .await
+                .map_err(|e| format!("Failed to create OpenHands refine conversation: {e}"))?;
+            extract_conversation_id(&conversation)?
+        }
+    };
+
+    let summary_context = OpenHandsRunSummaryContext::new(&request, &conversation_id);
+    let websocket_url = server.websocket_url(&conversation_id);
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    register_cancel(agent_id, cancel_tx)?;
+
+    let app_for_task = app.clone();
+    let agent_for_task = agent_id.to_string();
+    let conversation_id_clone = conversation_id.clone();
+    let session_api_key = server.session_api_key.clone();
+    tokio::spawn(async move {
+        let task = OpenHandsConversationTask {
+            app: app_for_task.clone(),
+            agent_id: agent_for_task.clone(),
+            client,
+            conversation_id: conversation_id_clone,
+            websocket_url,
+            session_api_key,
+            summary_context,
+        };
+        let result = run_refine_conversation_task(task, cancel_rx).await;
+        unregister_cancel(&agent_for_task);
+        if let Err(error) = result {
+            super::events::handle_sidecar_exit_with_detail(
+                &app_for_task,
+                &agent_for_task,
+                false,
+                Some(error),
+            );
+        }
+    });
+
+    Ok(conversation_id)
+}
+
+/// Best-effort delete of an OpenHands refine conversation.
+///
+/// Errors are logged and swallowed — the server will eventually GC abandoned
+/// conversations, so a transient failure here is not fatal.
+#[allow(dead_code)]
+pub async fn close_openhands_refine_session(conversation_id: &str) -> Result<(), String> {
+    let server = ensure_agent_server(Duration::from_secs(60))
+        .await
+        .map_err(|e| format!("OpenHands Agent Server not available: {e}"))?;
+    let client = OpenHandsServerClient::new(
+        server
+            .base_url()
+            .parse()
+            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
+        Some(server.session_api_key.clone()),
+    );
+    if let Err(e) = client.delete_conversation(conversation_id).await {
+        log::warn!(
+            "[close_openhands_refine_session] failed to delete conversation {}: {}",
+            conversation_id,
+            e
+        );
+    }
+    Ok(())
+}
+
 async fn run_conversation_task_inner(
     task: &OpenHandsConversationTask,
     cancel_rx: &mut tokio::sync::oneshot::Receiver<()>,

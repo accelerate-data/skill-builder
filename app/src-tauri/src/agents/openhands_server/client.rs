@@ -34,7 +34,6 @@ impl OpenHandsServerClient {
         .build()
     }
 
-    #[allow(dead_code)]
     pub fn build_send_event_request(
         &self,
         conversation_id: &str,
@@ -110,6 +109,19 @@ impl OpenHandsServerClient {
     pub async fn delete_conversation(&self, conversation_id: &str) -> Result<(), reqwest::Error> {
         self.http
             .execute(self.build_delete_request(conversation_id)?)
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub async fn send_event(
+        &self,
+        conversation_id: &str,
+        event: serde_json::Value,
+    ) -> Result<(), reqwest::Error> {
+        self.http
+            .execute(self.build_send_event_request(conversation_id, event)?)
             .await?
             .error_for_status()?;
         Ok(())
