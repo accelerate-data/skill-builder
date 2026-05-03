@@ -312,12 +312,17 @@ or replaced in the same branch because they assert deleted behavior.
 | `agent-sources/workspace/` | Source files copied into runtime `.agents/**`. |
 | `agent-sources/prompts/` | App-owned task prompt templates rendered by Rust. |
 
-## Open Questions
+## Resolved Package And API Decisions
 
-1. `[version]` Which exact `openhands-agent-server` package/version will be
-   pinned for the branch?
-2. `[api]` Does the pinned version expose explicit workspace registration
-   endpoints, or only conversation-level workspace binding?
-3. `[auth]` Does the pinned local server support API-key auth? If yes, the app
-   must generate and require an instance token. If no, loopback binding and
-   process ownership are the local security boundary.
+1. `[version]` The branch pins local startup to
+   `openhands-agent-server==1.19.1` through `uvx --from ... --with ... python
+   -m openhands.agent_server`. The command includes
+   `openhands-tools==1.19.1` and `libtmux` explicitly because the inspected
+   server package imports them at startup.
+2. `[api]` The inspected package does not expose `POST /workspaces`; Rust binds
+   the existing local folder through `StartConversationRequest.workspace` with
+   `kind: "LocalWorkspace"`.
+3. `[auth]` The inspected package supports local API-key auth through
+   `SESSION_API_KEY`/`OH_SESSION_API_KEYS_0`; Rust generates an instance token,
+   sends `X-Session-API-Key` on REST calls, and sends the WebSocket auth message
+   before starting the run.

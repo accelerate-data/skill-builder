@@ -4,6 +4,10 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
+pub const OPENHANDS_AGENT_SERVER_PACKAGE: &str = "openhands-agent-server==1.19.1";
+pub const OPENHANDS_TOOLS_PACKAGE: &str = "openhands-tools==1.19.1";
+pub const OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES: &[&str] = &["libtmux"];
+
 #[derive(Debug, Clone)]
 pub struct OpenHandsAgentServerHandle {
     pub port: u16,
@@ -58,12 +62,36 @@ impl OpenHandsServerCommand {
 
 #[cfg(target_os = "windows")]
 fn python_module_command_parts() -> (String, Vec<String>) {
-    ("py".to_string(), vec!["-3".to_string(), "-m".to_string()])
+    (
+        "uvx".to_string(),
+        vec![
+            "--from".to_string(),
+            OPENHANDS_AGENT_SERVER_PACKAGE.to_string(),
+            "--with".to_string(),
+            OPENHANDS_TOOLS_PACKAGE.to_string(),
+            "--with".to_string(),
+            "libtmux".to_string(),
+            "python".to_string(),
+            "-m".to_string(),
+        ],
+    )
 }
 
 #[cfg(not(target_os = "windows"))]
 fn python_module_command_parts() -> (String, Vec<String>) {
-    ("python3".to_string(), vec!["-m".to_string()])
+    (
+        "uvx".to_string(),
+        vec![
+            "--from".to_string(),
+            OPENHANDS_AGENT_SERVER_PACKAGE.to_string(),
+            "--with".to_string(),
+            OPENHANDS_TOOLS_PACKAGE.to_string(),
+            "--with".to_string(),
+            "libtmux".to_string(),
+            "python".to_string(),
+            "-m".to_string(),
+        ],
+    )
 }
 
 #[derive(Debug)]
@@ -143,6 +171,7 @@ impl OpenHandsAgentServerProcess {
             .env("SESSION_API_KEY", &session_api_key)
             .env("OH_SESSION_API_KEYS_0", &session_api_key)
             .env("OH_SECRET_KEY", &session_api_key);
+        let stderr_secrets = vec![session_api_key.clone()];
         let mut child = tokio_command
             .spawn()
             .map_err(|e| format!("Failed to spawn OpenHands Agent Server: {e}"))?;
@@ -152,7 +181,10 @@ impl OpenHandsAgentServerProcess {
                 loop {
                     match lines.next_line().await {
                         Ok(Some(line)) if !line.trim().is_empty() => {
-                            log::debug!("[openhands-agent-server] {}", line);
+                            log::debug!(
+                                "[openhands-agent-server] {}",
+                                redact_stderr(&line, &stderr_secrets)
+                            );
                         }
                         Ok(Some(_)) => {}
                         Ok(None) => break,
@@ -219,7 +251,6 @@ pub fn select_random_local_port() -> Result<u16, String> {
         .map_err(|e| format!("Failed to read local OpenHands Agent Server port: {e}"))
 }
 
-#[allow(dead_code)]
 pub fn redact_stderr(text: &str, secrets: &[String]) -> String {
     secrets
         .iter()
@@ -273,15 +304,21 @@ mod tests {
     fn agent_server_command_uses_python_module_host_and_selected_port() {
         let command = OpenHandsServerCommand::new(54321);
 
-        #[cfg(target_os = "windows")]
-        {
-            assert_eq!(command.program, "py");
-            assert_eq!(command.args.first().map(String::as_str), Some("-3"));
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            assert_eq!(command.program, "python3");
-        }
+        assert_eq!(command.program, "uvx");
+        assert_eq!(command.args.first().map(String::as_str), Some("--from"));
+        assert!(command
+            .args
+            .iter()
+            .any(|arg| arg == OPENHANDS_AGENT_SERVER_PACKAGE));
+        assert!(command
+            .args
+            .iter()
+            .any(|arg| arg == OPENHANDS_TOOLS_PACKAGE));
+        assert!(command
+            .args
+            .iter()
+            .any(|arg| OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES.contains(&arg.as_str())));
+        assert!(command.args.iter().any(|arg| arg == "python"));
 
         assert!(command.args.iter().any(|arg| arg == "-m"));
         assert!(command

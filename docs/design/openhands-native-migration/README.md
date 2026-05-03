@@ -3,16 +3,17 @@
 > **Status:** Draft
 > **Runtime update:** The PyInstaller `openhands-runner` execution model in
 > this document is superseded by
-> `docs/design/openhands-agent-server-runtime/README.md`. The agent topology,
-> prompt ownership, `.agents/**` workspace layout, and app-facing event
-> semantics remain useful where they do not conflict with the Agent Server
+> `docs/design/openhands-agent-server-runtime/README.md`. Treat runner, JSONL,
+> and bundled-binary sections below as historical context only. The agent
+> topology, prompt ownership, `.agents/**` workspace layout, and app-facing
+> event semantics remain useful where they do not conflict with the Agent Server
 > runtime design.
 
 ## Overview
 
 Skill Builder currently uses `@anthropic-ai/claude-agent-sdk` and the Claude Code CLI binary as its agent runtime. This design describes a clean-break migration to OpenHands as the native runtime — covering both the **runtime layer** (replacing the execution engine behind the existing sidecar boundary) and the **agent layer** (replacing Claude Code-specific agent and skill files with OpenHands-native equivalents and simplifying the workflow topology).
 
-The migration replaces the Claude SDK binary with a PyInstaller-bundled `openhands-runner` binary, adopts OpenHands file-based agent and AgentSkills conventions, and simplifies the workflow to one top-level OpenHands agent named `skill-creator`. Workflow phases, scope review, and other one-shot jobs are app-owned task prompts handled by that agent. OpenHands calls use a direct Rust -> Python runner boundary; Node is not part of the OpenHands runtime path. The JSONL protocol and all app-owned runtime contracts are preserved.
+Historically, this design replaced the Claude SDK binary with a PyInstaller-bundled `openhands-runner` binary, adopted OpenHands file-based agent and AgentSkills conventions, and simplified the workflow to one top-level OpenHands agent named `skill-creator`. Workflow phases, scope review, and other one-shot jobs remain app-owned task prompts handled by that agent. The active VU-1153 runtime uses a Rust-managed local OpenHands Agent Server over REST and WebSockets; Node and the old Python stdout runner are not part of the OpenHands runtime path.
 
 The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary/README.md`. The concrete OpenHands SDK invocation contract is detailed in `docs/design/openhands-sdk-runner/README.md`. This document is the umbrella migration design.
 
@@ -302,7 +303,10 @@ OpenHands routes all LLM calls through LiteLLM. The `model` field in `SidecarCon
 
 The `apiKey` field in `SidecarConfig` carries the selected provider's key. A `modelBaseUrl` field is added for local/custom endpoints. The sidecar passes `model`, `apiKey`, and `modelBaseUrl` to `openhands-runner`; the runner builds the OpenHands `LLMConfig` directly from those fields. Provider-specific storage can remain a Settings UI concern, but the runner contract is model string plus key plus optional base URL.
 
-## Runtime Packaging
+## Historical Runtime Packaging
+
+> Superseded by the Agent Server runtime. This section records the abandoned
+> PyInstaller runner option for migration history only.
 
 The `openhands-runner` binary is built with PyInstaller at CI time and bundled as a Tauri external binary resource, replacing the Claude CLI binary and `pathToClaudeCodeExecutable` in `sidecar.rs`.
 

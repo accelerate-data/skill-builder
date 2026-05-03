@@ -99,10 +99,13 @@ execution.
 
 ## Packaging Note
 
-In a clean target install, `openhands-agent-server==1.19.1` required
-`openhands-tools==1.19.1` and `libtmux` to import route modules successfully.
-Verify the final release packaging in a clean Python 3.12+ environment before
-shipping the dependency bundle.
+Skill Builder pins the local server command to
+`openhands-agent-server==1.19.1` via `uvx --from ... --with ... python -m
+openhands.agent_server`. In a clean target install, that package also required
+`openhands-tools==1.19.1` and `libtmux` to import route modules successfully,
+so the runtime command includes both companion packages explicitly. Verify the
+final release packaging in a clean Python 3.12+ environment before shipping the
+dependency bundle.
 
 The package imports `StartConversationRequest` from
 `openhands.sdk.conversation.request`; generated JSON must follow the pinned
