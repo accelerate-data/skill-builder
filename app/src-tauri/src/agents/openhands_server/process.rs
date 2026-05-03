@@ -58,7 +58,10 @@ impl OpenHandsServerCommand {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         #[cfg(not(target_os = "windows"))]
-        command.env("TMPDIR", "/tmp").env("TMP", "/tmp").env("TEMP", "/tmp");
+        command
+            .env("TMPDIR", "/tmp")
+            .env("TMP", "/tmp")
+            .env("TEMP", "/tmp");
         command
     }
 }

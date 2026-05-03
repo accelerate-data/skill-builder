@@ -245,10 +245,7 @@ mod tests {
         let payload = StartConversationRequest::from_one_shot(&request);
         let json = serde_json::to_value(payload).unwrap();
 
-        assert_eq!(
-            json["agent"]["llm"]["model"],
-            "openai/minimax-m2.7"
-        );
+        assert_eq!(json["agent"]["llm"]["model"], "openai/minimax-m2.7");
         assert_eq!(
             json["agent"]["llm"]["base_url"],
             "https://opencode.ai/zen/go/v1"
