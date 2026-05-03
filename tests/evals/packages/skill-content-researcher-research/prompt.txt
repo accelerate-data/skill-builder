@@ -54,6 +54,9 @@ Every question must have 2-4 mutually exclusive concrete choices plus final
 `"Other (please specify)"` with `is_other: true`.
 Do not omit the final Other choice, even when the listed choices seem
 exhaustive.
+Every choice object must use exactly these fields: `id`, `text`, and
+`is_other`. Each choice `id` must be a string using the question ID plus a
+letter, such as `"Q1A"` or `"Q2D"`. Never omit a choice `id`.
 
 Use canonical question fields only: `id`, `title`, `text`, `must_answer`,
 `choices`, and `refinements`. Do not use `options`, `label`, `required`, or

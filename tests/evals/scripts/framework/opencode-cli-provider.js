@@ -1,8 +1,8 @@
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 
-const EVAL_ROOT = path.resolve(__dirname, '..');
-const DEFAULT_STATE_HOME = path.join(EVAL_ROOT, '.promptfoo', 'opencode-runtime', 'state');
+const { EVAL_ROOT } = require('./roots');
+const DEFAULT_STATE_HOME = path.join(EVAL_ROOT, '.tmp', 'opencode-state');
 
 class OpenCodeCliProvider {
   constructor(options = {}) {

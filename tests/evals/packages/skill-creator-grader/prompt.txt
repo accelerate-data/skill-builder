@@ -22,3 +22,4 @@ Required field names:
 - `summary` must include integer `passed`, `failed`, and `total`
 - `claims` must be an array
 - `eval_feedback` may be an array
+- omit `eval_feedback` when there is no feedback; never return `eval_feedback: null`

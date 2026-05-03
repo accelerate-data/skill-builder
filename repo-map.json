@@ -183,18 +183,18 @@
     "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, Claude/OpenHands runtime adapters, mock mode)",
     "app/sidecar/__tests__/": "Sidecar unit tests (one test file per sidecar module)",
     "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, description, evals, settings, usage, skill-tester, skills-library, integration, desktop-smoke, fixtures, helpers, setup",
-    "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains suite-owned tier config, OpenCode provider config, package-level eval configs, deterministic harness tests, static assertions for code contracts including shared Tauri command policy analysis, repo-local Promptfoo state ignores, one-scenario-per-package smoke, and live model regression commands.",
+    "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains eval-map.json for coding-agent navigation, bin/ad-evals.js shared CLI, scripts/framework/ reusable harness modules, suite-owned tier config, OpenCode provider config, package-level eval configs, deterministic harness tests, static assertions for code contracts including shared Tauri command policy analysis, runtime-exported Promptfoo state ignores, one-scenario-per-package smoke, and live model regression commands.",
     "agent-sources/workspace/": "OpenHands runtime workspace sources only: agents/ is copied to .agents/agents and skills/ is copied to .agents/skills during startup/runtime deployment.",
     "agent-sources/prompts/": "App-owned prompt templates compiled/rendered by Rust and sent as explicit task messages; not copied into the OpenHands runtime workspace.",
     "agent-sources/claude/": "Legacy Claude adapter templates used by remaining non-OpenHands CLAUDE.md rebuild paths.",
     "agent-sources/plugins/": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent",
-    "docs/design/": "Architecture decision records and design specs: agent-specs, backend-design, startup-recon, workflow-state, clarifications-rendering, skill-tester, skills-marketplace, and more. Primary reference for non-obvious design decisions.",
+    "docs/design/": "Architecture decision records and design specs: agent-specs, backend-design, startup-recon, workflow-state, clarifications-rendering, skill-tester, skills-marketplace, shared-eval-harness, and more. Primary reference for non-obvious design decisions.",
     "docs/plans/": "Implementation plans and execution notes. Not published end-user help content.",
     "docs/user-guide/": "VitePress user documentation, deployed via docs.yml to GitHub Pages",
     "docs/references/": "Vendored external reference docs (e.g. Anthropic API snapshots)",
     ".claude/rules/": "Shared agent rules (agent-agnostic, detailed policy). Referenced from AGENTS.md.",
     ".claude/repo-map.schema.json": "Schema for repo-map.json",
-    "scripts/": "Developer and automation scripts. worktree.sh is the canonical maintainer helper for creating development worktrees; it bootstraps app/eval dependencies and symlinks worktree Promptfoo state back to the source checkout. check-help-docs.mjs verifies app/VitePress help links against docs/user-guide. verify-release-stage.mjs verifies staged release archives include required runtime resources."
+    "scripts/": "Developer and automation scripts. worktree.sh is the canonical maintainer helper for creating development worktrees and bootstrapping app/eval dependencies. check-help-docs.mjs verifies app/VitePress help links against docs/user-guide. verify-release-stage.mjs verifies staged release archives include required runtime resources."
   },
   "dependencies_internal": {
     "frontend → rust": "Via Tauri IPC (`invoke()` from @tauri-apps/api/core)",
@@ -257,7 +257,7 @@
     "commits": "Granular — one concern per commit. Stage specific files (`git add <file>`, not `git add .`).",
     "pr_title": "VU-XXX: short description",
     "pr_body": "Fixes VU-XXX",
-    "worktrees": "Use ./scripts/worktree.sh <branchName>; worktrees live at ../worktrees/<branchName> relative to repo root and share Promptfoo DB/state through a tests/evals/.promptfoo symlink to the source checkout",
+    "worktrees": "Use ./scripts/worktree.sh <branchName>; worktrees live at ../worktrees/<branchName> relative to repo root. Promptfoo state is exported by the eval runtime when evals run, not linked during worktree creation",
     "linear_project": "All issues for this repo go under Skill Builder",
     "file_size_and_responsibility": "Keep files focused on one concern. Split when a file exceeds ~300 lines (frontend TS/TSX) or ~400 lines (Rust command file). Rust: extract sub-module directories when a command group combines API surface, orchestration, persistence, and filesystem ops. Frontend: extract sub-components, custom hooks, or lib utilities rather than growing a component or page inline.",
     "no_monoliths": "A Tauri command file should define commands and delegate to helpers — not own query logic, filesystem ops, and business rules simultaneously. A React component should render — not own a state machine, data fetching, and complex transformations inline. When in doubt, split."

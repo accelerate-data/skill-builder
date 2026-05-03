@@ -3,6 +3,7 @@ const test = require('node:test');
 
 const {
   ALLOWED_ARTIFACT_PREFIXES,
+  PROMPTFOO_EVAL_RESULT_FAILURE_STATUS,
   applyDefaultEvalConcurrency,
   detectCleanupViolations,
   main,
@@ -11,7 +12,7 @@ const {
   runPromptfooInvocation,
   shouldMaterializeConfig,
   splitPromptfooInvocations,
-} = require('./run-promptfoo-with-guard');
+} = require('./framework/run-promptfoo-with-guard');
 
 test('detectCleanupViolations ignores new files under approved eval artifact directories', () => {
   const before = {
@@ -25,7 +26,6 @@ test('detectCleanupViolations ignores new files under approved eval artifact dir
       'tests/evals/results/logs/promptfoo.log',
       'tests/evals/.tmp/trace.json',
       'tests/evals/.cache/promptfoo/cache.db',
-      'tests/evals/.promptfoo/promptfoo.db',
     ]),
   };
 
@@ -150,7 +150,6 @@ test('detectCleanupViolations ignores changed pre-existing files under approved 
 test('allowed artifact prefixes stay limited to the dedicated eval output roots', () => {
   assert.deepEqual(ALLOWED_ARTIFACT_PREFIXES, [
     'tests/evals/.cache/',
-    'tests/evals/.promptfoo/',
     'tests/evals/.tmp/',
     'tests/evals/output/',
     'tests/evals/results/',
@@ -332,7 +331,7 @@ test('main runs split promptfoo invocations sequentially and returns success whe
   ]);
 });
 
-test('main stops after the first failing split invocation', () => {
+test('main continues split invocations after promptfoo eval failures and returns success', () => {
   const invocations = [];
   const snapshots = [
     { tracked: new Set(), untracked: new Set() },
@@ -349,15 +348,48 @@ test('main stops after the first failing split invocation', () => {
       formatViolationMessage: () => 'unused',
       runPromptfooInvocation: (argv) => {
         invocations.push(argv);
-        return invocations.length === 2 ? 100 : 0;
+        return invocations.length === 2 ? PROMPTFOO_EVAL_RESULT_FAILURE_STATUS : 0;
       },
     },
   );
 
-  assert.equal(status, 100);
+  assert.equal(status, 0);
   assert.deepEqual(invocations, [
     ['eval', '--filter-pattern', '^\\[smoke\\]', '-c', 'a.yaml'],
     ['eval', '--filter-pattern', '^\\[smoke\\]', '-c', 'b.yaml'],
+    ['eval', '--filter-pattern', '^\\[smoke\\]', '-c', 'c.yaml'],
+  ]);
+});
+
+test('main continues split invocations after non-eval promptfoo process failures and returns failure', () => {
+  const invocations = [];
+  const snapshots = [
+    { tracked: new Set(), untracked: new Set() },
+    { tracked: new Set(), untracked: new Set() },
+    { tracked: new Set(), untracked: new Set() },
+    { tracked: new Set(), untracked: new Set() },
+    { tracked: new Set(), untracked: new Set() },
+    { tracked: new Set(), untracked: new Set() },
+  ];
+
+  const status = main(
+    ['eval', '--filter-pattern', '^\\[smoke\\]', '-c', 'a.yaml', '-c', 'b.yaml', '-c', 'c.yaml'],
+    {
+      collectGitSnapshot: () => snapshots.shift(),
+      detectCleanupViolations: () => [],
+      formatViolationMessage: () => 'unused',
+      runPromptfooInvocation: (argv) => {
+        invocations.push(argv);
+        return invocations.length === 2 ? 2 : 0;
+      },
+    },
+  );
+
+  assert.equal(status, 2);
+  assert.deepEqual(invocations, [
+    ['eval', '--filter-pattern', '^\\[smoke\\]', '-c', 'a.yaml'],
+    ['eval', '--filter-pattern', '^\\[smoke\\]', '-c', 'b.yaml'],
+    ['eval', '--filter-pattern', '^\\[smoke\\]', '-c', 'c.yaml'],
   ]);
 });
 

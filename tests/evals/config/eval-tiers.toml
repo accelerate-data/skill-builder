@@ -1,5 +1,5 @@
 [runtime]
-provider_id = "file://scripts/opencode-cli-provider.js"
+provider_id = "file://scripts/framework/opencode-cli-provider.js"
 opencode_config = "opencode.json"
 project_dir = "../.."
 format = "default"

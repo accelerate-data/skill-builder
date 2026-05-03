@@ -7,14 +7,14 @@ const {
   resolveConfigFile,
   resolveProviderId,
   writeResolvedConfig,
-} = require('./resolve-promptfoo-config');
+} = require('./framework/resolve-promptfoo-config');
 
 test('resolveConfigFile materializes an opencode provider from metadata.eval_tier', () => {
   const resolved = resolveConfigFile('packages/harness-smoke/promptfooconfig.json');
 
   assert.equal(
     resolved.providers[0].id,
-    `file://${path.join(path.dirname(TMP_ROOT), '..', 'scripts', 'opencode-cli-provider.js')}`,
+    `file://${path.join(path.dirname(TMP_ROOT), '..', 'scripts', 'framework', 'opencode-cli-provider.js')}`,
   );
   assert.equal(resolved.providers[0].config.agent, 'eval_light');
   assert.equal(resolved.providers[0].config.format, 'default');
@@ -71,14 +71,14 @@ test('writeResolvedConfig writes suite-owned resolved configs only under .tmp', 
   ]);
   assert.equal(calls[2][0], 'write');
   assert.equal(calls[2][1], path.join(TMP_ROOT, 'packages', 'harness-smoke', 'promptfooconfig.json'));
-  assert.match(calls[2][2], /file:\/\/.*\/scripts\/opencode-cli-provider\.js/);
+  assert.match(calls[2][2], /file:\/\/.*\/scripts\/framework\/opencode-cli-provider\.js/);
   assert.equal(calls[2][3], 'utf8');
 });
 
 test('resolveProviderId makes local file providers stable from materialized configs', () => {
   assert.equal(
-    resolveProviderId('file://scripts/opencode-cli-provider.js'),
-    `file://${path.join(path.dirname(TMP_ROOT), '..', 'scripts', 'opencode-cli-provider.js')}`,
+    resolveProviderId('file://scripts/framework/opencode-cli-provider.js'),
+    `file://${path.join(path.dirname(TMP_ROOT), '..', 'scripts', 'framework', 'opencode-cli-provider.js')}`,
   );
   assert.equal(resolveProviderId('custom:provider'), 'custom:provider');
 });

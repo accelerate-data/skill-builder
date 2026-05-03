@@ -3,8 +3,7 @@ set -euo pipefail
 
 # Maintainer helper for this repository only.
 # Use this from the Skill Builder repo root to create contributor development
-# worktrees. It keeps Promptfoo state in the source checkout by symlinking
-# tests/evals/.promptfoo from each worktree back to this repo root.
+# worktrees. Promptfoo state is exported by the eval runtime when evals run.
 
 if [[ $# -ne 1 ]]; then
   echo "Usage: $0 <branch-name>" >&2
@@ -82,21 +81,6 @@ link_env_file() {
   rm -f "$env_dst"
   ln -s "$env_src" "$env_dst"
   echo "ENV: symlink $env_dst -> $env_src"
-}
-
-link_promptfoo_state() {
-  local promptfoo_src="$repo_root/tests/evals/.promptfoo"
-  local promptfoo_dst="$worktree_path/tests/evals/.promptfoo"
-
-  if [[ ! -d "$worktree_path/tests/evals" ]]; then
-    echo "PROMPTFOO_DB: skipped (no tests/evals in worktree)"
-    return
-  fi
-
-  mkdir -p "$promptfoo_src"
-  rm -rf "$promptfoo_dst"
-  ln -s "$promptfoo_src" "$promptfoo_dst"
-  echo "PROMPTFOO_DB: symlink $promptfoo_dst -> $promptfoo_src"
 }
 
 bootstrap_app_dependencies() {
@@ -192,7 +176,6 @@ existing_branch_worktree() {
 
 bootstrap_worktree() {
   link_env_file
-  link_promptfoo_state
   bootstrap_app_dependencies
   bootstrap_eval_dependencies
 }
