@@ -40,7 +40,7 @@ JSON contract write path:
 - `outputFormat` is an app-side contract signal. OpenHands does not receive it as an SDK option; the rendered task prompt includes the JSON contract.
 - The app extracts one JSON object from terminal result text. Rust deserializes that object into typed contract structs (`ResearchStepOutput`, `DetailedResearchOutput`, `DecisionsOutput`) — this is the authoritative validation.
 - `answer-evaluator` follows the same structured-output pattern for `answer-evaluation.json`.
-- Agent-facing schema references are at `agent-sources/plugins/skill-content-researcher/shared/schemas.md` (semantic rules) and `shared/output-schemas/` (generated JSON Schema files agents can Read).
+- Agent-facing schema references are at `agent-sources/workspace/skills/shared/schemas.md` (semantic rules) and `shared/output-schemas/` (generated JSON Schema files agents can Read).
 
 Step-level structured payload keys:
 

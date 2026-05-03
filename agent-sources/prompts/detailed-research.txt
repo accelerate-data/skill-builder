@@ -1,6 +1,16 @@
 EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
 
-Produce the detailed-research output for the skill we are writing.
+You are in Step 1: Detailed Research.
+
+Goal: repair the clarification set after the user answered the initial
+questions. Add only the sections, questions, or refinements needed to close
+material gaps before skill generation.
+
+Reasoning focus: use answer-evaluation.json to identify missing, vague,
+contradictory, or materially underspecified answers. Decide whether each gap is
+best handled by a new section, a new top-level question in an existing section,
+or a refinement under an existing question. Do not reopen settled areas or add
+questions for general completeness or curiosity.
 
 We are writing the skill {{skill_name}}.
 Workspace directory: {{workspace_dir}}
@@ -14,6 +24,8 @@ All directories already exist. Do not create directories with mkdir. Do not list
 Read user-context.md, answer-evaluation.json, and context/clarifications.json.
 Read every existing section, question, answer_text, choices, recommendation, and refinement in context/clarifications.json. Use the human's current responses together with answer-evaluation.json to decide what is still missing.
 Use answer-evaluation.json as the source of truth for which answers are clear, vague, missing, contradictory, or need refinement. Do not reclassify those verdicts.
+
+Before returning, read `.agents/skills/shared/output-schemas/step-1-detailed-research.json` and ensure the final detailed-research output follows that structural schema. Use `.agents/skills/shared/schemas.md` for semantic invariants such as counts, required fields, and question shape.
 
 Return DetailedResearchOutput only.
 

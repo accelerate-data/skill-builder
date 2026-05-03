@@ -15,15 +15,17 @@ use super::output_format::{
     materialize_answer_evaluation_output_value, materialize_workflow_step_output_value,
     publish_commit_and_tag_generated_skill,
 };
-use super::prompt::{build_prompt, build_step0_prompt, build_step1_prompt, PromptParams};
+use super::prompt::{
+    build_prompt, build_step0_prompt, build_step1_prompt, build_step2_prompt, PromptParams,
+};
 use super::runtime::{
-    build_answer_evaluator_sidecar_config, build_workflow_detailed_research_sidecar_config,
-    build_workflow_research_sidecar_config, workflow_one_shot_runtime_provider,
-    workflow_step_uses_native_openhands_dispatch,
+    build_answer_evaluator_sidecar_config, build_workflow_confirm_decisions_sidecar_config,
+    build_workflow_detailed_research_sidecar_config, build_workflow_research_sidecar_config,
+    workflow_one_shot_runtime_provider, workflow_step_uses_native_openhands_dispatch,
 };
 use super::step_config::{
-    build_betas, get_step_config, research_workflow_tools, thinking_budget_for_step,
-    tools_for_agent, workflow_output_format_for_step,
+    build_betas, confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
+    thinking_budget_for_step, tools_for_agent, workflow_output_format_for_step,
 };
 use super::user_context::{format_user_context, write_user_context_file};
 
@@ -124,7 +126,7 @@ fn test_get_step_output_files_unknown_step() {
 fn test_step_config_canonical_agent_names() {
     assert_eq!(get_step_config(0).unwrap().agent_name, "skill-creator");
     assert_eq!(get_step_config(1).unwrap().agent_name, "skill-creator");
-    assert_eq!(get_step_config(2).unwrap().agent_name, "skill-writer-agent");
+    assert_eq!(get_step_config(2).unwrap().agent_name, "skill-creator");
     assert_eq!(get_step_config(3).unwrap().agent_name, "skill-writer-agent");
 }
 
@@ -172,6 +174,7 @@ fn test_workflow_step_tools_are_one_shot_safe() {
         let config = get_step_config(step_id).unwrap();
         let expected_tools = match step_id {
             0 | 1 => research_workflow_tools(),
+            2 => confirm_decisions_workflow_tools(),
             _ => ["file_editor", "terminal"]
                 .iter()
                 .map(|s| s.to_string())
@@ -200,10 +203,34 @@ fn test_workflow_step_config_uses_openhands_runtime_provider() {
 }
 
 #[test]
+fn skill_creator_agent_carries_full_skill_building_overview() {
+    let agent = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../agent-sources/workspace/agents/skill-creator.md"
+    ));
+
+    assert!(agent.contains("A skill is needed when generic model knowledge is not enough"));
+    assert!(agent.contains("A skill is a reference guide for reusable techniques"));
+    assert!(agent.contains("Do not create a skill for a one-off solution"));
+    assert!(agent.contains("Common skill types include"));
+    assert!(agent.contains("Technique: concrete steps"));
+    assert!(agent.contains("Pattern: a way of reasoning"));
+    assert!(agent.contains("Reference: syntax, API, domain"));
+    assert!(agent.contains("Workflow: multi-step operational guidance"));
+    assert!(agent.contains("Skill descriptions and frontmatter are trigger surfaces"));
+    assert!(agent.contains("Descriptions should describe when to use the skill"));
+    assert!(agent.contains("Step 0 Research"));
+    assert!(agent.contains("Step 1 Detailed Research"));
+    assert!(agent.contains("Step 2 Confirm Decisions"));
+    assert!(agent.contains("Step 3 Generate Skill"));
+    assert!(agent.contains("Each step produces a specific"));
+}
+
+#[test]
 fn test_research_steps_use_native_openhands_dispatch() {
     assert!(workflow_step_uses_native_openhands_dispatch(0));
     assert!(workflow_step_uses_native_openhands_dispatch(1));
-    assert!(!workflow_step_uses_native_openhands_dispatch(2));
+    assert!(workflow_step_uses_native_openhands_dispatch(2));
     assert!(!workflow_step_uses_native_openhands_dispatch(3));
 }
 
@@ -211,6 +238,9 @@ fn test_research_steps_use_native_openhands_dispatch() {
 fn research_prompt_renders_app_owned_openhands_task_context() {
     let prompt = build_step0_prompt("lead-conversion", "/tmp/workspace", DEFAULT_PLUGIN_SLUG, 4);
 
+    assert!(prompt.contains("You are in Step 0: Research"));
+    assert!(prompt.contains("Goal: discover the minimum decisions"));
+    assert!(prompt.contains("Reasoning focus: do not answer user-owned decisions yourself"));
     assert!(prompt.contains("We are writing the skill lead-conversion."));
     assert!(prompt.contains("/tmp/workspace/skills/lead-conversion"));
     assert!(
@@ -218,6 +248,25 @@ fn research_prompt_renders_app_owned_openhands_task_context() {
     );
     assert!(prompt.contains("Context directory: /tmp/workspace/skills/lead-conversion/context"));
     assert!(prompt.contains("Maximum research dimensions before scope warning: 4"));
+    assert!(prompt.contains("\"research_output\": {"));
+    assert!(prompt.contains("\"sections\": []"));
+    assert!(prompt.contains("\"notes\": []"));
+    assert!(prompt.contains("\"answer_evaluator_notes\": []"));
+    assert!(prompt.contains("Every choice must have"));
+    assert!(prompt.contains("Do not use alternate field names"));
+    assert!(prompt.contains("`options`, `label`, `required`, or"));
+    assert!(prompt.contains("Question objects must be nested directly"));
+    assert!(prompt.contains("top-level `research_output.questions`"));
+    assert!(prompt.contains("do not return note strings"));
+    assert!(prompt.contains("The initial research pass must not add refinement questions"));
+    assert!(prompt.contains("Refinements are created"));
+    assert!(prompt.contains("only by the detailed-research workflow"));
+    assert!(prompt.contains("All initial research questions must be single-select"));
+    assert!(prompt.contains("choose exactly one option"));
+    assert!(prompt.contains("Do not ask \"select all that apply\""));
+    assert!(prompt.contains("Do not inspect old logs or previous run transcripts"));
+    assert!(prompt.contains(".agents/skills/shared/output-schemas/step-0-research.json"));
+    assert!(prompt.contains(".agents/skills/shared/schemas.md"));
     assert!(
         !prompt.contains("research-agent"),
         "step 0 prompt should route through skill-creator, not research-agent"
@@ -281,6 +330,11 @@ fn research_sidecar_config_uses_skill_creator_openhands_contract() {
 fn detailed_research_prompt_renders_clean_break_task_context() {
     let prompt = build_step1_prompt("pipeline-value", "/tmp/workspace", DEFAULT_PLUGIN_SLUG);
 
+    assert!(prompt.contains("You are in Step 1: Detailed Research"));
+    assert!(prompt.contains("Goal: repair the clarification set"));
+    assert!(prompt.contains("Reasoning focus: use answer-evaluation.json"));
+    assert!(prompt.contains("missing, vague"));
+    assert!(prompt.contains("Do not reopen settled areas"));
     assert!(prompt.contains("We are writing the skill pipeline-value."));
     assert!(prompt.contains("/tmp/workspace/skills/pipeline-value"));
     assert!(
@@ -294,6 +348,8 @@ fn detailed_research_prompt_renders_clean_break_task_context() {
     ));
     assert!(prompt.contains("detailed-research output"));
     assert!(prompt.contains("DetailedResearchOutput"));
+    assert!(prompt.contains(".agents/skills/shared/output-schemas/step-1-detailed-research.json"));
+    assert!(prompt.contains(".agents/skills/shared/schemas.md"));
     assert!(prompt.contains("Preserve every existing section"));
     assert!(prompt.contains("Append only"));
     assert!(
@@ -578,15 +634,77 @@ fn test_workflow_output_format_is_set_for_json_contract_workflow_steps() {
         workflow_output_format_for_step(1).unwrap()["schema"],
         "research and detailed-research steps must still use step-specific schemas"
     );
-    assert_eq!(
-        get_step_config(2).unwrap().agent_name,
-        get_step_config(3).unwrap().agent_name
-    );
     assert_ne!(
         workflow_output_format_for_step(2).unwrap()["schema"],
         workflow_output_format_for_step(3).unwrap()["schema"],
-        "shared skill-writer-agent steps must still use step-specific schemas"
+        "confirm-decisions and generate-skill steps must still use step-specific schemas"
     );
+}
+
+#[test]
+fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
+    let prompt = build_step2_prompt("lead-conversion", "/tmp/workspace", DEFAULT_PLUGIN_SLUG);
+
+    assert!(prompt.contains("You are in Step 2: Confirm Decisions"));
+    assert!(prompt.contains("Goal: convert clarified user intent"));
+    assert!(prompt.contains("Reasoning focus: identify commitments"));
+    assert!(prompt.contains("actionable by the skill-writing step"));
+    assert!(prompt.contains("We are writing the skill lead-conversion."));
+    assert!(prompt.contains("Task kind: workflow.confirm_decisions"));
+    assert!(prompt.contains("/tmp/workspace/skills/lead-conversion"));
+    assert!(
+        prompt.contains("User context file: /tmp/workspace/skills/lead-conversion/user-context.md")
+    );
+    assert!(prompt.contains("Context directory: /tmp/workspace/skills/lead-conversion/context"));
+    assert!(prompt.contains("The user has already answered clarification questions"));
+    assert!(prompt.contains("canonical set of decisions"));
+    assert!(prompt.contains("downstream skill-writing implications"));
+    assert!(prompt.contains("Do not write any files"));
+    assert!(prompt.contains("Return only this structured JSON"));
+    assert!(prompt.contains("\"version\": \"1\""));
+    assert!(prompt.contains("\"decisions\": []"));
+    assert!(prompt.contains("What should this skill enable Claude to do?"));
+    assert!(prompt.contains("When should this skill trigger?"));
+}
+
+#[test]
+fn confirm_decisions_sidecar_config_uses_skill_creator_openhands_contract() {
+    let config = build_workflow_confirm_decisions_sidecar_config(
+        "lead-conversion",
+        "prompt",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        test_workflow_llm_config(),
+        Some("session-1".to_string()),
+    );
+
+    assert_eq!(config.runtime_provider.as_deref(), Some("openhands"));
+    assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
+    assert_eq!(
+        config.task_kind.as_deref(),
+        Some("workflow.confirm_decisions")
+    );
+    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert_eq!(
+        config.allowed_tools,
+        Some(confirm_decisions_workflow_tools())
+    );
+    assert_eq!(config.max_turns, Some(100));
+    assert_eq!(config.skill_name.as_deref(), Some("lead-conversion"));
+    assert_eq!(config.step_id, Some(2));
+    assert_eq!(config.run_source.as_deref(), Some("workflow"));
+    assert_eq!(config.workspace_root_dir, "/tmp/workspace");
+    assert_eq!(
+        config.workspace_skill_dir, "/tmp/workspace/skills/lead-conversion",
+        "workspace run dir must be the skill-scoped workspace"
+    );
+    assert_eq!(config.output_format, workflow_output_format_for_step(2));
+    assert!(
+        config.required_plugins.is_none(),
+        "OpenHands one-shot config should rely on workspace .agents layout"
+    );
+    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
+    assert!(config.path_to_claude_code_executable.is_none());
 }
 
 /// Steps 0–2 use inline schemas: all $ref resolved, no definitions block,

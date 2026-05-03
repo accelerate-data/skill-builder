@@ -21,6 +21,11 @@ const DETAILED_RESEARCH_TEMPLATE: &str = include_str!(concat!(
     "/../../agent-sources/prompts/detailed-research.txt"
 ));
 
+const CONFIRM_DECISIONS_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/confirm_decisions.txt"
+));
+
 /// Parameters for [`build_prompt`].
 pub(crate) struct PromptParams<'a> {
     pub skill_name: &'a str,
@@ -117,6 +122,20 @@ pub(crate) fn build_step1_prompt(
 ) -> String {
     render_workspace_prompt(
         DETAILED_RESEARCH_TEMPLATE,
+        skill_name,
+        workspace_path,
+        plugin_slug,
+    )
+}
+
+/// Build the prompt for step 2 (confirm decisions).
+pub(crate) fn build_step2_prompt(
+    skill_name: &str,
+    workspace_path: &str,
+    plugin_slug: &str,
+) -> String {
+    render_workspace_prompt(
+        CONFIRM_DECISIONS_TEMPLATE,
         skill_name,
         workspace_path,
         plugin_slug,

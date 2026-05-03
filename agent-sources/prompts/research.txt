@@ -1,6 +1,17 @@
 EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
 
-Produce workflow research clarification output for the skill we are writing.
+You are in Step 0: Research.
+
+Goal: discover the minimum decisions needed before this skill can be written.
+Ask high-value clarification questions that reveal the skill capability,
+trigger conditions, domain vocabulary, workflow boundaries, source documents,
+expected outputs, edge cases, dependencies, and success criteria.
+
+Reasoning focus: do not answer user-owned decisions yourself. If the skill
+writer needs a decision that is not available from user-context.md, supplied
+reference documents, or reliable external documentation, ask a clarification
+question. Keep questions focused on information that will materially affect the
+future skill.
 
 We are writing the skill {{skill_name}}.
 Workspace directory: {{workspace_dir}}
@@ -15,9 +26,60 @@ Do not emit intermediate JSON, markdown summaries, dimensions_selected,
 research_plan, research_lens, dimension_scores, selected_dimensions,
 topic_relevance, dimensions_evaluated, or consolidation handoff text.
 
-Return only a raw JSON object with this envelope:
+Do not inspect old logs or previous run transcripts as research input. Use only
+user-context.md, user-provided reference documents, current context artifacts,
+and external documentation when useful.
+
+Before returning, read
+`.agents/skills/shared/output-schemas/step-0-research.json` and ensure the
+final object follows that structural schema. Use
+`.agents/skills/shared/schemas.md` for semantic invariants.
+
+Return only a raw JSON object. Use this exact envelope shape:
 {
   "status": "research_complete",
-  "question_count": number,
-  "research_output": { ...canonical clarifications.json object... }
+  "question_count": 0,
+  "research_output": {
+    "version": "1",
+    "metadata": {
+      "question_count": 0,
+      "section_count": 0,
+      "refinement_count": 0,
+      "must_answer_count": 0,
+      "priority_questions": [],
+      "scope_recommendation": false,
+      "scope_reason": null,
+      "warning": null,
+      "error": null
+    },
+    "sections": [],
+    "notes": [],
+    "answer_evaluator_notes": []
+  }
 }
+
+Replace the zero counts and empty arrays with the actual research output. Every
+section must have numeric `id`, string `title`, and `questions` array. Every
+question must have string `id`, string `title`, string `text`, boolean
+`must_answer`, `choices` array, and `refinements` array. Every choice must have
+string `id`, string `text`, and boolean `is_other`.
+Question objects must be nested directly inside `sections[].questions`. Do not
+return a top-level `research_output.questions` array, and do not put question ID
+references inside `sections[].questions`.
+Do not use alternate field names such as `options`, `label`, `required`, or
+`kind` on questions or choices.
+Every `notes` and `answer_evaluator_notes` item must be an object with string
+`type`, string `title`, and string `body`; do not return note strings.
+
+The initial research pass must not add refinement questions. Set
+`metadata.refinement_count` to `0` and set every question's `refinements` to
+`[]`. Refinements are created only by the detailed-research workflow after the
+user has answered the initial questions.
+
+All initial research questions must be single-select decision questions. The user should
+choose exactly one option for each question. Do not ask "select all that apply",
+"choose all", or any multi-select question. If several items may apply, split
+them into separate single-select questions or ask which one should be primary.
+
+Do not put `sections`, `notes`, or `answer_evaluator_notes` inside
+`research_output.metadata`; they are top-level fields inside `research_output`.

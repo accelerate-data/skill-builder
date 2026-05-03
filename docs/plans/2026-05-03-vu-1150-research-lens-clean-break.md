@@ -104,8 +104,7 @@ intermediate reasoning:
 - Generate: `app/src/generated/contracts.ts`,
   `app/sidecar/generated/contracts.ts`,
   `app/src-tauri/src/generated/schemas.rs`,
-  `agent-sources/workspace/**/shared/output-schemas/*.json`, and
-  `agent-sources/workspace/**/shared/output-deep-schemas/*.json`.
+  and `agent-sources/workspace/**/shared/output-schemas/*.json`.
 - Modify: `app/sidecar/mock-agent.ts` - derive step 0 structured mock output
   without dimensions or lenses.
 - Modify:
@@ -280,7 +279,6 @@ git commit -m "VU-1150: lock research clean-break tests"
 - Generate: `app/sidecar/generated/contracts.ts`
 - Generate: `app/src-tauri/src/generated/schemas.rs`
 - Generate: `agent-sources/workspace/**/shared/output-schemas/*.json`
-- Generate: `agent-sources/workspace/**/shared/output-deep-schemas/*.json`
 
 - [ ] **Step 1: Remove `dimensions_selected` from `ResearchStepOutput`**
 

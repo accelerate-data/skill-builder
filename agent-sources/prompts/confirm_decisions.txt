@@ -1,0 +1,122 @@
+EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
+
+You are in Step 2: Confirm Decisions.
+
+Goal: convert clarified user intent into build decisions for skill generation.
+The decisions must be actionable by the skill-writing step.
+
+Reasoning focus: identify commitments the future skill writer needs, including
+scope, capability, trigger conditions, terminology, business rules,
+organizational conventions, examples, expected outputs, exclusions, edge cases,
+risks, and validation implications.
+
+We are writing the skill {{skill_name}}.
+Task kind: workflow.confirm_decisions
+Workspace directory: {{workspace_dir}}
+User context file: {{workspace_dir}}/user-context.md
+Clarifications file: {{workspace_dir}}/context/clarifications.json
+Context directory: {{workspace_dir}}/context
+
+All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
+
+The user has already answered clarification questions. Those questions, choices, answers, and any refinement answers are in context/clarifications.json. Your job is to convert that clarification record into the canonical set of decisions that will guide the rest of the skill-building process.
+
+A decision is a durable, implementation-relevant conclusion inferred from the user's answers. It should capture what the future skill must do, when it should be used, what assumptions it should follow, what constraints matter, and what downstream skill-writing implications follow. Decisions are not a transcript, summary, or restatement of every answer. They are the product requirements and design commitments that the skill writer can act on.
+
+Read user-context.md and context/clarifications.json. Do not write any files. Return the JSON object directly; the backend will materialize context/decisions.json.
+
+If user-context.md contains a "Reference Documents" section with one or more named documents supplied by the user, read those documents first and incorporate them. If a document is missing or appears truncated, note that limitation in an implication only when it affects a decision.
+
+Read context/clarifications.json completely before analyzing it. If user-context.md is missing, clarifications.json is missing, or clarifications.json is malformed, return immediately:
+
+{
+  "version": "1",
+  "metadata": {
+    "decision_count": 0,
+    "conflicts_resolved": 0,
+    "round": 1
+  },
+  "decisions": []
+}
+
+If clarifications.json has metadata.scope_recommendation set to true, return immediately:
+
+{
+  "version": "1",
+  "metadata": {
+    "decision_count": 0,
+    "conflicts_resolved": 0,
+    "round": 1,
+    "scope_recommendation": true
+  },
+  "decisions": []
+}
+
+Before returning, read `.agents/skills/shared/output-schemas/step-2-decisions.json` and ensure the final object follows that structural schema. Use `.agents/skills/shared/schemas.md` for semantic invariants such as counts, required fields, and decision shape.
+
+Analyze the human's answers holistically across first-round questions and refinements. For each answered question, derive at least one decision with a design implication. Look for:
+- Gaps: unstated assumptions or unaddressed consequences.
+- Contradictions: conflicts between answers, including first-round answers versus refinements.
+- Dependencies: answers that imply other requirements.
+- Ambiguities: note the ambiguity and its design implication.
+
+Mandatory user-editable decisions:
+- Always include a decision for: What should this skill enable Claude to do?
+- Always include a decision for: When should this skill trigger? (what user phrases/contexts)
+- Set both decisions' status field to "needs-review" so the user can directly edit or confirm them.
+- If either question is missing from clarifications, infer a best-effort draft from user-context.md and answered questions in clarifications.json and still emit the decision as "needs-review".
+- These decisions define the SKILL frontmatter description inputs when the skill is written. Keep them concise, editable, and grounded in user context.
+- For the trigger decision, include concrete trigger contexts so downstream description drafting can avoid undertriggering.
+- For the trigger decision, include an implication note that explicitly says this decision will be used to create the skill description and that the description should follow skill-writing best practices.
+
+Purpose-aware implication rules:
+- Keep decisions grounded in the selected purpose and user context.
+- If purpose is "platform", include explicit Lakehouse compatibility implications when technical choices depend on endpoint behavior.
+- For other purposes, include Lakehouse implications only when they materially change architecture, risk, or validation outcomes.
+- Prefer implications that map to implementable artifacts such as model grain, layer placement, tests, constraints, and source-system behavior.
+
+Build the decisions JSON from scratch every time. It is a clean snapshot, not a log.
+For contradictions, pick the most reasonable option and document the reasoning in implication; the user can override.
+Status values are exactly: "resolved", "conflict-resolved", or "needs-review".
+Always emit metadata.round as 1.
+
+Set metadata.contradictory_inputs to true only when answers are logically incompatible and no coherent skill can satisfy both. When answers merely disagree on approach, pick the more reasonable option and document the trade-off; do not set contradictory_inputs.
+
+Return only this structured JSON:
+
+{
+  "version": "1",
+  "metadata": {
+    "decision_count": 2,
+    "conflicts_resolved": 1,
+    "round": 1
+  },
+  "decisions": [
+    {
+      "id": "D1",
+      "title": "Customer Hierarchy Depth",
+      "original_question": "How many levels should the customer hierarchy support?",
+      "decision": "Two levels: parent company and subsidiary.",
+      "implication": "The skill should model customer hierarchy rollups consistently and call out where a source system cannot distinguish parent and subsidiary accounts.",
+      "status": "resolved"
+    },
+    {
+      "id": "D2",
+      "title": "Revenue Recognition Timing",
+      "original_question": "When should revenue be recognized: at booking, invoicing, or payment?",
+      "decision": "Use invoice date as the primary recognition event and preserve booking date for pipeline forecasting context.",
+      "implication": "The user emphasized invoicing for recognized revenue while still needing bookings for forecasting, so downstream guidance should distinguish recognized revenue from pipeline value.",
+      "status": "conflict-resolved"
+    }
+  ]
+}
+
+Canonical output requirements:
+- Top-level keys are exactly version, metadata, and decisions.
+- metadata includes decision_count, conflicts_resolved, and round.
+- Optional metadata flags are allowed only when applicable: contradictory_inputs and scope_recommendation.
+- decisions contains sequential IDs: D1, D2, D3, and so on.
+- Every decision object includes id, title, original_question, decision, implication, and status.
+- decision_count equals the number of decision objects.
+- conflicts_resolved equals the number of decisions with status "conflict-resolved".
+- Do not emit markdown, code fences, summaries, or partial objects.
