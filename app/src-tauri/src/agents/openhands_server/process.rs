@@ -66,24 +66,6 @@ impl OpenHandsServerCommand {
     }
 }
 
-#[cfg(target_os = "windows")]
-fn python_module_command_parts() -> (String, Vec<String>) {
-    (
-        "uvx".to_string(),
-        vec![
-            "--from".to_string(),
-            OPENHANDS_AGENT_SERVER_PACKAGE.to_string(),
-            "--with".to_string(),
-            OPENHANDS_TOOLS_PACKAGE.to_string(),
-            "--with".to_string(),
-            "libtmux".to_string(),
-            "python".to_string(),
-            "-m".to_string(),
-        ],
-    )
-}
-
-#[cfg(not(target_os = "windows"))]
 fn python_module_command_parts() -> (String, Vec<String>) {
     (
         "uvx".to_string(),
