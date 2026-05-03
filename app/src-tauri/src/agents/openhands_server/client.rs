@@ -226,7 +226,7 @@ mod tests {
         );
         assert_eq!(json["max_iterations"], 8);
         assert_eq!(json["tags"]["skill"], "lead-routing");
-        assert_eq!(json["tags"]["step"], 2);
+        assert_eq!(json["tags"]["step"], "2");
         assert_eq!(json["tags"]["source"], "workflow");
         assert_eq!(
             json["initial_message"]["content"][0]["text"],

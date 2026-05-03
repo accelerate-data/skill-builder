@@ -66,7 +66,7 @@ pub struct ConversationMetadata {
     #[serde(rename = "skill", skip_serializing_if = "Option::is_none")]
     pub skill_name: Option<String>,
     #[serde(rename = "step", skip_serializing_if = "Option::is_none")]
-    pub step_id: Option<i32>,
+    pub step_id: Option<String>,
     #[serde(rename = "source", skip_serializing_if = "Option::is_none")]
     pub run_source: Option<String>,
     #[serde(rename = "session", skip_serializing_if = "Option::is_none")]
@@ -159,12 +159,15 @@ impl StartConversationRequest {
             stuck_detection: true,
             confirmation_policy: NeverConfirmPolicy::default(),
             tags: ConversationMetadata {
-                plugin_slug: Some(request.plugin_slug.clone()),
-                skill_name: request.skill_name.clone(),
-                step_id: request.step_id,
-                run_source: request.run_source.clone(),
-                workflow_session_id: request.workflow_session_id.clone(),
-                workspace_root_dir: Some(request.workspace_root_dir.clone()),
+                plugin_slug: Some(openhands_tag_value(&request.plugin_slug)),
+                skill_name: request.skill_name.as_deref().map(openhands_tag_value),
+                step_id: request.step_id.map(|step_id| step_id.to_string()),
+                run_source: request.run_source.as_deref().map(openhands_tag_value),
+                workflow_session_id: request
+                    .workflow_session_id
+                    .as_deref()
+                    .map(openhands_tag_value),
+                workspace_root_dir: Some(openhands_tag_value(&request.workspace_root_dir)),
             },
             agent: OpenHandsAgent {
                 kind: "Agent".to_string(),
@@ -177,6 +180,11 @@ impl StartConversationRequest {
             },
         }
     }
+}
+
+fn openhands_tag_value(value: &str) -> String {
+    const OPENHANDS_TAG_VALUE_MAX_LENGTH: usize = 256;
+    value.chars().take(OPENHANDS_TAG_VALUE_MAX_LENGTH).collect()
 }
 
 fn openhands_llm_json(llm: &crate::types::WorkflowLlmConfig) -> serde_json::Value {
