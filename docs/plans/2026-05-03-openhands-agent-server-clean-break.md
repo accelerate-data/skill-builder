@@ -25,8 +25,16 @@
 
 ## Execution Rules
 
-- [ ] Start from the current OpenHands accumulation branch.
-- [ ] Create a child branch/worktree for this clean-break slice.
+- [ ] Start from the current VU-1145 accumulation branch:
+  `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`.
+- [ ] Create a child branch/worktree for this clean-break slice from VU-1145,
+  for example:
+  `feature/vu-1153-replace-openhands-runner-with-rust-managed-agent-server`.
+- [ ] Raise the VU-1153 PR against
+  `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`, not
+  against `main`.
+- [ ] Merge VU-1153 back into VU-1145 only after the deterministic tests and
+  the gated local Agent Server smoke pass.
 - [ ] Replace tests before deleting the old runtime implementation.
 - [ ] Do not keep a production fallback to Node, the Python runner, or stdout JSONL.
 - [ ] Verify the pinned Agent Server package's actual OpenAPI/routes before implementing production REST calls.
@@ -317,4 +325,5 @@ git commit -m "docs: design OpenHands agent server runtime"
 git push
 ```
 
-Expected: branch is pushed and ready for implementation slices.
+Expected: the VU-1153 branch is pushed and the PR is ready to open against
+`feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`.
