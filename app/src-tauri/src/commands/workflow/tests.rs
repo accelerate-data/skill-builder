@@ -241,6 +241,19 @@ fn research_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("You are in Step 0: Research"));
     assert!(prompt.contains("Goal: discover the minimum decisions"));
     assert!(prompt.contains("Reasoning focus: do not answer user-owned decisions yourself"));
+    assert!(prompt.contains("## Capture Intent"));
+    assert!(prompt.contains("What should this skill enable Claude to do?"));
+    assert!(prompt.contains("When should this skill trigger?"));
+    assert!(prompt.contains("What is the expected output format?"));
+    assert!(prompt.contains("Should we set up test cases to verify the skill works?"));
+    assert!(prompt.contains("objectively verifiable outputs"));
+    assert!(prompt.contains("Suggest the appropriate default based on the skill type"));
+    assert!(prompt.contains("## Interview And Research"));
+    assert!(prompt.contains("edge cases, input and output formats"));
+    assert!(prompt.contains("Wait to write test prompts"));
+    assert!(prompt.contains("Check available MCPs"));
+    assert!(prompt.contains("Use parallel research via"));
+    assert!(prompt.contains("otherwise research inline"));
     assert!(prompt.contains("We are writing the skill lead-conversion."));
     assert!(prompt.contains("/tmp/workspace/skills/lead-conversion"));
     assert!(
@@ -265,19 +278,15 @@ fn research_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("choose exactly one option"));
     assert!(prompt.contains("Do not ask \"select all that apply\""));
     assert!(prompt.contains("Do not inspect old logs or previous run transcripts"));
+    assert!(
+        !prompt.to_ascii_lowercase().contains("conversation history"),
+        "step 0 prompt should not imply access to prior chat history"
+    );
     assert!(prompt.contains(".agents/skills/shared/output-schemas/step-0-research.json"));
     assert!(prompt.contains(".agents/skills/shared/schemas.md"));
     assert!(
         !prompt.contains("research-agent"),
         "step 0 prompt should route through skill-creator, not research-agent"
-    );
-    assert!(
-        !prompt.to_ascii_lowercase().contains("subagent"),
-        "step 0 research prompt should describe single-agent execution"
-    );
-    assert!(
-        !prompt.to_ascii_lowercase().contains("delegate"),
-        "step 0 research prompt should not ask for delegated research"
     );
 }
 
@@ -335,6 +344,19 @@ fn detailed_research_prompt_renders_clean_break_task_context() {
     assert!(prompt.contains("Reasoning focus: use answer-evaluation.json"));
     assert!(prompt.contains("missing, vague"));
     assert!(prompt.contains("Do not reopen settled areas"));
+    assert!(prompt.contains("## Capture Intent"));
+    assert!(prompt.contains("What should this skill enable Claude to do?"));
+    assert!(prompt.contains("When should this skill trigger?"));
+    assert!(prompt.contains("What is the expected output format?"));
+    assert!(prompt.contains("Should we set up test cases to verify the skill works?"));
+    assert!(prompt.contains("objectively verifiable outputs"));
+    assert!(prompt.contains("Suggest the appropriate default based on the skill type"));
+    assert!(prompt.contains("## Interview And Research"));
+    assert!(prompt.contains("edge cases, input and output formats"));
+    assert!(prompt.contains("Wait to write test prompts"));
+    assert!(prompt.contains("Check available MCPs"));
+    assert!(prompt.contains("Use parallel research via"));
+    assert!(prompt.contains("otherwise research inline"));
     assert!(prompt.contains("We are writing the skill pipeline-value."));
     assert!(prompt.contains("/tmp/workspace/skills/pipeline-value"));
     assert!(
@@ -353,16 +375,12 @@ fn detailed_research_prompt_renders_clean_break_task_context() {
     assert!(prompt.contains("Preserve every existing section"));
     assert!(prompt.contains("Append only"));
     assert!(
+        !prompt.to_ascii_lowercase().contains("conversation history"),
+        "step 1 prompt should not imply access to prior chat history"
+    );
+    assert!(
         !prompt.contains("research-agent"),
         "step 1 prompt should route through skill-creator, not research-agent"
-    );
-    assert!(
-        !prompt.to_ascii_lowercase().contains("subagent"),
-        "step 1 prompt should describe single-agent execution"
-    );
-    assert!(
-        !prompt.to_ascii_lowercase().contains("delegate"),
-        "step 1 prompt should not ask for delegated research"
     );
 }
 
@@ -1954,10 +1972,11 @@ fn test_build_step0_prompt_uses_openhands_native_research_routing() {
     assert!(prompt.contains("We are writing the skill my-skill."));
     assert!(prompt.contains("Maximum research dimensions before scope warning: 4"));
     assert!(prompt.contains("research_output"));
+    assert!(prompt.contains("Use parallel research via"));
+    assert!(prompt.contains("subagents if that capability is available"));
 
     for forbidden in [
         "research-agent",
-        "subagent",
         "delegate",
         "ResearchStepOutput",
         "AskUserQuestion",
