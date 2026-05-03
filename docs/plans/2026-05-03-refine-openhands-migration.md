@@ -34,7 +34,7 @@
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/client.rs:38-49`
 
-- [ ] **Step 1: Add `send_event` async method**
+- [x] **Step 1: Add `send_event` async method**
 
 Edit `app/src-tauri/src/agents/openhands_server/client.rs`. After the existing `delete_conversation` method (line 110-116) insert:
 
@@ -54,12 +54,12 @@ Edit `app/src-tauri/src/agents/openhands_server/client.rs`. After the existing `
 
 Also remove the `#[allow(dead_code)]` attribute above `build_send_event_request` (line 37) since it now has a caller.
 
-- [ ] **Step 2: Build to verify**
+- [x] **Step 2: Build to verify**
 
 Run: `cargo build --manifest-path app/src-tauri/Cargo.toml`
 Expected: clean build.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/client.rs
@@ -75,7 +75,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/mod.rs` — add three new functions after `dispatch_openhands_one_shot`
 
-- [ ] **Step 1: Add `run_refine_conversation_task`**
+- [x] **Step 1: Add `run_refine_conversation_task`**
 
 After the existing `run_conversation_task` function (line 251-277), insert:
 
@@ -95,7 +95,7 @@ async fn run_refine_conversation_task(
 }
 ```
 
-- [ ] **Step 2: Add `dispatch_openhands_refine_turn`**
+- [x] **Step 2: Add `dispatch_openhands_refine_turn`**
 
 After `run_refine_conversation_task` from Step 1, insert:
 
@@ -194,7 +194,7 @@ pub async fn dispatch_openhands_refine_turn(
 }
 ```
 
-- [ ] **Step 3: Add `close_openhands_refine_session`**
+- [x] **Step 3: Add `close_openhands_refine_session`**
 
 After `dispatch_openhands_refine_turn` from Step 2, insert:
 
@@ -225,12 +225,12 @@ pub async fn close_openhands_refine_session(conversation_id: &str) -> Result<(),
 }
 ```
 
-- [ ] **Step 4: Build and run existing openhands_server tests**
+- [x] **Step 4: Build and run existing openhands_server tests**
 
 Run: `cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server -- --nocapture`
 Expected: existing tests still pass; no new test failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/mod.rs
@@ -246,7 +246,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 **Files:**
 - Modify: `app/src-tauri/src/commands/refine/mod.rs:91-101`
 
-- [ ] **Step 1: Replace the struct**
+- [x] **Step 1: Replace the struct**
 
 Replace lines 91-101 of `app/src-tauri/src/commands/refine/mod.rs`:
 
@@ -285,7 +285,7 @@ pub struct RefineSession {
 }
 ```
 
-- [ ] **Step 2: Verify the struct compiles in isolation**
+- [x] **Step 2: Verify the struct compiles in isolation**
 
 Run: `cargo check --manifest-path app/src-tauri/Cargo.toml 2>&1 | head -50`
 Expected: many compile errors in `mod.rs` and `tests.rs` referring to `stream_started` — that is fine, they will be fixed in subsequent tasks. The struct itself must compile.
@@ -297,7 +297,7 @@ Expected: many compile errors in `mod.rs` and `tests.rs` referring to `stream_st
 **Files:**
 - Modify: `agent-sources/prompts/refine-initial.txt`
 
-- [ ] **Step 1: Replace the template body**
+- [x] **Step 1: Replace the template body**
 
 Overwrite the entire file `agent-sources/prompts/refine-initial.txt` with:
 
@@ -313,7 +313,7 @@ CONSTRAINT: You can only refine or validate the existing skill. Do NOT create ne
 Current request: {{user_message}}
 ```
 
-- [ ] **Step 2: Confirm `{{command}}` is gone**
+- [x] **Step 2: Confirm `{{command}}` is gone**
 
 Run: `grep -F '{{command}}' agent-sources/prompts/refine-initial.txt`
 Expected: no output (the variable was unified into `{{user_message}}`).
@@ -325,7 +325,7 @@ Expected: no output (the variable was unified into `{{user_message}}`).
 **Files:**
 - Modify: `app/src-tauri/src/commands/refine/protocol.rs`
 
-- [ ] **Step 1: Replace the file contents**
+- [x] **Step 1: Replace the file contents**
 
 Overwrite `app/src-tauri/src/commands/refine/protocol.rs` with:
 
@@ -494,7 +494,7 @@ pub(super) fn build_refine_prompt_for_plugin(
 }
 ```
 
-- [ ] **Step 2: Verify build**
+- [x] **Step 2: Verify build**
 
 Run: `cargo check --manifest-path app/src-tauri/Cargo.toml -p skill-builder 2>&1 | grep -E "error\[" | head -20`
 Expected: errors only in `commands/refine/mod.rs` and `commands/refine/tests.rs` (referencing the removed Claude Code symbols and `stream_started`). Errors will be cleared by Tasks 6–8.
@@ -506,7 +506,7 @@ Expected: errors only in `commands/refine/mod.rs` and `commands/refine/tests.rs`
 **Files:**
 - Modify: `app/src-tauri/src/commands/refine/mod.rs:212-281` (the `send_refine_message` function and the `OPENHANDS_REFINE_UNSUPPORTED_MESSAGE` / `openhands_refine_streaming_unsupported` helpers above it)
 
-- [ ] **Step 1: Remove the unsupported stub constants**
+- [x] **Step 1: Remove the unsupported stub constants**
 
 Delete lines 19-23 of `app/src-tauri/src/commands/refine/mod.rs`:
 
@@ -518,7 +518,7 @@ fn openhands_refine_streaming_unsupported() -> bool {
 }
 ```
 
-- [ ] **Step 2: Update imports + add `SKILL_CREATOR_USER_SUFFIX`**
+- [x] **Step 2: Update imports + add `SKILL_CREATOR_USER_SUFFIX`**
 
 Replace the existing imports at the top of `mod.rs` (lines 7-17):
 
@@ -559,7 +559,7 @@ const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
 
 This duplicates the constant from `commands/workflow/runtime.rs` and `commands/skill/scope_review.rs` — matching the existing convention.
 
-- [ ] **Step 3: Replace `send_refine_message`**
+- [x] **Step 3: Replace `send_refine_message`**
 
 Replace lines 212-281 (the whole `send_refine_message` function) with:
 
@@ -761,7 +761,7 @@ fn write_refine_user_context(
 }
 ```
 
-- [ ] **Step 4: Verify build**
+- [x] **Step 4: Verify build**
 
 Run: `cargo check --manifest-path app/src-tauri/Cargo.toml 2>&1 | grep -E "error\[" | head -10`
 Expected: remaining errors are in `start_refine_session`, `close_refine_session`, `cancel_refine_turn`, `answer_refine_question`, and `tests.rs` — all fixed by Tasks 7–9.
@@ -773,7 +773,7 @@ Expected: remaining errors are in `start_refine_session`, `close_refine_session`
 **Files:**
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 
-- [ ] **Step 1: Replace `start_refine_session`**
+- [x] **Step 1: Replace `start_refine_session`**
 
 Replace lines 117-210 (the entire `start_refine_session` function plus the `discover_plugin_agents` helper above it AND the `REFINE_ALLOWED_PLUGINS` constant) with:
 
@@ -864,7 +864,7 @@ pub async fn start_refine_session(
 }
 ```
 
-- [ ] **Step 2: Replace `close_refine_session`**
+- [x] **Step 2: Replace `close_refine_session`**
 
 Replace the existing `close_refine_session` function (lines 283-331 in the original — find it by searching for `pub async fn close_refine_session`) with:
 
@@ -921,7 +921,7 @@ pub async fn close_refine_session(
 }
 ```
 
-- [ ] **Step 3: Replace `cancel_refine_turn`**
+- [x] **Step 3: Replace `cancel_refine_turn`**
 
 Replace the existing `cancel_refine_turn` function with:
 
@@ -960,7 +960,7 @@ pub async fn cancel_refine_turn(
 }
 ```
 
-- [ ] **Step 4: Verify build**
+- [x] **Step 4: Verify build**
 
 Run: `cargo check --manifest-path app/src-tauri/Cargo.toml 2>&1 | grep -E "error\[" | head -10`
 Expected: remaining errors are in `answer_refine_question` and `tests.rs`.
@@ -973,11 +973,11 @@ Expected: remaining errors are in `answer_refine_question` and `tests.rs`.
 - Modify: `app/src-tauri/src/commands/refine/mod.rs` (delete the function)
 - Modify: `app/src-tauri/src/lib.rs:395`
 
-- [ ] **Step 1: Delete `answer_refine_question`**
+- [x] **Step 1: Delete `answer_refine_question`**
 
 Delete the entire `pub async fn answer_refine_question(...)` function (lines 391-442 in the original `mod.rs`).
 
-- [ ] **Step 2: Remove from command registration**
+- [x] **Step 2: Remove from command registration**
 
 Edit `app/src-tauri/src/lib.rs` and delete the line:
 
@@ -985,12 +985,12 @@ Edit `app/src-tauri/src/lib.rs` and delete the line:
             commands::refine::answer_refine_question,
 ```
 
-- [ ] **Step 3: Verify cargo build**
+- [x] **Step 3: Verify cargo build**
 
 Run: `cargo check --manifest-path app/src-tauri/Cargo.toml 2>&1 | grep -E "error\[" | head -10`
 Expected: only test errors remain.
 
-- [ ] **Step 4: Commit progress**
+- [x] **Step 4: Commit progress**
 
 ```bash
 git add app/src-tauri/src/commands/refine/mod.rs app/src-tauri/src/commands/refine/protocol.rs app/src-tauri/src/lib.rs agent-sources/prompts/refine-initial.txt
@@ -1006,7 +1006,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 **Files:**
 - Modify: `app/src-tauri/src/commands/refine/tests.rs`
 
-- [ ] **Step 1: Remove stale Claude Code config tests**
+- [x] **Step 1: Remove stale Claude Code config tests**
 
 Delete the following test functions from `app/src-tauri/src/commands/refine/tests.rs` (search by name):
 
@@ -1035,7 +1035,7 @@ test_refine_prompt_includes_routing
 
 Also delete the helper `base_refine_config(...)` and the `test_workspace_path()` function — they are no longer used.
 
-- [ ] **Step 2: Update session struct initializers**
+- [x] **Step 2: Update session struct initializers**
 
 In `tests.rs`, find every `RefineSession {` literal (there are four in the original file) and replace `stream_started: false,` (or `stream_started: true,`) with both:
 
@@ -1046,7 +1046,7 @@ In `tests.rs`, find every `RefineSession {` literal (there are four in the origi
 
 The four call sites are inside `test_session_create_and_lookup`, `test_session_conflict_detection`, `test_close_session_removes_entry`, and `test_skill_name_validation_rejects_traversal` was unrelated — only update the three with `RefineSession {` literals.
 
-- [ ] **Step 3: Update `test_refine_prompt_includes_metadata`**
+- [x] **Step 3: Update `test_refine_prompt_includes_metadata`**
 
 Find `test_refine_prompt_includes_metadata` and replace the `assert!(system_prompt.contains("We are writing the skill my-skill"));` line with:
 
@@ -1054,7 +1054,7 @@ Find `test_refine_prompt_includes_metadata` and replace the `assert!(system_prom
     assert!(system_prompt.contains("We are refining the skill my-skill"));
 ```
 
-- [ ] **Step 4: Add new tests at the bottom of the file**
+- [x] **Step 4: Add new tests at the bottom of the file**
 
 Append to `app/src-tauri/src/commands/refine/tests.rs`:
 
@@ -1110,17 +1110,17 @@ fn test_refine_initial_prompt_includes_eval_feedback_guidance() {
 }
 ```
 
-- [ ] **Step 5: Run the test suite**
+- [x] **Step 5: Run the test suite**
 
 Run: `cargo test --manifest-path app/src-tauri/Cargo.toml commands::refine -- --nocapture`
 Expected: all refine tests pass.
 
-- [ ] **Step 6: Run clippy**
+- [x] **Step 6: Run clippy**
 
 Run: `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
 Expected: no warnings.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/refine/tests.rs
@@ -1138,7 +1138,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 - Modify: `app/src/lib/tauri.ts:467-510`
 - Modify: `app/src/components/workspace/workspace-refine.tsx`
 
-- [ ] **Step 1: Remove `answer_refine_question` command type**
+- [x] **Step 1: Remove `answer_refine_question` command type**
 
 In `app/src/lib/tauri-command-types.ts`, delete the entry:
 
@@ -1155,7 +1155,7 @@ In `app/src/lib/tauri-command-types.ts`, delete the entry:
   };
 ```
 
-- [ ] **Step 2: Update `tauri.ts`**
+- [x] **Step 2: Update `tauri.ts`**
 
 In `app/src/lib/tauri.ts`, delete the entire `answerStreamingRefineQuestion` export (the multi-line `export const answerStreamingRefineQuestion = ...`).
 
@@ -1171,7 +1171,7 @@ to:
 export const sendRefineMessage = (
 ```
 
-- [ ] **Step 3: Update `workspace-refine.tsx` imports**
+- [x] **Step 3: Update `workspace-refine.tsx` imports**
 
 In `app/src/components/workspace/workspace-refine.tsx`, change the import block:
 
@@ -1213,7 +1213,7 @@ Also remove the `requireSettingsModel` import line:
 import { requireSettingsModel } from "@/lib/models";
 ```
 
-- [ ] **Step 4: Simplify `releaseSkillResources`**
+- [x] **Step 4: Simplify `releaseSkillResources`**
 
 Replace the existing `releaseSkillResources` helper:
 
@@ -1243,7 +1243,7 @@ function releaseSkillResources(skillName: string, reason: string): void {
 }
 ```
 
-- [ ] **Step 5: Update `handleSend` to remove the model guard and use `sendRefineMessage`**
+- [x] **Step 5: Update `handleSend` to remove the model guard and use `sendRefineMessage`**
 
 Inside `handleSend`, remove this block:
 
@@ -1285,13 +1285,13 @@ to:
         const agentId = await sendRefineMessage(
 ```
 
-- [ ] **Step 6: Remove `handleQuestionSubmit` and its call site**
+- [x] **Step 6: Remove `handleQuestionSubmit` and its call site**
 
 Delete the entire `handleQuestionSubmit` callback (the `useCallback` block from `const handleQuestionSubmit = useCallback(...)` through the closing `}, [selectedSkill, workspacePath]);`).
 
 Then in the JSX, remove the `onQuestionSubmit={handleQuestionSubmit}` prop from `<ChatPanel>`.
 
-- [ ] **Step 7: Update `ChatPanel` interface**
+- [x] **Step 7: Update `ChatPanel` interface**
 
 If `ChatPanel` requires `onQuestionSubmit` as a prop, open `app/src/components/refine/chat-panel.tsx` and make the prop optional or remove it. Inspect the file first:
 
@@ -1301,7 +1301,7 @@ grep -n "onQuestionSubmit\|RefineQuestionResponse" app/src/components/refine/cha
 
 If the prop is required, change the interface to drop it. If `RefineQuestionResponse` has no other consumers, leave it for now — type-only references are not runtime-breaking.
 
-- [ ] **Step 8: Remove unused `RefineQuestionResponse` and `RefineMessage` imports**
+- [x] **Step 8: Remove unused `RefineQuestionResponse` and `RefineMessage` imports**
 
 If `workspace-refine.tsx` no longer uses these types, drop them from the import:
 
@@ -1321,17 +1321,17 @@ Also drop:
 import type { RefineQuestionResponse } from "@/stores/refine-store";
 ```
 
-- [ ] **Step 9: Run TypeScript check**
+- [x] **Step 9: Run TypeScript check**
 
 Run: `cd app && npx tsc --noEmit 2>&1 | head -30`
 Expected: no errors. If errors mention `RefineQuestionResponse` or `cleanupSkillSidecar` from other files, leave those references in place (they may still be valid for other surfaces).
 
-- [ ] **Step 10: Run unit tests**
+- [x] **Step 10: Run unit tests**
 
 Run: `cd app && npm run test:unit 2>&1 | tail -30`
 Expected: all tests pass.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add app/src/lib/tauri-command-types.ts app/src/lib/tauri.ts app/src/components/workspace/workspace-refine.tsx app/src/components/refine/chat-panel.tsx
@@ -1346,36 +1346,36 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Cargo build**
+- [x] **Step 1: Cargo build**
 
 Run: `cargo build --manifest-path app/src-tauri/Cargo.toml`
 Expected: clean build.
 
-- [ ] **Step 2: Cargo test (refine + openhands_server)**
+- [x] **Step 2: Cargo test (refine + openhands_server)**
 
 Run: `cargo test --manifest-path app/src-tauri/Cargo.toml -- commands::refine agents::openhands_server`
 Expected: all pass.
 
-- [ ] **Step 3: Cargo clippy**
+- [x] **Step 3: Cargo clippy**
 
 Run: `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
 Expected: clean.
 
-- [ ] **Step 4: TypeScript**
+- [x] **Step 4: TypeScript**
 
 Run: `cd app && npx tsc --noEmit`
 Expected: clean.
 
-- [ ] **Step 5: Frontend unit tests**
+- [x] **Step 5: Frontend unit tests**
 
 Run: `cd app && npm run test:unit`
 Expected: all pass.
 
-- [ ] **Step 6: Repo-map audit**
+- [x] **Step 6: Repo-map audit**
 
 This change does not add or remove files in the directories tracked by `repo-map.json` (the file structure under `commands/refine/` and `agents/openhands_server/` is unchanged — only function-level edits). No `repo-map.json` update needed.
 
-- [ ] **Step 7: Manual smoke test — turn 1 (creates conversation)**
+- [x] **Step 7: Manual smoke test — turn 1 (creates conversation)**
 
 Run: `cd app && MOCK_AGENTS=true npm run dev` (or run with a real OpenHands Agent Server if configured).
 
@@ -1385,14 +1385,14 @@ In the running app:
 3. Send a message — observe the `agent-message` events flow through the chat
 4. Confirm the conversation completes with a `conversation_state` terminal event
 
-- [ ] **Step 8: Manual smoke test — turn N (reuses conversation)**
+- [x] **Step 8: Manual smoke test — turn N (reuses conversation)**
 
 Continuing in the same session:
 1. Send a second user message
 2. Confirm the agent retains context (e.g. references the previous edit)
 3. Inspect logs for `[send_refine_message] ... conversation_present=true`
 
-- [ ] **Step 9: Manual smoke test — cancel and close**
+- [x] **Step 9: Manual smoke test — cancel and close**
 
 1. Send a long-running message
 2. Click the cancel button — confirm the chat shows the run as cancelled (status=`cancelled`)
