@@ -247,6 +247,12 @@ pub async fn send_refine_message(
     let skill_output_dir =
         resolve_skill_dir(Path::new(&skills_path), &resolved_plugin_slug, &skill_name);
 
+    // Deploy bundled OpenHands agents and AgentSkills into the workspace so the
+    // Agent Server can resolve the skill-creator agent and its skills. Workflow
+    // runs do this on every dispatch; refine must too — the call is cached
+    // per-session so repeated turns are cheap.
+    crate::commands::workflow::ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
+
     ensure_skill_workspace_dir(&runtime_ctx.workspace_path, &resolved_plugin_slug, &skill_name);
 
     if conversation_id.is_none() {

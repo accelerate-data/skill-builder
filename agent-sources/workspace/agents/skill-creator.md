@@ -8,7 +8,6 @@ tools:
 skills:
   - creating-skills
   - researching-skill-requirements
-  - skill-creator
 ---
 
 # Skill Creator Agent
