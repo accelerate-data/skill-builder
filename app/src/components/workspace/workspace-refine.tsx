@@ -13,27 +13,23 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
-import type { RefineMessage, SkillFile } from "@/stores/refine-store";
+import type { SkillFile } from "@/stores/refine-store";
 import { useAgentStore, formatTokenCount } from "@/stores/agent-store";
 import {
   getSkillContentForRefine,
   startRefineSession,
-  sendStreamingRefineMessage,
-  answerStreamingRefineQuestion,
+  sendRefineMessage,
   cancelRefineTurn,
   closeRefineSession,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
-  cleanupSkillSidecar,
   acquireLock,
   releaseLock,
 } from "@/lib/tauri";
 import type { EditableSkill } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
-import { requireSettingsModel } from "@/lib/models";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
 import { ChatPanel } from "@/components/refine/chat-panel";
-import type { RefineQuestionResponse } from "@/stores/refine-store";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
@@ -48,12 +44,6 @@ function releaseSkillResources(skillName: string, reason: string): void {
     console.warn("[workspace-refine] non-fatal: op=releaseLock err=%s", e),
   );
   console.log("[workspace-refine] releaseLock: %s (%s)", skillName, reason);
-  cleanupSkillSidecar(skillName).catch((e) =>
-    console.warn(
-      "[workspace-refine] non-fatal: op=cleanupSkillSidecar err=%s",
-      e,
-    ),
-  );
 }
 
 /** Load skill files from disk, returning null on failure. */
@@ -284,16 +274,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         targetFiles?.join(",") ?? "all",
       );
 
-      let model: string;
-      try {
-        model = requireSettingsModel(selectedModel);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : String(err), {
-          duration: Infinity,
-        });
-        return;
-      }
-
       runSkillRef.current = selectedSkill;
       store.setPendingFollowupMessage(null);
       store.setGitDiff(null);
@@ -301,7 +281,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       store.setRunning(true);
 
       try {
-        const agentId = await sendStreamingRefineMessage(
+        const agentId = await sendRefineMessage(
           sessionId,
           text,
           workspacePath,
@@ -313,7 +293,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           .getState()
           .registerRun(
             agentId,
-            model,
+            selectedModel ?? "openhands",
             selectedSkill.name,
             "refine",
             `synthetic:refine:${selectedSkill.name}:${sessionId}`,
@@ -368,66 +348,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [handleCancel]);
-
-  const handleQuestionSubmit = useCallback(
-    async (message: RefineMessage, response: RefineQuestionResponse) => {
-      const store = useRefineStore.getState();
-      const sessionId = store.sessionId;
-      const agentId = store.activeAgentId;
-      if (
-        !selectedSkill ||
-        !workspacePath ||
-        !sessionId ||
-        !agentId ||
-        !message.toolUseId ||
-        !message.questions
-      ) {
-        throw new Error("Refine question session is no longer available");
-      }
-
-      const redirectLabel = response.selectedLabels.find((label) =>
-        label.toLowerCase().startsWith("launch "),
-      );
-      if (redirectLabel?.toLowerCase().includes("validate")) {
-        const userMessages = store.messages.filter(
-          (entry) => entry.role === "user",
-        );
-        const previousText =
-          userMessages.length > 0
-            ? (userMessages[userMessages.length - 1]?.userText ?? "")
-            : "";
-        store.setPendingFollowupMessage(
-          `validate this skill${previousText ? `: ${previousText}` : ""}`,
-        );
-      } else if (
-        redirectLabel?.toLowerCase().includes("benchmark") ||
-        redirectLabel?.toLowerCase().includes("eval")
-      ) {
-        const userMessages = store.messages.filter(
-          (entry) => entry.role === "user",
-        );
-        const previousText =
-          userMessages.length > 0
-            ? (userMessages[userMessages.length - 1]?.userText ?? "")
-            : "";
-        store.setPendingFollowupMessage(
-          `benchmark this skill${previousText ? `: ${previousText}` : ""}`,
-        );
-      } else {
-        store.setPendingFollowupMessage(null);
-      }
-
-      await answerStreamingRefineQuestion(
-        sessionId,
-        agentId,
-        message.toolUseId,
-        message.questions,
-        response.answers,
-      );
-      store.answerQuestionMessage(message.id, response);
-    },
-    [selectedSkill, workspacePath],
-  );
 
   // --- Watch agent completion ---
   useEffect(() => {
@@ -608,7 +528,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           availableFiles={availableFiles}
           availableAgents={availableAgents}
           scopeBlocked={scopeBlocked}
-          onQuestionSubmit={handleQuestionSubmit}
         />
       </div>
 
