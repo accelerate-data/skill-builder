@@ -173,7 +173,18 @@ impl StartConversationRequest {
                 kind: "Agent".to_string(),
                 llm: openhands_llm_json(&request.llm),
                 tools: openhands_tools(&request.workspace_skill_dir, &request.allowed_tools),
-                include_default_tools: vec!["FinishTool".to_string(), "ThinkTool".to_string()],
+                include_default_tools: vec![
+                    "FinishTool".to_string(),
+                    "ThinkTool".to_string(),
+                    // DelegateTool exposes invoke_skill so the agent can activate
+                    // AgentSkills listed in its frontmatter. Without this the model
+                    // has no way to call `researching-skill-requirements`,
+                    // `creating-skills`, etc., and falls back to direct file_editor
+                    // use — bypassing the skill instructions entirely. This applies
+                    // to both one-shot (workflow steps, scope review) and multi-turn
+                    // (refine) since both routes go through from_one_shot.
+                    "DelegateTool".to_string(),
+                ],
                 agent_context: OpenHandsAgentContext {
                     user_message_suffix: request.user_message_suffix.clone(),
                 },
