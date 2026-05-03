@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Issue:** VU-1145
+**Issue:** VU-1153
 
 **Goal:** Replace the Node/Python OpenHands runner path with a Rust-managed local OpenHands Agent Server using REST and WebSockets.
 
@@ -25,7 +25,7 @@
 
 ## Execution Rules
 
-- [ ] Start from the current VU-1145 accumulation branch.
+- [ ] Start from the current OpenHands accumulation branch.
 - [ ] Create a child branch/worktree for this clean-break slice.
 - [ ] Replace tests before deleting the old runtime implementation.
 - [ ] Do not keep a production fallback to Node, the Python runner, or stdout JSONL.
@@ -58,7 +58,7 @@ message send, run, pause/cancel, close/delete, and WebSocket events.
 
 If API-key auth is supported locally, document the startup flag/env var and
 expected `Authorization: Bearer <token>` behavior. If not supported, document
-that security for VU-1145 is loopback binding plus app-owned process lifecycle.
+that security for VU-1153 is loopback binding plus app-owned process lifecycle.
 
 - [ ] **Step 4: Add dependency validation test coverage**
 
