@@ -51,11 +51,12 @@ export function normalizeConversationEventMessage(
   if (message.type !== "conversation_event") return null;
   const event = asEventRecord(message.event);
   const eventClass =
-    getString(message, "event_class", "eventClass") ??
+    getString(message, "event_class", "eventClass", "kind") ??
     getString(
       event,
       "event_class",
       "eventClass",
+      "kind",
       "event_type",
       "eventType",
       "type",
