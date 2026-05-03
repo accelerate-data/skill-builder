@@ -17,10 +17,6 @@ pub struct OpenHandsOneShotRequest {
     pub run_source: Option<String>,
     pub workflow_session_id: Option<String>,
     pub usage_session_id: Option<String>,
-    /// Absolute path the OpenHands SDK should write conversation state and
-    /// JSONL events to. Set by the dispatch entry points after
-    /// `create_openhands_persistence_dir` returns. `None` disables persistence.
-    pub persistence_dir: Option<String>,
 }
 
 impl OpenHandsOneShotRequest {
@@ -44,7 +40,6 @@ impl OpenHandsOneShotRequest {
             run_source: config.run_source.clone(),
             workflow_session_id: config.workflow_session_id.clone(),
             usage_session_id: config.usage_session_id.clone(),
-            persistence_dir: config.persistence_dir.clone(),
         })
     }
 }
@@ -146,12 +141,6 @@ pub struct StartConversationRequest {
     pub confirmation_policy: NeverConfirmPolicy,
     pub tags: ConversationMetadata,
     pub agent: OpenHandsAgent,
-    /// Directory the OpenHands SDK writes conversation state and JSONL events
-    /// to. The SDK field name (`persistence_dir`) matches the Rust field name
-    /// — no rename. `None` disables persistence; we always set this when the
-    /// caller passed a `transcript_log_dir` to the dispatch entry point.
-    #[serde(rename = "persistence_dir", skip_serializing_if = "Option::is_none")]
-    pub persistence_dir: Option<String>,
 }
 
 impl StartConversationRequest {
@@ -189,7 +178,6 @@ impl StartConversationRequest {
                     user_message_suffix: request.user_message_suffix.clone(),
                 },
             },
-            persistence_dir: request.persistence_dir.clone(),
         }
     }
 }
@@ -309,90 +297,3 @@ fn openhands_tools(_working_dir: &str, allowed_tools: &[String]) -> Vec<OpenHand
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::agents::sidecar::SidecarConfig;
-    use crate::types::{SecretString, WorkflowLlmConfig};
-
-    fn make_config(persistence_dir: Option<&str>) -> SidecarConfig {
-        SidecarConfig {
-            mode: Some("one-shot".to_string()),
-            prompt: "test".to_string(),
-            system_prompt: None,
-            model: None,
-            llm: Some(WorkflowLlmConfig {
-                model: "test-model".to_string(),
-                api_key: Some(SecretString::new("k".to_string())),
-                base_url: None,
-                api_version: None,
-                temperature: None,
-                max_output_tokens: None,
-                timeout_seconds: None,
-                num_retries: None,
-                reasoning_effort: None,
-                extra_headers: None,
-                input_cost_per_token: None,
-                output_cost_per_token: None,
-                usage_id: None,
-            }),
-            model_base_url: None,
-            api_key: SecretString::new("openhands-llm-config".to_string()),
-            workspace_root_dir: "/ws".to_string(),
-            workspace_skill_dir: "/ws/skill".to_string(),
-            allowed_tools: Some(vec!["file_editor".to_string()]),
-            max_turns: Some(50),
-            permission_mode: None,
-            betas: None,
-            thinking: None,
-            fallback_model: None,
-            effort: None,
-            output_format: None,
-            prompt_suggestions: None,
-            path_to_claude_code_executable: None,
-            agent_name: Some("skill-creator".to_string()),
-            required_plugins: None,
-            setting_sources: None,
-            conversation_history: None,
-            skill_name: Some("test-skill".to_string()),
-            step_id: Some(0),
-            workflow_session_id: None,
-            usage_session_id: None,
-            run_source: Some("test".to_string()),
-            plugin_slug: "skills".to_string(),
-            transcript_log_dir: None,
-            persistence_dir: persistence_dir.map(String::from),
-            runtime_provider: Some("openhands".to_string()),
-            task_kind: Some("test".to_string()),
-            user_message_suffix: None,
-        }
-    }
-
-    #[test]
-    fn start_conversation_request_serializes_persistence_dir_when_set() {
-        let config = make_config(Some("/Users/me/Library/.../logs/run-1"));
-        let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();
-        let start = StartConversationRequest::from_one_shot(&request);
-        let json = serde_json::to_value(&start).unwrap();
-        assert_eq!(
-            json.get("persistence_dir").and_then(|v| v.as_str()),
-            Some("/Users/me/Library/.../logs/run-1"),
-            "persistence_dir must be on the wire request so the SDK writes the JSONL audit log",
-        );
-    }
-
-    #[test]
-    fn start_conversation_request_omits_persistence_dir_when_none() {
-        // skip_serializing_if=Option::is_none keeps the request body small
-        // and lets the SDK fall back to its own default when the caller
-        // didn't provide a persistence path.
-        let config = make_config(None);
-        let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();
-        let start = StartConversationRequest::from_one_shot(&request);
-        let json = serde_json::to_value(&start).unwrap();
-        assert!(
-            json.get("persistence_dir").is_none(),
-            "persistence_dir should be skipped when None to preserve SDK default behavior",
-        );
-    }
-}

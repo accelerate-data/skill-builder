@@ -81,15 +81,10 @@ struct OpenHandsConversationTask {
 pub async fn dispatch_openhands_one_shot(
     app: &tauri::AppHandle,
     agent_id: &str,
-    mut config: SidecarConfig,
+    config: SidecarConfig,
     transcript_log_dir: Option<&str>,
 ) -> Result<PathBuf, String> {
     let persistence_path = create_openhands_persistence_dir(agent_id, &config, transcript_log_dir)?;
-    // Tell the OpenHands SDK where to write the conversation state and JSONL
-    // event log. Without this, persistence_dir defaults to the SDK's
-    // "workspace/conversations" relative path and we lose the audit trail
-    // for any run started after the migration.
-    config.persistence_dir = Some(persistence_path.to_string_lossy().into_owned());
     let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
     let start_request = StartConversationRequest::from_one_shot(&request);
 
@@ -308,17 +303,12 @@ async fn run_refine_conversation_task(
 pub async fn dispatch_openhands_refine_turn(
     app: &tauri::AppHandle,
     agent_id: &str,
-    mut config: SidecarConfig,
+    config: SidecarConfig,
     conversation_id: Option<String>,
     transcript_log_dir: Option<&str>,
 ) -> Result<String, String> {
-    let persistence_path =
+    let _persistence_path =
         create_openhands_persistence_dir(agent_id, &config, transcript_log_dir)?;
-    // Tell the OpenHands SDK where to write the conversation state and JSONL
-    // event log. The refine flow shares this with one-shot — without it, the
-    // SDK falls back to its default "workspace/conversations" path and we
-    // lose the per-turn audit trail.
-    config.persistence_dir = Some(persistence_path.to_string_lossy().into_owned());
     let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
 
     let server = ensure_agent_server(Duration::from_secs(60)).await?;

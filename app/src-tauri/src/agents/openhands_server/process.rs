@@ -1,4 +1,5 @@
 use std::net::TcpListener;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -8,6 +9,38 @@ pub const OPENHANDS_AGENT_SERVER_PACKAGE: &str = "openhands-agent-server==1.19.1
 pub const OPENHANDS_TOOLS_PACKAGE: &str = "openhands-tools==1.19.1";
 pub const OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES: &[&str] = &["libtmux"];
 const CACHED_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// Resolve the absolute path the OpenHands SDK should persist conversation
+/// state and per-event JSON to. Used at Agent Server spawn time as the
+/// `OH_CONVERSATIONS_PATH` env var. The SDK indexes inside this path by
+/// `conversation_id_hex`, so all conversations across all skills share one
+/// root.
+///
+/// Returns `None` only if `dirs::data_dir()` fails (effectively never on
+/// macOS/Linux/Windows). On `None`, the SDK falls back to its compiled
+/// default `workspace/conversations` relative to the server's CWD (a
+/// tempdir in our case) and the audit trail is lost on shutdown — the
+/// caller logs a warning.
+pub(crate) fn compute_conversations_path() -> Option<PathBuf> {
+    dirs::data_dir().map(|root| {
+        root.join("com.vibedata.skill-builder")
+            .join("workspace")
+            .join("conversations")
+    })
+}
+
+fn apply_session_env(
+    cmd: &mut tokio::process::Command,
+    session_api_key: &str,
+    conversations_path: Option<&str>,
+) {
+    cmd.env("SESSION_API_KEY", session_api_key)
+        .env("OH_SESSION_API_KEYS_0", session_api_key)
+        .env("OH_SECRET_KEY", session_api_key);
+    if let Some(p) = conversations_path {
+        cmd.env("OH_CONVERSATIONS_PATH", p);
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct OpenHandsAgentServerHandle {
@@ -174,11 +207,31 @@ impl OpenHandsAgentServerProcess {
             .tempdir()
             .map_err(|e| format!("Failed to create OpenHands Agent Server runtime dir: {e}"))?;
         let mut tokio_command = command.tokio_command();
-        tokio_command
-            .current_dir(runtime_dir.path())
-            .env("SESSION_API_KEY", &session_api_key)
-            .env("OH_SESSION_API_KEYS_0", &session_api_key)
-            .env("OH_SECRET_KEY", &session_api_key);
+        tokio_command.current_dir(runtime_dir.path());
+        let conversations_path = compute_conversations_path();
+        let conversations_path_str = conversations_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned());
+        apply_session_env(
+            &mut tokio_command,
+            &session_api_key,
+            conversations_path_str.as_deref(),
+        );
+        match conversations_path_str.as_deref() {
+            Some(path_str) => {
+                log::info!(
+                    "[openhands-agent-server] OH_CONVERSATIONS_PATH={}",
+                    path_str
+                );
+            }
+            None => {
+                log::warn!(
+                    "[openhands-agent-server] dirs::data_dir() returned None — \
+                     falling back to SDK default conversations path. Audit trail \
+                     will land in the spawn tempdir and be lost on shutdown."
+                );
+            }
+        }
         let stderr_secrets = vec![session_api_key.clone()];
         let mut child = tokio_command
             .spawn()
@@ -363,5 +416,49 @@ mod tests {
             true,
             Err("health check failed".to_string())
         ));
+    }
+
+    #[test]
+    fn compute_conversations_path_resolves_under_data_dir() {
+        let path = compute_conversations_path().expect("dirs::data_dir must succeed in tests");
+        let s = path.to_string_lossy().replace('\\', "/");
+        assert!(
+            s.ends_with("com.vibedata.skill-builder/workspace/conversations"),
+            "expected path to end with the canonical bundle/workspace/conversations suffix; got {s}",
+        );
+    }
+
+    #[test]
+    fn apply_session_env_sets_conversations_path_when_present() {
+        let mut cmd = tokio::process::Command::new("/usr/bin/true");
+        apply_session_env(&mut cmd, "session-key-123", Some("/tmp/test/conversations"));
+        let envs: Vec<(String, String)> = cmd
+            .as_std()
+            .get_envs()
+            .filter_map(|(k, v)| {
+                let key = k.to_string_lossy().into_owned();
+                v.map(|val| (key, val.to_string_lossy().into_owned()))
+            })
+            .collect();
+        assert!(
+            envs.iter()
+                .any(|(k, v)| k == "OH_CONVERSATIONS_PATH" && v == "/tmp/test/conversations"),
+            "expected OH_CONVERSATIONS_PATH env var; got {:?}",
+            envs
+        );
+    }
+
+    #[test]
+    fn apply_session_env_omits_conversations_path_when_none() {
+        let mut cmd = tokio::process::Command::new("/usr/bin/true");
+        apply_session_env(&mut cmd, "k", None);
+        let has_it = cmd
+            .as_std()
+            .get_envs()
+            .any(|(k, _)| k.to_string_lossy() == "OH_CONVERSATIONS_PATH");
+        assert!(
+            !has_it,
+            "OH_CONVERSATIONS_PATH should be absent when path is None"
+        );
     }
 }
