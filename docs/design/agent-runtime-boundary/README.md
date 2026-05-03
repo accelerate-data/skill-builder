@@ -351,11 +351,9 @@ created -> active -> closed
 | `app/sidecar/options.ts` | Claude SDK option builder. Does not forward `outputFormat` to the SDK. |
 | `app/sidecar/config.ts` | Sidecar request validation shape, including optional runtime mode and `outputFormat` signal. |
 | `app/sidecar/message-processor.ts` | Claude SDK-message to app-protocol mapper. Extracts JSON from result text when `outputFormat` is set. |
-| `app/sidecar/openhands/runner.py` | Python spike runner — reads one JSON request from stdin, emits raw JSONL events on stdout. |
-| `app/sidecar/openhands-event-processor.ts` | OpenHands event forwarder. Tracks terminal `conversation_state`; JSON-contract parsing happens in app task code after terminal state. |
-| `app/sidecar/runtime/openhands-runtime.ts` | OpenHands one-shot runtime adapter behind `AgentRuntime`. |
+| `app/src-tauri/src/agents/openhands_server/` | Rust-managed OpenHands Agent Server process, REST client, request shaping, and WebSocket event normalization. |
 | `app/sidecar/run-metadata-accumulator.ts` | Current `run_result` summary construction. |
-| `app/sidecar/persistent-mode.ts` | Sidecar request demultiplexer that rejects mode mismatches and routes one-shot requests through the runtime boundary. |
+| `app/sidecar/persistent-mode.ts` | Sidecar request demultiplexer for non-OpenHands requests; OpenHands requests are rejected because Rust owns that runtime. |
 | `app/src-tauri/src/agents/sidecar.rs` | Rust `SidecarConfig`, runtime mode serialization, and sidecar spawn path. |
 | `app/src-tauri/src/agents/sidecar_pool/dispatch.rs` | Rust request dispatch, streaming, shutdown, and answer routing. |
 | `app/src-tauri/src/commands/workflow/runtime.rs` | Workflow one-shot request dispatch, cancellation, and question rejection. |

@@ -5,15 +5,15 @@ use reqwest::{Method, Request, Url};
 pub struct OpenHandsServerClient {
     http: reqwest::Client,
     base_url: Url,
-    bearer_token: Option<String>,
+    session_api_key: Option<String>,
 }
 
 impl OpenHandsServerClient {
-    pub fn new(base_url: Url, bearer_token: Option<String>) -> Self {
+    pub fn new(base_url: Url, session_api_key: Option<String>) -> Self {
         Self {
             http: reqwest::Client::new(),
             base_url,
-            bearer_token,
+            session_api_key,
         }
     }
 
@@ -34,6 +34,7 @@ impl OpenHandsServerClient {
         .build()
     }
 
+    #[allow(dead_code)]
     pub fn build_send_event_request(
         &self,
         conversation_id: &str,
@@ -63,6 +64,17 @@ impl OpenHandsServerClient {
         .build()
     }
 
+    pub fn build_agent_final_response_request(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Request, reqwest::Error> {
+        self.request(
+            Method::GET,
+            &format!("api/conversations/{conversation_id}/agent_final_response"),
+        )
+        .build()
+    }
+
     pub async fn create_conversation(
         &self,
         request: &StartConversationRequest,
@@ -78,18 +90,6 @@ impl OpenHandsServerClient {
     pub async fn run_conversation(&self, conversation_id: &str) -> Result<(), reqwest::Error> {
         self.http
             .execute(self.build_run_request(conversation_id)?)
-            .await?
-            .error_for_status()?;
-        Ok(())
-    }
-
-    pub async fn send_event(
-        &self,
-        conversation_id: &str,
-        event: serde_json::Value,
-    ) -> Result<(), reqwest::Error> {
-        self.http
-            .execute(self.build_send_event_request(conversation_id, event)?)
             .await?
             .error_for_status()?;
         Ok(())
@@ -111,14 +111,26 @@ impl OpenHandsServerClient {
         Ok(())
     }
 
+    pub async fn agent_final_response(
+        &self,
+        conversation_id: &str,
+    ) -> Result<serde_json::Value, reqwest::Error> {
+        self.http
+            .execute(self.build_agent_final_response_request(conversation_id)?)
+            .await?
+            .error_for_status()?
+            .json()
+            .await
+    }
+
     fn request(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
         let url = self
             .base_url
             .join(path)
             .expect("static OpenHands Agent Server API path should be valid");
         let builder = self.http.request(method, url);
-        match &self.bearer_token {
-            Some(token) => builder.bearer_auth(token),
+        match &self.session_api_key {
+            Some(token) => builder.header("X-Session-API-Key", token),
             None => builder,
         }
     }
@@ -126,7 +138,7 @@ impl OpenHandsServerClient {
 
 #[cfg(test)]
 mod tests {
-    use super::super::types::{ConversationMetadata, LocalWorkspace, OpenHandsOneShotRequest};
+    use super::super::types::OpenHandsOneShotRequest;
     use super::*;
     use crate::agents::sidecar::SidecarConfig;
     use crate::types::{SecretString, WorkflowLlmConfig};
@@ -169,7 +181,6 @@ mod tests {
             })),
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
-            path_to_openhands_runner: None,
             agent_name: Some("skill-creator".to_string()),
             required_plugins: None,
             setting_sources: None,
@@ -195,20 +206,28 @@ mod tests {
         let payload = StartConversationRequest::from_one_shot(&request);
         let json = serde_json::to_value(payload).unwrap();
 
-        assert_eq!(json["workspace"]["type"], "LocalWorkspace");
+        assert_eq!(json["workspace"]["kind"], "LocalWorkspace");
         assert_eq!(
             json["workspace"]["working_dir"],
             "/workspace-root/default/lead-routing"
         );
-        assert_eq!(json["llm"]["model"], "anthropic/claude-sonnet-4-5");
+        assert_eq!(json["agent"]["llm"]["model"], "anthropic/claude-sonnet-4-5");
+        assert_eq!(json["agent"]["llm"]["api_key"], "sk-test");
         assert_eq!(
-            json["allowedTools"],
-            serde_json::json!(["file_editor", "terminal"])
+            json["agent"]["tools"],
+            serde_json::json!([
+                {"name": "FileEditorTool", "params": {"working_dir": "/workspace-root/default/lead-routing"}},
+                {"name": "TerminalTool", "params": {"working_dir": "/workspace-root/default/lead-routing"}}
+            ])
         );
-        assert_eq!(json["maxTurns"], 8);
-        assert_eq!(json["metadata"]["skillName"], "lead-routing");
-        assert_eq!(json["metadata"]["stepId"], 2);
-        assert_eq!(json["metadata"]["runSource"], "workflow");
+        assert_eq!(json["max_iterations"], 8);
+        assert_eq!(json["tags"]["skill"], "lead-routing");
+        assert_eq!(json["tags"]["step"], 2);
+        assert_eq!(json["tags"]["source"], "workflow");
+        assert_eq!(
+            json["initial_message"]["content"][0]["text"],
+            "Build the skill"
+        );
     }
 
     #[test]
@@ -218,31 +237,31 @@ mod tests {
         let payload = StartConversationRequest::from_one_shot(&request);
         let json = serde_json::to_value(payload).unwrap();
 
-        assert_eq!(json["taskKind"], "workflow");
         assert_eq!(json["workspace"]["working_dir"], "/workspace-root");
     }
 
     #[test]
     fn rest_client_builds_expected_endpoint_requests() {
-        let client = OpenHandsServerClient::new("http://127.0.0.1:43210".parse().unwrap(), None);
+        let client = OpenHandsServerClient::new(
+            "http://127.0.0.1:43210".parse().unwrap(),
+            Some("session-key".to_string()),
+        );
+        let config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
+        let one_shot = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();
         let create = client
-            .build_create_conversation_request(&StartConversationRequest {
-                prompt: "prompt".to_string(),
-                llm: serde_json::json!({"model": "test"}),
-                workspace: LocalWorkspace::new("/tmp/workspace"),
-                allowed_tools: vec![],
-                max_turns: 4,
-                agent_name: Some("skill-creator".to_string()),
-                task_kind: Some("scope_review".to_string()),
-                output_format: None,
-                user_message_suffix: None,
-                metadata: ConversationMetadata::default(),
-            })
+            .build_create_conversation_request(&StartConversationRequest::from_one_shot(&one_shot))
             .unwrap();
         assert_eq!(create.method(), reqwest::Method::POST);
         assert_eq!(
             create.url().as_str(),
             "http://127.0.0.1:43210/api/conversations"
+        );
+        assert_eq!(
+            create
+                .headers()
+                .get("X-Session-API-Key")
+                .and_then(|value| value.to_str().ok()),
+            Some("session-key")
         );
 
         assert_eq!(
@@ -264,5 +283,13 @@ mod tests {
         let delete = client.build_delete_request("abc").unwrap();
         assert_eq!(delete.method(), reqwest::Method::DELETE);
         assert_eq!(delete.url().path(), "/api/conversations/abc");
+        assert_eq!(
+            client
+                .build_agent_final_response_request("abc")
+                .unwrap()
+                .url()
+                .path(),
+            "/api/conversations/abc/agent_final_response"
+        );
     }
 }

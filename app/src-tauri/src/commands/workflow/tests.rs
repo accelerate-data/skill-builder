@@ -229,7 +229,7 @@ fn skill_creator_agent_carries_full_skill_building_overview() {
 }
 
 #[test]
-fn test_research_steps_use_native_openhands_dispatch() {
+fn test_workflow_steps_use_native_openhands_dispatch() {
     assert!(workflow_step_uses_native_openhands_dispatch(0));
     assert!(workflow_step_uses_native_openhands_dispatch(1));
     assert!(workflow_step_uses_native_openhands_dispatch(2));

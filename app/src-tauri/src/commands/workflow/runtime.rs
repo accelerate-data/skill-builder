@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use tauri::{Emitter, Listener};
 
+use crate::agents::openhands_server;
 use crate::agents::sidecar::{OpenHandsOneShotConfigParams, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
@@ -497,7 +498,6 @@ async fn run_workflow_step_inner(
             output_format: workflow_output_format_for_step(step_id),
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
-            path_to_openhands_runner: None,
             agent_name: Some(agent_name),
             // Retained so existing sidecar config parsing accepts workflow runs;
             // OpenHands resolves workflow instructions from the `.agents` layout.
@@ -559,7 +559,7 @@ async fn run_workflow_step_inner(
 
     let transcript_log_dir = config.transcript_log_dir.clone();
     let start_result = if workflow_step_uses_native_openhands_dispatch(step_id) {
-        crate::agents::sidecar::dispatch_openhands_one_shot(
+        openhands_server::dispatch_openhands_one_shot(
             app,
             &agent_id,
             config,
@@ -641,7 +641,7 @@ pub async fn run_workflow_step(
             stale_agent_id,
             step_id,
         );
-        if !crate::agents::sidecar::cancel_openhands_one_shot(stale_agent_id) {
+        if !openhands_server::cancel_openhands_one_shot(stale_agent_id) {
             let _ = pool.send_cancel(&skill_name, stale_agent_id).await;
         }
     }
@@ -900,7 +900,7 @@ pub async fn run_answer_evaluator(
         );
     }
 
-    crate::agents::sidecar::dispatch_openhands_one_shot(
+    openhands_server::dispatch_openhands_one_shot(
         &app,
         &agent_id,
         config,
@@ -950,7 +950,7 @@ pub async fn cancel_workflow_step(
         })?;
         session.skill_name.clone()
     };
-    if crate::agents::sidecar::cancel_openhands_one_shot(&agent_id) {
+    if openhands_server::cancel_openhands_one_shot(&agent_id) {
         return Ok(());
     }
 

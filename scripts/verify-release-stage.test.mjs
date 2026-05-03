@@ -17,11 +17,9 @@ const WINDOWS_REQUIRED_PATHS = [
   "sidecar/dist/package.json",
   "sidecar/dist/bootstrap.js",
   "sidecar/dist/agent-runner.js",
-  "sidecar/dist/openhands/openhands-runner.exe",
   "agent-sources/plugins/skill-creator/LICENSE.txt",
   "agent-sources/skills/skill-test/SKILL.md",
   "workspace/CLAUDE.md",
-  "workspace/prompts/workflow-step.txt",
 ];
 
 const MACOS_REQUIRED_PATHS = [
@@ -30,11 +28,9 @@ const MACOS_REQUIRED_PATHS = [
   "Skill Builder.app/Contents/Resources/sidecar/dist/package.json",
   "Skill Builder.app/Contents/Resources/sidecar/dist/bootstrap.js",
   "Skill Builder.app/Contents/Resources/sidecar/dist/agent-runner.js",
-  "Skill Builder.app/Contents/Resources/sidecar/dist/openhands/openhands-runner",
   "Skill Builder.app/Contents/Resources/agent-sources/plugins/skill-creator/LICENSE.txt",
   "Skill Builder.app/Contents/Resources/agent-sources/skills/skill-test/SKILL.md",
   "Skill Builder.app/Contents/Resources/workspace/CLAUDE.md",
-  "Skill Builder.app/Contents/Resources/workspace/prompts/workflow-step.txt",
 ];
 
 const scriptPath = fileURLToPath(new URL("./verify-release-stage.mjs", import.meta.url));
@@ -101,10 +97,10 @@ test("CLI prints missing paths and exits 1 when the stage is incomplete", () => 
     });
 
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /Release stage is missing 10 required path\(s\):/);
+    assert.match(result.stderr, /Release stage is missing 8 required path\(s\):/);
     assert.match(result.stderr, /- Skill Builder\.app/);
     assert.match(result.stderr, /- run\.sh/);
-    assert.match(result.stderr, /- Skill Builder\.app\/Contents\/Resources\/sidecar\/dist\/openhands\/openhands-runner/);
+    assert.doesNotMatch(result.stderr, /openhands-runner/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

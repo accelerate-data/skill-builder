@@ -480,6 +480,18 @@ pub fn run() {
                 let pool = app_handle.state::<agents::sidecar_pool::SidecarPool>();
                 if pool.is_shutdown_completed() {
                     log::info!("[exit] Sidecar shutdown already completed by graceful_shutdown, skipping");
+                    if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                        rt.block_on(async {
+                            if let Err(e) =
+                                crate::agents::openhands_server::process::shutdown_agent_server()
+                                    .await
+                            {
+                                log::warn!(
+                                    "[exit] OpenHands Agent Server shutdown failed: {e}"
+                                );
+                            }
+                        });
+                    }
                     return;
                 }
 
@@ -487,7 +499,13 @@ pub fn run() {
                 // If graceful shutdown hangs (stuck sidecar, locked DB), force-exit.
                 let timeout_secs = agents::sidecar_pool::DEFAULT_SHUTDOWN_TIMEOUT_SECS;
                 let shutdown_fn = async {
-                    pool.shutdown_all_with_timeout(app_handle, timeout_secs).await
+                    let sidecar_result = pool
+                        .shutdown_all_with_timeout(app_handle, timeout_secs)
+                        .await;
+                    if let Err(e) = crate::agents::openhands_server::process::shutdown_agent_server().await {
+                        log::warn!("[exit] OpenHands Agent Server shutdown failed: {e}");
+                    }
+                    sidecar_result
                 };
 
                 let result = if let Ok(rt) = tokio::runtime::Handle::try_current() {

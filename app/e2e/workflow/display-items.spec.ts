@@ -103,6 +103,41 @@ test.describe("DisplayItem Rendering", { tag: "@workflow" }, () => {
     await expect(page.getByText("Research completed successfully.").last()).toBeVisible({ timeout: 5000 });
   });
 
+  test("renders OpenHands conversation events and terminal state", async ({ page }) => {
+    await emitTauriEvent(page, "agent-message", {
+      agent_id: agentId,
+      message: {
+        type: "conversation_event",
+        runtime: "openhands",
+        conversation_id: "conv-1",
+        event_class: "MessageEvent",
+        timestamp: Date.now(),
+        event: {
+          source: "assistant",
+          message: "Scope looks focused.",
+        },
+      },
+    });
+
+    await expect(page.getByTestId("conversation-event-list")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("Scope looks focused.")).toBeVisible();
+
+    await emitTauriEvent(page, "agent-message", {
+      agent_id: agentId,
+      message: {
+        type: "conversation_state",
+        runtime: "openhands",
+        conversation_id: "conv-1",
+        status: "completed",
+        timestamp: Date.now(),
+      },
+    });
+
+    await expect(page.getByRole("button", { name: /Research Complete/ })).toBeVisible({
+      timeout: 5000,
+    });
+  });
+
   test("renders error items with error styling", async ({ page }) => {
     await emitTauriEvent(page, "agent-message", {
       agent_id: agentId,

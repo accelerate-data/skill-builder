@@ -110,18 +110,9 @@ pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, St
     };
     checks.push(sidecar);
 
-    // 3. OpenHands runner native binary (openhands-runner / openhands-runner.exe)
-    let runner = match crate::agents::sidecar::resolve_openhands_runner_path_public(&app) {
-        Ok(path) => dep_ok("openhands_runner", "OpenHands runner", path),
-        Err(e) => dep_fail(
-            "openhands_runner",
-            "missing_dependency",
-            "OpenHands runner",
-            e,
-            "From the repository root run: `cd app/sidecar/openhands && ./build.sh`, then `cd ../../ && npm run sidecar:build`, and restart Skill Builder.",
-        ),
-    };
-    checks.push(runner);
+    // 3. OpenHands Agent Server Python package.
+    let agent_server = check_openhands_agent_server_available().await;
+    checks.push(agent_server);
 
     // 4. Git (required by agent runtime for version control operations)
     //    Windows: also validates git-bash for shell-compatible tool execution.
@@ -199,6 +190,67 @@ async fn check_git_available() -> DepStatus {
             ),
         }
     }
+}
+
+async fn check_openhands_agent_server_available() -> DepStatus {
+    let output = check_python_import("openhands.agent_server").await;
+
+    match output {
+        Ok(out) if out.status.success() => dep_ok(
+            "openhands_agent_server",
+            "OpenHands Agent Server",
+            String::from_utf8_lossy(&out.stdout).trim().to_string(),
+        ),
+        Ok(out) => dep_fail(
+            "openhands_agent_server",
+            "missing_dependency",
+            "OpenHands Agent Server",
+            String::from_utf8_lossy(&out.stderr).trim().to_string(),
+            "Install the OpenHands Agent Server Python package and restart Skill Builder.",
+        ),
+        Err(e) => dep_fail(
+            "openhands_agent_server",
+            "missing_dependency",
+            "OpenHands Agent Server",
+            e.to_string(),
+            "Install Python 3.12+ and the OpenHands Agent Server package, then restart Skill Builder.",
+        ),
+    }
+}
+
+async fn check_python_import(module_name: &str) -> std::io::Result<std::process::Output> {
+    let script = format!("import {module_name}; print({module_name}.__file__)");
+    let candidates: &[(&str, &[&str])] = python_import_command_candidates();
+    let mut last_error = None;
+    let mut last_output = None;
+
+    for (program, base_args) in candidates {
+        let mut command = tokio::process::Command::new(program);
+        command.args(*base_args).arg(&script);
+        match command.output().await {
+            Ok(output) if output.status.success() => return Ok(output),
+            Ok(output) => last_output = Some(output),
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    if let Some(output) = last_output {
+        return Ok(output);
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "No Python command configured")
+    }))
+}
+
+#[cfg(target_os = "windows")]
+fn python_import_command_candidates() -> &'static [(&'static str, &'static [&'static str])] {
+    &[("py", &["-3", "-c"]), ("python", &["-c"])]
+}
+
+#[cfg(not(target_os = "windows"))]
+fn python_import_command_candidates() -> &'static [(&'static str, &'static [&'static str])] {
+    &[("python3", &["-c"]), ("python", &["-c"])]
 }
 
 /// Parse a version string like "v20.11.0" and check if major >= min_major.
