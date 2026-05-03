@@ -1,27 +1,7 @@
 use std::path::Path;
 
-use crate::agents::sidecar::SidecarConfig;
-use crate::db::{self, Db};
 use crate::skill_paths::resolve_skill_dir;
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-use crate::types::SecretString;
-
-/// Max agentic turns for the entire streaming session. Each user message may
-/// use multiple turns internally (tool calls, etc.). 400 covers ~20 messages
-/// × 20 turns each. When exhausted, the sidecar emits session_exhausted and
-/// the frontend shows a "session limit reached" notice.
-pub(super) const REFINE_STREAM_MAX_TURNS: u32 = 400;
-
-pub(super) struct RefineRuntimeSettings {
-    pub api_key: SecretString,
-    pub extended_thinking: bool,
-    pub interleaved_thinking_beta: bool,
-    pub sdk_effort: Option<String>,
-    pub refine_prompt_suggestions: bool,
-    pub model: String,
-    pub skills_path: String,
-    pub plugin_slug: String,
-}
 
 pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
@@ -32,7 +12,6 @@ pub(super) fn ensure_skill_workspace_dir(
     plugin_slug: &str,
     skill_name: &str,
 ) {
-    // Workspace is plugin-organised: workspace_path/{plugin_slug}/skill_name/
     let skill_workspace_dir =
         crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     if !skill_workspace_dir.exists() {
@@ -51,193 +30,6 @@ pub(super) fn ensure_skill_workspace_dir(
     }
 }
 
-pub(super) fn load_refine_runtime_settings(
-    db: &Db,
-    workspace_path: &str,
-    skill_name: &str,
-    _plugin_slug: &str,
-) -> Result<RefineRuntimeSettings, String> {
-    // Resolve plugin slug before acquiring conn to avoid re-entrant lock deadlock.
-    let plugin_slug = super::resolve_skill_plugin_slug(db, skill_name)?;
-
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    let settings = db::read_settings(&conn).map_err(|e| {
-        log::error!("[send_refine_message] Failed to read settings: {}", e);
-        e
-    })?;
-    let api_key = settings
-        .anthropic_api_key
-        .map(SecretString::new)
-        .ok_or_else(|| "Anthropic API key not configured".to_string())?;
-    let model = settings
-        .preferred_model
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| {
-            "Model not configured. Select a model in Settings before refining skills.".to_string()
-        })?;
-    let skills_path = settings
-        .skills_path
-        .unwrap_or_else(|| workspace_path.to_string());
-    let settings_author = settings
-        .github_user_email
-        .clone()
-        .or(settings.github_user_login.clone());
-
-    let run_row = db::get_workflow_run(&conn, skill_name).ok().flatten();
-    let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-    let skill_md_path =
-        resolve_skill_dir(Path::new(&skills_path), &plugin_slug, skill_name).join("SKILL.md");
-    let frontmatter = std::fs::read_to_string(&skill_md_path)
-        .ok()
-        .map(|content| crate::commands::imported_skills::parse_frontmatter_full(&content))
-        .unwrap_or_default();
-
-    let is_imported = run_row.is_none();
-    // Imported/uploaded skills: purpose = SKILL.md description; author = frontmatter only.
-    // Builder skills: purpose = workflow run purpose enum; author = frontmatter → run row → settings.
-    let purpose = if is_imported {
-        frontmatter.description.clone()
-    } else {
-        run_row.as_ref().map(|r| r.purpose.clone())
-    };
-    let author_for_context = if is_imported {
-        frontmatter.author.clone()
-    } else {
-        frontmatter
-            .author
-            .or_else(|| run_row.as_ref().and_then(|r| r.author_login.clone()))
-            .or(settings_author)
-    };
-
-    crate::commands::workflow::write_user_context_file(
-        workspace_path,
-        &plugin_slug,
-        skill_name,
-        &[],
-        author_for_context.as_deref(),
-        settings.industry.as_deref(),
-        settings.function_role.as_deref(),
-        intake_json.as_deref(),
-        None,
-        purpose.as_deref(),
-        frontmatter.version.as_deref(),
-        None,
-        None,
-        None,
-        None,
-        &[], // refine does not inject documents
-    );
-
-    Ok(RefineRuntimeSettings {
-        api_key,
-        extended_thinking: settings.extended_thinking,
-        interleaved_thinking_beta: settings.interleaved_thinking_beta,
-        sdk_effort: settings.sdk_effort.clone(),
-        refine_prompt_suggestions: settings.refine_prompt_suggestions,
-        model,
-        skills_path,
-        plugin_slug,
-    })
-}
-
-/// Build a SidecarConfig for the first refine message (stream_start).
-/// No agent is specified — Claude decides which agent to invoke based on
-/// the prompt content and the agents discovered from plugins.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn build_refine_config(
-    prompt: String,
-    skill_name: &str,
-    usage_session_id: &str,
-    workspace_path: &str,
-    api_key: SecretString,
-    model: String,
-    extended_thinking: bool,
-    interleaved_thinking_beta: bool,
-    sdk_effort: Option<String>,
-    refine_prompt_suggestions: bool,
-    plugin_slug: &str,
-) -> (SidecarConfig, String) {
-    let thinking_budget = extended_thinking.then_some(16_000u32);
-
-    // cwd must stay at workspace root so the SDK finds .claude/ (project
-    // settings, agents, CLAUDE.md). Agents resolve skill-specific paths
-    // from the absolute workspace_dir in the prompt.
-    let cwd = workspace_path.to_string();
-    let agent_id = format!(
-        "refine-{}-{}",
-        skill_name,
-        chrono::Utc::now().timestamp_millis()
-    );
-
-    let config = SidecarConfig {
-        mode: Some("streaming".to_string()),
-        prompt,
-        system_prompt: None,
-        betas: crate::commands::workflow::build_betas(
-            thinking_budget,
-            &model,
-            interleaved_thinking_beta,
-        ),
-        model: Some(model),
-        llm: None,
-        model_base_url: None,
-        api_key,
-        workspace_root_dir: cwd.clone(),
-        workspace_skill_dir: cwd,
-        allowed_tools: Some(vec![
-            "Read".into(),
-            "Write".into(),
-            "Edit".into(),
-            "Glob".into(),
-            "Grep".into(),
-            "Bash".into(),
-            "Agent".into(),
-            "Skill".into(),
-            "Task".into(),
-            "AskUserQuestion".into(),
-        ]),
-        max_turns: Some(REFINE_STREAM_MAX_TURNS),
-        permission_mode: None,
-        thinking: thinking_budget.map(|budget| {
-            serde_json::json!({
-                "type": "enabled",
-                "budgetTokens": budget
-            })
-        }),
-        fallback_model: None,
-        effort: sdk_effort,
-        output_format: None,
-        prompt_suggestions: Some(refine_prompt_suggestions),
-        path_to_claude_code_executable: None,
-        agent_name: None,
-        required_plugins: Some(vec![
-            "skill-content-researcher".to_string(),
-            "skill-creator".to_string(),
-        ]),
-        setting_sources: None,
-        conversation_history: None,
-        skill_name: Some(skill_name.to_string()),
-        step_id: Some(-10),
-        workflow_session_id: None,
-        usage_session_id: Some(usage_session_id.to_string()),
-        run_source: Some("refine".to_string()),
-        plugin_slug: plugin_slug.to_string(),
-        transcript_log_dir: None,
-        persistence_dir: None,
-        runtime_provider: None,
-        task_kind: None,
-        user_message_suffix: None,
-    };
-
-    (config, agent_id)
-}
-
-/// Build a follow-up prompt for subsequent messages in the streaming session.
-/// Just the user's message + optional file targeting. No command prefix —
-/// Claude already has the full context from the initial prompt.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn build_followup_prompt(
     user_message: &str,
@@ -265,7 +57,6 @@ pub(super) fn build_followup_prompt_for_plugin(
     build_followup_prompt_with_output_dir(user_message, &skill_dir, target_files)
 }
 
-/// The refine-initial.txt template, embedded at compile time.
 const REFINE_PROMPT_TEMPLATE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../agent-sources/prompts/refine-initial.txt"
@@ -276,8 +67,6 @@ const REFINE_FOLLOWUP_TEMPLATE: &str = include_str!(concat!(
     "/../../agent-sources/prompts/refine-followup.txt"
 ));
 
-/// Build the initial refine prompt using a pre-resolved skill output directory.
-/// Uses the refine-initial.txt template with variable substitution.
 pub(super) fn build_refine_prompt_with_output_dir(
     skill_name: &str,
     workspace_path: &str,
@@ -302,7 +91,6 @@ pub(super) fn build_refine_prompt_with_output_dir(
 
     REFINE_PROMPT_TEMPLATE
         .replace("{{skill_name}}", skill_name)
-        .replace("{{command}}", user_message)
         .replace("{{skill_dir}}", &skill_output_str)
         .replace("{{context_dir}}", &context_str)
         .replace("{{workspace_dir}}", &workspace_str)
@@ -310,7 +98,6 @@ pub(super) fn build_refine_prompt_with_output_dir(
         .replace("{{user_message}}", user_message)
 }
 
-/// Build a follow-up prompt using a pre-resolved skill output directory.
 pub(super) fn build_followup_prompt_with_output_dir(
     user_message: &str,
     skill_output_dir: &std::path::Path,
@@ -336,8 +123,6 @@ pub(super) fn build_followup_prompt_with_output_dir(
         .replace("{{user_message}}", user_message)
 }
 
-/// Build the refine prompt. Sends workspace context + the user's message.
-/// Claude decides which agent to invoke based on the message content.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn build_refine_prompt(
     skill_name: &str,

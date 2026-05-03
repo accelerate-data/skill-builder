@@ -301,7 +301,6 @@ async fn run_refine_conversation_task(
 ///
 /// The conversation is NOT deleted when the run completes. The caller owns
 /// deletion via `close_openhands_refine_session`.
-#[allow(dead_code)]
 pub async fn dispatch_openhands_refine_turn(
     app: &tauri::AppHandle,
     agent_id: &str,
@@ -390,7 +389,6 @@ pub async fn dispatch_openhands_refine_turn(
 ///
 /// Errors are logged and swallowed — the server will eventually GC abandoned
 /// conversations, so a transient failure here is not fatal.
-#[allow(dead_code)]
 pub async fn close_openhands_refine_session(conversation_id: &str) -> Result<(), String> {
     let server = ensure_agent_server(Duration::from_secs(60))
         .await
