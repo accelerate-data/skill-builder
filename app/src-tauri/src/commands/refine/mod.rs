@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::agents::sidecar_pool::SidecarPool;
+use crate::agents::sidecar::{build_openhands_one_shot_config, OpenHandsOneShotConfigParams};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
 use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
@@ -16,11 +16,10 @@ use crate::types::RefineSessionInfo;
 
 use protocol::*;
 
-const OPENHANDS_REFINE_UNSUPPORTED_MESSAGE: &str = "OpenHands refine streaming is not yet supported. Use workflow mode until the OpenHands AskUserQuestion tool is implemented.";
-
-fn openhands_refine_streaming_unsupported() -> bool {
-    true
-}
+const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/skill-creator-user-suffix.txt"
+));
 
 // ─── Shared helper ───────────────────────────────────────────────────────────
 
@@ -55,46 +54,25 @@ pub(super) fn resolve_skill_output_dir(
     ))
 }
 
-/// Plugins allowed for refine sessions. Must match `required_plugins` in
-/// `build_refine_config` so the picker shows exactly the agents the SDK loads.
-const REFINE_ALLOWED_PLUGINS: &[&str] = &["skill-content-researcher", "skill-creator"];
-
-/// Scan `{workspace}/.claude/plugins/{plugin}/agents/` for agent `.md` files.
-/// Returns agent names as `{plugin}:{agent}` qualified identifiers.
-fn discover_plugin_agents(workspace_path: &str) -> Vec<String> {
-    let plugins_dir = Path::new(workspace_path).join(".claude").join("plugins");
-    let mut agents = Vec::new();
-    for plugin in REFINE_ALLOWED_PLUGINS {
-        let agents_dir = plugins_dir.join(plugin).join("agents");
-        if let Ok(entries) = std::fs::read_dir(&agents_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("md") {
-                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                        agents.push(format!("{}:{}", plugin, stem));
-                    }
-                }
-            }
-        }
-    }
-    agents.sort();
-    agents
-}
-
 // ─── Session management ──────────────────────────────────────────────────────
 
 /// In-memory state for a single refine session.
 ///
 /// Created by `start_refine_session`, used by `send_refine_message`.
-/// The streaming session is started on the first message and maintained
-/// across subsequent messages — the SDK preserves full conversation state.
+/// The OpenHands conversation is created on the first message and reused
+/// for every subsequent turn so the agent retains full edit history.
 pub struct RefineSession {
     pub skill_name: String,
     #[allow(dead_code)]
     pub usage_session_id: String,
-    /// Whether the sidecar streaming session has been started.
-    /// First `send_refine_message` sends `stream_start`, subsequent sends `stream_message`.
-    pub stream_started: bool,
+    /// OpenHands conversation id for this session. `None` until the first
+    /// `send_refine_message` creates the conversation; reused for every
+    /// subsequent turn so the agent retains full edit history.
+    pub conversation_id: Option<String>,
+    /// agent_id of the currently running turn, if any. Cleared when the turn
+    /// terminates. Needed by `close_refine_session` to cancel a turn that is
+    /// still in flight when the user navigates away.
+    pub current_agent_id: Option<String>,
     /// HEAD SHA of the skills repo when the session started.
     /// Used by `finalize_refine_run` to detect whether the agent actually committed.
     pub head_sha_at_start: Option<String>,
@@ -118,7 +96,8 @@ impl RefineSessionManager {
 
 /// Initialize a refine session for a skill.
 ///
-/// No sidecar is spawned here — the sidecar is spawned per-message in `send_refine_message`.
+/// No agent is spawned here — the agent is dispatched per-message in
+/// `send_refine_message`.
 #[tauri::command]
 pub async fn start_refine_session(
     skill_name: String,
@@ -127,6 +106,7 @@ pub async fn start_refine_session(
     sessions: tauri::State<'_, RefineSessionManager>,
     db: tauri::State<'_, Db>,
 ) -> Result<RefineSessionInfo, String> {
+    let _ = workspace_path;
     log::info!(
         "[start_refine_session] skill={} plugin={}",
         skill_name,
@@ -135,14 +115,10 @@ pub async fn start_refine_session(
     validate_skill_name(&skill_name)?;
 
     let skills_path = resolve_skills_path(&db).map_err(|e| {
-        log::error!(
-            "[start_refine_session] Failed to resolve skills path: {}",
-            e
-        );
+        log::error!("[start_refine_session] failed to resolve skills path: {}", e);
         e
     })?;
 
-    // Verify SKILL.md exists
     let skill_md = resolve_skill_output_dir(&db, &skill_name, &skills_path)?.join("SKILL.md");
     if !skill_md.exists() {
         let msg = format!("SKILL.md not found at {}", skill_md.display());
@@ -151,15 +127,10 @@ pub async fn start_refine_session(
     }
 
     let mut map = sessions.0.lock().map_err(|e| {
-        log::error!(
-            "[start_refine_session] Failed to acquire session lock: {}",
-            e
-        );
+        log::error!("[start_refine_session] failed to acquire session lock: {}", e);
         e.to_string()
     })?;
 
-    // If a stale session already exists for this skill (e.g. due to an
-    // unmount/remount race), silently remove it so the new session can start.
     if let Some(stale_id) = map
         .iter()
         .find(|(_, s)| s.skill_name == skill_name)
@@ -179,7 +150,6 @@ pub async fn start_refine_session(
         skill_name
     );
 
-    // Capture HEAD SHA so finalize_refine_run can detect whether the agent committed.
     let head_sha_at_start = git2::Repository::open(Path::new(&skills_path))
         .ok()
         .and_then(|repo| {
@@ -193,19 +163,17 @@ pub async fn start_refine_session(
         RefineSession {
             skill_name: skill_name.clone(),
             usage_session_id: new_refine_usage_session_id(&skill_name),
-            stream_started: false,
+            conversation_id: None,
+            current_agent_id: None,
             head_sha_at_start,
         },
     );
-
-    // Discover agents from allowed refine plugins deployed in workspace.
-    let available_agents = discover_plugin_agents(&workspace_path);
 
     Ok(RefineSessionInfo {
         session_id,
         skill_name,
         created_at,
-        available_agents,
+        available_agents: vec!["skill-creator".to_string()],
     })
 }
 
@@ -213,14 +181,15 @@ pub async fn start_refine_session(
 
 /// Send a user message to the refine agent and stream responses back.
 ///
-/// On the first call, writes user-context.md to the workspace directory and
-/// starts a streaming session (stream_start) with the agent prompt including
-/// all 3 directory paths and a pointer to user-context.md.
-/// On subsequent calls, pushes a follow-up message
-/// (stream_message) — the SDK maintains full conversation state.
+/// Turn 1 (session has no conversation_id): writes user-context.md, creates a
+/// new OpenHands conversation seeded with the full refine prompt, runs it,
+/// and stores the conversation_id on the session.
+///
+/// Turn N (session has a conversation_id): appends the user message as a
+/// follow-up event and re-runs the existing conversation.
 ///
 /// Returns the `agent_id` so the frontend can listen for `agent-message` and
-/// `agent-exit` events scoped to this request.
+/// `agent-exit` events scoped to this turn.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn send_refine_message(
@@ -230,138 +199,259 @@ pub async fn send_refine_message(
     workspace_path: String,
     target_files: Option<Vec<String>>,
     sessions: tauri::State<'_, RefineSessionManager>,
-    pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    log::info!("[send_refine_message] session=[REDACTED]");
+    let _ = (workspace_path, plugin_slug);
 
-    let skill_name = {
+    let (skill_name, conversation_id) = {
         let map = sessions.0.lock().map_err(|e| {
-            log::error!(
-                "[send_refine_message] Failed to acquire session lock: {}",
-                e
-            );
+            log::error!("[send_refine_message] failed to acquire session lock: {}", e);
             e.to_string()
         })?;
-        let session = match map.get(&session_id) {
-            Some(s) => s,
-            None => {
-                let active: Vec<String> = map.values().map(|s| s.skill_name.clone()).collect();
-                let msg = format!(
-                    "No refine session found. Active sessions ({}): [{}]",
-                    map.len(),
-                    active.join(", ")
-                );
-                log::error!("[send_refine_message] {}", msg);
-                return Err(msg);
-            }
-        };
-        session.skill_name.clone()
+        let session = map.get(&session_id).ok_or_else(|| {
+            let active: Vec<String> = map.values().map(|s| s.skill_name.clone()).collect();
+            let msg = format!(
+                "No refine session found. Active sessions ({}): [{}]",
+                map.len(),
+                active.join(", ")
+            );
+            log::error!("[send_refine_message] {}", msg);
+            msg
+        })?;
+        (session.skill_name.clone(), session.conversation_id.clone())
     };
-    log::info!("[send_refine_message] skill={}", skill_name);
 
-    let _ = (
-        &user_message,
-        &plugin_slug,
-        &workspace_path,
-        &target_files,
-        &pool,
-        &db,
-        &app,
-    );
-
-    debug_assert!(openhands_refine_streaming_unsupported());
-    log::warn!(
-        "[send_refine_message] skill={} rejected: {}",
+    log::info!(
+        "[send_refine_message] skill={} conversation_present={}",
         skill_name,
-        OPENHANDS_REFINE_UNSUPPORTED_MESSAGE
+        conversation_id.is_some()
     );
-    Err(OPENHANDS_REFINE_UNSUPPORTED_MESSAGE.to_string())
+
+    let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(&db)?;
+    let resolved_plugin_slug = resolve_skill_plugin_slug(&db, &skill_name)?;
+    let skills_path = resolve_skills_path(&db)?;
+    let skill_output_dir =
+        resolve_skill_dir(Path::new(&skills_path), &resolved_plugin_slug, &skill_name);
+
+    ensure_skill_workspace_dir(&runtime_ctx.workspace_path, &resolved_plugin_slug, &skill_name);
+
+    if conversation_id.is_none() {
+        write_refine_user_context(
+            &db,
+            &runtime_ctx.workspace_path,
+            &resolved_plugin_slug,
+            &skill_name,
+            &skill_output_dir,
+        )?;
+    }
+
+    let target_files_slice = target_files.as_deref();
+    let prompt = if conversation_id.is_some() {
+        build_followup_prompt_with_output_dir(&user_message, &skill_output_dir, target_files_slice)
+    } else {
+        build_refine_prompt_with_output_dir(
+            &skill_name,
+            &runtime_ctx.workspace_path,
+            &resolved_plugin_slug,
+            &skill_output_dir,
+            &user_message,
+            target_files_slice,
+        )
+    };
+
+    let workspace_skill_dir_str = crate::skill_paths::workspace_skill_dir(
+        Path::new(&runtime_ctx.workspace_path),
+        &resolved_plugin_slug,
+        &skill_name,
+    )
+    .to_string_lossy()
+    .replace('\\', "/");
+
+    let mut config = build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+        prompt,
+        llm: runtime_ctx.llm.clone(),
+        workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
+        workspace_run_dir: workspace_skill_dir_str.clone(),
+        agent_name: "skill-creator".to_string(),
+        task_kind: Some("refine".to_string()),
+        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+        allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
+        max_turns: 500,
+        output_format: None,
+        skill_name: Some(skill_name.clone()),
+        step_id: Some(-10),
+        run_source: Some("refine".to_string()),
+        plugin_slug: resolved_plugin_slug.clone(),
+    });
+    config.transcript_log_dir = Some(format!("{workspace_skill_dir_str}/logs"));
+
+    let agent_id = format!(
+        "refine-{}-{}",
+        skill_name,
+        chrono::Utc::now().timestamp_millis()
+    );
+    let log_dir = format!("{workspace_skill_dir_str}/logs");
+
+    let returned_conversation_id = crate::agents::openhands_server::dispatch_openhands_refine_turn(
+        &app,
+        &agent_id,
+        config,
+        conversation_id,
+        Some(&log_dir),
+    )
+    .await?;
+
+    {
+        let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
+        if let Some(session) = map.get_mut(&session_id) {
+            session.conversation_id = Some(returned_conversation_id);
+            session.current_agent_id = Some(agent_id.clone());
+        }
+    }
+
+    Ok(agent_id)
+}
+
+/// Reproduce the user-context bundle that `load_refine_runtime_settings`
+/// previously assembled. Reads workflow run row, SKILL.md frontmatter, and
+/// settings, then writes `{workspace}/{plugin}/{skill}/user-context.md`.
+fn write_refine_user_context(
+    db: &Db,
+    workspace_path: &str,
+    plugin_slug: &str,
+    skill_name: &str,
+    skill_output_dir: &Path,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = db::read_settings(&conn)?;
+    let settings_author = settings
+        .github_user_email
+        .clone()
+        .or(settings.github_user_login.clone());
+    let run_row = db::get_workflow_run(&conn, skill_name).ok().flatten();
+    let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
+    let frontmatter = std::fs::read_to_string(skill_output_dir.join("SKILL.md"))
+        .ok()
+        .map(|content| crate::commands::imported_skills::parse_frontmatter_full(&content))
+        .unwrap_or_default();
+    let is_imported = run_row.is_none();
+    let purpose = if is_imported {
+        frontmatter.description.clone()
+    } else {
+        run_row.as_ref().map(|r| r.purpose.clone())
+    };
+    let author_for_context = if is_imported {
+        frontmatter.author.clone()
+    } else {
+        frontmatter
+            .author
+            .or_else(|| run_row.as_ref().and_then(|r| r.author_login.clone()))
+            .or(settings_author)
+    };
+
+    drop(conn);
+
+    crate::commands::workflow::write_user_context_file(
+        workspace_path,
+        plugin_slug,
+        skill_name,
+        &[],
+        author_for_context.as_deref(),
+        settings.industry.as_deref(),
+        settings.function_role.as_deref(),
+        intake_json.as_deref(),
+        None,
+        purpose.as_deref(),
+        frontmatter.version.as_deref(),
+        None,
+        None,
+        None,
+        None,
+        &[],
+    );
+    Ok(())
 }
 
 // ─── close_refine_session ────────────────────────────────────────────────────
 
-/// Close a refine session, removing it from the session manager.
-///
-/// Called by the frontend when navigating away from the refine chat or when
-/// the user explicitly ends the session. This frees the one-per-skill slot
-/// so a new session can be started for the same skill.
-///
-/// If a streaming session was started, sends `stream_end` to the sidecar to
-/// close the async generator and finish the SDK query.
+/// Close a refine session: cancel any in-flight turn, then DELETE the
+/// OpenHands conversation, then remove the session from the manager.
 #[tauri::command]
 pub async fn close_refine_session(
     session_id: String,
     sessions: tauri::State<'_, RefineSessionManager>,
-    pool: tauri::State<'_, SidecarPool>,
 ) -> Result<(), String> {
     log::info!("[close_refine_session] session=[REDACTED]");
 
     let removed = {
         let mut map = sessions.0.lock().map_err(|e| {
-            log::error!(
-                "[close_refine_session] Failed to acquire session lock: {}",
-                e
-            );
+            log::error!("[close_refine_session] failed to acquire session lock: {}", e);
             e.to_string()
         })?;
         map.remove(&session_id)
     };
 
-    if let Some(session) = removed {
-        log::debug!(
-            "[close_refine_session] removed session [REDACTED] (stream_started={})",
-            session.stream_started
-        );
-
-        if session.stream_started {
-            if let Err(e) = pool.send_stream_end(&session.skill_name, &session_id).await {
-                log::warn!(
-                    "[close_refine_session] Failed to send stream_end for session [REDACTED]: {}",
-                    e
-                );
-            }
-        }
-    } else {
+    let Some(session) = removed else {
         log::debug!("[close_refine_session] session [REDACTED] not found (already closed)");
+        return Ok(());
+    };
+
+    if let Some(agent_id) = session.current_agent_id.as_ref() {
+        let cancelled = crate::agents::openhands_server::cancel_openhands_one_shot(agent_id);
+        log::debug!(
+            "[close_refine_session] cancel_openhands_one_shot agent={} result={}",
+            agent_id,
+            cancelled
+        );
+    }
+
+    if let Some(conversation_id) = session.conversation_id.as_ref() {
+        log::info!(
+            "[close_refine_session] deleting conversation_id={}",
+            conversation_id
+        );
+        if let Err(e) =
+            crate::agents::openhands_server::close_openhands_refine_session(conversation_id).await
+        {
+            log::warn!(
+                "[close_refine_session] non-fatal: delete conversation failed: {}",
+                e
+            );
+        }
     }
 
     Ok(())
 }
 
+// ─── cancel_refine_turn ──────────────────────────────────────────────────────
+
+/// Cancel the in-flight refine turn (if any). The session and conversation
+/// stay alive — the next `send_refine_message` resumes on the same conversation.
 #[tauri::command]
 pub async fn cancel_refine_turn(
     session_id: String,
     sessions: tauri::State<'_, RefineSessionManager>,
-    pool: tauri::State<'_, SidecarPool>,
 ) -> Result<(), String> {
-    let skill_name = {
+    let agent_id = {
         let map = sessions.0.lock().map_err(|e| e.to_string())?;
         let session = map
             .get(&session_id)
             .ok_or_else(|| format!("Session not found: {}", session_id))?;
-
-        if !session.stream_started {
-            return Ok(());
-        }
-
-        // Do NOT reset stream_started — the session stays alive.
-        // The sidecar will abort the current turn via AbortController
-        // and resume on the next stream_message.
-        session.skill_name.clone()
+        session.current_agent_id.clone()
     };
 
-    log::info!(
-        "[cancel_refine_turn] Interrupting current turn for skill '{}'",
-        skill_name
-    );
+    let Some(agent_id) = agent_id else {
+        log::debug!("[cancel_refine_turn] no active turn — noop");
+        return Ok(());
+    };
 
-    if let Err(err) = pool.send_stream_cancel(&skill_name, &session_id).await {
+    log::info!("[cancel_refine_turn] cancelling agent_id={}", agent_id);
+    let cancelled = crate::agents::openhands_server::cancel_openhands_one_shot(&agent_id);
+    if !cancelled {
         log::warn!(
-            "[cancel_refine_turn] Failed to send stream_cancel for skill '{}': {}",
-            skill_name,
-            err
+            "[cancel_refine_turn] no cancel handle registered for agent_id={}",
+            agent_id
         );
     }
     Ok(())
@@ -374,7 +464,7 @@ pub async fn cancel_refine_turn(
 pub async fn cancel_agent_run(
     skill_name: String,
     agent_id: String,
-    pool: tauri::State<'_, SidecarPool>,
+    pool: tauri::State<'_, crate::agents::sidecar_pool::SidecarPool>,
 ) -> Result<(), String> {
     log::info!("[cancel_agent_run] skill='{}'", skill_name);
     if let Err(err) = pool.send_cancel(&skill_name, &agent_id).await {
@@ -385,60 +475,6 @@ pub async fn cancel_agent_run(
         );
     }
     Ok(())
-}
-
-#[tauri::command]
-pub async fn answer_refine_question(
-    session_id: String,
-    agent_id: String,
-    tool_use_id: String,
-    questions: serde_json::Value,
-    answers: serde_json::Value,
-    sessions: tauri::State<'_, RefineSessionManager>,
-    pool: tauri::State<'_, SidecarPool>,
-) -> Result<(), String> {
-    log::info!(
-        "[answer_refine_question] session=[REDACTED] agent={} tool={}",
-        agent_id,
-        tool_use_id
-    );
-
-    let skill_name = {
-        let map = sessions.0.lock().map_err(|e| {
-            log::error!(
-                "[answer_refine_question] Failed to acquire session lock: {}",
-                e
-            );
-            e.to_string()
-        })?;
-        let session = map.get(&session_id).ok_or_else(|| {
-            let msg = "No refine session found for answer_refine_question".to_string();
-            log::error!("[answer_refine_question] {}", msg);
-            msg
-        })?;
-
-        if !session.stream_started {
-            let msg = "Refine stream has not started yet".to_string();
-            log::error!("[answer_refine_question] {}", msg);
-            return Err(msg);
-        }
-
-        session.skill_name.clone()
-    };
-
-    pool.send_stream_question_answer(
-        &skill_name,
-        &session_id,
-        &agent_id,
-        &tool_use_id,
-        questions,
-        answers,
-    )
-    .await
-    .map_err(|e| {
-        log::error!("[answer_refine_question] Failed to send answer: {}", e);
-        e
-    })
 }
 
 #[cfg(test)]
