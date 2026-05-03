@@ -4,7 +4,7 @@ use std::path::Path;
 use super::frontmatter::parse_frontmatter_full;
 use super::helpers::copy_dir_recursive;
 
-const WORKFLOW_INTERNAL_SKILLS: &[&str] = &["creating-skills", "research"];
+const WORKFLOW_INTERNAL_SKILLS: &[&str] = &["research"];
 
 fn is_workflow_internal_skill(skill_name: &str) -> bool {
     WORKFLOW_INTERNAL_SKILLS.contains(&skill_name)

@@ -2615,7 +2615,6 @@ fn test_copy_agents_to_claude_dir() {
 fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     let workspace_agents_src = tempfile::tempdir().unwrap();
     let workspace_skills_src = tempfile::tempdir().unwrap();
-    let bundled_skills_src = tempfile::tempdir().unwrap();
     let workspace = tempfile::tempdir().unwrap();
     let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
         workspace.path(),
@@ -2644,31 +2643,13 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         "# Researching Skill Requirements",
     )
     .unwrap();
-    std::fs::create_dir_all(workspace_skills_src.path().join("skill-creator")).unwrap();
+    std::fs::create_dir_all(workspace_skills_src.path().join("creating-skills")).unwrap();
     std::fs::write(
         workspace_skills_src
-            .path()
-            .join("skill-creator")
-            .join("SKILL.md"),
-        "# Skill Creator",
-    )
-    .unwrap();
-    std::fs::create_dir_all(bundled_skills_src.path().join("creating-skills")).unwrap();
-    std::fs::write(
-        bundled_skills_src
             .path()
             .join("creating-skills")
             .join("SKILL.md"),
         "# Creating Skills",
-    )
-    .unwrap();
-    std::fs::create_dir_all(bundled_skills_src.path().join("skill-test")).unwrap();
-    std::fs::write(
-        bundled_skills_src
-            .path()
-            .join("skill-test")
-            .join("SKILL.md"),
-        "# Skill Test",
     )
     .unwrap();
 
@@ -2678,7 +2659,6 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     copy_prompts_sync(
         workspace_agents_src.path(),
         workspace_skills_src.path(),
-        bundled_skills_src.path(),
         claude_template.path(),
         workspace.path().to_str().unwrap(),
     )
@@ -2697,14 +2677,8 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         .join(".agents/skills/answer-evaluator/SKILL.md")
         .exists());
     assert!(workspace_skill_dir
-        .join(".agents/skills/skill-creator/SKILL.md")
-        .is_file());
-    assert!(workspace_skill_dir
         .join(".agents/skills/creating-skills/SKILL.md")
         .is_file());
-    assert!(!workspace_skill_dir
-        .join(".agents/skills/skill-test/SKILL.md")
-        .exists());
     assert!(workspace
         .path()
         .join(".agents/agents/skill-creator.md")
