@@ -235,6 +235,27 @@ mod tests {
     }
 
     #[test]
+    fn conversation_payload_marks_opencode_go_models_as_openai_compatible_for_litellm() {
+        let mut config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
+        let llm = config.llm.as_mut().unwrap();
+        llm.model = "opencode-go/minimax-m2.7".to_string();
+        llm.base_url = Some("https://opencode.ai/zen/go/v1".to_string());
+
+        let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();
+        let payload = StartConversationRequest::from_one_shot(&request);
+        let json = serde_json::to_value(payload).unwrap();
+
+        assert_eq!(
+            json["agent"]["llm"]["model"],
+            "openai/minimax-m2.7"
+        );
+        assert_eq!(
+            json["agent"]["llm"]["base_url"],
+            "https://opencode.ai/zen/go/v1"
+        );
+    }
+
+    #[test]
     fn scope_review_payload_uses_workspace_root_as_local_workspace() {
         let config = base_config("/workspace-root", "/workspace-root");
         let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();

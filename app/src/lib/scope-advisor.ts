@@ -17,6 +17,7 @@ export type ScopeAdvisorStatus =
   | "name-needs-improvement"
   | "description-needs-improvement"
   | "both-need-improvement"
+  | "error"
 
 /** Banner message for each non-idle, non-loading status */
 export const ADVISOR_BANNER: Record<Exclude<ScopeAdvisorStatus, "idle" | "loading">, string> = {
@@ -25,6 +26,7 @@ export const ADVISOR_BANNER: Record<Exclude<ScopeAdvisorStatus, "idle" | "loadin
   "name-needs-improvement": "We found better names for this skill.",
   "description-needs-improvement": "We found a clearer description for this skill.",
   "both-need-improvement": "We found better names and descriptions for this skill.",
+  "error": "Validation failed.",
 }
 
 /** Format one suggestion for clipboard: "name: description" */

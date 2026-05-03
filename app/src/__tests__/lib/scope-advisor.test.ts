@@ -34,14 +34,19 @@ describe("ADVISOR_BANNER", () => {
     )
   })
 
-  it("covers all five non-idle non-loading statuses", () => {
+  it("has entry for runtime validation errors", () => {
+    expect(ADVISOR_BANNER["error"]).toBe("Validation failed.")
+  })
+
+  it("covers all non-idle non-loading statuses", () => {
     const keys = Object.keys(ADVISOR_BANNER)
-    expect(keys).toHaveLength(5)
+    expect(keys).toHaveLength(6)
     expect(keys).toContain("focused")
     expect(keys).toContain("too-broad")
     expect(keys).toContain("name-needs-improvement")
     expect(keys).toContain("description-needs-improvement")
     expect(keys).toContain("both-need-improvement")
+    expect(keys).toContain("error")
   })
 })
 

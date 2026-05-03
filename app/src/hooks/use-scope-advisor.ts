@@ -79,7 +79,13 @@ export function useScopeAdvisor({
       })
       .catch((err) => {
         console.error("[scope-advisor] failed", err)
-        setStatus("idle")
+        const message = err instanceof Error ? err.message : String(err)
+        setReason(message || "Scope validation failed.")
+        setSuggestions([])
+        setCurrentChipIndex(null)
+        setCopiedIndices(new Set())
+        setPanelExpanded(false)
+        setStatus("error")
       })
   }, [mode, skillName, description, purpose, contextQuestions, industry])
 
