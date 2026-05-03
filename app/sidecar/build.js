@@ -1,6 +1,6 @@
 import { build } from "esbuild";
-import { cpSync, mkdirSync, existsSync, writeFileSync, rmSync } from "fs";
-import { resolve, dirname, basename } from "path";
+import { cpSync, existsSync, writeFileSync, rmSync } from "fs";
+import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -36,41 +36,6 @@ cpSync(
   resolve(__dirname, "dist/bootstrap.js"),
 );
 console.log("Copied dist/bootstrap.js");
-
-// Stage the PyInstaller-built OpenHands runner if it already exists.
-// Normal JS sidecar builds must not require Python/PyInstaller; developers can
-// build the native runner explicitly via app/sidecar/openhands/build.sh.
-const openHandsRunner = locateOpenHandsRunner();
-const outOpenHands = resolve(__dirname, "dist/openhands");
-mkdirSync(outOpenHands, { recursive: true });
-if (openHandsRunner) {
-  const destName =
-    process.platform === "win32" ? "openhands-runner.exe" : "openhands-runner";
-  const dest = resolve(outOpenHands, destName);
-  if (openHandsRunner !== dest) {
-    cpSync(openHandsRunner, dest);
-  }
-  console.log(`Staged OpenHands runner to dist/openhands/${destName}`);
-} else {
-  console.warn(
-    "OpenHands runner binary not found — skipping. Run app/sidecar/openhands/build.sh to build it.",
-  );
-}
-
-function locateOpenHandsRunner() {
-  const destName =
-    process.platform === "win32" ? "openhands-runner.exe" : "openhands-runner";
-  const candidates = [
-    resolve(__dirname, "dist", "openhands", destName),
-    resolve(__dirname, "openhands", "dist", destName),
-    resolve(__dirname, "openhands", destName),
-  ];
-  for (const candidate of candidates) {
-    if (existsSync(candidate) && basename(candidate) === destName)
-      return candidate;
-  }
-  return null;
-}
 
 // Copy mock-templates directory for MOCK_AGENTS mode.
 // These are JSONL replay files and output file templates used when

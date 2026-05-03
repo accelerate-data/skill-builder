@@ -272,21 +272,18 @@ describe("parseSidecarConfig", () => {
   });
 
   it("accepts openhands as a valid runtimeProvider", () => {
-    const baseConfig = { prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD };
-    expect(parseSidecarConfig({
-      ...baseConfig,
-      runtimeProvider: "openhands",
-      llm: {
-        model: "claude-sonnet-4-5",
-      },
-    }).runtimeProvider).toBe("openhands");
-  });
-
-  it("throws when openhands runtimeProvider is missing llm", () => {
-    const baseConfig = { prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD };
-    expect(() => parseSidecarConfig({ ...baseConfig, runtimeProvider: "openhands" })).toThrow(
-      "Invalid SidecarConfig: openhands runtimeProvider requires llm",
-    );
+    const baseConfig = {
+      prompt: "hello",
+      apiKey: "key",
+      workspaceRootDir: TEST_CWD,
+      workspaceSkillDir: TEST_CWD,
+    };
+    expect(
+      parseSidecarConfig({
+        ...baseConfig,
+        runtimeProvider: "openhands",
+      }).runtimeProvider,
+    ).toBe("openhands");
   });
 
   it("validates openhands llm fields", () => {
