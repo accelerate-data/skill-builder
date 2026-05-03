@@ -150,7 +150,9 @@ describe("agent files", () => {
   it("OpenHands workflow skills required by the runtime are present in bundled skill sources", () => {
     const missing = OPENHANDS_WORKFLOW_SKILLS.filter(
       (skill) =>
-        !fs.existsSync(path.join(REPO_ROOT, "agent-sources", "skills", skill, "SKILL.md")),
+        !fs.existsSync(
+          path.join(REPO_ROOT, "agent-sources", "workspace", "skills", skill, "SKILL.md"),
+        ),
     );
 
     expect(missing).toEqual([]);
@@ -160,6 +162,7 @@ describe("agent files", () => {
     const file = path.join(
       REPO_ROOT,
       "agent-sources",
+      "workspace",
       "skills",
       "creating-skills",
       "SKILL.md",
@@ -180,6 +183,7 @@ describe("agent files", () => {
     const file = path.join(
       REPO_ROOT,
       "agent-sources",
+      "workspace",
       "skills",
       "creating-skills",
       "SKILL.md",
@@ -255,6 +259,7 @@ describe("read directive compliance", () => {
   const CREATING_SKILLS_PATH = path.join(
     REPO_ROOT,
     "agent-sources",
+    "workspace",
     "skills",
     "creating-skills",
     "SKILL.md",
@@ -394,6 +399,7 @@ describe("Agent output contracts (backend protocol alignment)", () => {
       path.join(
         REPO_ROOT,
         "agent-sources",
+        "workspace",
         "skills",
         "creating-skills",
         "SKILL.md",
@@ -511,6 +517,7 @@ describe("skill-content-researcher plugin structure", () => {
     const skillCreatorSkillPath = path.join(
       REPO_ROOT,
       "agent-sources",
+      "workspace",
       "skills",
       "creating-skills",
       "SKILL.md",
