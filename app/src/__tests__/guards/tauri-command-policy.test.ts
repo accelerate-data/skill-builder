@@ -39,7 +39,6 @@ const vu1140Commands = [
   "cancel_refine_turn",
   "cancel_agent_run",
   "cancel_workflow_step",
-  "answer_refine_question",
   "send_refine_message",
   "finalize_refine_run",
   "clean_benchmark_snapshot",

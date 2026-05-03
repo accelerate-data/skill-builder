@@ -20,7 +20,6 @@ const {
     setRunning: vi.fn(),
     setGateLoading: vi.fn(),
     clearInitializing: vi.fn(),
-    clearPendingQuestion: vi.fn(),
     clearRuntimeError: vi.fn(),
   };
 
@@ -61,7 +60,6 @@ describe("teardownWorkflowSession", () => {
       setRunning: vi.fn(),
       setGateLoading: vi.fn(),
       clearInitializing: vi.fn(),
-      clearPendingQuestion: vi.fn(),
       clearRuntimeError: vi.fn(),
     });
   });
@@ -74,7 +72,6 @@ describe("teardownWorkflowSession", () => {
     expect(state.setRunning).toHaveBeenCalledWith(false);
     expect(state.setGateLoading).toHaveBeenCalledWith(false);
     expect(state.clearInitializing).toHaveBeenCalled();
-    expect(state.clearPendingQuestion).toHaveBeenCalled();
     expect(state.clearRuntimeError).toHaveBeenCalled();
     expect(mockClearRuns).toHaveBeenCalled();
     expect(mockEndWorkflowSession).toHaveBeenCalledWith("session-123");
@@ -96,7 +93,6 @@ describe("teardownWorkflowSession", () => {
       setRunning: vi.fn(),
       setGateLoading: vi.fn(),
       clearInitializing: vi.fn(),
-      clearPendingQuestion: vi.fn(),
       clearRuntimeError: vi.fn(),
     });
 

@@ -598,7 +598,7 @@ export interface AnswerEvaluationOutput {
   contradictory_count: number
   total_count: number
   reasoning: string
-  /** Gate decision set by the agent after asking the user via AskUserQuestion. */
+  /** Routing verdict returned in the gate agent's structured output: skip research, run it, or revise the spec first. */
   gate_decision?: "skip_research" | "run_research" | "revise" | null
   per_question: PerQuestionEntry[]
 }
