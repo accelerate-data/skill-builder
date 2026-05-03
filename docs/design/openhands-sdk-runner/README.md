@@ -6,6 +6,10 @@ functional-specs: []
 
 > **Status:** Draft
 > **Functional specs:** Not applicable; this design covers the VU-1145 runtime integration contract rather than an end-user flow.
+> **Runtime update:** Superseded for runtime execution by
+> `docs/design/openhands-agent-server-runtime/README.md`. Keep this document as
+> historical background for the direct SDK runner path; do not implement new
+> OpenHands runtime work against the stdin/stdout `openhands-runner` boundary.
 
 ## Overview
 

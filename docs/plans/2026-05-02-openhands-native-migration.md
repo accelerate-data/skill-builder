@@ -1,6 +1,10 @@
 # OpenHands Native Migration Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement each child slice. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Runtime update:** Superseded for clean-break runtime execution by
+> `docs/plans/2026-05-03-openhands-agent-server-clean-break.md`. Keep this file
+> as historical context for completed VU-1145 accumulation slices, but do not
+> implement new runtime work against the Node/Python `openhands-runner` plan.
 
 **Issue:** VU-1145
 

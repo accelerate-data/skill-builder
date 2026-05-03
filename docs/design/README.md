@@ -4,6 +4,7 @@
 |---|---|
 | [agent-specs/](agent-specs/README.md) | Agent layer architecture: workflow steps, artifact contracts, infrastructure files, storage layout |
 | [agent-runtime-boundary/](agent-runtime-boundary/README.md) | Agent runtime boundary: one-shot runs, streaming sessions, runtime adapters, and OpenHands migration shape |
+| [openhands-agent-server-runtime/](openhands-agent-server-runtime/README.md) | OpenHands Agent Server runtime: Rust-managed local server process, REST/WebSocket calls, workspace ownership, event normalization, and clean-break deletion plan |
 | [openhands-sdk-runner/](openhands-sdk-runner/README.md) | OpenHands SDK runner invocation contract: one `skill-creator` agent, prompt loading, AgentSkills, tools, conversations, and progress events |
 | [workflow-research-clean-break/](workflow-research-clean-break/README.md) | Workflow research clean break: one inline research flow, internal scope and candidate scoring, and final clarifications-only output |
 | [workflow-detailed-research-clean-break/](workflow-detailed-research-clean-break/README.md) | Workflow detailed research clean break: app-owned step 1 prompt, `skill-creator` routing, and additive sections/questions/refinements |
