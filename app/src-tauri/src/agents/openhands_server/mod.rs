@@ -76,6 +76,13 @@ struct OpenHandsConversationTask {
     websocket_url: String,
     session_api_key: String,
     summary_context: OpenHandsRunSummaryContext,
+    /// True when this task is the first attached subscriber to the
+    /// conversation (turn 1 of one-shot or refine). The SDK persists
+    /// SystemPromptEvent + the initial user MessageEvent during conversation
+    /// creation, before our WebSocket attaches, so the live stream alone
+    /// misses those frames. When true the task drains the REST event log
+    /// before reading WS so the chat shows them.
+    backfill_existing_events: bool,
 }
 
 pub async fn dispatch_openhands_one_shot(
@@ -123,6 +130,7 @@ pub async fn dispatch_openhands_one_shot(
             websocket_url,
             session_api_key,
             summary_context,
+            backfill_existing_events: true,
         };
         let result = run_conversation_task(task, cancel_rx).await;
         unregister_cancel(&agent_for_task);
@@ -323,6 +331,7 @@ pub async fn dispatch_openhands_refine_turn(
     let config_event = redact_openhands_config_for_log(&config, server.port);
     super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
 
+    let is_first_turn = conversation_id.is_none();
     let conversation_id = match conversation_id {
         Some(existing) => {
             let event = serde_json::to_value(types::SendMessageRequest {
@@ -369,6 +378,7 @@ pub async fn dispatch_openhands_refine_turn(
             websocket_url,
             session_api_key,
             summary_context,
+            backfill_existing_events: is_first_turn,
         };
         let result = run_refine_conversation_task(task, cancel_rx).await;
         unregister_cancel(&agent_for_task);
@@ -430,12 +440,55 @@ async fn run_conversation_task_inner(
         .await
         .map_err(|e| format!("Failed to authenticate OpenHands Agent Server socket: {e}"))?;
 
+    // The SDK emits SystemPromptEvent + the initial user MessageEvent during
+    // POST /api/conversations, before this WS attaches. On a fresh conversation
+    // backfill them via REST so the chat shows system_prompt and task_sent
+    // rows. Multi-turn refine turns N+1 already saw prior turns and use the
+    // live WS only — backfilling there would replay the whole history.
+    let mut seen_event_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut terminal_state: Option<serde_json::Value> = None;
+    if task.backfill_existing_events {
+        match task.client.list_all_events(&task.conversation_id).await {
+            Ok(events) => {
+                for raw in events {
+                    if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
+                        if !seen_event_ids.insert(id.to_string()) {
+                            continue;
+                        }
+                    }
+                    let normalized =
+                        normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
+                    if normalized
+                        .get("type")
+                        .and_then(|value| value.as_str())
+                        == Some("conversation_state")
+                    {
+                        terminal_state = Some(normalized);
+                        continue;
+                    }
+                    super::events::handle_sidecar_message(
+                        &task.app,
+                        &task.agent_id,
+                        &normalized.to_string(),
+                    );
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "[openhands-agent-server:{}] event backfill failed (live WS only): {}",
+                    task.agent_id,
+                    e
+                );
+            }
+        }
+    }
+
     task.client
         .run_conversation(&task.conversation_id)
         .await
         .map_err(|e| format!("Failed to run OpenHands Agent Server conversation: {e}"))?;
 
-    let mut terminal_state: Option<serde_json::Value> = None;
     let mut cancel_pending = false;
     loop {
         tokio::select! {
@@ -472,6 +525,11 @@ async fn run_conversation_task_inner(
                         continue;
                     }
                 };
+                if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
+                    if !seen_event_ids.insert(id.to_string()) {
+                        continue;
+                    }
+                }
                 let normalized = normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
                 let is_terminal = normalized
                     .get("type")

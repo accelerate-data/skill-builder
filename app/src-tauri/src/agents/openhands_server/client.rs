@@ -74,6 +74,32 @@ impl OpenHandsServerClient {
         .build()
     }
 
+    pub fn build_search_events_request(
+        &self,
+        conversation_id: &str,
+        page_id: Option<&str>,
+        limit: u32,
+    ) -> Result<Request, reqwest::Error> {
+        let limit = limit.clamp(1, 100);
+        let path = format!("api/conversations/{conversation_id}/events/search");
+        let mut url = self
+            .base_url
+            .join(&path)
+            .expect("static OpenHands Agent Server API path should be valid");
+        {
+            let mut pairs = url.query_pairs_mut();
+            pairs.append_pair("limit", &limit.to_string());
+            if let Some(page_id) = page_id {
+                pairs.append_pair("page_id", page_id);
+            }
+        }
+        let mut builder = self.http.request(Method::GET, url);
+        if let Some(token) = &self.session_api_key {
+            builder = builder.header("X-Session-API-Key", token);
+        }
+        builder.build()
+    }
+
     pub async fn create_conversation(
         &self,
         request: &StartConversationRequest,
@@ -136,6 +162,46 @@ impl OpenHandsServerClient {
             .error_for_status()?
             .json()
             .await
+    }
+
+    /// Fetch every persisted event for the conversation in chronological order.
+    ///
+    /// The SDK emits SystemPromptEvent and the initial user MessageEvent during
+    /// POST /api/conversations — before the WebSocket subscriber attaches — so
+    /// the live stream alone misses those frames. This drains the REST page
+    /// cursor so callers can backfill them deterministically before consuming
+    /// the WebSocket.
+    pub async fn list_all_events(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Vec<serde_json::Value>, reqwest::Error> {
+        let mut events = Vec::new();
+        let mut page_id: Option<String> = None;
+        loop {
+            let response = self
+                .http
+                .execute(self.build_search_events_request(
+                    conversation_id,
+                    page_id.as_deref(),
+                    100,
+                )?)
+                .await?
+                .error_for_status()?
+                .json::<serde_json::Value>()
+                .await?;
+            if let Some(items) = response.get("items").and_then(|value| value.as_array()) {
+                events.reserve(items.len());
+                events.extend(items.iter().cloned());
+            }
+            page_id = response
+                .get("next_page_id")
+                .and_then(|value| value.as_str())
+                .map(str::to_string);
+            if page_id.is_none() {
+                break;
+            }
+        }
+        Ok(events)
     }
 
     fn request(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
@@ -324,5 +390,32 @@ mod tests {
                 .path(),
             "/api/conversations/abc/agent_final_response"
         );
+    }
+
+    #[test]
+    fn search_events_request_includes_pagination_query() {
+        let client = OpenHandsServerClient::new(
+            "http://127.0.0.1:43210".parse().unwrap(),
+            Some("session-key".to_string()),
+        );
+
+        let first = client.build_search_events_request("conv-1", None, 100).unwrap();
+        assert_eq!(first.method(), reqwest::Method::GET);
+        assert_eq!(first.url().path(), "/api/conversations/conv-1/events/search");
+        assert_eq!(first.url().query(), Some("limit=100"));
+        assert_eq!(
+            first
+                .headers()
+                .get("X-Session-API-Key")
+                .and_then(|value| value.to_str().ok()),
+            Some("session-key")
+        );
+
+        let next = client
+            .build_search_events_request("conv-1", Some("page-2"), 50)
+            .unwrap();
+        let query = next.url().query().unwrap_or_default();
+        assert!(query.contains("limit=50"), "query was {query}");
+        assert!(query.contains("page_id=page-2"), "query was {query}");
     }
 }
