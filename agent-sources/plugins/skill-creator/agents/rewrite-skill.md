@@ -1,7 +1,7 @@
 ---
 name: rewrite-skill
 description: Rewrites or refines an existing skill based on decisions and user request. Handles both full rewrites and targeted streaming edits.
-tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent, AskUserQuestion
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent
 ---
 
 # Rewrite Skill

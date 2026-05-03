@@ -2,13 +2,6 @@ import { create } from "zustand";
 import type { RuntimeError } from "@/components/runtime-error-dialog";
 import { createWorkflowSession } from "@/lib/tauri";
 import { WORKFLOW_STEP_DEFINITIONS } from "@/lib/workflow-steps";
-import type { RefineQuestionPrompt } from "@/stores/refine-store";
-
-export interface WorkflowStepQuestion {
-  agentId: string;
-  toolUseId: string;
-  questions: RefineQuestionPrompt[];
-}
 
 export interface WorkflowStep {
   id: number;
@@ -43,8 +36,6 @@ interface WorkflowState {
 
   /** Transient: like pendingUpdateMode but suppresses auto-start. Used when navigating to an existing in-progress skill from the sidebar. */
   pendingNoReviewMode: boolean;
-  /** Pending AskUserQuestion from the active workflow step agent. Cleared when the user submits an answer. */
-  pendingQuestion: WorkflowStepQuestion | null;
 
   initWorkflow: (skillName: string, purpose?: string, initialReviewMode?: boolean) => void;
   setReviewMode: (mode: boolean) => void;
@@ -68,8 +59,6 @@ interface WorkflowState {
   setGateLoading: (loading: boolean) => void;
   setPendingNoReviewMode: (mode: boolean) => void;
   updateStepLabel: (stepId: number, name: string, description: string) => void;
-  setPendingQuestion: (question: WorkflowStepQuestion) => void;
-  clearPendingQuestion: () => void;
   reset: () => void;
 }
 
@@ -92,7 +81,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   runtimeError: null,
   gateLoading: false,
   pendingNoReviewMode: false,
-  pendingQuestion: null,
   hydrated: false,
   disabledSteps: [],
 
@@ -229,9 +217,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   setHydrated: (hydrated) => set({ hydrated }),
 
-  setPendingQuestion: (question) => set({ pendingQuestion: question }),
-  clearPendingQuestion: () => set({ pendingQuestion: null }),
-
   reset: () =>
     set({
       skillName: null,
@@ -246,8 +231,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initProgressMessage: null,
       runtimeError: null,
       gateLoading: false,
-      pendingQuestion: null,
-          hydrated: false,
+      hydrated: false,
       disabledSteps: [],
     }),
 }));

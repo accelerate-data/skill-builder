@@ -276,7 +276,9 @@ describe("initAgentStream", () => {
       },
     });
 
-    expect(useWorkflowStore.getState().pendingQuestion).toBeNull();
+    // Workflow runs never surface AskUserQuestion-style prompts: the workflow store
+    // no longer exposes pendingQuestion (deferred to a future ticket), and the
+    // refine store stays untouched when the active agent is a workflow agent.
     expect(useRefineStore.getState().messages).toHaveLength(0);
   });
 
