@@ -5,7 +5,8 @@ functional-specs: []
 # OpenHands Agent Server Runtime
 
 > **Status:** Draft
-> **Functional specs:** Not applicable; this design covers the VU-1145 runtime integration contract rather than an end-user flow.
+> **Issue:** VU-1153
+> **Functional specs:** Not applicable; this design covers the runtime integration contract rather than an end-user flow.
 
 ## Overview
 
@@ -47,7 +48,7 @@ Reference docs:
 
 **Does not cover**
 
-- Docker workspace adoption. VU-1145 uses local folders on disk.
+- Docker workspace adoption. This migration uses local folders on disk.
 - Remote or hosted Agent Server deployment.
 - Marketplace/import behavior outside the existing workspace deployment path.
 - Product UI changes beyond preserving current workflow/refine event behavior.

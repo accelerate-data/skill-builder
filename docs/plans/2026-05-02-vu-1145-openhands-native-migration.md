@@ -2,8 +2,8 @@
 
 This file is retained as a compatibility pointer for older references.
 
-The active VU-1145 implementation plan for the clean-break Agent Server runtime
-is `docs/plans/2026-05-03-openhands-agent-server-clean-break.md`.
+The clean-break Agent Server runtime migration is tracked separately as
+`VU-1153` in `docs/plans/2026-05-03-openhands-agent-server-clean-break.md`.
 
 Do not execute the older plan text that previously lived here. It predated the
 current clean-break decisions:
