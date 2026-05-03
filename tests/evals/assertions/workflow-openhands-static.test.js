@@ -127,6 +127,52 @@ test('answer evaluator gate is prompt-owned, not a bundled skill', () => {
   );
 });
 
+test('step 2 decision prompt normalizes exploratory answers by purpose', () => {
+  const prompt = readRepo('agent-sources/prompts/confirm_decisions.txt');
+  const evalPackage = [
+    readEval('packages/skill-content-researcher-confirm-decisions/prompt.txt'),
+    readEval('packages/skill-content-researcher-confirm-decisions/promptfooconfig.json'),
+  ].join('\n');
+
+  for (const token of [
+    'Purpose-aware decision normalization',
+    'Step 2 as the normalization boundary',
+    'business-process purpose',
+    'data-engineering purpose',
+    'source-customization purpose',
+    'platform purpose',
+    'Fabric Lakehouse',
+    'dbt model grain',
+    'semantic model measures',
+    'The skill accepts Salesforce',
+  ]) {
+    assert.ok(prompt.includes(token), `confirm decisions prompt must mention ${token}`);
+  }
+  assert.match(
+    prompt,
+    /Do not preserve CSV, JSON, SOQL, or file export as\s+the operating input contract/,
+  );
+  assert.match(
+    prompt,
+    /Salesforce\s+opportunity data is available in the Fabric Lakehouse and should define how\s+opportunity stages/,
+  );
+
+  for (const token of [
+    '[positive] business-process pipeline export clarifications normalize to lakehouse/dbt/semantic decisions',
+    '[negative] business-process decisions must not preserve Salesforce CSV JSON SOQL as operating contract',
+    '[positive] source-customization decisions preserve extraction mechanics when material',
+    'Salesforce CSV exports',
+    'Fabric Lakehouse',
+    'dbt',
+    'semantic',
+    'source-customization',
+    'SOQL',
+    'CDC',
+  ]) {
+    assert.ok(evalPackage.includes(token), `confirm decisions eval coverage must mention ${token}`);
+  }
+});
+
 test('step 3 skill generation has no legacy writer or validator runtime dependency', () => {
   const step3RuntimeEvidence = [
     readRepo('agent-sources/workspace/agents/skill-creator.md'),

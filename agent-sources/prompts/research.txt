@@ -117,6 +117,9 @@ Every question must have 2-4 mutually exclusive concrete choices plus a final
 choice with exactly `"text": "Other (please specify)"` and `"is_other": true`.
 Do not omit the final Other choice, even when the listed choices seem
 exhaustive.
+Every choice object must use canonical choice fields only: `id`, `text`, and
+`is_other`. Do not use `value`, `label`, `option`, or any other choice field
+name.
 
 Do not put `sections`, `notes`, or `answer_evaluator_notes` inside
 `research_output.metadata`; they are top-level fields inside `research_output`.

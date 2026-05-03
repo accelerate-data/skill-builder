@@ -8,7 +8,9 @@ Context directory: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/cont
 Maximum research dimensions before scope warning: 5
 User context: Purpose is organization specific data engineering standards. Description asks for a skill for analytics engineers building dbt models on Microsoft Fabric, covering bronze/silver/gold modeling rules, naming conventions, incremental strategy, SCD2 snapshot guidance, semantic model handoff, and CI review expectations.
 
-Return raw JSON only. Use this exact envelope shape:
+Return raw JSON only. Do not emit markdown, code fences, summaries,
+intermediate JSON, or any text outside the final object. Use this exact
+envelope shape:
 
 {
   "status": "research_complete",
@@ -57,6 +59,7 @@ exhaustive.
 Every choice object must use exactly these fields: `id`, `text`, and
 `is_other`. Each choice `id` must be a string using the question ID plus a
 letter, such as `"Q1A"` or `"Q2D"`. Never omit a choice `id`.
+Do not use `value`, `label`, `option`, or any other choice field name.
 
 Use canonical question fields only: `id`, `title`, `text`, `must_answer`,
 `choices`, and `refinements`. Do not use `options`, `label`, `required`, or
