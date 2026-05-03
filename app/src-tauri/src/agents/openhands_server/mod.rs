@@ -302,27 +302,17 @@ async fn run_conversation_task_inner(
         .map_err(|e| format!("Failed to run OpenHands Agent Server conversation: {e}"))?;
 
     let mut terminal_state: Option<serde_json::Value> = None;
+    let mut cancel_pending = false;
     loop {
         tokio::select! {
-            _ = &mut *cancel_rx => {
+            _ = &mut *cancel_rx, if !cancel_pending => {
                 task.client
                     .pause_conversation(&task.conversation_id)
                     .await
                     .map_err(|e| format!("Failed to pause OpenHands Agent Server conversation: {e}"))?;
-                let cancel_state = serde_json::json!({
-                    "type": "conversation_state",
-                    "runtime": "openhands",
-                    "agent_id": task.agent_id,
-                    "conversation_id": task.conversation_id,
-                    "status": "cancelled",
-                    "timestamp": chrono::Utc::now().timestamp_millis(),
-                    "error_detail": "OpenHands one-shot run cancelled",
-                    "result_text": null,
-                    "structured_output": null,
-                });
-                super::events::handle_sidecar_message(&task.app, &task.agent_id, &cancel_state.to_string());
-                super::events::handle_agent_shutdown(&task.app, &task.agent_id);
-                return Ok(());
+                // Continue reading the WebSocket — the server will stream back a PauseEvent
+                // which normalize_server_event maps to conversation_state(status="cancelled").
+                cancel_pending = true;
             }
             message = ws_read.next() => {
                 let Some(message) = message else {

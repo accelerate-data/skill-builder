@@ -68,9 +68,14 @@ fn terminal_status(raw: &serde_json::Value) -> Option<&'static str> {
     match raw.get("type").and_then(|value| value.as_str()) {
         Some("run_completed" | "conversation_completed") => Some("completed"),
         Some("run_failed" | "conversation_failed" | "error") => Some("error"),
-        Some("run_cancelled" | "run_canceled" | "run_paused" | "conversation_paused") => {
-            Some("cancelled")
-        }
+        Some(
+            "run_cancelled"
+            | "run_canceled"
+            | "run_paused"
+            | "conversation_paused"
+            | "PauseEvent"
+            | "pause_event",
+        ) => Some("cancelled"),
         _ => None,
     }
 }
@@ -190,6 +195,19 @@ mod tests {
         assert_eq!(cancelled["type"], "conversation_state");
         assert_eq!(cancelled["status"], "cancelled");
         assert_eq!(cancelled["error_detail"], "user requested pause");
+
+        // PauseEvent is the SDK's real user action event; must be treated as terminal cancelled.
+        let pause_event = normalize_server_event(
+            "agent-1",
+            "conversation-1",
+            &serde_json::json!({
+                "type": "PauseEvent",
+                "event_class": "PauseEvent",
+                "source": "user"
+            }),
+        );
+        assert_eq!(pause_event["type"], "conversation_state");
+        assert_eq!(pause_event["status"], "cancelled");
     }
 
     #[test]
