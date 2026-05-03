@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 import crypto from "node:crypto";
 
@@ -12,16 +12,21 @@ if (!enabled) {
   process.exit(0);
 }
 
-const model = process.env.OPENHANDS_LIVE_SMOKE_MODEL;
+const dbSettings = readDbModelSettings();
+const model = process.env.OPENHANDS_LIVE_SMOKE_MODEL ?? dbSettings.model;
 const apiKey =
   process.env.OPENHANDS_LIVE_SMOKE_API_KEY ??
   process.env.ANTHROPIC_API_KEY ??
   process.env.OPENAI_API_KEY ??
-  process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY ??
+  dbSettings.apiKey;
+const baseUrl = process.env.OPENHANDS_LIVE_SMOKE_BASE_URL ?? dbSettings.baseUrl;
+const apiVersion = process.env.OPENHANDS_LIVE_SMOKE_API_VERSION ?? dbSettings.apiVersion;
+const extraHeaders = dbSettings.extraHeaders;
 
 if (!model || !apiKey) {
   console.error(
-    "Missing OPENHANDS_LIVE_SMOKE_MODEL and OPENHANDS_LIVE_SMOKE_API_KEY, or a provider API key env var.",
+    "Missing live smoke model/API key. Set OPENHANDS_LIVE_SMOKE_MODEL and OPENHANDS_LIVE_SMOKE_API_KEY, or configure Settings in the app DB.",
   );
   process.exit(1);
 }
@@ -49,12 +54,16 @@ const server = spawn(
     String(port),
   ],
   {
+    cwd: workspace,
     env: {
       ...process.env,
       OPENHANDS_SUPPRESS_BANNER: "1",
       SESSION_API_KEY: sessionApiKey,
       OH_SESSION_API_KEYS_0: sessionApiKey,
       OH_SECRET_KEY: sessionApiKey,
+      TMPDIR: "/tmp",
+      TMP: "/tmp",
+      TEMP: "/tmp",
     },
     stdio: ["ignore", "pipe", "pipe"],
   },
@@ -65,7 +74,16 @@ server.stderr.on("data", (chunk) => stderr.push(String(chunk)));
 
 try {
   await waitForHealth(port);
-  const conversation = await createConversation({ port, sessionApiKey, workspace, model, apiKey });
+  const conversation = await createConversation({
+    port,
+    sessionApiKey,
+    workspace,
+    model,
+    apiKey,
+    baseUrl,
+    apiVersion,
+    extraHeaders,
+  });
   const conversationId = conversation.id ?? conversation.conversation_id ?? conversation.conversationId;
   if (!conversationId) {
     throw new Error(`Create conversation response did not include an id: ${JSON.stringify(conversation)}`);
@@ -81,10 +99,7 @@ try {
   const socketDone = waitForSocketTerminal(socket, observed);
   await waitForSocketOpen(socket);
   socket.send(JSON.stringify({ type: "auth", session_api_key: sessionApiKey }));
-  await apiFetch(port, sessionApiKey, `/api/conversations/${conversationId}/run`, {
-    method: "POST",
-    body: "{}",
-  });
+  await runConversation(port, sessionApiKey, conversationId);
   await socketDone;
 
   if (!observed.progress) {
@@ -98,7 +113,7 @@ try {
   console.log(`PASS: Agent Server smoke completed with terminal event ${JSON.stringify(observed.terminalEvent)}`);
 } finally {
   server.kill("SIGTERM");
-  await rm(workspace, { recursive: true, force: true });
+  await cleanupWorkspace(workspace);
 }
 
 async function reservePort() {
@@ -132,7 +147,26 @@ async function waitForHealth(port) {
   throw new Error(`Timed out waiting for Agent Server health:\n${stderr.join("")}`);
 }
 
-async function createConversation({ port, sessionApiKey, workspace, model, apiKey }) {
+async function createConversation({
+  port,
+  sessionApiKey,
+  workspace,
+  model,
+  apiKey,
+  baseUrl,
+  apiVersion,
+  extraHeaders,
+}) {
+  const llm = {
+    model,
+    api_key: apiKey,
+  };
+  if (baseUrl) llm.base_url = baseUrl;
+  if (apiVersion) llm.api_version = apiVersion;
+  if (extraHeaders && Object.keys(extraHeaders).length > 0) {
+    llm.extra_headers = extraHeaders;
+  }
+
   const body = {
     workspace: {
       kind: "LocalWorkspace",
@@ -148,7 +182,7 @@ async function createConversation({ port, sessionApiKey, workspace, model, apiKe
       ],
       run: false,
     },
-    max_iterations: 3,
+    max_iterations: 8,
     stuck_detection: true,
     confirmation_policy: {
       kind: "NeverConfirm",
@@ -159,13 +193,18 @@ async function createConversation({ port, sessionApiKey, workspace, model, apiKe
     },
     agent: {
       kind: "Agent",
-      llm: {
-        model,
-        api_key: apiKey,
-      },
+      llm,
       tools: [
         {
-          name: "BashTool",
+          name: "file_editor",
+          params: {},
+        },
+        {
+          name: "terminal",
+          params: {},
+        },
+        {
+          name: "task_tracker",
           params: {},
         },
       ],
@@ -177,6 +216,68 @@ async function createConversation({ port, sessionApiKey, workspace, model, apiKe
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+async function runConversation(port, sessionApiKey, conversationId) {
+  const response = await fetch(`http://127.0.0.1:${port}/api/conversations/${conversationId}/run`, {
+    method: "POST",
+    headers: {
+      "X-Session-API-Key": sessionApiKey,
+    },
+  });
+  if (response.status === 409) {
+    return;
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`POST /api/conversations/${conversationId}/run failed (${response.status}): ${text}`);
+  }
+}
+
+function readDbModelSettings() {
+  const dbPath =
+    process.env.SKILL_BUILDER_DB_PATH ??
+    path.join(
+      homedir(),
+      "Library",
+      "Application Support",
+      "com.vibedata.skill-builder",
+      "db",
+      "skill-builder.db",
+    );
+  const query = "select value from settings where key = 'app_settings'";
+  const result = spawnSync("sqlite3", [dbPath, query], {
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.status !== 0 || !result.stdout.trim()) {
+    return {};
+  }
+
+  try {
+    const settings = JSON.parse(result.stdout);
+    const modelSettings = settings.model_settings ?? settings.modelSettings ?? {};
+    return {
+      model: normalizeBlank(modelSettings.model),
+      apiKey: normalizeBlank(modelSettings.api_key ?? modelSettings.apiKey),
+      baseUrl: normalizeBlank(modelSettings.base_url ?? modelSettings.baseUrl),
+      apiVersion: normalizeBlank(modelSettings.api_version ?? modelSettings.apiVersion),
+      extraHeaders: modelSettings.extra_headers ?? modelSettings.extraHeaders,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function normalizeBlank(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+async function cleanupWorkspace(workspace) {
+  spawnSync("chmod", ["-R", "u+rwx", workspace], {
+    encoding: "utf8",
+  });
+  await rm(workspace, { recursive: true, force: true });
 }
 
 async function apiFetch(port, sessionApiKey, route, init) {

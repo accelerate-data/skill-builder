@@ -251,13 +251,13 @@ fn openhands_llm_json(llm: &crate::types::WorkflowLlmConfig) -> serde_json::Valu
     value
 }
 
-fn openhands_tools(working_dir: &str, allowed_tools: &[String]) -> Vec<OpenHandsTool> {
+fn openhands_tools(_working_dir: &str, allowed_tools: &[String]) -> Vec<OpenHandsTool> {
     let normalized = |tool: &str| match tool {
-        "terminal" | "bash" | "Bash" | "TerminalTool" => Some("TerminalTool"),
+        "terminal" | "bash" | "Bash" | "TerminalTool" => Some("terminal"),
         "file_editor" | "FileEditor" | "FileEditorTool" | "Edit" | "Read" | "Write" => {
-            Some("FileEditorTool")
+            Some("file_editor")
         }
-        "task_tracker" | "TaskTrackerTool" => Some("TaskTrackerTool"),
+        "task_tracker" | "TaskTrackerTool" => Some("task_tracker"),
         _ => None,
     };
     let mut names: Vec<&str> = allowed_tools
@@ -265,7 +265,7 @@ fn openhands_tools(working_dir: &str, allowed_tools: &[String]) -> Vec<OpenHands
         .filter_map(|tool| normalized(tool))
         .collect();
     if names.is_empty() {
-        names = vec!["TerminalTool", "FileEditorTool", "TaskTrackerTool"];
+        names = vec!["terminal", "file_editor", "task_tracker"];
     }
     names.sort_unstable();
     names.dedup();
@@ -274,11 +274,7 @@ fn openhands_tools(working_dir: &str, allowed_tools: &[String]) -> Vec<OpenHands
         .into_iter()
         .map(|name| OpenHandsTool {
             name: name.to_string(),
-            params: if name == "TerminalTool" || name == "FileEditorTool" {
-                serde_json::json!({ "working_dir": working_dir })
-            } else {
-                serde_json::json!({})
-            },
+            params: serde_json::json!({}),
         })
         .collect()
 }

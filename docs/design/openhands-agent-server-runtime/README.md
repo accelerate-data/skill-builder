@@ -342,5 +342,5 @@ or replaced in the same branch because they assert deleted behavior.
 - [x] Cancellation signals active Agent Server runs, requests pause, emits a
   cancelled terminal state, and clears the local cancellation registry.
 - [x] A gated live smoke script exists for a real local Agent Server run.
-- [ ] The gated live smoke has been run with model credentials and observed a
+- [x] The gated live smoke has been run with model credentials and observed a
   progress event before terminal state.

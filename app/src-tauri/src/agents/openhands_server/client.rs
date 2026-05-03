@@ -1,5 +1,5 @@
 use super::types::StartConversationRequest;
-use reqwest::{Method, Request, Url};
+use reqwest::{Method, Request, StatusCode, Url};
 
 #[derive(Debug, Clone)]
 pub struct OpenHandsServerClient {
@@ -88,10 +88,14 @@ impl OpenHandsServerClient {
     }
 
     pub async fn run_conversation(&self, conversation_id: &str) -> Result<(), reqwest::Error> {
-        self.http
+        let response = self
+            .http
             .execute(self.build_run_request(conversation_id)?)
-            .await?
-            .error_for_status()?;
+            .await?;
+        if response.status() == StatusCode::CONFLICT {
+            return Ok(());
+        }
+        response.error_for_status()?;
         Ok(())
     }
 
@@ -216,8 +220,8 @@ mod tests {
         assert_eq!(
             json["agent"]["tools"],
             serde_json::json!([
-                {"name": "FileEditorTool", "params": {"working_dir": "/workspace-root/default/lead-routing"}},
-                {"name": "TerminalTool", "params": {"working_dir": "/workspace-root/default/lead-routing"}}
+                {"name": "file_editor", "params": {}},
+                {"name": "terminal", "params": {}}
             ])
         );
         assert_eq!(json["max_iterations"], 8);

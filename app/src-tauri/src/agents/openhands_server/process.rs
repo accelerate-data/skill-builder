@@ -57,6 +57,8 @@ impl OpenHandsServerCommand {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        #[cfg(not(target_os = "windows"))]
+        command.env("TMPDIR", "/tmp").env("TMP", "/tmp").env("TEMP", "/tmp");
         command
     }
 }
@@ -100,6 +102,7 @@ pub struct OpenHandsAgentServerProcess {
     pub port: u16,
     pub session_api_key: String,
     pub _command: OpenHandsServerCommand,
+    _runtime_dir: tempfile::TempDir,
     _child: tokio::process::Child,
 }
 
@@ -181,8 +184,13 @@ impl OpenHandsAgentServerProcess {
         let port = select_random_local_port()?;
         let session_api_key = uuid::Uuid::new_v4().to_string();
         let command = OpenHandsServerCommand::new(port);
+        let runtime_dir = tempfile::Builder::new()
+            .prefix("openhands-agent-server-")
+            .tempdir()
+            .map_err(|e| format!("Failed to create OpenHands Agent Server runtime dir: {e}"))?;
         let mut tokio_command = command.tokio_command();
         tokio_command
+            .current_dir(runtime_dir.path())
             .env("SESSION_API_KEY", &session_api_key)
             .env("OH_SESSION_API_KEYS_0", &session_api_key)
             .env("OH_SECRET_KEY", &session_api_key);
@@ -215,6 +223,7 @@ impl OpenHandsAgentServerProcess {
             port,
             session_api_key,
             _command: command,
+            _runtime_dir: runtime_dir,
             _child: child,
         };
         if let Err(error) = process.wait_until_healthy(timeout).await {
