@@ -8,13 +8,6 @@ use super::*;
 use crate::commands::imported_skills::validate_skill_name;
 use tempfile::tempdir;
 
-#[test]
-fn test_refine_streaming_is_explicitly_unsupported_for_openhands_migration() {
-    assert!(openhands_refine_streaming_unsupported());
-    assert!(OPENHANDS_REFINE_UNSUPPORTED_MESSAGE.contains("OpenHands refine streaming"));
-    assert!(OPENHANDS_REFINE_UNSUPPORTED_MESSAGE.contains("AskUserQuestion"));
-}
-
 // ===== get_skill_content_inner tests =====
 
 #[test]
@@ -221,7 +214,8 @@ fn test_session_create_and_lookup() {
             RefineSession {
                 skill_name: "my-skill".to_string(),
                 usage_session_id: "usage-session-1".to_string(),
-                stream_started: false,
+                conversation_id: None,
+                current_agent_id: None,
                 head_sha_at_start: None,
             },
         );
@@ -244,7 +238,8 @@ fn test_session_conflict_detection() {
             RefineSession {
                 skill_name: "my-skill".to_string(),
                 usage_session_id: "usage-session-1".to_string(),
-                stream_started: false,
+                conversation_id: None,
+                current_agent_id: None,
                 head_sha_at_start: None,
             },
         );
@@ -265,205 +260,12 @@ fn test_session_not_found_returns_none() {
     assert!(map.get("nonexistent").is_none());
 }
 
-// ===== build_refine_config tests =====
-
-fn test_workspace_path() -> String {
-    std::env::temp_dir()
-        .join("vibedata")
-        .join("skill-builder")
-        .to_string_lossy()
-        .to_string()
-}
-
-fn base_refine_config(prompt: &str) -> (crate::agents::sidecar::SidecarConfig, String) {
-    build_refine_config(
-        prompt.to_string(),
-        "my-skill",
-        "usage-session-123",
-        &test_workspace_path(),
-        crate::types::SecretString::new("sk-test-key".to_string()),
-        "sonnet".to_string(),
-        false,
-        true,
-        None,
-        true,
-        "skills",
-    )
-}
-
-#[test]
-fn test_refine_config_has_no_agent() {
-    let (config, _) = base_refine_config("improve metrics");
-    assert!(config.agent_name.is_none());
-    assert!(config.model.is_some());
-}
-
-#[test]
-fn test_refine_config_includes_task_tool_for_streaming_edits() {
-    let (config, _) = base_refine_config("test prompt");
-    let tools = config.allowed_tools.unwrap();
-    assert!(
-        tools.contains(&"Agent".to_string()),
-        "Agent tool required for scoped rewrite delegation and installed skills"
-    );
-}
-
-#[test]
-fn test_refine_config_includes_all_file_tools() {
-    let (config, _) = base_refine_config("edit SKILL.md");
-    let tools = config.allowed_tools.unwrap();
-    for tool in &["Read", "Edit", "Write", "Glob", "Grep"] {
-        assert!(
-            tools.contains(&tool.to_string()),
-            "Missing expected tool: {}",
-            tool
-        );
-    }
-}
-
-#[test]
-fn test_refine_config_cwd_points_to_workspace_root() {
-    let ws = test_workspace_path();
-    let (config, _) = build_refine_config(
-        "test".to_string(),
-        "data-engineering",
-        "usage-session-123",
-        &ws,
-        crate::types::SecretString::new("sk-key".to_string()),
-        "sonnet".to_string(),
-        false,
-        true,
-        None,
-        true,
-        "skills",
-    );
-    assert_eq!(config.workspace_root_dir, ws);
-    assert_eq!(config.workspace_skill_dir, ws);
-}
-
-#[test]
-fn test_refine_config_no_conversation_history() {
-    let (config, _) = base_refine_config("first message");
-    assert!(config.conversation_history.is_none());
-}
-
-#[test]
-fn test_refine_config_agent_id_format() {
-    let (_, agent_id) = base_refine_config("test");
-    assert!(agent_id.starts_with("refine-my-skill-"));
-}
-
-#[test]
-fn test_refine_config_sets_model_directly() {
-    let (config, _) = base_refine_config("test");
-    assert!(config.model.is_some());
-    assert!(config.agent_name.is_none());
-}
-
-#[test]
-fn test_refine_config_uses_stream_max_turns() {
-    let (config, _) = base_refine_config("test");
-    assert_eq!(config.max_turns, Some(REFINE_STREAM_MAX_TURNS));
-}
-
-#[test]
-fn test_refine_config_extended_thinking_sets_budget() {
-    let (config, _) = build_refine_config(
-        "test".to_string(),
-        "my-skill",
-        "session-123",
-        "/skills",
-        crate::types::SecretString::new("sk-key".to_string()),
-        "sonnet".to_string(),
-        true, // extended_thinking enabled
-        true,
-        None,
-        true,
-        "skills",
-    );
-    assert_eq!(
-        config.thinking,
-        Some(serde_json::json!({
-            "type": "enabled",
-            "budgetTokens": 16_000
-        }))
-    );
-}
-
-#[test]
-fn test_refine_config_no_thinking_when_disabled() {
-    let (config, _) = base_refine_config("test");
-    assert!(config.thinking.is_none());
-}
-
-#[test]
-fn test_refine_config_output_format_is_intentionally_unset_for_chat_flow() {
-    let (config, _) = base_refine_config("test");
-    assert!(config.output_format.is_none());
-}
-
-#[test]
-fn test_refine_config_serialization_matches_sidecar_schema() {
-    let (config, _) = base_refine_config("full prompt here");
-    let expected_usage_session_id = "usage-session-123";
-
-    let json = serde_json::to_string(&config).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-
-    assert_eq!(parsed["prompt"], "full prompt here");
-    assert!(parsed.get("agentName").is_none());
-    assert!(parsed.get("model").is_some());
-    assert_eq!(parsed["maxTurns"], REFINE_STREAM_MAX_TURNS);
-    assert!(parsed["allowedTools"]
-        .as_array()
-        .unwrap()
-        .contains(&serde_json::json!("Task")));
-    assert_eq!(parsed["skillName"], "my-skill");
-    assert_eq!(parsed["usageSessionId"], expected_usage_session_id);
-    assert!(parsed.get("conversationHistory").is_none());
-    assert!(parsed.get("sessionId").is_none());
-}
-
-#[test]
-fn test_refine_config_includes_persistence_identity_for_run_summary() {
-    let (config, _) = base_refine_config("improve metrics");
-    assert_eq!(config.skill_name.as_deref(), Some("my-skill"));
-    assert_eq!(
-        config.usage_session_id.as_deref(),
-        Some("usage-session-123")
-    );
-    assert_eq!(config.run_source.as_deref(), Some("refine"));
-}
-
-#[test]
-fn test_refine_config_requires_skill_creator_plugin() {
-    let (config, _) = base_refine_config("improve metrics");
-    assert_eq!(
-        config.required_plugins,
-        Some(vec![
-            "skill-content-researcher".to_string(),
-            "skill-creator".to_string(),
-        ])
-    );
-}
-
 #[test]
 fn test_new_refine_usage_session_id_is_opaque_and_scoped_to_skill() {
     let usage_session_id = new_refine_usage_session_id("my-skill");
 
     assert!(usage_session_id.starts_with("synthetic:refine:my-skill:"));
     assert_ne!(usage_session_id, new_refine_usage_session_id("my-skill"));
-}
-
-#[test]
-fn test_refine_config_serialization_omits_none_fields() {
-    let (config, _) = base_refine_config("test");
-    let json = serde_json::to_string(&config).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-
-    assert!(parsed.get("conversationHistory").is_none());
-    assert!(parsed.get("maxThinkingTokens").is_none());
-    assert!(parsed.get("permissionMode").is_none());
 }
 
 #[test]
@@ -638,7 +440,11 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
 
 #[test]
 fn test_refine_prompt_includes_all_three_paths() {
-    let ws = test_workspace_path();
+    let ws = std::env::temp_dir()
+        .join("vibedata")
+        .join("skill-builder")
+        .to_string_lossy()
+        .to_string();
     let skills = std::env::temp_dir()
         .join("skills")
         .to_string_lossy()
@@ -662,7 +468,7 @@ fn test_refine_prompt_includes_all_three_paths() {
 #[test]
 fn test_refine_prompt_includes_metadata() {
     let system_prompt = build_refine_prompt("my-skill", "/ws", "/skills", "Fix overview", None);
-    assert!(system_prompt.contains("We are writing the skill my-skill"));
+    assert!(system_prompt.contains("We are refining the skill my-skill"));
     assert!(system_prompt.contains("The workspace directory is:"));
     assert!(system_prompt.contains("The skill directory is:"));
 }
@@ -706,19 +512,6 @@ fn test_refine_prompt_no_inline_user_context() {
 }
 
 #[test]
-fn test_refine_prompt_includes_routing() {
-    let system_prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None);
-    assert!(
-        system_prompt.contains("ROUTING"),
-        "prompt must contain ROUTING section"
-    );
-    assert!(
-        system_prompt.contains("skill-creator:rewrite-skill"),
-        "prompt must direct agent to rewrite-skill"
-    );
-}
-
-#[test]
 fn test_close_session_removes_entry() {
     let manager = RefineSessionManager::new();
     let session_id = "to-close".to_string();
@@ -730,7 +523,8 @@ fn test_close_session_removes_entry() {
             RefineSession {
                 skill_name: "my-skill".to_string(),
                 usage_session_id: "usage-session-close".to_string(),
-                stream_started: false,
+                conversation_id: None,
+                current_agent_id: None,
                 head_sha_at_start: None,
             },
         );
@@ -874,76 +668,6 @@ fn test_followup_prompt_file_targeting() {
 fn test_followup_prompt_no_file_constraint_when_empty() {
     let prompt = build_followup_prompt("edit freely", "/sk", "s", None);
     assert!(!prompt.contains("Only edit these files"));
-}
-
-// ===== session stream_started tests =====
-
-#[test]
-fn test_session_stream_started_defaults_to_false() {
-    let manager = RefineSessionManager::new();
-    {
-        let mut map = manager.0.lock().unwrap();
-        map.insert(
-            "s1".to_string(),
-            RefineSession {
-                skill_name: "my-skill".to_string(),
-                usage_session_id: "usage-session-stream".to_string(),
-                stream_started: false,
-                head_sha_at_start: None,
-            },
-        );
-    }
-    let map = manager.0.lock().unwrap();
-    assert!(!map.get("s1").unwrap().stream_started);
-}
-
-#[test]
-fn test_session_stream_started_can_be_set() {
-    let manager = RefineSessionManager::new();
-    {
-        let mut map = manager.0.lock().unwrap();
-        map.insert(
-            "s1".to_string(),
-            RefineSession {
-                skill_name: "my-skill".to_string(),
-                usage_session_id: "usage-session-stream".to_string(),
-                stream_started: false,
-                head_sha_at_start: None,
-            },
-        );
-    }
-    {
-        let mut map = manager.0.lock().unwrap();
-        if let Some(session) = map.get_mut("s1") {
-            session.stream_started = true;
-        }
-    }
-    let map = manager.0.lock().unwrap();
-    assert!(map.get("s1").unwrap().stream_started);
-}
-
-#[test]
-fn test_completed_turn_does_not_close_or_reset_stream_started_session() {
-    let manager = RefineSessionManager::new();
-    {
-        let mut map = manager.0.lock().unwrap();
-        map.insert(
-            "s1".to_string(),
-            RefineSession {
-                skill_name: "my-skill".to_string(),
-                usage_session_id: "usage-session-stream".to_string(),
-                stream_started: true,
-                head_sha_at_start: None,
-            },
-        );
-    }
-
-    let map = manager.0.lock().unwrap();
-    let session = map
-        .get("s1")
-        .expect("session should remain open after a turn completes");
-    assert_eq!(session.skill_name, "my-skill");
-    assert!(session.stream_started);
 }
 
 #[test]
@@ -1619,4 +1343,54 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
 
     let version = crate::git::latest_skill_semver(dir.path(), plugin, "tag-fix-skill").unwrap();
     assert_eq!(version, "1.0.1", "fixup should not cause double-bump");
+}
+
+// ===== OpenHands refine tests =====
+
+#[test]
+fn test_refine_session_holds_conversation_and_agent_ids() {
+    let session = RefineSession {
+        skill_name: "my-skill".to_string(),
+        usage_session_id: "usage-1".to_string(),
+        conversation_id: Some("conv-123".to_string()),
+        current_agent_id: Some("agent-456".to_string()),
+        head_sha_at_start: None,
+    };
+    assert_eq!(session.conversation_id.as_deref(), Some("conv-123"));
+    assert_eq!(session.current_agent_id.as_deref(), Some("agent-456"));
+}
+
+#[test]
+fn test_refine_initial_prompt_has_no_claude_code_routing() {
+    let prompt = build_refine_prompt("my-skill", "/ws", "/sk", "edit", None);
+    assert!(
+        !prompt.contains("AskUserQuestion"),
+        "OpenHands prompt must not reference AskUserQuestion: {}",
+        prompt
+    );
+    assert!(
+        !prompt.contains("rewrite-skill"),
+        "OpenHands prompt must not direct to skill-creator:rewrite-skill agent: {}",
+        prompt
+    );
+    assert!(
+        !prompt.contains("via the Agent tool"),
+        "OpenHands prompt must not reference the Agent tool: {}",
+        prompt
+    );
+}
+
+#[test]
+fn test_refine_initial_prompt_includes_eval_feedback_guidance() {
+    let prompt = build_refine_prompt("my-skill", "/ws", "/sk", "edit", None);
+    assert!(
+        prompt.contains("eval failure feedback"),
+        "OpenHands prompt should describe how to handle eval feedback: {}",
+        prompt
+    );
+    assert!(
+        prompt.contains("plain text"),
+        "OpenHands prompt should instruct plain-text response (no tool interrupt): {}",
+        prompt
+    );
 }
