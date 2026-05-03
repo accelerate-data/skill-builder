@@ -194,26 +194,61 @@ Calls `ensure_agent_server`, builds client, calls `client.delete_conversation(co
 
 ### `build_openhands_one_shot_config` call
 
+Refine reuses the **same** `skill-creator` agent setup that workflow uses for step 3 (`skill_generation`). The only difference is the conversation lifecycle (multi-turn vs one-shot). Every other knob — agent name, allowed tools, user-message suffix, workspace layout, max_turns — matches `build_workflow_generate_skill_sidecar_config` in `commands/workflow/runtime.rs`.
+
 ```rust
-build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
-    prompt: initial_message,            // turn 1 only; turn N uses send_event
-    llm: runtime_ctx.llm,
-    workspace_root_dir: skill_dir_str.clone(),
-    workspace_run_dir: skill_dir_str,   // agent's cwd = the skill directory
+let workspace_skill_dir_str = crate::skill_paths::workspace_skill_dir(
+    Path::new(&runtime_ctx.workspace_path),
+    plugin_slug,
+    skill_name,
+)
+.to_string_lossy()
+.replace('\\', "/");
+
+let mut config = build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+    prompt,                             // turn 1 = full initial; turn N = followup
+    llm: runtime_ctx.llm.clone(),
+    workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
+    workspace_run_dir: workspace_skill_dir_str.clone(),
     agent_name: "skill-creator".to_string(),
     task_kind: Some("refine".to_string()),
+    user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
     allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
-    max_turns: 50,
+    max_turns: 500,
     output_format: None,
     skill_name: Some(skill_name.to_string()),
     step_id: Some(-10),
     run_source: Some("refine".to_string()),
     plugin_slug: plugin_slug.to_string(),
-    user_message_suffix: None,
-})
+});
+config.transcript_log_dir = Some(format!("{workspace_skill_dir_str}/logs"));
 ```
 
-`workspace_root_dir` and `workspace_run_dir` both point to the resolved skill directory (`{skills_path}/{plugin_slug}/{skill_name}`). The agent's working directory IS the skill — it reads and writes SKILL.md and references/ relative to its working directory.
+| Field | Value | Source |
+|---|---|---|
+| `workspace_root_dir` | `runtime_ctx.workspace_path` (e.g. `~/.vibedata`) | matches workflow |
+| `workspace_run_dir` | `workspace_skill_dir(workspace, plugin, skill)` (e.g. `~/.vibedata/skill-creator/{skill}`) | matches workflow |
+| `agent_name` | `skill-creator` | matches workflow step 3 |
+| `user_message_suffix` | `SKILL_CREATOR_USER_SUFFIX` from `agent-sources/prompts/skill-creator-user-suffix.txt` | matches workflow + scope_review |
+| `allowed_tools` | `["file_editor", "terminal"]` | matches `skill_generation_workflow_tools()` |
+| `max_turns` | `500` | matches workflow step 3 |
+| `task_kind` | `refine` | refine-specific namespace |
+| `step_id` | `-10` | refine-specific sentinel |
+| `run_source` | `refine` | refine-specific tag |
+| `transcript_log_dir` | `{workspace_skill_dir}/logs` | matches workflow |
+
+The agent's CWD is the **workspace** skill dir (`~/.vibedata/{plugin}/{skill}`), not the source skills repo. The prompt template substitutes `{{skill_dir}}` with the absolute skills-repo path so the agent reads/writes SKILL.md and references at their canonical location while still running with workspace context (user-context.md, transcripts) co-located.
+
+`SKILL_CREATOR_USER_SUFFIX` is included at the top of `commands/refine/mod.rs`:
+
+```rust
+const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/skill-creator-user-suffix.txt"
+));
+```
+
+This duplicates the constant already defined in `commands/workflow/runtime.rs` and `commands/skill/scope_review.rs` — matching the existing convention rather than introducing a shared module.
 
 ### `write_user_context_file` retention
 

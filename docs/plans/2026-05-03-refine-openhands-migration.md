@@ -518,7 +518,7 @@ fn openhands_refine_streaming_unsupported() -> bool {
 }
 ```
 
-- [ ] **Step 2: Update imports**
+- [ ] **Step 2: Update imports + add `SKILL_CREATOR_USER_SUFFIX`**
 
 Replace the existing imports at the top of `mod.rs` (lines 7-17):
 
@@ -550,7 +550,14 @@ use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::RefineSessionInfo;
 
 use protocol::*;
+
+const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/skill-creator-user-suffix.txt"
+));
 ```
+
+This duplicates the constant from `commands/workflow/runtime.rs` and `commands/skill/scope_review.rs` — matching the existing convention.
 
 - [ ] **Step 3: Replace `send_refine_message`**
 
@@ -640,37 +647,38 @@ pub async fn send_refine_message(
         )
     };
 
-    let skill_dir_str = skill_output_dir.to_string_lossy().replace('\\', "/");
-    let config = build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+    let workspace_skill_dir_str = crate::skill_paths::workspace_skill_dir(
+        Path::new(&runtime_ctx.workspace_path),
+        &resolved_plugin_slug,
+        &skill_name,
+    )
+    .to_string_lossy()
+    .replace('\\', "/");
+
+    let mut config = build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
         prompt,
         llm: runtime_ctx.llm.clone(),
-        workspace_root_dir: skill_dir_str.clone(),
-        workspace_run_dir: skill_dir_str.clone(),
+        workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
+        workspace_run_dir: workspace_skill_dir_str.clone(),
         agent_name: "skill-creator".to_string(),
         task_kind: Some("refine".to_string()),
-        user_message_suffix: None,
+        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
         allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
-        max_turns: 50,
+        max_turns: 500,
         output_format: None,
         skill_name: Some(skill_name.clone()),
         step_id: Some(-10),
         run_source: Some("refine".to_string()),
         plugin_slug: resolved_plugin_slug.clone(),
     });
+    config.transcript_log_dir = Some(format!("{workspace_skill_dir_str}/logs"));
 
     let agent_id = format!(
         "refine-{}-{}",
         skill_name,
         chrono::Utc::now().timestamp_millis()
     );
-    let log_dir = crate::skill_paths::workspace_skill_dir(
-        Path::new(&runtime_ctx.workspace_path),
-        &resolved_plugin_slug,
-        &skill_name,
-    )
-    .join("logs")
-    .to_string_lossy()
-    .into_owned();
+    let log_dir = format!("{workspace_skill_dir_str}/logs");
 
     let returned_conversation_id = crate::agents::openhands_server::dispatch_openhands_refine_turn(
         &app,
