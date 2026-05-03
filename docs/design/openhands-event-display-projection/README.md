@@ -2,34 +2,37 @@
 functional-specs: []
 ---
 
-# Refine Chat Rendering for OpenHands Events
+# OpenHands Event Display Projection
 
 > **Status:** Draft
 
 ## Overview
 
-Once VU-1155 wired the Refine tab to the OpenHands Agent Server multi-turn conversation, every refine turn ran to completion on the backend but **nothing rendered in the chat panel**. The cause is a frontend rendering gap: the chat panel's `AgentTurnInline` was designed around the Claude Code `DisplayItem` shape (a transformed event format produced by the Node sidecar), and OpenHands events arrive on the wire as `conversation_event` payloads with an `event_class` discriminator that land in `run.conversationEvents`, not `run.displayItems`.
+OpenHands events arrive on the wire as `conversation_event` payloads with an `event_class` discriminator and land on `run.conversationEvents` in the frontend agent-store. The existing UI surfaces — Refine chat (`agent-turn-inline`), Workflow output panel (`agent-output-panel`), feedback dialog, status header, structured-output extraction — were all designed around the Claude Code `DisplayItem` shape (a transformed event format produced by the Node sidecar) on `run.displayItems`. After the OpenHands runtime migration, every run completes successfully on the backend but the UI either renders nothing (Refine) or renders a dense, unreadable raw-event timeline (Workflow's `agent-output-panel` via `ConversationEventList`).
 
-The first attempt at a fix replaced `DisplayItemList` with `ConversationEventList` in `agent-turn-inline.tsx`. That made events visible but produced a dense raw-event timeline — 30–45 cards per turn, with system prompts and intermediate state updates equally weighted with assistant messages. Unreadable as a chat.
+This design defines a **product-wide projection rule**: an agent-store layer that converts every incoming OpenHands `conversation_event` into one or more `DisplayItem` mutations on `run.displayItems`, while preserving the raw native event stream on `run.conversationEvents` as an immutable audit trail. All UI surfaces consume `displayItems` uniformly via the existing `BaseItem` / `ToolItem` / `SubagentItem` / `ThinkingItem` / `OutputItem` / `ToolActivityGroupView` component set. There is no new design system, no toggle, no per-page rendering logic.
 
-This design replaces both approaches with a **projection layer in the agent-store** that converts raw OpenHands events into the existing `DisplayItem` shape, so the chat keeps using `BaseItem`, `ToolItem`, `SubagentItem`, `ThinkingItem`, `OutputItem`, and `ToolActivityGroupView` — the components that already define the chat UX on main. No new design system. No toggle. The native event stream stays available as an audit trail; the visible chat is the projection.
+The decision was surfaced by the VU-1155 Refine migration but applies to **every UI surface that displays an OpenHands run** — Refine chat, Workflow output, feedback dialog, scope review chat, description optimization, and any future surface.
 
 ## Design Scope
 
 **Covers**
 
-- Agent-store projection: pair `ActionEvent` + `ObservationEvent` by `tool_call_id` and synthesize one `DisplayItem` per pair
-- Filter rules for noise event classes (SystemPromptEvent, Condensation*, ConversationStateUpdateEvent, user MessageEvent)
+- A single store-level projection that runs for every OpenHands run regardless of `run_source`
+- Lossless contract: every `conversation_event` produces at least one `DisplayItem` mutation; the projection decides visual weight, never filters
+- Pairing of `ActionEvent` + `ObservationEvent` by `tool_call_id` into a single `DisplayItem`
+- Mapping rules per OpenHands `event_class` and `tool_name` (file_editor / terminal / invoke_skill / think / etc.)
 - Result-summary detectors that produce a one-line outcome from `result_text` / `structured_output` for terminal `conversation_state`
-- Lifecycle chip in the chat header bound to `runs[agentId].status` (replaces lifecycle-as-timeline-card)
-- Revert of `agent-turn-inline.tsx` to read `run.displayItems` (the projection target)
-- `run.conversationEvents` retained unchanged as the raw audit trail
+- Lifecycle chip bound to `runs[agentId].status` on chat-style surfaces (replaces lifecycle-as-timeline-card)
+- Migration of all production UI consumers to read `displayItems` exclusively (Refine `agent-turn-inline`, Workflow `agent-output-panel`, feedback dialog, status header)
+- Retention of `run.conversationEvents` as an immutable raw audit trail with no production consumer post-migration
 
 **Does not cover**
 
-- New rendering components — the existing component set on main is the visual surface
-- Workflow surfaces — `agent-output-panel` continues to read `conversationEvents` directly via `ConversationEventList` for power-user runs
-- Translation of historical Claude Code-shaped `displayItems` (no longer produced)
+- New rendering components — the existing component set on `main` is the visual surface for every UI consumer
+- A toggle between "beautified" and "raw" rendering — the projected view is the only production path
+- Translation of historical Claude Code-shaped `displayItems` (the Claude Code sidecar runtime is being removed in the broader VU-1145 migration; this design assumes OpenHands events as the only future input)
+- A new dev-tools / debug surface that reads `conversationEvents` directly (out of scope; `ConversationEventList` is retained as the rendering primitive for that future surface)
 
 ## Key Decisions
 
@@ -171,7 +174,8 @@ Mutating in place preserves React keys and any user-controlled expand state.
 
 | Spec | Relationship |
 |---|---|
-| `docs/design/refine-openhands-migration/README.md` | Parent migration. Wired the multi-turn conversation. This spec resolves the rendering gap that surfaced after the wire-up. |
+| `docs/design/openhands-native-migration/README.md` | Umbrella OpenHands migration. This spec is the cross-surface rendering decision triggered by the runtime migration. Every UI surface that displayed Claude Code runs now consumes the projected DisplayItems for OpenHands runs. |
+| `docs/design/refine-openhands-migration/README.md` | Refine-specific migration. Surfaced this rendering gap; consumes the projection but does not own it. |
 | `docs/design/openhands-agent-server-runtime/README.md` | Defines the event shapes (`conversation_event`, `event_class`) this projection consumes. |
 | Sidecar `app/sidecar/display-types.ts` | Canonical definition of `DisplayItem`. The projection produces values matching this shape verbatim. The frontend mirror at `app/src/lib/display-types.ts` stays in sync. |
 

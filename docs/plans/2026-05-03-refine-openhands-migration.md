@@ -1425,9 +1425,11 @@ Run before claiming completion:
 
 ---
 
-## Task 12: OpenHands → DisplayItem chat projection (lossless)
+## Task 12: OpenHands → DisplayItem display projection (lossless, product-wide)
 
-**Spec:** `docs/design/refine-openhands-chat-rendering/README.md`
+**Spec:** `docs/design/openhands-event-display-projection/README.md`
+
+This task is product-wide, not refine-specific. The projection runs for every OpenHands run; every UI surface (Refine, Workflow output, feedback dialog, status header) switches to consume the projected `displayItems`. Refine is the surface where the rendering gap surfaced, but the fix lands across all consumers.
 
 **Core invariant:** No `conversation_event` is dropped. Every event lands in `run.conversationEvents` (raw audit trail) AND every event is projected into one or more `DisplayItem` mutations on `run.displayItems`. The projection only decides **visual weight**, never filters. All UI surfaces (refine chat AND workflow output panel) read `displayItems` exclusively.
 
