@@ -96,6 +96,75 @@ pub fn prune_transcript_files(workspace_path: &str) {
     use chrono::Local;
     use std::path::Path;
 
+    fn prune_logs_dir(
+        logs_dir: &Path,
+        skill_label: &str,
+        today: chrono::NaiveDate,
+    ) -> u32 {
+        let mut skill_pruned: u32 = 0;
+        let log_entries = match std::fs::read_dir(logs_dir) {
+            Ok(e) => e,
+            Err(e) => {
+                log::warn!(
+                    "Transcript pruning: failed to read logs dir for '{}': {}",
+                    skill_label,
+                    e
+                );
+                return 0;
+            }
+        };
+
+        for log_entry in log_entries.flatten() {
+            let log_path = log_entry.path();
+
+            // Only target .jsonl files
+            if log_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+
+            let metadata = match std::fs::metadata(&log_path) {
+                Ok(m) => m,
+                Err(e) => {
+                    log::warn!(
+                        "Transcript pruning: failed to read metadata for '{}': {}",
+                        log_path.display(),
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            let modified = match metadata.modified() {
+                Ok(t) => t,
+                Err(e) => {
+                    log::warn!(
+                        "Transcript pruning: failed to get mtime for '{}': {}",
+                        log_path.display(),
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            let modified_date: chrono::NaiveDate =
+                chrono::DateTime::<Local>::from(modified).date_naive();
+
+            if modified_date < today {
+                if let Err(e) = std::fs::remove_file(&log_path) {
+                    log::warn!(
+                        "Transcript pruning: failed to delete '{}': {}",
+                        log_path.display(),
+                        e
+                    );
+                } else {
+                    skill_pruned += 1;
+                }
+            }
+        }
+
+        skill_pruned
+    }
+
     let workspace = Path::new(workspace_path);
     if !workspace.exists() {
         return;
@@ -116,6 +185,17 @@ pub fn prune_transcript_files(workspace_path: &str) {
     for plugin_entry in plugin_entries.flatten() {
         let plugin_path = plugin_entry.path();
         if !plugin_path.is_dir() {
+            continue;
+        }
+
+        let legacy_logs_dir = plugin_path.join("logs");
+        if legacy_logs_dir.is_dir() {
+            let skill_label = plugin_entry.file_name().to_string_lossy().to_string();
+            let skill_pruned = prune_logs_dir(&legacy_logs_dir, &skill_label, today);
+            if skill_pruned > 0 {
+                pruned += skill_pruned;
+                skills_affected += 1;
+            }
             continue;
         }
 
@@ -148,69 +228,7 @@ pub fn prune_transcript_files(workspace_path: &str) {
                 skill_entry.file_name().to_string_lossy()
             );
 
-            let mut skill_pruned: u32 = 0;
-
-            let log_entries = match std::fs::read_dir(&logs_dir) {
-                Ok(e) => e,
-                Err(e) => {
-                    log::warn!(
-                        "Transcript pruning: failed to read logs dir for '{}': {}",
-                        skill_label,
-                        e
-                    );
-                    continue;
-                }
-            };
-
-            for log_entry in log_entries.flatten() {
-                let log_path = log_entry.path();
-
-                // Only target .jsonl files
-                if log_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
-                    continue;
-                }
-
-                // Check modification time
-                let metadata = match std::fs::metadata(&log_path) {
-                    Ok(m) => m,
-                    Err(e) => {
-                        log::warn!(
-                            "Transcript pruning: failed to read metadata for '{}': {}",
-                            log_path.display(),
-                            e
-                        );
-                        continue;
-                    }
-                };
-
-                let modified = match metadata.modified() {
-                    Ok(t) => t,
-                    Err(e) => {
-                        log::warn!(
-                            "Transcript pruning: failed to get mtime for '{}': {}",
-                            log_path.display(),
-                            e
-                        );
-                        continue;
-                    }
-                };
-
-                let modified_date: chrono::NaiveDate =
-                    chrono::DateTime::<Local>::from(modified).date_naive();
-
-                if modified_date < today {
-                    if let Err(e) = std::fs::remove_file(&log_path) {
-                        log::warn!(
-                            "Transcript pruning: failed to delete '{}': {}",
-                            log_path.display(),
-                            e
-                        );
-                    } else {
-                        skill_pruned += 1;
-                    }
-                }
-            }
-
+            let skill_pruned = prune_logs_dir(&logs_dir, &skill_label, today);
             if skill_pruned > 0 {
                 pruned += skill_pruned;
                 skills_affected += 1;
@@ -240,6 +258,23 @@ mod tests {
     /// the given name and set its modification time to `days_ago` days in the past.
     fn create_jsonl(workspace: &Path, plugin: &str, skill: &str, filename: &str, days_ago: i64) {
         let logs_dir = workspace.join(plugin).join(skill).join("logs");
+        fs::create_dir_all(&logs_dir).unwrap();
+        let file_path = logs_dir.join(filename);
+        fs::write(&file_path, r#"{"type":"test"}"#).unwrap();
+
+        if days_ago > 0 {
+            let past = std::time::SystemTime::now()
+                - std::time::Duration::from_secs(days_ago as u64 * 86400);
+            let file = fs::File::options().write(true).open(&file_path).unwrap();
+            file.set_times(fs::FileTimes::new().set_accessed(past).set_modified(past))
+                .unwrap();
+        }
+    }
+
+    /// Helper: create a `.jsonl` file inside the legacy flat layout
+    /// `{workspace}/{skill}/logs/`.
+    fn create_flat_jsonl(workspace: &Path, skill: &str, filename: &str, days_ago: i64) {
+        let logs_dir = workspace.join(skill).join("logs");
         fs::create_dir_all(&logs_dir).unwrap();
         let file_path = logs_dir.join(filename);
         fs::write(&file_path, r#"{"type":"test"}"#).unwrap();
@@ -340,6 +375,27 @@ mod tests {
         assert!(
             !nested_logs.join("old.jsonl").exists(),
             "Nested plugin/skill transcript logs should be pruned"
+        );
+    }
+
+    #[test]
+    fn test_prune_legacy_flat_skill_layout() {
+        let tmp = tempdir().unwrap();
+        let workspace = tmp.path();
+
+        create_flat_jsonl(workspace, "legacy-skill", "old.jsonl", 3);
+        create_flat_jsonl(workspace, "legacy-skill", "today.jsonl", 0);
+
+        prune_transcript_files(workspace.to_str().unwrap());
+
+        let logs_dir = workspace.join("legacy-skill").join("logs");
+        assert!(
+            !logs_dir.join("old.jsonl").exists(),
+            "Legacy flat-layout transcript logs should still be pruned during upgrade"
+        );
+        assert!(
+            logs_dir.join("today.jsonl").exists(),
+            "Current-day logs should still be retained in the legacy flat layout"
         );
     }
 
