@@ -281,7 +281,6 @@ mod tests {
             workflow_session_id: Some("workflow-1".to_string()),
             usage_session_id: None,
             run_source: Some("workflow".to_string()),
-            transcript_log_dir: None,
             persistence_dir: None,
             plugin_slug: "default".to_string(),
             runtime_provider: Some("openhands".to_string()),

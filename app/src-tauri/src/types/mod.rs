@@ -143,7 +143,6 @@ mod tests {
             usage_session_id: None,
             run_source: None,
             plugin_slug: "skills".to_string(),
-            transcript_log_dir: None,
             persistence_dir: None,
             runtime_provider: None,
             task_kind: None,

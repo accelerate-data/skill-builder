@@ -276,7 +276,7 @@ pub async fn send_refine_message(
     .to_string_lossy()
     .replace('\\', "/");
 
-    let mut config = build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+    let config = build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
         prompt,
         llm: runtime_ctx.llm.clone(),
         workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
@@ -292,9 +292,6 @@ pub async fn send_refine_message(
         run_source: Some("refine".to_string()),
         plugin_slug: resolved_plugin_slug.clone(),
     });
-    let log_dir = format!("{workspace_skill_dir_str}/logs");
-    config.transcript_log_dir = Some(log_dir.clone());
-
     let agent_id = format!(
         "refine-{}-{}",
         skill_name,
@@ -306,7 +303,6 @@ pub async fn send_refine_message(
         &agent_id,
         config,
         conversation_id,
-        Some(&log_dir),
     )
     .await?;
 

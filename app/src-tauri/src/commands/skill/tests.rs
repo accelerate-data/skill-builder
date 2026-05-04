@@ -168,9 +168,11 @@ fn test_create_skill_filesystem_phase_does_not_write_db_records() {
 
     create_skill_filesystem_inner(workspace_path, "fs-only-skill", Some(skills_path)).unwrap();
 
-    assert!(flat_skill(workspace_path, "fs-only-skill")
+    // context/ subdir is no longer created on skill creation (removed in VU-1157 aftermath).
+    assert!(flat_skill(workspace_path, "fs-only-skill").is_dir());
+    assert!(!flat_skill(workspace_path, "fs-only-skill")
         .join("context")
-        .is_dir());
+        .exists());
     assert!(nested_skill(skills_path, "fs-only-skill")
         .join("references")
         .is_dir());
@@ -1075,8 +1077,8 @@ fn test_create_skill_no_collision() {
     // Verify skill output directories were created in skills_path (nested under default plugin)
     let skill_output = nested_skill(skills_path, "new-skill");
     assert!(skill_output.join("references").exists());
-    // Context is workspace-owned (flat layout).
-    assert!(flat_skill(workspace, "new-skill").join("context").exists());
+    // context/ subdir is no longer created on skill creation (removed in VU-1157 aftermath).
+    assert!(!flat_skill(workspace, "new-skill").join("context").exists());
 }
 
 #[test]

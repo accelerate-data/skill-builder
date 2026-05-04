@@ -3,7 +3,6 @@ pub mod events;
 pub mod process;
 pub mod types;
 
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use futures::{SinkExt, StreamExt};
@@ -23,9 +22,7 @@ pub struct OpenHandsOneShotRunParams {
     pub timeout: Duration,
 }
 
-#[allow(dead_code)]
 pub struct OpenHandsOneShotRun {
-    pub transcript_dir: PathBuf,
     pub conversation_state: serde_json::Value,
 }
 
@@ -89,9 +86,7 @@ pub async fn dispatch_openhands_one_shot(
     app: &tauri::AppHandle,
     agent_id: &str,
     config: SidecarConfig,
-    transcript_log_dir: Option<&str>,
-) -> Result<PathBuf, String> {
-    let persistence_path = create_openhands_persistence_dir(agent_id, &config, transcript_log_dir)?;
+) -> Result<(), String> {
     let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
     let start_request = StartConversationRequest::from_one_shot(&request);
 
@@ -147,7 +142,7 @@ pub async fn dispatch_openhands_one_shot(
         }
     });
 
-    Ok(persistence_path)
+    Ok(())
 }
 
 pub async fn run_openhands_one_shot(
@@ -156,8 +151,6 @@ pub async fn run_openhands_one_shot(
 ) -> Result<OpenHandsOneShotRun, String> {
     let config = params.config;
     let agent_id = format!("{}-{}", params.agent_id_prefix, uuid::Uuid::new_v4());
-    let log_dir = PathBuf::from(&config.workspace_skill_dir).join("logs");
-    let log_dir_str = log_dir.to_string_lossy().into_owned();
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsOneShotEvent>();
     let target_agent_id = agent_id.clone();
@@ -187,7 +180,7 @@ pub async fn run_openhands_one_shot(
         }
     });
 
-    let persistence_dir = dispatch_openhands_one_shot(app, &agent_id, config, Some(&log_dir_str))
+    dispatch_openhands_one_shot(app, &agent_id, config)
         .await
         .inspect_err(|_| {
             app.unlisten(message_listener);
@@ -237,7 +230,6 @@ pub async fn run_openhands_one_shot(
     })?;
 
     Ok(OpenHandsOneShotRun {
-        transcript_dir: persistence_dir,
         conversation_state,
     })
 }
@@ -339,10 +331,7 @@ pub async fn dispatch_openhands_refine_turn(
     agent_id: &str,
     config: SidecarConfig,
     conversation_id: Option<String>,
-    transcript_log_dir: Option<&str>,
 ) -> Result<String, String> {
-    let _persistence_path =
-        create_openhands_persistence_dir(agent_id, &config, transcript_log_dir)?;
     let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
 
     let server = ensure_agent_server(Duration::from_secs(60)).await?;
@@ -764,28 +753,6 @@ async fn fetch_final_response_state(
             "final_response": final_response,
         },
     }))
-}
-
-fn create_openhands_persistence_dir(
-    agent_id: &str,
-    config: &SidecarConfig,
-    transcript_log_dir: Option<&str>,
-) -> Result<PathBuf, String> {
-    let now = chrono::Local::now();
-    let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
-    let log_dir = transcript_log_dir
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(&config.workspace_skill_dir).join("logs"));
-    let persistence_dir = log_dir.join(format!("{}-{}", agent_id, ts));
-    std::fs::create_dir_all(&persistence_dir).map_err(|e| {
-        format!(
-            "Failed to create OpenHands Agent Server persistence dir {} for {}: {}",
-            persistence_dir.display(),
-            agent_id,
-            e
-        )
-    })?;
-    Ok(persistence_dir)
 }
 
 fn redact_openhands_config_for_log(config: &SidecarConfig, port: u16) -> serde_json::Value {
