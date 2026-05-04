@@ -9,8 +9,6 @@ updates:
     directory: /app/sidecar
     schedule:
       interval: daily
-    allow:
-      - dependency-name: "@anthropic-ai/claude-agent-sdk"
 
   - package-ecosystem: npm
     directory: /docs
