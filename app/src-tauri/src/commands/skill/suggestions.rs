@@ -59,7 +59,14 @@ pub async fn generate_suggestions(
             log::error!("[generate_suggestions] API key not configured");
             "API key not configured".to_string()
         })?;
-        (api_key, llm.model)
+        // Strip provider prefix (e.g. "anthropic/claude-sonnet-4-5" → "claude-sonnet-4-5")
+        // so the Anthropic Messages API receives a bare model ID.
+        let model = llm
+            .model
+            .strip_prefix("anthropic/")
+            .map(str::to_string)
+            .unwrap_or(llm.model);
+        (api_key, model)
     };
 
     let readable_name = skill_name.replace('-', " ");
