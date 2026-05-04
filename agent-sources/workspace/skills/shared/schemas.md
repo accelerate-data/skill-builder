@@ -27,7 +27,6 @@ Structural contracts (field names, types, nesting) are enforced by SDK `outputFo
 
 ## Choices
 
-- Every question must have 2-4 concrete choices (`is_other: false`) plus one final catch-all choice with text exactly `"Other (please specify)"` and `is_other: true`.
 - `is_other: true` is reserved exclusively for the catch-all "Other (please specify)" choice. Concrete choices -- even negations like "No X exists" -- must have `is_other: false`.
 
 ## Refinements
