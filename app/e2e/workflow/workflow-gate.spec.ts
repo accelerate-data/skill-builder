@@ -31,62 +31,7 @@ const RESEARCH_PLAN_CONTENT = `# Research Plan
 `;
 
 const WORKSPACE_EVAL_PATH = path.join(E2E_WORKSPACE_PATH, "test-skill", "answer-evaluation.json");
-const SKILLS_CLARIFICATIONS_PATH = skillContextPath(E2E_SKILLS_PATH, "test-skill", "clarifications.json");
 const SKILLS_RESEARCH_PLAN_PATH = skillContextPath(E2E_SKILLS_PATH, "test-skill", "research-plan.md");
-
-const CLARIFICATIONS_BASE = JSON.stringify({
-  version: "1",
-  metadata: {
-    title: "Clarifications",
-    question_count: 3,
-    section_count: 1,
-    refinement_count: 0,
-    must_answer_count: 0,
-    priority_questions: [],
-  },
-  sections: [
-    {
-      id: "S1",
-      title: "General",
-      questions: [
-        {
-          id: "Q1",
-          title: "Question 1",
-          must_answer: false,
-          text: "What matters most?",
-          choices: [],
-          recommendation: null,
-          answer_choice: "custom",
-          answer_text: "Consistency and observability.",
-          refinements: [],
-        },
-        {
-          id: "Q2",
-          title: "Question 2",
-          must_answer: false,
-          text: "How should this run?",
-          choices: [],
-          recommendation: null,
-          answer_choice: "custom",
-          answer_text: "Use default.",
-          refinements: [],
-        },
-        {
-          id: "Q3",
-          title: "Question 3",
-          must_answer: false,
-          text: "What are the rollout constraints?",
-          choices: [],
-          recommendation: null,
-          answer_choice: "custom",
-          answer_text: "Avoid disruptive UX changes.",
-          refinements: [],
-        },
-      ],
-    },
-  ],
-  notes: [],
-});
 
 // --- Override presets ---
 
@@ -98,7 +43,6 @@ const GATE1_OVERRIDES: Record<string, unknown> = {
     steps: [{ step_id: 0, status: "completed" }],
   },
   read_file: {
-    [SKILLS_CLARIFICATIONS_PATH]: CLARIFICATIONS_BASE,
     [SKILLS_RESEARCH_PLAN_PATH]: RESEARCH_PLAN_CONTENT,
     "*": RESEARCH_PLAN_CONTENT,
   },
@@ -116,7 +60,6 @@ const GATE2_OVERRIDES: Record<string, unknown> = {
     ],
   },
   read_file: {
-    [SKILLS_CLARIFICATIONS_PATH]: CLARIFICATIONS_BASE,
     "*": RESEARCH_PLAN_CONTENT,
   },
   run_answer_evaluator: GATE_AGENT_ID,
