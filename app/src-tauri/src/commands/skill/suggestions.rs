@@ -438,11 +438,23 @@ fn parse_suggestions_value(
         }
     }
 
+    let missing_requested_fields = requested_fields
+        .iter()
+        .filter(|field| !object.contains_key(field.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+
     if !saw_known_field {
         return Err("Suggestions output contained no recognized suggestion fields".to_string());
     }
     if !saw_non_empty_value {
         return Err("Suggestions output contained no non-empty suggestion fields".to_string());
+    }
+    if !missing_requested_fields.is_empty() {
+        return Err(format!(
+            "Suggestions output missing requested field(s): {}",
+            missing_requested_fields.join(", ")
+        ));
     }
 
     let field = |key: &str| -> String {
@@ -716,5 +728,21 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("not requested"));
+    }
+
+    #[test]
+    fn rejects_missing_requested_fields_from_result_text() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": r#"{"description":"Forecasts churn risk."}"#
+        });
+
+        let error = parse_suggestions_from_conversation_state(
+            &state,
+            &["description".to_string(), "domain".to_string()],
+        )
+        .unwrap_err();
+        assert!(error.contains("missing requested field"));
     }
 }
