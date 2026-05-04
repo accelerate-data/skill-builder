@@ -72,7 +72,7 @@ pub async fn generate_suggestions(
     let runtime_context = crate::commands::workflow::read_initialized_runtime_context(&db)
         .inspect_err(|e| log::error!("[generate_suggestions] Runtime context unavailable: {}", e))?;
 
-    let requested_fields = requested_fields(fields.as_deref());
+    let requested_fields = requested_fields(fields.as_deref())?;
     let prompt = render_suggestions_prompt(
         &skill_name,
         &purpose,
@@ -93,7 +93,7 @@ pub async fn generate_suggestions(
         workspace_path: &runtime_context.workspace_path,
         llm: runtime_context.llm,
         requested_fields: requested_fields.clone(),
-    });
+    })?;
 
     let run = openhands_server::run_openhands_one_shot(
         &app,
@@ -109,11 +109,45 @@ pub async fn generate_suggestions(
     parse_suggestions_from_conversation_state(&run.conversation_state)
 }
 
-fn requested_fields(fields: Option<&[String]>) -> Vec<String> {
+fn requested_fields(fields: Option<&[String]>) -> Result<Vec<String>, String> {
     fields.map_or_else(
-        || ALL_FIELDS.iter().map(|field| (*field).to_string()).collect(),
-        |values| values.to_vec(),
+        || Ok(ALL_FIELDS.iter().map(|field| (*field).to_string()).collect()),
+        validate_requested_fields,
     )
+}
+
+fn validate_requested_fields(fields: &[String]) -> Result<Vec<String>, String> {
+    if fields.is_empty() {
+        return Err("Requested suggestion fields must include at least one field".to_string());
+    }
+
+    if fields.iter().any(|field| field.trim().is_empty()) {
+        return Err("Requested suggestion fields must not be blank".to_string());
+    }
+
+    let mut normalized = Vec::new();
+    let mut invalid = Vec::new();
+
+    for field in fields {
+        let trimmed = field.trim();
+        if !ALL_FIELDS.contains(&trimmed) {
+            invalid.push(trimmed.to_string());
+            continue;
+        }
+        if !normalized.iter().any(|value| value == trimmed) {
+            normalized.push(trimmed.to_string());
+        }
+    }
+
+    if !invalid.is_empty() {
+        return Err(format!("Invalid suggestion fields: {}", invalid.join(", ")));
+    }
+
+    if normalized.is_empty() {
+        return Err("Requested suggestion fields must include at least one valid field".to_string());
+    }
+
+    Ok(normalized)
 }
 
 pub(crate) fn render_suggestions_prompt(
@@ -255,19 +289,16 @@ Max 2 sentences. Topic: {}.>\"",
     }
 }
 
-fn suggestions_output_format(requested_fields: &[String]) -> serde_json::Value {
+fn suggestions_output_format(requested_fields: &[String]) -> Result<serde_json::Value, String> {
+    let requested_fields = validate_requested_fields(requested_fields)?;
     let properties = requested_fields
         .iter()
-        .filter_map(|field| {
-            ALL_FIELDS
-                .contains(&field.as_str())
-                .then(|| (field.clone(), serde_json::json!({ "type": "string" })))
-        })
+        .map(|field| (field.clone(), serde_json::json!({ "type": "string" })))
         .collect::<serde_json::Map<String, serde_json::Value>>();
 
     let required = properties.keys().cloned().collect::<Vec<_>>();
 
-    serde_json::json!({
+    Ok(serde_json::json!({
         "type": "json_schema",
         "schema": {
             "type": "object",
@@ -275,15 +306,15 @@ fn suggestions_output_format(requested_fields: &[String]) -> serde_json::Value {
             "properties": properties,
             "additionalProperties": false
         }
-    })
+    }))
 }
 
 pub(crate) fn build_suggestions_runtime_config(
     params: SuggestionsRuntimeConfigParams<'_>,
-) -> SidecarConfig {
+) -> Result<SidecarConfig, String> {
     let workspace_dir = params.workspace_path.replace('\\', "/");
 
-    crate::agents::sidecar::build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+    Ok(crate::agents::sidecar::build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
         prompt: params.prompt.to_string(),
         llm: params.llm,
         workspace_root_dir: workspace_dir.clone(),
@@ -293,12 +324,12 @@ pub(crate) fn build_suggestions_runtime_config(
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
         allowed_tools: vec!["file_editor".to_string()],
         max_turns: 4,
-        output_format: Some(suggestions_output_format(&params.requested_fields)),
+        output_format: Some(suggestions_output_format(&params.requested_fields)?),
         skill_name: Some(params.skill_name.to_string()),
         step_id: Some(-31),
         run_source: None,
         plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
-    })
+    }))
 }
 
 fn parse_suggestions_from_conversation_state(
@@ -331,7 +362,7 @@ fn parse_completed_suggestions_output(state: &serde_json::Value) -> Result<Field
         .or_else(|| state.get("structuredOutput"))
         .filter(|value| value.is_object())
     {
-        return Ok(parse_suggestions_value(structured_output));
+        return parse_suggestions_value(structured_output);
     }
 
     let Some(result_text) = state
@@ -360,14 +391,49 @@ fn parse_suggestions_result_text(text: &str) -> Result<FieldSuggestions, String>
         format!("Failed to parse result: {}", e)
     })?;
 
-    Ok(parse_suggestions_value(&parsed))
+    parse_suggestions_value(&parsed)
 }
 
-fn parse_suggestions_value(parsed: &serde_json::Value) -> FieldSuggestions {
-    let field =
-        |key: &str| -> String { parsed[key].as_str().unwrap_or("").to_string() };
+fn parse_suggestions_value(parsed: &serde_json::Value) -> Result<FieldSuggestions, String> {
+    let object = parsed
+        .as_object()
+        .ok_or_else(|| "Suggestions output must be a JSON object".to_string())?;
 
-    FieldSuggestions {
+    let mut saw_known_field = false;
+    let mut saw_non_empty_value = false;
+
+    for (key, value) in object {
+        if !ALL_FIELDS.contains(&key.as_str()) {
+            return Err(format!(
+                "Suggestions output contained unknown suggestion field '{}'",
+                key
+            ));
+        }
+        let string_value = value
+            .as_str()
+            .ok_or_else(|| format!("Suggestions field '{}' must be a string", key))?;
+        saw_known_field = true;
+        if !string_value.trim().is_empty() {
+            saw_non_empty_value = true;
+        }
+    }
+
+    if !saw_known_field {
+        return Err("Suggestions output contained no recognized suggestion fields".to_string());
+    }
+    if !saw_non_empty_value {
+        return Err("Suggestions output contained no non-empty suggestion fields".to_string());
+    }
+
+    let field = |key: &str| -> String {
+        object
+            .get(key)
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+
+    Ok(FieldSuggestions {
         description: field("description"),
         domain: field("domain"),
         audience: field("audience"),
@@ -376,7 +442,7 @@ fn parse_suggestions_value(parsed: &serde_json::Value) -> FieldSuggestions {
         unique_setup: field("unique_setup"),
         claude_mistakes: field("claude_mistakes"),
         context_questions: field("context_questions"),
-    }
+    })
 }
 
 #[cfg(test)]
@@ -431,7 +497,8 @@ mod tests {
                 usage_id: Some("workflow".to_string()),
             },
             requested_fields: vec!["description".to_string(), "claude_mistakes".to_string()],
-        });
+        })
+        .unwrap();
 
         let json = serde_json::to_value(&config).unwrap();
         assert_eq!(json["runtimeProvider"], "openhands");
@@ -494,5 +561,81 @@ mod tests {
 
         assert_eq!(result.description, "Forecasts churn risk.");
         assert_eq!(result.claude_mistakes, "• Misses company standards");
+    }
+
+    #[test]
+    fn rejects_empty_requested_fields_input() {
+        let error = requested_fields(Some(&[])).unwrap_err();
+        assert!(error.contains("at least one"));
+    }
+
+    #[test]
+    fn rejects_unknown_requested_fields_input() {
+        let error = requested_fields(Some(&["unknown".to_string()])).unwrap_err();
+        assert!(error.contains("unknown"));
+    }
+
+    #[test]
+    fn rejects_blank_requested_fields_input() {
+        let error = requested_fields(Some(&["   ".to_string()])).unwrap_err();
+        assert!(error.contains("must not be blank"));
+    }
+
+    #[test]
+    fn rejects_output_format_without_valid_fields() {
+        let error = suggestions_output_format(&[]).unwrap_err();
+        assert!(error.contains("at least one"));
+    }
+
+    #[test]
+    fn rejects_completed_suggestions_with_unknown_structured_output_fields() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "structured_output": {
+                "unexpected": "value"
+            }
+        });
+
+        let error = parse_suggestions_from_conversation_state(&state).unwrap_err();
+        assert!(error.contains("unknown suggestion field"));
+    }
+
+    #[test]
+    fn rejects_completed_suggestions_with_non_string_structured_output_fields() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "structured_output": {
+                "description": 42
+            }
+        });
+
+        let error = parse_suggestions_from_conversation_state(&state).unwrap_err();
+        assert!(error.contains("must be a string"));
+    }
+
+    #[test]
+    fn rejects_completed_suggestions_with_empty_structured_output() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "structured_output": {}
+        });
+
+        let error = parse_suggestions_from_conversation_state(&state).unwrap_err();
+        assert!(error.contains("no recognized suggestion fields"));
+    }
+
+    #[test]
+    fn rejects_completed_suggestions_with_malformed_result_text() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": r#"{"description":42}"#
+        });
+
+        let error = parse_suggestions_from_conversation_state(&state).unwrap_err();
+        assert!(error.contains("must be a string"));
     }
 }
