@@ -1207,6 +1207,10 @@ mod tests {
         )
         .unwrap();
 
+        // Atomicity is guaranteed by the SAVEPOINT in delete_skill_db_records_inner:
+        // if any downstream deletion fails, the ROLLBACK TO delete_skill restores both
+        // artifact tables. The SAVEPOINT pattern mirrors create_skill_db_records_inner.
+
         // Both artifact families must be gone.
         assert!(
             read_clarifications(&conn, "purge-test-skill").unwrap().is_none(),
