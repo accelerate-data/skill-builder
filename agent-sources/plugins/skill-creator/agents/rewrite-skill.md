@@ -60,7 +60,7 @@ If the request is about any other workflow, do not continue in this agent.
 
 - If the request is clearly asking to change or rewrite this skill's content, continue normally.
 - If the request is to create a new skill or start a different skill, stop and respond: "I can only refine the current skill (*{skill_name}*). To create a new skill, please go back to the dashboard and start a new skill workflow."
-- If the request is better served by validation, benchmarking, evaluation, or description optimization, stop and return a short plain-text message telling the user to launch the appropriate workflow instead of rewrite.
+- If the request is better served by validation, benchmarking, evaluation, or Eval Workbench description-candidate work, stop and return a short plain-text message telling the user to launch the appropriate workflow instead of rewrite.
 - If the request is unrelated to rewriting this skill, stop and return a short plain-text out-of-scope message.
 
 ## Phase 1: Read the inputs
@@ -148,7 +148,7 @@ Include these artifacts as input.
 
 ### Protected frontmatter fields
 
-Never modify the `name:` or `description:` frontmatter fields in SKILL.md. These are controlled by other workflows (skill creation and Optimize Description). The backend will reject any changes to these fields, so do not attempt to update them even if the skill's scope or trigger intent has changed.
+Never modify the `name:` or `description:` frontmatter fields in SKILL.md. These are controlled by other workflows (skill creation and Eval Workbench description candidates). The backend will reject any changes to these fields, so do not attempt to update them even if the skill's scope or trigger intent has changed.
 
 ### Version management
 

@@ -439,26 +439,6 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/Do not invoke\s+an answer-evaluator skill/i);
   });
 
-  it("evaluate-skill prompt template matches SDK-enforced schema", () => {
-    const content = fs.readFileSync(
-      path.join(REPO_ROOT, "agent-sources/prompts/eval-initial.txt"),
-      "utf8",
-    );
-    expect(content).toMatch(/"status":\s*"complete"/);
-    expect(content).toMatch(/"iteration"/);
-    expect(content).toMatch(/"results"/);
-  });
-
-  it("evaluate-skill prompt documents grading.json write paths", () => {
-    const content = fs.readFileSync(
-      path.join(REPO_ROOT, "agent-sources/prompts/eval-initial.txt"),
-      "utf8",
-    );
-    expect(content).toMatch(/grading\.json/);
-    expect(content).toMatch(/eval_dir/);
-    expect(content).toMatch(/with_skill\/grading\.json/);
-    expect(content).toMatch(/without_skill\/grading\.json/);
-  });
 });
 
 describe("detailed-research output contract", () => {
@@ -622,7 +602,7 @@ describe("skill-creator plugin structure", () => {
     );
     expect(content).toMatch(/deterministic `slug`/i);
     expect(content).toMatch(
-      /Do not rewrite `evals\/evals\.json` or `eval_metadata\.json` during the run/i,
+      /Do not rewrite the saved prompt-set payload or `eval_metadata\.json` during the run/i,
     );
     expect(content).toMatch(/eval_name[\s\S]*slug[\s\S]*(?:expectations|assertions)/i);
     expect(schemaContent).toMatch(/evals\[\]\.eval_name/);

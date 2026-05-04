@@ -343,13 +343,6 @@ export class StreamSession implements RuntimeSession {
         // Workflow steps need proper mock output — use the step-template system.
         if (config.runSource === "workflow" && typeof config.stepId === "number" && config.stepId >= 0) {
           await this.emitMockWorkflowStep(config, onMessage);
-        } else if (config.stepId === -12) {
-          const stepTemplate = resolveStepTemplate(config.agentName, config);
-          if (stepTemplate) {
-            await this.emitMockTemplateResult(stepTemplate, config, onMessage);
-          } else {
-            await this.emitMockTurn(config.prompt, onMessage);
-          }
         } else {
           await this.emitMockTurn(config.prompt, onMessage);
         }

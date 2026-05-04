@@ -163,7 +163,7 @@ Try to explain to the model why things are important in lieu of heavy-handed mus
 
 After writing the skill draft, come up with 2-3 realistic test prompts — the kind of thing a real user would actually say. Share them with the user: [you don't have to use this exact language] "Here are a few test cases I'd like to try. Do these look right, or do you want to add more?" Then run them.
 
-Save test cases to `evals/evals.json`. Write the quantitative assertions at the same time as the prompts so the eval definition is complete before the first benchmark iteration runs. Each eval also needs a human-readable `eval_name` and a deterministic `slug` so later iterations reuse the same labels and directory names. Once written, treat those fields and those assertions as fixed for later iterations unless the user explicitly changes the eval itself.
+Save test cases through the app-owned Eval Workbench prompt-set flow. Write the quantitative assertions at the same time as the prompts so the eval definition is complete before the first benchmark iteration runs. Each eval also needs a human-readable `eval_name` and a deterministic `slug` so later iterations reuse the same labels and directory names. Once written, treat those fields and those assertions as fixed for later iterations unless the user explicitly changes the eval itself.
 
 ```json
 {
@@ -185,7 +185,7 @@ Save test cases to `evals/evals.json`. Write the quantitative assertions at the 
 }
 ```
 
-See `references/schemas.md` for the full schema.
+See `references/schemas.md` for the full payload shape.
 
 ## Running and evaluating test cases
 
@@ -236,7 +236,7 @@ Execute this task:
 - **Creating a new skill**: use `with_without_skill` mode — no skill at all for the baseline.
 - **Improving an existing skill**: use `current_vs_previous` — the old version as baseline.
 
-Write an `eval_metadata.json` for each test case using the same frozen `eval_name`, `slug`, and assertions already written to `evals/evals.json`. Directory names **must** start with `eval-<ID>-` followed by that exact slug from `evals.json` (e.g. `eval-0-hybrid-cogs`, `eval-1-returns-treatment`). The `eval-` prefix is required — the aggregator uses `eval-*` to discover directories. Generate the slug once when creating `evals.json`, keep it deterministic, and do not regenerate it differently in later iterations. If this iteration uses new or modified eval prompts, create these files for each new eval directory — don't assume they carry over from previous iterations.
+Write an `eval_metadata.json` for each test case using the same frozen `eval_name`, `slug`, and assertions already stored by the app-owned prompt set. Directory names **must** start with `eval-<ID>-` followed by that exact slug from the prompt set (e.g. `eval-0-hybrid-cogs`, `eval-1-returns-treatment`). The `eval-` prefix is required — the aggregator uses `eval-*` to discover directories. Generate the slug once when creating the prompt set, keep it deterministic, and do not regenerate it differently in later iterations. If this iteration uses new or modified eval prompts, create these files for each new eval directory — don't assume they carry over from previous iterations.
 
 ```json
 {
@@ -253,7 +253,7 @@ Write an `eval_metadata.json` for each test case using the same frozen `eval_nam
 
 ### Step 2: While runs are in progress, explain the frozen assertions
 
-Don't just wait for the runs to finish — you can use this time productively. Review the quantitative assertions already saved for each test case and explain them to the user. Do not rewrite `evals/evals.json` or `eval_metadata.json` during the run just because an iteration suggests better wording; iteration-over-iteration comparisons only make sense when the grading criteria, names, and directory slugs stay identical.
+Don't just wait for the runs to finish — you can use this time productively. Review the quantitative assertions already saved for each test case and explain them to the user. Do not rewrite the saved prompt-set payload or `eval_metadata.json` during the run just because an iteration suggests better wording; iteration-over-iteration comparisons only make sense when the grading criteria, names, and directory slugs stay identical.
 
 Good assertions are objectively verifiable and have descriptive names — they should read clearly in the benchmark viewer so someone glancing at the results immediately understands what each one checks. Subjective skills (writing style, design quality) are better evaluated qualitatively — don't force assertions onto things that need human judgment.
 
