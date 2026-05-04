@@ -2654,13 +2654,9 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     )
     .unwrap();
 
-    let claude_template = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(claude_template.path(), "# Claude").unwrap();
-
     copy_prompts_sync(
         workspace_agents_src.path(),
         workspace_skills_src.path(),
-        claude_template.path(),
         workspace.path().to_str().unwrap(),
     )
     .unwrap();

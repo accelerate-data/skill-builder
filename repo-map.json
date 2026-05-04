@@ -160,7 +160,7 @@
     },
     "agent_plugins": {
       "path": "agent-sources/plugins/",
-      "description": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent"
+      "description": "Plugin definitions: skill-content-researcher, skill-creator"
     },
     "workspace_instructions": {
       "path": "agent-sources/workspace/",
@@ -169,10 +169,6 @@
     "app_prompts": {
       "path": "agent-sources/prompts/",
       "description": "App-owned prompt templates compiled/rendered by Rust and sent as explicit task messages. These files are not copied into the OpenHands runtime workspace."
-    },
-    "claude_templates": {
-      "path": "agent-sources/claude/",
-      "description": "Legacy Claude adapter templates used by remaining non-OpenHands CLAUDE.md rebuild paths until those flows migrate."
     },
     "rust_reconciliation": {
       "path": "app/src-tauri/src/reconciliation/",
@@ -207,8 +203,7 @@
     "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains eval-map.json for coding-agent navigation, bin/ad-evals.js shared CLI, scripts/framework/ reusable harness modules, suite-owned tier config, OpenCode provider config, package-level eval configs, deterministic harness tests, static assertions for code contracts including shared Tauri command policy analysis, runtime-exported Promptfoo state ignores, one-scenario-per-package smoke, and live model regression commands.",
     "agent-sources/workspace/": "OpenHands runtime workspace sources only: agents/ is copied to .agents/agents and skills/ is copied to .agents/skills during startup/runtime deployment.",
     "agent-sources/prompts/": "App-owned prompt templates compiled/rendered by Rust and sent as explicit task messages; not copied into the OpenHands runtime workspace.",
-    "agent-sources/claude/": "Legacy Claude adapter templates used by remaining non-OpenHands CLAUDE.md rebuild paths.",
-    "agent-sources/plugins/": "Plugin definitions: skill-content-researcher, skill-creator, vd-agent",
+    "agent-sources/plugins/": "Plugin definitions: skill-content-researcher, skill-creator",
     "docs/design/": "Architecture decision records and design specs: agent-specs, backend-design, startup-recon, workflow-state, clarifications-rendering, skill-tester, skills-marketplace, shared-eval-harness, and more. Primary reference for non-obvious design decisions.",
     "docs/plans/": "Implementation plans and execution notes. Not published end-user help content.",
     "docs/user-guide/": "VitePress user documentation, deployed via docs.yml to GitHub Pages",
