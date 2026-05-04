@@ -189,7 +189,7 @@ export function ImportSkillDialog({
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium">Disable Model Invocation</span>
                 <span className="text-xs text-muted-foreground">
-                  Prevent Claude from automatically invoking this skill
+                  Prevent the agent from automatically invoking this skill
                 </span>
               </div>
               <Switch
