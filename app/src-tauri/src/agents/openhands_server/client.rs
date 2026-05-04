@@ -272,7 +272,6 @@ mod tests {
                 "schema": {"type": "object"}
             })),
             prompt_suggestions: None,
-            path_to_claude_code_executable: None,
             agent_name: Some("skill-creator".to_string()),
             required_plugins: None,
             setting_sources: None,

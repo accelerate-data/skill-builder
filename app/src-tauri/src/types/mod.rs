@@ -133,7 +133,6 @@ mod tests {
             thinking: None,
             output_format: None,
             prompt_suggestions: None,
-            path_to_claude_code_executable: None,
             agent_name: Some("research-entities".to_string()),
             required_plugins: None,
             setting_sources: None,

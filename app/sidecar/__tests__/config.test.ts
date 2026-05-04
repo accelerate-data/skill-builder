@@ -208,13 +208,6 @@ describe("parseSidecarConfig", () => {
     ).toThrow("permissionMode must be one of");
   });
 
-  it("throws when effort is invalid", () => {
-    expect(() =>
-
-      parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, effort: "extreme" })
-    ).toThrow("effort must be one of");
-  });
-
   it("throws when runSource is invalid", () => {
     expect(() =>
 
@@ -332,7 +325,6 @@ describe("parseSidecarConfig", () => {
       agentName: "my-agent",
       maxTurns: 50,
       permissionMode: "bypassPermissions",
-      effort: "high",
       runSource: "workflow",
       stepId: 2,
       skillName: "test-skill",
@@ -340,7 +332,6 @@ describe("parseSidecarConfig", () => {
       allowedTools: ["Read", "Write"],
       betas: ["beta-1"],
       thinking: { type: "enabled", budgetTokens: 16000 },
-      fallbackModel: "claude-haiku-4-5",
       workflowSessionId: "sess-123",
       usageSessionId: "usage-456",
     });

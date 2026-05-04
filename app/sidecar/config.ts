@@ -36,14 +36,11 @@ export interface SidecarConfig {
   permissionMode?: string;
   betas?: string[];
   thinking?: { type: "disabled" | "adaptive" | "enabled"; budgetTokens?: number };
-  effort?: "low" | "medium" | "high" | "max";
-  fallbackModel?: string;
   outputFormat?: {
     type: "json_schema";
     schema: Record<string, unknown>;
   };
   promptSuggestions?: boolean;
-  pathToClaudeCodeExecutable?: string;
   /** OpenHands-native SDK persistence directory. */
   persistenceDir?: string;
   /** Skill name this run is associated with. Used by mock agent for template discrimination. */
@@ -59,7 +56,8 @@ export interface SidecarConfig {
   /** Plugin slug for the skill (from plugin-paths.json: {root}/{plugin_slug}/{skill_name}).
    * Threaded through to run_result so persistence handlers can resolve the correct skill dir. */
   pluginSlug: string;
-  /** Selects the agent runtime backend. Defaults to "claude" when absent. */
+  /** Runtime backend tag. Accepted for schema compatibility; the mock sidecar
+   * ignores it — all real requests must use the OpenHands Agent Server. */
   runtimeProvider?: "claude" | "openhands";
 }
 
@@ -188,17 +186,14 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   assertOptString(c, "taskKind");
   assertOptString(c, "userMessageSuffix");
   assertOptString(c, "agentName");
-  assertOptString(c, "fallbackModel");
   assertOptString(c, "skillName");
   assertOptString(c, "workflowSessionId");
   assertOptString(c, "usageSessionId");
-  assertOptString(c, "pathToClaudeCodeExecutable");
   assertOptString(c, "persistenceDir");
 
   // Optional enum fields
   assertOptStringIn(c, "mode", ["one-shot", "streaming"]);
   assertOptStringIn(c, "permissionMode", ["default", "acceptEdits", "bypassPermissions", "plan"]);
-  assertOptStringIn(c, "effort", ["low", "medium", "high", "max"]);
   assertOptStringIn(c, "runSource", ["workflow", "refine", "test", "gate-eval"]);
   assertOptStringIn(c, "runtimeProvider", ["claude", "openhands"]);
   if (c.llm !== undefined) {

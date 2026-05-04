@@ -40,11 +40,6 @@ pub struct SidecarConfig {
     pub output_format: Option<serde_json::Value>,
     #[serde(rename = "promptSuggestions", skip_serializing_if = "Option::is_none")]
     pub prompt_suggestions: Option<bool>,
-    #[serde(
-        rename = "pathToClaudeCodeExecutable",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub path_to_claude_code_executable: Option<String>,
     #[serde(rename = "agentName", skip_serializing_if = "Option::is_none")]
     pub agent_name: Option<String>,
     #[serde(rename = "requiredPlugins", skip_serializing_if = "Option::is_none")]
@@ -83,7 +78,8 @@ pub struct SidecarConfig {
     /// Threaded through terminal lifecycle events so persistence handlers can resolve the correct skill dir.
     #[serde(rename = "pluginSlug")]
     pub plugin_slug: String,
-    /// Selects the agent runtime backend. Defaults to "claude" when absent.
+    /// Runtime backend tag. Accepted for schema compatibility; the mock sidecar
+    /// ignores it — all real requests must use the OpenHands Agent Server.
     #[serde(rename = "runtimeProvider", skip_serializing_if = "Option::is_none")]
     pub runtime_provider: Option<String>,
     /// Task discriminator for a shared runtime agent.
@@ -165,7 +161,6 @@ pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> 
         thinking: None,
         output_format: params.output_format,
         prompt_suggestions: None,
-        path_to_claude_code_executable: None,
         agent_name: Some(params.agent_name),
         required_plugins: None,
         setting_sources: None,
@@ -182,77 +177,6 @@ pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> 
         task_kind: params.task_kind,
         user_message_suffix: params.user_message_suffix,
     }
-}
-
-/// Public accessor for startup dependency checks.
-#[allow(dead_code)]
-pub fn resolve_sdk_cli_path_public(app_handle: &tauri::AppHandle) -> Result<String, String> {
-    resolve_sdk_cli_path(app_handle)
-}
-
-fn normalize_executable_path(path: &str) -> String {
-    path.strip_prefix("\\\\?\\")
-        .unwrap_or(path)
-        .replace('\\', "/")
-}
-
-/// Resolve the path to the SDK's native `claude` binary, which the bundled SDK
-/// spawns as a child process. Looks in sidecar/dist/sdk/claude (or claude.exe
-/// on Windows), where build.js copies it from the platform-specific
-/// @anthropic-ai/claude-agent-sdk-{platform}-{arch} package.
-fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String> {
-    use tauri::Manager;
-
-    let exe_name = if cfg!(windows) {
-        "claude.exe"
-    } else {
-        "claude"
-    };
-
-    // Try resource directory first (production)
-    if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let cli = resource_dir
-            .join("sidecar")
-            .join("dist")
-            .join("sdk")
-            .join(exe_name);
-        if cli.exists() {
-            return cli
-                .to_str()
-                .map(normalize_executable_path)
-                .ok_or_else(|| "Invalid SDK binary path".to_string());
-        }
-    }
-
-    // Fallback: next to the binary
-    if let Ok(exe_dir) = std::env::current_exe() {
-        if let Some(dir) = exe_dir.parent() {
-            let cli = dir.join("sidecar").join("dist").join("sdk").join(exe_name);
-            if cli.exists() {
-                return cli
-                    .to_str()
-                    .map(normalize_executable_path)
-                    .ok_or_else(|| "Invalid SDK binary path".to_string());
-            }
-        }
-    }
-
-    // Dev mode fallback
-    let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .map(|p| p.join("sidecar").join("dist").join("sdk").join(exe_name));
-    if let Some(path) = dev_path {
-        if path.exists() {
-            return path
-                .to_str()
-                .map(normalize_executable_path)
-                .ok_or_else(|| "Invalid SDK binary path".to_string());
-        }
-    }
-
-    Err(format!(
-        "Could not find SDK binary ({exe_name}) — run 'npm run build' in app/sidecar/ first"
-    ))
 }
 
 #[cfg(test)]
@@ -278,7 +202,6 @@ mod tests {
             thinking: None,
             output_format: None,
             prompt_suggestions: None,
-            path_to_claude_code_executable: None,
             agent_name: Some("research-entities".to_string()),
             required_plugins: None,
             setting_sources: None,
@@ -336,7 +259,6 @@ mod tests {
             })),
             output_format: None,
             prompt_suggestions: None,
-            path_to_claude_code_executable: None,
             agent_name: None,
             required_plugins: None,
             setting_sources: None,
@@ -382,7 +304,6 @@ mod tests {
             thinking: None,
             output_format: None,
             prompt_suggestions: None,
-            path_to_claude_code_executable: None,
             agent_name: None,
             required_plugins: None,
             setting_sources: None,
@@ -431,7 +352,6 @@ mod tests {
             thinking: None,
             output_format: None,
             prompt_suggestions: None,
-            path_to_claude_code_executable: None,
             agent_name: None,
             required_plugins: None,
             setting_sources: None,
@@ -453,14 +373,6 @@ mod tests {
         assert!(
             parsed.get("skillName").is_none(),
             "skillName must be absent when None"
-        );
-    }
-
-    #[test]
-    fn test_normalize_executable_path_strips_windows_verbatim_prefix_and_slashes() {
-        assert_eq!(
-            normalize_executable_path(r"\\?\C:\Skill Builder\claude.exe"),
-            "C:/Skill Builder/claude.exe"
         );
     }
 
@@ -497,7 +409,6 @@ mod tests {
             thinking: None,
             output_format: None,
             prompt_suggestions: None,
-            path_to_claude_code_executable: None,
             agent_name: Some("skill-creator".to_string()),
             required_plugins: None,
             setting_sources: None,
