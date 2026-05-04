@@ -9,17 +9,22 @@ Workspace directory: `{{workspace_dir}}`
 Skill output directory: `{{skill_output_dir}}`
 Author context: {{author_context}}
 
+{{user_context_block}}
+
+## Decisions Record
+
+{{decisions_json}}
+
+## Clarifications Record (supporting detail)
+
+{{clarifications_json}}
+
 Use the `creating-skills` skill to generate the final skill package from the
 confirmed workflow decisions.
 
-Read these workspace files as source material:
+The decisions and clarifications records are provided below.
 
-- `{{workspace_dir}}/user-context.md`
-- `{{workspace_dir}}/context/decisions.json`
-- `{{workspace_dir}}/context/clarifications.json` when additional wording,
-  examples, edge cases, or user answers are needed
-
-The decisions file is the canonical input for this step. Use clarifications and
+The decisions record is the canonical input for this step. Use clarifications and
 user context only to fill in supporting details that do not conflict with the
 confirmed decisions.
 
@@ -36,7 +41,7 @@ confirmed decisions. The brief must cover:
 - the verification contract below
 
 Pass this brief to `creating-skills` as the caller-provided generation brief,
-and keep the raw contents of `user-context.md`, `decisions.json`, and
+and keep the raw contents of `decisions.json`, and
 `clarifications.json` available in context for the skill. Do not reduce the
 handoff to only the summary brief; `creating-skills` must be able to use exact
 question wording, answers, decisions, implications, examples, and notes from the

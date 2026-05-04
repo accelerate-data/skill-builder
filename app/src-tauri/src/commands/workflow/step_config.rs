@@ -41,7 +41,9 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 step_id: 0,
                 name: "Research".to_string(),
                 prompt_template: "research.txt".to_string(),
-                output_file: "context/clarifications.json".to_string(),
+                // VU-1157: clarifications are persisted to the DB on step
+                // completion; no canonical workspace JSON is written.
+                output_file: String::new(),
                 allowed_tools: research_workflow_tools(),
                 max_turns: 50,
                 agent_name: agent.to_string(),
@@ -54,7 +56,9 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 step_id: 1,
                 name: "Detailed Research".to_string(),
                 prompt_template: "detailed-research.txt".to_string(),
-                output_file: "context/clarifications.json".to_string(),
+                // VU-1157: clarifications are persisted to the DB on step
+                // completion; no canonical workspace JSON is written.
+                output_file: String::new(),
                 allowed_tools: research_workflow_tools(),
                 max_turns: 50,
                 agent_name: agent.to_string(),
@@ -67,7 +71,9 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 step_id: 2,
                 name: "Confirm Decisions".to_string(),
                 prompt_template: "confirm_decisions.txt".to_string(),
-                output_file: "context/decisions.json".to_string(),
+                // VU-1157: decisions are persisted to the DB on step
+                // completion; no canonical workspace JSON is written.
+                output_file: String::new(),
                 allowed_tools: confirm_decisions_workflow_tools(),
                 max_turns: 100,
                 agent_name: agent.to_string(),
@@ -114,52 +120,3 @@ pub(crate) fn workflow_output_format_for_step(step_id: u32) -> Option<serde_json
     })
 }
 
-#[allow(dead_code)]
-pub(crate) fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
-    match step_id {
-        0 => Some(8_000),  // research
-        1 => Some(8_000),  // skill-creator detailed research
-        2 => Some(32_000), // skill-creator decisions pass
-        3 => Some(16_000), // skill-creator skill generation
-        _ => None,
-    }
-}
-
-#[allow(dead_code)]
-pub fn build_betas(
-    thinking_budget: Option<u32>,
-    model: &str,
-    interleaved_thinking_beta: bool,
-) -> Option<Vec<String>> {
-    let mut betas = Vec::new();
-    let _ = model;
-    if interleaved_thinking_beta && thinking_budget.is_some() {
-        betas.push("interleaved-thinking-2025-05-14".to_string());
-    }
-    if betas.is_empty() {
-        None
-    } else {
-        Some(betas)
-    }
-}
-
-/// Validate a clarifications JSON payload by deserializing into the typed contract.
-///
-/// This replaces the old imperative field-by-field validator with typed serde
-/// deserialization via `ClarificationsFile`. The typed struct enforces all required
-/// fields, correct types, and nested structure at deserialization time.
-pub(crate) fn validate_clarifications_json(
-    clarifications: &serde_json::Value,
-) -> Result<(), String> {
-    log::debug!(
-        "[validate_clarifications_json] input keys: {:?}",
-        clarifications
-            .as_object()
-            .map(|o| o.keys().collect::<Vec<_>>())
-    );
-    serde_json::from_value::<crate::contracts::clarifications::ClarificationsFile>(
-        clarifications.clone(),
-    )
-    .map_err(|e| format!("{}", e))?;
-    Ok(())
-}

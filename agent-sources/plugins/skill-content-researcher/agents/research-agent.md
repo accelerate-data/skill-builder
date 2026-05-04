@@ -22,23 +22,22 @@ refinement passes.
 
 - `skill_name`: the skill being developed.
 - `workspace_dir`: path to the per-skill workspace directory.
-- `context_dir`: `{workspace_dir}/context`.
 
 ## Phase Detection
 
-Use the workspace files to determine the phase:
+Use the prompt context to determine the phase:
 
-- Initial research: `{workspace_dir}/answer-evaluation.json` is absent. Produce
-  the first `clarifications.json` payload from `user-context.md`.
-- Refinement research: `{workspace_dir}/answer-evaluation.json` is present.
-  Read it with `{context_dir}/clarifications.json` and add refinement questions
+- Initial research: no answer evaluation verdicts are present in the prompt. Produce
+  the first `clarifications.json` payload from the user context provided in the prompt.
+- Refinement research: answer evaluation verdicts are present in the prompt.
+  Use them with the current clarifications record (also in the prompt) and add refinement questions
   only for non-clear answers.
 
 ## Initial Research
 
 Follow the `research` skill from start to finish:
 
-1. Read `{workspace_dir}/user-context.md` and any listed reference documents.
+1. Use the user context provided in the prompt and any listed reference documents.
 2. Select the purpose-specific dimension set.
 3. Score candidate dimensions.
 4. Research selected dimensions inline, one dimension at a time.
@@ -89,13 +88,12 @@ thin, or not relevant to the selected purpose, return the canonical
 
 ## Refinement Research
 
-When `answer-evaluation.json` exists:
+When answer evaluation verdicts are present in the prompt:
 
-1. Read `{workspace_dir}/user-context.md`.
-2. Read `{context_dir}/clarifications.json`; if large, read it in slices and
-   parse the concatenated content.
-3. Read `{workspace_dir}/answer-evaluation.json`.
-4. If `metadata.scope_recommendation == true` in `clarifications.json`, return
+1. Use the user context provided in the prompt.
+2. The current clarifications record is provided in the prompt above.
+3. The answer evaluation verdicts are provided in the prompt above.
+4. If `metadata.scope_recommendation == true` in the clarifications record, return
    the existing canonical clarifications object unchanged in the
    `research_output` field with zero new refinements.
 5. Use the evaluator verdicts directly. Do not re-triage clear, vague,

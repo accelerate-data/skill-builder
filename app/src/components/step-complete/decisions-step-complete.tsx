@@ -1,60 +1,65 @@
-import { useState, useEffect } from "react";
-import { AlertTriangle, RotateCcw } from "lucide-react";
+import { Loader2, AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { saveDecisionsContent, getDisabledSteps } from "@/lib/tauri";
-import { useWorkflowStore } from "@/stores/workflow-store";
 import { DecisionsSummaryCard } from "@/components/decisions-summary-card";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
+import { useDecisions } from "@/lib/queries/decisions";
 import { StepActionBar } from "./step-action-bar";
-import type { StepCompleteBaseProps, StepFileProps } from "./step-complete-types";
+import type { StepCompleteBaseProps } from "./step-complete-types";
+import type { DecisionsDto, DecisionsOutput, DecisionStatus, ContradictoryInputs } from "@/generated/contracts";
 
-type Props = StepCompleteBaseProps & Pick<StepFileProps, "fileContents"> & {
+function decisionsDtoToString(dto: DecisionsDto): string {
+  const contradictoryInputs: ContradictoryInputs | undefined =
+    dto.contradictory_inputs_state === "active" ? true :
+    dto.contradictory_inputs_state === "inactive" ? false :
+    dto.contradictory_inputs_state ?? undefined;
+
+  const output: DecisionsOutput = {
+    version: dto.version,
+    metadata: {
+      decision_count: dto.decision_count,
+      conflicts_resolved: dto.conflicts_resolved,
+      round: dto.round,
+      contradictory_inputs: contradictoryInputs,
+    },
+    decisions: dto.items.map((item) => ({
+      id: item.decision_id,
+      title: item.title,
+      original_question: item.original_question,
+      decision: item.decision,
+      implication: item.implication,
+      status: item.status as DecisionStatus,
+    })),
+  };
+  return JSON.stringify(output);
+}
+
+type Props = StepCompleteBaseProps & {
   skillName?: string;
-  workspacePath?: string;
 };
 
 export function DecisionsStepComplete(props: Props) {
   const {
-    stepName, fileContents, agentRuns, reviewMode, duration,
+    stepName, skillName, agentRuns, reviewMode, duration,
     isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onEval, onResetStep,
-    skillName, workspacePath,
   } = props;
 
-  const decisionsContent = fileContents.get("context/decisions.json");
+  const { data: decisionsDto, isLoading, isError } = useDecisions(skillName ?? null);
 
-  // Autosave state for decisions editing
-  const [decisionsEditContent, setDecisionsEditContent] = useState<string | null>(null);
-  const [decisionsEditVersion, setDecisionsEditVersion] = useState(0);
-  const [decisionsSaveStatus, setDecisionsSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    if (!decisionsEditContent || !workspacePath || !skillName || reviewMode || decisionsEditVersion === 0) return;
-    const savedVersion = decisionsEditVersion;
-    setDecisionsSaveStatus("saving");
-    const timer = setTimeout(async () => {
-      try {
-        await saveDecisionsContent(skillName, workspacePath, decisionsEditContent);
-        setDecisionsEditVersion((current) => {
-          if (current === savedVersion) setDecisionsSaveStatus("saved");
-          return current;
-        });
-        const disabled = await getDisabledSteps(skillName);
-        useWorkflowStore.getState().setDisabledSteps(disabled);
-      } catch (err) {
-        console.error("Failed to save decisions.json:", err);
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [decisionsEditContent, decisionsEditVersion, workspacePath, skillName, reviewMode]);
-
-  // Missing decisions.json
-  if (!decisionsContent || decisionsContent === "__NOT_FOUND__") {
+  if (isError || !decisionsDto) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
         <AlertTriangle className="size-8 text-destructive/50" />
         <div className="text-center">
-          <p className="font-medium text-destructive">{stepName} step completed but output files are missing</p>
-          <p className="mt-1 text-sm">Expected <code className="text-xs">context/decisions.json</code> but it was not found.</p>
+          <p className="font-medium text-destructive">{stepName} step completed but decisions not found in database</p>
+          <p className="mt-1 text-sm">The decisions output could not be loaded.</p>
         </div>
         {onResetStep && (
           <Button size="sm" variant="outline" onClick={onResetStep}>
@@ -65,6 +70,8 @@ export function DecisionsStepComplete(props: Props) {
       </div>
     );
   }
+
+  const decisionsContent = decisionsDtoToString(decisionsDto);
 
   const dbDuration = agentRuns.length > 0
     ? agentRuns.reduce((sum, r) => sum + r.duration_ms, 0)
@@ -79,25 +86,10 @@ export function DecisionsStepComplete(props: Props) {
         <DecisionsSummaryCard
           decisionsContent={decisionsContent}
           duration={reviewMode ? dbDuration : duration}
-          allowEdit={!reviewMode}
-          onDecisionsChange={(serialized) => {
-            setDecisionsEditContent(serialized);
-            setDecisionsEditVersion((v) => v + 1);
-            setDecisionsSaveStatus("saving");
-          }}
+          allowEdit={false}
+          onDecisionsChange={() => {}}
         />
       </div>
-      {!reviewMode && decisionsSaveStatus !== "idle" && (
-        <div className="flex justify-start">
-          <span className="text-xs text-muted-foreground">
-            {decisionsSaveStatus === "saving" ? (
-              "Saving…"
-            ) : (
-              <span style={{ color: "var(--color-seafoam)" }}>Saved</span>
-            )}
-          </span>
-        </div>
-      )}
       <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onEval={onEval} onClose={onClose} onNextStep={onNextStep} />
     </div>
   );

@@ -248,15 +248,136 @@
 
 ## Task 9: Verify And Open PR
 
-- [ ] Run full validation:
+- [x] Run full validation:
   - `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
   - `cd app && npx tsc --noEmit`
   - `cd app && npm run test:unit`
   - `cd app && npm run test:agents:structural`
   - `cd app && npm run test:repo-map`
   - `cargo test --manifest-path app/src-tauri/Cargo.toml`
-- [ ] Manual smoke (UI in browser): start a workflow, run steps 0–3, confirm clarifications + decisions appear via DB query in editor; confirm no `context/` or `user-context.md` files appear in the workspace skill dir.
-- [ ] Open PR titled `VU-1157: workflow artifact storage in sqlite`. PR body includes `Fixes VU-1157`. **Base branch: `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`** (not `main`).
+- [x] Manual smoke (UI in browser): start a workflow, run steps 0–3, confirm clarifications + decisions appear via DB query in editor; confirm no `context/` or `user-context.md` files appear in the workspace skill dir.
+- [x] Open PR titled `VU-1157: workflow artifact storage in sqlite`. PR body includes `Fixes VU-1157`. **Base branch: `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`** (not `main`).
+
+## Task 10: Fixture-Driven Materialization Tests
+
+**Goal:** Prove that agent JSON → `materialize_workflow_step_output_value` → DB → `read_clarifications` / `read_decisions` round-trips correctly for every shape the UI depends on.
+
+**Files:**
+
+- Modify: `app/src-tauri/src/commands/workflow/tests.rs`
+
+### What to cover
+
+Each test calls `materialize_workflow_step_output_value(&db, skill_id, step_id, &json_value)`, then reads back via `read_clarifications` / `read_decisions` (using `db.0.lock().unwrap()`) and asserts on the returned struct fields.
+
+**Test cases:**
+
+1. **`step0_full_roundtrip`** — feed the step 0 fixture (full `ClarificationsFile` from `app/sidecar/mock-templates/outputs/step0/context/clarifications.json` wrapped in `ResearchStepOutput` envelope: `{"status":"research_complete","question_count":9,"research_output":{…}}`) through `materialize_workflow_step_output_value` at step 0. Assert: `read_clarifications` returns `Some`, `refinement_count == 0`, first section title matches, all question IDs present, choice IDs present, `scope_recommendation` is non-empty (or null when not in fixture), dropped fields `priority_questions` / `duplicates_removed` don't appear on the returned record.
+
+2. **`step1_with_refinement_count`** — wrap same `ClarificationsFile` in `DetailedResearchOutput` envelope: `{"status":"detailed_research_complete","refinement_count":2,"section_count":3,"clarifications_json":{…}}`, materialize at step 1. Assert `refinement_count == 2` in `read_clarifications`.
+
+3. **`step0_then_step1_overwrites`** — materialize step 0 first, then step 1 for the same skill. Assert the second `read_clarifications` returns `refinement_count` from the step 1 fixture (not step 0's `0`), and section/question count from the latest upsert.
+
+4. **`step2_full_roundtrip`** — feed the step 2 fixture (`app/sidecar/mock-templates/outputs/step2/context/decisions.json` — already shaped as `DecisionsOutput`) through materialize at step 2. Assert: `read_decisions` returns `Some`, `version == "1"`, `decision_count` matches the number of items returned, at least one item has `status == "needs-review"`, `resolved` items have correct titles.
+
+5. **`step2_contradictory_inputs_active_true`** — construct a minimal `DecisionsOutput` JSON with `"contradictory_inputs": true` in metadata. Materialize and assert `read_decisions` returns `contradictory_inputs == Some("active")`.
+
+6. **`step2_contradictory_inputs_active_false`** — same but `"contradictory_inputs": false`. Assert `read_decisions` returns `contradictory_inputs == Some("inactive")`.
+
+7. **`step2_contradictory_inputs_revised_string`** — same but `"contradictory_inputs": "revised text"`. Assert `read_decisions` returns `contradictory_inputs == Some("revised text")`.
+
+8. **`scope_recommendation_guard_reads_db`** — materialize step 0 fixture that includes `"scope_recommendation": "focus"` in the `ClarificationsFile` metadata. Then call `check_scope_recommendation_db(&db, skill_id)` and assert it returns `Some("focus")` (or equivalent).
+
+9. **`decisions_needs_review_guard_reads_db`** — materialize step 2 fixture (which has `needs-review` items). Then call `check_decisions_guard_db(&db, skill_id)` and assert it returns a non-empty list of `needs-review` decision IDs / titles.
+
+10. **`dropped_fields_not_stored`** — materialize step 0 fixture (which has `priority_questions` + `duplicates_removed` in metadata, and `consolidated_from` would be on a question if present). After round-trip, assert the returned `ClarificationsRecord` has no `priority_questions` field (the struct simply doesn't have it) and questions don't carry `consolidated_from`.
+
+### Implementation notes
+
+- Use the existing `db_with_seeded_skill(name)` helper from `tests.rs` to get a `Db` instance.
+- To read back: `let conn = db.0.lock().unwrap(); let record = read_clarifications(&conn, skill_id)?;`
+- Inline the fixture JSON as a Rust `serde_json::json!({…})` literal rather than reading files at test time (avoids file-path coupling in unit tests). Copy the relevant sections from the mock templates.
+- For the `ClarificationsFile` fixture, use a minimal but realistic slice: 2 sections, 2–3 questions each, at least one question with a non-empty `recommendation` and one `is_other: true` choice.
+- For `scope_recommendation`, the `ClarificationsFile.metadata` struct may or may not include the field — check `app/src-tauri/src/contracts/clarifications.rs` to confirm the field name; add it to the inline fixture accordingly.
+- For guard tests: import `check_scope_recommendation_db` and `check_decisions_guard_db` from `commands::workflow::guards` (or wherever they live after the Task 4 refactor); if those functions are `pub(crate)`, tests in the same crate can call them directly.
+
+### Acceptance criteria
+
+- `cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow::tests::step` (all new tests pass)
+- All 10 test cases implemented and passing
+- No new `#[allow(dead_code)]` or `#[allow(unused)]` attributes introduced
+- Commit: `VU-1157: fixture-driven materialization round-trip tests`
+
+## Task 11: Fix Split-Brain In Step-Complete Components
+
+**Context:** The three step-complete display components still read clarifications/decisions from workspace JSON files even though the DB is now authoritative. `useClarifications` and `useDecisions` TanStack Query hooks already exist (Task 7). The components just haven't been wired up to them.
+
+**Files:**
+
+- Modify: `app/src/components/step-complete/research-step-complete.tsx`
+- Modify: `app/src/components/step-complete/detailed-research-step-complete.tsx`
+- Modify: `app/src/components/step-complete/decisions-step-complete.tsx`
+- Modify: `app/src/components/step-complete/index.tsx`
+
+**What to change:**
+
+- [ ] `research-step-complete.tsx` — replace `fileContents.get("context/clarifications.json")` file read with `useClarifications(skillId)` query hook. Remove the JSON parse step; render from the typed `ClarificationsDto` returned by the hook.
+- [ ] `detailed-research-step-complete.tsx` — same: drop the `context/clarifications.json` file read; use `useClarifications(skillId)`.
+- [ ] `decisions-step-complete.tsx` — replace `fileContents.get("context/decisions.json")` with `useDecisions(skillId)`. Remove JSON parse; render from `DecisionsDto`.
+- [ ] `index.tsx` — remove the routing checks on `outputFiles.includes("context/clarifications.json")` and `outputFiles.includes("context/decisions.json")`. Step completion is determined by DB row presence (i.e. whether `useClarifications` / `useDecisions` return a non-null value), not by file path presence in `outputFiles`.
+- [ ] Where `skillId` is not yet in scope for these components, thread it down from the parent or read it from the workflow store (check how `clarifications-editor/index.tsx` receives it — use the same pattern).
+- [ ] Run: `cd app && npm run test:unit && npx tsc --noEmit`
+- [ ] Commit: `VU-1157: fix split-brain in step-complete — read from DB not files`
+
+## Task 12: Dead Code Cleanup
+
+**Context:** Dead code analysis identified confirmed-dead and likely-dead symbols across `commands/workflow/mod.rs`, `runtime.rs`, `deploy.rs`, `step_config.rs`, `refine/protocol.rs`, and `db/workflow_artifacts.rs`. These are leftovers from the Claude-SDK era (VU-1145) and VU-1157's migration. Removing them makes `#[allow(dead_code)]` count drop to zero and keeps clippy warnings clean.
+
+**Files:**
+
+- Modify: `app/src-tauri/src/commands/workflow/mod.rs`
+- Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
+- Modify: `app/src-tauri/src/commands/workflow/deploy.rs`
+- Modify: `app/src-tauri/src/commands/workflow/step_config.rs`
+- Modify: `app/src-tauri/src/commands/refine/mod.rs` (module-level allow annotation)
+- Modify: `app/src-tauri/src/db/workflow_artifacts.rs` (wire up or document pre-built hooks)
+- Modify: `app/src-tauri/src/commands/workflow/tests.rs` (remove tests for deleted symbols)
+
+**Confirmed dead — delete:**
+
+- [ ] `commands/workflow/mod.rs:41–58` — `coerce_to_string` and `coerce_to_bool`. Both `#[deprecated]` + `#[allow(dead_code)]`, zero call sites. Delete the two functions and the deprecation comments.
+- [ ] `commands/workflow/runtime.rs` — `workflow_one_shot_runtime_provider` and `workflow_step_uses_native_openhands_dispatch`. Both `#[allow(dead_code)]`, only called from tests. Delete the functions. Remove the two corresponding test cases in `tests.rs` that assert trivial constant values ("openhands" string; always returns true).
+- [ ] `commands/refine/mod.rs` — remove the `#[allow(dead_code)]` attribute on the `protocol` module declaration (line 4). The module is live via `use protocol::*`; the suppression is a false positive leftover.
+
+**Likely dead — delete with their test-only callers:**
+
+- [ ] `commands/workflow/deploy.rs`:
+  - `workspace_already_copied` and `mark_workspace_copied` — `#[allow(dead_code)]`, test-only callers. Delete both functions.
+  - `workspace_openhands_layout_complete` — `#[allow(dead_code)]`, test-only. Delete.
+  - `copy_prompts_sync` — `#[allow(dead_code)]`, test-only. Delete.
+  - `copy_agents_to_claude_dir` and `copy_managed_plugins_to_claude_dir` — `#[allow(dead_code)]`, test-only. Delete both.
+  - In `tests.rs` (or `deploy.rs` `#[cfg(test)]` block): delete the test cases that exclusively exercise the deleted functions. Do not delete tests that also exercise live production paths.
+- [ ] `commands/workflow/step_config.rs` — `thinking_budget_for_step`, `build_betas`, `validate_clarifications_json`. All `#[allow(dead_code)]`, all test-only callers. These were Claude-SDK thinking-budget helpers; OpenHands dispatch does not use them. Delete the functions and their test cases in `tests.rs`.
+
+**Pre-built hooks in `workflow_artifacts.rs` — stale annotations and one real gap:**
+
+Six items carry `#[allow(dead_code)]` with "later VU-1157 task" comments. Four are already live; two are a real gap. Decisions:
+
+- [ ] Lines 155, 174, 294, 627 (`opt_bool_to_int`, `upsert_clarifications`, `insert_question_recursive`, `upsert_decisions`): these are already called from `output_format.rs` and test helpers — the annotations are stale. Remove the four `#[allow(dead_code)]` attributes and their comments. No logic changes needed.
+- [ ] Lines 591, 745 (`delete_clarifications`, `delete_decisions`): genuinely not called. Wire them both into `commands/skill/crud.rs::delete_skill_db_records_inner` — call them at the top of that function before the workflow-run / imported-skill branch, since artifact rows are keyed by skill name and must be purged on any skill deletion:
+  ```rust
+  crate::db::workflow_artifacts::delete_clarifications(conn, name).map_err(|e| e.to_string())?;
+  crate::db::workflow_artifacts::delete_decisions(conn, name).map_err(|e| e.to_string())?;
+  ```
+  Then remove the `#[allow(dead_code)]` attributes from both functions. Add a test in `db/tests.rs` confirming that artifact rows are gone after `delete_skill_db_records_inner` runs.
+
+**Validation:**
+
+- [ ] `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` — must pass with zero `dead_code` warnings (no new `#[allow(dead_code)]` should be needed to achieve this).
+- [ ] `cargo test --manifest-path app/src-tauri/Cargo.toml` — all tests pass.
+- [ ] `cd app && npx tsc --noEmit` — clean.
+- [ ] `cd app && npm run test:unit` — clean.
+- [ ] Commit: `VU-1157: remove dead code — coerce helpers, deploy copy fns, step_config sdk helpers`
 
 ---
 

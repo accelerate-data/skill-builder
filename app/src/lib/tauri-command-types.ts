@@ -46,6 +46,11 @@ import type {
   SaveEvalPromptSet,
   SuggestDescriptionCandidatesRequest,
 } from "@/lib/eval-workbench";
+import type {
+  ClarificationVerdictUpdate,
+  ClarificationsDto,
+  DecisionsDto,
+} from "@/generated/contracts";
 
 export type NoArgs = Record<string, never>;
 
@@ -373,20 +378,22 @@ export interface TauriCommandMap {
     args: { skillName: string; workspacePath: string; structuredOutput: AnswerEvaluationOutput };
     result: void;
   };
-  get_clarifications_content: { args: { skillName: string; workspacePath: string }; result: string };
-  save_clarifications_content: {
-    args: { skillName: string; workspacePath: string; content: string };
+  // VU-1157: typed Tauri commands backed by SQLite workflow_artifacts tables.
+  get_clarifications: { args: { skillId: string }; result: ClarificationsDto | null };
+  update_clarification_answer: {
+    args: {
+      skillId: string;
+      questionId: string;
+      answerChoice: string | null;
+      answerText: string | null;
+    };
     result: void;
   };
-  get_decisions_content: { args: { skillName: string; workspacePath: string }; result: string };
-  save_decisions_content: {
-    args: { skillName: string; workspacePath: string; content: string };
+  update_clarification_verdicts: {
+    args: { skillId: string; updates: ClarificationVerdictUpdate[] };
     result: void;
   };
-  get_context_file_content: {
-    args: { skillName: string; workspacePath: string; fileName: string };
-    result: string;
-  };
+  get_decisions: { args: { skillId: string }; result: DecisionsDto | null };
   log_gate_decision: {
     args: { skillName: string; verdict: string; decision: string };
     result: void;

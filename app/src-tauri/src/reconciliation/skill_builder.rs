@@ -1,4 +1,5 @@
 use crate::cleanup::cleanup_future_steps;
+use crate::db::workflow_artifacts as db_artifacts;
 use crate::fs_validation::{detect_furthest_step, has_skill_output};
 use std::path::Path;
 
@@ -43,10 +44,21 @@ pub(crate) fn reconcile_skill_builder(
     let maybe_run = crate::db::get_workflow_run(conn, name)?;
 
     if maybe_run.is_none() {
-        // Scenario 10: master row exists but no workflow_runs row — auto-create
-        let disk_step = detect_furthest_step(workspace_path, plugin_slug, name, skills_path)
-            .map(|s| s as i32)
-            .unwrap_or(0);
+        // Scenario 10: master row exists but no workflow_runs row — auto-create.
+        // Check both DB artifact rows and filesystem for step detection.
+        let has_decisions = db_artifacts::read_decisions(conn, name)
+            .map(|opt| opt.is_some())
+            .unwrap_or(false);
+        let has_skill_md =
+            detect_furthest_step(workspace_path, plugin_slug, name, skills_path).is_some();
+
+        let disk_step: i32 = if has_skill_md {
+            3
+        } else if has_decisions {
+            2
+        } else {
+            0
+        };
         let status = if disk_step >= 3 {
             "completed"
         } else {
@@ -73,8 +85,7 @@ pub(crate) fn reconcile_skill_builder(
     let skill_dir =
         crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, name);
     if !skill_dir.exists() {
-        let context_dir = skill_dir.join("context");
-        match std::fs::create_dir_all(&context_dir) {
+        match std::fs::create_dir_all(&skill_dir) {
             Ok(()) => log::info!(
                 "[reconcile] '{}': skill_source=skill-builder, action=recreate_workspace",
                 name
@@ -196,27 +207,30 @@ pub(crate) fn reconcile_skill_builder(
 
         // Clean up any files from steps beyond the reconciled disk point
         cleanup_future_steps(workspace_path, name, plugin_slug, disk_step, skills_path);
-    } else if run.current_step > 0 {
-        // Scenario 4: No output files found but DB thinks we're past step 0 — reset
+    } else if run.current_step >= 3 {
+        // Scenario 4: DB says step 3+ but no SKILL.md on disk — reset to step 2.
+        // Steps 0-2 are DB-authoritative; their data is still in the DB.
+        // Only SKILL.md is filesystem-based, so a missing SKILL.md means step 3
+        // needs to re-run, but prior steps remain valid.
         log::info!(
-            "[reconcile] '{}': skill_source=skill-builder, action=reset_to_zero (step {} to 0, no output files)",
+            "[reconcile] '{}': skill_source=skill-builder, action=reset_to_step2 (step {} to 2, SKILL.md not found)",
             name, run.current_step
         );
-        crate::db::save_workflow_run(conn, name, 0, "pending", &run.purpose)?;
-        crate::db::reset_workflow_steps_from(conn, name, 0)?;
-        cleanup_future_steps(workspace_path, name, plugin_slug, -1, skills_path);
+        crate::db::save_workflow_run(conn, name, 2, "pending", &run.purpose)?;
+        crate::db::reset_workflow_steps_from(conn, name, 3)?;
+        cleanup_future_steps(workspace_path, name, plugin_slug, 2, skills_path);
         notifications.push(format!(
-            "'{}' was reset from step {} to step 1 (no output files found)",
+            "'{}' was reset from step {} to step 3 (SKILL.md not found)",
             name,
             run.current_step + 1
         ));
     } else {
-        // Scenario 8: Fresh skill (step 0, no output).
+        // Scenario 8: Steps 0-2 are DB-authoritative; no SKILL.md expected.
         // Also reset any spuriously completed steps — DB may claim step 0 is
         // completed but disk artifacts are gone (e.g. user deleted files).
         log::debug!(
-            "[reconcile] '{}': skill_source=skill-builder, action=reset_steps (fresh skill at step 0, clearing stale completions)",
-            name
+            "[reconcile] '{}': skill_source=skill-builder, action=reset_steps (no SKILL.md, step={})",
+            name, run.current_step
         );
         crate::db::reset_workflow_steps_from(conn, name, 0)?;
     }

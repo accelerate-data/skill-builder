@@ -285,6 +285,11 @@ use app_lib::contracts::clarifications::{
 use app_lib::contracts::decisions::{
     ContradictoryInputs, Decision, DecisionStatus, DecisionsMetadata,
 };
+use app_lib::contracts::workflow_artifacts::{
+    ClarificationChoiceDto, ClarificationNoteDto, ClarificationQuestionDto,
+    ClarificationSectionDto, ClarificationVerdictUpdate, ClarificationsDto, DecisionItemDto,
+    DecisionsDto,
+};
 use app_lib::contracts::workflow_outputs::{
     AnswerEvaluationOutput, DecisionsOutput, DetailedResearchOutput, GenerateSkillOutput,
     PerQuestionEntry, ResearchStepOutput,
@@ -340,6 +345,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.register::<GenerateSkillOutput>();
     types.register::<PerQuestionEntry>();
     types.register::<AnswerEvaluationOutput>();
+
+    // Workflow artifacts (DB-backed DTOs for VU-1157 typed Tauri commands)
+    types.register::<ClarificationChoiceDto>();
+    types.register::<ClarificationNoteDto>();
+    types.register::<ClarificationSectionDto>();
+    types.register::<ClarificationQuestionDto>();
+    types.register::<ClarificationsDto>();
+    types.register::<ClarificationVerdictUpdate>();
+    types.register::<DecisionItemDto>();
+    types.register::<DecisionsDto>();
 
     // ── 2. Export TypeScript types ──────────────────────────────────────────
 

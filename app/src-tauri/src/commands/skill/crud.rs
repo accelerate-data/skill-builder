@@ -594,25 +594,44 @@ pub(crate) fn delete_skill_db_records_inner(
     name: &str,
     plugin_slug: &str,
 ) -> Result<(), String> {
-    // Full DB cleanup: route to the right delete based on what's in the DB.
-    // Skill-builder skills have a workflow_run; marketplace/imported skills do not.
-    let has_workflow_run = crate::db::get_workflow_run_id(conn, name)
-        .unwrap_or(None)
-        .is_some();
-    if has_workflow_run {
-        crate::db::delete_workflow_run(conn, name, plugin_slug)?;
-        log::info!(
-            "[delete_skill] workflow run DB records cleaned for {}",
-            name
-        );
-    } else {
-        crate::db::delete_imported_skill_by_name(conn, name, plugin_slug)?;
-        crate::db::delete_skill_in_plugin(conn, name, plugin_slug)?;
-        log::info!(
-            "[delete_skill] imported skill DB records cleaned for {}",
-            name
-        );
-    }
+    conn.execute_batch("SAVEPOINT delete_skill")
+        .map_err(|e| e.to_string())?;
+    let result = (|| -> Result<(), String> {
+        // Purge workflow artifact rows keyed by skill name (clarifications, decisions).
+        // These exist for any skill source and must be cleaned up unconditionally.
+        crate::db::workflow_artifacts::delete_clarifications(conn, name)
+            .map_err(|e| e.to_string())?;
+        crate::db::workflow_artifacts::delete_decisions(conn, name)
+            .map_err(|e| e.to_string())?;
 
+        // Full DB cleanup: route to the right delete based on what's in the DB.
+        // Skill-builder skills have a workflow_run; marketplace/imported skills do not.
+        let has_workflow_run = crate::db::get_workflow_run_id(conn, name)
+            .unwrap_or(None)
+            .is_some();
+        if has_workflow_run {
+            crate::db::delete_workflow_run(conn, name, plugin_slug)?;
+            log::info!(
+                "[delete_skill] workflow run DB records cleaned for {}",
+                name
+            );
+        } else {
+            crate::db::delete_imported_skill_by_name(conn, name, plugin_slug)?;
+            crate::db::delete_skill_in_plugin(conn, name, plugin_slug)?;
+            log::info!(
+                "[delete_skill] imported skill DB records cleaned for {}",
+                name
+            );
+        }
+
+        Ok(())
+    })();
+    if let Err(e) = result {
+        let _ = conn.execute_batch("ROLLBACK TO delete_skill");
+        let _ = conn.execute_batch("RELEASE delete_skill");
+        return Err(e);
+    }
+    conn.execute_batch("RELEASE delete_skill")
+        .map_err(|e| e.to_string())?;
     Ok(())
 }

@@ -13,33 +13,24 @@ risks, and validation implications.
 We are writing the skill {{skill_name}}.
 Task kind: workflow.confirm_decisions
 Workspace directory: {{workspace_dir}}
-User context file: {{workspace_dir}}/user-context.md
-Clarifications file: {{workspace_dir}}/context/clarifications.json
-Context directory: {{workspace_dir}}/context
 
 All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
 
-The user has already answered clarification questions. Those questions, choices, answers, and any refinement answers are in context/clarifications.json. Your job is to convert that clarification record into the canonical set of decisions that will guide the rest of the skill-building process.
+{{user_context_block}}
+
+## Clarifications Record
+
+{{clarifications_json}}
+
+The user has already answered clarification questions. Those questions, choices, answers, and any refinement answers are in the clarifications record above. Your job is to convert that clarification record into the canonical set of decisions that will guide the rest of the skill-building process.
 
 A decision is a durable, implementation-relevant conclusion inferred from the user's answers. It should capture what the future skill must do, when it should be used, what assumptions it should follow, what constraints matter, and what downstream skill-writing implications follow. Decisions are not a transcript, summary, or restatement of every answer. They are the product requirements and design commitments that the skill writer can act on.
 
-Read user-context.md and context/clarifications.json. Do not write any files. Return the JSON object directly; the backend will materialize context/decisions.json.
+Do not write any files. Return the JSON object directly; the backend will materialize context/decisions.json.
 
-If user-context.md contains a "Reference Documents" section with one or more named documents supplied by the user, read those documents first and incorporate them. If a document is missing or appears truncated, note that limitation in an implication only when it affects a decision.
+If the user context contains a "Reference Documents" section with one or more named documents supplied by the user, incorporate them. If a document is missing or appears truncated, note that limitation in an implication only when it affects a decision.
 
-Read context/clarifications.json completely before analyzing it. If user-context.md is missing, clarifications.json is missing, or clarifications.json is malformed, return immediately:
-
-{
-  "version": "1",
-  "metadata": {
-    "decision_count": 0,
-    "conflicts_resolved": 0,
-    "round": 1
-  },
-  "decisions": []
-}
-
-If clarifications.json has metadata.scope_recommendation set to true, return immediately:
+If the clarifications record above has metadata.scope_recommendation set to true, return immediately:
 
 {
   "version": "1",

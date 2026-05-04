@@ -1,4 +1,7 @@
+pub mod answer_evaluation;
+pub mod clarifications;
 pub mod claude_md;
+pub mod decisions;
 pub mod deploy;
 pub mod evaluation;
 pub mod guards;
@@ -7,7 +10,6 @@ pub mod prompt;
 pub mod runtime;
 pub mod settings;
 pub mod step_config;
-pub mod user_context;
 
 // Re-export items used by callers outside this module via `commands::workflow::*`.
 
@@ -25,46 +27,6 @@ pub(crate) use claude_md::rebuild_claude_md;
 
 // evaluation
 pub(crate) use evaluation::get_step_output_files;
-
-// user_context
-pub(crate) use user_context::write_user_context_file;
-
-// ── LLM output coercion helpers ─────────────────────────────────────────────
-// LLMs occasionally drift on JSON types: numbers as strings, strings as numbers,
-// bools as strings, etc. These helpers accept the canonical type first, then
-// fall back to the most common LLM drift.
-//
-// NOTE: With the typed contract structs in `contracts/`, most structural validation
-// is now handled by serde deserialization. These helpers are retained only for the
-// few remaining `serde_json::Value`-based call sites (e.g. `guards.rs`).
-
-/// Coerce a JSON value to i64: accepts native integers or string-encoded integers.
-pub(crate) fn coerce_to_i64(v: &serde_json::Value) -> Option<i64> {
-    v.as_i64()
-        .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
-}
-
-/// Coerce a JSON value to String: accepts strings, or stringifies numbers/bools.
-#[deprecated(note = "Use typed contract structs instead of coercing serde_json::Value")]
-#[allow(dead_code)]
-pub(crate) fn coerce_to_string(v: &serde_json::Value) -> Option<String> {
-    v.as_str().map(|s| s.to_string()).or_else(|| match v {
-        serde_json::Value::Number(n) => Some(n.to_string()),
-        serde_json::Value::Bool(b) => Some(b.to_string()),
-        _ => None,
-    })
-}
-
-/// Coerce a JSON value to bool: accepts bools or string "true"/"false".
-#[deprecated(note = "Use typed contract structs instead of coercing serde_json::Value")]
-#[allow(dead_code)]
-pub(crate) fn coerce_to_bool(v: &serde_json::Value) -> Option<bool> {
-    v.as_bool().or_else(|| match v.as_str() {
-        Some("true") => Some(true),
-        Some("false") => Some(false),
-        _ => None,
-    })
-}
 
 #[cfg(test)]
 mod tests;

@@ -1,34 +1,43 @@
-import { AlertTriangle, RotateCcw } from "lucide-react";
+import { Loader2, AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ResearchSummaryCard } from "@/components/research-summary-card";
-import { parseClarifications } from "@/lib/clarifications-types";
+import { clarificationsDtoToFile } from "@/lib/clarifications-types";
+import { useClarifications } from "@/lib/queries/clarifications";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { StepActionBar } from "./step-action-bar";
-import type { StepCompleteBaseProps, ClarificationsEditableProps, StepFileProps } from "./step-complete-types";
+import type { StepCompleteBaseProps, ClarificationsEditableProps } from "./step-complete-types";
 
-type Props = StepCompleteBaseProps & ClarificationsEditableProps & Pick<StepFileProps, "fileContents">;
+type Props = StepCompleteBaseProps & ClarificationsEditableProps & {
+  skillName?: string;
+};
 
 export function ResearchStepComplete(props: Props) {
   const {
-    fileContents, agentRuns, reviewMode, duration,
+    skillName, agentRuns, reviewMode, duration,
     isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onEval, onResetStep,
     clarificationsEditable, clarificationsData: controlledClarData,
     onClarificationsChange, onClarificationsContinue, onReset, saveStatus, evaluating,
   } = props;
 
-  const clarificationsContent = fileContents.get("context/clarifications.json");
-  const researchPlanContent = fileContents.get("context/research-plan.md");
+  const { data: clarDto, isLoading, isError } = useClarifications(skillName ?? null);
 
-  // Missing files = error
-  if (!clarificationsContent || clarificationsContent === "__NOT_FOUND__") {
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (isError || !clarDto) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
         <AlertTriangle className="size-8 text-destructive/50" />
         <div className="text-center">
-          <p className="font-medium text-destructive">Research step completed but output files are missing</p>
+          <p className="font-medium text-destructive">Clarifications not found in database</p>
           <div className="mt-2 text-sm">
-            <p>Expected <code className="text-xs">context/clarifications.json</code> but it was not found.</p>
+            <p>The research step output could not be loaded from the database.</p>
           </div>
         </div>
         {onResetStep && (
@@ -41,21 +50,7 @@ export function ResearchStepComplete(props: Props) {
     );
   }
 
-  const clarData = parseClarifications(clarificationsContent);
-  if (!clarData) {
-    return (
-      <div className="flex h-full flex-col gap-4 overflow-hidden">
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
-          <AlertTriangle className="size-8 text-destructive/50" />
-          <div className="text-center">
-            <p className="font-medium text-destructive">Invalid clarifications.json</p>
-            <p className="mt-1 text-sm">The agent wrote a file that is not valid JSON. Reset and re-run the step.</p>
-          </div>
-        </div>
-        <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onEval={onEval} onClose={onClose} onNextStep={onNextStep} />
-      </div>
-    );
-  }
+  const clarData = clarificationsDtoToFile(clarDto);
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
@@ -65,7 +60,6 @@ export function ResearchStepComplete(props: Props) {
       {clarificationsEditable ? (
         <div className="min-h-0 flex-1 overflow-hidden">
           <ResearchSummaryCard
-            researchPlan={researchPlanContent}
             clarificationsData={controlledClarData ?? clarData}
             duration={!reviewMode ? duration : undefined}
             editable
@@ -81,7 +75,6 @@ export function ResearchStepComplete(props: Props) {
           <ScrollArea className="min-h-0 flex-1">
             <div className="flex min-h-full min-w-0 flex-col pr-4">
               <ResearchSummaryCard
-                researchPlan={researchPlanContent}
                 clarificationsData={clarData}
                 duration={!reviewMode ? duration : undefined}
               />

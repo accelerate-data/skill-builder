@@ -80,6 +80,10 @@ UI-facing, also run the mapped E2E tag.
 |---|---|---|
 | `app/src-tauri/src/commands/workflow/mod.rs` | `commands::workflow` | `@workflow` |
 | `app/src-tauri/src/commands/workflow/guards.rs` | `commands::workflow::guards` | `@workflow` |
+| `app/src-tauri/src/commands/workflow/clarifications.rs` | `commands::workflow::clarifications` | `@workflow` |
+| `app/src-tauri/src/commands/workflow/decisions.rs` | `commands::workflow::decisions` | `@workflow` |
+| `app/src-tauri/src/commands/workflow/answer_evaluation.rs` | `commands::workflow::answer_evaluation` | `@workflow` |
+| `app/src-tauri/src/db/workflow_artifacts.rs` | `db::workflow_artifacts` | -- |
 | `app/src-tauri/src/commands/workspace.rs` | `commands::workspace` | `@dashboard` |
 | `app/src-tauri/src/commands/skill/mod.rs` | `commands::skill` | `@dashboard` |
 | `app/src-tauri/src/commands/skill/export.rs` | `commands::skill::export` | `@skills` |

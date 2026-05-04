@@ -62,11 +62,6 @@ void invokeCommand("resolve_discovery", {
 });
 
 void invokeCommand("cancel_workflow_step", { agentId: "demo-step-agent" });
-void invokeCommand("get_context_file_content", {
-  skillName: "demo",
-  workspacePath: "/tmp/workspace",
-  fileName: "clarifications.json",
-});
 
 // @ts-expect-error run_workflow_step requires workflowSessionId to be string or null, not number
 void invokeCommand("run_workflow_step", {

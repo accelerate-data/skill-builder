@@ -10,7 +10,6 @@ export type {
   ClarificationsWarning,
   ClarificationsError,
   Section,
-  Question,
   Choice,
   Note,
 } from "@/generated/contracts";
@@ -19,9 +18,24 @@ export type {
 import type {
   ClarificationsFile,
   Section,
-  Question,
   Note,
+  Choice,
 } from "@/generated/contracts";
+import type { Question as BaseQuestion } from "@/generated/contracts";
+import type {
+  ClarificationsDto,
+  ClarificationQuestionDto,
+  ClarificationChoiceDto,
+} from "@/generated/contracts";
+
+/**
+ * Extended Question type that includes per-question verdict fields
+ * populated by the answer-evaluator gate (stored in the DB, not notes).
+ */
+export type Question = BaseQuestion & {
+  answer_verdict?: string | null;
+  answer_verdict_reason?: string | null;
+};
 
 /** Extract the recommended choice ID from a recommendation string.
  *  Handles both the current format ("B") and legacy format ("B — rationale text"). */
@@ -81,6 +95,71 @@ export function isQuestionAnswered(q: Question): boolean {
  *  (agent output may omit it). */
 function normalizeQuestion(q: Question): Question {
   return { ...q, refinements: (q.refinements ?? []).map(normalizeQuestion) };
+}
+
+/** Convert a ClarificationChoiceDto to a Choice. */
+function dtoToChoice(choice: ClarificationChoiceDto): Choice {
+  return { id: choice.choice_id, text: choice.text, is_other: choice.is_other };
+}
+
+/** Convert a ClarificationQuestionDto (possibly recursive) to a Question. */
+function dtoToQuestion(q: ClarificationQuestionDto): Question {
+  return {
+    id: q.question_id,
+    title: q.title,
+    text: q.text,
+    must_answer: q.must_answer,
+    answer_choice: q.answer_choice ?? undefined,
+    answer_text: q.answer_text ?? undefined,
+    recommendation: q.recommendation ?? undefined,
+    answer_verdict: q.answer_verdict ?? undefined,
+    answer_verdict_reason: q.answer_verdict_reason ?? undefined,
+    choices: q.choices.map(dtoToChoice),
+    refinements: (q.refinements ?? [])
+      .sort((a, b) => a.ordinal - b.ordinal)
+      .map(dtoToQuestion),
+  };
+}
+
+/**
+ * Convert a ClarificationsDto (DB row) to a ClarificationsFile (JSON schema shape).
+ * Use this to feed components that still consume ClarificationsFile.
+ */
+export function clarificationsDtoToFile(dto: ClarificationsDto): ClarificationsFile {
+  const researchNotes: Note[] = dto.notes
+    .filter((n) => n.note_type !== "answer_feedback")
+    .map((n) => ({ type: n.note_type, title: n.title, body: n.body }));
+
+  const evaluatorNotes: Note[] = dto.notes
+    .filter((n) => n.note_type === "answer_feedback")
+    .map((n) => ({ type: n.note_type, title: n.title, body: n.body }));
+
+  const sections: Section[] = dto.sections.map((sec) => ({
+    id: sec.section_id,
+    title: sec.title,
+    description: sec.description ?? undefined,
+    questions: dto.questions
+      .filter((q) => q.section_id === sec.section_id && q.parent_question_id == null)
+      .sort((a, b) => a.ordinal - b.ordinal)
+      .map(dtoToQuestion),
+  }));
+
+  return {
+    metadata: {
+      title: dto.title,
+      question_count: dto.question_count,
+      section_count: dto.section_count,
+      refinement_count: dto.refinement_count,
+      must_answer_count: dto.must_answer_count,
+      scope_recommendation: dto.scope_recommendation ?? null,
+      scope_reason: dto.scope_reason ?? null,
+      scope_next_action: dto.scope_next_action ?? null,
+      priority_questions: [],
+    },
+    sections,
+    notes: researchNotes,
+    answer_evaluator_notes: evaluatorNotes,
+  };
 }
 
 /** Parse and normalize JSON clarifications from raw file content.

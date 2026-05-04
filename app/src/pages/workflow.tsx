@@ -46,6 +46,64 @@ import { useWorkflowAutosave } from "@/hooks/use-workflow-autosave";
 import { useWorkflowSession } from "@/hooks/use-workflow-session";
 import { useWorkflowStateMachine } from "@/hooks/use-workflow-state-machine";
 import { useBuilderSkillsQuery } from "@/lib/queries/skills";
+import { useClarifications } from "@/lib/queries/clarifications";
+import type { ClarificationsDto, ClarificationQuestionDto } from "@/generated/contracts";
+import type { ClarificationsFile, Question } from "@/lib/clarifications-types";
+
+// ─── ClarificationsDto → ClarificationsFile mapper ───────────────────────────
+
+function mapDtoQuestionToFile(q: ClarificationQuestionDto): Question {
+  return {
+    id: q.question_id,
+    title: q.title,
+    text: q.text,
+    must_answer: q.must_answer,
+    recommendation: q.recommendation ?? null,
+    answer_choice: q.answer_choice ?? null,
+    answer_text: q.answer_text ?? null,
+    answer_verdict: q.answer_verdict ?? null,
+    answer_verdict_reason: q.answer_verdict_reason ?? null,
+    choices: (q.choices ?? []).map((c) => ({
+      id: c.choice_id,
+      text: c.text,
+      is_other: c.is_other,
+    })),
+    refinements: (q.refinements ?? []).map(mapDtoQuestionToFile),
+  };
+}
+
+function mapClarificationsDtoToFile(dto: ClarificationsDto): ClarificationsFile {
+  return {
+    version: dto.version,
+    metadata: {
+      title: dto.title,
+      question_count: dto.question_count,
+      section_count: dto.section_count,
+      refinement_count: dto.refinement_count,
+      must_answer_count: dto.must_answer_count,
+      priority_questions: [],
+      scope_recommendation: dto.scope_recommendation ?? null,
+      scope_reason: dto.scope_reason ?? null,
+      scope_next_action: dto.scope_next_action ?? null,
+      error: dto.error_code ? { code: dto.error_code, message: dto.error_message ?? "" } : null,
+      warning: dto.warning_code ? { code: dto.warning_code, message: dto.warning_message ?? "" } : null,
+    },
+    sections: (dto.sections ?? []).map((s) => ({
+      id: s.section_id,
+      title: s.title,
+      description: s.description ?? undefined,
+      questions: (dto.questions ?? [])
+        .filter((q) => q.section_id === s.section_id && q.parent_question_id == null)
+        .sort((a, b) => a.ordinal - b.ordinal)
+        .map(mapDtoQuestionToFile),
+    })),
+    notes: (dto.notes ?? [])
+      .filter((n) => n.note_type !== "answer_feedback")
+      .sort((a, b) => a.ordinal - b.ordinal)
+      .map((n) => ({ type: n.note_type, title: n.title, body: n.body })),
+    answer_evaluator_notes: [],
+  };
+}
 
 interface WorkflowMainHeaderProps {
   skillName: string;
@@ -134,7 +192,6 @@ export default function WorkflowPage() {
   // 1. Persistence — initializes hydrated state, tracks error artifacts
   const { errorHasArtifacts } = useWorkflowPersistence({
     skillName,
-    workspacePath,
     skillsPath,
     stepConfig,
     currentStep,
@@ -144,7 +201,17 @@ export default function WorkflowPage() {
     hydrated,
   });
 
-  // 2. Autosave — owns clarifications editing state
+  // 2a. DB clarifications query — feeds editor when step is clarifications-editable
+  const isClarificationsEditable = !!stepConfig?.clarificationsEditable;
+  const isStepCompleted = steps[currentStep]?.status === "completed";
+  const { data: clarificationsDto } = useClarifications(
+    isClarificationsEditable && isStepCompleted ? skillName : null,
+  );
+  const dbClarificationsData = clarificationsDto
+    ? mapClarificationsDtoToFile(clarificationsDto)
+    : null;
+
+  // 2b. Autosave — owns clarifications editing state and persists per-question changes
   const {
     clarificationsData,
     editorDirty,
@@ -152,12 +219,11 @@ export default function WorkflowPage() {
     hasUnsavedChangesRef,
     handleClarificationsChange,
     handleSave,
-    updateClarificationsState,
   } = useWorkflowAutosave({
-    workspacePath,
     skillName,
     clarificationsEditable: stepConfig?.clarificationsEditable,
     currentStepStatus: steps[currentStep]?.status,
+    dbClarificationsData,
   });
 
   // 3. Session — lock lifecycle and navigation blocking
@@ -197,9 +263,7 @@ export default function WorkflowPage() {
     disabledSteps,
     errorHasArtifacts,
     purpose,
-    clarificationsData,
     stepConfigs: STEP_CONFIGS,
-    onClarificationsUpdated: updateClarificationsState,
   });
 
   // Local callback: abandon agent and switch to a different step.
@@ -249,7 +313,6 @@ export default function WorkflowPage() {
         nextStepLabel={nextStepLabel}
         reviewMode={reviewMode}
         skillName={skillName}
-        workspacePath={workspacePath ?? undefined}
         skillsPath={skillsPath}
         clarificationsEditable={!!stepConfig?.clarificationsEditable && !reviewMode}
         clarificationsData={clarificationsData}

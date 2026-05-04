@@ -1,7 +1,5 @@
 use crate::db::Db;
 
-use super::guards::validate_decisions_exist_inner;
-
 /// Shared settings extracted from the DB, used by `run_workflow_step`.
 pub(crate) struct WorkflowSettings {
     pub plugin_slug: String,
@@ -75,7 +73,7 @@ pub(crate) fn read_workflow_settings(
     db: &Db,
     skill_name: &str,
     step_id: u32,
-    workspace_path: &str,
+    _workspace_path: &str,
 ) -> Result<WorkflowSettings, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
@@ -104,9 +102,18 @@ pub(crate) fn read_workflow_settings(
         .map(|m| m.plugin_slug.clone())
         .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
 
-    // Validate prerequisites (step 3 requires decisions.json)
+    // Validate prerequisites (step 3 requires decisions from DB)
     if step_id == 3 {
-        validate_decisions_exist_inner(skill_name, workspace_path, &plugin_slug, &skills_path)?;
+        let decisions = crate::db::workflow_artifacts::read_decisions(&conn, skill_name)
+            .map_err(|e| e.to_string())?;
+        if decisions.is_none_or(|d| d.items.is_empty()) {
+            return Err(
+                "Cannot start Generate Skill step: no decisions found in the database. \
+                 The Confirm Decisions step (step 2) must complete before the Generate Skill \
+                 step can run. Please re-run the Confirm Decisions step first."
+                    .to_string(),
+            );
+        }
     }
 
     // Get skill purpose

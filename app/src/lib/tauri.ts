@@ -529,33 +529,6 @@ export const materializeAnswerEvaluationOutput = (
   structuredOutput,
 });
 
-export const getClarificationsContent = (
-  skillName: string,
-  workspacePath: string,
-) => invokeCommand("get_clarifications_content", { skillName, workspacePath });
-
-export const saveClarificationsContent = (
-  skillName: string,
-  workspacePath: string,
-  content: string,
-) => invokeCommand("save_clarifications_content", { skillName, workspacePath, content });
-
-export const getDecisionsContent = (
-  skillName: string,
-  workspacePath: string,
-) => invokeCommand("get_decisions_content", { skillName, workspacePath });
-
-export const saveDecisionsContent = (
-  skillName: string,
-  workspacePath: string,
-  content: string,
-) => invokeCommand("save_decisions_content", { skillName, workspacePath, content });
-
-export const getContextFileContent = (
-  skillName: string,
-  workspacePath: string,
-  fileName: string,
-) => invokeCommand("get_context_file_content", { skillName, workspacePath, fileName });
 
 export const logGateDecision = (
   skillName: string,

@@ -8,7 +8,6 @@ vi.mock("@/lib/tauri", () => ({
   getDisabledSteps: vi.fn(() => Promise.resolve([])),
   saveWorkflowState: vi.fn(() => Promise.resolve()),
   readFile: vi.fn(() => Promise.reject("not found")),
-  getContextFileContent: vi.fn(() => Promise.resolve(null)),
 }));
 
 // Mock stores
@@ -54,14 +53,13 @@ vi.mock("@/stores/agent-store", () => ({
   ),
 }));
 
-import { getWorkflowState, saveWorkflowState, getContextFileContent } from "@/lib/tauri";
+import { getWorkflowState, saveWorkflowState, readFile } from "@/lib/tauri";
 
 describe("useWorkflowPersistence", () => {
   const defaultOptions = {
     skillName: "test-skill",
-    workspacePath: "/workspace",
     skillsPath: "/skills",
-    stepConfig: { outputFiles: ["context/clarifications.json"] },
+    stepConfig: { outputFiles: ["skill/SKILL.md"] },
     currentStep: 0,
     steps: [{ id: 0, status: "pending" }],
     purpose: null,
@@ -125,8 +123,8 @@ describe("useWorkflowPersistence", () => {
     expect(result.current.errorHasArtifacts).toBe(false);
   });
 
-  it("detects error artifacts when step is in error and context file exists", async () => {
-    vi.mocked(getContextFileContent).mockResolvedValue("some content");
+  it("detects error artifacts when step is in error and skill file exists", async () => {
+    vi.mocked(readFile).mockResolvedValue("some content");
     vi.mocked(getWorkflowState).mockResolvedValue({ run: null, steps: [] });
 
     const { result } = renderHook(() =>

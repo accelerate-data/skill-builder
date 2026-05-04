@@ -3,7 +3,6 @@ import { listen } from "@tauri-apps/api/event";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import type { ClarificationsFile } from "@/lib/clarifications-types";
 import {
   runWorkflowStep,
   verifyStepOutput,
@@ -13,6 +12,7 @@ import {
   endWorkflowSession,
   logFrontend,
 } from "@/lib/tauri";
+import { invalidateWorkflowArtifactsAfterStep } from "@/lib/queries/agent-stream-cache";
 import { requireSettingsModel } from "@/lib/models";
 import { type StepConfig } from "@/lib/workflow-step-configs";
 import { toast } from "@/lib/toast";
@@ -124,12 +124,8 @@ interface UseWorkflowStateMachineOptions {
   errorHasArtifacts: boolean;
   /** Workflow purpose */
   purpose: string | null;
-  /** Clarifications data (for merging with gate feedback) */
-  clarificationsData: ClarificationsFile | null;
   /** Step configurations for all steps */
   stepConfigs: Record<number, StepConfig>;
-  /** Optional callback to update clarifications editor state after gate writes feedback */
-  onClarificationsUpdated?: (data: ClarificationsFile, content: string) => void;
 }
 
 /**
@@ -149,9 +145,7 @@ export function useWorkflowStateMachine({
   disabledSteps: _disabledSteps,
   errorHasArtifacts: _errorHasArtifacts,
   purpose,
-  clarificationsData,
   stepConfigs,
-  onClarificationsUpdated,
 }: UseWorkflowStateMachineOptions) {
   // Store actions (individual selectors to avoid new object reference on every render)
   const setCurrentStep = useWorkflowStore((s) => s.setCurrentStep);
@@ -300,6 +294,12 @@ export function useWorkflowStateMachine({
 
       updateStepStatus(step, "completed");
       setRunning(false);
+
+      // Invalidate workflow artifact caches so the DB-backed queries pick up
+      // the newly materialized clarifications / decisions data.
+      if (skillName) {
+        invalidateWorkflowArtifactsAfterStep(skillName, step);
+      }
     },
     [skillName, setRunning, updateStepStatus],
   );
@@ -461,8 +461,6 @@ export function useWorkflowStateMachine({
     workspacePath,
     currentStep,
     purpose,
-    clarificationsData,
-    onClarificationsUpdated,
     advanceToNextStep,
   });
 

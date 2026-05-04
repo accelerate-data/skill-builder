@@ -4,6 +4,14 @@ use crate::commands::workflow_artifacts::{
     AnswerEvaluationOutput, DecisionsOutput, DetailedResearchOutput, GenerateSkillOutput,
     ResearchStepOutput,
 };
+use crate::contracts::clarifications::{ClarificationsFile, Question, Section};
+use crate::contracts::decisions::{ContradictoryInputs, Decision, DecisionStatus};
+use crate::contracts::workflow_artifacts::{
+    validate_contradictory_inputs_state, validate_decision_status,
+};
+use crate::db::workflow_artifacts as db_artifacts;
+use crate::db::workflow_artifacts::{ClarificationsRecord, DecisionsRecord};
+use crate::db::Db;
 
 pub(crate) fn extract_research_json_from_conversation_state(
     state: &serde_json::Value,
@@ -308,29 +316,260 @@ fn validate_generated_skill_output(
     Ok(parsed)
 }
 
+/// Convert a parsed agent `ClarificationsFile` into the normalized DB record.
+///
+/// Drops three fields silently per VU-1157 unpack rules:
+/// `metadata.priority_questions`, `metadata.duplicates_removed`,
+/// `question.consolidated_from`. Question merging/splitting/deduplication
+/// is not a supported workflow.
+///
+/// `answer_evaluator_notes` from the agent JSON is also ignored — per-question
+/// verdicts flow through `update_clarification_verdicts` from the gate hook.
+/// Preserves any prior verdict columns by leaving them NULL on this path; the
+/// DB transaction wipes children before re-insert so existing verdicts are
+/// implicitly cleared on each step boundary.
+pub(crate) fn agent_json_to_clarifications_record(
+    skill_id: &str,
+    refinement_count: i64,
+    file: ClarificationsFile,
+    now_ms: i64,
+) -> ClarificationsRecord {
+    let metadata = file.metadata;
+    // Build top-level questions per section. Each section's questions are
+    // ordered by their position in the agent output; we assign that as the
+    // ordinal. Refinements recurse via `convert_question`.
+    let mut sections_out: Vec<db_artifacts::ClarificationSection> =
+        Vec::with_capacity(file.sections.len());
+    let mut top_level_questions: Vec<db_artifacts::ClarificationQuestion> = Vec::new();
+    for (section_idx, section) in file.sections.into_iter().enumerate() {
+        let Section {
+            id,
+            title,
+            description,
+            questions,
+        } = section;
+        sections_out.push(db_artifacts::ClarificationSection {
+            section_id: id,
+            ordinal: section_idx as i64,
+            title,
+            description,
+        });
+        for (q_idx, q) in questions.into_iter().enumerate() {
+            top_level_questions.push(convert_question(q, id, q_idx as i64));
+        }
+    }
+
+    let notes = file
+        .notes
+        .into_iter()
+        .enumerate()
+        .map(|(idx, note)| db_artifacts::ClarificationNote {
+            note_id: None,
+            ordinal: idx as i64,
+            note_type: note.type_,
+            title: note.title,
+            body: note.body,
+        })
+        .collect();
+
+    // Flatten metadata error/warning into discrete columns.
+    let (error_code, error_message) = metadata
+        .error
+        .map(|e| (Some(e.code), Some(e.message)))
+        .unwrap_or((None, None));
+    let (warning_code, warning_message) = metadata
+        .warning
+        .map(|w| (Some(w.code), Some(w.message)))
+        .unwrap_or((None, None));
+
+    ClarificationsRecord {
+        skill_id: skill_id.to_string(),
+        version: file.version,
+        refinement_count,
+        must_answer_count: metadata.must_answer_count,
+        question_count: metadata.question_count,
+        section_count: metadata.section_count,
+        title: metadata.title,
+        scope_recommendation: metadata.scope_recommendation,
+        scope_reason: metadata.scope_reason,
+        scope_next_action: metadata.scope_next_action,
+        error_code,
+        error_message,
+        warning_code,
+        warning_message,
+        eval_verdict: None,
+        eval_reasoning: None,
+        eval_at: None,
+        eval_answered_count: None,
+        eval_empty_count: None,
+        eval_vague_count: None,
+        eval_contradictory_count: None,
+        created_at: now_ms,
+        updated_at: now_ms,
+        sections: sections_out,
+        questions: top_level_questions,
+        notes,
+    }
+}
+
+/// Convert a single `Question` (and its refinements recursively) into a DB row.
+fn convert_question(
+    q: Question,
+    section_id: i64,
+    ordinal: i64,
+) -> db_artifacts::ClarificationQuestion {
+    let Question {
+        id,
+        title,
+        text,
+        must_answer,
+        consolidated_from: _, // explicitly dropped per VU-1157 unpack rules
+        choices,
+        recommendation,
+        answer_choice,
+        answer_text,
+        refinements,
+    } = q;
+
+    let refinements_out: Vec<db_artifacts::ClarificationQuestion> = refinements
+        .into_iter()
+        .enumerate()
+        .map(|(idx, child)| convert_question(child, section_id, idx as i64))
+        .collect();
+
+    let choices_out: Vec<db_artifacts::ClarificationChoice> = choices
+        .into_iter()
+        .enumerate()
+        .map(|(idx, c)| db_artifacts::ClarificationChoice {
+            choice_id: c.id,
+            ordinal: idx as i64,
+            text: c.text,
+            is_other: c.is_other,
+        })
+        .collect();
+
+    db_artifacts::ClarificationQuestion {
+        question_id: id,
+        section_id,
+        parent_question_id: None,
+        ordinal,
+        title,
+        text,
+        must_answer,
+        answer_choice,
+        answer_text,
+        recommendation,
+        answer_verdict: None,
+        answer_verdict_reason: None,
+        choices: choices_out,
+        refinements: refinements_out,
+    }
+}
+
+/// Convert a parsed `DecisionsOutput` into the normalized DB record.
+///
+/// Validates `status` enum on each item and the optional
+/// `contradictory_inputs_state` derived from the agent's
+/// `metadata.contradictory_inputs` union (boolean | "revised" | "active").
+pub(crate) fn agent_json_to_decisions_record(
+    skill_id: &str,
+    output: DecisionsOutput,
+    now_ms: i64,
+) -> Result<DecisionsRecord, String> {
+    let DecisionsOutput {
+        version,
+        metadata,
+        decisions,
+    } = output;
+
+    // Map the agent's `contradictory_inputs` union onto the DB's enum string.
+    // - `Some(Active(true))` → "active"
+    // - `Some(Active(false))` → "inactive"
+    // - `Some(Revised(s))` → use `s` (agent emits "revised"; validate enum)
+    // - `None` → None
+    let contradictory_inputs_state = match metadata.contradictory_inputs {
+        Some(ContradictoryInputs::Active(true)) => Some("active".to_string()),
+        Some(ContradictoryInputs::Active(false)) => Some("inactive".to_string()),
+        Some(ContradictoryInputs::Revised(s)) => Some(s),
+        None => None,
+    };
+    if let Some(ref state) = contradictory_inputs_state {
+        validate_contradictory_inputs_state(state)?;
+    }
+
+    let mut items: Vec<db_artifacts::DecisionItem> = Vec::with_capacity(decisions.len());
+    for (idx, d) in decisions.into_iter().enumerate() {
+        let Decision {
+            id,
+            title,
+            original_question,
+            decision,
+            implication,
+            status,
+        } = d;
+        let status_str = match status {
+            DecisionStatus::Resolved => "resolved",
+            DecisionStatus::ConflictResolved => "conflict-resolved",
+            DecisionStatus::NeedsReview => "needs-review",
+            DecisionStatus::Revised => "revised",
+        };
+        validate_decision_status(status_str)?;
+        items.push(db_artifacts::DecisionItem {
+            decision_id: id,
+            ordinal: idx as i64,
+            title,
+            original_question,
+            decision,
+            implication,
+            status: status_str.to_string(),
+        });
+    }
+
+    Ok(DecisionsRecord {
+        skill_id: skill_id.to_string(),
+        version,
+        round: metadata.round,
+        decision_count: metadata.decision_count,
+        conflicts_resolved: metadata.conflicts_resolved,
+        contradictory_inputs_state,
+        scope_recommendation: metadata.scope_recommendation,
+        created_at: now_ms,
+        updated_at: now_ms,
+        items,
+    })
+}
+
+fn now_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Persist agent step output to the workflow artifact tables.
+///
+/// Steps 0/1 unpack to `clarifications` (+ children) and call
+/// `upsert_clarifications`. Step 2 unpacks to `decisions` (+ items) and calls
+/// `upsert_decisions`. Step 3 only validates the structured output; benchmark
+/// metadata is no longer persisted (eval/benchmark redo).
+///
+/// `skill_id` is the skill name (TEXT primary key on `clarifications` and
+/// `decisions`).
 pub(crate) fn materialize_workflow_step_output_value(
-    skill_root: &Path,
+    db: &Db,
+    skill_id: &str,
     step_id: u32,
     structured_output: &serde_json::Value,
 ) -> Result<(), String> {
-    // Require a top-level object so error messages remain identical to the original contract.
     if !structured_output.is_object() {
         return Err("structured_output must be a JSON object".to_string());
     }
 
-    let context_dir = skill_root.join("context");
-    std::fs::create_dir_all(&context_dir).map_err(|e| {
-        format!(
-            "Failed to create context directory '{}': {}",
-            context_dir.display(),
-            e
-        )
-    })?;
-
     log::info!(
-        "[materialize_step] step_id={} skill_root={} output_keys={:?}",
+        "[materialize_step] step_id={} skill_id={} output_keys={:?}",
         step_id,
-        skill_root.display(),
+        skill_id,
         structured_output
             .as_object()
             .map(|o| o.keys().collect::<Vec<_>>())
@@ -349,24 +588,18 @@ pub(crate) fn materialize_workflow_step_output_value(
             }
 
             log::info!(
-                "[materialize_step] step=0 research_output version={}",
-                parsed.research_output.version
+                "[materialize_step] step=0 research_output version={} skill_id={}",
+                parsed.research_output.version,
+                skill_id
             );
 
-            // Typed deserialization into ClarificationsFile already validated structure.
-
-            let clarifications_pretty = serde_json::to_string_pretty(&parsed.research_output)
-                .map_err(|e| format!("Failed to serialize research_output: {}", e))?;
-
-            let clarifications_path = context_dir.join("clarifications.json");
-            std::fs::write(&clarifications_path, clarifications_pretty).map_err(|e| {
-                format!(
-                    "Failed to write clarifications '{}': {}",
-                    clarifications_path.display(),
-                    e
-                )
-            })?;
-            Ok(())
+            let record = agent_json_to_clarifications_record(
+                skill_id,
+                0, // step 0 always starts at refinement 0
+                parsed.research_output,
+                now_ms(),
+            );
+            persist_clarifications(db, &record)
         }
         1 => {
             let parsed =
@@ -381,46 +614,42 @@ pub(crate) fn materialize_workflow_step_output_value(
             }
 
             log::info!(
-                "[materialize_step] step=1 clarifications_json version={}",
-                parsed.clarifications_json.version
+                "[materialize_step] step=1 clarifications_json version={} skill_id={} refinement_count={}",
+                parsed.clarifications_json.version,
+                skill_id,
+                parsed.refinement_count
             );
 
-            // Typed deserialization into ClarificationsFile already validated structure.
-
-            let clarifications_pretty =
-                serde_json::to_string_pretty(&parsed.clarifications_json)
-                    .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
-
-            let clarifications_path = context_dir.join("clarifications.json");
-            std::fs::write(&clarifications_path, clarifications_pretty).map_err(|e| {
-                format!(
-                    "Failed to write clarifications '{}': {}",
-                    clarifications_path.display(),
-                    e
-                )
-            })?;
-            Ok(())
+            let record = agent_json_to_clarifications_record(
+                skill_id,
+                parsed.refinement_count,
+                parsed.clarifications_json,
+                now_ms(),
+            );
+            persist_clarifications(db, &record)
         }
         2 => {
             let parsed = serde_json::from_value::<DecisionsOutput>(structured_output.clone())
                 .map_err(|e| format!("invalid decisions output: {}", e))?;
 
-            let decisions_pretty = serde_json::to_string_pretty(&parsed)
-                .map_err(|e| format!("Failed to serialize decisions: {}", e))?;
-            let decisions_path = context_dir.join("decisions.json");
-            std::fs::write(&decisions_path, decisions_pretty).map_err(|e| {
-                format!(
-                    "Failed to write decisions '{}': {}",
-                    decisions_path.display(),
-                    e
-                )
-            })?;
-            Ok(())
+            log::info!(
+                "[materialize_step] step=2 decisions version={} skill_id={} decision_count={}",
+                parsed.version,
+                skill_id,
+                parsed.metadata.decision_count
+            );
+
+            let record = agent_json_to_decisions_record(skill_id, parsed, now_ms())?;
+            persist_decisions(db, &record)
         }
         3 => {
             // Step 3 can receive output from either generate-skill or benchmark-skill.
-            // generate-skill: { status: "generated", skipped?: true, call_trace: [...] }
+            // generate-skill: { status: "generated"|"rewritten", skipped?, call_trace }
             // benchmark-skill: { status: "complete"|"partial"|"skipped", benchmark_path?, call_trace }
+            //
+            // VU-1157: no DB table replaces benchmark-meta.json. Eval/benchmark
+            // is being redone in a separate effort. We validate the agent
+            // output for both paths and log; no persistence is required here.
             let status = structured_output
                 .get("status")
                 .and_then(|s| s.as_str())
@@ -428,119 +657,31 @@ pub(crate) fn materialize_workflow_step_output_value(
 
             match status {
                 "generated" => {
-                    // generate-skill output — write a pending benchmark-meta
                     let parsed = validate_generated_skill_output(structured_output, "generated")?;
                     log::info!(
                         "generate-skill completed for skill={}, skipped={}",
-                        skill_root.display(),
+                        skill_id,
                         parsed.skipped.unwrap_or(false)
                     );
-                    let skipped = parsed.skipped.unwrap_or(false);
-                    let benchmark_status = if skipped { "skipped" } else { "pending" };
-                    let meta = serde_json::json!({
-                        "benchmark_status": benchmark_status,
-                        "benchmark_path": null,
-                    });
-                    let meta_path = context_dir.join("benchmark-meta.json");
-                    std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap_or_default())
-                        .map_err(|e| {
-                            format!(
-                                "Failed to write benchmark-meta '{}': {}",
-                                meta_path.display(),
-                                e
-                            )
-                        })?;
                     Ok(())
                 }
                 "rewritten" => {
-                    // rewrite-skill output — same handling as generate
                     let parsed = validate_generated_skill_output(structured_output, "rewritten")?;
                     log::info!(
                         "rewrite-skill completed for skill={}, skipped={}",
-                        skill_root.display(),
+                        skill_id,
                         parsed.skipped.unwrap_or(false)
                     );
-                    let skipped = parsed.skipped.unwrap_or(false);
-                    let benchmark_status = if skipped { "skipped" } else { "pending" };
-                    let meta = serde_json::json!({
-                        "benchmark_status": benchmark_status,
-                        "benchmark_path": null,
-                    });
-                    let meta_path = context_dir.join("benchmark-meta.json");
-                    std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap_or_default())
-                        .map_err(|e| {
-                            format!(
-                                "Failed to write benchmark-meta '{}': {}",
-                                meta_path.display(),
-                                e
-                            )
-                        })?;
                     Ok(())
                 }
                 "complete" | "partial" | "skipped" => {
-                    // benchmark-skill output — status carries the outcome directly
                     log::info!(
-                        "event=benchmark_skill_complete operation=materialize_output status=processing skill={}",
-                        skill_root.display()
+                        "event=benchmark_skill_complete operation=materialize_output status={} skill={}",
+                        status,
+                        skill_id
                     );
-                    let parsed =
-                        serde_json::from_value::<GenerateSkillOutput>(structured_output.clone())
-                            .map_err(|e| format!("invalid benchmark skill output: {}", e))?;
-
-                    // If the agent emitted an intermediate "partial" StructuredOutput but the
-                    // run completed successfully, check whether benchmark.json actually landed
-                    // on disk. If it did, the benchmark finished — upgrade to "complete" so the
-                    // frontend doesn't treat the premature partial signal as a failure.
-                    let effective_status = if parsed.status == "partial" {
-                        if let Some(ref bench_path) = parsed.benchmark_path {
-                            let benchmark_json = skill_root.join(bench_path).join("benchmark.json");
-                            if benchmark_json.exists() {
-                                log::info!(
-                                    "event=benchmark_partial_upgrade operation=materialize_output status=upgraded skill={} path={}",
-                                    skill_root.display(),
-                                    benchmark_json.display()
-                                );
-                                "complete".to_string()
-                            } else {
-                                log::info!(
-                                    "event=benchmark_partial_kept operation=materialize_output status=partial skill={} path={}",
-                                    skill_root.display(),
-                                    benchmark_json.display()
-                                );
-                                parsed.status.clone()
-                            }
-                        } else {
-                            parsed.status.clone()
-                        }
-                    } else {
-                        if let Some(ref bench_path) = parsed.benchmark_path {
-                            let benchmark_json = skill_root.join(bench_path).join("benchmark.json");
-                            if !benchmark_json.exists() {
-                                log::warn!(
-                                    "event=benchmark_file_missing operation=materialize_output status=warning skill={} status={} path={}",
-                                    skill_root.display(),
-                                    parsed.status,
-                                    benchmark_json.display()
-                                );
-                            }
-                        }
-                        parsed.status.clone()
-                    };
-
-                    let meta = serde_json::json!({
-                        "benchmark_status": effective_status,
-                        "benchmark_path": parsed.benchmark_path,
-                    });
-                    let meta_path = context_dir.join("benchmark-meta.json");
-                    std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap_or_default())
-                        .map_err(|e| {
-                            format!(
-                                "Failed to write benchmark-meta '{}': {}",
-                                meta_path.display(),
-                                e
-                            )
-                        })?;
-
+                    serde_json::from_value::<GenerateSkillOutput>(structured_output.clone())
+                        .map_err(|e| format!("invalid benchmark skill output: {}", e))?;
                     Ok(())
                 }
                 _ => Err(format!(
@@ -554,6 +695,36 @@ pub(crate) fn materialize_workflow_step_output_value(
             step_id
         )),
     }
+}
+
+fn persist_clarifications(db: &Db, record: &ClarificationsRecord) -> Result<(), String> {
+    let mut conn = db
+        .0
+        .lock()
+        .map_err(|e| format!("Failed to lock DB: {}", e))?;
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Failed to start transaction: {}", e))?;
+    db_artifacts::upsert_clarifications(&tx, record)
+        .map_err(|e| format!("Failed to upsert clarifications: {}", e))?;
+    tx.commit()
+        .map_err(|e| format!("Failed to commit clarifications: {}", e))?;
+    Ok(())
+}
+
+fn persist_decisions(db: &Db, record: &DecisionsRecord) -> Result<(), String> {
+    let mut conn = db
+        .0
+        .lock()
+        .map_err(|e| format!("Failed to lock DB: {}", e))?;
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Failed to start transaction: {}", e))?;
+    db_artifacts::upsert_decisions(&tx, record)
+        .map_err(|e| format!("Failed to upsert decisions: {}", e))?;
+    tx.commit()
+        .map_err(|e| format!("Failed to commit decisions: {}", e))?;
+    Ok(())
 }
 
 pub(crate) fn publish_generated_skill_output(
@@ -692,18 +863,7 @@ pub fn materialize_workflow_step_output(
         super::evaluation::workflow_step_log_name(step_id as i32),
         step_id
     );
-    let workspace_path = super::evaluation::read_workspace_path(&db)
-        .ok_or_else(|| "Workspace path not configured. Please set it in Settings.".to_string())?;
-    let plugin_slug = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        super::evaluation::lookup_plugin_slug(&conn, &skill_name)
-    };
-    let skill_root = crate::skill_paths::workspace_skill_dir(
-        Path::new(&workspace_path),
-        &plugin_slug,
-        &skill_name,
-    );
-    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output).map_err(
+    materialize_workflow_step_output_value(&db, &skill_name, step_id, &structured_output).map_err(
         |e| {
             log::error!(
                 "[materialize_workflow_step_output] skill={} step={} step_id={} failed: {}",
@@ -730,6 +890,19 @@ pub fn materialize_workflow_step_output(
             .unwrap_or(false);
 
         if status == "generated" && !skipped {
+            let workspace_path = super::evaluation::read_workspace_path(&db).ok_or_else(|| {
+                "Workspace path not configured. Please set it in Settings.".to_string()
+            })?;
+            let plugin_slug = {
+                let conn = db.0.lock().map_err(|e| e.to_string())?;
+                super::evaluation::lookup_plugin_slug(&conn, &skill_name)
+            };
+            let skill_root = crate::skill_paths::workspace_skill_dir(
+                Path::new(&workspace_path),
+                &plugin_slug,
+                &skill_name,
+            );
+
             let conn = db.0.lock().map_err(|e| e.to_string())?;
             let settings = crate::db::read_settings(&conn)?;
             let skills_path = settings
@@ -852,31 +1025,16 @@ pub(crate) fn validate_answer_evaluation_json(
     Ok(parsed)
 }
 
+/// Validate-only: VU-1157 dropped the `answer-evaluation.json` file write.
+/// Per-question verdicts now flow through `update_clarification_verdicts` from
+/// the gate hook (see Task 7). The structured output is still validated here
+/// so callers receive a clear error on shape drift, but no workspace file is
+/// written.
 pub(crate) fn materialize_answer_evaluation_output_value(
-    workspace_dir: &Path,
     structured_output: &serde_json::Value,
 ) -> Result<(), String> {
-    // Typed deserialization + semantic validation in one step.
-    let parsed = validate_answer_evaluation_json(structured_output)
+    validate_answer_evaluation_json(structured_output)
         .map_err(|e| format!("Invalid answer evaluation output: {}", e))?;
-
-    std::fs::create_dir_all(workspace_dir).map_err(|e| {
-        format!(
-            "Failed to create workspace directory '{}': {}",
-            workspace_dir.display(),
-            e
-        )
-    })?;
-    let output_path = workspace_dir.join("answer-evaluation.json");
-    let content = serde_json::to_string_pretty(&parsed)
-        .map_err(|e| format!("Failed to serialize answer evaluation output: {}", e))?;
-    std::fs::write(&output_path, content).map_err(|e| {
-        format!(
-            "Failed to write answer evaluation output '{}': {}",
-            output_path.display(),
-            e
-        )
-    })?;
     Ok(())
 }
 
@@ -887,8 +1045,9 @@ pub fn materialize_answer_evaluation_output(
     structured_output: serde_json::Value,
     db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
+    let _ = (workspace_path, db);
     log::info!(
-        "[materialize_answer_evaluation_output] skill={}",
+        "[materialize_answer_evaluation_output] skill={} (validate-only, file write removed in VU-1157)",
         skill_name
     );
     log::debug!(
@@ -896,16 +1055,7 @@ pub fn materialize_answer_evaluation_output(
         skill_name,
         structured_output
     );
-    let plugin_slug = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        super::evaluation::lookup_plugin_slug(&conn, &skill_name)
-    };
-    let workspace_dir = crate::skill_paths::workspace_skill_dir(
-        Path::new(&workspace_path),
-        &plugin_slug,
-        &skill_name,
-    );
-    materialize_answer_evaluation_output_value(&workspace_dir, &structured_output).map_err(|e| {
+    materialize_answer_evaluation_output_value(&structured_output).map_err(|e| {
         log::error!(
             "[materialize_answer_evaluation_output] skill={} failed: {}",
             skill_name,
