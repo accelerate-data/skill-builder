@@ -106,7 +106,7 @@ pub(crate) fn read_workflow_settings(
     if step_id == 3 {
         let decisions = crate::db::workflow_artifacts::read_decisions(&conn, skill_name)
             .map_err(|e| e.to_string())?;
-        if decisions.is_none() || decisions.as_ref().map_or(true, |d| d.items.is_empty()) {
+        if decisions.is_none_or(|d| d.items.is_empty()) {
             return Err(
                 "Cannot start Generate Skill step: no decisions found in the database. \
                  The Confirm Decisions step (step 2) must complete before the Generate Skill \
