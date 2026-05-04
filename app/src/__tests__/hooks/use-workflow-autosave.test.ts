@@ -178,7 +178,9 @@ describe("useWorkflowAutosave", () => {
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalled();
     });
-    expect(result.current.saveStatus).toBe("dirty");
+    await waitFor(() => {
+      expect(result.current.saveStatus).toBe("dirty");
+    });
   });
 
   it("handleSave returns true when no unsaved changes exist", async () => {
@@ -247,5 +249,28 @@ describe("useWorkflowAutosave", () => {
 
     // Local state should still reflect user's edit, not the DB update
     expect(result.current.clarificationsData?.sections[0].questions[0].answer_choice).toBe("A");
+  });
+
+  it("does not resync local state when dbClarificationsData is a fresh clone of the same data", async () => {
+    vi.useRealTimers();
+    const dbData = { sections: [makeSection([makeQuestion()])] };
+
+    let incoming = dbData;
+    const { result, rerender } = renderHook(() =>
+      useWorkflowAutosave({
+        ...defaultOptions,
+        dbClarificationsData: incoming,
+      })
+    );
+
+    await waitFor(() => expect(result.current.clarificationsData).toEqual(dbData));
+
+    const firstSyncedValue = result.current.clarificationsData;
+    incoming = {
+      sections: [makeSection([makeQuestion()])],
+    };
+    rerender();
+
+    await waitFor(() => expect(result.current.clarificationsData).toBe(firstSyncedValue));
   });
 });
