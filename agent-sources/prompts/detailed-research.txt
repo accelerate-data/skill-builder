@@ -6,11 +6,7 @@ Goal: repair the clarification set after the user answered the initial
 questions. Add only the sections, questions, or refinements needed to close
 material gaps before skill generation.
 
-Reasoning focus: use answer-evaluation.json to identify missing, vague,
-contradictory, or materially underspecified answers. Decide whether each gap is
-best handled by a new section, a new top-level question in an existing section,
-or a refinement under an existing question. Do not reopen settled areas or add
-questions for general completeness or curiosity.
+Reasoning focus: use the answer evaluation verdicts provided below to identify missing, vague, contradictory, or materially underspecified answers. Decide whether each gap is best handled by a new section, a new top-level question in an existing section, or a refinement under an existing question. Do not reopen settled areas or add questions for general completeness or curiosity.
 
 ## Capture Intent
 
@@ -41,9 +37,6 @@ subagents if that capability is available; otherwise research inline. Come
 prepared with context that reduces the burden on the user.
 
 We are writing the skill {{skill_name}}.
-Workspace directory: {{workspace_dir}}
-
-All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
 
 {{user_context_block}}
 
