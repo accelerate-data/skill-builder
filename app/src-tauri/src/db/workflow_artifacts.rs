@@ -152,7 +152,6 @@ pub struct DecisionItem {
 // Helpers
 // ---------------------------------------------------------------------------
 
-#[allow(dead_code)] // Used by upsert_* callers landing in later VU-1157 tasks.
 fn opt_bool_to_int(v: Option<bool>) -> Option<i64> {
     v.map(|b| if b { 1 } else { 0 })
 }
@@ -171,7 +170,6 @@ fn opt_int_to_bool(v: Option<i64>) -> Option<bool> {
 /// The children are deleted before re-insert (idempotent replace) to avoid
 /// constraint conflicts when the agent emits a different question/section
 /// shape between runs.
-#[allow(dead_code)] // Wired up by the workflow runtime persistence hooks in a later VU-1157 task.
 pub fn upsert_clarifications(
     tx: &Transaction<'_>,
     record: &ClarificationsRecord,
@@ -291,7 +289,6 @@ pub fn upsert_clarifications(
     Ok(())
 }
 
-#[allow(dead_code)] // Recursive helper for upsert_clarifications.
 fn insert_question_recursive(
     tx: &Transaction<'_>,
     skill_id: &str,
@@ -588,7 +585,6 @@ pub fn update_question_answer(
 }
 
 /// Delete clarifications and all child rows for a skill. Idempotent.
-#[allow(dead_code)] // Wired up by reset/reconciliation hooks in a later VU-1157 task.
 pub fn delete_clarifications(
     conn: &Connection,
     skill_id: &str,
@@ -624,7 +620,6 @@ pub fn delete_clarifications(
 // ---------------------------------------------------------------------------
 
 /// Atomically replace the decisions record (and all its items) for a skill.
-#[allow(dead_code)] // Wired up by the workflow runtime persistence hooks in a later VU-1157 task.
 pub fn upsert_decisions(
     tx: &Transaction<'_>,
     record: &DecisionsRecord,
@@ -742,7 +737,6 @@ pub fn read_decisions(
 }
 
 /// Delete decisions and all child items for a skill. Idempotent.
-#[allow(dead_code)] // Wired up by reset/reconciliation hooks in a later VU-1157 task.
 pub fn delete_decisions(conn: &Connection, skill_id: &str) -> Result<(), rusqlite::Error> {
     conn.execute(
         "DELETE FROM decision_items WHERE skill_id = ?1",
@@ -1163,5 +1157,64 @@ mod tests {
             .unwrap();
         assert!(q1.answer_choice.is_none());
         assert!(q1.answer_text.is_none());
+    }
+
+    #[test]
+    fn delete_skill_purges_artifact_rows() {
+        let mut conn = create_test_db_for_tests();
+        seed_skill(&conn, "purge-test-skill");
+
+        // Write a clarifications row.
+        let clar = sample_record("purge-test-skill");
+        let tx = conn.transaction().unwrap();
+        upsert_clarifications(&tx, &clar).unwrap();
+        tx.commit().unwrap();
+
+        // Write a decisions row.
+        let decisions = DecisionsRecord {
+            skill_id: "purge-test-skill".to_string(),
+            version: "1".to_string(),
+            round: 0,
+            decision_count: 1,
+            conflicts_resolved: 0,
+            contradictory_inputs_state: None,
+            scope_recommendation: None,
+            created_at: 1_700_000_000_000,
+            updated_at: 1_700_000_000_000,
+            items: vec![DecisionItem {
+                decision_id: "d1".to_string(),
+                ordinal: 0,
+                title: "D1".to_string(),
+                original_question: "Q?".to_string(),
+                decision: "Yes".to_string(),
+                implication: "None".to_string(),
+                status: "resolved".to_string(),
+            }],
+        };
+        let tx = conn.transaction().unwrap();
+        upsert_decisions(&tx, &decisions).unwrap();
+        tx.commit().unwrap();
+
+        // Confirm both rows exist.
+        assert!(read_clarifications(&conn, "purge-test-skill").unwrap().is_some());
+        assert!(read_decisions(&conn, "purge-test-skill").unwrap().is_some());
+
+        // Delete via the skill-deletion DB hook.
+        crate::commands::skill::delete_skill_db_records_inner(
+            &conn,
+            "purge-test-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        )
+        .unwrap();
+
+        // Both artifact families must be gone.
+        assert!(
+            read_clarifications(&conn, "purge-test-skill").unwrap().is_none(),
+            "delete_skill must purge clarifications rows"
+        );
+        assert!(
+            read_decisions(&conn, "purge-test-skill").unwrap().is_none(),
+            "delete_skill must purge decisions rows"
+        );
     }
 }

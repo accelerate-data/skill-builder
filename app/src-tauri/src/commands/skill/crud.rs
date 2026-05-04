@@ -594,6 +594,11 @@ pub(crate) fn delete_skill_db_records_inner(
     name: &str,
     plugin_slug: &str,
 ) -> Result<(), String> {
+    // Purge workflow artifact rows keyed by skill name (clarifications, decisions).
+    // These exist for any skill source and must be cleaned up unconditionally.
+    crate::db::workflow_artifacts::delete_clarifications(conn, name).map_err(|e| e.to_string())?;
+    crate::db::workflow_artifacts::delete_decisions(conn, name).map_err(|e| e.to_string())?;
+
     // Full DB cleanup: route to the right delete based on what's in the DB.
     // Skill-builder skills have a workflow_run; marketplace/imported skills do not.
     let has_workflow_run = crate::db::get_workflow_run_id(conn, name)

@@ -163,47 +163,6 @@ fn resolve_workspace_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
     }
 }
 
-/// Returns true if this workspace has an active deployment cache entry,
-/// i.e. it has been initialized at least once during this session.
-///
-/// Retained for the existing test API (`tests.rs`); the SHA-gated cache
-/// no longer needs this signal at runtime since it computes dirty-state
-/// per dispatch from content fingerprints.
-#[allow(dead_code)]
-pub(crate) fn workspace_already_copied(workspace_path: &str) -> bool {
-    let cache = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
-    cache.contains_key(workspace_path)
-}
-
-#[allow(dead_code)]
-fn workspace_openhands_layout_complete(workspace_path: &str) -> bool {
-    let Ok(skill_dirs) = discover_workspace_skill_dirs(Path::new(workspace_path)) else {
-        return false;
-    };
-    let workspace = Path::new(workspace_path);
-    if !crate::skill_paths::workspace_agent_files_dir(workspace).is_dir()
-        || !crate::skill_paths::workspace_agent_skills_dir(workspace).is_dir()
-    {
-        return false;
-    }
-    skill_dirs.iter().all(|skill_dir| {
-        crate::skill_paths::workspace_agent_files_dir(skill_dir).is_dir()
-            && crate::skill_paths::workspace_agent_skills_dir(skill_dir).is_dir()
-    })
-}
-
-/// Mark a workspace as initialized for this session, without recording any
-/// SHA. Subsequent `ensure_workspace_prompts*` calls will still recompute
-/// the source SHA and re-copy if changed; this entry only signals "seen".
-///
-/// Retained for the existing test API (`tests.rs`); production callers
-/// should rely on `ensure_workspace_prompts*` to populate the cache.
-#[allow(dead_code)]
-pub(crate) fn mark_workspace_copied(workspace_path: &str) {
-    let mut cache = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
-    cache.entry(workspace_path.to_string()).or_default();
-}
-
 /// Remove a workspace from the session cache so the next
 /// `ensure_workspace_prompts*` call will re-deploy OpenHands agent sources.
 /// Used by `clear_workspace` after deleting `.claude/`.
@@ -346,24 +305,6 @@ pub(crate) fn ensure_workspace_prompts_inner(
         }
     }
 
-    Ok(())
-}
-
-/// Synchronous inner copy logic shared by async and sync entry points.
-/// Workflow agents use OpenHands' `.agents/` layout under the workspace root and
-/// each workspace skill directory.
-///
-/// Routes through the SHA-gated two-tier deploy so cache invariants stay
-/// consistent across entry points.
-#[allow(dead_code)]
-pub(crate) fn copy_prompts_sync(
-    agents_dir: &Path,
-    workspace_skills_dir: &Path,
-    workspace_path: &str,
-) -> Result<(), String> {
-    if agents_dir.is_dir() || workspace_skills_dir.is_dir() {
-        ensure_workspace_prompts_inner(agents_dir, workspace_skills_dir, workspace_path)?;
-    }
     Ok(())
 }
 
@@ -527,112 +468,6 @@ fn copy_workspace_agent_skills_to_openhands_layout(
     Ok(())
 }
 
-/// Copy top-level agent .md files from flat bundled agent source to
-/// <workspace>/.claude/agents/.
-/// agent-sources/workspace/agents/{name}.md → .claude/agents/{name}.md
-#[allow(dead_code)]
-pub(crate) fn copy_agents_to_claude_dir(
-    agents_src: &Path,
-    workspace_path: &str,
-) -> Result<(), String> {
-    let claude_agents_dir = Path::new(workspace_path).join(".claude").join("agents");
-    if claude_agents_dir.is_dir() {
-        std::fs::remove_dir_all(&claude_agents_dir)
-            .map_err(|e| format!("Failed to clear .claude/agents dir: {}", e))?;
-    }
-    std::fs::create_dir_all(&claude_agents_dir)
-        .map_err(|e| format!("Failed to create .claude/agents dir: {}", e))?;
-
-    let entries =
-        std::fs::read_dir(agents_src).map_err(|e| format!("Failed to read agents dir: {}", e))?;
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("md") {
-            let dest = claude_agents_dir.join(entry.file_name());
-            std::fs::copy(&path, &dest).map_err(|e| {
-                format!("Failed to copy {} to .claude/agents: {}", path.display(), e)
-            })?;
-        }
-    }
-    Ok(())
-}
-
-/// Replace only app-managed plugins in `.claude/plugins` from bundled source.
-/// User-added plugins are preserved when they do not have the managed marker.
-#[allow(dead_code)]
-pub(crate) fn copy_managed_plugins_to_claude_dir(
-    plugins_src: &Path,
-    workspace_path: &str,
-) -> Result<(), String> {
-    const MANAGED_MARKER: &str = ".skill-builder-managed";
-    let claude_plugins_dir = Path::new(workspace_path).join(".claude").join("plugins");
-    std::fs::create_dir_all(&claude_plugins_dir)
-        .map_err(|e| format!("Failed to create .claude/plugins dir: {}", e))?;
-
-    let source_entries =
-        std::fs::read_dir(plugins_src).map_err(|e| format!("Failed to read plugins dir: {}", e))?;
-    let mut source_plugin_names = std::collections::HashSet::new();
-    for entry in source_entries {
-        let entry = entry.map_err(|e| format!("Failed to read plugins entry: {}", e))?;
-        let src_path = entry.path();
-        if !src_path.is_dir() {
-            continue;
-        }
-        let plugin_name = entry.file_name().to_string_lossy().to_string();
-        source_plugin_names.insert(plugin_name);
-    }
-
-    // Remove stale managed plugins that are no longer present in source.
-    for entry in std::fs::read_dir(&claude_plugins_dir)
-        .map_err(|e| format!("Failed to read .claude/plugins dir: {}", e))?
-    {
-        let entry = entry.map_err(|e| format!("Failed to read .claude/plugins entry: {}", e))?;
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy().to_string();
-        let is_managed = path.join(MANAGED_MARKER).is_file();
-        if is_managed && !source_plugin_names.contains(&name) {
-            std::fs::remove_dir_all(&path).map_err(|e| {
-                format!(
-                    "Failed to remove stale managed plugin {}: {}",
-                    path.display(),
-                    e
-                )
-            })?;
-        }
-    }
-
-    // Replace each managed plugin from source.
-    for plugin_name in source_plugin_names {
-        let src_plugin = plugins_src.join(&plugin_name);
-        let dst_plugin = claude_plugins_dir.join(&plugin_name);
-        if dst_plugin.exists() {
-            std::fs::remove_dir_all(&dst_plugin).map_err(|e| {
-                format!(
-                    "Failed to replace managed plugin {}: {}",
-                    dst_plugin.display(),
-                    e
-                )
-            })?;
-        }
-        copy_directory_recursive(&src_plugin, &dst_plugin)?;
-        std::fs::write(
-            dst_plugin.join(MANAGED_MARKER),
-            "managed by skill-builder startup\n",
-        )
-        .map_err(|e| {
-            format!(
-                "Failed to write managed plugin marker for {}: {}",
-                plugin_name, e
-            )
-        })?;
-    }
-    Ok(())
-}
-
 /// Recursively copy a directory and all its contents (delegates to shared fs_utils).
 pub(crate) fn copy_directory_recursive(src: &Path, dest: &Path) -> Result<(), String> {
     crate::fs_utils::copy_dir_recursive(src, dest)
@@ -670,20 +505,6 @@ mod tests {
     }
 
     #[test]
-    fn cached_workspace_with_new_skill_dir_is_not_considered_complete() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        let workspace_str = workspace.to_string_lossy().to_string();
-
-        std::fs::create_dir_all(workspace.join("plugin/new-skill")).unwrap();
-        mark_workspace_copied(&workspace_str);
-
-        assert!(workspace_already_copied(&workspace_str));
-        assert!(!workspace_openhands_layout_complete(&workspace_str));
-        invalidate_workspace_cache(&workspace_str);
-    }
-
-    #[test]
     fn copy_workspace_sources_populates_openhands_layout_for_root_and_discovered_skill_dirs() {
         let tmp = tempfile::tempdir().unwrap();
         let agents = bundled_workspace_agents_fixture(tmp.path());
@@ -708,9 +529,6 @@ mod tests {
         assert!(skill_dir
             .join(".agents/skills/creating-skills/SKILL.md")
             .is_file());
-        assert!(workspace_openhands_layout_complete(
-            workspace.to_string_lossy().as_ref()
-        ));
     }
 
     // ---- compute_dir_sha tests --------------------------------------------

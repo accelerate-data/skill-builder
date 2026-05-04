@@ -30,11 +30,6 @@ use super::step_config::{
     skill_generation_workflow_tools, workflow_output_format_for_step,
 };
 
-#[allow(dead_code)]
-pub(crate) fn workflow_one_shot_runtime_provider() -> Option<String> {
-    Some("openhands".to_string())
-}
-
 // ─── Session management ──────────────────────────────────────────────────────
 
 /// In-memory state for a single workflow one-shot run.
@@ -211,12 +206,6 @@ fn build_skill_creator_workflow_sidecar_config(
             .into_owned(),
     );
     config
-}
-
-/// All workflow steps now use OpenHands native dispatch. Steps 0-3 are the only valid steps.
-#[allow(dead_code)]
-pub(crate) fn workflow_step_uses_native_openhands_dispatch(step_id: u32) -> bool {
-    matches!(step_id, 0..=3)
 }
 
 pub(crate) fn build_answer_evaluator_sidecar_config(
