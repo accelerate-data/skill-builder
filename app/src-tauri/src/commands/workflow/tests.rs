@@ -2611,7 +2611,7 @@ fn test_reset_cleans_workspace_context_files() {
 
 #[test]
 fn test_format_user_context_all_fields() {
-    let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines","unique_setup":"Multi-cloud","claude_mistakes":"Assumes AWS"}"#;
+    let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines","unique_setup":"Multi-cloud","agent_mistakes":"Assumes AWS"}"#;
     let tags = vec!["analytics".to_string(), "salesforce".to_string()];
     let result = format_user_context(
         Some("my-skill"),
@@ -2643,7 +2643,7 @@ fn test_format_user_context_all_fields() {
     assert!(ctx.contains("ETL pipelines"));
     assert!(ctx.contains("### What Makes This Setup Unique"));
     assert!(ctx.contains("Multi-cloud"));
-    assert!(ctx.contains("### What Claude Gets Wrong"));
+    assert!(ctx.contains("### What the Agent Gets Wrong"));
     assert!(ctx.contains("Assumes AWS"));
 }
 
@@ -2960,7 +2960,7 @@ fn test_format_user_context_includes_intake_json_context() {
     );
     let text = result.unwrap();
     assert!(
-        text.contains("### What Claude Needs to Know"),
+        text.contains("### What the Agent Needs to Know"),
         "should include intake context heading"
     );
     assert!(

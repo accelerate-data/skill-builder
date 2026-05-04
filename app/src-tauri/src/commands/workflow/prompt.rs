@@ -444,7 +444,7 @@ pub fn format_user_context(
     push_field(&mut profile_parts, "Function", function_role);
     sections.extend(build_subsection("About You", profile_parts));
 
-    // --- Intake: What Claude needs to know ---
+    // --- Intake: What the agent needs to know ---
     if let Some(ij) = intake_json {
         if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
             // New unified field
@@ -453,12 +453,12 @@ pub fn format_user_context(
                 .and_then(|v| v.as_str())
                 .filter(|v| !v.is_empty())
             {
-                sections.push(format!("### What Claude Needs to Know\n{}", v));
+                sections.push(format!("### What the Agent Needs to Know\n{}", v));
             }
             // Legacy fields (backwards compat for existing skills)
             for (key, label) in [
                 ("unique_setup", "What Makes This Setup Unique"),
-                ("claude_mistakes", "What Claude Gets Wrong"),
+                ("agent_mistakes", "What the Agent Gets Wrong"),
                 ("scope", "Scope"),
                 ("challenges", "Key Challenges"),
                 ("audience", "Target Audience"),
