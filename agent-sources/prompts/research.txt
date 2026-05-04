@@ -73,12 +73,12 @@ All initial research questions must be single-select decision questions. The
 user should choose exactly one option for each question. Do not ask "select all
 that apply", "choose all", or any multi-select question. If several items may
 apply, split them into separate single-select questions or ask which one should
-be primary.
+be primary. When all listed choices could simultaneously apply, include an
+"All of the above" choice (`"is_other": false`) as the penultimate option.
 
-Every question must have 2-4 mutually exclusive concrete choices plus a final
-choice with exactly `"text": "Other (please specify)"` and `"is_other": true`.
-Do not omit the final Other choice, even when the listed choices seem
-exhaustive.
+Every question must have 3-5 concrete choices plus a final choice with exactly
+`"text": "Other (please specify)"` and `"is_other": true`. Do not omit the
+final Other choice, even when the listed choices seem exhaustive.
 Every choice object must use canonical choice fields only: `id`, `text`, and
 `is_other`. Do not use `value`, `label`, `option`, or any other choice field
 name.
