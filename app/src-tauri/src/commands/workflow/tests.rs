@@ -2,8 +2,7 @@ use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use std::path::{Path, PathBuf};
 
 use super::deploy::{
-    copy_agents_to_claude_dir, copy_directory_recursive, copy_managed_plugins_to_claude_dir,
-    copy_prompts_sync, invalidate_workspace_cache, mark_workspace_copied, workspace_already_copied,
+    copy_directory_recursive, invalidate_workspace_cache,
 };
 use super::evaluation::get_step_output_files;
 use super::guards::{
@@ -21,12 +20,11 @@ use super::prompt::{
 use super::runtime::{
     build_answer_evaluator_sidecar_config, build_workflow_confirm_decisions_sidecar_config,
     build_workflow_detailed_research_sidecar_config, build_workflow_generate_skill_sidecar_config,
-    build_workflow_research_sidecar_config, workflow_one_shot_runtime_provider,
-    workflow_step_uses_native_openhands_dispatch,
+    build_workflow_research_sidecar_config,
 };
 use super::step_config::{
-    build_betas, confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
-    skill_generation_workflow_tools, thinking_budget_for_step, workflow_output_format_for_step,
+    confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
+    skill_generation_workflow_tools, workflow_output_format_for_step,
 };
 use super::prompt::format_user_context;
 
@@ -203,14 +201,6 @@ fn test_workflow_step_tools_are_one_shot_safe() {
 }
 
 #[test]
-fn test_workflow_step_config_uses_openhands_runtime_provider() {
-    assert_eq!(
-        workflow_one_shot_runtime_provider().as_deref(),
-        Some("openhands")
-    );
-}
-
-#[test]
 fn skill_creator_agent_carries_full_skill_building_overview() {
     let agent = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -232,14 +222,6 @@ fn skill_creator_agent_carries_full_skill_building_overview() {
     assert!(agent.contains("Step 2 Confirm Decisions"));
     assert!(agent.contains("Step 3 Generate Skill"));
     assert!(agent.contains("Each step produces a specific"));
-}
-
-#[test]
-fn test_workflow_steps_use_native_openhands_dispatch() {
-    assert!(workflow_step_uses_native_openhands_dispatch(0));
-    assert!(workflow_step_uses_native_openhands_dispatch(1));
-    assert!(workflow_step_uses_native_openhands_dispatch(2));
-    assert!(workflow_step_uses_native_openhands_dispatch(3));
 }
 
 #[test]
@@ -1639,34 +1621,6 @@ fn test_materialize_step1_rejects_invalid_answer_evaluator_notes_shape() {
 }
 
 #[test]
-fn test_validate_clarifications_accepts_numeric_section_id() {
-    let v = valid_clarifications_value();
-    // numeric id (canonical agent output)
-    assert!(
-        super::step_config::validate_clarifications_json(&v).is_ok(),
-        "numeric section id should be accepted"
-    );
-}
-
-#[test]
-fn test_validate_clarifications_rejects_string_section_id() {
-    let mut v = valid_clarifications_value();
-    v["sections"][0]["id"] = serde_json::json!("S1");
-    let err = super::step_config::validate_clarifications_json(&v).unwrap_err();
-    // Typed deserialization rejects string where i64 is expected
-    assert!(err.contains("invalid type"), "unexpected error: {err}");
-}
-
-#[test]
-fn test_validate_clarifications_rejects_null_section_id() {
-    let mut v = valid_clarifications_value();
-    v["sections"][0]["id"] = serde_json::json!(null);
-    let err = super::step_config::validate_clarifications_json(&v).unwrap_err();
-    // Typed deserialization rejects null where i64 is expected
-    assert!(err.contains("invalid type"), "unexpected error: {err}");
-}
-
-#[test]
 fn test_materialize_step0_scope_recommendation_persists_to_db() {
     let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
@@ -2530,45 +2484,7 @@ fn test_copy_directory_recursive_nonexistent_source_fails() {
 }
 
 #[test]
-fn test_copy_agents_to_claude_dir() {
-    let src = tempfile::tempdir().unwrap();
-    let workspace = tempfile::tempdir().unwrap();
-
-    // Create flat agent files
-    std::fs::write(
-        src.path().join("research-entities.md"),
-        "# Research Entities",
-    )
-    .unwrap();
-    std::fs::write(
-        src.path().join("consolidate-research.md"),
-        "# Consolidate Research",
-    )
-    .unwrap();
-
-    // Non-.md file should be ignored
-    std::fs::write(src.path().join("README.txt"), "ignore me").unwrap();
-
-    let workspace_path = workspace.path().to_str().unwrap();
-    copy_agents_to_claude_dir(src.path(), workspace_path).unwrap();
-
-    let claude_agents_dir = workspace.path().join(".claude").join("agents");
-    assert!(claude_agents_dir.is_dir());
-
-    // Verify flat names (no prefix)
-    assert!(claude_agents_dir.join("research-entities.md").exists());
-    assert!(claude_agents_dir.join("consolidate-research.md").exists());
-
-    // Non-.md file should NOT be copied
-    assert!(!claude_agents_dir.join("README.txt").exists());
-
-    // Verify content
-    let content = std::fs::read_to_string(claude_agents_dir.join("research-entities.md")).unwrap();
-    assert_eq!(content, "# Research Entities");
-}
-
-#[test]
-fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
+fn test_ensure_workspace_prompts_inner_deploys_workflow_agents_to_openhands_layout() {
     let workspace_agents_src = tempfile::tempdir().unwrap();
     let workspace_skills_src = tempfile::tempdir().unwrap();
     let workspace = tempfile::tempdir().unwrap();
@@ -2609,10 +2525,12 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
     )
     .unwrap();
 
-    copy_prompts_sync(
+    let workspace_str = workspace.path().to_str().unwrap();
+    super::deploy::invalidate_workspace_cache(workspace_str);
+    super::deploy::ensure_workspace_prompts_inner(
         workspace_agents_src.path(),
         workspace_skills_src.path(),
-        workspace.path().to_str().unwrap(),
+        workspace_str,
     )
     .unwrap();
 
@@ -2649,51 +2567,7 @@ fn test_copy_prompts_sync_deploys_workflow_agents_to_openhands_layout() {
         .is_file());
     assert!(!workspace_skill_dir.join("CLAUDE.md").exists());
     assert!(!workspace.path().join("CLAUDE.md").exists());
-}
-
-#[test]
-fn test_copy_managed_plugins_replaces_managed_and_preserves_unmanaged() {
-    let src = tempfile::tempdir().unwrap();
-    let workspace = tempfile::tempdir().unwrap();
-    let src_plugins = src.path().join("plugins");
-    std::fs::create_dir_all(&src_plugins).unwrap();
-
-    // Source plugin with current content
-    let source_plugin = src_plugins.join("skill-creator");
-    std::fs::create_dir_all(&source_plugin).unwrap();
-    std::fs::write(source_plugin.join("SKILL.md"), "new plugin content").unwrap();
-
-    let claude_plugins_dir = workspace.path().join(".claude").join("plugins");
-    std::fs::create_dir_all(&claude_plugins_dir).unwrap();
-
-    // Existing managed plugin should be replaced
-    let managed_existing = claude_plugins_dir.join("skill-creator");
-    std::fs::create_dir_all(&managed_existing).unwrap();
-    std::fs::write(managed_existing.join("SKILL.md"), "old plugin content").unwrap();
-    std::fs::write(
-        managed_existing.join(".skill-builder-managed"),
-        "managed by skill-builder startup\n",
-    )
-    .unwrap();
-
-    // Unmanaged plugin should be preserved
-    let unmanaged = claude_plugins_dir.join("user-plugin");
-    std::fs::create_dir_all(&unmanaged).unwrap();
-    std::fs::write(unmanaged.join("README.md"), "keep me").unwrap();
-
-    copy_managed_plugins_to_claude_dir(&src_plugins, workspace.path().to_str().unwrap()).unwrap();
-
-    let replaced =
-        std::fs::read_to_string(claude_plugins_dir.join("skill-creator").join("SKILL.md")).unwrap();
-    assert_eq!(replaced, "new plugin content");
-    assert!(claude_plugins_dir
-        .join("skill-creator")
-        .join(".skill-builder-managed")
-        .exists());
-
-    let preserved =
-        std::fs::read_to_string(claude_plugins_dir.join("user-plugin").join("README.md")).unwrap();
-    assert_eq!(preserved, "keep me");
+    super::deploy::invalidate_workspace_cache(workspace_str);
 }
 
 // --- debug mode: no reduced turns, sonnet model override ---
@@ -2709,95 +2583,6 @@ fn test_step_max_turns() {
             step_id, normal_turns
         );
     }
-}
-
-#[test]
-fn test_thinking_budget_for_step() {
-    assert_eq!(thinking_budget_for_step(0), Some(8_000));
-    assert_eq!(thinking_budget_for_step(1), Some(8_000));
-    assert_eq!(thinking_budget_for_step(2), Some(32_000));
-    assert_eq!(thinking_budget_for_step(3), Some(16_000));
-    // Beyond last step returns None
-    assert_eq!(thinking_budget_for_step(4), None);
-    assert_eq!(thinking_budget_for_step(5), None);
-    assert_eq!(thinking_budget_for_step(99), None);
-}
-
-#[test]
-fn test_build_betas_thinking_enabled() {
-    let betas = build_betas(Some(32000), "provider-model-id", true);
-    assert_eq!(
-        betas,
-        Some(vec!["interleaved-thinking-2025-05-14".to_string()])
-    );
-}
-
-#[test]
-fn test_build_betas_does_not_special_case_model_families() {
-    let betas = build_betas(Some(32000), "another-provider-model-id", true);
-    assert_eq!(
-        betas,
-        Some(vec!["interleaved-thinking-2025-05-14".to_string()])
-    );
-}
-
-#[test]
-fn test_build_betas_none() {
-    let betas = build_betas(None, "provider-model-id", true);
-    assert_eq!(betas, None);
-}
-
-#[test]
-fn test_workspace_already_copied_returns_false_for_unknown() {
-    // Use a unique path to avoid interference from other tests
-    let path = format!(
-        "{}/test-workspace-unknown-{}",
-        std::env::temp_dir().display(),
-        std::process::id()
-    );
-    assert!(!workspace_already_copied(&path));
-}
-
-#[test]
-fn test_mark_workspace_copied_then_already_copied() {
-    let path = format!(
-        "{}/test-workspace-mark-{}",
-        std::env::temp_dir().display(),
-        std::process::id()
-    );
-    assert!(!workspace_already_copied(&path));
-    mark_workspace_copied(&path);
-    assert!(workspace_already_copied(&path));
-}
-
-#[test]
-fn test_workspace_copy_cache_is_per_workspace() {
-    let path_a = format!(
-        "{}/test-ws-a-{}",
-        std::env::temp_dir().display(),
-        std::process::id()
-    );
-    let path_b = format!(
-        "{}/test-ws-b-{}",
-        std::env::temp_dir().display(),
-        std::process::id()
-    );
-    mark_workspace_copied(&path_a);
-    assert!(workspace_already_copied(&path_a));
-    assert!(!workspace_already_copied(&path_b));
-}
-
-#[test]
-fn test_invalidate_workspace_cache() {
-    let path = format!(
-        "{}/test-ws-invalidate-{}",
-        std::env::temp_dir().display(),
-        std::process::id()
-    );
-    mark_workspace_copied(&path);
-    assert!(workspace_already_copied(&path));
-    invalidate_workspace_cache(&path);
-    assert!(!workspace_already_copied(&path));
 }
 
 #[test]

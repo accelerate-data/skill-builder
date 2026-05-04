@@ -1,7 +1,6 @@
 pub mod content;
 pub mod diff;
 pub mod output;
-#[allow(dead_code)]
 pub(crate) mod protocol;
 
 use std::collections::HashMap;
