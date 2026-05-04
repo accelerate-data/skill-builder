@@ -248,15 +248,65 @@
 
 ## Task 9: Verify And Open PR
 
-- [ ] Run full validation:
+- [x] Run full validation:
   - `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
   - `cd app && npx tsc --noEmit`
   - `cd app && npm run test:unit`
   - `cd app && npm run test:agents:structural`
   - `cd app && npm run test:repo-map`
   - `cargo test --manifest-path app/src-tauri/Cargo.toml`
-- [ ] Manual smoke (UI in browser): start a workflow, run steps 0–3, confirm clarifications + decisions appear via DB query in editor; confirm no `context/` or `user-context.md` files appear in the workspace skill dir.
-- [ ] Open PR titled `VU-1157: workflow artifact storage in sqlite`. PR body includes `Fixes VU-1157`. **Base branch: `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`** (not `main`).
+- [x] Manual smoke (UI in browser): start a workflow, run steps 0–3, confirm clarifications + decisions appear via DB query in editor; confirm no `context/` or `user-context.md` files appear in the workspace skill dir.
+- [x] Open PR titled `VU-1157: workflow artifact storage in sqlite`. PR body includes `Fixes VU-1157`. **Base branch: `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`** (not `main`).
+
+## Task 10: Fixture-Driven Materialization Tests
+
+**Goal:** Prove that agent JSON → `materialize_workflow_step_output_value` → DB → `read_clarifications` / `read_decisions` round-trips correctly for every shape the UI depends on.
+
+**Files:**
+
+- Modify: `app/src-tauri/src/commands/workflow/tests.rs`
+
+### What to cover
+
+Each test calls `materialize_workflow_step_output_value(&db, skill_id, step_id, &json_value)`, then reads back via `read_clarifications` / `read_decisions` (using `db.0.lock().unwrap()`) and asserts on the returned struct fields.
+
+**Test cases:**
+
+1. **`step0_full_roundtrip`** — feed the step 0 fixture (full `ClarificationsFile` from `app/sidecar/mock-templates/outputs/step0/context/clarifications.json` wrapped in `ResearchStepOutput` envelope: `{"status":"research_complete","question_count":9,"research_output":{…}}`) through `materialize_workflow_step_output_value` at step 0. Assert: `read_clarifications` returns `Some`, `refinement_count == 0`, first section title matches, all question IDs present, choice IDs present, `scope_recommendation` is non-empty (or null when not in fixture), dropped fields `priority_questions` / `duplicates_removed` don't appear on the returned record.
+
+2. **`step1_with_refinement_count`** — wrap same `ClarificationsFile` in `DetailedResearchOutput` envelope: `{"status":"detailed_research_complete","refinement_count":2,"section_count":3,"clarifications_json":{…}}`, materialize at step 1. Assert `refinement_count == 2` in `read_clarifications`.
+
+3. **`step0_then_step1_overwrites`** — materialize step 0 first, then step 1 for the same skill. Assert the second `read_clarifications` returns `refinement_count` from the step 1 fixture (not step 0's `0`), and section/question count from the latest upsert.
+
+4. **`step2_full_roundtrip`** — feed the step 2 fixture (`app/sidecar/mock-templates/outputs/step2/context/decisions.json` — already shaped as `DecisionsOutput`) through materialize at step 2. Assert: `read_decisions` returns `Some`, `version == "1"`, `decision_count` matches the number of items returned, at least one item has `status == "needs-review"`, `resolved` items have correct titles.
+
+5. **`step2_contradictory_inputs_active_true`** — construct a minimal `DecisionsOutput` JSON with `"contradictory_inputs": true` in metadata. Materialize and assert `read_decisions` returns `contradictory_inputs == Some("active")`.
+
+6. **`step2_contradictory_inputs_active_false`** — same but `"contradictory_inputs": false`. Assert `read_decisions` returns `contradictory_inputs == Some("inactive")`.
+
+7. **`step2_contradictory_inputs_revised_string`** — same but `"contradictory_inputs": "revised text"`. Assert `read_decisions` returns `contradictory_inputs == Some("revised text")`.
+
+8. **`scope_recommendation_guard_reads_db`** — materialize step 0 fixture that includes `"scope_recommendation": "focus"` in the `ClarificationsFile` metadata. Then call `check_scope_recommendation_db(&db, skill_id)` and assert it returns `Some("focus")` (or equivalent).
+
+9. **`decisions_needs_review_guard_reads_db`** — materialize step 2 fixture (which has `needs-review` items). Then call `check_decisions_guard_db(&db, skill_id)` and assert it returns a non-empty list of `needs-review` decision IDs / titles.
+
+10. **`dropped_fields_not_stored`** — materialize step 0 fixture (which has `priority_questions` + `duplicates_removed` in metadata, and `consolidated_from` would be on a question if present). After round-trip, assert the returned `ClarificationsRecord` has no `priority_questions` field (the struct simply doesn't have it) and questions don't carry `consolidated_from`.
+
+### Implementation notes
+
+- Use the existing `db_with_seeded_skill(name)` helper from `tests.rs` to get a `Db` instance.
+- To read back: `let conn = db.0.lock().unwrap(); let record = read_clarifications(&conn, skill_id)?;`
+- Inline the fixture JSON as a Rust `serde_json::json!({…})` literal rather than reading files at test time (avoids file-path coupling in unit tests). Copy the relevant sections from the mock templates.
+- For the `ClarificationsFile` fixture, use a minimal but realistic slice: 2 sections, 2–3 questions each, at least one question with a non-empty `recommendation` and one `is_other: true` choice.
+- For `scope_recommendation`, the `ClarificationsFile.metadata` struct may or may not include the field — check `app/src-tauri/src/contracts/clarifications.rs` to confirm the field name; add it to the inline fixture accordingly.
+- For guard tests: import `check_scope_recommendation_db` and `check_decisions_guard_db` from `commands::workflow::guards` (or wherever they live after the Task 4 refactor); if those functions are `pub(crate)`, tests in the same crate can call them directly.
+
+### Acceptance criteria
+
+- `cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow::tests::step` (all new tests pass)
+- All 10 test cases implemented and passing
+- No new `#[allow(dead_code)]` or `#[allow(unused)]` attributes introduced
+- Commit: `VU-1157: fixture-driven materialization round-trip tests`
 
 ---
 

@@ -3880,11 +3880,15 @@ mod materialization {
         let record = crate::db::workflow_artifacts::read_clarifications(&conn, "rt-dropped")
             .unwrap()
             .unwrap();
+        // priority_questions listed only Q1 and Q4 — all four must be stored to confirm
+        // the field was ignored rather than used as a filter.
         assert_eq!(record.question_count, 4);
         let ids: Vec<&str> = record.questions.iter().map(|q| q.question_id.as_str()).collect();
-        assert!(ids.contains(&"Q1"));
-        assert!(ids.contains(&"Q2"));
-        assert!(ids.contains(&"Q3"));
-        assert!(ids.contains(&"Q4"));
+        assert!(ids.contains(&"Q2"), "Q2 not in priority_questions but must still be stored");
+        assert!(ids.contains(&"Q3"), "Q3 not in priority_questions but must still be stored");
+        // duplicates_removed == 2, but section_count must reflect the fixture (2), not the
+        // noise value.
+        assert_eq!(record.sections.len(), 2);
+        assert_eq!(record.refinement_count, 0);
     }
 }
