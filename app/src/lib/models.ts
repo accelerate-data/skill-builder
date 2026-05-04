@@ -31,7 +31,7 @@ export function modelSettingsRequireApiKey(
   model?: string | null,
   baseUrl?: string | null,
 ): boolean {
-  const normalizedProvider = provider?.trim().toLowerCase() || "anthropic";
+  const normalizedProvider = provider?.trim().toLowerCase() || "";
   return (
     normalizedProvider !== "ollama" &&
     !model?.trim().startsWith("ollama/") &&

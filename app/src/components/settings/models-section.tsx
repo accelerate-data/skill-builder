@@ -33,7 +33,7 @@ import {
   type ModelCatalogProvider,
 } from "@/lib/model-catalog";
 
-interface SdkSectionProps {
+interface ModelsSectionProps {
   modelSettings: ModelSettings;
   updateModelSettings: (patch: ModelSettingsPatch) => void;
   saveModelSettings: (patch: ModelSettingsPatch) => void;
@@ -147,7 +147,7 @@ function ModelDetailBooleanRow({
   );
 }
 
-export function SdkSection({
+export function ModelsSection({
   modelSettings,
   updateModelSettings,
   saveModelSettings,
@@ -156,14 +156,14 @@ export function SdkSection({
   maxDimensions,
   setMaxDimensions,
   autoSave,
-}: SdkSectionProps) {
+}: ModelsSectionProps) {
   const [showApiKey, setShowApiKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalogProvider[]>([]);
   const [catalogFailed, setCatalogFailed] = useState(false);
 
-  const provider = modelSettings.provider ?? "anthropic";
+  const provider = modelSettings.provider ?? "";
   const selectedProvider = catalog.find(
     (catalogProvider) => catalogProvider.id === provider,
   );
@@ -318,9 +318,7 @@ export function SdkSection({
                 <Input
                   id="model-api-key"
                   type={showApiKey ? "text" : "password"}
-                  placeholder={
-                    provider === "anthropic" ? "sk-ant-..." : "Provider API key"
-                  }
+                  placeholder="Provider API key"
                   value={modelSettings.api_key ?? ""}
                   required={apiKeyRequired}
                   onChange={(e) => {
