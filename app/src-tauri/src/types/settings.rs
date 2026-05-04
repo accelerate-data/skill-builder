@@ -233,7 +233,7 @@ impl ModelSettings {
         let provider = model_settings
             .provider
             .as_deref()
-            .unwrap_or("anthropic")
+            .unwrap_or("")
             .to_ascii_lowercase();
         let model = model_settings.model.clone().ok_or_else(|| {
             "Model not configured. Select a model in Settings before running workflow steps."
