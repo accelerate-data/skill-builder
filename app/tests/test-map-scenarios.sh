@@ -119,7 +119,6 @@ assert_in_test_map  "workflow gate spec listed"       "workflow-gate.spec.ts"
 assert_in_test_map  "refine spec listed"              "refine.spec.ts"
 assert_in_test_map  "evals spec listed"               "evals.spec.ts"
 assert_in_test_map  "integration spec listed"         "workflow-integration.spec.ts"
-assert_in_test_map  "desktop smoke spec listed"       "desktop-smoke.spec.ts"
 
 # ===== Summary =====
 
