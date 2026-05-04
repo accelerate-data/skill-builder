@@ -103,7 +103,8 @@ Initial research should create top-level sections and questions. Detailed follow
 In both modes:
 
 - Keep questions concrete and answerable.
-- Prefer single-select decision questions when the UI expects choices.
+- Prefer single-select decision questions when the UI expects choices. Use 3-5 concrete choices per question.
+- When all listed choices could simultaneously apply, include an "All of the above" option as the penultimate choice (before "Other (please specify)").
 - Include an "Other (please specify)" option when choices are presented.
 - Do not reopen settled areas.
 - Do not duplicate existing questions.
