@@ -39,13 +39,10 @@ import { toast } from "@/lib/toast";
 import { queryKeys } from "@/lib/queries/query-keys";
 
 const defaultSettings: AppSettings = {
-  anthropic_api_key: "sk-test",
   workspace_path: "/home/user/workspace",
   skills_path: "/home/user/skills",
-  preferred_model: "sonnet",
   log_level: "info",
   extended_context: false,
-  extended_thinking: false,
   splash_shown: false,
   github_oauth_token: null,
   github_user_login: null,

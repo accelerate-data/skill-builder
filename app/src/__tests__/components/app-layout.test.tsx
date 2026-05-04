@@ -103,7 +103,6 @@ const defaultSettings: AppSettings = {
   skills_path: "/home/user/skills",
   log_level: "info",
   extended_context: false,
-  extended_thinking: false,
   splash_shown: false,
   github_oauth_token: null,
   github_user_login: null,

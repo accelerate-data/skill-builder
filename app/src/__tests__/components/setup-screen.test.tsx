@@ -34,14 +34,11 @@ vi.mock("@/lib/tauri", async () => {
 import { SetupScreen } from "@/components/setup-screen";
 
 const baseSettings = {
-  anthropic_api_key: null,
   model_settings: null,
   workspace_path: null,
   skills_path: null,
-  preferred_model: null,
   log_level: "info",
   extended_context: false,
-  extended_thinking: false,
   splash_shown: false,
   github_oauth_token: null,
   github_user_login: null,
