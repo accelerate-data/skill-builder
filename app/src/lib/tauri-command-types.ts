@@ -61,7 +61,7 @@ export interface FieldSuggestions {
   challenges: string;
   scope: string;
   unique_setup: string;
-  claude_mistakes: string;
+  agent_mistakes: string;
   context_questions: string;
 }
 

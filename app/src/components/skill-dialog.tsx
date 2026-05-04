@@ -55,7 +55,7 @@ function parseIntakeContext(json: string | null | undefined): string {
     // Old format: combine old fields for backwards compat display
     const parts: string[] = []
     if (obj.unique_setup) parts.push(obj.unique_setup)
-    if (obj.claude_mistakes) parts.push(obj.claude_mistakes)
+    if (obj.agent_mistakes) parts.push(obj.agent_mistakes)
     return parts.join("\n")
   } catch {
     return ""
