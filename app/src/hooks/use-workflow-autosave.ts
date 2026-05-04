@@ -24,6 +24,15 @@ function flattenFileQuestions(data: ClarificationsFile): Question[] {
   return (data.sections ?? []).flatMap((s) => flattenQuestions(s.questions ?? []));
 }
 
+function sameClarificationsData(
+  left: ClarificationsFile | null | undefined,
+  right: ClarificationsFile | null | undefined,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 export function useWorkflowAutosave({
   skillName,
   clarificationsEditable,
@@ -40,6 +49,11 @@ export function useWorkflowAutosave({
   // Refs for cleanup and unsaved-changes detection
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasUnsavedChangesRef = useRef(false);
+  const clarificationsDataRef = useRef<ClarificationsFile | null>(null);
+
+  useEffect(() => {
+    clarificationsDataRef.current = clarificationsData;
+  }, [clarificationsData]);
 
   // Sync local state when DB data arrives (initial load) or when step changes
   useEffect(() => {
@@ -51,7 +65,11 @@ export function useWorkflowAutosave({
       return;
     }
     // Update local state from DB data when not dirty (don't overwrite in-flight edits)
-    if (dbClarificationsData && !hasUnsavedChangesRef.current) {
+    if (
+      dbClarificationsData &&
+      !hasUnsavedChangesRef.current &&
+      !sameClarificationsData(clarificationsDataRef.current, dbClarificationsData)
+    ) {
       setClarificationsData(dbClarificationsData);
       setEditorDirty(false);
     }
