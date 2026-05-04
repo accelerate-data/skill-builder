@@ -1,11 +1,56 @@
 #!/usr/bin/env node
-const { spawnSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
+const path = require('node:path');
+
+bootstrapEvalRoot();
+ensureDepsInstalled();
 
 const { buildHarnessEnv } = require('../scripts/framework/environment');
 const { discoverPackageConfigs } = require('../scripts/framework/package-discovery');
 const { resolveHarnessPaths } = require('../scripts/framework/paths');
 const { main: runPromptfooWithGuard } = require('../scripts/framework/run-promptfoo-with-guard');
+
+function bootstrapEvalRoot() {
+  if (process.env.AD_EVALS_ROOT) {
+    return;
+  }
+  try {
+    const repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (repoRoot) {
+      process.env.AD_EVALS_ROOT = path.join(repoRoot, 'tests', 'evals');
+    }
+  } catch {
+    // No git context. Framework modules fall back to __dirname-based resolution.
+  }
+}
+
+function ensureDepsInstalled() {
+  const evalRoot = process.env.AD_EVALS_ROOT;
+  if (!evalRoot) return;
+
+  const lockfile = path.join(evalRoot, 'package-lock.json');
+  const stamp = path.join(evalRoot, 'node_modules', '.install-stamp');
+
+  if (fs.existsSync(lockfile) && fs.existsSync(stamp)) {
+    const lockHash = crypto.createHash('sha256').update(fs.readFileSync(lockfile)).digest('hex');
+    if (fs.readFileSync(stamp, 'utf8').trim() === lockHash) return;
+  }
+
+  execFileSync('npm', ['install', '--no-audit', '--no-fund'], {
+    cwd: evalRoot,
+    stdio: 'inherit',
+  });
+
+  if (fs.existsSync(lockfile)) {
+    const lockHash = crypto.createHash('sha256').update(fs.readFileSync(lockfile)).digest('hex');
+    fs.writeFileSync(stamp, lockHash);
+  }
+}
 
 function buildPromptfooArgs({ command, rest = [], packageConfigs = [] }) {
   if (command === 'smoke') {
@@ -56,18 +101,6 @@ function prepareEnvironment(paths, { fsImpl = fs, env = process.env } = {}) {
   Object.assign(env, buildHarnessEnv({ baseEnv: env, paths }));
 }
 
-function ensureDependencies(evalRoot, { spawn = spawnSync, fsImpl = fs, logger = console } = {}) {
-  if (fsImpl.existsSync(require('node:path').join(evalRoot, 'node_modules'))) return;
-  logger.log('eval: node_modules not found — running npm ci');
-  const result = spawn('npm', ['ci', '--no-audit', '--no-fund'], {
-    cwd: evalRoot,
-    stdio: 'inherit',
-  });
-  if (result.error || result.status !== 0) {
-    throw new Error(`npm ci failed in ${evalRoot} — run it manually to diagnose.`);
-  }
-}
-
 function run(
   argv = process.argv.slice(2),
   {
@@ -78,7 +111,6 @@ function run(
     fsImpl = fs,
     env = process.env,
     logger = console,
-    ensureDeps = ensureDependencies,
   } = {},
 ) {
   const [command = 'help', ...rest] = argv;
@@ -88,7 +120,6 @@ function run(
   }
 
   const paths = resolvePaths();
-  ensureDeps(paths.evalRoot, { spawn, fsImpl, logger });
   prepareEnvironment(paths, { fsImpl, env });
 
   if (command === 'doctor') {
@@ -151,7 +182,6 @@ if (require.main === module) {
 
 module.exports = {
   buildPromptfooArgs,
-  ensureDependencies,
   prepareEnvironment,
   run,
 };

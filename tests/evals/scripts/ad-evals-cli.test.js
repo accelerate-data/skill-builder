@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { buildPromptfooArgs, ensureDependencies, run } = require('../bin/ad-evals');
+const { buildPromptfooArgs, run } = require('../bin/ad-evals');
 
 test('smoke command discovers packages and adds smoke filter', () => {
   const args = buildPromptfooArgs({
@@ -96,7 +96,6 @@ test('run prepares runtime env, creates state dirs, discovers packages, and dele
         delegatedArgs = args;
         return 0;
       },
-      ensureDeps: () => {},
       env,
     });
 
@@ -150,62 +149,11 @@ test('test command fails when the child test process is terminated', () => {
     const status = run(['test'], {
       resolvePaths: () => paths,
       spawn: () => ({ status: null, signal: 'SIGTERM' }),
-      ensureDeps: () => {},
       env: { PATH: '/bin' },
       logger: { error: () => {} },
     });
 
     assert.equal(status, 1);
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('ensureDependencies skips npm ci when node_modules already exists', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-evals-ensure-deps-'));
-  try {
-    fs.mkdirSync(path.join(root, 'node_modules'));
-    const spawnCalls = [];
-    ensureDependencies(root, {
-      spawn: (...args) => { spawnCalls.push(args); return { status: 0 }; },
-      fsImpl: fs,
-      logger: { log: () => {} },
-    });
-    assert.equal(spawnCalls.length, 0);
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('ensureDependencies runs npm ci when node_modules is absent', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-evals-ensure-deps-'));
-  try {
-    const spawnCalls = [];
-    ensureDependencies(root, {
-      spawn: (cmd, args, opts) => { spawnCalls.push({ cmd, args, cwd: opts.cwd }); return { status: 0 }; },
-      fsImpl: fs,
-      logger: { log: () => {} },
-    });
-    assert.equal(spawnCalls.length, 1);
-    assert.equal(spawnCalls[0].cmd, 'npm');
-    assert.deepEqual(spawnCalls[0].args, ['ci', '--no-audit', '--no-fund']);
-    assert.equal(spawnCalls[0].cwd, root);
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('ensureDependencies throws when npm ci fails', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-evals-ensure-deps-fail-'));
-  try {
-    assert.throws(
-      () => ensureDependencies(root, {
-        spawn: () => ({ status: 1 }),
-        fsImpl: fs,
-        logger: { log: () => {} },
-      }),
-      /npm ci failed/,
-    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -229,7 +177,6 @@ test('test command fails when the child test process cannot start', () => {
     const status = run(['test'], {
       resolvePaths: () => paths,
       spawn: () => ({ error: new Error('spawn failed'), status: null, signal: null }),
-      ensureDeps: () => {},
       env: { PATH: '/bin' },
       logger: { error: () => {} },
     });
