@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "@/lib/toast"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { getVersion } from "@tauri-apps/api/app"
@@ -21,11 +21,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { startOneShotAgent, getWorkspacePath, createGithubIssue } from "@/lib/tauri"
-import { useAgentStore } from "@/stores/agent-store"
+import { createGithubIssue } from "@/lib/tauri"
 import { useGithubUserQuery } from "@/lib/queries/auth"
-import { useSettingsStore } from "@/stores/settings-store"
-import { requireSettingsModel } from "@/lib/models"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 
 // ---------------------------------------------------------------------------
@@ -131,8 +128,6 @@ export function parseEnrichmentResponse(content: string): EnrichedIssue | null {
 // ---------------------------------------------------------------------------
 
 export function FeedbackDialog() {
-  const selectedModel = useSettingsStore((s) => s.modelSettings.model)
-
   // --- App version ---
   const [appVersion, setAppVersion] = useState("unknown")
   useEffect(() => {
@@ -155,90 +150,28 @@ export function FeedbackDialog() {
   // --- Enrichment result ---
   const [enriched, setEnriched] = useState<EnrichedIssue | null>(null)
 
-  // --- Agent tracking ---
-  const [pendingAgentId, setPendingAgentId] = useState<string | null>(null)
-
   const resetForm = () => {
     setTitle("")
     setDescription("")
     setEnriched(null)
     setStep("input")
-    setPendingAgentId(null)
   }
-
-  // -----------------------------------------------------------------------
-  // Agent completion watcher (granular selector)
-  // -----------------------------------------------------------------------
-  const currentRun = useAgentStore((s) => pendingAgentId ? s.runs[pendingAgentId] : undefined)
-  const processedRunRef = useRef<string | null>(null)
-
-  const handleAgentComplete = useCallback(() => {
-    if (!currentRun || !pendingAgentId) return
-    if (currentRun.status !== "completed" && currentRun.status !== "error") return
-    if (processedRunRef.current === pendingAgentId) return
-    processedRunRef.current = pendingAgentId
-
-    if (step === "enriching") {
-      if (currentRun.status === "completed") {
-        const resultItem = currentRun.displayItems.find((di) => di.type === "result")
-        const content =
-          resultItem?.outputText_result ??
-          currentRun.displayItems.filter((di) => di.type === "output").pop()?.outputText ??
-          ""
-        const parsed = parseEnrichmentResponse(content)
-        if (parsed) {
-          parsed.version = appVersion
-          setEnriched(parsed)
-          setStep("review")
-        } else {
-          toast.error("Failed to parse enrichment response", { duration: Infinity })
-          setStep("input")
-        }
-      } else {
-        toast.error("Failed to analyze feedback", { duration: Infinity })
-        setStep("input")
-      }
-      setPendingAgentId(null)
-    }
-  }, [currentRun, pendingAgentId, step, appVersion])
-
-  useEffect(() => {
-    handleAgentComplete()
-  }, [handleAgentComplete])
 
   // -----------------------------------------------------------------------
   // Handlers
   // -----------------------------------------------------------------------
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = () => {
     if (!title.trim()) return
-    setStep("enriching")
-
-    const agentId = `feedback-enrich-${Date.now()}`
-    const prompt = buildEnrichmentPrompt(title, description, appVersion)
-
-    try {
-      const cwd = await getWorkspacePath()
-      await startOneShotAgent(
-        agentId,
-        prompt,
-        requireSettingsModel(selectedModel),
-        cwd,
-        [],           // No tools — pure text analysis
-        3,
-        undefined,
-        "_feedback",
-        "Enrich Feedback",
-        undefined,
-      )
-      setPendingAgentId(agentId)
-    } catch (err) {
-      toast.error(
-        `Failed to analyze feedback: ${err instanceof Error ? err.message : String(err)}`,
-        { duration: Infinity },
-      )
-      setStep("input")
-    }
+    // Build a plain review object from raw inputs (no AI enrichment).
+    setEnriched({
+      type: "bug",
+      title: title.trim(),
+      body: description.trim(),
+      labels: [],
+      version: appVersion,
+    })
+    setStep("review")
   }
 
   const handleSubmit = async () => {

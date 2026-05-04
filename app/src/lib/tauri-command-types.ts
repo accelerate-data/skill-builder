@@ -151,26 +151,6 @@ type SkillMetadataArgs = {
   disableModelInvocation: boolean | null;
 };
 
-type AgentStartArgs = {
-  agentId: string;
-  prompt: string;
-  systemPrompt: string | null;
-  model: string;
-  cwd: string;
-  allowedTools?: string[];
-  maxTurns?: number;
-  permissionMode: string | null;
-  skillName: string;
-  stepLabel: string;
-  agentName: string | null;
-  transcriptLogDir: string | null;
-  stepId: number | null;
-  workflowSessionId: string | null;
-  usageSessionId: string | null;
-  runSource: string | null;
-  pluginSlug: string;
-};
-
 export interface TauriCommandMap {
   log_frontend: { args: { level: "info" | "warn" | "error" | "debug"; message: string }; result: void };
   get_settings: { args: NoArgs; result: AppSettings };
@@ -225,7 +205,6 @@ export interface TauriCommandMap {
     };
     result: ScopeReviewResult;
   };
-  start_agent: { args: AgentStartArgs; result: string };
   run_workflow_step: {
     args: { skillName: string; stepId: number; workspacePath: string; workflowSessionId: string | null };
     result: string;
@@ -260,7 +239,6 @@ export interface TauriCommandMap {
   write_file: { args: { path: string; content: string }; result: void };
   list_skill_files: { args: { workspacePath: string; skillName: string }; result: SkillFileEntry[] };
   get_workspace_path: { args: NoArgs; result: string };
-  cleanup_skill_sidecar: { args: { skillName: string }; result: void };
   graceful_shutdown: { args: NoArgs; result: void };
   allow_app_exit: { args: NoArgs; result: void };
   create_workflow_session: { args: { sessionId: string; skillName: string }; result: void };

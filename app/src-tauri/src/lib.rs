@@ -281,20 +281,13 @@ pub fn run() {
             // Non-fatal: errors are logged as warnings and startup continues.
             logging::prune_transcript_files(&workspace_path);
 
-            // Start the sidecar pool's idle cleanup task via Tauri's async runtime.
-            // setup() runs on the main macOS thread which is not a Tokio thread.
-            let pool = app.state::<agents::sidecar_pool::SidecarPool>();
-            pool.start_on_tauri_runtime();
-
             Ok(())
         })
-        .manage(agents::sidecar_pool::SidecarPool::new())
         .manage(CloseGuardState::default())
         .manage(commands::refine::RefineSessionManager::new())
         .manage(commands::workflow::runtime::WorkflowStepRunManager::new())
         .manage(commands::eval_workbench::EvalWorkbenchRunManager::default())
         .invoke_handler(tauri::generate_handler![
-            commands::agent::start_agent,
             commands::node::check_node,
             commands::node::check_startup_deps,
             commands::settings::get_data_dir,
@@ -342,7 +335,6 @@ pub fn run() {
             commands::workflow::output_format::materialize_answer_evaluation_output,
             commands::workflow::runtime::log_gate_decision,
             commands::workflow::runtime::cancel_workflow_step,
-            commands::sidecar_lifecycle::cleanup_skill_sidecar,
             commands::sidecar_lifecycle::graceful_shutdown,
             commands::sidecar_lifecycle::allow_app_exit,
             commands::workspace::get_workspace_path,
@@ -469,40 +461,13 @@ pub fn run() {
                     let _ = crate::db::end_all_sessions_for_pid(&conn, instance.pid);
                 }
 
-                // Check if graceful_shutdown already completed sidecar shutdown.
-                // If so, skip the redundant shutdown to avoid burning through the timeout.
-                let pool = app_handle.state::<agents::sidecar_pool::SidecarPool>();
-                if pool.is_shutdown_completed() {
-                    log::info!("[exit] Sidecar shutdown already completed by graceful_shutdown, skipping");
-                    if let Ok(rt) = tokio::runtime::Handle::try_current() {
-                        rt.block_on(shutdown_openhands_agent_server_for_exit());
-                    }
-                    return;
-                }
-
-                // Shutdown all persistent sidecars on app exit with a timeout.
-                // If graceful shutdown hangs (stuck sidecar, locked DB), force-exit.
-                let timeout_secs = agents::sidecar_pool::DEFAULT_SHUTDOWN_TIMEOUT_SECS;
-                let shutdown_fn = async {
-                    let sidecar_result = pool
-                        .shutdown_all_with_timeout(app_handle, timeout_secs)
-                        .await;
-                    shutdown_openhands_agent_server_for_exit().await;
-                    sidecar_result
-                };
-
-                let result = if let Ok(rt) = tokio::runtime::Handle::try_current() {
-                    rt.block_on(shutdown_fn)
+                // Shut down the OpenHands Agent Server.
+                if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                    rt.block_on(shutdown_openhands_agent_server_for_exit());
                 } else if let Ok(rt) = tokio::runtime::Runtime::new() {
-                    rt.block_on(shutdown_fn)
+                    rt.block_on(shutdown_openhands_agent_server_for_exit());
                 } else {
-                    log::warn!("[exit] No Tokio runtime available — skipping sidecar shutdown");
-                    Ok(())
-                };
-
-                if let Err(e) = result {
-                    log::warn!("[exit] Shutdown failed: {} — force-exiting", e);
-                    std::process::exit(1);
+                    log::warn!("[exit] No Tokio runtime available — skipping OpenHands server shutdown");
                 }
             }
             _ => {}

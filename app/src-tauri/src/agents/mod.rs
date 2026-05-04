@@ -8,4 +8,4 @@ pub mod promptfoo_sidecar;
 pub mod run_persist;
 pub mod sidecar;
 pub mod sidecar_path;
-pub mod sidecar_pool;
+pub mod startup_error;

@@ -11,9 +11,6 @@ pub mod user_context;
 
 // Re-export items used by callers outside this module via `commands::workflow::*`.
 
-// step_config
-pub(crate) use step_config::build_betas;
-
 // settings
 pub(crate) use settings::read_initialized_runtime_context;
 

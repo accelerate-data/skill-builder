@@ -7,7 +7,6 @@ use tauri::{Emitter, Listener};
 
 use crate::agents::openhands_server;
 use crate::agents::sidecar::{OpenHandsOneShotConfigParams, SidecarConfig};
-use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 use crate::skill_paths::resolve_workspace_skill_dir;
 
@@ -31,6 +30,7 @@ use super::step_config::{
 };
 use super::user_context::write_user_context_file;
 
+#[allow(dead_code)]
 pub(crate) fn workflow_one_shot_runtime_provider() -> Option<String> {
     Some("openhands".to_string())
 }
@@ -213,6 +213,8 @@ fn build_skill_creator_workflow_sidecar_config(
     config
 }
 
+/// All workflow steps now use OpenHands native dispatch. Steps 0-3 are the only valid steps.
+#[allow(dead_code)]
 pub(crate) fn workflow_step_uses_native_openhands_dispatch(step_id: u32) -> bool {
     matches!(step_id, 0..=3)
 }
@@ -351,7 +353,6 @@ fn install_research_materialization_listener(
 #[allow(clippy::too_many_arguments)]
 async fn run_workflow_step_inner(
     app: &tauri::AppHandle,
-    pool: &SidecarPool,
     runs: &WorkflowStepRunManager,
     skill_name: &str,
     step_id: u32,
@@ -466,65 +467,9 @@ async fn run_workflow_step_inner(
             settings.llm.clone(),
             workflow_session_id,
         ),
-        _ => SidecarConfig {
-            mode: Some("one-shot".to_string()),
-            prompt,
-            // Do not set a string systemPrompt for workflow steps. Agent identity
-            // comes from the OpenHands agent name; structured contracts are
-            // enforced via output_format below.
-            system_prompt: None,
-            llm: Some(settings.llm.clone()),
-            model: None,
-            model_base_url: None,
-            api_key: crate::types::SecretString::new("openhands-llm-config".to_string()),
-            workspace_root_dir: workspace_path.replace('\\', "/"),
-            workspace_skill_dir: resolve_workspace_skill_dir(
-                Path::new(workspace_path),
-                &settings.plugin_slug,
-                skill_name,
-            )
-            .to_string_lossy()
-            .replace('\\', "/"),
-            allowed_tools: Some(step.allowed_tools),
-            max_turns: Some(step.max_turns),
-            // Compatibility field retained while other runtime paths still share
-            // SidecarConfig; OpenHands one-shot workflow ignores it.
-            permission_mode: None,
-            betas: None,
-            thinking: None,
-            // Workflow model configuration is carried by llm; suppress legacy fields.
-            fallback_model: None,
-            effort: None,
-            output_format: workflow_output_format_for_step(step_id),
-            prompt_suggestions: None,
-            path_to_claude_code_executable: None,
-            agent_name: Some(agent_name),
-            // Retained so existing sidecar config parsing accepts workflow runs;
-            // OpenHands resolves workflow instructions from the `.agents` layout.
-            required_plugins: Some(required_plugins),
-            setting_sources: None,
-            conversation_history: None,
-            skill_name: Some(skill_name.to_string()),
-            step_id: Some(step_id as i32),
-            workflow_session_id,
-            usage_session_id: None,
-            run_source: Some("workflow".to_string()),
-            plugin_slug: settings.plugin_slug.clone(),
-            transcript_log_dir: Some(
-                crate::skill_paths::workspace_skill_dir(
-                    Path::new(workspace_path),
-                    &settings.plugin_slug,
-                    skill_name,
-                )
-                .join("logs")
-                .to_string_lossy()
-                .into_owned(),
-            ),
-            persistence_dir: None,
-            runtime_provider: workflow_one_shot_runtime_provider(),
-            task_kind: None,
-            user_message_suffix: None,
-        },
+        _ => {
+            return Err(format!("Invalid workflow step_id={step_id}: only steps 0-3 are valid"));
+        }
     };
 
     log::debug!(
@@ -558,25 +503,14 @@ async fn run_workflow_step_inner(
     }
 
     let transcript_log_dir = config.transcript_log_dir.clone();
-    let start_result = if workflow_step_uses_native_openhands_dispatch(step_id) {
-        openhands_server::dispatch_openhands_one_shot(
-            app,
-            &agent_id,
-            config,
-            transcript_log_dir.as_deref(),
-        )
-        .await
-        .map(|_| ())
-    } else {
-        pool.send_request(
-            skill_name,
-            &agent_id,
-            config,
-            app,
-            transcript_log_dir.as_deref(),
-        )
-        .await
-    };
+    let start_result = openhands_server::dispatch_openhands_one_shot(
+        app,
+        &agent_id,
+        config,
+        transcript_log_dir.as_deref(),
+    )
+    .await
+    .map(|_| ());
 
     start_result.map_err(|e| {
         log::error!(
@@ -596,11 +530,9 @@ async fn run_workflow_step_inner(
     Ok(agent_id)
 }
 
-#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn run_workflow_step(
     app: tauri::AppHandle,
-    pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
     runs: tauri::State<'_, WorkflowStepRunManager>,
     skill_name: String,
@@ -641,9 +573,7 @@ pub async fn run_workflow_step(
             stale_agent_id,
             step_id,
         );
-        if !openhands_server::cancel_openhands_one_shot(stale_agent_id) {
-            let _ = pool.send_cancel(&skill_name, stale_agent_id).await;
-        }
+        openhands_server::cancel_openhands_one_shot(stale_agent_id);
     }
     if !stale_runs.is_empty() {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;
@@ -753,7 +683,6 @@ pub async fn run_workflow_step(
 
     run_workflow_step_inner(
         &app,
-        pool.inner(),
         runs.inner(),
         &skill_name,
         step_id,
@@ -906,16 +835,14 @@ pub async fn run_answer_evaluator(
 /// Cancel a running workflow step one-shot request by agent_id.
 ///
 /// Cancels an active one-shot workflow request. OpenHands requests are killed
-/// through the direct Rust runner registry; legacy requests fall back to the
-/// sidecar cancel protocol.
+/// through the direct Rust runner registry.
 #[tauri::command]
 pub async fn cancel_workflow_step(
     agent_id: String,
     runs: tauri::State<'_, WorkflowStepRunManager>,
-    pool: tauri::State<'_, SidecarPool>,
 ) -> Result<(), String> {
     log::info!("[cancel_workflow_step] agent={}", agent_id);
-    let skill_name = {
+    {
         let map = runs.0.lock().map_err(|e| {
             log::error!(
                 "[cancel_workflow_step] Failed to acquire session lock: {}",
@@ -923,25 +850,14 @@ pub async fn cancel_workflow_step(
             );
             e.to_string()
         })?;
-        let session = map.get(&agent_id).ok_or_else(|| {
+        if map.get(&agent_id).is_none() {
             let msg = format!("No workflow step session found for agent_id={}", agent_id);
             log::warn!("[cancel_workflow_step] {}", msg);
-            msg
-        })?;
-        session.skill_name.clone()
-    };
-    if openhands_server::cancel_openhands_one_shot(&agent_id) {
-        return Ok(());
+            return Err(msg);
+        }
     }
-
-    pool.send_cancel(&skill_name, &agent_id).await.map_err(|e| {
-        log::warn!(
-            "[cancel_workflow_step] Failed to send cancel for agent={}: {}",
-            agent_id,
-            e
-        );
-        e
-    })
+    openhands_server::cancel_openhands_one_shot(&agent_id);
+    Ok(())
 }
 
 /// Log the user's gate decision so it appears in the backend log stream.

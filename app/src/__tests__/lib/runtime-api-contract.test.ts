@@ -9,19 +9,22 @@ function readSource(relativePath: string) {
 }
 
 describe("runtime API contract", () => {
-  it("exposes explicit one-shot and streaming agent APIs", () => {
+  it("exposes streaming refine API and does not expose removed one-shot agent command", () => {
     const source = readSource("lib/tauri.ts");
 
-    expect(source).toContain("export const startOneShotAgent");
     expect(source).toContain("export const sendRefineMessage");
+    // start_agent Tauri command has been removed — neither the old raw binding
+    // nor the removed one-shot wrapper should appear.
     expect(source).not.toContain("export const startAgent");
-    expect(source).not.toContain("export const answerWorkflowStepQuestion");
-    expect(source).not.toContain("export const answerStreamingRefineQuestion");
+    expect(source).not.toContain("export const startOneShotAgent");
+    expect(source).not.toContain("answerWorkflowStepQuestion");
+    expect(source).not.toContain("answerStreamingRefineQuestion");
   });
 
-  it("keeps feedback on the one-shot agent API and evals on the workbench API", () => {
+  it("keeps evals on the workbench API and feedback on direct submission", () => {
     const feedbackSource = readSource("components/feedback-dialog.tsx");
-    expect(feedbackSource).toContain("startOneShotAgent");
+    // AI enrichment via start_agent has been removed; feedback dialog uses direct submission.
+    expect(feedbackSource).not.toContain("startOneShotAgent");
     expect(feedbackSource).not.toContain("runEvalWorkbench");
 
     const evalsSource = readSource("components/workspace/workspace-evals.tsx");

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen, act, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useAgentStore } from "@/stores/agent-store";
 import { toast } from "@/lib/toast";
 import { renderWithQueryClient } from "@/test/query-test-utils";
 
@@ -24,13 +23,7 @@ vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn(() => Promise.resolve("1.2.3")),
 }));
 
-const { mockStartAgent, mockGetWorkspacePath, mockCreateGithubIssue, mockGithubGetUser, mockUpdateGithubIdentity } = vi.hoisted(() => ({
-  mockStartAgent: vi.fn<(...args: unknown[]) => Promise<string>>(() =>
-    Promise.resolve("feedback-123"),
-  ),
-  mockGetWorkspacePath: vi.fn<() => Promise<string>>(() =>
-    Promise.resolve("/workspace"),
-  ),
+const { mockCreateGithubIssue, mockGithubGetUser, mockUpdateGithubIdentity } = vi.hoisted(() => ({
   mockCreateGithubIssue: vi.fn<(request: unknown) => Promise<{ url: string; number: number }>>(() =>
     Promise.resolve({ url: "https://github.com/hbanerjee74/skill-builder/issues/42", number: 42 }),
   ),
@@ -39,13 +32,10 @@ const { mockStartAgent, mockGetWorkspacePath, mockCreateGithubIssue, mockGithubG
 }));
 
 vi.mock("@/lib/tauri", () => ({
-  startOneShotAgent: mockStartAgent,
-  getWorkspacePath: mockGetWorkspacePath,
   createGithubIssue: mockCreateGithubIssue,
   githubGetUser: mockGithubGetUser,
   githubLogout: vi.fn(),
   updateGithubIdentity: mockUpdateGithubIdentity,
-
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
@@ -56,49 +46,11 @@ vi.mock("@/components/github-login-dialog", () => ({
   GitHubLoginDialog: () => null,
 }));
 
-const mockSettingsState = {
-  modelSettings: { model: "claude-opus-4-6" },
-  setSettings: vi.fn(),
-};
-
-vi.mock("@/stores/settings-store", () => {
-  const useSettingsStore = vi.fn((selector: (s: typeof mockSettingsState) => unknown) =>
-    selector(mockSettingsState),
-  );
-  Object.assign(useSettingsStore, {
-    getState: () => mockSettingsState,
-  });
-
-  return { useSettingsStore };
-});
-
 import {
   FeedbackDialog,
   buildEnrichmentPrompt,
   parseEnrichmentResponse,
 } from "@/components/feedback-dialog";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Simulate enrichment agent completing with a valid JSON response. */
-function simulateEnrichmentComplete(agentId: string) {
-  const store = useAgentStore.getState();
-  store.addDisplayItem(agentId, {
-    id: `result-${Date.now()}`,
-    type: "result",
-    timestamp: Date.now(),
-    outputText_result: JSON.stringify({
-      type: "bug",
-      title: "Refined: App crashes on startup",
-      body: "## Problem\nThe application crashes immediately after launch.\n\n## Expected Behavior\nThe app should open normally.\n\n## Environment\n- App Version: 1.2.3",
-      labels: "bug, crash",
-    }),
-    resultStatus: "success",
-  });
-  store.completeRun(agentId, true);
-}
 
 // ---------------------------------------------------------------------------
 // buildEnrichmentPrompt
@@ -166,20 +118,16 @@ describe("parseEnrichmentResponse", () => {
 
 describe("FeedbackDialog", () => {
   beforeEach(() => {
-    useAgentStore.getState().clearRuns();
     mockGithubGetUser.mockReset().mockResolvedValue({
       login: "testuser",
       avatar_url: "https://example.com/avatar.png",
       email: "test@example.com",
     });
     mockUpdateGithubIdentity.mockReset().mockResolvedValue(undefined);
-    mockStartAgent.mockReset().mockResolvedValue("feedback-123");
-    mockGetWorkspacePath.mockReset().mockResolvedValue("/workspace");
     mockCreateGithubIssue.mockReset().mockResolvedValue({
       url: "https://github.com/hbanerjee74/skill-builder/issues/42",
       number: 42,
     });
-    mockSettingsState.setSettings.mockReset();
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.warning).mockReset();
     vi.mocked(toast.error).mockReset();
@@ -238,7 +186,7 @@ describe("FeedbackDialog", () => {
     expect(analyzeBtn).toBeDisabled();
   });
 
-  it("clicking Analyze calls startOneShotAgent with the Settings-selected model", async () => {
+  it("clicking Analyze with title moves directly to review step (no AI call)", async () => {
     const user = userEvent.setup();
     renderWithQueryClient(<FeedbackDialog />);
 
@@ -248,40 +196,14 @@ describe("FeedbackDialog", () => {
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
     await waitFor(() => {
-      expect(mockStartAgent).toHaveBeenCalledTimes(1);
-    });
-
-    const [agentId, prompt, model, cwd, , maxTurns] =
-      mockStartAgent.mock.calls[0] as [
-        string,
-        string,
-        string,
-        string,
-        string[] | undefined,
-        number,
-      ];
-    expect(agentId).toMatch(/^feedback-enrich-\d+$/);
-    expect(prompt).toContain("App crashes");
-    expect(prompt).toContain("On startup");
-    expect(model).toBe("claude-opus-4-6");
-    expect(cwd).toBe("/workspace");
-    expect(maxTurns).toBe(3);
-  });
-
-  it("shows enrichment loading state", async () => {
-    const user = userEvent.setup();
-    renderWithQueryClient(<FeedbackDialog />);
-
-    await user.click(screen.getByTitle("Send feedback"));
-    await user.type(await screen.findByLabelText("Title"), "App crashes");
-    await user.click(screen.getByRole("button", { name: /Analyze/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Analyzing your feedback...")).toBeInTheDocument();
+      // Review fields should be visible immediately (no loading state)
+      expect(screen.getByLabelText("Bug")).toBeInTheDocument();
+      expect(screen.getByLabelText("Feature")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
     });
   });
 
-  it("shows review fields after enrichment completes", async () => {
+  it("shows review fields with input title populated after Analyze", async () => {
     const user = userEvent.setup();
     renderWithQueryClient(<FeedbackDialog />);
 
@@ -289,16 +211,6 @@ describe("FeedbackDialog", () => {
     await user.type(await screen.findByLabelText("Title"), "App crashes on startup");
     await user.type(screen.getByLabelText("Description"), "It just crashes");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
-
-    await waitFor(() => {
-      expect(mockStartAgent).toHaveBeenCalledTimes(1);
-    });
-
-    const agentId = mockStartAgent.mock.calls[0][0] as string;
-
-    act(() => {
-      simulateEnrichmentComplete(agentId);
-    });
 
     await waitFor(() => {
       // Review fields should be visible
@@ -320,15 +232,6 @@ describe("FeedbackDialog", () => {
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
     await waitFor(() => {
-      expect(mockStartAgent).toHaveBeenCalledTimes(1);
-    });
-
-    const agentId = mockStartAgent.mock.calls[0][0] as string;
-    act(() => {
-      simulateEnrichmentComplete(agentId);
-    });
-
-    await waitFor(() => {
       expect(screen.getByRole("button", { name: /Back/i })).toBeInTheDocument();
     });
 
@@ -341,22 +244,13 @@ describe("FeedbackDialog", () => {
     });
   });
 
-  it("Submit in review calls createGithubIssue with enriched data and auto-added labels", async () => {
+  it("Submit in review calls createGithubIssue with review data", async () => {
     const user = userEvent.setup();
     renderWithQueryClient(<FeedbackDialog />);
 
     await user.click(screen.getByTitle("Send feedback"));
     await user.type(await screen.findByLabelText("Title"), "App crashes");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
-
-    await waitFor(() => {
-      expect(mockStartAgent).toHaveBeenCalledTimes(1);
-    });
-
-    const enrichAgentId = mockStartAgent.mock.calls[0][0] as string;
-    act(() => {
-      simulateEnrichmentComplete(enrichAgentId);
-    });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
@@ -373,12 +267,9 @@ describe("FeedbackDialog", () => {
       body: string;
       labels: string[];
     };
-    expect(request.title).toBe("Refined: App crashes on startup");
-    expect(request.body).toContain("## Problem");
-    // Auto-added labels: bug (type), v1.2.3 (version), plus enriched labels
-    expect(request.labels).toContain("bug");
+    expect(request.title).toBe("App crashes");
+    // Auto-added labels include version
     expect(request.labels).toContain("v1.2.3");
-    expect(request.labels).toContain("crash");
   });
 
   it("shows success toast with GitHub issue URL on submission completion", async () => {
@@ -388,15 +279,6 @@ describe("FeedbackDialog", () => {
     await user.click(screen.getByTitle("Send feedback"));
     await user.type(await screen.findByLabelText("Title"), "App crashes");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
-
-    await waitFor(() => {
-      expect(mockStartAgent).toHaveBeenCalledTimes(1);
-    });
-
-    const enrichAgentId = mockStartAgent.mock.calls[0][0] as string;
-    act(() => {
-      simulateEnrichmentComplete(enrichAgentId);
-    });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
@@ -425,15 +307,6 @@ describe("FeedbackDialog", () => {
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
     await waitFor(() => {
-      expect(mockStartAgent).toHaveBeenCalledTimes(1);
-    });
-
-    const enrichAgentId = mockStartAgent.mock.calls[0][0] as string;
-    act(() => {
-      simulateEnrichmentComplete(enrichAgentId);
-    });
-
-    await waitFor(() => {
       expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
     });
 
@@ -446,33 +319,6 @@ describe("FeedbackDialog", () => {
       );
       // Should return to review step
       expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
-    });
-  });
-
-  it("shows error toast on enrichment failure", async () => {
-    const user = userEvent.setup();
-    renderWithQueryClient(<FeedbackDialog />);
-
-    await user.click(screen.getByTitle("Send feedback"));
-    await user.type(await screen.findByLabelText("Title"), "App crashes");
-    await user.click(screen.getByRole("button", { name: /Analyze/i }));
-
-    await waitFor(() => {
-      expect(mockStartAgent).toHaveBeenCalledTimes(1);
-    });
-
-    const agentId = mockStartAgent.mock.calls[0][0] as string;
-
-    act(() => {
-      const store = useAgentStore.getState();
-      store.registerRun(agentId, "sonnet");
-      store.completeRun(agentId, false);
-    });
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Failed to analyze feedback", {
-        duration: Infinity,
-      });
     });
   });
 

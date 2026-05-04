@@ -121,38 +121,6 @@ export const reviewSkillScope = (
   industry: string | null,
 ) => invokeCommand("review_skill_scope", { skillName, description, purpose, contextQuestions, industry })
 
-// --- Agent ---
-
-export const startOneShotAgent = (
-  agentId: string,
-  prompt: string,
-  model: string,
-  cwd: string,
-  allowedTools?: string[],
-  maxTurns?: number,
-  permissionMode?: string,
-  skillName?: string,
-  stepLabel?: string,
-  agentName?: string,
-  transcriptLogDir?: string,
-  stepId?: number,
-  workflowSessionId?: string,
-  usageSessionId?: string,
-  runSource?: string,
-  systemPrompt?: string,
-  pluginSlug?: string,
-) => invokeCommand("start_agent", {
-  agentId, prompt, systemPrompt: systemPrompt ?? null, model, cwd, allowedTools, maxTurns,
-  permissionMode: permissionMode ?? null,
-  skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown",
-  agentName: agentName ?? null, transcriptLogDir: transcriptLogDir ?? null,
-  stepId: stepId ?? null,
-  workflowSessionId: workflowSessionId ?? null,
-  usageSessionId: usageSessionId ?? null,
-  runSource: runSource ?? null,
-  pluginSlug: pluginSlug ?? "skills",
-});
-
 // --- Workflow ---
 
 export const runWorkflowStep = (
@@ -264,11 +232,7 @@ export const listSkillFiles = (workspacePath: string, skillName: string) =>
 export const getWorkspacePath = () =>
   invokeCommand("get_workspace_path", {});
 
-/** Shut down the persistent sidecar process for a skill (fire-and-forget). */
-export const cleanupSkillSidecar = (skillName: string) =>
-  invokeCommand("cleanup_skill_sidecar", { skillName });
-
-/** Graceful shutdown: stop all sidecars, release locks, end sessions. */
+/** Graceful shutdown: release locks, end sessions. */
 export const gracefulShutdown = () =>
   invokeCommand("graceful_shutdown", {});
 
