@@ -1,3 +1,5 @@
+use crate::agents::openhands_server::{self, OpenHandsOneShotRunParams};
+use crate::agents::sidecar::{OpenHandsOneShotConfigParams, SidecarConfig};
 use crate::db::Db;
 use serde::Serialize;
 
@@ -6,7 +8,23 @@ const SUGGESTIONS_TEMPLATE: &str = include_str!(concat!(
     "/../../agent-sources/prompts/skill-suggestions.txt"
 ));
 
-#[derive(Serialize)]
+const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/skill-creator-user-suffix.txt"
+));
+
+const ALL_FIELDS: [&str; 8] = [
+    "description",
+    "domain",
+    "scope",
+    "audience",
+    "challenges",
+    "unique_setup",
+    "claude_mistakes",
+    "context_questions",
+];
+
+#[derive(Debug, Serialize)]
 pub struct FieldSuggestions {
     pub description: String,
     pub domain: String,
@@ -18,12 +36,21 @@ pub struct FieldSuggestions {
     pub context_questions: String,
 }
 
-/// Call the configured Settings model to generate field suggestions in cascading groups.
+pub(crate) struct SuggestionsRuntimeConfigParams<'a> {
+    pub skill_name: &'a str,
+    pub prompt: &'a str,
+    pub workspace_path: &'a str,
+    pub llm: crate::types::WorkflowLlmConfig,
+    pub requested_fields: Vec<String>,
+}
+
+/// Generate field suggestions through the app-owned OpenHands one-shot path.
 /// The `fields` param controls which fields to generate; context params provide
 /// prior field values so each group builds on the last.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn generate_suggestions(
+    app: tauri::AppHandle,
     skill_name: String,
     purpose: String,
     industry: Option<String>,
@@ -42,44 +69,73 @@ pub async fn generate_suggestions(
         fields
     );
 
-    let (api_key, model) = {
-        let conn = db.0.lock().map_err(|e| {
-            log::error!("[generate_suggestions] Failed to acquire DB lock: {}", e);
-            e.to_string()
-        })?;
-        let settings = crate::db::read_settings(&conn).map_err(|e| {
-            log::error!("[generate_suggestions] Failed to read settings: {}", e);
-            e
-        })?;
-        let llm = crate::db::selected_workflow_llm(&settings).map_err(|e| {
-            log::error!("[generate_suggestions] LLM not configured: {}", e);
-            e
-        })?;
-        let api_key = llm.api_key.ok_or_else(|| {
-            log::error!("[generate_suggestions] API key not configured");
-            "API key not configured".to_string()
-        })?;
-        // Strip provider prefix (e.g. "anthropic/claude-sonnet-4-5" → "claude-sonnet-4-5")
-        // so the Anthropic Messages API receives a bare model ID.
-        let model = llm
-            .model
-            .strip_prefix("anthropic/")
-            .map(str::to_string)
-            .unwrap_or(llm.model);
-        (api_key, model)
-    };
+    let runtime_context = crate::commands::workflow::read_initialized_runtime_context(&db)
+        .inspect_err(|e| log::error!("[generate_suggestions] Runtime context unavailable: {}", e))?;
 
+    let requested_fields = requested_fields(fields.as_deref());
+    let prompt = render_suggestions_prompt(
+        &skill_name,
+        &purpose,
+        industry.as_deref(),
+        function_role.as_deref(),
+        domain.as_deref(),
+        scope.as_deref(),
+        audience.as_deref(),
+        challenges.as_deref(),
+        &requested_fields,
+    );
+
+    log::debug!("[generate_suggestions] prompt length={}", prompt.len());
+
+    let config = build_suggestions_runtime_config(SuggestionsRuntimeConfigParams {
+        skill_name: &skill_name,
+        prompt: &prompt,
+        workspace_path: &runtime_context.workspace_path,
+        llm: runtime_context.llm,
+        requested_fields: requested_fields.clone(),
+    });
+
+    let run = openhands_server::run_openhands_one_shot(
+        &app,
+        OpenHandsOneShotRunParams {
+            agent_id_prefix: format!("{}-suggestions", skill_name),
+            config,
+            timeout: std::time::Duration::from_secs(90),
+        },
+    )
+    .await
+    .inspect_err(|e| log::error!("[generate_suggestions] OpenHands request failed: {}", e))?;
+
+    parse_suggestions_from_conversation_state(&run.conversation_state)
+}
+
+fn requested_fields(fields: Option<&[String]>) -> Vec<String> {
+    fields.map_or_else(
+        || ALL_FIELDS.iter().map(|field| (*field).to_string()).collect(),
+        |values| values.to_vec(),
+    )
+}
+
+pub(crate) fn render_suggestions_prompt(
+    skill_name: &str,
+    purpose: &str,
+    industry: Option<&str>,
+    function_role: Option<&str>,
+    domain: Option<&str>,
+    scope: Option<&str>,
+    audience: Option<&str>,
+    challenges: Option<&str>,
+    requested_fields: &[String],
+) -> String {
     let readable_name = skill_name.replace('-', " ");
 
     let context_parts: Vec<String> = [
         industry
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("Industry: {}", s)),
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("Industry: {}", value)),
         function_role
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("Role: {}", s)),
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("Role: {}", value)),
     ]
     .into_iter()
     .flatten()
@@ -91,24 +147,19 @@ pub async fn generate_suggestions(
         format!(" User context: {}.", context_parts.join(", "))
     };
 
-    // Build skill detail context from prior fields
     let detail_parts: Vec<String> = [
         domain
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("Domain: {}", s)),
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("Domain: {}", value)),
         scope
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("Scope: {}", s)),
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("Scope: {}", value)),
         audience
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("Target audience: {}", s)),
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("Target audience: {}", value)),
         challenges
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("Key challenges: {}", s)),
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("Key challenges: {}", value)),
     ]
     .into_iter()
     .flatten()
@@ -120,136 +171,183 @@ pub async fn generate_suggestions(
         format!(" Skill details: {}.", detail_parts.join("; "))
     };
 
-    let framing = match purpose.as_str() {
+    let framing = match purpose {
         "data-engineering" | "source" | "platform" => {
-            "Skills are loaded into Claude Code to help engineers build data pipelines. \
-             Claude already knows standard methodologies from its training data. \
+            "Skills are loaded into the app's agent runtime to help engineers build data pipelines. \
+             The runtime already knows standard methodologies from its training data. \
              A skill must encode the delta -- the customer-specific and domain-specific knowledge \
-             that Claude gets wrong or misses when working without the skill."
+             that the assistant misses or misapplies when working without the skill."
         }
         _ => {
-            "Skills are loaded into Claude Code to help users work effectively in their specific domain. \
-             Claude already has broad general knowledge from its training data. \
+            "Skills are loaded into the app's agent runtime to help users work effectively in their specific domain. \
+             The runtime already has broad general knowledge from its training data. \
              A skill must encode the delta -- the customer-specific and domain-specific knowledge \
-             that Claude gets wrong or misses when working without the skill."
+             that the assistant misses or misapplies when working without the skill."
         }
     };
 
-    // Determine which fields to generate (default: all)
-    let all_fields = vec![
-        "description",
-        "domain",
-        "scope",
-        "audience",
-        "challenges",
-        "unique_setup",
-        "claude_mistakes",
-        "context_questions",
-    ];
-    let requested: Vec<&str> = fields
-        .as_ref()
-        .map(|f| f.iter().map(|s| s.as_str()).collect())
-        .unwrap_or_else(|| all_fields.clone());
+    let json_schema = format!(
+        "{{{}}}",
+        requested_fields
+            .iter()
+            .filter_map(|field| field_prompt_schema(field, purpose, &readable_name))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
 
-    // Build JSON schema for requested fields only
-    let field_schemas: Vec<String> = requested.iter().filter_map(|f| {
-        match *f {
-            "description" => Some(format!(
-                "\"description\": \"<Third person. Nouns must be specific (e.g. 'churned customers', 'purchase orders' — not 'data' or 'metrics'). \
+    SUGGESTIONS_TEMPLATE
+        .trim_end_matches('\n')
+        .replace("{{framing}}", framing)
+        .replace("{{readable_name}}", &readable_name)
+        .replace("{{purpose}}", purpose)
+        .replace("{{context}}", &context)
+        .replace("{{detail_context}}", &detail_context)
+        .replace("{{json_schema}}", &json_schema)
+}
+
+fn field_prompt_schema(field: &str, purpose: &str, readable_name: &str) -> Option<String> {
+    match field {
+        "description" => Some(format!(
+            "\"description\": \"<Third person. Nouns must be specific (e.g. 'churned customers', 'purchase orders' — not 'data' or 'metrics'). \
 Any number of nouns is fine as long as they all serve ONE overarching process (the process named by the skill). \
 Do NOT combine nouns from two distinct processes or different business functions — those belong in separate skills. \
 Format: '[Verb]s [specific noun(s)] [context]. Use when [one trigger].' \
 Example: 'Forecasts which customers are at risk of churning based on health scores. Use when the CS team needs a prioritised list of at-risk accounts.' \
 Max 2 sentences. Topic: {}.>\"",
-                readable_name
-            )),
-            "domain" => Some("\"domain\": \"<2-5 word domain name, e.g. Sales operations or Revenue recognition>\"".to_string()),
-            "scope" => Some("\"scope\": \"<short phrase, e.g. Focus on revenue analytics and reporting>\"".to_string()),
-            "audience" => Some("\"audience\": \"<2-3 short bullet points starting with • on separate lines, e.g. • Senior data engineers\\n• Analytics leads owning pipeline architecture>\"".to_string()),
-            "challenges" => Some("\"challenges\": \"<2-3 short bullet points starting with • on separate lines, e.g. • Late-arriving dimensions\\n• Schema drift across environments>\"".to_string()),
-            "unique_setup" => Some(format!(
-                "\"unique_setup\": \"<2-3 short bullet points starting with • on separate lines describing what makes a typical {} setup for {} different from standard implementations>\"",
-                purpose, readable_name
-            )),
-            "claude_mistakes" => Some(format!(
-                "\"claude_mistakes\": \"<2-3 short bullet points starting with • on separate lines describing what Claude gets wrong when working with {} in the {} domain>\"",
-                readable_name, purpose
-            )),
-            "context_questions" => {
-                let purpose_label = match purpose.as_str() {
-                    "domain" => "Business process knowledge",
-                    "source" => "Source system customizations",
-                    "data-engineering" => "Organization specific data engineering standards",
-                    "platform" => "Organization specific Azure or Fabric standards",
-                    _ => &purpose,
-                };
-                Some(format!(
-                    "\"context_questions\": \"<exactly 2 bullets starting with \u{2022} on separate lines, 2-4 words each. Bullet 1: what is unique about this {} setup. Bullet 2: what does Claude usually miss. Be specific to {}.>\"",
-                    purpose_label, readable_name
-                ))
-            }
-            _ => None,
+            readable_name
+        )),
+        "domain" => Some(
+            "\"domain\": \"<2-5 word domain name, e.g. Sales operations or Revenue recognition>\""
+                .to_string(),
+        ),
+        "scope" => Some(
+            "\"scope\": \"<short phrase, e.g. Focus on revenue analytics and reporting>\""
+                .to_string(),
+        ),
+        "audience" => Some(
+            "\"audience\": \"<2-3 short bullet points starting with • on separate lines, e.g. • Senior data engineers\\n• Analytics leads owning pipeline architecture>\"".to_string(),
+        ),
+        "challenges" => Some(
+            "\"challenges\": \"<2-3 short bullet points starting with • on separate lines, e.g. • Late-arriving dimensions\\n• Schema drift across environments>\"".to_string(),
+        ),
+        "unique_setup" => Some(format!(
+            "\"unique_setup\": \"<2-3 short bullet points starting with • on separate lines describing what makes a typical {} setup for {} different from standard implementations>\"",
+            purpose, readable_name
+        )),
+        "claude_mistakes" => Some(format!(
+            "\"claude_mistakes\": \"<2-3 short bullet points starting with • on separate lines describing what the assistant gets wrong when working with {} in the {} domain>\"",
+            readable_name, purpose
+        )),
+        "context_questions" => {
+            let purpose_label = match purpose {
+                "domain" => "Business process knowledge",
+                "source" => "Source system customizations",
+                "data-engineering" => "Organization specific data engineering standards",
+                "platform" => "Organization specific Azure or Fabric standards",
+                _ => purpose,
+            };
+            Some(format!(
+                "\"context_questions\": \"<exactly 2 bullets starting with \u{2022} on separate lines, 2-4 words each. Bullet 1: what is unique about this {} setup. Bullet 2: what does the assistant usually miss. Be specific to {}.>\"",
+                purpose_label, readable_name
+            ))
         }
-    }).collect();
+        _ => None,
+    }
+}
 
-    let json_schema = format!("{{{}}}", field_schemas.join(", "));
-    let prompt = SUGGESTIONS_TEMPLATE
-        .trim_end_matches('\n')
-        .replace("{{framing}}", framing)
-        .replace("{{readable_name}}", &readable_name)
-        .replace("{{purpose}}", &purpose)
-        .replace("{{context}}", &context)
-        .replace("{{detail_context}}", &detail_context)
-        .replace("{{json_schema}}", &json_schema);
+fn suggestions_output_format(requested_fields: &[String]) -> serde_json::Value {
+    let properties = requested_fields
+        .iter()
+        .filter_map(|field| {
+            ALL_FIELDS
+                .contains(&field.as_str())
+                .then(|| (field.clone(), serde_json::json!({ "type": "string" })))
+        })
+        .collect::<serde_json::Map<String, serde_json::Value>>();
 
-    log::debug!("[generate_suggestions] prompt={}", prompt);
+    let required = properties.keys().cloned().collect::<Vec<_>>();
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", api_key.expose())
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .body(
-            serde_json::json!({
-                "model": model,
-                "max_tokens": 500,
-                "messages": [{"role": "user", "content": prompt}]
-            })
-            .to_string(),
-        )
-        .send()
-        .await
-        .map_err(|e| {
-            log::error!("[generate_suggestions] API request failed: {}", e);
-            format!("API request failed: {}", e)
-        })?;
+    serde_json::json!({
+        "type": "json_schema",
+        "schema": {
+            "type": "object",
+            "required": required,
+            "properties": properties,
+            "additionalProperties": false
+        }
+    })
+}
 
-    if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        let body = resp.text().await.unwrap_or_default();
-        log::error!("[generate_suggestions] API error ({}): {}", status, body);
-        return Err(format!("Anthropic API error ({})", status));
+pub(crate) fn build_suggestions_runtime_config(
+    params: SuggestionsRuntimeConfigParams<'_>,
+) -> SidecarConfig {
+    let workspace_dir = params.workspace_path.replace('\\', "/");
+
+    crate::agents::sidecar::build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+        prompt: params.prompt.to_string(),
+        llm: params.llm,
+        workspace_root_dir: workspace_dir.clone(),
+        workspace_run_dir: workspace_dir,
+        agent_name: "skill-creator".to_string(),
+        task_kind: Some("skill_suggestions".to_string()),
+        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+        allowed_tools: vec!["file_editor".to_string()],
+        max_turns: 4,
+        output_format: Some(suggestions_output_format(&params.requested_fields)),
+        skill_name: Some(params.skill_name.to_string()),
+        step_id: Some(-31),
+        run_source: None,
+        plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
+    })
+}
+
+fn parse_suggestions_from_conversation_state(
+    state: &serde_json::Value,
+) -> Result<FieldSuggestions, String> {
+    if state.get("type").and_then(|value| value.as_str()) != Some("conversation_state") {
+        return Err("Suggestions result was not an OpenHands conversation_state".to_string());
     }
 
-    let body: serde_json::Value = resp.json().await.map_err(|e| {
-        log::error!(
-            "[generate_suggestions] Failed to parse response JSON: {}",
-            e
-        );
-        e.to_string()
-    })?;
-    let text = body["content"][0]["text"].as_str().ok_or_else(|| {
-        log::error!("[generate_suggestions] No text in API response");
-        "No text in API response".to_string()
-    })?;
+    match state.get("status").and_then(|value| value.as_str()) {
+        Some("completed") => parse_completed_suggestions_output(state),
+        Some("error") | Some("cancelled") => Err(state
+            .get("error_detail")
+            .or_else(|| state.get("errorDetail"))
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("Suggestions generation failed")
+            .to_string()),
+        Some(status) => Err(format!(
+            "Suggestions generation did not reach terminal status: {}",
+            status
+        )),
+        None => Err("Suggestions conversation_state missing status".to_string()),
+    }
+}
 
-    log::debug!("[generate_suggestions] raw response={}", text);
+fn parse_completed_suggestions_output(state: &serde_json::Value) -> Result<FieldSuggestions, String> {
+    if let Some(structured_output) = state
+        .get("structured_output")
+        .or_else(|| state.get("structuredOutput"))
+        .filter(|value| value.is_object())
+    {
+        return Ok(parse_suggestions_value(structured_output));
+    }
 
-    // Strip markdown fences if the model wrapped its response (e.g. ```json\n...\n```)
+    let Some(result_text) = state
+        .get("result_text")
+        .or_else(|| state.get("resultText"))
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return Err("Suggestions completed without parseable output".to_string());
+    };
+
+    parse_suggestions_result_text(result_text)
+        .map_err(|e| format!("Suggestions completed without parseable output: {}", e))
+}
+
+fn parse_suggestions_result_text(text: &str) -> Result<FieldSuggestions, String> {
     let cleaned = text.trim();
     let cleaned = cleaned
         .strip_prefix("```json")
@@ -257,17 +355,19 @@ Max 2 sentences. Topic: {}.>\"",
         .unwrap_or(cleaned);
     let cleaned = cleaned.strip_suffix("```").unwrap_or(cleaned).trim();
 
-    let suggestions: serde_json::Value = serde_json::from_str(cleaned).map_err(|e| {
-        log::error!(
-            "[generate_suggestions] Failed to parse suggestions: raw text={}",
-            text
-        );
-        format!("Failed to parse suggestions: {}", e)
+    let parsed: serde_json::Value = serde_json::from_str(cleaned).map_err(|e| {
+        log::error!("[generate_suggestions] Failed to parse result: raw text={}", text);
+        format!("Failed to parse result: {}", e)
     })?;
 
-    let field = |key: &str| -> String { suggestions[key].as_str().unwrap_or("").to_string() };
+    Ok(parse_suggestions_value(&parsed))
+}
 
-    Ok(FieldSuggestions {
+fn parse_suggestions_value(parsed: &serde_json::Value) -> FieldSuggestions {
+    let field =
+        |key: &str| -> String { parsed[key].as_str().unwrap_or("").to_string() };
+
+    FieldSuggestions {
         description: field("description"),
         domain: field("domain"),
         audience: field("audience"),
@@ -276,5 +376,123 @@ Max 2 sentences. Topic: {}.>\"",
         unique_setup: field("unique_setup"),
         claude_mistakes: field("claude_mistakes"),
         context_questions: field("context_questions"),
-    })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renders_suggestions_prompt_without_claude_wording() {
+        let prompt = render_suggestions_prompt(
+            "forecasting-churned-customers",
+            "data-engineering",
+            Some("B2B SaaS"),
+            Some("Analytics engineering"),
+            Some("Customer success"),
+            Some("Renewal forecasting"),
+            Some("Data engineers"),
+            Some("Fragmented health signals"),
+            &[
+                "description".to_string(),
+                "claude_mistakes".to_string(),
+                "context_questions".to_string(),
+            ],
+        );
+
+        assert!(prompt.contains("forecasting churned customers"));
+        assert!(!prompt.contains("Claude"));
+        assert!(!prompt.contains("Claude Code"));
+        assert!(prompt.contains("\"claude_mistakes\""));
+        assert!(prompt.contains("assistant gets wrong"));
+        assert!(prompt.contains("assistant usually miss"));
+    }
+
+    #[test]
+    fn suggestions_openhands_config_uses_clean_break_runner_contract() {
+        let config = build_suggestions_runtime_config(SuggestionsRuntimeConfigParams {
+            skill_name: "forecasting-churned-customers",
+            prompt: "rendered prompt",
+            workspace_path: "/tmp/skill-builder/workspace",
+            llm: crate::types::WorkflowLlmConfig {
+                model: "gpt-4.1".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: Some("workflow".to_string()),
+            },
+            requested_fields: vec!["description".to_string(), "claude_mistakes".to_string()],
+        });
+
+        let json = serde_json::to_value(&config).unwrap();
+        assert_eq!(json["runtimeProvider"], "openhands");
+        assert_eq!(json["mode"], "one-shot");
+        assert_eq!(json["agentName"], "skill-creator");
+        assert_eq!(json["taskKind"], "skill_suggestions");
+        assert_eq!(
+            json["userMessageSuffix"],
+            "Follow the current user message exactly. Do not infer a different task than the one stated in the message."
+        );
+        assert_eq!(json["llm"]["model"], "gpt-4.1");
+        assert!(json.get("model").is_none());
+        assert_eq!(json["apiKey"], "openhands-llm-config");
+        assert_eq!(json["allowedTools"], serde_json::json!(["file_editor"]));
+        assert_eq!(json["maxTurns"], 4);
+        assert!(json["outputFormat"]["schema"]["required"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("claude_mistakes")));
+    }
+
+    #[test]
+    fn parses_completed_suggestions_from_structured_output() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "structured_output": {
+                "description": "Forecasts churn risk for customer success teams.",
+                "claude_mistakes": "• Misses company-specific health score cutoffs",
+                "context_questions": "• Health score logic\n• Renewal risk triggers"
+            }
+        });
+
+        let result = parse_suggestions_from_conversation_state(&state).unwrap();
+
+        assert_eq!(
+            result.description,
+            "Forecasts churn risk for customer success teams."
+        );
+        assert_eq!(
+            result.claude_mistakes,
+            "• Misses company-specific health score cutoffs"
+        );
+        assert_eq!(
+            result.context_questions,
+            "• Health score logic\n• Renewal risk triggers"
+        );
+        assert!(result.domain.is_empty());
+    }
+
+    #[test]
+    fn parses_completed_suggestions_from_result_text() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": r#"{"description":"Forecasts churn risk.","claude_mistakes":"• Misses company standards"}"#
+        });
+
+        let result = parse_suggestions_from_conversation_state(&state).unwrap();
+
+        assert_eq!(result.description, "Forecasts churn risk.");
+        assert_eq!(result.claude_mistakes, "• Misses company standards");
+    }
 }
