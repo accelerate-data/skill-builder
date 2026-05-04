@@ -430,7 +430,6 @@ fn detailed_research_sidecar_config_uses_skill_creator_openhands_contract() {
         "OpenHands one-shot config should rely on workspace .agents layout"
     );
     assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
-    assert!(config.path_to_claude_code_executable.is_none());
 }
 
 #[test]
@@ -473,7 +472,6 @@ fn answer_evaluator_sidecar_config_uses_skill_creator_openhands_contract() {
         config.task_kind.as_deref(),
         Some("workflow.answer_evaluator")
     );
-    assert!(config.path_to_claude_code_executable.is_none());
     assert_eq!(config.allowed_tools, Some(vec!["file_editor".to_string()]));
     assert!(
         config.required_plugins.is_none(),
@@ -754,7 +752,6 @@ fn confirm_decisions_sidecar_config_uses_skill_creator_openhands_contract() {
         "OpenHands one-shot config should rely on workspace .agents layout"
     );
     assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
-    assert!(config.path_to_claude_code_executable.is_none());
 }
 
 #[test]
@@ -837,7 +834,6 @@ fn skill_generation_sidecar_config_uses_skill_creator_openhands_contract() {
         "OpenHands one-shot config should rely on workspace .agents layout"
     );
     assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
-    assert!(config.path_to_claude_code_executable.is_none());
 }
 
 /// Steps 0–2 use inline schemas: all $ref resolved, no definitions block,

@@ -176,7 +176,7 @@ pub fn run() {
                         name: Some("Skill Builder".to_string()),
                         version: Some(app.config().version.clone().unwrap_or_default()),
                         copyright: Some(format!("© {} Accelerate Data, Inc.", chrono::Utc::now().format("%Y"))),
-                        credits: Some("Built with Tauri, Claude Agent SDK, and React\n\nPowered by Claude from Anthropic\n\nLicense terms: https://github.com/hbanerjee74/skill-builder/blob/main/LICENSE".to_string()),
+                        credits: Some("Built with Tauri, OpenHands Agent Server, and React\n\nLicense terms: https://github.com/hbanerjee74/skill-builder/blob/main/LICENSE".to_string()),
                         icon,
                         ..Default::default()
                     }),
