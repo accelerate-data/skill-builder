@@ -4,21 +4,11 @@ import type { AppSettings } from "@/lib/types";
 
 function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
-    anthropic_api_key: null,
     model_settings: null,
-    openhands_provider: null,
-    openhands_api_key: null,
-    openhands_model: null,
-    openhands_base_url: null,
     workspace_path: null,
     skills_path: null,
-    preferred_model: null,
     log_level: "info",
     extended_context: false,
-    extended_thinking: false,
-    interleaved_thinking_beta: true,
-    sdk_effort: null,
-    fallback_model: null,
     refine_prompt_suggestions: true,
     splash_shown: false,
     github_oauth_token: null,
@@ -59,15 +49,8 @@ describe("settingsToStorePatch", () => {
     );
   });
 
-  it("does not hydrate canonical config from legacy OpenHands fields", () => {
-    const patch = settingsToStorePatch(
-      makeSettings({
-        anthropic_api_key: "sk-ant-legacy",
-        openhands_provider: "openai",
-        openhands_api_key: "sk-openai",
-        openhands_model: "gpt-4o",
-      }),
-    );
+  it("returns null api_key and model when model_settings is not configured", () => {
+    const patch = settingsToStorePatch(makeSettings({ model_settings: null }));
 
     expect(patch.modelSettings.api_key).toBeNull();
     expect(patch.modelSettings.model).toBeNull();
