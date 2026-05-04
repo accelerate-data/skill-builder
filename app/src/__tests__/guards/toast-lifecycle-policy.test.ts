@@ -125,7 +125,7 @@ describe("toast lifecycle policy guard", () => {
       { file: "hooks/use-workflow-state-machine.ts", severities: ["info", "error"] },
       { file: "components/feedback-dialog.tsx", severities: ["error"] },
       { file: "hooks/use-settings-form.ts", severities: ["error"] },
-      { file: "components/settings/sdk-section.tsx", severities: ["error"] },
+      { file: "components/settings/models-section.tsx", severities: ["error"] },
       { file: "components/imported-skills-tab.tsx", severities: ["error"] },
       { file: "components/skill-list-panel.tsx", severities: ["error"] },
       { file: "hooks/use-workflow-gate.ts", severities: ["info", "warning"] },

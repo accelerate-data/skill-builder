@@ -30,7 +30,7 @@ interface SettingsState {
 
 const initialState = {
   modelSettings: {
-    provider: "anthropic",
+    provider: null,
     model: null,
     api_key: null,
     base_url: null,

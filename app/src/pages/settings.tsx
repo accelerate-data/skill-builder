@@ -10,7 +10,7 @@ import { AboutDialog } from "@/components/about-dialog"
 import { FeedbackDialog } from "@/components/feedback-dialog"
 import { ImportedSkillsTab } from "@/components/imported-skills-tab"
 import { GeneralSection } from "@/components/settings/general-section"
-import { SdkSection } from "@/components/settings/sdk-section"
+import { ModelsSection } from "@/components/settings/models-section"
 import { MarketplaceSection } from "@/components/settings/marketplace-section"
 import { GitHubSection } from "@/components/settings/github-section"
 import { AdvancedSection } from "@/components/settings/advanced-section"
@@ -112,7 +112,7 @@ export default function SettingsPage() {
           )}
 
           {activeSection === "skill-building" && (
-            <SdkSection
+            <ModelsSection
               modelSettings={form.modelSettings}
               updateModelSettings={form.updateModelSettings}
               saveModelSettings={form.saveModelSettings}

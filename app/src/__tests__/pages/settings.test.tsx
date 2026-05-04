@@ -252,7 +252,7 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
   // Populate the settings store with the mock settings
   useSettingsStore.setState({
     modelSettings: {
-      provider: settings.model_settings?.provider ?? "anthropic",
+      provider: settings.model_settings?.provider ?? null,
       model: settings.model_settings?.model ?? null,
       api_key: settings.model_settings?.api_key ?? null,
       base_url: settings.model_settings?.base_url ?? null,
