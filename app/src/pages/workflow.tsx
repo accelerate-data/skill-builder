@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "@tanstack/react-router";
 import {
   Play,
@@ -207,9 +207,10 @@ export default function WorkflowPage() {
   const { data: clarificationsDto } = useClarifications(
     isClarificationsEditable && isStepCompleted ? skillName : null,
   );
-  const dbClarificationsData = clarificationsDto
-    ? mapClarificationsDtoToFile(clarificationsDto)
-    : null;
+  const dbClarificationsData = useMemo(
+    () => clarificationsDto ? mapClarificationsDtoToFile(clarificationsDto) : null,
+    [clarificationsDto],
+  );
 
   // 2b. Autosave — owns clarifications editing state and persists per-question changes
   const {
