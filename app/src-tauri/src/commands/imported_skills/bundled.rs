@@ -19,6 +19,7 @@ fn is_workflow_internal_skill(skill_name: &str) -> bool {
 pub(crate) fn purge_stale_bundled_skills(
     workspace_path: &str,
     bundled_skills_dir: &std::path::Path,
+    protected_skill_names: &std::collections::HashSet<String>,
 ) -> Result<(), String> {
     log::info!(
         "purge_stale_bundled_skills: scanning {}",
@@ -79,7 +80,9 @@ pub(crate) fn purge_stale_bundled_skills(
                     .and_then(|c| parse_frontmatter_full(&c).name)
                     .unwrap_or_else(|| dir_name.clone());
                 let bundled_marker = path.join(BUNDLED_WORKSPACE_MARKER);
-                if bundled_marker.is_file() && !current_names.contains(&skill_name) {
+                if !current_names.contains(&skill_name)
+                    && (bundled_marker.is_file() || !protected_skill_names.contains(&skill_name))
+                {
                     log::info!(
                         "purge_stale_bundled_skills: removing stale skill dir '{}'",
                         dir_name
@@ -267,6 +270,7 @@ mod tests {
         purge_stale_bundled_skills(
             workspace.path().to_str().unwrap(),
             bundled.path(),
+            &std::collections::HashSet::new(),
         )
         .unwrap();
 
@@ -298,15 +302,56 @@ mod tests {
         )
         .unwrap();
 
+        let mut protected = std::collections::HashSet::new();
+        protected.insert("custom-skill".to_string());
+
         purge_stale_bundled_skills(
             workspace.path().to_str().unwrap(),
             bundled.path(),
+            &protected,
         )
         .unwrap();
 
         assert!(
             custom_workspace_dir.exists(),
             "non-bundled user/custom workspace skills must not be deleted during bundled purge"
+        );
+    }
+
+    #[test]
+    fn purge_stale_bundled_skills_removes_unmarked_upgrade_mirror_when_not_protected() {
+        let workspace = tempfile::tempdir().unwrap();
+        let bundled = tempfile::tempdir().unwrap();
+        let bundled_skill_dir = bundled.path().join("kept-skill");
+        std::fs::create_dir_all(&bundled_skill_dir).unwrap();
+        std::fs::write(
+            bundled_skill_dir.join("SKILL.md"),
+            "---\nname: kept-skill\ndescription: Keep me\n---\n# Body\n",
+        )
+        .unwrap();
+
+        let stale_workspace_dir =
+            resolve_workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "old-bundled-skill");
+        std::fs::create_dir_all(&stale_workspace_dir).unwrap();
+        std::fs::write(
+            stale_workspace_dir.join("SKILL.md"),
+            "---\nname: old-bundled-skill\ndescription: Old bundled mirror\n---\n# Body\n",
+        )
+        .unwrap();
+
+        let mut protected = std::collections::HashSet::new();
+        protected.insert("custom-skill".to_string());
+
+        purge_stale_bundled_skills(
+            workspace.path().to_str().unwrap(),
+            bundled.path(),
+            &protected,
+        )
+        .unwrap();
+
+        assert!(
+            !stale_workspace_dir.exists(),
+            "pre-marker bundled workspace mirrors should still be purgeable after upgrade"
         );
     }
 }

@@ -326,8 +326,20 @@ pub fn init_workspace(
     // Purge stale bundled workspace mirrors then seed current ones (filesystem-only, no DB).
     {
         let bundled_skills_dir = super::workflow::resolve_bundled_skills_dir(app);
+        let protected_workspace_skill_names = {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            crate::db::list_all_skills(&conn)?
+                .into_iter()
+                .filter(|skill| skill.plugin_slug == crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+                .map(|skill| skill.name)
+                .collect::<std::collections::HashSet<_>>()
+        };
         if let Err(e) =
-            super::imported_skills::purge_stale_bundled_skills(&workspace_path, &bundled_skills_dir)
+            super::imported_skills::purge_stale_bundled_skills(
+                &workspace_path,
+                &bundled_skills_dir,
+                &protected_workspace_skill_names,
+            )
         {
             log::warn!("purge_stale_bundled_skills: failed: {}", e);
         }
