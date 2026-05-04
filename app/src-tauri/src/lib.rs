@@ -292,6 +292,7 @@ pub fn run() {
         .manage(CloseGuardState::default())
         .manage(commands::refine::RefineSessionManager::new())
         .manage(commands::workflow::runtime::WorkflowStepRunManager::new())
+        .manage(commands::eval_workbench::EvalWorkbenchRunManager::default())
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,
             commands::node::check_node,
@@ -402,6 +403,7 @@ pub fn run() {
             commands::eval_workbench::save_eval_prompt_set,
             commands::eval_workbench::delete_eval_prompt_set,
             commands::eval_workbench::run_eval_workbench,
+            commands::eval_workbench::cancel_eval_workbench_run,
             commands::eval_workbench::list_eval_runs,
             commands::eval_workbench::read_eval_run,
             commands::eval_workbench::suggest_description_candidates,

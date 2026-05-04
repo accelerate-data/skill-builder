@@ -65,9 +65,13 @@ async function navigateToEvalWorkbench(
   await skillRow.waitFor({ timeout: 10_000 });
   await skillRow.click();
 
-  const evalsTab = page.getByRole("tab", { name: "Evals" });
-  await evalsTab.waitFor({ timeout: 10_000 });
-  await evalsTab.click();
+  const workbenchTab = page.getByRole("tab", { name: "Eval Workbench" });
+  await workbenchTab.waitFor({ timeout: 10_000 });
+  await workbenchTab.click();
+
+  const performanceTab = page.getByRole("tab", { name: "Performance" });
+  await performanceTab.waitFor({ timeout: 10_000 });
+  await performanceTab.click();
 
   await page
     .getByRole("heading", { name: "Eval Workbench" })

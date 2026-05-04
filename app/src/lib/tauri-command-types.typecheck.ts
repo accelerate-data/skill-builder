@@ -138,6 +138,7 @@ void invokeCommand("save_eval_prompt_set", { promptSet });
 
 void invokeCommand("run_eval_workbench", {
   request: {
+    runId: "run-1",
     promptSetId: "prompt-set-1",
     candidateIds: ["current-skill"],
   },
@@ -151,7 +152,7 @@ void invokeCommand("suggest_description_candidates", {
   },
 });
 
-// @ts-expect-error workbench run request requires candidateIds
+// @ts-expect-error workbench run request requires runId and candidateIds
 void invokeCommand("run_eval_workbench", {
   request: {
     promptSetId: "prompt-set-1",

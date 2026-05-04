@@ -309,12 +309,12 @@ Required downstream cleanup:
 
 | File | Purpose |
 |---|---|
-| `app/src-tauri/src/commands/evals.rs` | Current app Eval screen command surface to replace or adapt to the workbench model. |
-| `app/src-tauri/src/commands/description/` | Current description optimization implementation; trigger eval should move off Claude sidecar routing. |
+| `app/src-tauri/src/commands/eval_workbench/` | Current Rust command surface for prompt sets, runs, description candidates, and Refine briefs. |
 | `app/src-tauri/src/agents/openhands_server/` | Rust-managed OpenHands Agent Server runtime used by Promptfoo providers. |
 | `app/src-tauri/src/commands/refine/` | Refine command surface for applying improvement briefs. |
-| `app/src/components/workspace/workspace-evals.tsx` | Current Eval screen UI entrypoint. |
-| `app/src/components/workspace/workspace-description.tsx` | Current Description Optimization UI entrypoint. |
+| `app/src/components/workspace/workspace-eval-workbench.tsx` | Unified workspace shell entrypoint for performance and trigger workbench modes. |
+| `app/src/components/workspace/workspace-evals.tsx` | Performance-mode UI for prompt sets, runs, and Refine handoff. |
+| `app/src/components/workspace/workspace-description.tsx` | Trigger-mode UI for candidate generation, comparison, and apply flow. |
 | `agent-sources/prompts/skill-generation.txt` | Generation prompt that should stop requiring persistent eval files. |
 | `agent-sources/workspace/skills/creating-skills/SKILL.md` | Skill-writing guidance that should stop requiring base eval artifact creation. |
 

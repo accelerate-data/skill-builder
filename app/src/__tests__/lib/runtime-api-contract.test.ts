@@ -27,10 +27,10 @@ describe("runtime API contract", () => {
     const evalsSource = readSource("components/workspace/workspace-evals.tsx");
     const descriptionSource = readSource("components/workspace/workspace-description.tsx");
     expect(evalsSource).toContain("runEvalWorkbench");
+    expect(evalsSource).toContain("cancelEvalWorkbenchRun");
     expect(evalsSource).toContain('from "@/lib/eval-workbench"');
     expect(evalsSource).not.toContain("startOneShotAgent");
     expect(evalsSource).not.toContain("sendRefineMessage");
-    expect(evalsSource).not.toContain("cancelEvalWorkbenchRun");
     expect(descriptionSource).toContain('from "@/lib/eval-workbench"');
     expect(descriptionSource).not.toContain('from "@/lib/tauri"');
   });

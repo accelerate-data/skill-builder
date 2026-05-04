@@ -64,12 +64,14 @@ describe("Eval Workbench Tauri wrappers", () => {
 
   it("runs eval workbench requests with explicit candidate ids", async () => {
     await runEvalWorkbench({
+      runId: "run-1",
       promptSetId: "prompt-set-1",
       candidateIds: ["current-skill"],
     });
 
     expect(mockInvoke).toHaveBeenCalledWith("run_eval_workbench", {
       request: {
+        runId: "run-1",
         promptSetId: "prompt-set-1",
         candidateIds: ["current-skill"],
       },

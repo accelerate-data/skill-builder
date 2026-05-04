@@ -73,8 +73,17 @@ export interface EvalRun {
 }
 
 export interface RunEvalWorkbenchRequest {
+  runId: string;
   promptSetId: string;
   candidateIds: string[];
+}
+
+export interface EvalWorkbenchProgressEvent {
+  runId: string;
+  phase: string;
+  completed: number;
+  total: number;
+  message: string;
 }
 
 export interface SuggestDescriptionCandidatesRequest {
@@ -124,6 +133,9 @@ export const deleteEvalPromptSet = (promptSetId: string) =>
 
 export const runEvalWorkbench = (request: RunEvalWorkbenchRequest) =>
   invokeCommand("run_eval_workbench", { request });
+
+export const cancelEvalWorkbenchRun = (runId: string) =>
+  invokeCommand("cancel_eval_workbench_run", { runId });
 
 export const listEvalRuns = (
   pluginSlug: string,

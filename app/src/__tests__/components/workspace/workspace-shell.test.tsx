@@ -264,12 +264,10 @@ describe("WorkspaceShell", () => {
     render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" />);
 
     const overviewTab = screen.getByRole("tab", { name: "Overview" });
-    const evalsTab = screen.getByRole("tab", { name: "Evals" });
-    const descriptionTab = screen.getByRole("tab", { name: "Optimize Description" });
+    const evalWorkbenchTab = screen.getByRole("tab", { name: "Eval Workbench" });
 
     expect(overviewTab).toHaveAttribute("data-state", "active");
-    expect(evalsTab).not.toBeDisabled();
-    expect(descriptionTab).not.toBeDisabled();
+    expect(evalWorkbenchTab).not.toBeDisabled();
   });
 
   it("shows dialog when switching away from Refine while agent is running", async () => {
@@ -344,7 +342,7 @@ describe("WorkspaceShell", () => {
     refineState.isRunning = false;
   });
 
-  it("shows guard dialog when switching away from Evals while a real run is active", async () => {
+  it("shows guard dialog when switching away from Eval Workbench while a performance run is active", async () => {
     const user = userEvent.setup();
     const deferredRun = createDeferred(runSummary);
     mockRunEvalWorkbench.mockReset().mockReturnValue(deferredRun.promise);
@@ -364,12 +362,12 @@ describe("WorkspaceShell", () => {
 
     expect(screen.getByText("Process Running")).toBeInTheDocument();
     const activeTab = container.querySelector('[role="tab"][data-state="active"]');
-    expect(activeTab?.textContent).toBe("Evals");
+    expect(activeTab?.textContent).toBe("Eval Workbench");
 
     deferredRun.resolve(runSummary);
   });
 
-  it("shows guard dialog when switching away from Description while candidate generation is active", async () => {
+  it("shows guard dialog when switching away from Eval Workbench while trigger work is active", async () => {
     const user = userEvent.setup();
     const deferredCandidates = createDeferred([
       {
@@ -402,7 +400,7 @@ describe("WorkspaceShell", () => {
 
     expect(screen.getByText("Process Running")).toBeInTheDocument();
     const activeTab = container.querySelector('[role="tab"][data-state="active"]');
-    expect(activeTab?.textContent).toBe("Optimize Description");
+    expect(activeTab?.textContent).toBe("Eval Workbench");
 
     deferredCandidates.resolve([
       {

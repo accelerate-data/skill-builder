@@ -149,9 +149,11 @@ export async function navigateToDescriptionTab(
   await skillRow.waitFor({ timeout: 10_000 });
   await skillRow.click();
 
-  // The shell tab label is managed outside this slice. Use the description tab
-  // position so the helper stays aligned with the workbench contract.
-  const descriptionTab = page.getByRole("tab").nth(3);
-  await descriptionTab.waitFor({ timeout: 10_000 });
-  await descriptionTab.click();
+  const workbenchTab = page.getByRole("tab", { name: "Eval Workbench" });
+  await workbenchTab.waitFor({ timeout: 10_000 });
+  await workbenchTab.click();
+
+  const triggerTab = page.getByRole("tab", { name: "Trigger" });
+  await triggerTab.waitFor({ timeout: 10_000 });
+  await triggerTab.click();
 }

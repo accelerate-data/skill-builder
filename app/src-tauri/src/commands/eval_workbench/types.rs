@@ -12,6 +12,7 @@ pub type SaveEvalPromptSet = crate::db::SaveEvalPromptSet;
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunEvalWorkbenchRequest {
+    pub run_id: String,
     pub prompt_set_id: String,
     pub candidate_ids: Vec<String>,
 }

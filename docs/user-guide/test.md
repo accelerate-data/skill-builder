@@ -1,12 +1,18 @@
 # Eval Workbench
 
-The **Evals** workspace tab opens the **Eval Workbench**, the app's current in-app path for testing skill output quality. It stores app-owned prompt sets, run history, and run details for the selected skill. When a run exposes weak output, you can send an improvement brief directly to [Refine](refine.md).
+The **Eval Workbench** workspace tab is the app’s current in-app path for testing skill behavior. It groups two modes under one surface:
+
+- **Performance** for output-quality prompt sets, runs, and grading
+- **Trigger** for description-candidate generation and trigger comparisons
+
+When a run exposes weak output or routing boundaries, you can send an improvement brief directly to [Refine](refine.md).
 
 ## Open the workbench
 
 1. Select a skill in the dashboard.
 2. Open the skill workspace.
-3. Switch to the **Evals** tab.
+3. Switch to the **Eval Workbench** tab.
+4. Choose **Performance**.
 
 ## What's on this screen
 
@@ -18,7 +24,7 @@ The page has three main sections:
 
 ## Create or update a prompt set
 
-1. Open **Evals**.
+1. Open **Eval Workbench** and stay on **Performance**.
 2. In **Prompt set**, click **New prompt set** if you want a fresh draft.
 3. Enter a **Prompt set name**.
 4. For each case, fill in **Case prompt** and **Expected outcome**.
@@ -29,7 +35,7 @@ Saved prompt sets appear as buttons near the top of the page. Click a prompt set
 
 ## Run a prompt set
 
-1. Open **Evals**.
+1. Open **Eval Workbench** and stay on **Performance**.
 2. Select the prompt set you want to run.
 3. Click **Run prompt set**.
 

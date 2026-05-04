@@ -467,6 +467,10 @@ export interface TauriCommandMap {
     args: { request: RunEvalWorkbenchRequest };
     result: EvalRun;
   };
+  cancel_eval_workbench_run: {
+    args: { runId: string };
+    result: void;
+  };
   list_eval_runs: {
     args: {
       pluginSlug: string;

@@ -1,11 +1,14 @@
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, ArrowRight, Play } from "lucide-react";
+import { AlertTriangle, ArrowRight, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
 import {
   buildRefineImprovementBrief,
+  cancelEvalWorkbenchRun,
   createDraftPromptSet,
+  type EvalWorkbenchProgressEvent,
   getErrorMessage,
   listEvalPromptSets,
   listEvalRuns,
@@ -54,6 +57,10 @@ export function WorkspaceEvals({
   );
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedRun, setSelectedRun] = useState<EvalRun | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<EvalWorkbenchProgressEvent | null>(
+    null,
+  );
   const [draft, setDraft] = useState<SaveEvalPromptSet>(() =>
     createDraftPromptSet("performance", pluginSlug, skillName),
   );
@@ -73,6 +80,23 @@ export function WorkspaceEvals({
     },
     [onRunningChange],
   );
+
+  useEffect(() => {
+    const unlisten = listen<EvalWorkbenchProgressEvent>(
+      "eval-workbench-progress",
+      (event) => {
+        const payload = event.payload;
+        if (!activeRunId || payload.runId !== activeRunId) {
+          return;
+        }
+        setProgress(payload);
+      },
+    );
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [activeRunId]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -149,10 +173,14 @@ export function WorkspaceEvals({
       return;
     }
 
+    const runId = crypto.randomUUID();
     setRunning(true);
     setActionError(null);
+    setActiveRunId(runId);
+    setProgress(null);
     try {
       const run = await runEvalWorkbench({
+        runId,
         promptSetId: draft.id,
         candidateIds: PERFORMANCE_CANDIDATE_IDS,
       });
@@ -165,6 +193,20 @@ export function WorkspaceEvals({
       setActionError(getErrorMessage(runError));
     } finally {
       setRunning(false);
+      setActiveRunId(null);
+      setProgress(null);
+    }
+  }
+
+  async function handleCancelRun() {
+    if (!activeRunId) {
+      return;
+    }
+
+    try {
+      await cancelEvalWorkbenchRun(activeRunId);
+    } catch (cancelError) {
+      setActionError(getErrorMessage(cancelError));
     }
   }
 
@@ -226,15 +268,28 @@ export function WorkspaceEvals({
               App-owned prompt sets and run history for skill output quality.
             </p>
           </div>
-          <Button
-            size="sm"
-            onClick={() => void handleRunPromptSet()}
-            disabled={running}
-          >
-            <Play className="mr-1 size-3.5" />
-            Run prompt set
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={() => void handleRunPromptSet()}
+              disabled={running}
+            >
+              <Play className="mr-1 size-3.5" />
+              Run prompt set
+            </Button>
+            {running && activeRunId ? (
+              <Button size="sm" variant="outline" onClick={() => void handleCancelRun()}>
+                <Square className="mr-1 size-3.5" />
+                Cancel
+              </Button>
+            ) : null}
+          </div>
         </div>
+        {running && progress ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            {progress.message} ({progress.completed}/{progress.total})
+          </p>
+        ) : null}
 
         {promptSets.length > 0 ? (
           <div className="mt-4 flex flex-wrap gap-2">

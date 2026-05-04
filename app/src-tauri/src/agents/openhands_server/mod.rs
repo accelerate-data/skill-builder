@@ -256,6 +256,32 @@ pub fn cancel_openhands_one_shot(agent_id: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub fn cancel_openhands_one_shots_with_prefix(agent_id_prefix: &str) -> usize {
+    let Ok(mut registry) = cancel_registry().lock() else {
+        log::warn!(
+            "[openhands-agent-server:{}] failed to lock cancellation registry for prefix cancel",
+            agent_id_prefix
+        );
+        return 0;
+    };
+
+    let matching_ids = registry
+        .keys()
+        .filter(|agent_id| agent_id.starts_with(agent_id_prefix))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut cancelled = 0usize;
+    for agent_id in matching_ids {
+        if registry
+            .remove(&agent_id)
+            .is_some_and(|cancel| cancel.send(()).is_ok())
+        {
+            cancelled += 1;
+        }
+    }
+    cancelled
+}
+
 async fn run_conversation_task(
     task: OpenHandsConversationTask,
     mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
@@ -1080,5 +1106,25 @@ mod tests {
         assert!(cancel_openhands_one_shot(&agent_id));
         assert!(cancel_rx.try_recv().is_ok());
         assert!(!cancel_openhands_one_shot(&agent_id));
+    }
+
+    #[test]
+    fn prefix_cancellation_registry_signals_matching_agents_only() {
+        let prefix = format!("test-prefix-{}", uuid::Uuid::new_v4());
+        let matching_agent = format!("{prefix}-one");
+        let other_agent = format!("other-prefix-{}", uuid::Uuid::new_v4());
+        let (matching_tx, mut matching_rx) = tokio::sync::oneshot::channel::<()>();
+        let (other_tx, mut other_rx) = tokio::sync::oneshot::channel::<()>();
+
+        register_cancel(&matching_agent, matching_tx).unwrap();
+        register_cancel(&other_agent, other_tx).unwrap();
+
+        assert_eq!(cancel_openhands_one_shots_with_prefix(&prefix), 1);
+        assert!(matching_rx.try_recv().is_ok());
+        assert!(matches!(
+            other_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ));
+        assert!(cancel_openhands_one_shot(&other_agent));
     }
 }

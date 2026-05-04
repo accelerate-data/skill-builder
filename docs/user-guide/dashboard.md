@@ -37,8 +37,7 @@ When you select a skill on the dashboard route, the main area becomes a workspac
 
 - **Overview**
 - **Refine**
-- **Evals**
-- **Optimize Description**
+- **Eval Workbench**
 
 Imported skills can be viewed in the workspace shell, but builder-only actions such as Refine are not always available.
 
@@ -69,7 +68,7 @@ There is no grid/list toggle or multi-filter bar in the current dashboard UI.
 - Click an in-progress builder skill to open its [workflow](workflow/overview.md).
 - Click a completed skill to open its workspace shell on the dashboard route.
 
-The workspace shell is the current home for **Overview**, **Refine**, **Evals**, and **Optimize Description**.
+The workspace shell is the current home for **Overview**, **Refine**, and **Eval Workbench**.
 
 ---
 
@@ -90,8 +89,7 @@ The menu is grouped into sections:
 
 - **Overview** — open the workspace Overview tab
 - **Refine** — open the workspace Refine tab
-- **Eval** — open the workspace Evals tab
-- **Optimize Description** — update the skill's displayed description
+- **Eval Workbench** — open the workspace workbench tab for performance and trigger testing
 - **Restore version** — restore an earlier saved version
 - **Export as .skill** — save the skill as a `.skill` package
 
@@ -118,8 +116,7 @@ Uploaded skills use the same workspace shell. Their menu can include:
 
 - **Overview**
 - **Refine**
-- **Eval**
-- **Optimize Description**
+- **Eval Workbench**
 - **Restore version**
 - **Export as .skill**
 - **Create plugin** when the skill is still in the default **Skills** plugin
@@ -133,8 +130,7 @@ Marketplace skills also use the workspace shell. Their menu can include:
 
 - **Overview**
 - **Refine**
-- **Eval**
-- **Optimize Description**
+- **Eval Workbench**
 - **Restore version**
 - **Delete** when the skill is in the default plugin
 
@@ -156,11 +152,9 @@ For marketplace skills, the source appears as the marketplace URL when one is re
 
 For uploaded skills, the source appears as **Uploaded**.
 
-## Evals and Optimize Description tabs
+## Eval Workbench tab
 
-Use **Evals** to define test scenarios, run selected evals, review benchmark results, and send failing results to Refine.
-
-Use **Optimize Description** to tune the skill description that controls when Claude should trigger the skill. See [Evals](test.md) and [Optimize Description](optimize-description.md) for the full workflows.
+Use **Eval Workbench** to define performance prompt sets, generate trigger-description candidates, run comparisons, review results, and send improvement briefs to Refine. See [Eval Workbench](test.md) and [Trigger Mode](optimize-description.md) for the full workflows.
 
 ---
 
