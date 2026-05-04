@@ -222,15 +222,16 @@ mod tests {
     const SLUG: &str = DEFAULT_PLUGIN_SLUG;
 
     /// Create a skill working directory under the plugin-organised layout.
+    /// Workspace skill dirs contain only .agents/, logs/, and tmp/ (no context/).
     fn create_skill_dir(workspace: &Path, name: &str, _domain: &str) {
         let skill_dir = workspace.join(SLUG).join(name);
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        std::fs::create_dir_all(&skill_dir).unwrap();
     }
 
     /// Create step output files on disk for the given step (plugin-organised workspace).
     fn create_step_output(workspace: &Path, name: &str, step_id: u32) {
         let skill_dir = workspace.join(SLUG).join(name);
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        std::fs::create_dir_all(&skill_dir).unwrap();
         for file in get_step_output_files(step_id) {
             let path = skill_dir.join(file);
             if let Some(parent) = path.parent() {
