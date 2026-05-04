@@ -14,8 +14,7 @@ use super::output_format::{
     publish_commit_and_tag_generated_skill,
 };
 use super::prompt::{
-    build_prompt, build_step0_prompt, build_step1_prompt, build_step2_prompt, build_step3_prompt,
-    PromptParams,
+    build_step0_prompt, build_step1_prompt, build_step2_prompt, build_step3_prompt,
 };
 use super::runtime::{
     build_answer_evaluator_sidecar_config, build_workflow_confirm_decisions_sidecar_config,
@@ -2018,161 +2017,23 @@ fn test_materialize_step3_rejects_wrong_status() {
 }
 
 #[test]
-fn test_build_prompt_all_three_paths() {
-    let prompt = build_prompt(&PromptParams {
-        skill_name: "my-skill",
-        workspace_path: "/home/user/.vibedata/skill-builder",
-        plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: "/home/user/my-skills",
-        author_login: None,
-        created_at: None,
-        step_id: 1,
-    });
-    assert!(prompt.contains("my-skill"));
-    assert!(prompt.contains(
-        "The workspace directory is: /home/user/.vibedata/skill-builder/skills/my-skill"
-    ));
-    assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/skills/my-skill"));
-    assert!(prompt.contains("This skill output directory is the configured Settings Skills Folder target for the shipped skill"));
-    assert!(prompt.contains("shipped skill files must be written only to the skill output directory, never to the workspace directory or a workspace skill/ subdirectory"));
-    assert!(prompt.contains("User context, clarifications, and answer evaluation verdicts are provided inline"));
-}
-
-#[test]
-fn test_build_prompt_with_skill_type() {
-    let prompt = build_prompt(&PromptParams {
-        skill_name: "my-skill",
-        workspace_path: "/home/user/.vibedata/skill-builder",
-        plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: "/home/user/my-skills",
-        author_login: None,
-        created_at: None,
-        step_id: 1,
-    });
-    // User context is provided inline; prompt instructs agent not to read it from disk
-    assert!(prompt.contains("User context, clarifications, and answer evaluation verdicts are provided inline"));
-}
-
-#[test]
-fn test_build_prompt_with_author_info() {
-    let prompt = build_prompt(&PromptParams {
-        skill_name: "my-skill",
-        workspace_path: "/home/user/.vibedata/skill-builder",
-        plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: "/home/user/my-skills",
-        author_login: Some("octocat"),
-        created_at: Some("2025-06-15T12:00:00Z"),
-        step_id: 1,
-    });
-    assert!(prompt.contains("The author of this skill is: octocat."));
-    assert!(prompt.contains("The skill was created on: 2025-06-15."));
-    assert!(prompt.contains("Today's date (for the modified timestamp) is:"));
-}
-
-#[test]
-fn test_build_prompt_without_author_info() {
-    let prompt = build_prompt(&PromptParams {
-        skill_name: "my-skill",
-        workspace_path: "/home/user/.vibedata/skill-builder",
-        plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: "/home/user/my-skills",
-        author_login: None,
-        created_at: None,
-        step_id: 1,
-    });
-    assert!(!prompt.contains("The author of this skill is:"));
-    assert!(!prompt.contains("The skill was created on:"));
-}
-
-#[test]
-fn test_build_prompt_does_not_include_schema_file_path() {
-    // Schema file paths are no longer injected into the prompt. Workflow steps
-    // use app-side outputFormat contracts and Rust validation.
-    for step_id in [1u32, 2, 3] {
-        let prompt = build_prompt(&PromptParams {
-            skill_name: "s",
-            workspace_path: "/ws",
-            plugin_slug: DEFAULT_PLUGIN_SLUG,
-            skills_path: "/sk",
-            author_login: None,
-            created_at: None,
-            step_id,
-        });
+fn test_evaluator_prompt_does_not_contain_stale_routing_tokens() {
+    let prompt = super::prompt::build_evaluator_prompt("s", "/ws", DEFAULT_PLUGIN_SLUG, "/sk");
+    for forbidden in [
+        ".claude/plugins",
+        "skill-content-researcher:",
+        "skill-creator:",
+        "AskUserQuestion",
+        "Agent tool",
+        "Skill tool",
+        "subagent_directive",
+        "pathToClaudeCodeExecutable",
+        "permissionMode",
+    ] {
         assert!(
-            !prompt.contains("step-0-research.json"),
-            "step {step_id}: schema file path must not be in prompt"
+            !prompt.contains(forbidden),
+            "evaluator prompt must not contain stale routing token: {forbidden}"
         );
-        assert!(
-            !prompt.contains("step-1-detailed-research.json"),
-            "step {step_id}: schema file path must not be in prompt"
-        );
-        assert!(
-            !prompt.contains("step-2-decisions.json"),
-            "step {step_id}: schema file path must not be in prompt"
-        );
-        assert!(
-            !prompt.contains("Do NOT read other step schema files"),
-            "step {step_id}: old schema read directive must not be in prompt"
-        );
-    }
-    // Step-specific output-type hints are still present (from step_output_hint).
-    let step1 = build_prompt(&PromptParams {
-        skill_name: "s",
-        workspace_path: "/ws",
-        plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: "/sk",
-        author_login: None,
-        created_at: None,
-        step_id: 1,
-    });
-    assert!(step1.contains("DetailedResearchOutput"));
-    let step2 = build_prompt(&PromptParams {
-        skill_name: "s",
-        workspace_path: "/ws",
-        plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: "/sk",
-        author_login: None,
-        created_at: None,
-        step_id: 2,
-    });
-    assert!(step2.contains("DecisionsOutput"));
-}
-
-#[test]
-fn test_active_workflow_prompts_do_not_reintroduce_claude_routing() {
-    let workflow_prompt = build_prompt(&PromptParams {
-        skill_name: "s",
-        workspace_path: "/ws",
-        plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: "/sk",
-        author_login: None,
-        created_at: None,
-        step_id: 2,
-    });
-    let evaluator_prompt =
-        super::prompt::build_evaluator_prompt("s", "/ws", DEFAULT_PLUGIN_SLUG, "/sk");
-    let prompts = [
-        ("workflow", workflow_prompt),
-        ("answer evaluator", evaluator_prompt),
-    ];
-
-    for (label, prompt) in prompts {
-        for forbidden in [
-            ".claude/plugins",
-            "skill-content-researcher:",
-            "skill-creator:",
-            "AskUserQuestion",
-            "Agent tool",
-            "Skill tool",
-            "subagent_directive",
-            "pathToClaudeCodeExecutable",
-            "permissionMode",
-        ] {
-            assert!(
-                !prompt.contains(forbidden),
-                "{label} prompt must not contain stale routing token: {forbidden}"
-            );
-        }
     }
 }
 
@@ -2751,27 +2612,6 @@ fn test_format_user_context_partial_intake() {
     assert!(ctx.contains("### Scope"));
     assert!(ctx.contains("APIs"));
     assert!(!ctx.contains("### Key Challenges"));
-}
-
-// --- build_prompt user context integration tests ---
-// User context is now inlined into the step prompt; the system prompt explicitly
-// tells the agent not to read it from disk.
-
-#[test]
-fn test_build_prompt_includes_inline_context_instruction() {
-    let ws = std::env::temp_dir().join("ws");
-    let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt(&PromptParams {
-        skill_name: "test-skill",
-        workspace_path: ws.to_str().unwrap(),
-        plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: skills.to_str().unwrap(),
-        author_login: None,
-        created_at: None,
-        step_id: 1,
-    });
-    assert!(prompt.contains("User context, clarifications, and answer evaluation verdicts are provided inline"));
-    assert!(prompt.contains("test-skill"));
 }
 
 // VD-801: parse_decisions_guard was file-based; replaced by

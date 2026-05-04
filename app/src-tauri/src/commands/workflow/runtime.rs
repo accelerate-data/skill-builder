@@ -21,8 +21,8 @@ use super::output_format::{
     materialize_workflow_step_output_value,
 };
 use super::prompt::{
-    build_evaluator_prompt, build_prompt, build_step0_prompt, build_step1_prompt,
-    build_step2_prompt, build_step3_prompt,
+    build_evaluator_prompt, build_step0_prompt, build_step1_prompt, build_step2_prompt,
+    build_step3_prompt,
 };
 use super::settings::{read_workflow_settings, WorkflowSettings};
 use super::step_config::{
@@ -433,15 +433,7 @@ async fn run_workflow_step_inner(
                 &decisions_json,
             )
         }
-        _ => build_prompt(&super::prompt::PromptParams {
-            skill_name,
-            workspace_path,
-            plugin_slug: &settings.plugin_slug,
-            skills_path: &settings.skills_path,
-            author_login: settings.author_login.as_deref(),
-            created_at: settings.created_at.as_deref(),
-            step_id,
-        }),
+        _ => return Err(format!("unknown step_id: {step_id}")),
     };
     log::debug!(
         "[run_workflow_step] prompt for step={} step_id={}: {}",
