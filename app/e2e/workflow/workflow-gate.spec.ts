@@ -1,8 +1,7 @@
 /**
  * E2E tests for the post-review transition gate (answer evaluator).
  *
- * In the current 4-step workflow, step completion uses a clarifications
- * "Continue" action that can trigger the answer-evaluator gate:
+ * In the current 4-step workflow, step completion can trigger the answer-evaluator gate:
  * - Gate 1: after Research (step 0), before Detailed Research (step 1)
  * - Gate 2: after Detailed Research (step 1), before Confirm Decisions (step 2)
  */
@@ -49,7 +48,7 @@ const GATE1_OVERRIDES: Record<string, unknown> = {
   run_answer_evaluator: GATE_AGENT_ID,
 };
 
-/** Gate 2 context: step 1 completed, continue from Detailed Research clarifications. */
+/** Gate 2 context: step 1 completed, continue from Detailed Research. */
 const GATE2_OVERRIDES: Record<string, unknown> = {
   ...WORKFLOW_OVERRIDES,
   get_workflow_state: {
