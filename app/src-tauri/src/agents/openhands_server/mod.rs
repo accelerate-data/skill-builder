@@ -484,13 +484,22 @@ async fn run_conversation_task_inner(
         }
     }
 
-    task.client
-        .run_conversation(&task.conversation_id)
-        .await
-        .map_err(|e| format!("Failed to run OpenHands Agent Server conversation: {e}"))?;
-
     let mut cancel_pending = false;
-    loop {
+    // If REST backfill drained a terminal `conversation_state`, the
+    // conversation is already finished on the server. Skip the redundant
+    // /run POST and the WS read loop — fall straight through to the
+    // terminal-state handling below. Without this short-circuit a
+    // completed-on-disk conversation would issue a duplicate /run, and an
+    // error/cancelled-on-disk conversation would re-emit lifecycle events
+    // we've already projected.
+    if terminal_state.is_none() {
+        task.client
+            .run_conversation(&task.conversation_id)
+            .await
+            .map_err(|e| format!("Failed to run OpenHands Agent Server conversation: {e}"))?;
+    }
+
+    while terminal_state.is_none() {
         tokio::select! {
             _ = &mut *cancel_rx, if !cancel_pending => {
                 task.client
@@ -556,6 +565,7 @@ async fn run_conversation_task_inner(
             .await?
         }
         Some(state) => state,
+        None if cancel_pending => build_cancelled_state(&task.agent_id, &task.conversation_id),
         None => build_socket_closed_state(&task.agent_id, &task.conversation_id),
     };
 
@@ -597,6 +607,24 @@ fn build_socket_closed_state(agent_id: &str, conversation_id: &str) -> serde_jso
         "status": "error",
         "timestamp": chrono::Utc::now().timestamp_millis(),
         "error_detail": "OpenHands Agent Server socket closed before terminal conversation_state",
+        "result_text": null,
+        "structured_output": null,
+    })
+}
+
+/// Build a synthetic `cancelled` terminal state when the user cancelled and
+/// the WebSocket closed without a follow-up `PauseEvent`. Without this the
+/// loop falls through to `build_socket_closed_state` and surfaces the cancel
+/// as `status: "error"`, which is wrong — the user explicitly cancelled.
+fn build_cancelled_state(agent_id: &str, conversation_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "type": "conversation_state",
+        "runtime": "openhands",
+        "agent_id": agent_id,
+        "conversation_id": conversation_id,
+        "status": "cancelled",
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+        "error_detail": "User cancelled before the server emitted a PauseEvent",
         "result_text": null,
         "structured_output": null,
     })
@@ -927,6 +955,49 @@ mod tests {
             .and_then(|v| v.as_str())
             .unwrap()
             .contains("socket closed before terminal conversation_state"));
+    }
+
+    #[test]
+    fn socket_close_after_user_cancel_surfaces_as_cancelled_not_error() {
+        // The cancel-after-pause race: the user cancelled, we issued
+        // pause_conversation, but the WS closed without a follow-up
+        // PauseEvent. Without this fallback the user would see the cancel
+        // surface as `status: "error"` — which is a UX regression on a
+        // user-driven cancel.
+        let state = build_cancelled_state("agent-1", "conversation-1");
+
+        assert_eq!(
+            state.get("type").and_then(|v| v.as_str()),
+            Some("conversation_state")
+        );
+        assert_eq!(
+            state.get("status").and_then(|v| v.as_str()),
+            Some("cancelled")
+        );
+        assert!(state
+            .get("error_detail")
+            .and_then(|v| v.as_str())
+            .unwrap()
+            .contains("cancelled"));
+    }
+
+    #[test]
+    fn seen_event_ids_dedupe_drops_duplicate_ids_across_rest_and_ws() {
+        // Cross-source dedupe is the whole point of `seen_event_ids`. Its
+        // contract is small: insert returns false → drop. Pin it with a
+        // direct assertion so a refactor that swaps `HashSet` for a
+        // looser collection (or skips the insert!=false guard) trips the
+        // build before the SystemPromptEvent / initial MessageEvent
+        // re-renders twice.
+        let mut seen_event_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+
+        // First arrival via REST backfill — must be processed.
+        assert!(seen_event_ids.insert("event-00000".to_string()));
+        // Same id replayed via WS — must be dropped.
+        assert!(!seen_event_ids.insert("event-00000".to_string()));
+        // A different id must still be processed.
+        assert!(seen_event_ids.insert("event-00001".to_string()));
     }
 
     #[test]

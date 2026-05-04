@@ -774,26 +774,6 @@ pub async fn run_workflow_step(
     })
 }
 
-// ─── answer_workflow_step_question ───────────────────────────────────────────
-
-/// Workflow steps are one-shot runs. They do not support interactive questions.
-#[tauri::command]
-pub async fn answer_workflow_step_question(
-    agent_id: String,
-    tool_use_id: String,
-    questions: serde_json::Value,
-    answers: serde_json::Value,
-    runs: tauri::State<'_, WorkflowStepRunManager>,
-    pool: tauri::State<'_, SidecarPool>,
-) -> Result<(), String> {
-    let _ = (tool_use_id, questions, answers, runs, pool);
-    log::warn!(
-        "[answer_workflow_step_question] rejected for one-shot workflow agent={}",
-        agent_id
-    );
-    Err("Workflow steps run in one-shot mode and cannot ask user questions".to_string())
-}
-
 // ─── run_answer_evaluator ────────────────────────────────────────────────────
 
 /// Run the answer-evaluator agent as a one-shot request.

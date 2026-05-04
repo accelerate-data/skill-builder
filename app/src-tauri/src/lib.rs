@@ -341,7 +341,6 @@ pub fn run() {
             commands::workflow::runtime::run_answer_evaluator,
             commands::workflow::output_format::materialize_answer_evaluation_output,
             commands::workflow::runtime::log_gate_decision,
-            commands::workflow::runtime::answer_workflow_step_question,
             commands::workflow::runtime::cancel_workflow_step,
             commands::sidecar_lifecycle::cleanup_skill_sidecar,
             commands::sidecar_lifecycle::graceful_shutdown,

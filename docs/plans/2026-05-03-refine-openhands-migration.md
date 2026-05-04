@@ -1477,7 +1477,7 @@ This task is product-wide, not refine-specific. The projection runs for every Op
 
 - [x] **12.9: Verify** via `cd app && npx tsc --noEmit` → `npm run test:unit`. Confirm 688+ frontend tests pass with the new projection tests added.
 
-- [ ] **12.10: Manual smoke** in `npm run dev` from the VU-1155 worktree. Open Refine on a skill, send a message: confirm chat renders the projected `Read file: ...` cards paired with their observations, lifecycle chip flips Starting → Running → Completed, final reply shows as an `OutputItem` with the structured-result summary line. After Task 14 lands, also confirm the per-run logs dir has the SDK's native per-event JSON tree (`{conversation_id}/base_state.json + events/event-NNNNN-*.json`) and that the event count matches the chat. Open the Workflow tab on a different skill, run a step: confirm `agent-output-panel` shows the same beautified rendering (no longer the dense raw timeline).
+- [x] **12.10: Manual smoke** in `npm run dev` from the VU-1155 worktree. Confirmed live on the analyzing-bookings workflow Step 1: chat showed the projected `Read file: ...` cards (4 file_editor + 1 system_prompt + 1 task_sent), lifecycle chip flowed running → completed, the sub-agent and conclusion rows rendered cleanly. Per-run conversation tree under `<workspace>/conversations/<conv_id>/{base_state.json + events/event-NNNNN-*.json}` confirmed in earlier 14.12 smoke. Refine surface follows the same projection. Workflow tab uses the same `agent-output-panel` and renders the same beautified view.
 
 ---
 
@@ -1557,6 +1557,89 @@ Independent of Slice A — operates on `commands/workflow/deploy.rs`, not `agent
   - Existing skills the user hasn't accessed in this session do not have updated per-skill `.agents/` until they're touched (lazy tier 2).
 
 This task lands as part of the VU-1155 PR (the user surfaced the gap during VU-1155 review and the fix is one localized change to a function that VU-1155 already wires into refine via `send_refine_message`).
+
+---
+
+## Task 15: Backfill early conversation events via REST after WebSocket connect
+
+**Symptom found during 12.10 smoke:** the chat was missing the `system_prompt` and initial user `task_sent` rows even though they were on disk. Trace showed the OpenHands SDK persists `SystemPromptEvent` (event 0) and the seeded user `MessageEvent` (event 1) during `POST /api/conversations` — *before* our WebSocket subscriber attaches via `/sockets/events/{id}`. The live stream only catches events 2 onward.
+
+- [x] **15.1: Add `client.list_all_events(conversation_id)`** in `app/src-tauri/src/agents/openhands_server/client.rs`. Drains `GET /api/conversations/{id}/events/search?limit=100[&page_id=...]` until `next_page_id` is null, returning the concatenated `items[]` as `Vec<serde_json::Value>`. Mirrors the SDK's `EventPage` shape (`{items, next_page_id}`).
+
+- [x] **15.2: Track first-attach in `OpenHandsConversationTask`** via a new `backfill_existing_events: bool` field. Set to `true` for one-shot dispatch and refine turn 1 (where `conversation_id` was `None`); set to `false` for refine turn N+1 so we don't replay the prior turn's events.
+
+- [x] **15.3: Run backfill in `run_conversation_task_inner`** after WS auth and before WS read. When `backfill_existing_events` is true, drain `list_all_events`, push every id into a `seen_event_ids: HashSet<String>`, normalize each via `normalize_server_event`, and emit through `handle_sidecar_message`. If a backfilled event is itself terminal, set `terminal_state` and let the loop short-circuit.
+
+- [x] **15.4: Dedupe live WS events** against `seen_event_ids` so the SDK can't double-emit between backfill drain and WS attach. Drop any incoming event whose `id` is already in the set.
+
+- [x] **15.5: Unit test `search_events_request_includes_pagination_query`** in `client.rs` asserts `limit=100` is always present, `page_id` appears only when supplied, and the `X-Session-API-Key` header is set on every search call.
+
+Landed in commit `c87ab84c`. Verified via the 12.10 manual smoke screenshot — Tool Activity row now lists "6 tools (4 file_editor, 1 system_prompt, 1 task_sent)" instead of the previous "5 file_editor".
+
+---
+
+## Task 16: Tool list correctness and design doc
+
+**Symptoms found during 12.10 smoke:**
+
+1. Skill activation never fired even though the skill files were on disk — root cause was that we sent `"DelegateTool"` in `include_default_tools`, which is rejected by the SDK's `BUILT_IN_TOOL_CLASSES` map (only `FinishTool`, `ThinkTool`, `InvokeSkillTool` are accepted) and is also deprecated in favor of `task_tool_set`.
+2. Browser tool was misfiring — the model tried `NavigateToUrlEvent` against `file:///<workspace>/<skill>` and the SDK's `SecurityWatchdog` correctly blocked it. Browser doesn't belong in the default toolkit.
+
+- [x] **16.1: Drop `DelegateTool` from `include_default_tools`** in `app/src-tauri/src/agents/openhands_server/types.rs`. The SDK validates against `BUILT_IN_TOOL_CLASSES`; only `FinishTool` + `ThinkTool` resolve. `InvokeSkillTool` continues to auto-attach when `agent_context.skills` contains an AgentSkills-format skill.
+
+- [x] **16.2: Expand the workspace toolkit** to include `grep`, `glob`, and `task_tool_set` (the modern sub-agent spawn tool that replaces deprecated `DelegateTool`). Default workspace tools are now `terminal`, `file_editor`, `task_tracker`, `grep`, `glob`, `task_tool_set`. `browser_tool_set` and `planning_file_editor` stay opt-in via explicit `allowed_tools` only — not in the default.
+
+- [x] **16.3: Verify each name actually registers** by tracing `tool_router.py` boot in the agent server source. `apply_patch` and `tom_consult` are in the `openhands-tools` wheel but are *not* registered by the agent server at boot — sending either raises `KeyError` from `resolve_tool`. Excluded from the normalizer.
+
+- [x] **16.4: Unit test `default_tool_set_includes_search_and_subagent_spawn`** in `client.rs` pins the contract: default toolkit contains the seven names above, `include_default_tools` is exactly `["FinishTool", "ThinkTool"]`.
+
+- [x] **16.5: Design doc** `docs/design/openhands-agent-server-runtime/tools-included.md`. Captures the SDK validation rules (registry vs `BUILT_IN_TOOL_CLASSES`), what `tool_router.py` registers at server boot, the final tool list with rationale per entry, what's excluded and why, the snake-case-minus-`_tool` registry-name convention, and the skill activation path that doesn't depend on `DelegateTool`. Cross-linked from the parent `openhands-agent-server-runtime/README.md`.
+
+Landed in commits `2469b7ee` and `2ee24fd6`.
+
+---
+
+## Task 17: AgentSkills wiring + AskUserQuestion vestige cleanup
+
+**Symptom found during 12.10 smoke:** the model never invoked `researching-skill-requirements` or `creating-skills` even though the deploy step wrote the SKILL.md files under `<workspace_skill_dir>/.agents/skills/`. Root cause: the SDK's `AgentContext` model_validator only auto-loads user/public/org skills — *not* project skills — so the agent never saw any skill manifest, `InvokeSkillTool` never auto-attached, and the model couldn't reach the helper skills.
+
+### Slice A: surface AgentSkills via `agent_context.skills`
+
+- [x] **17.1: Add `OpenHandsSkill` + `SkillResources` structs** in `types.rs` matching the SDK's `Skill` shape: `name`, `content`, `is_agentskills_format`, optional `source`, `description`, `version`, `resources: { skill_root, scripts[], references[], assets[] }`. Add `skills: Vec<OpenHandsSkill>` to `OpenHandsAgentContext`.
+
+- [x] **17.2: Implement `discover_agentskills(workspace_skill_dir: &Path) -> Vec<OpenHandsSkill>`** in `types.rs`. Walks `<workspace_skill_dir>/.agents/skills/<skill-name>/SKILL.md` (case-insensitive), parses minimal frontmatter (name / description / version) with a hand-rolled CRLF-tolerant parser, lists the per-skill `references/` / `scripts/` / `assets/` subdirs into `SkillResources`, and emits `is_agentskills_format: true` so the SDK auto-attaches `InvokeSkillTool`.
+
+- [x] **17.3: Wire discovery into `from_one_shot`** so every conversation request — one-shot workflow steps, scope review, refine — picks up the helper skills the deploy step writes. Log `[openhands-agent-server] attaching N AgentSkill(s)` at info level when discovery succeeds and a warn when none are found, so smoke runs can verify wiring from logs.
+
+- [x] **17.4: Unit tests in `types.rs`**: `discovers_agentskills_from_dot_agents_skills_layout` (writes a synthetic `.agents/skills/` tree to a tempdir, asserts both helper skills surface with the correct frontmatter, references list, and stripped body), `missing_dot_agents_skills_dir_yields_empty_list`, `parse_skill_md_handles_crlf_and_quoted_scalars`.
+
+### Slice B: live smoke regression
+
+- [x] **17.5: New live smoke `scripts/openhands-agentskill-live-smoke.mjs`** boots a real `python -m openhands.agent_server` 1.19.1, plants a SKILL.md under `<workspace>/.agents/skills/greet-helper/`, builds a `StartConversationRequest` in the exact shape `from_one_shot` produces (including `agent_context.skills` with `is_agentskills_format: true` and `resources.skill_root`), and asserts:
+  - `SystemPromptEvent` contains the skill name inside an `<available_skills>` block (proves the skill reached the system prompt).
+  - At least one `ActionEvent` fires with `tool_name == "invoke_skill"` referencing the skill (proves `InvokeSkillTool` auto-attached and the model routed through it).
+
+  Gated by `OPENHANDS_AGENT_SERVER_LIVE_SMOKE=1`. Run with the model and key the user has configured in the app DB. Validates both halves of the wire contract: schema accepted by the server *and* `InvokeSkillTool` actually used. Smoke passes against `opencode-go/minimax-m2.7`.
+
+### Slice C: AskUserQuestion vestige cleanup
+
+The OpenHands SDK ships nothing equivalent to Claude Code's `AskUserQuestion`. The repo carried dead state from the pre-OpenHands era: `pendingQuestion` on the workflow store, `answer_refine_question` in the Tauri command policy and e2e mocks, an `AskUserQuestion` entry in `rewrite-skill.md`'s tools list, and stale comments in `lib/types.ts`. Bringing the feature back as a real UI prompt is a separate piece of work; for VU-1155 the goal is to stop carrying dead state for a feature we don't ship.
+
+- [x] **17.6: Strip `AskUserQuestion`** from `agent-sources/plugins/skill-creator/agents/rewrite-skill.md`'s tools list. (The OpenHands runtime never loads this prompt — refine dispatches with `agent_name: "skill-creator"` which loads `agent-sources/workspace/agents/skill-creator.md`, already AskUserQuestion-free. Stripping is defensive.)
+
+- [x] **17.7: Delete dead state from `app/src/stores/workflow-store.ts`**: `pendingQuestion`, `WorkflowStepQuestion`, `setPendingQuestion`, `clearPendingQuestion`. No non-test code wrote or read these. Update `app/src/lib/workflow-teardown.ts` to drop the corresponding `clearPendingQuestion()` call.
+
+- [x] **17.8: Drop `answer_refine_question`** from `app/src/test/mocks/tauri-e2e.ts` and `app/src/__tests__/guards/tauri-command-policy.test.ts`. The Tauri command itself was already deleted in Task 8.
+
+- [x] **17.9: Fix misleading comment** in `app/src/lib/types.ts:601` — `gate_decision` is structured output from the gate agent, never came from `AskUserQuestion`.
+
+- [x] **17.10: Update tests** that mocked the deleted store APIs: `app/src/__tests__/lib/workflow-teardown.test.ts`, `app/src/__tests__/hooks/use-workflow-session.test.ts`, `app/src/__tests__/hooks/use-agent-stream.test.ts` — drop the `clearPendingQuestion: vi.fn()` mocks and the matching assertions. Keep the negative-coverage guard in `runtime-api-contract.test.ts` ("does not expose workflow AskUserQuestion UI for one-shot runs") — it's still a valid invariant.
+
+### Slice D: Linear follow-up
+
+- [x] **17.11: File [VU-1158](https://linear.app/acceleratedata/issue/VU-1158/bring-back-askuserquestion-as-a-ui-tool-against-openhands)** to bring `AskUserQuestion` back as a UI tool against OpenHands. Tracked separately because the implementation is a feature, not a wiring fix: the SDK's tool execution model is synchronous-in-the-loop, so we'd need a cooperative executor that emits an `ActionEvent`, parks the tool call, waits for the user's answer over a Tauri event round-trip, posts the `Observation` back, and resumes via `/run`. Sequenced "do not start until VU-1155 lands and the surfaces stabilize."
+
+Landed in commits `bb13abab` (skill discovery), `455c39b1` (live smoke), `c9ae7f99` (vestige cleanup).
 
 ---
 
