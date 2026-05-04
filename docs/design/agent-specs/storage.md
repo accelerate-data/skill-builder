@@ -42,12 +42,13 @@ The skills path defaults to `~/skill-builder/` but is set by the user on first l
     │       ├── skill-test/
     │       └── ...
     └── {skill-name}/                 # One directory per skill (marker + scratch)
-        ├── user-context.md           # Written by Rust before each step (see below)
-        └── logs/
-            └── {step}-{timestamp}.jsonl   # One JSONL transcript per agent run
+        ├── .agents/                  # Skill-scoped agent prompts (deploy step)
+        ├── logs/
+        │   └── {step}-{timestamp}.jsonl   # One JSONL transcript per agent run
+        └── tmp/                      # Optional one-shot materialized files
 ```
 
-The per-skill directory (`{skill-name}/`) is a **marker directory**: its existence tells the reconciler the skill has a workspace record. The only files in it are `user-context.md` (optional) and `logs/`.
+The per-skill directory (`{skill-name}/`) is a **marker directory**: its existence tells the reconciler the skill has a workspace record. Workflow artifact content (clarifications, decisions) lives in SQLite, not here.
 
 ### Skills Path (`~/skill-builder/` or user-configured)
 
@@ -56,13 +57,11 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 ├── .git/                         # Git repo, initialized on first configuration
 └── {skill-name}/
     ├── SKILL.md                  # Final skill output — written by generate-skill agent (step 3)
-    ├── context/                  # Created empty by Rust on skill creation
-    │   ├── clarifications.json   # Written by research-orchestrator (step 0); updated by detailed-research (step 1)
-    │   ├── answer-evaluation.json # Written by answer-evaluator (gate check at steps 0 and 1)
-    │   └── decisions.json        # Written by confirm-decisions (step 2)
     └── references/               # Created empty by Rust on skill creation
         └── *.md                  # Written by generate-skill agent (step 3)
 ```
+
+Workflow artifacts (clarifications, decisions, answer evaluation) are stored in SQLite, not in the skills path. The `context/` directory is no longer created.
 
 ---
 
@@ -76,14 +75,10 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 | `.claude/plugins/*/agents/*.md` | Rust | Startup (copied from managed plugin bundle) | `{workspace}/.claude/plugins/` |
 | `.claude/skills/` | Rust | Startup (seeded from bundle) | `{workspace}/.claude/skills/` |
 | `{skill}/` (marker dir) | Rust | `create_skill` | `{workspace}/` |
-| `{skill}/user-context.md` | Rust **or plugin coordinator** | Before each agent step (Rust) / end of Scoping Turn 2 (plugin) | `{workspace}/{skill}/` |
 | `{skill}/logs/*.jsonl` | Rust (sidecar) | Each agent run | `{workspace}/{skill}/logs/` |
-| `{skill}/context/` (empty) | Rust | `create_skill` | `{skills_path}/{skill}/` |
 | `{skill}/references/` (empty) | Rust | `create_skill` | `{skills_path}/{skill}/` |
-| `context/clarifications.json` | `research-orchestrator` | Step 0 | `{skills_path}/{skill}/context/` |
-| `context/clarifications.json` | `detailed-research` | Step 1 (adds refinements in-place) | `{skills_path}/{skill}/context/` |
-| `context/answer-evaluation.json` | `answer-evaluator` | Gate check at steps 0 and 1 | `{skills_path}/{skill}/context/` |
-| `context/decisions.json` | `confirm-decisions` | Step 2 | `{skills_path}/{skill}/context/` |
+| `clarifications` + `clarification_*` rows | Rust (from agent JSON) | Steps 0 and 1 | `skill-builder.db` |
+| `decisions` + `decision_items` rows | Rust (from agent JSON) | Step 2 | `skill-builder.db` |
 | `SKILL.md` | `generate-skill` | Step 3 | `{skills_path}/{skill}/` |
 | `references/*.md` | `generate-skill` | Step 3 | `{skills_path}/{skill}/references/` |
 
@@ -91,15 +86,12 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 
 ## Agent Working Directory
 
-Agents run with `cwd = {workspace}` (i.e., `app_local_data_dir()/workspace/`). **SDK calling protocol:** the app embeds **skill name**, **workspace directory**, and **skill output directory** as literal strings in the prompt. Agents read `user-context.md` from the workspace directory and derive **context_dir** as `workspace_dir/context`.
+Agents run with `cwd = {workspace}` (i.e., `app_local_data_dir()/workspace/`). **SDK calling protocol:** the app embeds **skill name**, **workspace directory**, and **skill output directory** as literal strings in the prompt. Workflow artifact content (clarifications, decisions, user context) is rendered **inline** in the prompt from DB rows — agents do not read JSON files for app state.
 
-| Derived / path | Resolved path | Purpose |
+| Path | Resolved path | Purpose |
 |---|---|---|
-| `workspace directory` | `{workspace}/{skill-name}/` | Where `user-context.md` lives |
-| `context_dir` | `workspace_dir/context` | Where `clarifications.json`, `decisions.json`, etc. live |
+| `workspace directory` | `{workspace}/{skill-name}/` | Scratch dir for logs and runtime artifacts |
 | `skill output directory` | `{skills_path}/{skill-name}/` | Where `SKILL.md` and `references/` are written |
-
-Agents are told to read only specific named files and never create directories — the app pre-creates all directories before launching each step.
 
 ---
 
@@ -153,16 +145,14 @@ See [Reconciliation](#reconciliation) below.
 
 ### Detectable steps
 
-The reconciler can infer step completion from files on disk:
+Steps 0–2 are DB-authoritative: their completion is determined by row presence in SQLite, not files on disk. Step 3 is filesystem-based.
 
-| Step | Detectable? | Evidence files (in `{skills_path}/{skill-name}/`) |
+| Step | Authority | Evidence |
 |---|---|---|
-| 0 (Research) | Yes | `context/clarifications.json` |
-| 1 (Detailed Research) | No | Edits `clarifications.json` in-place; no unique artifact |
-| 2 (Confirm Decisions) | Yes | `context/decisions.json` |
-| 3 (Generate Skill) | Yes | `SKILL.md` |
-
-A step is only counted if **all** expected files exist. Partial output is cleaned up.
+| 0 (Research) | DB | `clarifications` row exists for skill |
+| 1 (Detailed Research) | DB | `clarifications` row exists (step 1 updates in-place) |
+| 2 (Confirm Decisions) | DB | `decisions` row exists for skill |
+| 3 (Generate Skill) | Filesystem | `SKILL.md` exists in `{skills_path}/{skill-name}/` |
 
 ### Five reconcile scenarios
 
@@ -196,4 +186,4 @@ The skills path is a git repository. The app auto-commits after these operations
 | Startup: untracked skill folders found | `reconcile: add untracked skill folders` |
 | Skills path first configured | initial commit snapshot |
 
-Agent-written files (SKILL.md, references/, context/) are committed by the agent's own git calls or by the post-step auto-commit in the app.
+Agent-written files (`SKILL.md`, `references/`) are committed by the agent's own git calls or by the post-step auto-commit in the app. Steps 0–2 write only to SQLite; no filesystem artifacts are committed for those steps.
