@@ -379,16 +379,6 @@ export interface TauriCommandMap {
     args: { skillName: string; workspacePath: string; structuredOutput: AnswerEvaluationOutput };
     result: void;
   };
-  get_clarifications_content: { args: { skillName: string; workspacePath: string }; result: string };
-  save_clarifications_content: {
-    args: { skillName: string; workspacePath: string; content: string };
-    result: void;
-  };
-  get_decisions_content: { args: { skillName: string; workspacePath: string }; result: string };
-  save_decisions_content: {
-    args: { skillName: string; workspacePath: string; content: string };
-    result: void;
-  };
   // VU-1157: typed Tauri commands backed by SQLite workflow_artifacts tables.
   get_clarifications: { args: { skillId: string }; result: ClarificationsDto | null };
   update_clarification_answer: {
@@ -405,10 +395,6 @@ export interface TauriCommandMap {
     result: void;
   };
   get_decisions: { args: { skillId: string }; result: DecisionsDto | null };
-  get_context_file_content: {
-    args: { skillName: string; workspacePath: string; fileName: string };
-    result: string;
-  };
   log_gate_decision: {
     args: { skillName: string; verdict: string; decision: string };
     result: void;

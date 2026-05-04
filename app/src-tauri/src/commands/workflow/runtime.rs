@@ -13,7 +13,8 @@ use crate::skill_paths::resolve_workspace_skill_dir;
 use super::deploy::ensure_workspace_prompts;
 use super::evaluation::workflow_step_log_name;
 use super::guards::{
-    make_agent_id, parse_decisions_guard, parse_scope_recommendation, workflow_step_runtime_label,
+    check_decisions_guard_db, check_scope_recommendation_db, make_agent_id,
+    workflow_step_runtime_label,
 };
 use super::output_format::{
     answer_evaluator_output_format, extract_research_json_from_conversation_state,
@@ -585,30 +586,17 @@ pub async fn run_workflow_step(
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
     // Gate: reject disabled steps when guard conditions are active.
-    // VU-1157: file-path mentions are replaced with semantic step names. The
-    // guard helpers still read filesystem state in this commit; later tasks
-    // migrate them onto DB rows.
-    let context_dir = workspace_skill_dir.join("context");
-
-    if step_id >= 1 {
-        let clarifications_path = context_dir.join("clarifications.json");
-        if parse_scope_recommendation(&clarifications_path) {
+    {
+        let conn_guard = db.0.lock().map_err(|e| e.to_string())?;
+        if step_id >= 1 && check_scope_recommendation_db(&conn_guard, &skill_name) {
             return Err(format!(
-                "{} is disabled: the research phase determined the skill scope is too broad. \
-                 Review the scope recommendations in the clarifications artifact, then reset \
-                 to step 0 and start with a narrower focus.",
+                "{} is disabled: the research phase determined the skill scope is too broad.",
                 workflow_step_log_name(step_id as i32)
             ));
         }
-    }
-
-    if step_id >= 3 {
-        let decisions_path = context_dir.join("decisions.json");
-        if parse_decisions_guard(&decisions_path) {
+        if step_id >= 3 && check_decisions_guard_db(&conn_guard, &skill_name) {
             return Err(format!(
-                "{} is disabled: the reasoning agent found unresolvable \
-                 contradictions in the decisions artifact. Reset to step 2 \
-                 and revise your answers before retrying.",
+                "{} is disabled: the decisions agent found unresolvable contradictions.",
                 workflow_step_log_name(step_id as i32)
             ));
         }

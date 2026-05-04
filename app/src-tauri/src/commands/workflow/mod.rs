@@ -34,14 +34,7 @@ pub(crate) use evaluation::get_step_output_files;
 // fall back to the most common LLM drift.
 //
 // NOTE: With the typed contract structs in `contracts/`, most structural validation
-// is now handled by serde deserialization. These helpers are retained only for the
-// few remaining `serde_json::Value`-based call sites (e.g. `guards.rs`).
-
-/// Coerce a JSON value to i64: accepts native integers or string-encoded integers.
-pub(crate) fn coerce_to_i64(v: &serde_json::Value) -> Option<i64> {
-    v.as_i64()
-        .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
-}
+// is now handled by serde deserialization.
 
 /// Coerce a JSON value to String: accepts strings, or stringifies numbers/bools.
 #[deprecated(note = "Use typed contract structs instead of coercing serde_json::Value")]

@@ -154,6 +154,7 @@ pub fn build_betas(
 /// This replaces the old imperative field-by-field validator with typed serde
 /// deserialization via `ClarificationsFile`. The typed struct enforces all required
 /// fields, correct types, and nested structure at deserialization time.
+#[allow(dead_code)]
 pub(crate) fn validate_clarifications_json(
     clarifications: &serde_json::Value,
 ) -> Result<(), String> {

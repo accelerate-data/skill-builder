@@ -242,72 +242,62 @@ mod tests {
 
     #[test]
     fn test_cleanup_future_steps() {
-        // If reconciled to step 1, files from steps 2/3 should be cleaned up
+        // Steps 0-2 are DB-authoritative and have no filesystem outputs.
+        // If reconciled to step 1, only step 3 (SKILL.md) should be cleaned up.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        // Create complete output for steps 0, 1, 2 in workspace context
-        create_step_output(tmp.path(), "my-skill", 0);
-        create_step_output(tmp.path(), "my-skill", 1);
-        create_step_output(tmp.path(), "my-skill", 2);
+        // Create step 3 output (SKILL.md) in skills_path
+        create_step_output(skills_tmp.path(), "my-skill", 3);
 
         // Clean up everything after step 1
         cleanup_future_steps(workspace, "my-skill", SLUG, 1, skills_path);
 
-        // Step 0 and 1 files should remain (clarifications.json from step 0)
-        let skill_dir = tmp.path().join(SLUG).join("my-skill");
-        assert!(skill_dir.join("context/clarifications.json").exists());
-
-        // Step 2 files should be gone
-        assert!(!skill_dir.join("context/decisions.json").exists());
+        // Step 3 SKILL.md should be gone
+        let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
+        assert!(!output_dir.join("SKILL.md").exists());
     }
 
     #[test]
-    fn test_delete_step1_preserves_step0_files() {
-        // Regression for Bug 1: deleting from step 1 must not remove step 0 output.
+    fn test_delete_step1_cleans_step3_only() {
+        // Steps 0-2 are DB-authoritative with no filesystem outputs.
+        // Deleting from step 1 onwards should clean only step 3 (SKILL.md).
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        // Create step 0 output (clarifications.json) and step 2 output (decisions.json)
-        create_step_output(tmp.path(), "my-skill", 0);
-        create_step_output(tmp.path(), "my-skill", 2);
+        // Step 3 output
+        create_step_output(skills_tmp.path(), "my-skill", 3);
 
         // Delete from step 1 onwards
         delete_step_output_files(workspace, "my-skill", SLUG, 1, skills_path);
 
-        let skill_dir = tmp.path().join(SLUG).join("my-skill");
-        // Step 0 file must survive
-        assert!(skill_dir.join("context/clarifications.json").exists());
-        // Step 2 file must be gone
-        assert!(!skill_dir.join("context/decisions.json").exists());
+        // Step 3 SKILL.md must be gone
+        let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
+        assert!(!output_dir.join("SKILL.md").exists());
     }
 
     #[test]
     fn test_delete_step0_deletes_all_artifacts() {
-        // Deleting from step 0 must remove all files: context, gate, evaluation, skill, evals.
+        // Deleting from step 0 must remove all files: gate, evaluation, skill, evals.
+        // Steps 0-2 are DB-authoritative — clarifications/decisions have no filesystem form.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        // Step 0 + workflow-level files
-        create_step_output(tmp.path(), "my-skill", 0);
+        // Step 0 workflow-level files
         let skill_dir = tmp.path().join(SLUG).join("my-skill");
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
         std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
 
-        // Step 2
-        create_step_output(tmp.path(), "my-skill", 2);
-
-        // Step 3 artifacts in canonical plugin layout, plus a legacy evals dir
-        // from older workspaces.
+        // Step 3 artifacts in canonical plugin layout
         let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
@@ -318,10 +308,8 @@ mod tests {
         delete_step_output_files(workspace, "my-skill", SLUG, 0, skills_path);
 
         // Everything must be gone
-        assert!(!skill_dir.join("context/clarifications.json").exists());
         assert!(!skill_dir.join("gate-result.json").exists());
         assert!(!skill_dir.join("answer-evaluation.json").exists());
-        assert!(!skill_dir.join("context/decisions.json").exists());
         assert!(!output_dir.join("SKILL.md").exists());
         assert!(!output_dir.join("references").exists());
         assert!(!skill_dir.join("evals").exists());
@@ -329,28 +317,23 @@ mod tests {
 
     #[test]
     fn test_clean_step_output_step1_is_noop() {
+        // Steps 0-2 are DB-authoritative with no filesystem outputs.
         // Step 1 has no unique output files, so clean_step_output for step 1 is a no-op.
+        // Verify it does not delete SKILL.md (step 3 artifact) as a side effect.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        // Create step 0 output file in skills_path legacy flat
-        let sd = skills_tmp.path().join("my-skill");
-        std::fs::create_dir_all(sd.join("context")).unwrap();
-        for file in get_step_output_files(0) {
-            let p = sd.join(file);
-            if let Some(parent) = p.parent() {
-                std::fs::create_dir_all(parent).unwrap();
-            }
-            std::fs::write(&p, "# step 0").unwrap();
-        }
+        // Create step 3 output (SKILL.md) in skills_path
+        create_step_output(skills_tmp.path(), "my-skill", 3);
 
-        // Cleaning step 1 should leave step 0 files untouched
+        // Cleaning step 1 should not remove SKILL.md
         clean_step_output(workspace, "my-skill", SLUG, 1, skills_path);
 
-        assert!(sd.join("context/clarifications.json").exists());
+        let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
+        assert!(output_dir.join("SKILL.md").exists());
     }
 
     #[test]
@@ -379,20 +362,20 @@ mod tests {
 
     #[test]
     fn test_clean_step0_deletes_gate_and_evaluation_files() {
+        // Step 0 cleanup removes workflow-level gate and evaluation files.
+        // Clarifications are DB-authoritative and have no filesystem representation.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
         let skill_dir = tmp.path().join(SLUG).join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        std::fs::write(skill_dir.join("context/clarifications.json"), "{}").unwrap();
+        std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
         std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
 
         clean_step_output(workspace, "my-skill", SLUG, 0, skills_path);
 
-        assert!(!skill_dir.join("context/clarifications.json").exists());
         assert!(!skill_dir.join("gate-result.json").exists());
         assert!(!skill_dir.join("answer-evaluation.json").exists());
     }
@@ -400,33 +383,39 @@ mod tests {
     // ── list_step_output_files tests ──
 
     #[test]
-    fn test_list_step0_returns_clarifications() {
+    fn test_list_step0_returns_empty_without_gate_files() {
+        // Steps 0-2 are DB-authoritative. Step 0 has no filesystem outputs
+        // unless gate-result.json or answer-evaluation.json are present.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        create_step_output(tmp.path(), "my-skill", 0);
+        create_skill_dir(tmp.path(), "my-skill", "test");
 
         let files = list_step_output_files(workspace, "my-skill", SLUG, 0, skills_path);
-        assert!(files.contains(&"context/clarifications.json".to_string()));
+        assert!(
+            files.is_empty(),
+            "step 0 should list no files without gate artifacts"
+        );
     }
 
     #[test]
     fn test_list_step0_includes_gate_and_evaluation() {
+        // Step 0 lists gate-result.json and answer-evaluation.json when present.
+        // Clarifications are DB-authoritative and not listed as filesystem outputs.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
         let skill_dir = tmp.path().join(SLUG).join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        std::fs::write(skill_dir.join("context/clarifications.json"), "{}").unwrap();
+        std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
         std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
 
         let files = list_step_output_files(workspace, "my-skill", SLUG, 0, skills_path);
-        assert!(files.contains(&"context/clarifications.json".to_string()));
+        assert!(!files.contains(&"context/clarifications.json".to_string()));
         assert!(files.contains(&"gate-result.json".to_string()));
         assert!(files.contains(&"answer-evaluation.json".to_string()));
     }
@@ -445,16 +434,17 @@ mod tests {
     }
 
     #[test]
-    fn test_list_step2_returns_decisions() {
+    fn test_list_step2_returns_empty() {
+        // Step 2 decisions are DB-authoritative with no filesystem representation.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        create_step_output(tmp.path(), "my-skill", 2);
+        create_skill_dir(tmp.path(), "my-skill", "test");
 
         let files = list_step_output_files(workspace, "my-skill", SLUG, 2, skills_path);
-        assert_eq!(files, vec!["context/decisions.json"]);
+        assert!(files.is_empty(), "step 2 should list no filesystem outputs");
     }
 
     #[test]
@@ -513,76 +503,73 @@ mod tests {
 
     #[test]
     fn test_prerun_step0_deletes_own_output() {
+        // Re-running step 0 deletes gate-result.json and answer-evaluation.json.
+        // Clarifications are DB-authoritative and have no filesystem representation.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        // Step 0 produced clarifications.json + workflow-level files
-        create_step_output(tmp.path(), "my-skill", 0);
+        // Step 0 workflow-level files
         let skill_dir = tmp.path().join(SLUG).join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
         std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
 
-        // Re-running step 0 should delete all of them
+        // Re-running step 0 should delete them
         clean_step_output(workspace, "my-skill", SLUG, 0, skills_path);
-        assert!(!skill_dir.join("context/clarifications.json").exists());
         assert!(!skill_dir.join("gate-result.json").exists());
         assert!(!skill_dir.join("answer-evaluation.json").exists());
     }
 
     #[test]
-    fn test_prerun_step1_preserves_clarifications() {
-        // Step 1 edits clarifications.json in-place — re-running step 1
-        // must NOT delete it, otherwise the agent has no input.
+    fn test_prerun_step1_is_noop() {
+        // Steps 0-2 are DB-authoritative. Step 1 has no unique filesystem output.
+        // Re-running step 1 must not delete SKILL.md (step 3 artifact in skills_path).
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        create_step_output(tmp.path(), "my-skill", 0); // clarifications.json
-        create_step_output(tmp.path(), "my-skill", 2); // decisions.json
-
-        let skill_dir = tmp.path().join(SLUG).join("my-skill");
-        assert!(skill_dir.join("context/clarifications.json").exists());
-        assert!(skill_dir.join("context/decisions.json").exists());
+        // Create SKILL.md in skills_path (step 3 output)
+        create_step_output(skills_tmp.path(), "my-skill", 3);
+        let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
+        assert!(output_dir.join("SKILL.md").exists());
 
         // Re-running step 1 should not touch any files
         clean_step_output(workspace, "my-skill", SLUG, 1, skills_path);
 
-        assert!(skill_dir.join("context/clarifications.json").exists());
-        assert!(skill_dir.join("context/decisions.json").exists());
+        assert!(output_dir.join("SKILL.md").exists());
     }
 
     #[test]
-    fn test_prerun_step2_deletes_decisions_preserves_clarifications() {
+    fn test_prerun_step2_is_noop() {
+        // Steps 0-2 are DB-authoritative. Step 2 decisions have no filesystem representation.
+        // Re-running step 2 must not delete SKILL.md (step 3 artifact in skills_path).
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        create_step_output(tmp.path(), "my-skill", 0); // clarifications.json
-        create_step_output(tmp.path(), "my-skill", 2); // decisions.json
+        // Create SKILL.md in skills_path (step 3 output)
+        create_step_output(skills_tmp.path(), "my-skill", 3);
+        let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
+        assert!(output_dir.join("SKILL.md").exists());
 
-        let skill_dir = tmp.path().join(SLUG).join("my-skill");
-
-        // Re-running step 2 should delete decisions.json but keep clarifications.json
+        // Re-running step 2 should not delete SKILL.md
         clean_step_output(workspace, "my-skill", SLUG, 2, skills_path);
 
-        assert!(skill_dir.join("context/clarifications.json").exists());
-        assert!(!skill_dir.join("context/decisions.json").exists());
+        assert!(output_dir.join("SKILL.md").exists());
     }
 
     #[test]
-    fn test_prerun_step3_deletes_skill_and_evals_preserves_context() {
+    fn test_prerun_step3_deletes_skill_and_evals() {
+        // Re-running step 3 deletes SKILL.md, references/, skill zip, and evals/.
+        // Steps 0-2 are DB-authoritative with no filesystem context to preserve.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
-
-        // Context files from earlier steps
-        create_step_output(tmp.path(), "my-skill", 0);
-        create_step_output(tmp.path(), "my-skill", 2);
 
         // Step 3 artifacts in canonical plugin layout
         let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
@@ -605,10 +592,6 @@ mod tests {
         assert!(!output_dir.join("references").exists());
         assert!(!output_dir.join("my-skill.skill").exists());
         assert!(!skill_dir.join("evals").exists());
-
-        // Context files from earlier steps preserved
-        assert!(skill_dir.join("context/clarifications.json").exists());
-        assert!(skill_dir.join("context/decisions.json").exists());
     }
 
     #[test]
