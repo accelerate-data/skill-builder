@@ -38,6 +38,14 @@ fn cleanup_legacy_vibedata(home: &Path) {
 /// Safe to call on every startup — only removes files that exist.
 fn migrate_workspace_layout(workspace_path: &str) {
     let base = Path::new(workspace_path);
+    let claude_md = base.join("CLAUDE.md");
+    if claude_md.is_file() {
+        let _ = fs::remove_file(&claude_md);
+    }
+    let legacy_claude_dir = base.join(".claude");
+    if legacy_claude_dir.is_dir() {
+        let _ = fs::remove_dir_all(&legacy_claude_dir);
+    }
     // Remove stale root-level infrastructure from pre-reorganization layout
     for name in &["agents", "references"] {
         let path = base.join(name);
@@ -49,13 +57,6 @@ fn migrate_workspace_layout(workspace_path: &str) {
     let db_file = base.join("vibedata.db");
     if db_file.is_file() {
         let _ = fs::remove_file(&db_file);
-    }
-    // Remove stale nested CLAUDE.md if both files exist.
-    // Legacy Claude instructions now live at workspace/CLAUDE.md.
-    let root_claude_md = base.join("CLAUDE.md");
-    let nested_claude_md = base.join(".claude").join("CLAUDE.md");
-    if root_claude_md.is_file() && nested_claude_md.is_file() {
-        let _ = fs::remove_file(&nested_claude_md);
     }
 
     // VU-1157 aftermath: remove stale per-skill JSON artifacts that were
@@ -292,7 +293,8 @@ fn migrate_to_marketplace_layout(skills_path: &str) {
 
 /// Initialize the workspace directory on app startup.
 /// Creates `<data_dir>/workspace` if it doesn't exist, updates settings,
-/// and deploys bundled agents to `.claude/`.
+/// removes legacy Claude-era workspace artifacts, and deploys bundled agents
+/// to `.agents/`.
 pub fn init_workspace(
     app: &tauri::AppHandle,
     db: &tauri::State<'_, Db>,
@@ -318,10 +320,10 @@ pub fn init_workspace(
     }
     drop(conn);
 
-    // Deploy bundled agents to .claude/
-    super::workflow::ensure_workspace_prompts_sync(app, &workspace_path)?;
+    // One-time cleanup for legacy workspace layout before seeding current runtime files.
+    migrate_workspace_layout(&workspace_path);
 
-    // Purge stale bundled skills then seed current ones (filesystem-only, no DB)
+    // Purge stale bundled workspace mirrors then seed current ones (filesystem-only, no DB).
     {
         let bundled_skills_dir = super::workflow::resolve_bundled_skills_dir(app);
         if let Err(e) =
@@ -336,21 +338,8 @@ pub fn init_workspace(
         }
     }
 
-    // Rebuild CLAUDE.md: base template + imported skills from DB + user customization
-    {
-        let _conn = db.0.lock().map_err(|e| e.to_string())?;
-        let (_, claude_md_src) = super::workflow::resolve_prompt_source_dirs_public(app);
-        if claude_md_src.is_file() {
-            if let Err(e) = super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path) {
-                log::warn!("Failed to rebuild CLAUDE.md on startup: {}", e);
-            }
-        } else {
-            log::warn!("Bundled CLAUDE.md not found; skipping rebuild");
-        }
-    }
-
-    // Clean up stale root-level files from pre-reorganization layout
-    migrate_workspace_layout(&workspace_path);
+    // Deploy bundled workflow agents/skills to the OpenHands .agents layout.
+    super::workflow::ensure_workspace_prompts_sync(app, &workspace_path)?;
 
     // Remove stale benchmark snapshots left by interrupted runs
     cleanup_stale_snapshots(&workspace_path);
@@ -406,32 +395,14 @@ pub fn clear_workspace(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Resul
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
     drop(conn);
 
-    // Delete only .claude/agents/ — preserve skills/ and CLAUDE.md.
-    // Managed plugins are refreshed by redeploy_agents() and unmanaged plugins are preserved.
-    let agents_dir = Path::new(&workspace_path).join(".claude").join("agents");
-    if agents_dir.is_dir() {
-        fs::remove_dir_all(&agents_dir).map_err(|e| e.to_string())?;
-    }
+    // Remove legacy workspace artifacts if they still exist.
+    migrate_workspace_layout(&workspace_path);
 
     // Invalidate the session cache so next workflow start re-checks
     super::workflow::invalidate_workspace_cache(&workspace_path);
 
-    // Re-deploy only bundled agents (not CLAUDE.md or skills)
+    // Re-deploy only bundled OpenHands agents/skills under `.agents/`.
     super::workflow::redeploy_agents(&app, &workspace_path)?;
-
-    // Rebuild CLAUDE.md: base template + imported skills from DB + user customization
-    {
-        let _conn = db.0.lock().map_err(|e| e.to_string())?;
-        let (_, claude_md_src) = super::workflow::resolve_prompt_source_dirs_public(&app);
-        if claude_md_src.is_file() {
-            if let Err(e) = super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path) {
-                log::warn!("Failed to rebuild CLAUDE.md on clear: {}", e);
-            }
-        }
-    }
-
-    // Clean up stale root-level files from pre-reorganization layout
-    migrate_workspace_layout(&workspace_path);
 
     Ok(())
 }
@@ -777,6 +748,49 @@ mod tests {
         assert!(
             skill_dir.join("logs").exists(),
             "logs/ parent should survive when a run dir has content"
+        );
+    }
+
+    #[test]
+    fn test_migrate_workspace_layout_removes_claude_workspace_artifacts() {
+        let workspace = tempfile::tempdir().unwrap();
+
+        fs::write(workspace.path().join("CLAUDE.md"), "# legacy").unwrap();
+        fs::create_dir_all(workspace.path().join(".claude/skills/legacy-skill")).unwrap();
+        fs::write(
+            workspace.path().join(".claude/skills/legacy-skill/SKILL.md"),
+            "# legacy skill",
+        )
+        .unwrap();
+        fs::create_dir_all(workspace.path().join(".claude/agents")).unwrap();
+        fs::write(
+            workspace.path().join(".claude/agents/skill-creator.md"),
+            "# legacy agent",
+        )
+        .unwrap();
+        fs::create_dir_all(workspace.path().join(".agents/agents")).unwrap();
+        fs::write(
+            workspace.path().join(".agents/agents/skill-creator.md"),
+            "# current agent",
+        )
+        .unwrap();
+
+        migrate_workspace_layout(workspace.path().to_str().unwrap());
+
+        assert!(
+            !workspace.path().join("CLAUDE.md").exists(),
+            "workspace CLAUDE.md should be removed during migration"
+        );
+        assert!(
+            !workspace.path().join(".claude").exists(),
+            "legacy workspace .claude directory should be removed during migration"
+        );
+        assert!(
+            workspace
+                .path()
+                .join(".agents/agents/skill-creator.md")
+                .is_file(),
+            "OpenHands .agents layout must be preserved"
         );
     }
 

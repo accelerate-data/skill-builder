@@ -98,18 +98,18 @@ pub(crate) fn delete_imported_skill_inner(
     }
     // Also check the inactive path in workspace
     if !workspace_path.is_empty() {
-        let skills_base = Path::new(workspace_path).join(".claude").join("skills");
-        let active_path = skills_base.join(&skill_name);
-        let inactive_path = skills_base.join(".inactive").join(&skill_name);
-        for path in &[active_path, inactive_path] {
-            if path.exists() {
-                if let Err(e) = fs::remove_dir_all(path) {
-                    log::warn!(
-                        "[delete_imported_skill] failed to remove '{}': {}",
-                        path.display(),
-                        e
-                    );
-                }
+        let workspace_skill_dir = resolve_workspace_skill_dir(
+            Path::new(workspace_path),
+            skill.plugin_slug.as_deref().unwrap_or(DEFAULT_PLUGIN_SLUG),
+            &skill_name,
+        );
+        if workspace_skill_dir.exists() {
+            if let Err(e) = fs::remove_dir_all(&workspace_skill_dir) {
+                log::warn!(
+                    "[delete_imported_skill] failed to remove '{}': {}",
+                    workspace_skill_dir.display(),
+                    e
+                );
             }
         }
     }
@@ -522,7 +522,6 @@ pub fn set_plugin_upgrade_lock(
 #[tauri::command]
 pub fn delete_imported_skill(
     skill_id: String,
-    app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!("delete_imported_skill: skill_id={}", skill_id);
@@ -533,14 +532,6 @@ pub fn delete_imported_skill(
     let settings = crate::db::read_settings(&conn)?;
     let workspace_path = settings.workspace_path.unwrap_or_default();
     delete_imported_skill_inner(&conn, &skill_id, &workspace_path)?;
-    let (_, claude_md_src) = crate::commands::workflow::resolve_prompt_source_dirs_public(&app);
-    if claude_md_src.is_file() && !workspace_path.is_empty() {
-        if let Err(e) =
-            crate::commands::workflow::rebuild_claude_md(&claude_md_src, &workspace_path)
-        {
-            log::warn!("[delete_imported_skill] rebuild_claude_md failed: {}", e);
-        }
-    }
     Ok(())
 }
 
@@ -548,6 +539,7 @@ pub fn delete_imported_skill(
 mod tests {
     use super::*;
     use crate::db::create_test_db_for_tests;
+    use crate::skill_paths::{resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
     use crate::types::ImportedSkill;
 
     fn make_test_skill(id: &str, name: &str) -> ImportedSkill {
@@ -589,6 +581,38 @@ mod tests {
         assert!(
             after.is_none(),
             "skill should have been removed from imported_skills"
+        );
+    }
+
+    #[test]
+    fn test_delete_imported_skill_inner_removes_canonical_workspace_copy() {
+        let conn = create_test_db_for_tests();
+        crate::db::upsert_skill(&conn, "del-workspace", "imported", "domain").unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let workspace_skill_dir =
+            resolve_workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "del-workspace");
+        std::fs::create_dir_all(&workspace_skill_dir).unwrap();
+        std::fs::write(workspace_skill_dir.join("SKILL.md"), "# skill").unwrap();
+
+        let skills_disk = tempfile::tempdir().unwrap();
+        let disk_path = skills_disk.path().join("del-workspace");
+        std::fs::create_dir_all(&disk_path).unwrap();
+        std::fs::write(disk_path.join("SKILL.md"), "# skill").unwrap();
+
+        let mut skill = make_test_skill("del-workspace-id", "del-workspace");
+        skill.disk_path = disk_path.to_string_lossy().to_string();
+        crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
+
+        delete_imported_skill_inner(
+            &conn,
+            "del-workspace-id",
+            workspace.path().to_str().unwrap(),
+        )
+        .unwrap();
+
+        assert!(
+            !workspace_skill_dir.exists(),
+            "workspace canonical skill mirror should be removed"
         );
     }
 

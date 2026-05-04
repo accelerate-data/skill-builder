@@ -3,6 +3,7 @@ use std::path::Path;
 
 use super::frontmatter::parse_frontmatter_full;
 use super::helpers::copy_dir_recursive;
+use crate::skill_paths::{resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
 
 const WORKFLOW_INTERNAL_SKILLS: &[&str] = &["research"];
 
@@ -13,8 +14,7 @@ fn is_workflow_internal_skill(skill_name: &str) -> bool {
 /// Remove bundled skill directories from the workspace that are no longer present in the current bundle.
 /// This is a filesystem-only operation — no DB reads or writes.
 ///
-/// **Caller responsibility:** This function does not regenerate `CLAUDE.md`. In `init_workspace`
-/// that is handled by the subsequent `rebuild_claude_md` call.
+/// Startup owns the workspace lifecycle cleanup around this function.
 pub(crate) fn purge_stale_bundled_skills(
     workspace_path: &str,
     bundled_skills_dir: &std::path::Path,
@@ -53,8 +53,9 @@ pub(crate) fn purge_stale_bundled_skills(
         std::collections::HashSet::new()
     };
 
-    // Scan the workspace skills directory for dirs not in current_names
-    let skills_base = Path::new(workspace_path).join(".claude").join("skills");
+    // Scan the canonical workspace plugin directory for bundled skills that
+    // no longer exist in the current bundle.
+    let skills_base = Path::new(workspace_path).join(DEFAULT_PLUGIN_SLUG);
     if skills_base.is_dir() {
         if let Ok(entries) = fs::read_dir(&skills_base) {
             for entry in entries.flatten() {
@@ -95,47 +96,12 @@ pub(crate) fn purge_stale_bundled_skills(
         }
     }
 
-    // Also check .inactive dir
-    let inactive_dir = skills_base.join(".inactive");
-    if inactive_dir.is_dir() {
-        if let Ok(entries) = fs::read_dir(&inactive_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if !path.is_dir() {
-                    continue;
-                }
-                let dir_name = entry.file_name().to_string_lossy().to_string();
-                let skill_md = path.join("SKILL.md");
-                if !skill_md.is_file() {
-                    continue;
-                }
-                let skill_name = fs::read_to_string(&skill_md)
-                    .ok()
-                    .and_then(|c| parse_frontmatter_full(&c).name)
-                    .unwrap_or_else(|| dir_name.clone());
-                if !current_names.contains(&skill_name) {
-                    log::info!(
-                        "purge_stale_bundled_skills: removing stale inactive skill dir '{}'",
-                        dir_name
-                    );
-                    if let Err(e) = fs::remove_dir_all(&path) {
-                        log::warn!(
-                            "purge_stale_bundled_skills: failed to remove '{}': {}",
-                            path.display(),
-                            e
-                        );
-                    }
-                }
-            }
-        }
-    }
-
     Ok(())
 }
 
 /// Seed bundled skills from the app's bundled-skills directory into the workspace.
 /// For each subdirectory containing SKILL.md:
-/// 1. Copies the directory to `{workspace}/.claude/skills/{name}/` (always overwrite)
+/// 1. Copies the directory to `{workspace}/{default_plugin_slug}/{name}/` (always overwrite)
 ///
 /// This is a filesystem-only operation — no DB writes.
 pub(crate) fn seed_bundled_skills(
@@ -199,24 +165,12 @@ pub(crate) fn seed_bundled_skills(
             continue;
         }
 
-        // Copy directory to the active workspace location
-        let skills_base = Path::new(workspace_path).join(".claude").join("skills");
-        let dest_dir = skills_base.join(&skill_name);
-
-        // Clean up both possible locations to avoid stale copies
-        let active_path = skills_base.join(&skill_name);
-        let inactive_path = skills_base.join(".inactive").join(&skill_name);
-        if active_path.exists() {
-            fs::remove_dir_all(&active_path)
+        // Copy directory to the canonical workspace skill location.
+        let dest_dir =
+            resolve_workspace_skill_dir(Path::new(workspace_path), DEFAULT_PLUGIN_SLUG, &skill_name);
+        if dest_dir.exists() {
+            fs::remove_dir_all(&dest_dir)
                 .map_err(|e| format!("Failed to remove existing bundled skill dir: {}", e))?;
-        }
-        if inactive_path.exists() {
-            fs::remove_dir_all(&inactive_path).map_err(|e| {
-                format!(
-                    "Failed to remove existing inactive bundled skill dir: {}",
-                    e
-                )
-            })?;
         }
 
         fs::create_dir_all(&dest_dir)
@@ -236,4 +190,87 @@ pub(crate) fn seed_bundled_skills(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{purge_stale_bundled_skills, seed_bundled_skills};
+    use crate::skill_paths::{resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
+
+    #[test]
+    fn seed_bundled_skills_uses_canonical_workspace_layout() {
+        let workspace = tempfile::tempdir().unwrap();
+        let bundled = tempfile::tempdir().unwrap();
+        let bundled_skill_dir = bundled.path().join("demo-skill");
+        std::fs::create_dir_all(&bundled_skill_dir).unwrap();
+        std::fs::write(
+            bundled_skill_dir.join("SKILL.md"),
+            "---\nname: demo-skill\ndescription: Demo bundled skill\n---\n# Body\n",
+        )
+        .unwrap();
+
+        seed_bundled_skills(
+            workspace.path().to_str().unwrap(),
+            bundled.path(),
+        )
+        .unwrap();
+
+        assert!(resolve_workspace_skill_dir(
+            workspace.path(),
+            DEFAULT_PLUGIN_SLUG,
+            "demo-skill"
+        )
+        .join("SKILL.md")
+        .is_file());
+        assert!(
+            !workspace
+                .path()
+                .join(".claude/skills/demo-skill/SKILL.md")
+                .exists(),
+            "legacy workspace .claude skill mirror should not be recreated"
+        );
+    }
+
+    #[test]
+    fn purge_stale_bundled_skills_removes_canonical_workspace_skill_dirs() {
+        let workspace = tempfile::tempdir().unwrap();
+        let bundled = tempfile::tempdir().unwrap();
+        let kept_bundle_dir = bundled.path().join("kept-skill");
+        std::fs::create_dir_all(&kept_bundle_dir).unwrap();
+        std::fs::write(
+            kept_bundle_dir.join("SKILL.md"),
+            "---\nname: kept-skill\ndescription: Keep me\n---\n# Body\n",
+        )
+        .unwrap();
+
+        let kept_workspace_dir =
+            resolve_workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "kept-skill");
+        std::fs::create_dir_all(&kept_workspace_dir).unwrap();
+        std::fs::write(
+            kept_workspace_dir.join("SKILL.md"),
+            "---\nname: kept-skill\ndescription: Keep me\n---\n# Body\n",
+        )
+        .unwrap();
+
+        let stale_workspace_dir =
+            resolve_workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "stale-skill");
+        std::fs::create_dir_all(&stale_workspace_dir).unwrap();
+        std::fs::write(
+            stale_workspace_dir.join("SKILL.md"),
+            "---\nname: stale-skill\ndescription: Remove me\n---\n# Body\n",
+        )
+        .unwrap();
+
+        purge_stale_bundled_skills(
+            workspace.path().to_str().unwrap(),
+            bundled.path(),
+        )
+        .unwrap();
+
+        assert!(kept_workspace_dir.exists(), "current bundled skill should remain");
+        assert!(
+            !stale_workspace_dir.exists(),
+            "stale bundled skill mirror should be removed from canonical workspace layout"
+        );
+    }
 }
