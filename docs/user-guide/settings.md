@@ -5,7 +5,7 @@ Open Settings from the gear icon in the left rail, or press **Cmd+,** / **Ctrl+,
 The current sections are:
 
 - **General**
-- **Claude SDK**
+- **Models**
 - **Plugins**
 - **Marketplace**
 - **GitHub**
@@ -34,27 +34,41 @@ Choose **System**, **Light**, or **Dark**.
 
 The section shows the current app version and an **About Skill Builder** button.
 
-The API key no longer lives in **General**. It lives in **Claude SDK**.
+The API key no longer lives in **General**. It lives in **Models**.
 
 ---
 
-## Claude SDK
+## Models
 
-### API Configuration
+Configure the language model used by workflow agents.
 
-- **Anthropic API Key**
-- **Test** / **Valid** button
+### Provider
+
+- **Provider** — select from the available catalog (Anthropic, OpenAI, Google, Ollama) or choose **Custom** to enter any OpenHands-compatible endpoint.
+- **API Key** — the key for the selected provider. Use the **Test** / **Valid** button to verify the connection.
+- **Base URL** — optional override for the provider endpoint. Required for Ollama and custom backends.
 
 ### Model
 
-Select the preferred Claude model from the currently available model list.
+Select a model from the catalog picker, or type any OpenHands-compatible model ID when a catalog is unavailable. The required capabilities (reasoning and tool calling) are shown as a reference.
 
-### Agent Features
+### Model Details
 
-- **Extended thinking**
-- **Interleaved thinking beta**
-- **Reasoning effort**
-- **Refine prompt suggestions**
+Read-only catalog metadata for the selected model: tool calling, reasoning, structured output, temperature support, context window, max output, and pricing.
+
+### Request Options
+
+- **Reasoning effort** — Auto, Low, Medium, or High.
+- **Timeout** — request timeout in seconds.
+- **Retries** — number of retries on transient failures.
+
+### App Behavior
+
+- **Prompt suggestions** — allow refine chat sessions to request prompt suggestions when supported.
+
+### Advanced Provider Overrides
+
+- **Provider API version** — optional version string passed to compatible provider backends.
 
 ### Research Scope Limit
 
