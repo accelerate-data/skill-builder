@@ -614,8 +614,8 @@ export class MessageProcessor {
       );
     }
 
-    // Emit turn_complete for any non-tool_use stop reason so stream-session.ts
-    // doesn't need to inspect raw SDK fields. This covers "end_turn",
+    // Emit turn_complete for any non-tool_use stop reason. Rust uses this
+    // event to detect per-turn terminal states. This covers "end_turn",
     // "max_tokens", "stop_sequence", etc.
     const stopReason = (outerMessage?.stop_reason as string | undefined);
     if (stopReason && stopReason !== "tool_use") {
