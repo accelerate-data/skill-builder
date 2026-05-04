@@ -285,6 +285,18 @@ fail once the cleanup lands.
 - Revisit DB tests that use `anthropic`/`claude-sonnet` as canonical examples.
 - Keep provider-agnostic tests where they are genuinely validating generic
   model IDs, not Claude-specific product behavior.
+- Delete `app/src/lib/gate-feedback.ts` together with
+  `app/src/__tests__/lib/gate-feedback.test.ts` if they remain test-only dead
+  code with no production imports.
+- Delete `app/src/__tests__/lib/canonical-format.test.ts` if the old canonical
+  markdown/JSON artifact contract is no longer a live runtime contract. If any
+  assertions still matter, move them to tests that validate the current
+  contract instead of keeping the legacy suite.
+- Partially trim `app/src/lib/clarifications-review.ts`: keep the live
+  `ReviewFeedback` / `ReviewStatus` types and shared label/color maps, but
+  remove `parseAnswerFeedback()` and `getReviewFeedbackMap()` if the editor now
+  builds review feedback directly from DB-backed columns and those helpers are
+  no longer imported.
 
 ---
 
