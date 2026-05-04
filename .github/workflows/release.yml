@@ -64,10 +64,6 @@ jobs:
         working-directory: app/sidecar
         run: npm ci
 
-      - name: Build sidecar
-        working-directory: app/sidecar
-        run: node build.js
-
       - name: Install Promptfoo sidecar dependencies
         working-directory: app/promptfoo-sidecar
         run: npm ci
@@ -137,7 +133,6 @@ jobs:
           cp -R "app/promptfoo-sidecar/node_modules" "$STAGE/promptfoo-sidecar/node_modules"
 
           mkdir -p "$STAGE/agent-sources" "$STAGE/workspace"
-          cp -r "agent-sources/plugins" "$STAGE/agent-sources/plugins"
           cp -r "agent-sources/skills" "$STAGE/agent-sources/skills"
           cp -r "agent-sources/workspace/." "$STAGE/workspace/"
 
