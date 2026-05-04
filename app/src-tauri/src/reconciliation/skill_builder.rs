@@ -46,39 +46,35 @@ pub(crate) fn reconcile_skill_builder(
     // step 0 so the user can re-run from the beginning.
     if let Some(early_run) = crate::db::get_workflow_run(conn, name)? {
         if early_run.status != "completed" && early_run.current_step > 0 {
-            let mut did_consistency_reset = false;
-
-            if early_run.current_step >= 1 {
-                let has_clarifications = db_artifacts::read_clarifications(conn, name)
-                    .map_err(|e| e.to_string())?
-                    .is_some();
-                if !has_clarifications {
-                    log::info!(
-                        "[reconcile] '{}': resetting step {} → 0 (no DB artifacts for completed phase)",
-                        name, early_run.current_step
-                    );
-                    crate::db::save_workflow_run(conn, name, 0, "pending", &early_run.purpose)?;
-                    notifications.push(format!(
-                        "'{}' was reset to step 1 (DB artifact data missing — re-run required)",
-                        name
-                    ));
-                    did_consistency_reset = true;
-                }
-            }
-
-            if !did_consistency_reset && early_run.current_step >= 3 {
+            // current_step > 0 already guarantees >= 1; check clarifications unconditionally.
+            let has_clarifications = db_artifacts::read_clarifications(conn, name)
+                .map_err(|e| e.to_string())?
+                .is_some();
+            if !has_clarifications {
+                log::info!(
+                    "[reconcile] '{}': resetting step {} → 0 (clarifications missing from DB)",
+                    name, early_run.current_step
+                );
+                crate::db::save_workflow_run(conn, name, 0, "pending", &early_run.purpose)?;
+                notifications.push(format!(
+                    "'{}' was reset from step {} to step 1 (DB artifact data missing — re-run required)",
+                    name,
+                    early_run.current_step + 1
+                ));
+            } else if early_run.current_step >= 3 {
                 let has_decisions = db_artifacts::read_decisions(conn, name)
                     .map_err(|e| e.to_string())?
                     .is_some();
                 if !has_decisions {
                     log::info!(
-                        "[reconcile] '{}': resetting step {} → 0 (no DB artifacts for completed phase)",
+                        "[reconcile] '{}': resetting step {} → 0 (decisions missing from DB)",
                         name, early_run.current_step
                     );
                     crate::db::save_workflow_run(conn, name, 0, "pending", &early_run.purpose)?;
                     notifications.push(format!(
-                        "'{}' was reset to step 1 (DB artifact data missing — re-run required)",
-                        name
+                        "'{}' was reset from step {} to step 1 (DB artifact data missing — re-run required)",
+                        name,
+                        early_run.current_step + 1
                     ));
                 }
             }
