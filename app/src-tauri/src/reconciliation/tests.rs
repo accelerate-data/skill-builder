@@ -66,24 +66,24 @@ fn test_scenario_2_db_ahead_of_disk() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    // DB says step 3, but disk only has step 0 output
-    // (Step 1 is non-detectable — it edits clarifications.json in-place)
+    // DB says step 3 but no SKILL.md on disk.
+    // Steps 0-2 are DB-authoritative; only SKILL.md is filesystem-based.
+    // Scenario 4 fires: reset to step 2 so the user can re-run step 3.
     crate::db::save_workflow_run(&conn, "my-skill", 3, "in_progress", "domain").unwrap();
     create_skill_dir(tmp.path(), "my-skill", "sales");
-    create_step_output(skills_tmp.path(), "my-skill", 0);
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     assert!(result.orphans.is_empty());
     assert_eq!(result.auto_cleaned, 0);
     assert_eq!(result.notifications.len(), 1);
-    assert!(result.notifications[0].contains("reset from step 4 to step 1"));
+    assert!(result.notifications[0].contains("reset from step 4 to step 3"));
 
-    // Verify DB was corrected
+    // Verify DB was reset to step 2 (= "step 3" in 1-indexed display)
     let run = crate::db::get_workflow_run(&conn, "my-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 0);
+    assert_eq!(run.current_step, 2);
     assert_eq!(run.status, "pending");
 }
 
@@ -251,12 +251,11 @@ fn test_missing_workspace_dir_is_recreated() {
         .unwrap();
     assert_eq!(run.current_step, 0);
 
-    // Workspace dir should have been recreated
+    // Workspace dir should have been recreated (no longer includes context/ subdir)
     assert!(tmp
         .path()
         .join(DEFAULT_PLUGIN_SLUG)
         .join("my-skill")
-        .join("context")
         .exists());
 }
 
@@ -318,8 +317,11 @@ fn test_fresh_skill_step_0_not_falsely_completed() {
 }
 
 #[test]
-fn test_db_ahead_no_output_resets_to_zero() {
-    // DB says step 2 but no output files exist at all.
+fn test_db_at_step2_no_skill_md_stays_at_step2() {
+    // DB says step 2 (Confirm Decisions) but no SKILL.md on disk.
+    // Steps 0-2 are DB-authoritative, so no reset is needed — SKILL.md is only
+    // expected after step 3 (Generate Skill). Scenario 8 fires: reset step
+    // statuses but leave current_step unchanged.
     let tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().to_str().unwrap();
@@ -327,31 +329,24 @@ fn test_db_ahead_no_output_resets_to_zero() {
     let conn = create_test_db();
 
     crate::db::save_workflow_run(&conn, "lost-skill", 2, "pending", "domain").unwrap();
-    std::fs::create_dir_all(tmp.path().join("lost-skill")).unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    assert_eq!(result.notifications.len(), 1);
-    assert!(result.notifications[0].contains("reset from step 3 to step 1"));
+    // No notification — steps 0-2 are DB-authoritative, no SKILL.md expected
+    assert!(result.notifications.is_empty(), "got: {:?}", result.notifications);
 
     let run = crate::db::get_workflow_run(&conn, "lost-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 0);
-
-    // No steps should be marked completed
-    let steps = crate::db::get_workflow_steps(&conn, "lost-skill").unwrap();
-    assert!(
-        steps.is_empty() || steps.iter().all(|s| s.status != "completed"),
-        "No steps should be completed when there are no output files"
-    );
+    // current_step stays at 2; no filesystem evidence is needed for steps 0-2
+    assert_eq!(run.current_step, 2);
 }
 
 #[test]
 fn test_reset_does_not_mark_non_detectable_steps_completed() {
-    // Bug: DB at step 3, disk at step 0. After reset to step 0, the
-    // non-detectable step loop was still marking step 1 as completed
-    // using the original current_step (3) instead of the reset target (0).
+    // DB at step 3 with no SKILL.md on disk.
+    // Scenario 4 fires: reset to step 2 (steps 0-2 DB-authoritative, SKILL.md missing).
+    // After reset, only step 3 status should be cleared.
     let tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().to_str().unwrap();
@@ -364,24 +359,25 @@ fn test_reset_does_not_mark_non_detectable_steps_completed() {
         crate::db::save_workflow_step(&conn, "my-skill", s, "completed").unwrap();
     }
     create_skill_dir(tmp.path(), "my-skill", "sales");
-    // Only step 0 has output on disk (in skills_path)
-    create_step_output(tmp.path(), "my-skill", 0);
+    // No SKILL.md on disk
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    assert!(result.notifications[0].contains("reset from step 4 to step 1"));
+    assert!(result.notifications[0].contains("reset from step 4 to step 3"));
     let run = crate::db::get_workflow_run(&conn, "my-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 0);
+    // Reset to step 2 (index 2 = "step 3" in 1-indexed display)
+    assert_eq!(run.current_step, 2);
 
-    // Only step 0 should be completed — step 1 must NOT be re-marked
+    // Steps 0-2 should remain completed (DB-authoritative); step 3 reset
     let steps = crate::db::get_workflow_steps(&conn, "my-skill").unwrap();
     for step in &steps {
-        if step.step_id == 0 {
+        if step.step_id <= 2 {
             assert_eq!(
                 step.status, "completed",
-                "Step 0 should be completed (has output)"
+                "Step {} should remain completed (DB-authoritative)",
+                step.step_id
             );
         } else {
             assert_ne!(
@@ -555,10 +551,10 @@ fn test_step_1_on_db_but_step_0_on_disk_ok() {
 }
 
 #[test]
-fn test_step_3_on_db_but_step_0_on_disk_resets() {
-    // DB=3, disk has step 0 only.
-    // last_expected_detectable = max([0,2,3] <= 3) = 3.
-    // disk_step(0) >= 3 → false → DB claims to have passed step 3 without disk proof → reset to 0.
+fn test_step_3_on_db_but_no_skill_md_resets_to_step_2() {
+    // DB=3, no SKILL.md on disk.
+    // Steps 0-2 are DB-authoritative; SKILL.md is the only filesystem artifact.
+    // Scenario 4 fires: reset to step 2 so the user can re-run step 3.
     let tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().to_str().unwrap();
@@ -567,16 +563,15 @@ fn test_step_3_on_db_but_step_0_on_disk_resets() {
 
     crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
     create_skill_dir(tmp.path(), "my-skill", "sales");
-    create_step_output(skills_tmp.path(), "my-skill", 0);
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     assert_eq!(result.notifications.len(), 1);
-    assert!(result.notifications[0].contains("reset from step 4 to step 1"));
+    assert!(result.notifications[0].contains("reset from step 4 to step 3"));
     let run = crate::db::get_workflow_run(&conn, "my-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 0);
+    assert_eq!(run.current_step, 2);
 }
 
 // --- Disk ahead ---
@@ -658,12 +653,11 @@ fn test_reconcile_mixed_scenarios() {
     assert!(result.notifications.is_empty());
     assert!(result.orphans.is_empty());
 
-    // db-only skill's workspace dir should have been recreated
+    // db-only skill's workspace dir should have been recreated (no context/ subdir)
     assert!(tmp
         .path()
         .join(DEFAULT_PLUGIN_SLUG)
         .join("db-only")
-        .join("context")
         .exists());
 
     // DB records for all skills should still be present
@@ -735,7 +729,7 @@ fn test_reconcile_processes_skill_with_dead_session() {
 
     create_skill_dir(tmp.path(), "crashed-skill", "test");
     crate::db::save_workflow_run(&conn, "crashed-skill", 3, "pending", "domain").unwrap();
-    create_step_output(skills_tmp.path(), "crashed-skill", 0);
+    // No SKILL.md on disk (crashed before completing step 3)
 
     crate::db::create_workflow_session(&conn, "sess-dead", "crashed-skill", 999999).unwrap();
     crate::db::reconcile_orphaned_sessions(&conn).unwrap();
@@ -743,15 +737,18 @@ fn test_reconcile_processes_skill_with_dead_session() {
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     assert_eq!(result.notifications.len(), 1);
-    assert!(result.notifications[0].contains("reset from step 4 to step 1"));
+    // Scenario 4: DB=3 but no SKILL.md → reset to step 2
+    assert!(result.notifications[0].contains("reset from step 4 to step 3"));
     let run = crate::db::get_workflow_run(&conn, "crashed-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 0);
+    assert_eq!(run.current_step, 2);
 }
 
 #[test]
-fn test_reconcile_cleans_future_step_files() {
+fn test_reconcile_resets_to_step2_when_skill_md_missing() {
+    // DB says step 3, no SKILL.md on disk.
+    // Scenario 4: reset to step 2 so user can re-run Generate Skill.
     let tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().to_str().unwrap();
@@ -759,7 +756,6 @@ fn test_reconcile_cleans_future_step_files() {
     let conn = create_test_db();
 
     create_skill_dir(tmp.path(), "my-skill", "test");
-    create_step_output(skills_tmp.path(), "my-skill", 0);
     crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -767,8 +763,9 @@ fn test_reconcile_cleans_future_step_files() {
     let run = crate::db::get_workflow_run(&conn, "my-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 0, "should reconcile to step 0");
+    assert_eq!(run.current_step, 2, "should reconcile to step 2 (steps 0-2 DB-authoritative)");
     assert!(!result.notifications.is_empty());
+    assert!(result.notifications[0].contains("reset from step 4 to step 3"));
 }
 
 // --- Gap 1: Disk ahead also triggers status='completed' when disk_step >= LAST_WORKFLOW_STEP ---
@@ -807,9 +804,10 @@ fn test_disk_ahead_with_all_steps_sets_status_completed() {
 }
 
 #[test]
-fn test_disk_ahead_partial_steps_leaves_status_pending() {
-    // DB has skill at current_step=0, disk has steps 0 and 2 (disk_step=2 < LAST_WORKFLOW_STEP=3).
-    // After reconcile: current_step advanced to 2, status remains 'pending'.
+fn test_skill_at_step0_no_skill_md_stays_at_step0() {
+    // DB has skill at current_step=0, no SKILL.md on disk.
+    // Steps 0-2 are DB-authoritative; detect_furthest_step returns None.
+    // Scenario 8: no filesystem evidence expected for steps 0-2, no reset.
     let tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().to_str().unwrap();
@@ -818,23 +816,17 @@ fn test_disk_ahead_partial_steps_leaves_status_pending() {
 
     crate::db::save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
     create_skill_dir(tmp.path(), "my-skill", "sales");
-    for step in [0u32, 2] {
-        create_step_output(skills_tmp.path(), "my-skill", step);
-    }
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    assert_eq!(result.notifications.len(), 1);
-    assert!(result.notifications[0].contains("advanced from step 1 to step 3"));
+    // No notification — Scenario 8 just resets step statuses silently
+    assert!(result.notifications.is_empty(), "got: {:?}", result.notifications);
 
     let run = crate::db::get_workflow_run(&conn, "my-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 2);
-    assert_eq!(
-        run.status, "pending",
-        "status should remain 'pending' when disk_step < LAST_WORKFLOW_STEP"
-    );
+    assert_eq!(run.current_step, 0);
+    assert_eq!(run.status, "pending");
 }
 
 // --- Gap 2: Workspace dir recreated for in-progress skill ---
@@ -871,14 +863,13 @@ fn test_missing_workspace_dir_recreated_for_in_progress_skill() {
         result.notifications
     );
 
-    // Workspace dir should have been recreated
+    // Workspace dir should have been recreated (no longer includes context/ subdir)
     assert!(
         tmp.path()
             .join(DEFAULT_PLUGIN_SLUG)
             .join("my-skill")
-            .join("context")
             .exists(),
-        "workspace context dir should be recreated"
+        "workspace skill dir should be recreated"
     );
 
     // current_step should remain at 1 (DB is valid)
@@ -935,27 +926,13 @@ fn test_step_3_on_db_but_step_3_missing_resets_to_2() {
 // --- Gap 6: Non-detectable steps marked completed after valid reconciliation ---
 
 #[test]
-fn test_non_detectable_steps_marked_completed_after_reconcile() {
-    // DB has skill at current_step=2.
-    // Step 1 NOT yet marked completed in skill_run_steps.
-    // Disk has step 0 and step 2 output → disk_step=2.
-    // last_expected_detectable = max([0,2,3] filter <= 2) = 2.
-    // disk_step(2) >= last_expected_detectable(2) → DB valid → no reset.
-    // Step marking logic:
-    //   - Detectable steps <= disk_step(2): steps 0, 2 → marked completed.
-    //   - Non-detectable steps between disk_step+1(3) and current_step(2) exclusive:
-    //     None in this range (3..2 is empty). But step 1 is between disk_step and current_step
-    //     via the (disk_step+1)..current_step range — 1 is not in that range since disk_step=2.
-    // Actually: since disk_step matches current_step, the non-detectable loop is empty.
-    // To test the non-detectable marking, use DB=2, disk has step 0 only.
-    // last_expected_detectable = max([0,2,3] filter <= 2) = 2.
-    // disk_step(0) >= 2 → false → reset. That won't work either.
-    // Instead: DB=1, disk has step 0 output.
-    // last_expected_detectable = max([0,2,3] filter <= 1) = 0.
-    // disk_step(0) >= 0 → true → DB valid → no reset.
-    // Non-detectable loop: disk_step+1(1)..current_step(1) is empty.
-    // So step 1 itself is not marked. But detectable step 0 is marked.
-    // This test verifies the step marking logic with the new 4-step workflow.
+fn test_skill_md_marks_all_prior_steps_completed() {
+    // Steps 0-2 are DB-authoritative; SKILL.md is the only filesystem artifact (step 3).
+    // When SKILL.md is present (disk_step=3) and DB is at step 1 (behind disk),
+    // reconciliation advances DB to step 3 and marks steps 0, 2, 3 completed.
+    // Step 1 (non-detectable, between old current_step 1 and disk_step 3) is
+    // NOT in the non-detectable loop since the advance sets did_reset=false and
+    // the loop is (disk_step+1)..=old_current_step = (4)..=1 which is empty.
     let tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().to_str().unwrap();
@@ -964,32 +941,31 @@ fn test_non_detectable_steps_marked_completed_after_reconcile() {
 
     crate::db::save_workflow_run(&conn, "my-skill", 1, "pending", "domain").unwrap();
     create_skill_dir(tmp.path(), "my-skill", "sales");
-    create_step_output(skills_tmp.path(), "my-skill", 0);
+    // Create SKILL.md in skills_path to simulate a completed workflow
+    create_step_output(skills_tmp.path(), "my-skill", 3);
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    // No reset, no notification
-    assert!(
-        result.notifications.is_empty(),
-        "should not reset: {:?}",
-        result.notifications
-    );
+    // Disk ahead of DB → advance notification
+    assert_eq!(result.notifications.len(), 1);
+    assert!(result.notifications[0].contains("my-skill"));
 
-    // Verify steps
-    let steps = crate::db::get_workflow_steps(&conn, "my-skill").unwrap();
-
-    // Step 0: detectable, confirmed by disk → completed
-    let step0 = steps.iter().find(|s| s.step_id == 0);
-    assert!(
-        step0.map(|s| s.status == "completed").unwrap_or(false),
-        "step 0 should be marked completed (detectable, confirmed by disk)"
-    );
-
-    // DB current_step should remain 1
+    // DB should be advanced to disk_step=3
     let run = crate::db::get_workflow_run(&conn, "my-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 1);
+    assert_eq!(run.current_step, 3);
+
+    // Steps 0, 2, 3 are detectable and confirmed by disk → completed
+    let steps = crate::db::get_workflow_steps(&conn, "my-skill").unwrap();
+    for &step_id in &[0i32, 2, 3] {
+        let s = steps.iter().find(|s| s.step_id == step_id);
+        assert!(
+            s.map(|s| s.status == "completed").unwrap_or(false),
+            "step {} should be marked completed (detectable, disk_step=3)",
+            step_id
+        );
+    }
 }
 
 // --- resolve_orphan tests ---
@@ -1067,8 +1043,9 @@ fn test_resolve_orphan_invalid_action() {
 
 #[test]
 fn test_scenario_10_master_row_no_workflow_runs_with_step_output() {
-    // Master has skill-builder row but no workflow_runs. Disk has step 0 + step 2 output.
-    // Auto-creates workflow_runs at detected step 2.
+    // Master has skill-builder row but no workflow_runs.
+    // Steps 0-2 are DB-authoritative; no clarifications in DB, no SKILL.md on disk.
+    // Auto-creates workflow_runs at step 0 (default when no DB artifacts found).
     let tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().to_str().unwrap();
@@ -1076,21 +1053,18 @@ fn test_scenario_10_master_row_no_workflow_runs_with_step_output() {
     let conn = create_test_db();
 
     crate::db::upsert_skill(&conn, "real-skill", "skill-builder", "domain").unwrap();
-    // detect_furthest_step requires workspace dir to exist
     create_skill_dir(tmp.path(), "real-skill", "analytics");
-    create_step_output(skills_tmp.path(), "real-skill", 0);
-    create_step_output(skills_tmp.path(), "real-skill", 2);
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     assert_eq!(result.notifications.len(), 1);
     assert!(result.notifications[0].contains("real-skill"));
-    assert!(result.notifications[0].contains("workflow record recreated at step 3"));
+    assert!(result.notifications[0].contains("workflow record recreated at step 1"));
 
     let run = crate::db::get_workflow_run(&conn, "real-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 2);
+    assert_eq!(run.current_step, 0);
     assert_eq!(run.status, "pending");
 }
 
@@ -1179,8 +1153,9 @@ fn test_disk_ahead_advances_db_with_old_steps() {
 }
 
 #[test]
-fn test_partial_output_stops_detection_and_cleans_up() {
-    // No canonical output files on disk should reset DB progress to step 0.
+fn test_no_skill_md_resets_step3_to_step2() {
+    // DB says step 3, no SKILL.md on disk.
+    // Steps 0-2 are DB-authoritative, so reset to step 2 to re-run Generate Skill.
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().to_str().unwrap();
     let conn = create_test_db();
@@ -1191,13 +1166,13 @@ fn test_partial_output_stops_detection_and_cleans_up() {
 
     let result = reconcile_on_startup(&conn, workspace, workspace).unwrap();
 
-    // DB had step 3 → reset to step 1 (no output found)
+    // DB had step 3 → reset to step 2 (SKILL.md not found)
     let run = crate::db::get_workflow_run(&conn, "my-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 0);
+    assert_eq!(run.current_step, 2);
     assert_eq!(result.notifications.len(), 1);
-    assert!(result.notifications[0].contains("reset from step 4 to step 1"));
+    assert!(result.notifications[0].contains("reset from step 4 to step 3"));
 }
 
 #[test]
@@ -1410,11 +1385,11 @@ fn test_reconcile_skips_only_protected_skill() {
     assert_eq!(run_a.current_step, 3);
     assert_eq!(run_a.status, "in_progress");
 
-    // B should be reset
+    // B should be reset to step 2 (Scenario 4: DB=5 >= 3, no SKILL.md)
     let run_b = crate::db::get_workflow_run(&conn, "reset-me")
         .unwrap()
         .unwrap();
-    assert_eq!(run_b.current_step, 0);
+    assert_eq!(run_b.current_step, 2);
 }
 
 #[test]
@@ -1425,34 +1400,35 @@ fn test_notification_messages_exact_text() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    // Case 1: DB ahead of disk → reset notification
+    // Case 1: DB at step 5, no SKILL.md → Scenario 4: reset to step 2
     crate::db::save_workflow_run(&conn, "ahead-skill", 5, "in_progress", "domain").unwrap();
     create_skill_dir(tmp.path(), "ahead-skill", "test");
-    create_step_output(skills_tmp.path(), "ahead-skill", 0);
 
-    // Case 2: No output but DB past step 0 → reset to step 0
+    // Case 2: DB at step 3, no SKILL.md → Scenario 4: reset to step 2
     crate::db::save_workflow_run(&conn, "empty-skill", 3, "in_progress", "domain").unwrap();
     create_skill_dir(tmp.path(), "empty-skill", "test");
 
-    // Case 3: Scenario 10 — master row, no workflow_runs
+    // Case 3: Scenario 10 — master row, no workflow_runs, no DB artifacts
     crate::db::upsert_skill(&conn, "found-skill", "skill-builder", "domain").unwrap();
-    create_step_output(skills_tmp.path(), "found-skill", 0);
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    // Verify exact message formats for workflow recon (Phase 2)
+    // Scenario 4 message: "reset from step N to step 3 (SKILL.md not found)"
     assert!(result
         .notifications
         .iter()
-        .any(|n| n == "'ahead-skill' was reset from step 6 to step 1 (disk state behind DB)"));
+        .any(|n| n == "'ahead-skill' was reset from step 6 to step 3 (SKILL.md not found)"),
+        "notifications: {:?}", result.notifications);
     assert!(result
         .notifications
         .iter()
-        .any(|n| n == "'empty-skill' was reset from step 4 to step 1 (no output files found)"));
+        .any(|n| n == "'empty-skill' was reset from step 4 to step 3 (SKILL.md not found)"),
+        "notifications: {:?}", result.notifications);
     assert!(result
         .notifications
         .iter()
-        .any(|n| n == "'found-skill' workflow record recreated at step 1"));
+        .any(|n| n == "'found-skill' workflow record recreated at step 1"),
+        "notifications: {:?}", result.notifications);
 }
 
 // =========================================================================
@@ -1841,12 +1817,9 @@ fn test_reconcile_skill_builder_recreates_missing_workspace_dir() {
     .unwrap();
 
     // The workspace dir should be recreated (scenario 5)
+    // Steps 0-2 are DB-authoritative; no context/ subdir is created.
     let skill_dir = crate::skill_paths::workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, name);
     assert!(skill_dir.exists(), "workspace dir should be recreated");
-    assert!(
-        skill_dir.join("context").exists(),
-        "context subdir should be created"
-    );
 }
 
 // ── Phase 1f: Dedup tests ───────────────────────────────────────────────────

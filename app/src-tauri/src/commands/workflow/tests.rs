@@ -7,8 +7,7 @@ use super::deploy::{
 };
 use super::evaluation::get_step_output_files;
 use super::guards::{
-    make_agent_id, parse_decisions_guard, parse_scope_recommendation,
-    validate_decisions_exist_inner, workflow_step_runtime_label,
+    make_agent_id, validate_decisions_exist_inner, workflow_step_runtime_label,
 };
 use super::output_format::{
     answer_evaluator_output_format, extract_research_json_from_conversation_state,
@@ -2301,31 +2300,20 @@ fn test_resolve_prompts_dir_dev_mode() {
 
 #[test]
 fn test_delete_step_output_files_from_step_onwards() {
+    // Steps 0-2 are DB-authoritative with no filesystem outputs.
+    // Deleting from step 2 onwards should clean only step 3 (SKILL.md).
     let workspace_tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
     let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
-    // Context files live in workspace_path/{plugin_slug}/skill_name/context/
     let skill_dir = skills_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
-    let workspace_skill_dir = workspace_tmp
-        .path()
-        .join(DEFAULT_PLUGIN_SLUG)
-        .join("my-skill");
-    std::fs::create_dir_all(workspace_skill_dir.join("context")).unwrap();
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
-    // Create output files for steps 0, 1, 2, 3
-    // Steps 0 and 1 both use clarifications.json (unified artifact)
-    std::fs::write(
-        workspace_skill_dir.join("context/clarifications.json"),
-        "step0+step1",
-    )
-    .unwrap();
-    std::fs::write(workspace_skill_dir.join("context/decisions.json"), "{}").unwrap();
+    // Create step 3 output (SKILL.md)
     std::fs::write(skill_dir.join("SKILL.md"), "step3").unwrap();
     std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
-    // Reset from step 2 onwards — steps 0, 1 should be preserved
+    // Reset from step 2 onwards
     crate::cleanup::delete_step_output_files(
         workspace,
         "my-skill",
@@ -2334,13 +2322,7 @@ fn test_delete_step_output_files_from_step_onwards() {
         skills_path,
     );
 
-    // Steps 0, 1 output (unified clarifications.json) should still exist
-    assert!(workspace_skill_dir
-        .join("context/clarifications.json")
-        .exists());
-
-    // Steps 2+ outputs should be deleted
-    assert!(!workspace_skill_dir.join("context/decisions.json").exists());
+    // Step 3 outputs should be deleted
     assert!(!skill_dir.join("SKILL.md").exists());
     assert!(!skill_dir.join("references").exists());
 }
@@ -2383,21 +2365,19 @@ fn test_delete_step_output_files_nonexistent_dir_is_ok() {
 
 #[test]
 fn test_delete_step_output_files_cleans_last_steps() {
+    // Steps 0-2 are DB-authoritative with no filesystem outputs.
+    // Deleting from step 2 onwards should clean step 3 (SKILL.md) in skills_path.
     let workspace_tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
     let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
-    let _skill_dir = skills_tmp.path().join("my-skill");
-    let workspace_skill_dir = workspace_tmp
-        .path()
-        .join(DEFAULT_PLUGIN_SLUG)
-        .join("my-skill");
-    std::fs::create_dir_all(workspace_skill_dir.join("context")).unwrap();
+    let skill_dir = skills_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
 
-    // Create files for step 2 (decisions) in workspace context
-    std::fs::write(workspace_skill_dir.join("context/decisions.json"), "{}").unwrap();
+    // Create SKILL.md in skills_path (step 3 output)
+    std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
 
-    // Reset from step 2 onwards should clean up step 2+3
+    // Reset from step 2 onwards should clean up SKILL.md
     crate::cleanup::delete_step_output_files(
         workspace,
         "my-skill",
@@ -2406,8 +2386,8 @@ fn test_delete_step_output_files_cleans_last_steps() {
         skills_path,
     );
 
-    // Step 2 outputs should be deleted
-    assert!(!workspace_skill_dir.join("context/decisions.json").exists());
+    // SKILL.md should be deleted
+    assert!(!skill_dir.join("SKILL.md").exists());
 }
 
 #[test]
@@ -2923,35 +2903,31 @@ fn test_invalidate_workspace_cache() {
 
 #[test]
 fn test_reset_cleans_workspace_context_files() {
-    // 1. Create a temp workspace dir and a separate temp skills_path dir
+    // Steps 0-2 are DB-authoritative. Resetting from step 0 removes gate and
+    // evaluation files (step 0 filesystem outputs) and SKILL.md (step 3).
     let workspace_tmp = tempfile::tempdir().unwrap();
     let skills_path_tmp = tempfile::tempdir().unwrap();
     let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_path_tmp.path().to_str().unwrap();
 
-    // 2-3. Create workspace/{plugin_slug}/my-skill/context/ with all context files
-    let context_dir = workspace_tmp
+    // Step 0 workflow-level files
+    let skill_dir = workspace_tmp
         .path()
         .join(DEFAULT_PLUGIN_SLUG)
-        .join("my-skill")
-        .join("context");
-    std::fs::create_dir_all(&context_dir).unwrap();
+        .join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
+    std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
 
-    let context_files = ["clarifications.json", "decisions.json"];
-    for file in &context_files {
-        std::fs::write(context_dir.join(file), "test content").unwrap();
-    }
+    // Step 3 output
+    let output_dir = skills_path_tmp
+        .path()
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("my-skill");
+    std::fs::create_dir_all(&output_dir).unwrap();
+    std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
-    // 4. Working dir must exist in workspace
-    std::fs::create_dir_all(
-        workspace_tmp
-            .path()
-            .join(DEFAULT_PLUGIN_SLUG)
-            .join("my-skill"),
-    )
-    .unwrap();
-
-    // 5. Call delete_step_output_files from step 0
+    // Call delete_step_output_files from step 0
     crate::cleanup::delete_step_output_files(
         workspace,
         "my-skill",
@@ -2960,80 +2936,14 @@ fn test_reset_cleans_workspace_context_files() {
         skills_path,
     );
 
-    // 6. Assert ALL files in workspace/my-skill/context/ are gone
-    let mut remaining: Vec<String> = Vec::new();
-    for file in &context_files {
-        if context_dir.join(file).exists() {
-            remaining.push(file.to_string());
-        }
-    }
-    assert!(
-        remaining.is_empty(),
-        "Expected all workspace context files to be deleted, but these remain: {:?}",
-        remaining
-    );
+    // Gate/eval files and SKILL.md should be gone
+    assert!(!skill_dir.join("gate-result.json").exists());
+    assert!(!skill_dir.join("answer-evaluation.json").exists());
+    assert!(!output_dir.join("SKILL.md").exists());
 }
 
-// --- VD-664: parse_scope_recommendation tests ---
-
-#[test]
-fn test_scope_recommendation_true() {
-    let mut f = tempfile::NamedTempFile::new().unwrap();
-    use std::io::Write as _;
-    write!(
-        f,
-        r#"{{"metadata":{{"scope_recommendation":true,"original_dimensions":8}},"sections":[]}}"#
-    )
-    .unwrap();
-    assert!(parse_scope_recommendation(f.path()));
-}
-
-#[test]
-fn test_scope_recommendation_true_with_reason_fields() {
-    let mut f = tempfile::NamedTempFile::new().unwrap();
-    use std::io::Write as _;
-    write!(
-        f,
-        r#"{{"metadata":{{"scope_recommendation":true,"scope_reason":"Throwaway intent detected","scope_next_action":"Provide concrete domain"}},"sections":[],"notes":[{{"type":"blocked","title":"Scope Recommendation","body":"Narrow the scope"}}]}}"#
-    )
-    .unwrap();
-    assert!(parse_scope_recommendation(f.path()));
-}
-
-#[test]
-fn test_scope_recommendation_false() {
-    let mut f = tempfile::NamedTempFile::new().unwrap();
-    use std::io::Write as _;
-    write!(
-        f,
-        r#"{{"metadata":{{"scope_recommendation":false}},"sections":[]}}"#
-    )
-    .unwrap();
-    assert!(!parse_scope_recommendation(f.path()));
-}
-
-#[test]
-fn test_scope_recommendation_absent() {
-    let mut f = tempfile::NamedTempFile::new().unwrap();
-    use std::io::Write as _;
-    write!(f, r#"{{"metadata":{{}},"sections":[]}}"#).unwrap();
-    assert!(!parse_scope_recommendation(f.path()));
-}
-
-#[test]
-fn test_scope_recommendation_missing_file() {
-    assert!(!parse_scope_recommendation(Path::new(
-        "/nonexistent/file.json"
-    )));
-}
-
-#[test]
-fn test_scope_recommendation_invalid_json() {
-    let mut f = tempfile::NamedTempFile::new().unwrap();
-    use std::io::Write as _;
-    write!(f, "not valid json at all").unwrap();
-    assert!(!parse_scope_recommendation(f.path()));
-}
+// VD-664: parse_scope_recommendation was file-based; replaced by
+// check_scope_recommendation_db in guards.rs (VU-1157). Tests live in guards.rs.
 
 // --- format_user_context tests ---
 
@@ -3228,138 +3138,11 @@ fn test_build_prompt_without_user_context() {
     assert!(prompt.contains("test-skill"));
 }
 
-// --- VD-801: parse_decisions_guard tests ---
+// VD-801: parse_decisions_guard was file-based; replaced by
+// check_decisions_guard_db in guards.rs (VU-1157). Tests live in guards.rs.
 
-#[test]
-fn test_parse_decisions_guard_zero_count_triggers_guard() {
-    // decision_count: 0 in decisions.json means no decisions were produced — block step 3
-    let tmp = tempfile::tempdir().unwrap();
-    let path = tmp.path().join("decisions.json");
-    std::fs::write(&path, r#"{"metadata":{"decision_count":0,"round":1}}"#).unwrap();
-    assert!(parse_decisions_guard(&path));
-}
-
-#[test]
-fn test_parse_decisions_guard_contradictory() {
-    let tmp = tempfile::tempdir().unwrap();
-    let path = tmp.path().join("decisions.json");
-    std::fs::write(
-        &path,
-        r#"{"metadata":{"decision_count":3,"contradictory_inputs":true}}"#,
-    )
-    .unwrap();
-    assert!(parse_decisions_guard(&path));
-}
-
-#[test]
-fn test_parse_decisions_guard_normal() {
-    let tmp = tempfile::tempdir().unwrap();
-    let path = tmp.path().join("decisions.json");
-    std::fs::write(&path, r#"{"metadata":{"decision_count":5,"round":1}}"#).unwrap();
-    assert!(!parse_decisions_guard(&path));
-}
-
-#[test]
-fn test_parse_decisions_guard_missing_file() {
-    let nonexistent_path = std::env::temp_dir().join("nonexistent-vd801-decisions.json");
-    assert!(!parse_decisions_guard(&nonexistent_path));
-}
-
-#[test]
-fn test_parse_decisions_guard_invalid_json() {
-    let tmp = tempfile::tempdir().unwrap();
-    let path = tmp.path().join("decisions.json");
-    std::fs::write(&path, "not valid json").unwrap();
-    assert!(!parse_decisions_guard(&path));
-}
-
-#[test]
-fn test_parse_decisions_guard_contradictory_inputs_false() {
-    // contradictory_inputs: false must NOT block
-    let tmp = tempfile::tempdir().unwrap();
-    let path = tmp.path().join("decisions.json");
-    std::fs::write(
-        &path,
-        r#"{"metadata":{"decision_count":3,"contradictory_inputs":false}}"#,
-    )
-    .unwrap();
-    assert!(!parse_decisions_guard(&path));
-}
-
-#[test]
-fn test_save_clarifications_content_writes_pretty_json() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_path = tmp.path().join("workspace");
-    let workspace_str = workspace_path.to_string_lossy().to_string();
-    let payload = valid_clarifications_value().to_string();
-
-    super::evaluation::save_clarifications_content_inner(
-        "my-skill",
-        &workspace_str,
-        payload,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )
-    .unwrap();
-    let saved = std::fs::read_to_string(
-        workspace_path
-            .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
-            .join("my-skill")
-            .join("context")
-            .join("clarifications.json"),
-    )
-    .unwrap();
-    assert!(saved.contains("\n  \"metadata\""));
-}
-
-#[test]
-fn test_save_clarifications_content_rejects_invalid_json() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_path = tmp.path().join("workspace");
-    let workspace_str = workspace_path.to_string_lossy().to_string();
-
-    let err = super::evaluation::save_clarifications_content_inner(
-        "my-skill",
-        &workspace_str,
-        "{not-valid-json}".to_string(),
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )
-    .unwrap_err();
-    assert!(err.contains("Invalid clarifications JSON"));
-}
-
-#[test]
-fn test_save_clarifications_content_rejects_invalid_schema() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_path = tmp.path().join("workspace");
-    let workspace_str = workspace_path.to_string_lossy().to_string();
-    // priority_questions is a string instead of an array — typed deserialization rejects it
-    let invalid = serde_json::json!({
-        "version": "1",
-        "metadata": {
-            "title": "Bad",
-            "question_count": 1,
-            "section_count": 1,
-            "refinement_count": 0,
-            "must_answer_count": 0,
-            "priority_questions": "Q1"
-        },
-        "sections": [],
-        "notes": []
-    });
-
-    let err = super::evaluation::save_clarifications_content_inner(
-        "my-skill",
-        &workspace_str,
-        invalid.to_string(),
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )
-    .unwrap_err();
-    // Typed deserialization rejects non-array priority_questions
-    assert!(
-        err.contains("Invalid clarifications JSON"),
-        "unexpected error: {err}"
-    );
-}
+// save_clarifications_content_inner was file-based and removed in VU-1157.
+// Clarifications persistence is now handled via upsert_clarifications in db/workflow_artifacts.rs.
 
 // =============================================================================
 // CG-R1: format_user_context (workflow/runtime.rs)

@@ -1,10 +1,10 @@
 use std::path::Path;
 
+use crate::db::workflow_artifacts as db_artifacts;
 use crate::db::Db;
 use crate::types::{StepStatusUpdate, WorkflowStateResponse};
 
-use super::guards::{parse_decisions_guard, parse_scope_recommendation};
-use super::step_config::validate_clarifications_json;
+use super::guards::{check_decisions_guard_db, check_scope_recommendation_db};
 
 use crate::commands::imported_skills::validate_skill_name;
 
@@ -24,15 +24,6 @@ pub(crate) fn lookup_plugin_slug(conn: &rusqlite::Connection, skill_name: &str) 
         .flatten()
         .map(|m| m.plugin_slug)
         .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string())
-}
-
-pub(crate) fn workspace_context_dir(
-    workspace_path: &str,
-    plugin_slug: &str,
-    skill_name: &str,
-) -> std::path::PathBuf {
-    crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
-        .join("context")
 }
 
 pub(crate) fn workflow_step_log_name(step_id: i32) -> String {
@@ -322,23 +313,19 @@ mod tests {
 }
 
 /// Output files produced by each step, relative to the skill directory.
+/// Steps 0/1/2 are now DB-authoritative; only step 3 (SKILL.md) remains filesystem-based.
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
-        0 => vec!["context/clarifications.json"],
-        1 => vec![], // Step 1 edits clarifications.json in-place (no unique artifact)
-        2 => vec!["context/decisions.json"],
-        3 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
+        3 => vec!["SKILL.md"],
         _ => vec![],
     }
 }
 
-/// Check if at least one expected output file exists for a completed step.
-/// Returns `true` if the step produced output, `false` if no files were written.
-/// Step 1 (Detailed Research) always returns `true` because it edits
-/// clarifications.json in-place and has no unique output file to check.
+/// Check if the step has produced output.
+/// Steps 0/1/2 are DB-authoritative; step 3 checks for SKILL.md on disk.
 #[tauri::command]
 pub fn verify_step_output(
-    workspace_path: String,
+    _workspace_path: String,
     skill_name: String,
     step_id: u32,
     db: tauri::State<'_, Db>,
@@ -349,34 +336,29 @@ pub fn verify_step_output(
         workflow_step_log_name(step_id as i32),
         step_id
     );
-    let files = get_step_output_files(step_id);
-    // Steps with no expected output files are always valid
-    if files.is_empty() {
-        return Ok(true);
-    }
-
-    let skills_path = read_skills_path(&db)
-        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
-
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let plugin_slug = lookup_plugin_slug(&conn, &skill_name);
-    drop(conn);
-    let target_dir = if step_id == 3 {
-        crate::skill_paths::resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name)
-    } else {
-        crate::skill_paths::workspace_skill_dir(
-            Path::new(&workspace_path),
-            &plugin_slug,
-            &skill_name,
-        )
-    };
-    let has_output = if step_id == 3 {
-        target_dir.join("SKILL.md").exists()
-    } else {
-        files.iter().any(|f| target_dir.join(f).exists())
-    };
-
-    Ok(has_output)
+    match step_id {
+        0 => Ok(db_artifacts::read_clarifications(&conn, &skill_name)
+            .map(|opt| opt.is_some())
+            .unwrap_or(false)),
+        1 => Ok(db_artifacts::read_clarifications(&conn, &skill_name)
+            .map(|opt| opt.map(|r| r.refinement_count > 0).unwrap_or(false))
+            .unwrap_or(false)),
+        2 => Ok(db_artifacts::read_decisions(&conn, &skill_name)
+            .map(|opt| opt.is_some())
+            .unwrap_or(false)),
+        _ => {
+            let skills_path = read_skills_path(&db)
+                .ok_or_else(|| "Skills path not configured".to_string())?;
+            let plugin_slug = lookup_plugin_slug(&conn, &skill_name);
+            let target_dir = crate::skill_paths::resolve_skill_dir(
+                Path::new(&skills_path),
+                &plugin_slug,
+                &skill_name,
+            );
+            Ok(target_dir.join("SKILL.md").exists())
+        }
+    }
 }
 
 #[tauri::command]
@@ -386,161 +368,14 @@ pub fn get_disabled_steps(
 ) -> Result<Vec<u32>, String> {
     validate_skill_name(&skill_name)?;
     log::info!("[get_disabled_steps] skill={}", skill_name);
-    let workspace_path =
-        read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
-    let plugin_slug = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        lookup_plugin_slug(&conn, &skill_name)
-    };
-    let context_dir = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name);
-    let clarifications_path = context_dir.join("clarifications.json");
-    let decisions_path = context_dir.join("decisions.json");
-
-    if parse_scope_recommendation(&clarifications_path) {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    if check_scope_recommendation_db(&conn, &skill_name) {
         Ok(vec![1, 2, 3])
-    } else if parse_decisions_guard(&decisions_path) {
+    } else if check_decisions_guard_db(&conn, &skill_name) {
         Ok(vec![3])
     } else {
         Ok(vec![])
     }
-}
-
-#[tauri::command]
-pub fn get_clarifications_content(
-    skill_name: String,
-    workspace_path: String,
-    db: tauri::State<'_, Db>,
-) -> Result<String, String> {
-    validate_skill_name(&skill_name)?;
-    let plugin_slug = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        lookup_plugin_slug(&conn, &skill_name)
-    };
-    let path = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name)
-        .join("clarifications.json");
-    std::fs::read_to_string(&path).map_err(|e| {
-        format!(
-            "Failed to read clarifications from '{}': {}",
-            path.display(),
-            e
-        )
-    })
-}
-
-pub(crate) fn save_clarifications_content_inner(
-    skill_name: &str,
-    workspace_path: &str,
-    content: String,
-    plugin_slug: &str,
-) -> Result<(), String> {
-    validate_skill_name(skill_name)?;
-    let parsed: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
-    validate_clarifications_json(&parsed)
-        .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
-    let path =
-        workspace_context_dir(workspace_path, plugin_slug, skill_name).join("clarifications.json");
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            format!(
-                "Failed to create context directory '{}': {}",
-                parent.display(),
-                e
-            )
-        })?;
-    }
-    std::fs::write(
-        &path,
-        serde_json::to_string_pretty(&parsed).unwrap_or(content),
-    )
-    .map_err(|e| {
-        format!(
-            "Failed to write clarifications to '{}': {}",
-            path.display(),
-            e
-        )
-    })
-}
-
-#[tauri::command]
-pub fn save_clarifications_content(
-    skill_name: String,
-    workspace_path: String,
-    content: String,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
-    let plugin_slug = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        lookup_plugin_slug(&conn, &skill_name)
-    };
-    save_clarifications_content_inner(&skill_name, &workspace_path, content, &plugin_slug)
-}
-
-#[tauri::command]
-pub fn get_decisions_content(
-    skill_name: String,
-    workspace_path: String,
-    db: tauri::State<'_, Db>,
-) -> Result<String, String> {
-    validate_skill_name(&skill_name)?;
-    let plugin_slug = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        lookup_plugin_slug(&conn, &skill_name)
-    };
-    let path =
-        workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join("decisions.json");
-    std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read decisions from '{}': {}", path.display(), e))
-}
-
-#[tauri::command]
-pub fn save_decisions_content(
-    skill_name: String,
-    workspace_path: String,
-    content: String,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
-    validate_skill_name(&skill_name)?;
-    if content.trim().is_empty() {
-        return Err("decisions.json content cannot be empty".to_string());
-    }
-    let plugin_slug = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        lookup_plugin_slug(&conn, &skill_name)
-    };
-    let path =
-        workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join("decisions.json");
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            format!(
-                "Failed to create context directory '{}': {}",
-                parent.display(),
-                e
-            )
-        })?;
-    }
-    std::fs::write(&path, content)
-        .map_err(|e| format!("Failed to write decisions to '{}': {}", path.display(), e))
-}
-
-#[tauri::command]
-pub fn get_context_file_content(
-    skill_name: String,
-    workspace_path: String,
-    file_name: String,
-    db: tauri::State<'_, Db>,
-) -> Result<String, String> {
-    validate_skill_name(&skill_name)?;
-    if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") {
-        return Err("Invalid context file name".to_string());
-    }
-    let plugin_slug = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        lookup_plugin_slug(&conn, &skill_name)
-    };
-    let path = workspace_context_dir(&workspace_path, &plugin_slug, &skill_name).join(file_name);
-    std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read context file '{}': {}", path.display(), e))
 }
 
 #[tauri::command]
