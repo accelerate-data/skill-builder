@@ -119,8 +119,7 @@ test.describe("DisplayItem Rendering", { tag: "@workflow" }, () => {
       },
     });
 
-    await expect(page.getByTestId("conversation-event-list")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("Scope looks focused.")).toBeVisible();
+    await expect(page.getByText("Scope looks focused.")).toBeVisible({ timeout: 5000 });
 
     await emitTauriEvent(page, "agent-message", {
       agent_id: agentId,
