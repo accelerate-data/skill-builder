@@ -97,24 +97,18 @@ export function WorkflowStepComplete({
   };
 
   // --- Step 0: Research ---
-  if (stepId === 0 && outputFiles.includes("context/clarifications.json")) {
-    return <ResearchStepComplete {...baseProps} {...clarProps} fileContents={fileContents} />;
+  if (stepId === 0) {
+    return <ResearchStepComplete {...baseProps} {...clarProps} skillName={skillName} />;
   }
 
   // --- Step 1: Detailed Research ---
-  const clarificationsContent = fileContents.get("context/clarifications.json");
-  const isClarificationsOnlyStep = stepId === 1
-    && outputFiles.includes("context/clarifications.json")
-    && clarificationsContent && clarificationsContent !== "__NOT_FOUND__";
-
-  if (isClarificationsOnlyStep) {
-    const result = <DetailedResearchStepComplete {...baseProps} {...clarProps} fileContents={fileContents} />;
-    if (result) return result;
+  if (stepId === 1) {
+    return <DetailedResearchStepComplete {...baseProps} {...clarProps} skillName={skillName} />;
   }
 
   // --- Step 2: Decisions ---
-  if (outputFiles.includes("context/decisions.json")) {
-    return <DecisionsStepComplete {...baseProps} fileContents={fileContents} skillName={skillName} workspacePath={workspacePath} />;
+  if (stepId === 2) {
+    return <DecisionsStepComplete {...baseProps} skillName={skillName} workspacePath={workspacePath} />;
   }
 
   // --- Default: File viewer ---

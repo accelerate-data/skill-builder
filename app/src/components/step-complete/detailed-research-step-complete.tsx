@@ -1,24 +1,36 @@
+import { Loader2 } from "lucide-react";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
-import { parseClarifications } from "@/lib/clarifications-types";
+import { clarificationsDtoToFile } from "@/lib/clarifications-types";
+import { useClarifications } from "@/lib/queries/clarifications";
 import { StepActionBar } from "./step-action-bar";
-import type { StepCompleteBaseProps, ClarificationsEditableProps, StepFileProps } from "./step-complete-types";
+import type { StepCompleteBaseProps, ClarificationsEditableProps } from "./step-complete-types";
 
-type Props = StepCompleteBaseProps & ClarificationsEditableProps & Pick<StepFileProps, "fileContents">;
+type Props = StepCompleteBaseProps & ClarificationsEditableProps & {
+  skillName?: string;
+};
 
 export function DetailedResearchStepComplete(props: Props) {
   const {
-    fileContents, agentRuns, reviewMode,
+    skillName, agentRuns, reviewMode,
     isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onEval,
     clarificationsEditable, clarificationsData: controlledClarData,
     onClarificationsChange, onClarificationsContinue, onReset, saveStatus, evaluating,
   } = props;
 
-  const clarificationsContent = fileContents.get("context/clarifications.json");
-  if (!clarificationsContent || clarificationsContent === "__NOT_FOUND__") return null;
+  const { data: clarDto, isLoading } = useClarifications(skillName ?? null);
 
-  const clarData = parseClarifications(clarificationsContent);
-  if (!clarData) return null;
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!clarDto) return null;
+
+  const clarData = clarificationsDtoToFile(clarDto);
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
