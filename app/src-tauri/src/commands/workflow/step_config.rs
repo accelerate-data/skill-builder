@@ -41,7 +41,9 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 step_id: 0,
                 name: "Research".to_string(),
                 prompt_template: "research.txt".to_string(),
-                output_file: "context/clarifications.json".to_string(),
+                // VU-1157: clarifications are persisted to the DB on step
+                // completion; no canonical workspace JSON is written.
+                output_file: String::new(),
                 allowed_tools: research_workflow_tools(),
                 max_turns: 50,
                 agent_name: agent.to_string(),
@@ -54,7 +56,9 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 step_id: 1,
                 name: "Detailed Research".to_string(),
                 prompt_template: "detailed-research.txt".to_string(),
-                output_file: "context/clarifications.json".to_string(),
+                // VU-1157: clarifications are persisted to the DB on step
+                // completion; no canonical workspace JSON is written.
+                output_file: String::new(),
                 allowed_tools: research_workflow_tools(),
                 max_turns: 50,
                 agent_name: agent.to_string(),
@@ -67,7 +71,9 @@ pub(crate) fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
                 step_id: 2,
                 name: "Confirm Decisions".to_string(),
                 prompt_template: "confirm_decisions.txt".to_string(),
-                output_file: "context/decisions.json".to_string(),
+                // VU-1157: decisions are persisted to the DB on step
+                // completion; no canonical workspace JSON is written.
+                output_file: String::new(),
                 allowed_tools: confirm_decisions_workflow_tools(),
                 max_turns: 100,
                 agent_name: agent.to_string(),

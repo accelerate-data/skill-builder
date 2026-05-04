@@ -29,7 +29,7 @@ use super::step_config::{
     build_betas, confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
     skill_generation_workflow_tools, thinking_budget_for_step, workflow_output_format_for_step,
 };
-use super::user_context::{format_user_context, write_user_context_file};
+use super::prompt::format_user_context;
 
 fn valid_clarifications_value() -> serde_json::Value {
     serde_json::json!({
@@ -62,6 +62,19 @@ fn valid_clarifications_value() -> serde_json::Value {
         ],
         "notes": []
     })
+}
+
+/// Build an in-memory `Db` with the named skill seeded under the default
+/// plugin so workflow-artifact upserts can resolve `skill_id`.
+fn db_with_seeded_skill(name: &str) -> crate::db::Db {
+    let conn = crate::db::create_test_db_for_tests();
+    conn.execute(
+        "INSERT INTO skills (name, skill_source, plugin_id) \
+         VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = 'skills'))",
+        rusqlite::params![name],
+    )
+    .unwrap();
+    crate::db::Db(std::sync::Mutex::new(conn))
 }
 
 fn test_workflow_llm_config() -> crate::types::WorkflowLlmConfig {
@@ -134,18 +147,12 @@ fn test_step_config_canonical_agent_names() {
 
 #[test]
 fn test_step_config_canonical_output_files() {
-    assert_eq!(
-        get_step_config(0).unwrap().output_file,
-        "context/clarifications.json"
-    );
-    assert_eq!(
-        get_step_config(1).unwrap().output_file,
-        "context/clarifications.json"
-    );
-    assert_eq!(
-        get_step_config(2).unwrap().output_file,
-        "context/decisions.json"
-    );
+    // VU-1157: steps 0/1/2 no longer materialize a workspace JSON file (the
+    // canonical artifact is the DB row), so `output_file` is empty. Step 3
+    // still produces `skill/SKILL.md` to skills_path.
+    assert_eq!(get_step_config(0).unwrap().output_file, "");
+    assert_eq!(get_step_config(1).unwrap().output_file, "");
+    assert_eq!(get_step_config(2).unwrap().output_file, "");
     assert_eq!(get_step_config(3).unwrap().output_file, "skill/SKILL.md");
 }
 
@@ -615,8 +622,7 @@ fn research_json_extraction_rejects_missing_empty_non_object_error_and_invalid_j
 
 #[test]
 fn research_materialization_from_conversation_state_writes_clarifications() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "research_complete",
         "question_count": 0,
@@ -629,9 +635,12 @@ fn research_materialization_from_conversation_state_writes_clarifications() {
     });
 
     let parsed = extract_research_json_from_conversation_state(&state).unwrap();
-    materialize_workflow_step_output_value(&skill_root, 0, &parsed).unwrap();
+    materialize_workflow_step_output_value(&db, "my-skill", 0, &parsed).unwrap();
 
-    assert!(skill_root.join("context/clarifications.json").exists());
+    let conn = db.0.lock().unwrap();
+    assert!(crate::db::workflow_artifacts::read_clarifications(&conn, "my-skill")
+        .unwrap()
+        .is_some());
 }
 
 mod research {
@@ -650,8 +659,7 @@ mod research {
         assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
         assert_eq!(config.task_kind.as_deref(), Some("workflow.research"));
 
-        let tmp = tempfile::tempdir().unwrap();
-        let skill_root = tmp.path().join("my-skill");
+        let db = db_with_seeded_skill("my-skill");
         let payload = serde_json::json!({
             "status": "research_complete",
             "question_count": 0,
@@ -664,8 +672,13 @@ mod research {
         });
 
         let parsed = extract_research_json_from_conversation_state(&state).unwrap();
-        materialize_workflow_step_output_value(&skill_root, 0, &parsed).unwrap();
-        assert!(skill_root.join("context/clarifications.json").exists());
+        materialize_workflow_step_output_value(&db, "my-skill", 0, &parsed).unwrap();
+        let conn = db.0.lock().unwrap();
+        assert!(
+            crate::db::workflow_artifacts::read_clarifications(&conn, "my-skill")
+                .unwrap()
+                .is_some()
+        );
     }
 }
 
@@ -1026,9 +1039,8 @@ fn test_answer_evaluator_output_format_has_required_contract_keys() {
 }
 
 #[test]
-fn test_materialize_answer_evaluation_writes_file() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_dir = tmp.path().join("workspace").join("my-skill");
+fn test_materialize_answer_evaluation_validates_payload() {
+    // VU-1157: file write removed; validate-only path. A valid payload returns Ok(()).
     let payload = serde_json::json!({
         "verdict": "mixed",
         "answered_count": 3,
@@ -1042,15 +1054,11 @@ fn test_materialize_answer_evaluation_writes_file() {
             {"question_id": "Q2", "verdict": "vague", "reason": "Too generic."}
         ]
     });
-
-    materialize_answer_evaluation_output_value(&workspace_dir, &payload).unwrap();
-    assert!(workspace_dir.join("answer-evaluation.json").exists());
+    materialize_answer_evaluation_output_value(&payload).unwrap();
 }
 
 #[test]
 fn test_materialize_answer_evaluation_rejects_invalid_payload() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_dir = tmp.path().join("workspace").join("my-skill");
     let invalid_payload = serde_json::json!({
         "verdict": "mixed",
         "answered_count": 1,
@@ -1064,16 +1072,12 @@ fn test_materialize_answer_evaluation_rejects_invalid_payload() {
         ]
     });
 
-    let err =
-        materialize_answer_evaluation_output_value(&workspace_dir, &invalid_payload).unwrap_err();
+    let err = materialize_answer_evaluation_output_value(&invalid_payload).unwrap_err();
     assert!(err.contains("Invalid answer evaluation output"));
-    assert!(!workspace_dir.join("answer-evaluation.json").exists());
 }
 
 #[test]
 fn test_materialize_answer_evaluation_defaults_missing_per_question_array() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_dir = tmp.path().join("workspace").join("my-skill");
     let payload = serde_json::json!({
         "verdict": "mixed",
         "answered_count": 1,
@@ -1084,14 +1088,12 @@ fn test_materialize_answer_evaluation_defaults_missing_per_question_array() {
         "reasoning": "One answer provided."
     });
     // Missing per_question now defaults to empty vec instead of erroring
-    materialize_answer_evaluation_output_value(&workspace_dir, &payload)
+    materialize_answer_evaluation_output_value(&payload)
         .expect("should accept missing per_question with default");
 }
 
 #[test]
 fn test_materialize_answer_evaluation_rejects_vague_without_reason() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_dir = tmp.path().join("workspace").join("my-skill");
     let payload = serde_json::json!({
         "verdict": "mixed",
         "answered_count": 0,
@@ -1104,14 +1106,13 @@ fn test_materialize_answer_evaluation_rejects_vague_without_reason() {
             {"question_id": "Q1", "verdict": "vague"}
         ]
     });
-    let err = materialize_answer_evaluation_output_value(&workspace_dir, &payload).unwrap_err();
+    let err = materialize_answer_evaluation_output_value(&payload).unwrap_err();
     assert!(err.contains("reason is required for vague verdict"));
 }
 
 #[test]
 fn test_materialize_step0_writes_research_and_clarifications() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "research_complete",
         "question_count": 5,
@@ -1130,15 +1131,21 @@ fn test_materialize_step0_writes_research_and_clarifications() {
         }
     });
 
-    materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
-    assert!(skill_root.join("context/clarifications.json").exists());
-    assert!(!skill_root.join("context/research-plan.md").exists());
+    materialize_workflow_step_output_value(&db, "my-skill", 0, &payload).unwrap();
+    let conn = db.0.lock().unwrap();
+    let record = crate::db::workflow_artifacts::read_clarifications(&conn, "my-skill")
+        .unwrap()
+        .expect("clarifications row should exist");
+    assert_eq!(record.title, "Test");
+    assert_eq!(record.refinement_count, 0);
 }
 
 #[test]
 fn test_materialize_step0_drops_legacy_research_metadata() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
+    // Per VU-1157, fields like priority_questions, duplicates_removed, and
+    // consolidated_from are silently dropped. The legacy research_plan block
+    // is not part of any known schema and is also tolerated/ignored.
     let payload = serde_json::json!({
         "status": "research_complete",
         "question_count": 0,
@@ -1150,52 +1157,27 @@ fn test_materialize_step0_drops_legacy_research_metadata() {
                 "section_count": 0,
                 "refinement_count": 0,
                 "must_answer_count": 0,
-                "priority_questions": [],
-                "research_plan": {
-                    "purpose": "Analyze leads",
-                    "domain": "Cloud services",
-                    "topic_relevance": "High",
-                    "dimensions_evaluated": 2,
-                    "dimension_scores": [
-                        {
-                            "name": "entities",
-                            "score": 5.0,
-                            "reason": "Critical custom relationships.",
-                            "focus": "Lead to opportunity conversion"
-                        },
-                        {
-                            "name": "modeling-patterns",
-                            "score": 3.0,
-                            "reason": "Mostly standard.",
-                            "focus": null
-                        }
-                    ],
-                    "selected_dimensions": [
-                        {
-                            "name": "entities",
-                            "focus": "Lead to opportunity conversion"
-                        }
-                    ]
-                }
+                "priority_questions": ["dropped-Q1"],
+                "duplicates_removed": 7
             },
             "sections": [],
             "notes": []
         }
     });
 
-    materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
-    let written = std::fs::read_to_string(skill_root.join("context/clarifications.json")).unwrap();
-    assert!(!written.contains("research_plan"));
-    assert!(!written.contains("dimension_scores"));
-    assert!(!written.contains("selected_dimensions"));
-    assert!(!written.contains("modeling-patterns"));
+    materialize_workflow_step_output_value(&db, "my-skill", 0, &payload).unwrap();
+    let conn = db.0.lock().unwrap();
+    let record = crate::db::workflow_artifacts::read_clarifications(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
+    // No DB column exists for priority_questions or duplicates_removed,
+    // so they are silently dropped at the unpack boundary.
+    assert_eq!(record.title, "Test");
 }
 
 #[test]
 fn test_materialize_step0_empty_metadata_defaults_to_zeros() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-
+    let db = db_with_seeded_skill("my-skill");
     // Empty metadata now defaults all fields to 0/"" instead of erroring
     let payload = serde_json::json!({
         "status": "research_complete",
@@ -1208,14 +1190,13 @@ fn test_materialize_step0_empty_metadata_defaults_to_zeros() {
         }
     });
 
-    materialize_workflow_step_output_value(&skill_root, 0, &payload)
+    materialize_workflow_step_output_value(&db, "my-skill", 0, &payload)
         .expect("empty metadata should default fields");
 }
 
 #[test]
 fn test_materialize_step1_writes_clarifications_only() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "detailed_research_complete",
         "refinement_count": 1,
@@ -1252,14 +1233,18 @@ fn test_materialize_step1_writes_clarifications_only() {
         }
     });
 
-    materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap();
-    assert!(skill_root.join("context/clarifications.json").exists());
+    materialize_workflow_step_output_value(&db, "my-skill", 1, &payload).unwrap();
+    let conn = db.0.lock().unwrap();
+    let record = crate::db::workflow_artifacts::read_clarifications(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.refinement_count, 1);
+    assert_eq!(record.questions.len(), 1);
 }
 
 #[test]
 fn test_materialize_step1_writes_additive_detailed_research_output() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let output = serde_json::json!({
         "status": "detailed_research_complete",
         "refinement_count": 1,
@@ -1349,55 +1334,55 @@ fn test_materialize_step1_writes_additive_detailed_research_output() {
         }
     });
 
-    materialize_workflow_step_output_value(&skill_root, 1, &output).unwrap();
-    let written: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(skill_root.join("context/clarifications.json")).unwrap(),
-    )
-    .unwrap();
-    let sections = written["sections"].as_array().unwrap();
-    assert_eq!(sections.len(), 2);
-    assert_eq!(sections[0]["id"], 1);
-    assert_eq!(sections[1]["id"], 2);
-    let s1_questions = sections[0]["questions"].as_array().unwrap();
-    assert_eq!(s1_questions[0]["id"], "Q1");
-    assert!(s1_questions.iter().any(|q| q["id"] == "Q4"));
-    let q3 = s1_questions.iter().find(|q| q["id"] == "Q3").unwrap();
-    assert_eq!(q3["refinements"][0]["id"], "R3.1");
+    materialize_workflow_step_output_value(&db, "my-skill", 1, &output).unwrap();
+    let conn = db.0.lock().unwrap();
+    let record = crate::db::workflow_artifacts::read_clarifications(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.sections.len(), 2);
+    assert_eq!(record.sections[0].section_id, 1);
+    assert_eq!(record.sections[1].section_id, 2);
+    let q3 = record
+        .questions
+        .iter()
+        .find(|q| q.question_id == "Q3")
+        .expect("Q3 should be present");
+    assert_eq!(q3.refinements.len(), 1);
+    assert_eq!(q3.refinements[0].question_id, "R3.1");
+    assert!(record.questions.iter().any(|q| q.question_id == "Q4"));
 }
 
 #[test]
 fn test_materialize_step0_rejects_non_object_payload() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-    let err = materialize_workflow_step_output_value(&skill_root, 0, &serde_json::json!(null))
+    let db = db_with_seeded_skill("my-skill");
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 0, &serde_json::json!(null))
         .unwrap_err();
     assert!(err.contains("structured_output must be a JSON object"));
 }
 
 #[test]
 fn test_materialize_step0_rejects_wrong_status() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "detailed_research_complete",
         "question_count": 1,
         "research_output": valid_clarifications_value()
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 0, &payload).unwrap_err();
     assert!(err.contains("structured_output.status must be 'research_complete'"));
 }
 
 #[test]
 fn test_materialize_step0_rejects_missing_required_fields() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
 
     let missing_research_output = serde_json::json!({
         "status": "research_complete",
         "question_count": 1
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 0, &missing_research_output)
-        .unwrap_err();
+    let err =
+        materialize_workflow_step_output_value(&db, "my-skill", 0, &missing_research_output)
+            .unwrap_err();
     assert!(
         err.contains("research_output"),
         "should mention missing field: {err}"
@@ -1409,21 +1394,21 @@ fn test_materialize_step0_rejects_missing_required_fields() {
         "question_count": "one",
         "research_output": valid_clarifications_value()
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 0, &non_integer_question_count)
-        .unwrap_err();
+    let err =
+        materialize_workflow_step_output_value(&db, "my-skill", 0, &non_integer_question_count)
+            .unwrap_err();
     assert!(err.contains("invalid research step output"));
 }
 
 #[test]
 fn test_materialize_step0_rejects_missing_research_output() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
 
     let missing = serde_json::json!({
         "status": "research_complete",
         "question_count": 1
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 0, &missing).unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 0, &missing).unwrap_err();
     assert!(err.contains("invalid research step output"));
 
     // Choice is missing required `is_other` field — typed deserialization rejects it
@@ -1460,7 +1445,7 @@ fn test_materialize_step0_rejects_missing_research_output() {
         }
     });
     let err_invalid_nested =
-        materialize_workflow_step_output_value(&skill_root, 0, &invalid_nested).unwrap_err();
+        materialize_workflow_step_output_value(&db, "my-skill", 0, &invalid_nested).unwrap_err();
     // Typed deserialization still rejects Choice missing `is_other`
     assert!(
         err_invalid_nested.contains("invalid research step output"),
@@ -1474,22 +1459,20 @@ fn test_materialize_step0_rejects_missing_research_output() {
 
 #[test]
 fn test_materialize_step1_rejects_wrong_status() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "research_complete",
         "refinement_count": 1,
         "section_count": 1,
         "clarifications_json": valid_clarifications_value()
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 1, &payload).unwrap_err();
     assert!(err.contains("structured_output.status must be 'detailed_research_complete'"));
 }
 
 #[test]
 fn test_materialize_step1_rejects_missing_required_fields() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
 
     // Missing refinement_count → hard fail (required per SKILL.md)
     let missing_refinement_count = serde_json::json!({
@@ -1497,8 +1480,9 @@ fn test_materialize_step1_rejects_missing_required_fields() {
         "section_count": 1,
         "clarifications_json": valid_clarifications_value()
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 1, &missing_refinement_count)
-        .unwrap_err();
+    let err =
+        materialize_workflow_step_output_value(&db, "my-skill", 1, &missing_refinement_count)
+            .unwrap_err();
     assert!(
         err.contains("refinement_count"),
         "should mention missing field: {err}"
@@ -1511,31 +1495,36 @@ fn test_materialize_step1_rejects_missing_required_fields() {
         "section_count": "one",
         "clarifications_json": valid_clarifications_value()
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 1, &non_integer_section_count)
-        .unwrap_err();
+    let err =
+        materialize_workflow_step_output_value(&db, "my-skill", 1, &non_integer_section_count)
+            .unwrap_err();
     assert!(err.contains("invalid detailed research output"));
 }
 
 #[test]
 fn test_materialize_step1_rejects_missing_clarifications_json() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "detailed_research_complete",
         "refinement_count": 1,
         "section_count": 1
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 1, &payload).unwrap_err();
     assert!(err.contains("invalid detailed research output"));
 }
 
 #[test]
-fn test_materialize_step1_validation_failure_keeps_existing_clarifications() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-    let context_dir = skill_root.join("context");
-    std::fs::create_dir_all(&context_dir).unwrap();
-    std::fs::write(context_dir.join("clarifications.json"), "{\"old\":true}").unwrap();
+fn test_materialize_step1_validation_failure_preserves_existing_db_state() {
+    let db = db_with_seeded_skill("my-skill");
+    // Seed an initial valid clarifications row so we can verify it is not
+    // overwritten when a subsequent invalid payload is rejected.
+    let valid = serde_json::json!({
+        "status": "detailed_research_complete",
+        "refinement_count": 0,
+        "section_count": 1,
+        "clarifications_json": valid_clarifications_value()
+    });
+    materialize_workflow_step_output_value(&db, "my-skill", 1, &valid).unwrap();
 
     // notes is a string instead of an array — typed deserialization rejects it
     let invalid_payload = serde_json::json!({
@@ -1556,22 +1545,23 @@ fn test_materialize_step1_validation_failure_keeps_existing_clarifications() {
             "notes": "not-an-array"
         }
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 1, &invalid_payload).unwrap_err();
-    // Typed deserialization catches notes type mismatch
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 1, &invalid_payload)
+        .unwrap_err();
     assert!(
         err.contains("invalid detailed research output"),
         "unexpected error: {err}"
     );
-    assert_eq!(
-        std::fs::read_to_string(context_dir.join("clarifications.json")).unwrap(),
-        "{\"old\":true}"
-    );
+    // Existing record untouched: refinement_count still 0 from the valid run.
+    let conn = db.0.lock().unwrap();
+    let record = crate::db::workflow_artifacts::read_clarifications(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.refinement_count, 0);
 }
 
 #[test]
 fn test_materialize_step1_rejects_invalid_answer_evaluator_notes_shape() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "detailed_research_complete",
         "refinement_count": 1,
@@ -1592,7 +1582,7 @@ fn test_materialize_step1_rejects_invalid_answer_evaluator_notes_shape() {
         }
     });
 
-    let err = materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 1, &payload).unwrap_err();
     // Typed deserialization rejects non-array answer_evaluator_notes
     assert!(
         err.contains("invalid detailed research output"),
@@ -1629,9 +1619,8 @@ fn test_validate_clarifications_rejects_null_section_id() {
 }
 
 #[test]
-fn test_materialize_step0_scope_recommendation_triggers_scope_guard_parser() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+fn test_materialize_step0_scope_recommendation_persists_to_db() {
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "research_complete",
         "question_count": 0,
@@ -1651,16 +1640,17 @@ fn test_materialize_step0_scope_recommendation_triggers_scope_guard_parser() {
         }
     });
 
-    materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
-    assert!(parse_scope_recommendation(
-        &skill_root.join("context/clarifications.json")
-    ));
+    materialize_workflow_step_output_value(&db, "my-skill", 0, &payload).unwrap();
+    let conn = db.0.lock().unwrap();
+    let record = crate::db::workflow_artifacts::read_clarifications(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.scope_recommendation, Some(true));
 }
 
 #[test]
 fn test_materialize_step2_writes_decisions() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "version": "1",
         "metadata": { "decision_count": 1, "conflicts_resolved": 0, "round": 1 },
@@ -1673,69 +1663,78 @@ fn test_materialize_step2_writes_decisions() {
             "status": "resolved"
         }]
     });
-    materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
-    assert!(skill_root.join("context/decisions.json").exists());
+    materialize_workflow_step_output_value(&db, "my-skill", 2, &payload).unwrap();
+    let conn = db.0.lock().unwrap();
+    let record = crate::db::workflow_artifacts::read_decisions(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.items.len(), 1);
+    assert_eq!(record.items[0].decision_id, "D1");
+    assert_eq!(record.items[0].status, "resolved");
 }
 
 #[test]
 fn test_materialize_step2_writes_scope_guard_stub_decisions() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "version": "1",
         "metadata": { "scope_recommendation": true, "decision_count": 0, "conflicts_resolved": 0, "round": 1 },
         "decisions": []
     });
-    materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
-    let content = std::fs::read_to_string(skill_root.join("context/decisions.json")).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
-    assert_eq!(parsed["metadata"]["scope_recommendation"], true);
-    assert_eq!(parsed["metadata"]["decision_count"], 0);
+    materialize_workflow_step_output_value(&db, "my-skill", 2, &payload).unwrap();
+    let conn = db.0.lock().unwrap();
+    let record = crate::db::workflow_artifacts::read_decisions(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.scope_recommendation, Some(true));
+    assert_eq!(record.decision_count, 0);
 }
 
 #[test]
-fn test_materialize_step2_conflict_decisions_trigger_conflict_guard() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+fn test_materialize_step2_contradictory_inputs_active_persists_state() {
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "version": "1",
         "metadata": { "decision_count": 2, "conflicts_resolved": 0, "round": 1, "contradictory_inputs": true },
         "decisions": []
     });
-    materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
-    assert!(parse_decisions_guard(
-        &skill_root.join("context/decisions.json")
-    ));
+    materialize_workflow_step_output_value(&db, "my-skill", 2, &payload).unwrap();
+    let conn = db.0.lock().unwrap();
+    let record = crate::db::workflow_artifacts::read_decisions(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.contradictory_inputs_state.as_deref(), Some("active"));
 }
 
 #[test]
-fn test_materialize_step2_revised_conflict_decisions_do_not_trigger_guard() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+fn test_materialize_step2_contradictory_inputs_false_persists_inactive() {
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "version": "1",
         "metadata": { "decision_count": 2, "conflicts_resolved": 0, "round": 1, "contradictory_inputs": false },
         "decisions": []
     });
-    materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
-    assert!(!parse_decisions_guard(
-        &skill_root.join("context/decisions.json")
-    ));
+    materialize_workflow_step_output_value(&db, "my-skill", 2, &payload).unwrap();
+    let conn = db.0.lock().unwrap();
+    let record = crate::db::workflow_artifacts::read_decisions(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.contradictory_inputs_state.as_deref(), Some("inactive"));
 }
 
 #[test]
 fn test_materialize_step2_rejects_null_payload() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-    let err = materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
+    let db = db_with_seeded_skill("my-skill");
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 2, &serde_json::json!(null))
         .unwrap_err();
     assert!(err.contains("structured_output must be a JSON object"));
 }
 
 #[test]
-fn test_materialize_step3_generate_writes_pending_benchmark() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+fn test_materialize_step3_generate_validates_payload() {
+    // VU-1157: benchmark-meta.json writer was removed entirely. Step 3 only
+    // validates the agent's GenerateSkillOutput shape; no DB persistence.
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "generated",
         "benchmark_path": null,
@@ -1753,21 +1752,12 @@ fn test_materialize_step3_generate_writes_pending_benchmark() {
             "fresh-context-verifier-review"
         ]
     });
-    materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
-
-    // Verify benchmark-meta.json was written with pending status
-    let meta_path = skill_root.join("context/benchmark-meta.json");
-    assert!(meta_path.exists(), "benchmark-meta.json should be written");
-    let meta: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
-    assert_eq!(meta["benchmark_status"], "pending");
-    assert!(meta["benchmark_path"].is_null());
+    materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap();
 }
 
 #[test]
-fn test_materialize_step3_generate_skipped_writes_skipped_benchmark() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+fn test_materialize_step3_generate_skipped_validates_payload() {
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "generated",
         "benchmark_path": null,
@@ -1784,31 +1774,24 @@ fn test_materialize_step3_generate_skipped_writes_skipped_benchmark() {
             "fresh-context-verifier-review"
         ]
     });
-    materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
-
-    let meta_path = skill_root.join("context/benchmark-meta.json");
-    let meta: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
-    assert_eq!(meta["benchmark_status"], "skipped");
+    materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap();
 }
 
 #[test]
 fn test_materialize_step3_generate_rejects_missing_version_bump() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "generated",
         "commit_summary": "Create skill package with required files",
         "call_trace": ["read-user-context", "write-skill"]
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap_err();
     assert!(err.contains("version_bump must be '1.0.0'"));
 }
 
 #[test]
 fn test_materialize_step3_generate_rejects_minor_version_bump() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "generated",
         "commit_summary": "Create skill package with required files",
@@ -1823,41 +1806,37 @@ fn test_materialize_step3_generate_rejects_minor_version_bump() {
             "fresh-context-verifier-review"
         ]
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap_err();
     assert!(err.contains("version_bump must be '1.0.0'"));
 }
 
 #[test]
 fn test_materialize_step3_generate_rejects_missing_call_trace() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "generated",
         "commit_summary": "Create skill package with required files",
         "version_bump": "1.0.0"
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap_err();
     assert!(err.contains("call_trace must be a non-empty string array"));
 }
 
 #[test]
 fn test_materialize_step3_generate_rejects_object_call_trace_entries() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "generated",
         "commit_summary": "Create skill package with required files",
         "version_bump": "1.0.0",
         "call_trace": [{"step": "read-user-context"}]
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap_err();
     assert!(err.contains("invalid generate-skill output"));
 }
 
 #[test]
 fn test_materialize_step3_generate_rejects_missing_required_trace_entry() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
     let payload = serde_json::json!({
         "status": "generated",
         "commit_summary": "Create skill package with required files",
@@ -1871,7 +1850,8 @@ fn test_materialize_step3_generate_rejects_missing_required_trace_entry() {
             "fresh-context-verifier-review"
         ]
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    let db = db_with_seeded_skill("my-skill");
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap_err();
     assert!(err.contains("call_trace missing required entry 'read-clarifications'"));
 }
 
@@ -1998,76 +1978,46 @@ fn publish_commit_and_tag_generated_skill_surfaces_duplicate_tag_error() {
 }
 
 #[test]
-fn test_materialize_step3_benchmark_complete() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-    let bench_dir = skill_root.join("evals/iterations/iteration-1");
-    std::fs::create_dir_all(&bench_dir).unwrap();
-    std::fs::write(bench_dir.join("benchmark.json"), "{}").unwrap();
-
+fn test_materialize_step3_benchmark_complete_validates() {
+    // VU-1157: benchmark-meta.json writer was removed; the partial→complete
+    // upgrade logic that probed for benchmark.json on disk no longer exists
+    // (eval/benchmark redo). The validate-only path accepts any of the
+    // benchmark-skill statuses.
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "complete",
         "benchmark_path": "evals/iterations/iteration-1"
     });
-    materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
-
-    let meta_path = skill_root.join("context/benchmark-meta.json");
-    assert!(meta_path.exists(), "benchmark-meta.json should be written");
-    let meta: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
-    assert_eq!(meta["benchmark_status"], "complete");
-    assert_eq!(meta["benchmark_path"], "evals/iterations/iteration-1");
+    materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap();
 }
 
 #[test]
-fn test_materialize_step3_partial_with_benchmark_json_upgrades_to_complete() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-    let bench_dir = skill_root.join("evals/iterations/iteration-1");
-    std::fs::create_dir_all(&bench_dir).unwrap();
-    std::fs::write(bench_dir.join("benchmark.json"), "{}").unwrap();
-
+fn test_materialize_step3_partial_validates() {
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "partial",
         "benchmark_path": "evals/iterations/iteration-1"
     });
-    materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
-
-    let meta: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(skill_root.join("context/benchmark-meta.json")).unwrap(),
-    )
-    .unwrap();
-    // benchmark.json exists on disk — should be upgraded to "complete"
-    assert_eq!(meta["benchmark_status"], "complete");
-    assert_eq!(meta["benchmark_path"], "evals/iterations/iteration-1");
+    materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap();
 }
 
 #[test]
-fn test_materialize_step3_partial_without_benchmark_json_stays_partial() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
-    // No benchmark.json on disk — partial stays partial
+fn test_materialize_step3_skipped_validates() {
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
-        "status": "partial",
-        "benchmark_path": "evals/iterations/iteration-1"
+        "status": "skipped",
+        "benchmark_path": null
     });
-    materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
-
-    let meta: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(skill_root.join("context/benchmark-meta.json")).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(meta["benchmark_status"], "partial");
+    materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap();
 }
 
 #[test]
 fn test_materialize_step3_rejects_wrong_status() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skill_root = tmp.path().join("my-skill");
+    let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "decisions_complete"
     });
-    let err = materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap_err();
     assert!(err.contains("must be 'generated', 'rewritten', or 'complete'|'partial'|'skipped'"));
 }
 
@@ -2878,169 +2828,9 @@ fn test_step0_always_wipes_context() {
     assert!(skill_dir.join("context").exists());
 }
 
-#[test]
-fn test_write_user_context_file_all_fields() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
-    // Directory doesn't need to pre-exist — create_dir_all handles it
-
-    let intake =
-        r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines"}"#;
-    write_user_context_file(
-        workspace_path,
-        DEFAULT_PLUGIN_SLUG,
-        "my-skill",
-        &[],
-        None,
-        Some("Healthcare"),
-        Some("Analytics Lead"),
-        Some(intake),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
-
-    let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
-    assert!(content.contains("# User Context"));
-    assert!(content.contains("### About You"));
-    assert!(content.contains("**Industry**: Healthcare"));
-    assert!(content.contains("**Function**: Analytics Lead"));
-    assert!(content.contains("### Target Audience"));
-    assert!(content.contains("Data engineers"));
-    assert!(content.contains("### Key Challenges"));
-    assert!(content.contains("Legacy systems"));
-    assert!(content.contains("### Scope"));
-    assert!(content.contains("ETL pipelines"));
-}
-
-#[test]
-fn test_write_user_context_file_partial_fields() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
-
-    write_user_context_file(
-        workspace_path,
-        DEFAULT_PLUGIN_SLUG,
-        "my-skill",
-        &[],
-        None,
-        Some("Fintech"),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
-
-    let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
-    assert!(content.contains("**Industry**: Fintech"));
-    assert!(!content.contains("**Function**"));
-    assert!(!content.contains("**Target Audience**"));
-}
-
-#[test]
-fn test_write_user_context_file_empty_optional_fields_skipped() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
-
-    write_user_context_file(
-        workspace_path,
-        DEFAULT_PLUGIN_SLUG,
-        "my-skill",
-        &[],
-        None,
-        Some(""),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
-
-    // Skill name is always written; empty optional fields are omitted
-    let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
-    assert!(content.contains("**Name**: my-skill"));
-    assert!(!content.contains("**Industry**"));
-}
-
-#[test]
-fn test_write_user_context_file_always_writes_skill_name() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
-
-    write_user_context_file(
-        workspace_path,
-        DEFAULT_PLUGIN_SLUG,
-        "my-skill",
-        &[],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
-
-    // Skill name alone is enough to produce a file
-    let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
-    assert!(content.contains("**Name**: my-skill"));
-}
-
-#[test]
-fn test_write_user_context_file_creates_missing_dir() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_path = tmp.path().to_str().unwrap();
-    let workspace_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("new-skill");
-    // Directory does NOT exist yet
-    assert!(!workspace_dir.exists());
-
-    write_user_context_file(
-        workspace_path,
-        DEFAULT_PLUGIN_SLUG,
-        "new-skill",
-        &[],
-        None,
-        Some("Retail"),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
-
-    // Directory should have been created and file written
-    assert!(workspace_dir.join("user-context.md").exists());
-}
+// VU-1157: write_user_context_file was deleted (workspace user-context.md
+// dropped). The format_user_context tests below cover the remaining inline
+// formatter that prompt rendering will use in Task 5.
 
 #[test]
 fn test_thinking_budget_for_step() {
@@ -3779,45 +3569,5 @@ fn test_format_user_context_includes_intake_json_context() {
     );
 }
 
-#[test]
-fn test_write_user_context_file_creates_file() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_path = tmp.path().to_str().unwrap();
-    let skill_name = "test-skill";
-    let tags = vec!["tag1".to_string()];
-
-    write_user_context_file(
-        workspace_path,
-        DEFAULT_PLUGIN_SLUG,
-        skill_name,
-        &tags,
-        None,
-        Some("Tech"),
-        None,
-        None,
-        Some("A test skill"),
-        Some("domain"),
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
-
-    let ctx_path = tmp
-        .path()
-        .join(DEFAULT_PLUGIN_SLUG)
-        .join(skill_name)
-        .join("user-context.md");
-    assert!(ctx_path.exists(), "user-context.md should be created");
-    let content = std::fs::read_to_string(&ctx_path).unwrap();
-    assert!(
-        content.contains("# User Context"),
-        "should contain user context heading"
-    );
-    assert!(
-        content.contains("A test skill"),
-        "should contain description"
-    );
-}
+// VU-1157: write_user_context_file deleted; the formatter is exercised by
+// the format_user_context tests above.

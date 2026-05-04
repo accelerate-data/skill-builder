@@ -15,10 +15,12 @@ pub struct DocumentRecord {
     pub updated_at: String,
 }
 
-/// Lightweight document content used for injecting into user-context.md.
+/// Lightweight document content used for injecting into agent prompts.
 #[derive(Debug, Clone)]
 pub struct DocumentContent {
     pub name: String,
+    /// Source path; retained for logging/tests but not read by prompt renderers.
+    #[allow(dead_code)]
     pub file_path: String,
     pub content: String,
 }

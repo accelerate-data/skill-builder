@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::{Emitter, Listener};
+use tauri::{Emitter, Listener, Manager};
 
 use crate::agents::openhands_server;
 use crate::agents::sidecar::{OpenHandsOneShotConfigParams, SidecarConfig};
@@ -28,7 +28,6 @@ use super::step_config::{
     confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
     skill_generation_workflow_tools, workflow_output_format_for_step,
 };
-use super::user_context::write_user_context_file;
 
 #[allow(dead_code)]
 pub(crate) fn workflow_one_shot_runtime_provider() -> Option<String> {
@@ -289,7 +288,6 @@ fn install_research_materialization_listener(
     runs: &WorkflowStepRunManager,
     agent_id: &str,
     skill_name: &str,
-    workspace_skill_dir: String,
 ) -> tauri::EventId {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
     let target_agent_id = agent_id.to_string();
@@ -305,18 +303,19 @@ fn install_research_materialization_listener(
     let listener_to_remove = listener_id;
     let agent_id = agent_id.to_string();
     let skill_name = skill_name.to_string();
+    let skill_id_for_db = skill_name.clone();
     tokio::spawn(async move {
         let result = match rx.recv().await {
             Some(state) => {
-                let parsed =
-                    extract_research_json_from_conversation_state(&state).and_then(|payload| {
-                        materialize_workflow_step_output_value(
-                            Path::new(&workspace_skill_dir),
-                            0,
-                            &payload,
-                        )
-                    });
-                parsed.map(|_| ())
+                let db = app_handle.state::<Db>();
+                extract_research_json_from_conversation_state(&state).and_then(|payload| {
+                    materialize_workflow_step_output_value(
+                        db.inner(),
+                        &skill_id_for_db,
+                        0,
+                        &payload,
+                    )
+                })
             }
             None => Err("Workflow research materialization listener closed".to_string()),
         };
@@ -361,26 +360,10 @@ async fn run_workflow_step_inner(
     workflow_session_id: Option<String>,
 ) -> Result<String, String> {
     let step = get_step_config(step_id)?;
-    // Write user-context.md to the workspace directory so the runtime agent can read it.
-    // Refreshed before every step to pick up mid-workflow settings edits.
-    write_user_context_file(
-        workspace_path,
-        &settings.plugin_slug,
-        skill_name,
-        &settings.tags,
-        settings.author_login.as_deref(),
-        settings.industry.as_deref(),
-        settings.function_role.as_deref(),
-        settings.intake_json.as_deref(),
-        settings.description.as_deref(),
-        Some(settings.purpose.as_str()),
-        settings.version.as_deref(),
-        settings.skill_model.as_deref(),
-        settings.argument_hint.as_deref(),
-        settings.user_invocable,
-        settings.disable_model_invocation,
-        &settings.documents,
-    );
+    // VU-1157: user-context.md is no longer written to the workspace.
+    // Skill metadata is read directly from the DB during prompt rendering
+    // (Task 5). Until that lands, agents do not get an inlined user context
+    // block; the prompt-building helpers will be updated in the same task.
 
     let prompt = match step_id {
         0 => build_step0_prompt(
@@ -484,7 +467,6 @@ async fn run_workflow_step_inner(
             runs,
             &agent_id,
             skill_name,
-            config.workspace_skill_dir.clone(),
         ))
     } else {
         None
@@ -602,7 +584,10 @@ pub async fn run_workflow_step(
     // deployment discovers workspace skill directories before copying `.agents`.
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
-    // Gate: reject disabled steps when guard conditions are active
+    // Gate: reject disabled steps when guard conditions are active.
+    // VU-1157: file-path mentions are replaced with semantic step names. The
+    // guard helpers still read filesystem state in this commit; later tasks
+    // migrate them onto DB rows.
     let context_dir = workspace_skill_dir.join("context");
 
     if step_id >= 1 {
@@ -610,8 +595,8 @@ pub async fn run_workflow_step(
         if parse_scope_recommendation(&clarifications_path) {
             return Err(format!(
                 "{} is disabled: the research phase determined the skill scope is too broad. \
-                 Review the scope recommendations in clarifications.json, then reset to step 0 \
-                 and start with a narrower focus.",
+                 Review the scope recommendations in the clarifications artifact, then reset \
+                 to step 0 and start with a narrower focus.",
                 workflow_step_log_name(step_id as i32)
             ));
         }
@@ -622,41 +607,24 @@ pub async fn run_workflow_step(
         if parse_decisions_guard(&decisions_path) {
             return Err(format!(
                 "{} is disabled: the reasoning agent found unresolvable \
-                 contradictions in decisions.json. Reset to step 2 and revise \
-                 your answers before retrying.",
+                 contradictions in the decisions artifact. Reset to step 2 \
+                 and revise your answers before retrying.",
                 workflow_step_log_name(step_id as i32)
             ));
         }
     }
 
     // Clean stale artifacts before the agent runs so it starts from a
-    // known-clean state. Crash or re-run scenarios can leave partial output.
-    // Step 0 is a full reset — wipe context dir and all downstream artifacts
-    // (same scope as reset_workflow_step to step 0).
-    // Steps 1-3 clean only their own output.
-    // Rewrite mode goes through the refine command, not this path.
+    // known-clean state. VU-1157 dropped the workspace-side `context/` reset
+    // (clarifications/decisions are DB-backed and overwritten transactionally
+    // on each step boundary). Step 0 still calls `delete_step_output_files`
+    // for any other downstream output (e.g. SKILL.md). Steps 1-3 clean only
+    // their own output. Rewrite mode goes through the refine command.
     if step_id == 0 {
         log::debug!(
             "[run_workflow_step] step=0 full cleanup for skill={}",
             skill_name
         );
-        if context_dir.is_dir() {
-            if let Err(e) = std::fs::remove_dir_all(&context_dir) {
-                log::warn!(
-                    "[run_workflow_step] step=0 failed to remove context dir {}: {}",
-                    context_dir.display(),
-                    e
-                );
-            }
-        }
-        // Always ensure context dir exists (covers first run and old skills with wrong path).
-        if let Err(e) = std::fs::create_dir_all(&context_dir) {
-            log::warn!(
-                "[run_workflow_step] step=0 failed to create context dir {}: {}",
-                context_dir.display(),
-                e
-            );
-        }
         crate::cleanup::delete_step_output_files(
             &workspace_path,
             &skill_name,
@@ -721,7 +689,7 @@ pub async fn run_answer_evaluator(
 
     // Read settings from DB — same pattern as read_workflow_settings but without
     // step-specific validation (this is a gate, not a workflow step).
-    let (llm, skills_path, plugin_slug, industry, function_role, intake_json) = {
+    let (llm, skills_path, plugin_slug) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
@@ -736,38 +704,17 @@ pub async fn run_answer_evaluator(
         let sp = settings
             .skills_path
             .unwrap_or_else(|| workspace_path.clone());
-        let run_row = crate::db::get_workflow_run(&conn, &skill_name)
-            .ok()
-            .flatten();
-        let ij = run_row.as_ref().and_then(|r| r.intake_json.clone());
         // Look up plugin slug for this skill so workspace path resolves correctly.
         let slug = crate::db::get_skill_master_any_plugin(&conn, &skill_name)
             .ok()
             .flatten()
             .map(|m| m.plugin_slug)
             .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-        (llm, sp, slug, settings.industry, settings.function_role, ij)
+        (llm, sp, slug)
     };
 
-    // Write user-context.md so the agent can read it (same as workflow steps)
-    write_user_context_file(
-        &workspace_path,
-        &plugin_slug,
-        &skill_name,
-        &[], // answer evaluator doesn't need full metadata
-        None,
-        industry.as_deref(),
-        function_role.as_deref(),
-        intake_json.as_deref(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[], // answer evaluator doesn't inject documents
-    );
+    // VU-1157: user-context.md is no longer written. Skill metadata flows
+    // into the prompt inline once Task 5 lands.
 
     let prompt = build_evaluator_prompt(&skill_name, &workspace_path, &plugin_slug, &skills_path);
 
