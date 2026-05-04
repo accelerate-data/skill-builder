@@ -1,29 +1,36 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SaveStatus } from "@/components/clarifications-editor";
-import type { ClarificationsFile } from "@/lib/clarifications-types";
-import { parseClarifications } from "@/lib/clarifications-types";
-import { getClarificationsContent, saveClarificationsContent } from "@/lib/tauri";
+import type { ClarificationsFile, Question } from "@/lib/clarifications-types";
+import { invokeCommand } from "@/lib/tauri";
 import { toast } from "@/lib/toast";
 
 interface UseWorkflowAutosaveOptions {
-  /** Workspace path from settings */
-  workspacePath: string | null;
   /** Skill name from route params */
   skillName: string;
   /** Whether current step allows clarifications editing */
   clarificationsEditable: boolean | undefined;
   /** Current step completion status */
   currentStepStatus: string | undefined;
+  /** Clarifications data from DB query — used as the base for editor state */
+  dbClarificationsData?: ClarificationsFile | null;
+}
+
+/** Flatten all questions (including refinements) from a ClarificationsFile */
+function flattenQuestions(questions: Question[]): Question[] {
+  return questions.flatMap((q) => [q, ...flattenQuestions(q.refinements ?? [])]);
+}
+
+function flattenFileQuestions(data: ClarificationsFile): Question[] {
+  return (data.sections ?? []).flatMap((s) => flattenQuestions(s.questions ?? []));
 }
 
 export function useWorkflowAutosave({
-  workspacePath,
   skillName,
   clarificationsEditable,
   currentStepStatus,
+  dbClarificationsData,
 }: UseWorkflowAutosaveOptions) {
-  // Clarifications file content and parsed state
-  const [reviewContent, setReviewContent] = useState<string | null>(null);
+  // Editor local state — initialized from DB data, tracks in-progress edits
   const [clarificationsData, setClarificationsData] = useState<ClarificationsFile | null>(null);
 
   // Editor dirty tracking and save status
@@ -34,83 +41,93 @@ export function useWorkflowAutosave({
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasUnsavedChangesRef = useRef(false);
 
-  // Load clarifications file when visiting a completed, clarifications-editable step
+  // Sync local state when DB data arrives (initial load) or when step changes
   useEffect(() => {
-    if (!clarificationsEditable || currentStepStatus !== "completed" || !workspacePath) {
-      setReviewContent(null);
+    if (!clarificationsEditable || currentStepStatus !== "completed") {
       setClarificationsData(null);
+      setEditorDirty(false);
+      setSaveStatus("idle");
+      hasUnsavedChangesRef.current = false;
       return;
     }
+    // Update local state from DB data when not dirty (don't overwrite in-flight edits)
+    if (dbClarificationsData && !hasUnsavedChangesRef.current) {
+      setClarificationsData(dbClarificationsData);
+      setEditorDirty(false);
+    }
+  }, [clarificationsEditable, currentStepStatus, dbClarificationsData]);
 
-    const loadContent = async () => {
+  // Persist a single question answer change to the DB
+  const persistQuestionAnswer = useCallback(
+    async (questionId: string, answerChoice: string | null, answerText: string | null) => {
       try {
-        const content = await getClarificationsContent(skillName, workspacePath);
-        const parsed = parseClarifications(content ?? null);
-        setReviewContent(content ?? null);
-        setClarificationsData(parsed);
-        setEditorDirty(false);
+        await invokeCommand("update_clarification_answer", {
+          skillId: skillName,
+          questionId,
+          answerChoice,
+          answerText,
+        });
       } catch (err) {
-        console.error("[autosave] Failed to load clarifications:", err);
-      }
-    };
-
-    loadContent();
-  }, [currentStepStatus, clarificationsEditable, workspacePath, skillName]);
-
-  // Handle editor content changes
-  const handleClarificationsChange = useCallback((updated: ClarificationsFile) => {
-    setClarificationsData(updated);
-    setEditorDirty(true);
-    setSaveStatus("dirty");
-    hasUnsavedChangesRef.current = true;
-    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-  }, []);
-
-  // Save clarifications content via backend command
-  const handleSave = useCallback(
-    async (): Promise<boolean> => {
-      if (!clarificationsEditable || !workspacePath) return false;
-
-      setSaveStatus("saving");
-      try {
-        const content = clarificationsData
-          ? JSON.stringify(clarificationsData, null, 2)
-          : (reviewContent ?? "");
-        await saveClarificationsContent(skillName, workspacePath, content);
-        setReviewContent(content);
-        setEditorDirty(false);
-        hasUnsavedChangesRef.current = false;
-        setSaveStatus("saved");
-
-        // Show "Saved" for 2s, then return to idle
-        if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-        savedTimerRef.current = setTimeout(() => setSaveStatus("idle"), 2000);
-
-        return true;
-      } catch (err) {
-        setSaveStatus("dirty"); // Revert to dirty on failure
-        hasUnsavedChangesRef.current = true;
-        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, {
+        toast.error(`Failed to save answer: ${err instanceof Error ? err.message : String(err)}`, {
           duration: Infinity,
           cause: err,
           context: { operation: "workflow_autosave", skillName },
         });
-        return false;
+        throw err;
       }
     },
-    [clarificationsEditable, workspacePath, reviewContent, clarificationsData, skillName]
+    [skillName],
   );
 
-  // Debounce autosave: fires 1500ms after last edit on completed clarifications-editable step
-  useEffect(() => {
-    if (!clarificationsEditable || currentStepStatus !== "completed" || !editorDirty) return;
+  // Handle editor content changes — detect changed question answers and persist
+  const handleClarificationsChange = useCallback(
+    (updated: ClarificationsFile) => {
+      // Find which questions changed vs the current local state
+      const prevQuestions = flattenFileQuestions(clarificationsData ?? { sections: [] });
+      const nextQuestions = flattenFileQuestions(updated);
+      const prevMap = new Map(prevQuestions.map((q) => [q.id, q]));
 
-    const timer = setTimeout(() => {
-      handleSave();
-    }, 1500);
+      for (const q of nextQuestions) {
+        const prev = prevMap.get(q.id);
+        const choiceChanged = prev?.answer_choice !== q.answer_choice;
+        const textChanged = prev?.answer_text !== q.answer_text;
+        if (choiceChanged || textChanged) {
+          // Fire-and-forget — errors are toasted inside persistQuestionAnswer
+          setSaveStatus("saving");
+          persistQuestionAnswer(q.id, q.answer_choice ?? null, q.answer_text ?? null)
+            .then(() => {
+              setSaveStatus("saved");
+              hasUnsavedChangesRef.current = false;
+              if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+              savedTimerRef.current = setTimeout(() => setSaveStatus("idle"), 2000);
+            })
+            .catch(() => {
+              setSaveStatus("dirty");
+              hasUnsavedChangesRef.current = true;
+            });
+        }
+      }
 
-    return () => clearTimeout(timer);
-  }, [clarificationsData, editorDirty, clarificationsEditable, currentStepStatus, handleSave]);
+      setClarificationsData(updated);
+      setEditorDirty(true);
+      hasUnsavedChangesRef.current = true;
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    },
+    [clarificationsData, persistQuestionAnswer],
+  );
+
+  // handleSave is a no-op in the DB-backed world — answers are persisted immediately.
+  // Kept for interface compatibility with callers that await it before continuing.
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (!clarificationsEditable) return false;
+    // All changes are already persisted via handleClarificationsChange.
+    // If no dirty changes remain, return immediately.
+    if (!hasUnsavedChangesRef.current) return true;
+    setEditorDirty(false);
+    hasUnsavedChangesRef.current = false;
+    setSaveStatus("idle");
+    return true;
+  }, [clarificationsEditable]);
 
   // Cleanup: cancel pending save timers on unmount
   useEffect(() => {
@@ -121,17 +138,16 @@ export function useWorkflowAutosave({
     };
   }, []);
 
-  // Expose a way to update clarifications state from outside (e.g., after gate evaluation)
-  const updateClarificationsState = useCallback((data: ClarificationsFile, content: string) => {
+  // Legacy: expose a way to update clarifications state from outside.
+  // With the DB-backed approach this is rarely needed, but kept for compatibility.
+  const updateClarificationsState = useCallback((data: ClarificationsFile) => {
     setClarificationsData(data);
-    setReviewContent(content);
     setEditorDirty(false);
     setSaveStatus("idle");
     hasUnsavedChangesRef.current = false;
   }, []);
 
   return {
-    reviewContent,
     clarificationsData,
     editorDirty,
     saveStatus,

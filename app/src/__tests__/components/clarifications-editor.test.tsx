@@ -19,6 +19,8 @@ function makeQuestion(overrides: Partial<Question> = {}): Question {
     ],
     answer_choice: null,
     answer_text: null,
+    answer_verdict: null,
+    answer_verdict_reason: null,
     refinements: [],
     ...overrides,
   };
@@ -304,15 +306,8 @@ describe("Need Review filter toggle", () => {
     const user = userEvent.setup();
     const data = makeClarifications([
       makeQuestion({ id: "Q1", title: "Answered Question", answer_choice: "A", answer_text: "Choice A" }),
-      makeQuestion({ id: "Q2", title: "Unanswered Question", answer_choice: null, answer_text: null }),
+      makeQuestion({ id: "Q2", title: "Unanswered Question", answer_choice: null, answer_text: null, answer_verdict: "not_answered", answer_verdict_reason: "This question is still unanswered." }),
     ]);
-    data.answer_evaluator_notes = [
-      {
-        type: "answer_feedback",
-        title: "Not answered: Q2",
-        body: "This question is still unanswered.",
-      },
-    ];
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     expect(screen.getByText("Answered Question")).toBeInTheDocument();
@@ -342,15 +337,8 @@ describe("Need Review filter toggle", () => {
     const user = userEvent.setup();
     const data = makeClarifications([
       makeQuestion({ id: "Q1", title: "Required Question", must_answer: true, answer_choice: "A", answer_text: "Choice A" }),
-      makeQuestion({ id: "Q2", title: "Flagged Question", must_answer: false, answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q2", title: "Flagged Question", must_answer: false, answer_choice: "A", answer_text: "Choice A", answer_verdict: "needs_refinement", answer_verdict_reason: "This answer needs more detail." }),
     ]);
-    data.answer_evaluator_notes = [
-      {
-        type: "answer_feedback",
-        title: "Needs refinement: Q2",
-        body: "This answer needs more detail.",
-      },
-    ];
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     await user.click(screen.getByRole("switch", { name: "Need Review" }));
@@ -363,16 +351,9 @@ describe("Need Review filter toggle", () => {
   it("keeps answered contradictory questions visible", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Contradictory Question", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q1", title: "Contradictory Question", answer_choice: "A", answer_text: "Choice A", answer_verdict: "contradictory", answer_verdict_reason: "This answer conflicts with Q2." }),
       makeQuestion({ id: "Q2", title: "Other Question", answer_choice: "A", answer_text: "Choice A" }),
     ]);
-    data.answer_evaluator_notes = [
-      {
-        type: "answer_feedback",
-        title: "Contradictory answer: Q1",
-        body: "This answer conflicts with Q2.",
-      },
-    ];
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     await user.click(screen.getByRole("switch", { name: "Need Review" }));
@@ -385,14 +366,10 @@ describe("Need Review filter toggle", () => {
 describe("Needs Review banner count", () => {
   it("counts only unanswered questions with feedback or must_answer", () => {
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Answered Flagged", answer_choice: "A", answer_text: "Choice A" }),
-      makeQuestion({ id: "Q2", title: "Unanswered Flagged", answer_choice: null, answer_text: null }),
+      makeQuestion({ id: "Q1", title: "Answered Flagged", answer_choice: "A", answer_text: "Choice A", answer_verdict: "needs_refinement", answer_verdict_reason: "More detail needed." }),
+      makeQuestion({ id: "Q2", title: "Unanswered Flagged", answer_choice: null, answer_text: null, answer_verdict: "not_answered", answer_verdict_reason: "Still unanswered." }),
       makeQuestion({ id: "Q3", title: "Unanswered Must", must_answer: true, answer_choice: null, answer_text: null }),
     ]);
-    data.answer_evaluator_notes = [
-      { type: "answer_feedback", title: "Needs refinement: Q1", body: "More detail needed." },
-      { type: "answer_feedback", title: "Not answered: Q2", body: "Still unanswered." },
-    ];
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
 
@@ -402,11 +379,8 @@ describe("Needs Review banner count", () => {
 
   it("shows no banner when all flagged questions are answered", () => {
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Answered Flagged", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q1", title: "Answered Flagged", answer_choice: "A", answer_text: "Choice A", answer_verdict: "needs_refinement", answer_verdict_reason: "More detail needed." }),
     ]);
-    data.answer_evaluator_notes = [
-      { type: "answer_feedback", title: "Needs refinement: Q1", body: "More detail needed." },
-    ];
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
 
@@ -415,14 +389,10 @@ describe("Needs Review banner count", () => {
 
   it("counts contradictory questions and their referenced counterparts", () => {
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Contradictory Question", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q1", title: "Contradictory Question", answer_choice: "A", answer_text: "Choice A", answer_verdict: "contradictory", answer_verdict_reason: "This answer conflicts with Q2." }),
       makeQuestion({ id: "Q2", title: "Referenced Counterpart", answer_choice: "B", answer_text: "Choice B" }),
-      makeQuestion({ id: "Q3", title: "Answered Non-contradictory", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q3", title: "Answered Non-contradictory", answer_choice: "A", answer_text: "Choice A", answer_verdict: "needs_refinement", answer_verdict_reason: "More detail needed." }),
     ]);
-    data.answer_evaluator_notes = [
-      { type: "answer_feedback", title: "Contradictory answer: Q1", body: "This answer conflicts with Q2." },
-      { type: "answer_feedback", title: "Needs refinement: Q3", body: "More detail needed." },
-    ];
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
 
@@ -432,14 +402,7 @@ describe("Needs Review banner count", () => {
 
 describe("Inline evaluator feedback", () => {
   it("shows a status badge on collapsed flagged question cards", () => {
-    const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question" })]);
-    data.answer_evaluator_notes = [
-      {
-        type: "answer_feedback",
-        title: "Vague answer: Q1",
-        body: "Missing concrete thresholds.",
-      },
-    ];
+    const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question", answer_verdict: "vague", answer_verdict_reason: "Missing concrete thresholds." })]);
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     expect(screen.getByText("Vague")).toBeInTheDocument();
@@ -447,14 +410,7 @@ describe("Inline evaluator feedback", () => {
 
   it("shows reason inline with the flagged question in context", async () => {
     const user = userEvent.setup();
-    const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question" })]);
-    data.answer_evaluator_notes = [
-      {
-        type: "answer_feedback",
-        title: "Vague answer: Q1",
-        body: "Missing concrete thresholds.",
-      },
-    ];
+    const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question", answer_verdict: "vague", answer_verdict_reason: "Missing concrete thresholds." })]);
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     await expandCard(user, "Flagged Question");
@@ -466,16 +422,9 @@ describe("Inline evaluator feedback", () => {
   it("shows contradiction context on counterpart questions surfaced by Needs Review", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Flagged Contradiction", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q1", title: "Flagged Contradiction", answer_choice: "A", answer_text: "Choice A", answer_verdict: "contradictory", answer_verdict_reason: "This answer conflicts with Q2." }),
       makeQuestion({ id: "Q2", title: "Conflict Counterpart", answer_choice: "B", answer_text: "Choice B" }),
     ]);
-    data.answer_evaluator_notes = [
-      {
-        type: "answer_feedback",
-        title: "Contradictory answer: Q1",
-        body: "This answer conflicts with Q2.",
-      },
-    ];
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     await user.click(screen.getByRole("switch", { name: "Need Review" }));

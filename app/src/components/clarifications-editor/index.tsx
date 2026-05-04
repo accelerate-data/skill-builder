@@ -9,7 +9,7 @@ import {
   getTotalCounts,
   isQuestionAnswered,
 } from "@/lib/clarifications-types";
-import { getReviewFeedbackMap } from "@/lib/clarifications-review";
+import type { ReviewFeedback, ReviewStatus } from "@/lib/clarifications-review";
 import { SectionBlock } from "./section-block";
 import { NotesBlock } from "./notes-block";
 
@@ -55,11 +55,32 @@ export function ClarificationsEditor({
   const [notesExpanded, setNotesExpanded] = useState(true);
   const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
   const { answered, total, mustUnanswered } = getTotalCounts(data);
-  const reviewFeedbackByQuestion = useMemo(
-    () => getReviewFeedbackMap(data.answer_evaluator_notes ?? []),
-    [data.answer_evaluator_notes],
-  );
-  const allQuestions = useMemo(() => flattenSectionQuestions(data.sections ?? []), [data.sections]);
+
+  /** Build the feedback map from per-question verdict fields (DB-backed). */
+  const allQuestionsFlat = useMemo(() => flattenSectionQuestions(data.sections ?? []), [data.sections]);
+  const reviewFeedbackByQuestion = useMemo<Map<string, ReviewFeedback>>(() => {
+    const map = new Map<string, ReviewFeedback>();
+    const VALID_VERDICTS = new Set<ReviewStatus>(["not_answered", "vague", "contradictory", "needs_refinement"]);
+    for (const q of allQuestionsFlat) {
+      const verdict = q.answer_verdict;
+      if (!verdict || !VALID_VERDICTS.has(verdict as ReviewStatus)) continue;
+      const reason = q.answer_verdict_reason ?? "";
+      const feedback: ReviewFeedback = {
+        status: verdict as ReviewStatus,
+        questionId: q.id,
+        reason,
+      };
+      // For contradictory verdicts, attempt to parse which question it conflicts with
+      // from the reason text so the contradiction counterpart UI can be surfaced.
+      if (verdict === "contradictory") {
+        const match = /conflicts with\s+([A-Za-z]\d+(?:\.\d+[a-z]?)?)/i.exec(reason);
+        if (match) feedback.contradicts = match[1];
+      }
+      map.set(q.id, feedback);
+    }
+    return map;
+  }, [allQuestionsFlat]);
+  const allQuestions = allQuestionsFlat;
   const allQuestionIds = useMemo(() => new Set(allQuestions.map((question) => question.id)), [allQuestions]);
   const contradictionSourcesByQuestion = useMemo(() => {
     const map = new Map<string, Set<string>>();
