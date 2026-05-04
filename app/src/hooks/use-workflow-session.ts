@@ -5,7 +5,6 @@ import { teardownWorkflowSession } from "@/lib/workflow-teardown";
 import {
   acquireLock,
   releaseLock,
-  cleanupSkillSidecar,
 } from "@/lib/tauri";
 import { toast } from "@/lib/toast";
 
@@ -75,9 +74,6 @@ export function useWorkflowSession({
       if (sessionCleanedUpRef.current) return;
       sessionCleanedUpRef.current = true;
       teardownWorkflowSession({ logPrefix: "use-workflow-session" });
-
-      // Fire-and-forget: clean up persistent sidecar
-      cleanupSkillSidecar(skillName).catch((e) => console.warn("[use-workflow-session] non-fatal: op=cleanupSkillSidecar err=%s", e));
     };
   }, [skillName]);
 
@@ -90,9 +86,6 @@ export function useWorkflowSession({
         logPrefix: "use-workflow-session",
         clearSessionId: true,
       });
-
-      // Fire-and-forget: shut down persistent sidecar for this skill
-      cleanupSkillSidecar(skillName).catch((e) => console.warn("[use-workflow-session] non-fatal: op=cleanupSkillSidecar err=%s", e));
 
       // Fire-and-forget: release skill lock before leaving
       releaseLock(skillName).catch((e) => console.warn("[use-workflow-session] non-fatal: op=releaseLock err=%s", e));

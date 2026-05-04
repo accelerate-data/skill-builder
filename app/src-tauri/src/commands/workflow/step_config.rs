@@ -125,6 +125,7 @@ pub(crate) fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
     }
 }
 
+#[allow(dead_code)]
 pub fn build_betas(
     thinking_budget: Option<u32>,
     model: &str,

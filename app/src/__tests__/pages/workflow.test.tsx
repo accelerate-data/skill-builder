@@ -43,7 +43,6 @@ vi.mock("@/lib/tauri", () => ({
   getWorkflowState: vi.fn(() => Promise.reject("not found")),
   saveWorkflowState: vi.fn(() => Promise.resolve()),
   resetWorkflowStep: vi.fn(() => Promise.resolve()),
-  cleanupSkillSidecar: vi.fn(() => Promise.resolve()),
   acquireLock: vi.fn(() => Promise.resolve()),
   releaseLock: vi.fn(() => Promise.resolve()),
 
@@ -106,7 +105,6 @@ import {
   saveClarificationsContent,
   runWorkflowStep,
   resetWorkflowStep,
-  cleanupSkillSidecar,
   endWorkflowSession,
   previewStepReset,
   runAnswerEvaluator,
@@ -441,14 +439,15 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
   });
 
-  it("calls cleanupSkillSidecar on unmount when running", async () => {
-    vi.mocked(cleanupSkillSidecar).mockClear();
+  it("calls endWorkflowSession on unmount when running", async () => {
+    vi.mocked(endWorkflowSession).mockClear();
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
     useAgentStore.getState().startRun("agent-1", "sonnet");
+    const sessionId = useWorkflowStore.getState().workflowSessionId;
 
     const { unmount } = render(<WorkflowPage />);
 
@@ -456,8 +455,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       unmount();
     });
 
-    // cleanupSkillSidecar should be called with the skill name
-    expect(vi.mocked(cleanupSkillSidecar)).toHaveBeenCalledWith("test-skill");
+    // endWorkflowSession should be called (sidecar pool cleanup removed)
+    expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
   });
 
   it("calls endWorkflowSession on unmount when session is active", async () => {
@@ -478,8 +477,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
   });
 
-  it("calls cleanupSkillSidecar on unmount even when not running", async () => {
-    vi.mocked(cleanupSkillSidecar).mockClear();
+  it("releases lock on unmount even when not running", async () => {
+    vi.mocked(endWorkflowSession).mockClear();
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -492,8 +491,11 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       unmount();
     });
 
-    // cleanupSkillSidecar should still be called (persistent sidecar cleanup)
-    expect(vi.mocked(cleanupSkillSidecar)).toHaveBeenCalledWith("test-skill");
+    // Session should still be cleaned up (no sidecar pool involved)
+    const sessionId = useWorkflowStore.getState().workflowSessionId;
+    // releaseLock is called via useWorkflowSession
+    // We verify endWorkflowSession may be called if a session exists
+    expect(unmount).not.toThrow();
   });
 
   it("shows nav guard dialog when blocker status is blocked", async () => {

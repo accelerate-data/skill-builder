@@ -1,4 +1,4 @@
-use crate::agents::sidecar_pool;
+use crate::agents::{node_resolver as sidecar_pool, sidecar_path};
 use crate::types::{DepStatus, NodeStatus, StartupDeps};
 
 fn dep_ok(code: &str, name: &str, detail: String) -> DepStatus {
@@ -98,7 +98,7 @@ pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, St
     checks.push(node);
 
     // 2. Sidecar (agent-runner.js)
-    let sidecar = match sidecar_pool::resolve_sidecar_path_public(&app) {
+    let sidecar = match sidecar_path::resolve_sidecar_path_public(&app) {
         Ok(path) => dep_ok("agent_sidecar_bundle", "Agent sidecar", path),
         Err(e) => dep_fail(
             "agent_sidecar_bundle",

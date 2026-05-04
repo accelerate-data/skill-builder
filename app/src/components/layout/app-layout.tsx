@@ -16,7 +16,7 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
-import { cancelRefineTurn, cancelWorkflowStep, cleanupSkillSidecar } from "@/lib/tauri";
+import { cancelRefineTurn, cancelWorkflowStep } from "@/lib/tauri";
 import { getEvalsRunning, subscribeEvalsRunning } from "@/lib/eval-running-state";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
 import {
@@ -139,10 +139,7 @@ export function AppLayout() {
     if (!pendingSkillSwitch) return;
     // Clean up running agents for the current skill
     if (selectedWorkspaceSkillName) {
-      // Extract the bare skill name from the library key (strip prefix if present)
-      const parts = selectedWorkspaceSkillName.split(":");
-      const bareSkillName = parts[parts.length - 1];
-      cleanupSkillSidecar(bareSkillName).catch(() => {});
+      // Sidecar pool removed; cancellation via OpenHands server is handled by the workflow page's own cleanup.
     }
     useRefineStore.getState().clearSession();
     useAgentStore.getState().clearRuns();

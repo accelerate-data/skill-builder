@@ -2,7 +2,8 @@ use std::fmt;
 
 /// The three possible terminal outcomes for a sidecar request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum TerminalOutcome {
+#[allow(dead_code)]
+pub(crate) enum TerminalOutcome {
     /// Agent completed successfully.
     Completed,
     /// Agent failed (SDK error, execution error).
@@ -11,7 +12,8 @@ pub(super) enum TerminalOutcome {
     Shutdown,
 }
 
-pub(super) fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<TerminalOutcome> {
+#[allow(dead_code)]
+pub(crate) fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<TerminalOutcome> {
     match msg.get("type").and_then(|t| t.as_str()) {
         Some("agent_event") => {
             let event = msg.get("event")?;
@@ -46,6 +48,7 @@ pub(super) fn stream_message_terminal_status(msg: &serde_json::Value) -> Option<
 }
 
 /// Categorized sidecar startup failure with actionable fix instructions.
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize)]
 pub enum SidecarStartupError {
     /// The agent-runner.js bundle was not found in any expected location.
@@ -62,6 +65,7 @@ pub enum SidecarStartupError {
     Other { detail: String },
 }
 
+#[allow(dead_code)]
 impl SidecarStartupError {
     /// Machine-readable error type for frontend classification.
     pub fn error_type(&self) -> &'static str {

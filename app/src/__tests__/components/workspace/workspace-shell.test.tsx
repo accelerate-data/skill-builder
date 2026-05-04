@@ -69,7 +69,6 @@ vi.mock("@/lib/tauri", () => ({
   releaseLock: vi.fn().mockResolvedValue(undefined),
   startRefineSession: vi.fn().mockResolvedValue({ session_id: "test-session" }),
   closeRefineSession: vi.fn().mockResolvedValue(undefined),
-  cleanupSkillSidecar: vi.fn().mockResolvedValue(undefined),
   cancelDescriptionOptimization: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
   sendRefineMessage: vi.fn().mockResolvedValue("agent-1"),

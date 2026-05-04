@@ -192,49 +192,6 @@ pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> 
     }
 }
 
-/// Spawn an agent request.
-///
-/// OpenHands requests use the Rust-managed local Agent Server boundary. Legacy
-/// runtime requests still use the persistent sidecar pool, which reuses a
-/// long-lived Node.js process per skill to reduce startup latency.
-///
-/// The request runs until the agent completes or the user cancels manually.
-pub async fn spawn_sidecar(
-    agent_id: String,
-    mut config: SidecarConfig,
-    pool: super::sidecar_pool::SidecarPool,
-    app_handle: tauri::AppHandle,
-    skill_name: String,
-    transcript_log_dir: Option<String>,
-) -> Result<(), String> {
-    if config.runtime_provider.as_deref() == Some("openhands") {
-        crate::agents::openhands_server::dispatch_openhands_one_shot(
-            &app_handle,
-            &agent_id,
-            config,
-            transcript_log_dir.as_deref(),
-        )
-        .await?;
-        return Ok(());
-    } else if config.path_to_claude_code_executable.is_none() {
-        // Resolve the SDK native binary path so the bundled SDK can spawn it.
-        if let Ok(cli_path) = resolve_sdk_cli_path(&app_handle) {
-            config.path_to_claude_code_executable = Some(cli_path);
-        }
-    }
-
-    pool.send_request(
-        &skill_name,
-        &agent_id,
-        config,
-        &app_handle,
-        transcript_log_dir.as_deref(),
-    )
-    .await?;
-
-    Ok(())
-}
-
 /// Public accessor for startup dependency checks.
 #[allow(dead_code)]
 pub fn resolve_sdk_cli_path_public(app_handle: &tauri::AppHandle) -> Result<String, String> {

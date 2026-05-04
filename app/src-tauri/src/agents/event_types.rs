@@ -16,12 +16,14 @@ pub struct AgentExitPayload {
 }
 
 /// Payload emitted as the `agent-shutdown` Tauri event when an agent is shut down.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentShutdownPayload {
     pub agent_id: String,
 }
 
 /// Payload for sidecar startup error events sent to the frontend.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentInitError {
     pub error_type: String,

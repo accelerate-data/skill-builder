@@ -11,12 +11,10 @@ vi.mock("@tanstack/react-router", () => ({
 const mockAcquireLock = vi.fn((_arg?: unknown) => Promise.resolve());
 const mockReleaseLock = vi.fn((_arg?: unknown) => Promise.resolve());
 const mockEndWorkflowSession = vi.fn((_arg?: unknown) => Promise.resolve());
-const mockCleanupSkillSidecar = vi.fn((_arg?: unknown) => Promise.resolve());
 vi.mock("@/lib/tauri", () => ({
   acquireLock: (skillName: string) => mockAcquireLock(skillName),
   releaseLock: (skillName: string) => mockReleaseLock(skillName),
   endWorkflowSession: (sessionId: string) => mockEndWorkflowSession(sessionId),
-  cleanupSkillSidecar: (skillName: string) => mockCleanupSkillSidecar(skillName),
 }));
 
 vi.mock("@/lib/toast", () => ({
@@ -181,8 +179,6 @@ describe("useWorkflowSession", () => {
     expect(mockClearRuns).toHaveBeenCalled();
     // Session ended
     expect(mockEndWorkflowSession).toHaveBeenCalledWith(sessionId);
-    // Sidecar cleaned up
-    expect(mockCleanupSkillSidecar).toHaveBeenCalledWith("test-skill");
     // Lock released
     expect(mockReleaseLock).toHaveBeenCalledWith("test-skill");
     // Navigation allowed to proceed

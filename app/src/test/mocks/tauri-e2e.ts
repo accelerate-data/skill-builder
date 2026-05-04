@@ -131,7 +131,6 @@ const mockResponses: Record<string, unknown> = {
   check_workspace_path: true,
   check_marketplace_updates: { library: [], workspace: [], registry_name: null, registry_names: [] },
   has_running_agents: false,
-  start_agent: "agent-001",
   run_workflow_step: "agent-001",
   run_parallel_agents: { agent_id_a: "agent-001", agent_id_b: "agent-002" },
 
@@ -142,8 +141,7 @@ const mockResponses: Record<string, unknown> = {
   get_artifact_content: null,
   save_artifact_content: undefined,
   reset_workflow_step: undefined,
-  // Sidecar lifecycle
-  cleanup_skill_sidecar: undefined,
+  // Lifecycle
   clean_benchmark_snapshot: undefined,
   // Reconciliation
   reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0, discovered_skills: [] },

@@ -476,21 +476,17 @@ pub async fn cancel_refine_turn(
     Ok(())
 }
 
-/// Cancel a one-shot workflow step agent by agent_id (= request_id in the sidecar).
-/// Uses the `cancel` message type which matches `currentRequestId` and calls
-/// `currentAbort.abort()` on the running AbortController.
+/// Cancel a one-shot agent run by agent_id via the OpenHands native runner.
 #[tauri::command]
 pub async fn cancel_agent_run(
     skill_name: String,
     agent_id: String,
-    pool: tauri::State<'_, crate::agents::sidecar_pool::SidecarPool>,
 ) -> Result<(), String> {
-    log::info!("[cancel_agent_run] skill='{}'", skill_name);
-    if let Err(err) = pool.send_cancel(&skill_name, &agent_id).await {
+    log::info!("[cancel_agent_run] skill='{}' agent='{}'", skill_name, agent_id);
+    if !crate::agents::openhands_server::cancel_openhands_one_shot(&agent_id) {
         log::warn!(
-            "[cancel_agent_run] Failed to send cancel for skill '{}': {}",
-            skill_name,
-            err
+            "[cancel_agent_run] No active OpenHands run found for agent='{}'",
+            agent_id
         );
     }
     Ok(())

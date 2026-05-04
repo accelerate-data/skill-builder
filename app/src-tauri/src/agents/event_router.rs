@@ -4,7 +4,7 @@ use super::event_types::{
     AgentEvent, AgentExitPayload, AgentInitError, AgentShutdownPayload, SidecarRunSummary,
 };
 use super::run_persist::persist_run_summary;
-use super::sidecar_pool::SidecarStartupError;
+use super::startup_error::SidecarStartupError;
 
 #[derive(Debug)]
 pub(super) enum SidecarMessageAction {
@@ -230,6 +230,7 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
     }
 }
 
+#[allow(dead_code)]
 pub fn handle_sidecar_exit(app_handle: &tauri::AppHandle, agent_id: &str, success: bool) {
     handle_sidecar_exit_with_detail(app_handle, agent_id, success, None);
 }
@@ -256,6 +257,7 @@ pub fn handle_sidecar_exit_with_detail(
     }
 }
 
+#[allow(dead_code)]
 pub fn handle_agent_shutdown(app_handle: &tauri::AppHandle, agent_id: &str) {
     log::info!("[event:agent-shutdown:{}]", agent_id);
     let payload = AgentShutdownPayload {
@@ -268,6 +270,7 @@ pub fn handle_agent_shutdown(app_handle: &tauri::AppHandle, agent_id: &str) {
 
 /// Emit a structured error event when sidecar startup fails.
 /// The frontend listens for `agent-init-error` to show an actionable dialog.
+#[allow(dead_code)]
 pub fn emit_init_error(app_handle: &tauri::AppHandle, error: &SidecarStartupError) {
     let payload = AgentInitError {
         error_type: error.error_type().to_string(),
@@ -292,6 +295,7 @@ pub fn emit_init_error(app_handle: &tauri::AppHandle, error: &SidecarStartupErro
 /// Emit a structured runtime error event (e.g. authentication failure detected
 /// from agent output). Reuses the `agent-init-error` channel so the frontend's
 /// `RuntimeErrorDialog` shows an actionable fix hint.
+#[allow(dead_code)]
 pub fn emit_runtime_error(
     app_handle: &tauri::AppHandle,
     error_type: &str,
@@ -319,6 +323,7 @@ pub fn emit_runtime_error(
 }
 
 /// Check whether a run_result error subtype indicates an authentication failure.
+#[allow(dead_code)]
 pub fn is_authentication_error(msg: &serde_json::Value) -> bool {
     if let Some(event) = msg.get("event") {
         // Check resultSubtype field (set by message-processor)
