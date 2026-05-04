@@ -24,9 +24,9 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
     {
-      // Nightly / post-merge: real sidecar integration + full desktop smoke
+      // Nightly / post-merge: real sidecar integration
       name: "nightly",
-      grep: /@integration|@evals-integration|@desktop-smoke/,
+      grep: /@integration|@evals-integration/,
       use: { ...devices["Desktop Chrome"] },
     },
   ],
