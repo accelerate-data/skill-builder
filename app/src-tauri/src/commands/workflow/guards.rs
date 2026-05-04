@@ -230,33 +230,3 @@ mod tests {
         assert!(!check_decisions_guard_db(&conn, "skill-dec-conflict-resolved"));
     }
 }
-
-/// Core logic for validating decisions.json existence — testable without tauri::State.
-/// Checks in order: skill output dir (skillsPath), workspace dir.
-/// Returns Ok(()) if found, Err with a clear message if missing.
-pub(crate) fn validate_decisions_exist_inner(
-    skill_name: &str,
-    workspace_path: &str,
-    plugin_slug: &str,
-    _skills_path: &str,
-) -> Result<(), String> {
-    let workspace_dir = crate::skill_paths::resolve_workspace_skill_dir(
-        std::path::Path::new(workspace_path),
-        plugin_slug,
-        skill_name,
-    );
-    let path = workspace_dir.join("context").join("decisions.json");
-    if path.exists() {
-        let content = std::fs::read_to_string(&path).unwrap_or_default();
-        if !content.trim().is_empty() {
-            return Ok(());
-        }
-    }
-
-    Err(
-        "Cannot start Generate Skill step: decisions.json was not found on the filesystem. \
-         The Confirm Decisions step (step 2) must create a decisions file before the Generate Skill step can run. \
-         Please re-run the Confirm Decisions step first."
-            .to_string(),
-    )
-}

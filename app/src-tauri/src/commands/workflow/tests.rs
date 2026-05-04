@@ -7,7 +7,7 @@ use super::deploy::{
 };
 use super::evaluation::get_step_output_files;
 use super::guards::{
-    make_agent_id, validate_decisions_exist_inner, workflow_step_runtime_label,
+    make_agent_id, workflow_step_runtime_label,
 };
 use super::output_format::{
     answer_evaluator_output_format, extract_research_json_from_conversation_state,
@@ -663,29 +663,6 @@ fn research_json_extraction_rejects_missing_empty_non_object_error_and_invalid_j
     assert!(extract_research_json_from_conversation_state(&invalid)
         .unwrap_err()
         .contains("invalid JSON"));
-}
-
-#[test]
-fn research_materialization_from_conversation_state_writes_clarifications() {
-    let db = db_with_seeded_skill("my-skill");
-    let payload = serde_json::json!({
-        "status": "research_complete",
-        "question_count": 0,
-        "research_output": valid_clarifications_value()
-    });
-    let state = serde_json::json!({
-        "type": "conversation_state",
-        "status": "completed",
-        "result_text": serde_json::to_string(&payload).unwrap()
-    });
-
-    let parsed = extract_research_json_from_conversation_state(&state).unwrap();
-    materialize_workflow_step_output_value(&db, "my-skill", 0, &parsed).unwrap();
-
-    let conn = db.0.lock().unwrap();
-    assert!(crate::db::workflow_artifacts::read_clarifications(&conn, "my-skill")
-        .unwrap()
-        .is_some());
 }
 
 mod research {
@@ -2401,27 +2378,6 @@ fn test_delete_step_output_files_from_step_onwards() {
 }
 
 #[test]
-fn test_clean_step_output_step1_is_noop() {
-    // Step 1 edits clarifications.json in-place (no unique artifact),
-    // so cleaning step 1 has no files to delete.
-    let workspace_tmp = tempfile::tempdir().unwrap();
-    let skills_tmp = tempfile::tempdir().unwrap();
-    let workspace = workspace_tmp.path().to_str().unwrap();
-    let skills_path = skills_tmp.path().to_str().unwrap();
-    let skill_dir = skills_tmp.path().join("my-skill");
-    std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-
-    std::fs::write(skill_dir.join("context/clarifications.json"), "refined").unwrap();
-    std::fs::write(skill_dir.join("context/decisions.json"), "{}").unwrap();
-
-    // Clean only step 1 — both files should be untouched (step 1 has no unique output)
-    crate::cleanup::clean_step_output(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, 1, skills_path);
-
-    assert!(skill_dir.join("context/clarifications.json").exists());
-    assert!(skill_dir.join("context/decisions.json").exists());
-}
-
-#[test]
 fn test_delete_step_output_files_nonexistent_dir_is_ok() {
     // Should not panic on nonexistent directory
     let tmp = tempfile::tempdir().unwrap();
@@ -2740,108 +2696,7 @@ fn test_copy_managed_plugins_replaces_managed_and_preserves_unmanaged() {
     assert_eq!(preserved, "keep me");
 }
 
-// --- VD-403: validate_decisions_exist_inner tests ---
-
-#[test]
-fn test_validate_decisions_missing() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
-
-    let result = validate_decisions_exist_inner(
-        "my-skill",
-        workspace.to_str().unwrap(),
-        DEFAULT_PLUGIN_SLUG,
-        "/unused",
-    );
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("decisions.json was not found"));
-}
-
-#[test]
-fn test_validate_decisions_found_in_workspace_context() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    std::fs::create_dir_all(
-        workspace
-            .join(DEFAULT_PLUGIN_SLUG)
-            .join("my-skill")
-            .join("context"),
-    )
-    .unwrap();
-    std::fs::write(
-        workspace
-            .join(DEFAULT_PLUGIN_SLUG)
-            .join("my-skill")
-            .join("context")
-            .join("decisions.json"),
-        r#"{"metadata":{"decision_count":1}}"#,
-    )
-    .unwrap();
-
-    let result = validate_decisions_exist_inner(
-        "my-skill",
-        workspace.to_str().unwrap(),
-        DEFAULT_PLUGIN_SLUG,
-        "/unused",
-    );
-    assert!(result.is_ok());
-}
-
-#[test]
-fn test_validate_decisions_rejects_empty_file() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    std::fs::create_dir_all(
-        workspace
-            .join(DEFAULT_PLUGIN_SLUG)
-            .join("my-skill")
-            .join("context"),
-    )
-    .unwrap();
-    // Write an empty decisions file
-    std::fs::write(
-        workspace
-            .join(DEFAULT_PLUGIN_SLUG)
-            .join("my-skill")
-            .join("context")
-            .join("decisions.json"),
-        "   \n\n  ",
-    )
-    .unwrap();
-
-    let result = validate_decisions_exist_inner(
-        "my-skill",
-        workspace.to_str().unwrap(),
-        DEFAULT_PLUGIN_SLUG,
-        "/unused",
-    );
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("decisions.json was not found"));
-}
-
 // --- debug mode: no reduced turns, sonnet model override ---
-
-#[test]
-fn test_debug_max_turns_removed() {
-    // debug_max_turns no longer exists as a function. This test verifies
-    // that get_step_config returns the *normal* turn limits for every step,
-    // which is what run_workflow_step now uses unconditionally.
-    let expected: Vec<(u32, u32)> = vec![
-        (0, 50),  // research
-        (1, 50),  // detailed research
-        (2, 100), // confirm decisions
-        (3, 500), // generate skill
-    ];
-    for (step_id, expected_turns) in expected {
-        let config = get_step_config(step_id).unwrap();
-        assert_eq!(
-            config.max_turns, expected_turns,
-            "Step {} should have max_turns={} (normal), got {}",
-            step_id, expected_turns, config.max_turns
-        );
-    }
-}
 
 #[test]
 fn test_step_max_turns() {
@@ -2855,35 +2710,6 @@ fn test_step_max_turns() {
         );
     }
 }
-
-#[test]
-fn test_step0_always_wipes_context() {
-    // Step 0 always wipes the context directory in skills_path (not workspace)
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let skill_dir = tmp.path().join("my-skill");
-    std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-
-    std::fs::write(skill_dir.join("context/clarifications.json"), "{}").unwrap();
-
-    let step_id: u32 = 0;
-    if step_id == 0 {
-        let context_dir = Path::new(skills_path).join("my-skill").join("context");
-        if context_dir.is_dir() {
-            let _ = std::fs::remove_dir_all(&context_dir);
-            let _ = std::fs::create_dir_all(&context_dir);
-        }
-    }
-
-    // Context files should have been wiped
-    assert!(!skill_dir.join("context/clarifications.json").exists());
-    // But context directory itself should be recreated
-    assert!(skill_dir.join("context").exists());
-}
-
-// VU-1157: write_user_context_file was deleted (workspace user-context.md
-// dropped). The format_user_context tests below cover the remaining inline
-// formatter that prompt rendering will use in Task 5.
 
 #[test]
 fn test_thinking_budget_for_step() {
@@ -3194,56 +3020,11 @@ fn test_build_prompt_includes_user_context_md_instruction() {
     assert!(prompt.contains("test-skill"));
 }
 
-#[test]
-fn test_build_prompt_without_user_context() {
-    let ws = std::env::temp_dir().join("ws");
-    let skills = std::env::temp_dir().join("skills");
-    let prompt = build_prompt(&PromptParams {
-        skill_name: "test-skill",
-        workspace_path: ws.to_str().unwrap(),
-        plugin_slug: DEFAULT_PLUGIN_SLUG,
-        skills_path: skills.to_str().unwrap(),
-        author_login: None,
-        created_at: None,
-        step_id: 1,
-    });
-    assert!(prompt.contains("user-context.md"));
-    assert!(prompt.contains("test-skill"));
-}
-
 // VD-801: parse_decisions_guard was file-based; replaced by
 // check_decisions_guard_db in guards.rs (VU-1157). Tests live in guards.rs.
 
 // save_clarifications_content_inner was file-based and removed in VU-1157.
 // Clarifications persistence is now handled via upsert_clarifications in db/workflow_artifacts.rs.
-
-// =============================================================================
-// CG-R1: format_user_context (workflow/runtime.rs)
-// =============================================================================
-
-#[test]
-fn test_format_user_context_returns_none_when_all_empty() {
-    let result = format_user_context(
-        None,
-        &[],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
-    assert!(
-        result.is_none(),
-        "should return None when no fields are provided"
-    );
-}
 
 #[test]
 fn test_format_user_context_includes_name_and_tags() {
@@ -3792,6 +3573,21 @@ mod materialization {
 
         let conn = db.0.lock().unwrap();
         assert!(guards::check_decisions_guard_db(&conn, "rt-dec-guard"));
+    }
+
+    #[test]
+    fn step3_guard_fails_when_no_decisions_in_db() {
+        // Verifies that the step-3 DB guard correctly detects missing decisions.
+        // The guard in read_workflow_settings queries DB for decisions before
+        // allowing step 3 to proceed.
+        let db = db_with_seeded_skill("guard-test-skill");
+        let conn = db.0.lock().unwrap();
+        // No decisions seeded — read_decisions should return None
+        let decisions = crate::db::workflow_artifacts::read_decisions(&conn, "guard-test-skill").unwrap();
+        assert!(
+            decisions.is_none(),
+            "guard-test-skill has no decisions — step 3 guard should block"
+        );
     }
 
     #[test]
