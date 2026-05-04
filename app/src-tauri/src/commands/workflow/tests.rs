@@ -234,34 +234,14 @@ fn research_prompt_renders_app_owned_openhands_task_context() {
         "",
     );
 
-    assert!(prompt.contains("You are in Step 0: Research"));
-    assert!(prompt.contains("Goal: discover the minimum decisions"));
-    assert!(prompt.contains("Reasoning focus: do not answer user-owned decisions yourself"));
-    assert!(prompt.contains("## Capture Intent"));
-    assert!(prompt.contains("What should this skill enable Claude to do?"));
-    assert!(prompt.contains("When should this skill trigger?"));
-    assert!(prompt.contains("What is the expected output format?"));
-    assert!(prompt.contains("Should we set up test cases to verify the skill works?"));
-    assert!(prompt.contains("objectively verifiable outputs"));
-    assert!(prompt.contains("Suggest the appropriate default based on the skill type"));
-    assert!(prompt.contains("## Interview And Research"));
-    assert!(prompt.contains("edge cases, input and output formats"));
-    assert!(prompt.contains("Wait to write test prompts"));
-    assert!(prompt.contains("Check available MCPs"));
-    assert!(prompt.contains("Use parallel research via"));
-    assert!(prompt.contains("otherwise research inline"));
+    assert!(prompt.contains("EXECUTE IMMEDIATELY."));
+    assert!(prompt.contains("Use the `researching-skill-requirements` skill"));
     assert!(prompt.contains("We are writing the skill lead-conversion."));
     assert!(prompt.contains("/tmp/workspace/skills/lead-conversion"));
-    // VU-1157: workspace-relative file path lines are no longer in the prompt; context is inlined
-    assert!(
-        !prompt.contains("User context file:"),
-        "step 0 prompt must not have 'User context file:' instruction"
-    );
-    assert!(
-        !prompt.contains("Context directory:"),
-        "step 0 prompt must not have 'Context directory:' instruction"
-    );
     assert!(prompt.contains("Maximum research dimensions before scope warning: 4"));
+    assert!(prompt.contains("Research must run as one inline flow"));
+    assert!(prompt.contains("Do not inspect old logs or previous run transcripts"));
+    assert!(prompt.contains("Do not trigger the scope guard merely because the user context is detailed"));
     assert!(prompt.contains("\"research_output\": {"));
     assert!(prompt.contains("\"sections\": []"));
     assert!(prompt.contains("\"notes\": []"));
@@ -282,17 +262,12 @@ fn research_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("choose exactly one option"));
     assert!(prompt.contains("select all"));
     assert!(prompt.contains("choose all"));
-    assert!(prompt.contains("Do not inspect old logs or previous run transcripts"));
     assert!(
         !prompt.to_ascii_lowercase().contains("conversation history"),
         "step 0 prompt should not imply access to prior chat history"
     );
     assert!(prompt.contains(".agents/skills/shared/output-schemas/step-0-research.json"));
     assert!(prompt.contains(".agents/skills/shared/schemas.md"));
-    assert!(
-        !prompt.contains("research-agent"),
-        "step 0 prompt should route through skill-creator, not research-agent"
-    );
 }
 
 #[test]
@@ -373,8 +348,9 @@ fn detailed_research_prompt_renders_clean_break_task_context() {
     assert!(prompt.contains("missing, vague"));
     assert!(prompt.contains("Do not reopen settled areas"));
     assert!(prompt.contains("## Capture Intent"));
-    assert!(prompt.contains("What should this skill enable Claude to do?"));
+    assert!(prompt.contains("What should this skill enable the assistant to do?"));
     assert!(prompt.contains("When should this skill trigger?"));
+    assert!(!prompt.contains("What should this skill enable Claude to do?"));
     assert!(prompt.contains("What is the expected output format?"));
     assert!(prompt.contains("Should we set up test cases to verify the skill works?"));
     assert!(prompt.contains("objectively verifiable outputs"));
@@ -740,7 +716,8 @@ fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("Return only this structured JSON"));
     assert!(prompt.contains("\"version\": \"1\""));
     assert!(prompt.contains("\"decisions\": []"));
-    assert!(prompt.contains("What should this skill enable Claude to do?"));
+    assert!(prompt.contains("What should this skill enable the assistant to do?"));
+    assert!(!prompt.contains("What should this skill enable Claude to do?"));
     assert!(prompt.contains("When should this skill trigger?"));
 }
 
@@ -2198,8 +2175,10 @@ fn test_build_step0_prompt_uses_openhands_native_research_routing() {
     assert!(prompt.contains("We are writing the skill my-skill."));
     assert!(prompt.contains("Maximum research dimensions before scope warning: 4"));
     assert!(prompt.contains("research_output"));
-    assert!(prompt.contains("Use parallel research via"));
-    assert!(prompt.contains("subagents if that capability is available"));
+    assert!(prompt.contains("Use the `researching-skill-requirements` skill"));
+    assert!(prompt.contains("Research must run as one inline flow"));
+    assert!(prompt.contains("Do not inspect old logs or previous run transcripts"));
+    assert!(prompt.contains("the full conditions are in the researching-skill-requirements skill"));
 
     for forbidden in [
         "research-agent",
@@ -2208,6 +2187,8 @@ fn test_build_step0_prompt_uses_openhands_native_research_routing() {
         "AskUserQuestion",
         ".claude/plugins",
         "skill-content-researcher:research",
+        "Use parallel research via",
+        "subagents if that capability is available",
     ] {
         assert!(
             !prompt.contains(forbidden),

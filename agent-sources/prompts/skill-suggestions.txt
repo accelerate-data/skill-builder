@@ -1,6 +1,6 @@
 {{framing}} These skills target OLAP systems (data warehouses and lakehouses), not OLTP.
 
-Given a Claude skill named "{{readable_name}}" of type "{{purpose}}".{{context}}{{detail_context}}
+Given a reusable skill named "{{readable_name}}" of type "{{purpose}}".{{context}}{{detail_context}}
 
 Suggest brief values for these fields. Be specific and practical, not generic.
 

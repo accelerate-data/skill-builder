@@ -21,7 +21,7 @@ proceeding to the next workflow step.
 
 Make sure the clarified record can answer:
 
-- What should this skill enable Claude to do?
+- What should this skill enable the assistant to do?
 - When should this skill trigger? Include expected user phrases and contexts.
 - What is the expected output format?
 - Should we set up test cases to verify the skill works? Skills with
