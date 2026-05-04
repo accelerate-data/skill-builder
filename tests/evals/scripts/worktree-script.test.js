@@ -95,8 +95,9 @@ test('worktree helper leaves Promptfoo state setup to the eval runtime', () => {
 
     assert.equal(fs.existsSync(worktreePromptfoo), false);
     assert.doesNotMatch(result.stdout, /PROMPTFOO_DB:/);
+    // Only app/ deps are bootstrapped by worktree.sh; eval deps are self-managed by the eval framework.
     const npmCalls = fs.readFileSync(logPath, 'utf8').match(/npm ci --no-audit --no-fund/g) ?? [];
-    assert.equal(npmCalls.length, 2);
+    assert.equal(npmCalls.length, 1);
   } finally {
     if (!promptfooWasPresent && fs.existsSync(promptfooRoot)) {
       fs.rmSync(promptfooRoot, { recursive: true, force: true });
