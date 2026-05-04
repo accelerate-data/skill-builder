@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Bundle agent-runner with sdk.mjs inlined (no more external)
+// Bundle agent-runner (mock-only sidecar; Claude Agent SDK has been removed)
 await build({
   entryPoints: ["agent-runner.ts"],
   bundle: true,

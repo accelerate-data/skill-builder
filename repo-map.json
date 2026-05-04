@@ -148,7 +148,7 @@
     },
     "sidecar_core": {
       "path": "app/sidecar/",
-      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer, routes one-shot vs streaming requests; OpenHands requests fail here because they are Rust Agent Server only), runtime/ (runtime boundary types, sink adapter, Claude runtime adapter), run-agent.ts (one-shot compatibility wrapper), stream-session.ts (async generator push pattern for multi-turn streaming), message-processor.ts (transforms SDK messages into DisplayItems and AgentEvents), message-classifier.ts (classifies SDK message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts + options.ts (sidecar config validation and Claude SDK option builder), error-labels.ts (user-facing error strings), shutdown.ts (graceful shutdown handler)"
+      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer — MOCK_AGENTS=true only; all real agent requests go through the Rust OpenHands Agent Server), message-processor.ts (transforms JSONL messages into DisplayItems and AgentEvents), message-classifier.ts (classifies JSONL message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts (sidecar config validation), error-labels.ts (user-facing error strings), shutdown.ts (graceful shutdown handler)"
     },
     "sidecar_mock": {
       "path": "app/sidecar/mock-agent.ts",
