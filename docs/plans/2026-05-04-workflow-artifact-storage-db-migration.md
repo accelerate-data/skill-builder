@@ -308,6 +308,69 @@ Each test calls `materialize_workflow_step_output_value(&db, skill_id, step_id, 
 - No new `#[allow(dead_code)]` or `#[allow(unused)]` attributes introduced
 - Commit: `VU-1157: fixture-driven materialization round-trip tests`
 
+## Task 11: Fix Split-Brain In Step-Complete Components
+
+**Context:** The three step-complete display components still read clarifications/decisions from workspace JSON files even though the DB is now authoritative. `useClarifications` and `useDecisions` TanStack Query hooks already exist (Task 7). The components just haven't been wired up to them.
+
+**Files:**
+
+- Modify: `app/src/components/step-complete/research-step-complete.tsx`
+- Modify: `app/src/components/step-complete/detailed-research-step-complete.tsx`
+- Modify: `app/src/components/step-complete/decisions-step-complete.tsx`
+- Modify: `app/src/components/step-complete/index.tsx`
+
+**What to change:**
+
+- [ ] `research-step-complete.tsx` — replace `fileContents.get("context/clarifications.json")` file read with `useClarifications(skillId)` query hook. Remove the JSON parse step; render from the typed `ClarificationsDto` returned by the hook.
+- [ ] `detailed-research-step-complete.tsx` — same: drop the `context/clarifications.json` file read; use `useClarifications(skillId)`.
+- [ ] `decisions-step-complete.tsx` — replace `fileContents.get("context/decisions.json")` with `useDecisions(skillId)`. Remove JSON parse; render from `DecisionsDto`.
+- [ ] `index.tsx` — remove the routing checks on `outputFiles.includes("context/clarifications.json")` and `outputFiles.includes("context/decisions.json")`. Step completion is determined by DB row presence (i.e. whether `useClarifications` / `useDecisions` return a non-null value), not by file path presence in `outputFiles`.
+- [ ] Where `skillId` is not yet in scope for these components, thread it down from the parent or read it from the workflow store (check how `clarifications-editor/index.tsx` receives it — use the same pattern).
+- [ ] Run: `cd app && npm run test:unit && npx tsc --noEmit`
+- [ ] Commit: `VU-1157: fix split-brain in step-complete — read from DB not files`
+
+## Task 12: Dead Code Cleanup
+
+**Context:** Dead code analysis identified confirmed-dead and likely-dead symbols across `commands/workflow/mod.rs`, `runtime.rs`, `deploy.rs`, `step_config.rs`, `refine/protocol.rs`, and `db/workflow_artifacts.rs`. These are leftovers from the Claude-SDK era (VU-1145) and VU-1157's migration. Removing them makes `#[allow(dead_code)]` count drop to zero and keeps clippy warnings clean.
+
+**Files:**
+
+- Modify: `app/src-tauri/src/commands/workflow/mod.rs`
+- Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
+- Modify: `app/src-tauri/src/commands/workflow/deploy.rs`
+- Modify: `app/src-tauri/src/commands/workflow/step_config.rs`
+- Modify: `app/src-tauri/src/commands/refine/mod.rs` (module-level allow annotation)
+- Modify: `app/src-tauri/src/db/workflow_artifacts.rs` (wire up or document pre-built hooks)
+- Modify: `app/src-tauri/src/commands/workflow/tests.rs` (remove tests for deleted symbols)
+
+**Confirmed dead — delete:**
+
+- [ ] `commands/workflow/mod.rs:41–58` — `coerce_to_string` and `coerce_to_bool`. Both `#[deprecated]` + `#[allow(dead_code)]`, zero call sites. Delete the two functions and the deprecation comments.
+- [ ] `commands/workflow/runtime.rs` — `workflow_one_shot_runtime_provider` and `workflow_step_uses_native_openhands_dispatch`. Both `#[allow(dead_code)]`, only called from tests. Delete the functions. Remove the two corresponding test cases in `tests.rs` that assert trivial constant values ("openhands" string; always returns true).
+- [ ] `commands/refine/mod.rs` — remove the `#[allow(dead_code)]` attribute on the `protocol` module declaration (line 4). The module is live via `use protocol::*`; the suppression is a false positive leftover.
+
+**Likely dead — delete with their test-only callers:**
+
+- [ ] `commands/workflow/deploy.rs`:
+  - `workspace_already_copied` and `mark_workspace_copied` — `#[allow(dead_code)]`, test-only callers. Delete both functions.
+  - `workspace_openhands_layout_complete` — `#[allow(dead_code)]`, test-only. Delete.
+  - `copy_prompts_sync` — `#[allow(dead_code)]`, test-only. Delete.
+  - `copy_agents_to_claude_dir` and `copy_managed_plugins_to_claude_dir` — `#[allow(dead_code)]`, test-only. Delete both.
+  - In `tests.rs` (or `deploy.rs` `#[cfg(test)]` block): delete the test cases that exclusively exercise the deleted functions. Do not delete tests that also exercise live production paths.
+- [ ] `commands/workflow/step_config.rs` — `thinking_budget_for_step`, `build_betas`, `validate_clarifications_json`. All `#[allow(dead_code)]`, all test-only callers. These were Claude-SDK thinking-budget helpers; OpenHands dispatch does not use them. Delete the functions and their test cases in `tests.rs`.
+
+**Pre-built hooks in `workflow_artifacts.rs` — wire up or document:**
+
+- [ ] For each `#[allow(dead_code)]` function in `workflow_artifacts.rs` that has a comment like "Wired up in a later VU-1157 task": either wire it up now (call it from the appropriate command handler or cleanup path) or replace the comment with an explicit `// TODO(VU-XXXX): wire up when <feature> lands` naming the follow-up issue. Do not leave anonymous "later task" comments — they rot.
+
+**Validation:**
+
+- [ ] `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` — must pass with zero `dead_code` warnings (no new `#[allow(dead_code)]` should be needed to achieve this).
+- [ ] `cargo test --manifest-path app/src-tauri/Cargo.toml` — all tests pass.
+- [ ] `cd app && npx tsc --noEmit` — clean.
+- [ ] `cd app && npm run test:unit` — clean.
+- [ ] Commit: `VU-1157: remove dead code — coerce helpers, deploy copy fns, step_config sdk helpers`
+
 ---
 
 ## Decisions Captured (For Context)
