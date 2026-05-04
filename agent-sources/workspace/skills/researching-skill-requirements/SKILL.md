@@ -24,8 +24,8 @@ high-delta questions over a long generic questionnaire.
 ## Capture Intent
 
 Start by understanding the user's intent from the available workflow context,
-`user-context.md`, the current `clarifications.json` when present, user answers
-when present, and any supplied reference documents.
+the user context provided inline, the clarifications provided inline when
+present, user answers when present, and any supplied reference documents.
 
 Make sure the clarification record can answer:
 
@@ -74,10 +74,8 @@ instead of replacing it with generic wording. In particular:
 
 ## Abstraction Rule
 
-Do not ask about CSV, JSON, or user-provided file formats unless the skill's
-purpose is explicitly source extraction, file ingestion, or file handling. For
-business-process skills, ask about conceptual source entities, metric
-semantics, modeling implications, and validation instead.
+1. Do not ask about CSV, JSON, or user-provided file formats unless the skill’s purpose is explicitly source extraction, file ingestion, or file handling. For business-process skills, ask about conceptual source entities, metric semantics, modeling implications, and validation instead.
+2. Do not ask about reporting formats like Dashboards, Charts unless the skill’s purpose is explicitly about presentation of analytical data.
 
 ## Scope Guard
 
