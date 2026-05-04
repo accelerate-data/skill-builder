@@ -359,12 +359,28 @@ async fn run_workflow_step_inner(
     workspace_path: &str,
     settings: &WorkflowSettings,
     workflow_session_id: Option<String>,
+    db: &Db,
 ) -> Result<String, String> {
     let step = get_step_config(step_id)?;
-    // VU-1157: user-context.md is no longer written to the workspace.
-    // Skill metadata is read directly from the DB during prompt rendering
-    // (Task 5). Until that lands, agents do not get an inlined user context
-    // block; the prompt-building helpers will be updated in the same task.
+
+    // Build user context block — inline skill metadata injects into all steps.
+    let user_context_block = super::prompt::format_user_context(
+        Some(skill_name),
+        &settings.tags,
+        settings.author_login.as_deref(),
+        settings.industry.as_deref(),
+        settings.function_role.as_deref(),
+        settings.intake_json.as_deref(),
+        settings.description.as_deref(),
+        Some(&settings.purpose),
+        settings.version.as_deref(),
+        settings.skill_model.as_deref(),
+        settings.argument_hint.as_deref(),
+        settings.user_invocable,
+        settings.disable_model_invocation,
+        &settings.documents,
+    )
+    .unwrap_or_default();
 
     let prompt = match step_id {
         0 => build_step0_prompt(
@@ -372,17 +388,77 @@ async fn run_workflow_step_inner(
             workspace_path,
             &settings.plugin_slug,
             settings.max_dimensions,
+            &user_context_block,
         ),
-        1 => build_step1_prompt(skill_name, workspace_path, &settings.plugin_slug),
-        2 => build_step2_prompt(skill_name, workspace_path, &settings.plugin_slug),
-        3 => build_step3_prompt(
-            skill_name,
-            workspace_path,
-            &settings.plugin_slug,
-            &settings.skills_path,
-            settings.author_login.as_deref(),
-            settings.created_at.as_deref(),
-        ),
+        1 => {
+            let (clarifications_json, answer_verdicts_block) = {
+                let conn = db.0.lock().map_err(|e| e.to_string())?;
+                match crate::db::workflow_artifacts::read_clarifications(&conn, skill_name) {
+                    Ok(Some(rec)) => {
+                        let json_str =
+                            super::prompt::clarifications_record_to_json_string(&rec);
+                        let verdicts = super::prompt::render_answer_verdicts(&rec);
+                        (json_str, verdicts)
+                    }
+                    _ => (
+                        "{}".to_string(),
+                        "No evaluation verdicts available. Treat all answers as unevaluated."
+                            .to_string(),
+                    ),
+                }
+            };
+            build_step1_prompt(
+                skill_name,
+                workspace_path,
+                &settings.plugin_slug,
+                &user_context_block,
+                &clarifications_json,
+                &answer_verdicts_block,
+            )
+        }
+        2 => {
+            let clarifications_json = {
+                let conn = db.0.lock().map_err(|e| e.to_string())?;
+                match crate::db::workflow_artifacts::read_clarifications(&conn, skill_name) {
+                    Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
+                    _ => "{}".to_string(),
+                }
+            };
+            build_step2_prompt(
+                skill_name,
+                workspace_path,
+                &settings.plugin_slug,
+                &user_context_block,
+                &clarifications_json,
+            )
+        }
+        3 => {
+            let (clarifications_json, decisions_json) = {
+                let conn = db.0.lock().map_err(|e| e.to_string())?;
+                let clar =
+                    match crate::db::workflow_artifacts::read_clarifications(&conn, skill_name) {
+                        Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
+                        _ => "{}".to_string(),
+                    };
+                let dec =
+                    match crate::db::workflow_artifacts::read_decisions(&conn, skill_name) {
+                        Ok(Some(rec)) => super::prompt::decisions_record_to_json_string(&rec),
+                        _ => "{}".to_string(),
+                    };
+                (clar, dec)
+            };
+            build_step3_prompt(
+                skill_name,
+                workspace_path,
+                &settings.plugin_slug,
+                &settings.skills_path,
+                settings.author_login.as_deref(),
+                settings.created_at.as_deref(),
+                &user_context_block,
+                &clarifications_json,
+                &decisions_json,
+            )
+        }
         _ => build_prompt(&super::prompt::PromptParams {
             skill_name,
             workspace_path,
@@ -643,6 +719,7 @@ pub async fn run_workflow_step(
         &workspace_path,
         &settings,
         workflow_session_id,
+        db.inner(),
     )
     .await
     .map_err(|e| {
