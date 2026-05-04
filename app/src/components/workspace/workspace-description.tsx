@@ -1,72 +1,50 @@
-import "@/hooks/use-agent-stream";
-import { useState, useRef, useEffect } from "react";
-import { useLeaveGuard } from "@/hooks/use-leave-guard";
-import { setDescriptionOptRunning } from "@/lib/description-opt-running-state";
 import { listen } from "@tauri-apps/api/event";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, ArrowRight, Sparkles, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Trash2, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  applyDescriptionCandidate,
+  buildTriggerCandidateIds,
+  buildTriggerComparisonEntries,
+  buildRefineImprovementBrief,
+  cancelEvalWorkbenchRun,
+  createDraftPromptSet,
+  DEFAULT_DESCRIPTION_CANDIDATE_COUNT,
+  type EvalWorkbenchProgressEvent,
+  getErrorMessage,
+  getRecommendedCandidate,
+  getRunCandidateIds,
+  listEvalPromptSets,
+  listEvalRuns,
+  normalizePromptSet,
+  promptSetToDraft,
+  readEvalRun,
+  runEvalWorkbench,
+  saveEvalPromptSet,
+  suggestDescriptionCandidates,
+  type DescriptionCandidate,
+  type EvalRun,
+  type SaveEvalPromptSet,
+  validatePromptSet,
+} from "@/lib/eval-workbench";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Label } from "@/components/ui/label";
-import { AgentOutputPanel } from "@/components/agent-output-panel";
-import { useAgentStore } from "@/stores/agent-store";
-import { useSettingsStore } from "@/stores/settings-store";
-import {
-  parseProgressEvent,
-  addQuery,
-  removeQuery,
-  updateQuery,
-  scoreColor,
-  scoreRate,
-  formatRate,
-  scoreDelta,
-  formatDelta,
-  findBestIteration,
-} from "@/lib/description-optimization";
-import { Progress } from "@/components/ui/progress";
-import type {
-  EvalQuery,
-  OptimizationIteration,
-  OptimizationResult,
-} from "@/lib/description-optimization";
-import {
-  startGenerateDescEvalQueries,
-  runOptimizationLoop,
-  applyDescription,
-  saveEvalQueries,
-  loadEvalQueries,
-  cancelAgentRun,
-  cancelDescriptionOptimization,
-  writeDescOptLog,
-} from "@/lib/tauri";
-import type { SkillSummary } from "@/lib/tauri";
-import { requireSettingsModel } from "@/lib/models";
+  setEvalsCancelHandler,
+  setEvalsRunning,
+} from "@/lib/eval-running-state";
+import type { SkillSummary } from "@/lib/types";
+import { useRefineStore } from "@/stores/refine-store";
+import { CandidateCards } from "./eval-workbench/candidate-cards";
+import { PromptSetEditor } from "./eval-workbench/prompt-set-editor";
+import { ResultTable } from "./eval-workbench/result-table";
+import { RunHistory } from "./eval-workbench/run-history";
 
 interface WorkspaceDescriptionProps {
   skill: SkillSummary;
   workspacePath: string;
   onRunningChange?: (running: boolean) => void;
   onApply?: (newDescription: string, newVersion: string) => void;
+  onNavigateToRefine?: () => void;
 }
 
 export function WorkspaceDescription({
@@ -74,1088 +52,472 @@ export function WorkspaceDescription({
   workspacePath,
   onRunningChange,
   onApply,
+  onNavigateToRefine,
 }: WorkspaceDescriptionProps) {
-  const selectedModel = useSettingsStore((s) => s.modelSettings.model);
-
-  const [queries, setQueries] = useState<EvalQuery[]>([]);
-  const [isGeneratingQueries, setIsGeneratingQueries] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
-  const [progress, setProgress] = useState<OptimizationIteration[]>([]);
-  const [result, setResult] = useState<OptimizationResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [generatingCandidates, setGeneratingCandidates] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [sendingToRefine, setSendingToRefine] = useState(false);
+  const [promptSets, setPromptSets] = useState<Awaited<
+    ReturnType<typeof listEvalPromptSets>
+  >>([]);
+  const [runs, setRuns] = useState<EvalRun[]>([]);
+  const [selectedPromptSetId, setSelectedPromptSetId] = useState<string | null>(
+    null,
+  );
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [selectedRun, setSelectedRun] = useState<EvalRun | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<EvalWorkbenchProgressEvent | null>(
+    null,
+  );
+  const [draft, setDraft] = useState<SaveEvalPromptSet>(() =>
+    createDraftPromptSet("trigger", skill.plugin_slug, skill.name),
+  );
+  const [candidates, setCandidates] = useState<DescriptionCandidate[]>([]);
+  const [appliedDescription, setAppliedDescription] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
-  const [generateError, setGenerateError] = useState<string | null>(null);
-  const [applied, setApplied] = useState(false);
-  const [showGenerateDialog, setShowGenerateDialog] = useState(false);
-  const [numEvalQueriesInput, setNumEvalQueriesInput] = useState("20");
-  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const isRunning = generatingCandidates || running;
 
-  const agentHasRun = useAgentStore((s) =>
-    activeAgentId ? activeAgentId in s.runs : false,
+  const baselineDescription = skill.description ?? "";
+  const activePromptSet =
+    promptSets.find((promptSet) => promptSet.id === selectedPromptSetId) ?? null;
+  const activePromptCases = activePromptSet?.cases ?? [];
+  const recommendedCandidate = useMemo(
+    () =>
+      getRecommendedCandidate(
+        baselineDescription,
+        candidates.length > 0 ? candidates : selectedRun?.descriptionCandidates ?? [],
+        selectedRun,
+        activePromptCases,
+      ),
+    [activePromptCases, baselineDescription, candidates, selectedRun],
+  );
+  const comparisonEntries = useMemo(
+    () =>
+      buildTriggerComparisonEntries(
+        baselineDescription,
+        candidates.length > 0 ? candidates : selectedRun?.descriptionCandidates ?? [],
+        selectedRun,
+        activePromptCases,
+      ),
+    [activePromptCases, baselineDescription, candidates, selectedRun],
   );
 
-  const unlistenRef = useRef<(() => void) | null>(null);
-  const generateUnlistenRef = useRef<(() => void) | null>(null);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      unlistenRef.current?.();
-      unlistenRef.current = null;
-      generateUnlistenRef.current?.();
-      generateUnlistenRef.current = null;
-    };
-  }, []);
-
-  // ESC → cancel confirmation guard (capture phase, fires before Dialog's own handler)
-  useEffect(() => {
-    if (!isGeneratingQueries) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        setShowCancelConfirm(true);
-      }
-    };
-    document.addEventListener("keydown", handler, true);
-    return () => document.removeEventListener("keydown", handler, true);
-  }, [isGeneratingQueries]);
-
-  // Load persisted eval queries on mount / skill change
-  useEffect(() => {
-    if (!workspacePath) return;
-    loadEvalQueries(skill.name, skill.plugin_slug, workspacePath)
-      .then((loaded) => {
-        if (loaded.length > 0) {
-          setQueries(loaded.map((q) => ({ ...q, id: crypto.randomUUID() })));
-        }
-      })
-      .catch((err) =>
-        console.warn("[workspace-description] load queries failed:", err),
-      );
-  }, [skill.name, workspacePath]);
-
-  // Auto-save queries (debounced)
-  useEffect(() => {
-    if (!workspacePath || queries.length === 0) return;
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
-      saveEvalQueries(
-        skill.name,
-        skill.plugin_slug,
-        workspacePath,
-        queries,
-      ).catch((err) =>
-        console.warn("[workspace-description] save queries failed:", err),
-      );
-    }, 500);
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    };
-  }, [queries, skill.name, workspacePath]);
-
-  // Notify parent + module-level state when running state changes
   useEffect(() => {
     onRunningChange?.(isRunning);
-    setDescriptionOptRunning(isRunning);
-    return () => setDescriptionOptRunning(false);
+    setEvalsRunning(isRunning);
   }, [isRunning, onRunningChange]);
 
-  // Route-level leave guard: block navigation (skill switch) while optimization is running
-  const isRunningRef = useRef(false);
   useEffect(() => {
-    isRunningRef.current = isRunning;
-  }, [isRunning]);
-  const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
-    shouldBlock: () => isRunningRef.current,
-    onLeave: (proceed) => {
-      cancelDescriptionOptimization().catch(() => {});
-      proceed();
-    },
-  });
+    if (!activeRunId) {
+      setEvalsCancelHandler(null);
+      return;
+    }
 
-  const model = selectedModel;
-
-  /** Fire-and-forget file log for description optimization events */
-  const logToFile = (message: string) => {
-    writeDescOptLog(
-      skill.name,
-      skill.plugin_slug,
-      workspacePath,
-      message,
-    ).catch(() => {});
-  };
-
-  async function handleGenerateQueries(numEvalQueries: number) {
-    // Clean up any previous listener
-    generateUnlistenRef.current?.();
-    generateUnlistenRef.current = null;
-
-    setIsGeneratingQueries(true);
-    setGenerateError(null);
-
-    // Set up result listener before kicking off agent to avoid race
-    const unlisten = await listen<{
-      skillName: string;
-      queries: Array<{ query: string; should_trigger: boolean }>;
-    }>("description:eval-queries-generated", (event) => {
-      if (event.payload.skillName !== skill.name) return;
-      const loaded = event.payload.queries;
-      setQueries(loaded.map((q) => ({ ...q, id: crypto.randomUUID() })));
-      setIsGeneratingQueries(false);
-      setActiveAgentId(null);
-      generateUnlistenRef.current?.();
-      generateUnlistenRef.current = null;
-      console.log(
-        "event=eval_queries_generated operation=startGenerateDescEvalQueries skill=%s count=%d status=success",
-        skill.name,
-        loaded.length,
-      );
-      logToFile(`EVAL_QUERIES_GENERATED count=${loaded.length}`);
+    setEvalsCancelHandler(async () => {
+      await cancelEvalWorkbenchRun(activeRunId);
     });
-    generateUnlistenRef.current = unlisten;
+    return () => {
+      setEvalsCancelHandler(null);
+    };
+  }, [activeRunId]);
 
-    const agentId = crypto.randomUUID();
-    setActiveAgentId(agentId);
+  useEffect(
+    () => () => {
+      onRunningChange?.(false);
+      setEvalsRunning(false);
+      setEvalsCancelHandler(null);
+    },
+    [onRunningChange],
+  );
 
-    // Register the run before starting the agent so the agent store has the
-    // correct model. Without this, the phantom reaper marks auto-created runs
-    // as "error" after 30s because model stays "unknown".
-    const selectedModel = requireSettingsModel(model);
-    useAgentStore.getState().registerRun(agentId, selectedModel, skill.name);
-
-    try {
-      await startGenerateDescEvalQueries(
-        agentId,
-        skill.name,
-        skill.plugin_slug,
-        workspacePath,
-        selectedModel,
-        numEvalQueries,
-      );
-      console.log(
-        "event=eval_queries_generation_started operation=startGenerateDescEvalQueries skill=%s status=started",
-        skill.name,
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setGenerateError(msg);
-      setIsGeneratingQueries(false);
-      setActiveAgentId(null);
-      generateUnlistenRef.current?.();
-      generateUnlistenRef.current = null;
-      console.error(
-        "event=eval_queries_generation_failed operation=startGenerateDescEvalQueries skill=%s error=%s",
-        skill.name,
-        msg,
-      );
-    }
-  }
-
-  async function handleCancelGenerate() {
-    setShowCancelConfirm(false);
-    if (activeAgentId) {
-      await cancelAgentRun(skill.name, activeAgentId).catch(() => {});
-    }
-    generateUnlistenRef.current?.();
-    generateUnlistenRef.current = null;
-    setActiveAgentId(null);
-    setIsGeneratingQueries(false);
-    console.log(
-      "event=eval_queries_generation_cancelled operation=handleCancelGenerate skill=%s",
-      skill.name,
+  useEffect(() => {
+    const unlisten = listen<EvalWorkbenchProgressEvent>(
+      "eval-workbench-progress",
+      (event) => {
+        const payload = event.payload;
+        if (!activeRunId || payload.runId !== activeRunId) {
+          return;
+        }
+        setProgress(payload);
+      },
     );
-  }
 
-  async function handleRunOptimization() {
-    setResult(null);
-    setProgress([]);
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [activeRunId]);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
     setError(null);
-    setApplied(false);
-    setIsRunning(true);
-    const selectedModel = requireSettingsModel(model);
-
-    console.log(
-      "event=optimization_start operation=runOptimizationLoop skill=%s model=%s query_count=%d",
-      skill.name,
-      selectedModel,
-      queries.length,
-    );
-    logToFile(
-      `OPTIMIZATION_START model=${selectedModel} query_count=${queries.length}`,
-    );
-
     try {
-      const unlisten = await listen<unknown>(
-        "description:progress",
-        (event) => {
-          const iteration = parseProgressEvent(event.payload);
-          if (iteration) {
-            setProgress((prev) => [...prev, iteration]);
-            logToFile(
-              `PROGRESS iteration=${iteration.iteration} train=${iteration.train_passed ?? "N/A"}/${iteration.train_total ?? "N/A"} test=${iteration.test_passed ?? "-"}/${iteration.test_total ?? "-"}`,
-            );
-          }
-        },
-      );
-      unlistenRef.current = unlisten;
+      const [nextPromptSets, nextRuns] = await Promise.all([
+        listEvalPromptSets(skill.plugin_slug, skill.name, "trigger"),
+        listEvalRuns(skill.plugin_slug, skill.name, "trigger", 20),
+      ]);
+      setPromptSets(nextPromptSets);
+      setRuns(nextRuns);
 
-      const optimizationResult = await runOptimizationLoop(
-        skill.name,
-        skill.plugin_slug,
-        workspacePath,
-        selectedModel,
-        queries,
-      );
-
-      setResult(optimizationResult);
-      console.log(
-        "event=optimization_complete operation=runOptimizationLoop skill=%s iterations=%d status=success",
-        skill.name,
-        optimizationResult.iterations_run,
-      );
-      logToFile(
-        `OPTIMIZATION_COMPLETE iterations=${optimizationResult.iterations_run}`,
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // Don't show "cancelled" as an error — it's user-initiated
-      if (!msg.toLowerCase().includes("cancelled")) {
-        setError(msg);
-        console.error(
-          "event=optimization_failed operation=runOptimizationLoop skill=%s error=%s",
-          skill.name,
-          msg,
-        );
-        logToFile(`OPTIMIZATION_FAILED error=${msg}`);
+      const selectedPromptSet =
+        nextPromptSets.find((promptSet) => promptSet.id === selectedPromptSetId) ??
+        nextPromptSets[0] ??
+        null;
+      if (selectedPromptSet) {
+        setSelectedPromptSetId(selectedPromptSet.id);
+        setDraft(promptSetToDraft(selectedPromptSet));
+      } else {
+        setSelectedPromptSetId(null);
+        setDraft(createDraftPromptSet("trigger", skill.plugin_slug, skill.name));
       }
+    } catch (loadError) {
+      setError(getErrorMessage(loadError));
     } finally {
-      setIsRunning(false);
-      setIsCancelling(false);
-      if (unlistenRef.current) {
-        unlistenRef.current();
-        unlistenRef.current = null;
-      }
+      setLoading(false);
+    }
+  }, [selectedPromptSetId, skill.name, skill.plugin_slug]);
+
+  useEffect(() => {
+    if (!workspacePath) {
+      setLoading(false);
+      return;
+    }
+    void refresh();
+  }, [refresh, workspacePath]);
+
+  async function handleSelectRun(runId: string) {
+    setSelectedRunId(runId);
+    setActionError(null);
+    try {
+      const run = await readEvalRun(runId);
+      setSelectedRun(run);
+      setCandidates(run?.descriptionCandidates ?? []);
+    } catch (runError) {
+      setActionError(getErrorMessage(runError));
     }
   }
 
-  async function handleCancel() {
-    setIsCancelling(true);
+  async function handleSavePromptSet() {
+    const validationError = validatePromptSet(draft);
+    if (validationError) {
+      setActionError(validationError);
+      return;
+    }
+
+    setSaving(true);
+    setActionError(null);
     try {
-      await cancelDescriptionOptimization();
-      console.log(
-        "event=optimization_cancelled operation=cancelDescriptionOptimization skill=%s",
-        skill.name,
-      );
-      logToFile("OPTIMIZATION_CANCELLED");
-    } catch (err) {
-      console.warn("[workspace-description] cancel failed:", err);
+      const saved = await saveEvalPromptSet(normalizePromptSet(draft));
+      setSelectedPromptSetId(saved.id);
+      setDraft(promptSetToDraft(saved));
+      await refresh();
+    } catch (saveError) {
+      setActionError(getErrorMessage(saveError));
+    } finally {
+      setSaving(false);
     }
   }
 
-  async function handleApply() {
-    if (!result) return;
-    setError(null);
+  async function handleGenerateCandidates() {
+    if (!draft.id) {
+      setActionError("Save the prompt set before generating candidates.");
+      return;
+    }
+    if (!baselineDescription.trim()) {
+      setActionError("Add a skill description before generating candidates.");
+      return;
+    }
+
+    setGeneratingCandidates(true);
+    setActionError(null);
     try {
-      const newVersion = await applyDescription(
-        skill.name,
+      const nextCandidates = await suggestDescriptionCandidates({
+        promptSetId: draft.id,
+        baselineDescription,
+        candidateCount: DEFAULT_DESCRIPTION_CANDIDATE_COUNT,
+      });
+      setCandidates(nextCandidates);
+    } catch (candidateError) {
+      setActionError(getErrorMessage(candidateError));
+    } finally {
+      setGeneratingCandidates(false);
+    }
+  }
+
+  async function handleRunComparison() {
+    if (!draft.id) {
+      setActionError("Save the prompt set before running a comparison.");
+      return;
+    }
+
+    const candidateIds = candidates.length
+      ? buildTriggerCandidateIds(candidates)
+      : getRunCandidateIds(selectedRun);
+    if (candidateIds.length === 0) {
+      setActionError("Generate candidates before running a comparison.");
+      return;
+    }
+
+    const runId = crypto.randomUUID();
+    setRunning(true);
+    setActionError(null);
+    setActiveRunId(runId);
+    setProgress(null);
+    try {
+      const run = await runEvalWorkbench({
+        runId,
+        promptSetId: draft.id,
+        candidateIds,
+      });
+      setRuns((currentRuns) => [
+        run,
+        ...currentRuns.filter((currentRun) => currentRun.id !== run.id),
+      ]);
+      await handleSelectRun(run.id);
+    } catch (runError) {
+      setActionError(getErrorMessage(runError));
+    } finally {
+      setRunning(false);
+      setActiveRunId(null);
+      setProgress(null);
+    }
+  }
+
+  async function handleCancelRun() {
+    if (!activeRunId) {
+      return;
+    }
+
+    try {
+      await cancelEvalWorkbenchRun(activeRunId);
+    } catch (cancelError) {
+      setActionError(getErrorMessage(cancelError));
+    }
+  }
+
+  async function handleApplyCandidate(candidate: DescriptionCandidate) {
+    setActionError(null);
+    try {
+      const applied = await applyDescriptionCandidate(
         skill.plugin_slug,
-        workspacePath,
-        result.best_description,
-      );
-      console.log(
-        "event=description_applied operation=applyDescription skill=%s version=%s status=success",
         skill.name,
-        newVersion,
+        candidate.id,
       );
-      logToFile("DESCRIPTION_APPLIED");
-      setResult(null);
-      setApplied(true);
-      setTimeout(() => setApplied(false), 3000);
-      onApply?.(result.best_description, newVersion);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      console.error(
-        "event=description_apply_failed operation=applyDescription skill=%s error=%s",
-        skill.name,
-        msg,
-      );
-      logToFile(`DESCRIPTION_APPLY_FAILED error=${msg}`);
+      setAppliedDescription(applied.description);
+      onApply?.(applied.description, skill.version ?? "");
+    } catch (applyError) {
+      setActionError(getErrorMessage(applyError));
     }
   }
 
-  const latestProgress = progress[progress.length - 1] ?? null;
+  async function handleSendToRefine() {
+    if (!selectedRunId) {
+      return;
+    }
+
+    setSendingToRefine(true);
+    setActionError(null);
+    try {
+      const brief = await buildRefineImprovementBrief(selectedRunId);
+      useRefineStore.getState().setPendingInitialMessage(brief.brief);
+      onNavigateToRefine?.();
+    } catch (briefError) {
+      setActionError(getErrorMessage(briefError));
+    } finally {
+      setSendingToRefine(false);
+    }
+  }
+
+  if (!workspacePath) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Configure a workspace before using Eval Workbench.
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Loading description workbench…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3">
+        <p className="text-sm text-destructive">{error}</p>
+        <Button variant="outline" size="sm" onClick={() => void refresh()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Section A: Eval Query Editor */}
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold">Trigger Eval Queries</h3>
-            {queries.length > 0 && (
-              <Badge variant="secondary" className="rounded-full">
-                {queries.length}
-              </Badge>
-            )}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setNumEvalQueriesInput("20");
-              setShowGenerateDialog(true);
-            }}
-            disabled={isGeneratingQueries || isRunning}
-          >
-            Generate
-          </Button>
-        </div>
-
-        {queries.length === 0 && (
-          <p className="text-sm text-muted-foreground mb-2">
-            No queries yet. Generate or add them manually.
-          </p>
-        )}
-
-        <div className="grid grid-cols-2 gap-4">
-          {/* Left column: should trigger */}
-          <div className="flex flex-col gap-2">
-            <p
-              className="text-sm font-semibold tracking-tight"
-              style={{ color: "var(--color-pacific)" }}
-            >
-              Should Trigger
-            </p>
-            {queries
-              .filter((q) => q.should_trigger)
-              .map((q) => (
-                <div key={q.id} className="flex items-start gap-1.5">
-                  <Textarea
-                    value={q.query}
-                    onChange={(e) =>
-                      setQueries(
-                        updateQuery(queries, q.id, { query: e.target.value }),
-                      )
-                    }
-                    placeholder="Enter query…"
-                    className="flex-1 min-h-[52px] resize-none text-sm py-1.5 leading-snug"
-                    disabled={isRunning}
-                  />
-                  <Switch
-                    checked={q.should_trigger}
-                    onCheckedChange={() =>
-                      setQueries(
-                        updateQuery(queries, q.id, {
-                          should_trigger: !q.should_trigger,
-                        }),
-                      )
-                    }
-                    disabled={isRunning}
-                    aria-label="Should trigger"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0"
-                    onClick={() => setQueries(removeQuery(queries, q.id))}
-                    disabled={isRunning}
-                    aria-label="Delete query"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-            <button
-              type="button"
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
-              onClick={() => setQueries(addQuery(queries, true))}
-              disabled={isRunning}
-            >
-              <Plus className="h-3 w-3" />
-              Add query
-            </button>
-          </div>
-
-          {/* Right column: should not trigger */}
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium tracking-tight text-muted-foreground">
-              Should Not Trigger
-            </p>
-            {queries
-              .filter((q) => !q.should_trigger)
-              .map((q) => (
-                <div key={q.id} className="flex items-start gap-1.5">
-                  <Textarea
-                    value={q.query}
-                    onChange={(e) =>
-                      setQueries(
-                        updateQuery(queries, q.id, { query: e.target.value }),
-                      )
-                    }
-                    placeholder="Enter query…"
-                    className="flex-1 min-h-[52px] resize-none text-sm py-1.5 leading-snug"
-                    disabled={isRunning}
-                  />
-                  <Switch
-                    checked={q.should_trigger}
-                    onCheckedChange={() =>
-                      setQueries(
-                        updateQuery(queries, q.id, {
-                          should_trigger: !q.should_trigger,
-                        }),
-                      )
-                    }
-                    disabled={isRunning}
-                    aria-label="Should trigger"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0"
-                    onClick={() => setQueries(removeQuery(queries, q.id))}
-                    disabled={isRunning}
-                    aria-label="Delete query"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-            <button
-              type="button"
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
-              onClick={() => setQueries(addQuery(queries, false))}
-              disabled={isRunning}
-            >
-              <Plus className="h-3 w-3" />
-              Add query
-            </button>
-          </div>
-        </div>
-
-        {generateError && (
-          <p className="text-xs text-destructive mt-2">{generateError}</p>
-        )}
-      </div>
-
-      {/* Section B: Optimization Runner */}
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold">Optimize Description</h3>
-          <Button
-            size="sm"
-            onClick={handleRunOptimization}
-            disabled={
-              isRunning ||
-              isGeneratingQueries ||
-              queries.length === 0 ||
-              queries.every((q) => !q.should_trigger)
-            }
-          >
-            {isRunning ? (
-              <>
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                Running…
-              </>
-            ) : (
-              "Optimize"
-            )}
-          </Button>
-        </div>
-
-        {isRunning &&
-          (() => {
-            const maxIter = 5;
-            // Iteration 0 is the baseline — don't count it toward the 1–5 optimization progress.
-            const completedOptIters = progress.filter(
-              (p) => p.iteration > 0,
-            ).length;
-            const currentIter = completedOptIters + 1;
-            const progressPct = (completedOptIters / maxIter) * 100;
-            const bestSoFar =
-              progress.length > 0
-                ? Math.max(
-                    ...progress.map((p) =>
-                      p.test_passed !== null && p.test_total !== null
-                        ? scoreRate(p.test_passed, p.test_total)
-                        : scoreRate(p.train_passed ?? 0, p.train_total ?? 0),
-                    ),
-                  )
-                : 0;
-
-            return (
-              <div className="space-y-3">
-                {/* Progress card */}
-                <div
-                  className="rounded-md border p-3 space-y-3"
-                  style={{
-                    background:
-                      "color-mix(in oklch, var(--color-pacific), transparent 96%)",
-                  }}
-                >
-                  <div>
-                    <p className="text-sm font-semibold">
-                      Iteration {Math.min(currentIter, maxIter)} / {maxIter}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {latestProgress
-                        ? "Improving description based on eval failures…"
-                        : "Evaluating current description…"}
-                    </p>
-                  </div>
-
-                  <Progress value={progressPct} className="h-1.5" />
-
-                  {/* Score cards */}
-                  {latestProgress && (
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="rounded-md border bg-card p-2.5">
-                        <p className="text-[11px] text-muted-foreground font-medium">
-                          Train score
-                        </p>
-                        <p
-                          className="text-lg font-mono font-semibold"
-                          style={{ color: "var(--color-pacific)" }}
-                        >
-                          {latestProgress.train_passed !== null &&
-                          latestProgress.train_total !== null
-                            ? formatRate(
-                                latestProgress.train_passed,
-                                latestProgress.train_total,
-                              )
-                            : "N/A"}
-                        </p>
-                      </div>
-                      <div className="rounded-md border bg-card p-2.5">
-                        <p className="text-[11px] text-muted-foreground font-medium">
-                          Test score
-                        </p>
-                        <p
-                          className="text-lg font-mono font-semibold"
-                          style={{ color: "var(--color-pacific)" }}
-                        >
-                          {latestProgress.test_passed !== null &&
-                          latestProgress.test_total !== null
-                            ? formatRate(
-                                latestProgress.test_passed,
-                                latestProgress.test_total,
-                              )
-                            : "—"}
-                        </p>
-                      </div>
-                      <div className="rounded-md border bg-card p-2.5">
-                        <p className="text-[11px] text-muted-foreground font-medium">
-                          Best so far
-                        </p>
-                        <p className="text-lg font-mono font-semibold">
-                          {bestSoFar.toFixed(2)}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Loader2
-                      className="h-3 w-3 animate-spin"
-                      style={{ color: "var(--color-pacific)" }}
-                    />
-                    Running 3x eval queries on iteration{" "}
-                    {Math.min(currentIter, maxIter)} description…
-                  </div>
-                </div>
-
-                {/* Completed iterations table */}
-                {progress.length > 0 && (
-                  <div>
-                    <p className="text-[11px] font-medium tracking-wide uppercase text-muted-foreground mb-1.5">
-                      Completed Iterations
-                    </p>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm border-collapse">
-                        <thead>
-                          <tr className="text-xs text-muted-foreground border-b border-border">
-                            <th className="text-left pb-1.5 pr-4 font-medium">
-                              Iteration
-                            </th>
-                            <th className="text-left pb-1.5 pr-4 font-medium">
-                              Train
-                            </th>
-                            <th className="text-left pb-1.5 pr-4 font-medium">
-                              Test
-                            </th>
-                            <th className="text-left pb-1.5 font-medium">
-                              Status
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {progress.map((iter) => (
-                            <tr key={iter.iteration}>
-                              <td className="pr-4 py-1 font-mono text-xs">
-                                {iter.iteration}
-                              </td>
-                              <td
-                                className={`pr-4 py-1 font-mono text-xs ${iter.train_passed !== null && iter.train_total !== null ? scoreColor(iter.train_passed, iter.train_total) : "text-muted-foreground"}`}
-                              >
-                                {iter.train_passed !== null &&
-                                iter.train_total !== null
-                                  ? formatRate(
-                                      iter.train_passed,
-                                      iter.train_total,
-                                    )
-                                  : "N/A"}
-                              </td>
-                              <td
-                                className={`pr-4 py-1 font-mono text-xs ${
-                                  iter.test_passed !== null &&
-                                  iter.test_total !== null
-                                    ? scoreColor(
-                                        iter.test_passed,
-                                        iter.test_total,
-                                      )
-                                    : "text-muted-foreground"
-                                }`}
-                              >
-                                {iter.test_passed !== null &&
-                                iter.test_total !== null
-                                  ? formatRate(
-                                      iter.test_passed,
-                                      iter.test_total,
-                                    )
-                                  : "—"}
-                              </td>
-                              <td className="py-1 text-xs text-muted-foreground">
-                                done
-                              </td>
-                            </tr>
-                          ))}
-                          {/* Current running row */}
-                          <tr>
-                            <td className="pr-4 py-1 font-mono text-xs">
-                              {Math.min(currentIter, maxIter)}{" "}
-                              <span
-                                className="text-[10px] font-medium"
-                                style={{ color: "var(--color-pacific)" }}
-                              >
-                                (running)
-                              </span>
-                            </td>
-                            <td
-                              className="pr-4 py-1 font-mono text-xs"
-                              style={{ color: "var(--color-pacific)" }}
-                            >
-                              …
-                            </td>
-                            <td
-                              className="pr-4 py-1 font-mono text-xs"
-                              style={{ color: "var(--color-pacific)" }}
-                            >
-                              …
-                            </td>
-                            <td
-                              className="py-1 text-xs"
-                              style={{ color: "var(--color-pacific)" }}
-                            >
-                              …
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* Cancel button */}
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={handleCancel}
-                  disabled={isCancelling}
-                >
-                  {isCancelling ? (
-                    <>
-                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                      Cancelling…
-                    </>
-                  ) : (
-                    "Cancel"
-                  )}
-                </Button>
-              </div>
-            );
-          })()}
-
-        {queries.length > 0 && queries.every((q) => !q.should_trigger) && (
-          <p className="text-xs text-muted-foreground mt-2">
-            Enable at least one query to run optimization.
-          </p>
-        )}
-
-        {error && <p className="text-sm text-destructive mt-2">{error}</p>}
-      </div>
-
-      {applied && (
-        <div
-          className="rounded-lg border bg-card p-3 text-sm"
-          style={{ color: "var(--color-seafoam)" }}
-        >
-          Description applied successfully.
-        </div>
-      )}
-
-      {/* Section C: Optimization Results */}
-      {result !== null &&
-        (() => {
-          const bestIdx = findBestIteration(result.history);
-          const bestIter = bestIdx >= 0 ? result.history[bestIdx] : null;
-          const bestTestScore =
-            bestIter &&
-            bestIter.test_passed !== null &&
-            bestIter.test_total !== null
-              ? formatRate(bestIter.test_passed, bestIter.test_total)
-              : bestIter &&
-                  bestIter.train_passed !== null &&
-                  bestIter.train_total !== null
-                ? formatRate(bestIter.train_passed, bestIter.train_total)
-                : "—";
-
-          return (
-            <div className="rounded-lg border bg-card p-4">
-              <h3 className="text-sm font-semibold">Results</h3>
-              <p className="text-xs text-muted-foreground mt-0.5 mb-3">
-                {result.iterations_run} iterations complete
-                {bestIter && (
-                  <>
-                    {" "}
-                    · best score{" "}
-                    <strong style={{ color: "var(--color-seafoam)" }}>
-                      {bestTestScore}
-                    </strong>{" "}
-                    at iteration {bestIter.iteration}
-                  </>
-                )}
-              </p>
-
-              {/* Score progression table */}
-              {result.history.length > 0 && (
-                <div className="mb-4">
-                  <p className="text-[11px] font-medium tracking-wide uppercase text-muted-foreground mb-1.5">
-                    Score Progression
-                  </p>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm border-collapse">
-                      <thead>
-                        <tr className="text-xs text-muted-foreground border-b border-border">
-                          <th className="text-left pb-1.5 pr-4 font-medium">
-                            Iteration
-                          </th>
-                          <th className="text-left pb-1.5 pr-4 font-medium">
-                            Train
-                          </th>
-                          <th className="text-left pb-1.5 pr-4 font-medium">
-                            Test
-                          </th>
-                          <th className="text-left pb-1.5 font-medium">
-                            Delta
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {result.history.map((iter, i) => {
-                          const prev = i > 0 ? result.history[i - 1] : null;
-                          const delta = scoreDelta(iter, prev);
-                          const isBest = i === bestIdx;
-                          return (
-                            <tr
-                              key={iter.iteration}
-                              className={
-                                isBest
-                                  ? "bg-[color-mix(in_oklch,var(--color-seafoam),transparent_90%)]"
-                                  : ""
-                              }
-                            >
-                              <td className="pr-4 py-1 font-mono text-xs">
-                                {iter.iteration}
-                                {isBest && (
-                                  <span
-                                    className="ml-1.5 text-[10px] font-medium rounded-full px-1.5 py-0.5"
-                                    style={{
-                                      color: "var(--color-seafoam)",
-                                      background:
-                                        "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
-                                    }}
-                                  >
-                                    best
-                                  </span>
-                                )}
-                              </td>
-                              <td
-                                className={`pr-4 py-1 font-mono text-xs ${isBest ? "font-semibold text-[var(--color-seafoam)]" : iter.train_passed !== null && iter.train_total !== null ? scoreColor(iter.train_passed, iter.train_total) : "text-muted-foreground"}`}
-                              >
-                                {iter.train_passed !== null &&
-                                iter.train_total !== null ? (
-                                  <>
-                                    {formatRate(
-                                      iter.train_passed,
-                                      iter.train_total,
-                                    )}{" "}
-                                    <span className="text-muted-foreground font-normal">
-                                      ({iter.train_passed}/{iter.train_total})
-                                    </span>
-                                  </>
-                                ) : (
-                                  "N/A"
-                                )}
-                              </td>
-                              <td
-                                className={`pr-4 py-1 font-mono text-xs ${
-                                  iter.test_passed !== null &&
-                                  iter.test_total !== null
-                                    ? isBest
-                                      ? "font-semibold text-[var(--color-seafoam)]"
-                                      : scoreColor(
-                                          iter.test_passed,
-                                          iter.test_total,
-                                        )
-                                    : "text-muted-foreground"
-                                }`}
-                              >
-                                {iter.test_passed !== null &&
-                                iter.test_total !== null ? (
-                                  <>
-                                    {formatRate(
-                                      iter.test_passed,
-                                      iter.test_total,
-                                    )}{" "}
-                                    <span className="text-muted-foreground font-normal">
-                                      ({iter.test_passed}/{iter.test_total})
-                                    </span>
-                                  </>
-                                ) : (
-                                  "—"
-                                )}
-                              </td>
-                              <td
-                                className={`py-1 font-mono text-xs ${
-                                  delta === null
-                                    ? "text-muted-foreground"
-                                    : delta >= 0
-                                      ? "text-[var(--color-seafoam)]"
-                                      : "text-destructive"
-                                }`}
-                              >
-                                {formatDelta(delta)}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Before / After diff */}
-              <p className="text-[11px] font-medium tracking-wide uppercase text-muted-foreground mb-1.5">
-                Description diff — original vs best
-                {bestIter ? ` (iteration ${bestIter.iteration})` : ""}
-              </p>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div
-                  className="rounded-md border p-3 space-y-1"
-                  style={{
-                    borderColor:
-                      "color-mix(in oklch, var(--color-destructive, #ef4444), transparent 70%)",
-                    background:
-                      "color-mix(in oklch, var(--color-destructive, #ef4444), transparent 95%)",
-                  }}
-                >
-                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                    Before (Original)
-                  </p>
-                  <p className="text-sm">{result.original_description}</p>
-                </div>
-                <div
-                  className="rounded-md border p-3 space-y-1"
-                  style={{
-                    borderColor:
-                      "color-mix(in oklch, var(--color-seafoam), transparent 70%)",
-                    background:
-                      "color-mix(in oklch, var(--color-seafoam), transparent 95%)",
-                  }}
-                >
-                  <p
-                    className="text-xs font-medium flex items-center gap-1"
-                    style={{ color: "var(--color-seafoam)" }}
-                  >
-                    After (Best)
-                  </p>
-                  <p className="text-sm">{result.best_description}</p>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <Button size="sm" onClick={handleApply}>
-                  Apply best description
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setResult(null)}
-                >
-                  Discard
-                </Button>
-              </div>
+    <div className="flex flex-col gap-6">
+      <section className="rounded-lg border bg-card p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-semibold">Eval Workbench</h1>
+              <Badge variant="outline">Trigger</Badge>
             </div>
-          );
-        })()}
-
-      {/* Number of queries dialog */}
-      <Dialog
-        open={showGenerateDialog}
-        onOpenChange={(open) => {
-          if (!open) setShowGenerateDialog(false);
-        }}
-      >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Generate Eval Queries</DialogTitle>
-            <DialogDescription>
-              How many trigger eval queries should be generated? Minimum 10,
-              recommended 20.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="num-eval-queries">Number of queries</Label>
-            <Input
-              id="num-eval-queries"
-              type="number"
-              autoFocus
-              value={numEvalQueriesInput}
-              onChange={(e) => setNumEvalQueriesInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  const n = parseInt(numEvalQueriesInput, 10);
-                  if (!isNaN(n) && n >= 10) {
-                    setShowGenerateDialog(false);
-                    void handleGenerateQueries(n);
-                  }
-                }
-              }}
-            />
+            <p className="mt-1 text-sm text-muted-foreground">
+              Generate description candidates, compare them, then push the best
+              findings into Refine.
+            </p>
           </div>
-          <DialogFooter>
+          <div className="flex gap-2">
             <Button
+              size="sm"
               variant="outline"
-              onClick={() => setShowGenerateDialog(false)}
+              onClick={() => void handleGenerateCandidates()}
+              disabled={generatingCandidates}
             >
-              Cancel
+              <Sparkles className="mr-1 size-3.5" />
+              Generate candidates
             </Button>
             <Button
-              onClick={() => {
-                const n = parseInt(numEvalQueriesInput, 10);
-                if (!isNaN(n) && n >= 10) {
-                  setShowGenerateDialog(false);
-                  void handleGenerateQueries(n);
-                }
-              }}
-              disabled={(() => {
-                const n = parseInt(numEvalQueriesInput, 10);
-                return isNaN(n) || n < 10;
-              })()}
+              size="sm"
+              onClick={() => void handleRunComparison()}
+              disabled={running}
             >
-              Generate
+              Run comparison
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Fullscreen blocking overlay while generating */}
-      <Dialog open={isGeneratingQueries}>
-        <DialogContent
-          showCloseButton={false}
-          className="sm:max-w-4xl w-full"
-          onInteractOutside={() => setShowCancelConfirm(true)}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Loader2
-                className="h-4 w-4 animate-spin"
-                style={{ color: "var(--color-pacific)" }}
-              />
-              Generating Eval Queries
-            </DialogTitle>
-            <DialogDescription>
-              Claude is generating eval queries for{" "}
-              <strong>{skill.name}</strong>. Click outside or press{" "}
-              <kbd className="rounded border px-1 text-xs">ESC</kbd> to cancel.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="h-[420px] flex flex-col min-h-0 overflow-hidden">
-            {agentHasRun && activeAgentId ? (
-              <AgentOutputPanel agentId={activeAgentId} />
-            ) : (
-              <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Loader2
-                  className="h-4 w-4 animate-spin"
-                  style={{ color: "var(--color-pacific)" }}
-                />
-                <span>Starting agent…</span>
-              </div>
-            )}
+            {running && activeRunId ? (
+              <Button size="sm" variant="outline" onClick={() => void handleCancelRun()}>
+                <Square className="mr-1 size-3.5" />
+                Cancel
+              </Button>
+            ) : null}
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+        {running && progress ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            {progress.message} ({progress.completed}/{progress.total})
+          </p>
+        ) : null}
 
-      {/* Cancel confirmation guard */}
-      <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Stop generating?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The eval query generation will be cancelled. No queries will be
-              saved.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Continue generating</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void handleCancelGenerate()}>
-              Stop
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {promptSets.length > 0 ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {promptSets.map((promptSet) => (
+              <Button
+                key={promptSet.id}
+                type="button"
+                size="sm"
+                variant={
+                  selectedPromptSetId === promptSet.id ? "secondary" : "outline"
+                }
+                onClick={() => {
+                  setSelectedPromptSetId(promptSet.id);
+                  setDraft(promptSetToDraft(promptSet));
+                  setActionError(null);
+                }}
+              >
+                {promptSet.name}
+              </Button>
+            ))}
+          </div>
+        ) : null}
+      </section>
 
-      {blockerStatus === "blocked" && (
-        <Dialog
-          open
-          onOpenChange={(open) => {
-            if (!open) handleNavStay();
-          }}
-        >
-          <DialogContent showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>Optimization In Progress</DialogTitle>
-              <DialogDescription>
-                A description optimization run is still in progress. Leaving
-                will cancel it.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={handleNavStay}>
-                Stay
-              </Button>
-              <Button variant="destructive" onClick={handleNavLeave}>
-                Leave
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+      {actionError ? (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>{actionError}</span>
+        </div>
+      ) : null}
+
+      {appliedDescription ? (
+        <div className="rounded-lg border bg-card p-4">
+          <p className="text-sm font-medium">Applied description</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {appliedDescription}
+          </p>
+        </div>
+      ) : null}
+
+      <section className="rounded-lg border bg-card p-4">
+        <div className="mb-3">
+          <h2 className="text-sm font-semibold">Current description</h2>
+          <p className="text-xs text-muted-foreground">
+            Baseline used for candidate generation and trigger comparison.
+          </p>
+        </div>
+        <p className="text-sm">
+          {baselineDescription || "No current description is set yet."}
+        </p>
+      </section>
+
+      <PromptSetEditor
+        draft={draft}
+        onChange={setDraft}
+        onSave={() => void handleSavePromptSet()}
+        onNew={() => {
+          setSelectedPromptSetId(null);
+          setDraft(createDraftPromptSet("trigger", skill.plugin_slug, skill.name));
+          setCandidates([]);
+          setActionError(null);
+        }}
+        saveDisabled={saving}
+      />
+
+      <section className="rounded-lg border bg-card p-4">
+        <div className="mb-3">
+          <h2 className="text-sm font-semibold">Candidates</h2>
+          <p className="text-xs text-muted-foreground">
+            Review the generated descriptions before running or applying them.
+          </p>
+        </div>
+        <CandidateCards
+          entries={comparisonEntries}
+          recommendedCandidateId={recommendedCandidate?.id ?? null}
+          onApply={(candidate) => void handleApplyCandidate(candidate)}
+        />
+      </section>
+
+      <RunHistory
+        runs={runs}
+        selectedRunId={selectedRunId}
+        onSelectRun={(runId) => void handleSelectRun(runId)}
+      />
+
+      <section className="rounded-lg border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Run details</h2>
+            <p className="text-xs text-muted-foreground">
+              Inspect candidate outcomes, then hand the brief to Refine.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void handleSendToRefine()}
+            disabled={!selectedRunId || sendingToRefine}
+          >
+            Send to Refine
+            <ArrowRight className="ml-1 size-3.5" />
+          </Button>
+        </div>
+        <ResultTable
+          mode="trigger"
+          run={selectedRun}
+          candidateLabelById={Object.fromEntries(
+            comparisonEntries.map((entry) => [
+              entry.candidate.id,
+              entry.candidate.label,
+            ]),
+          )}
+        />
+      </section>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-Return JSON only for a Skill Builder description-optimization query generation run.
+Return JSON only for a Skill Builder Eval Workbench trigger prompt-set generation run.
 
 Skill: fabric-dbt-standards
 Skill description: Helps analytics engineers apply dbt-Fabric standards for bronze/silver/gold models, incremental materializations, SCD2 snapshots, semantic handoff, and CI review.

@@ -12,6 +12,44 @@
 
 ---
 
+## Branch Audit
+
+This branch is no longer at plan-zero. The current checkout already includes:
+
+- `app/promptfoo-sidecar/` scaffolded with protocol parsing, result normalization, tests, package metadata, and a placeholder JSONL runner
+- `app/src-tauri/src/agents/promptfoo_sidecar/` scaffolded with runner path resolution plus Rust protocol types/tests
+- `app/src-tauri/src/db/eval_workbench.rs` and `app/src-tauri/src/commands/eval_workbench/` scaffolded with prompt-set persistence and placeholder command surfaces
+- workflow step 3 prompt cleanup partially landed: `app/src-tauri/src/commands/workflow/tests.rs` and `app/src/__tests__/lib/canonical-format.test.ts` already assert that `evals/evals.json` is gone from the generation prompt
+
+The current branch still has the following blocking clean-break gaps:
+
+- the live Eval UI still routes generate/regenerate flows through `start_agent` in `app/src/components/workspace/workspace-evals.tsx`
+- `app/src-tauri/src/commands/agent.rs` still hard-requires `settings.anthropic_api_key` for that path, which breaks OpenCode-backed eval flows
+- `app/src-tauri/src/commands/eval_workbench/mod.rs` still returns placeholder `"not yet implemented"` errors for execution and candidate generation
+- the old file-backed eval and description-optimization surfaces are still active: `app/src-tauri/src/commands/evals.rs`, `app/src-tauri/src/commands/description/`, `app/src/components/workspace/workspace-evals.tsx`, `app/src/components/workspace/workspace-description.tsx`, and the related typed Tauri wrappers
+- deterministic coverage still references stale legacy paths and commands, including `agent-sources/skills/creating-skills/SKILL.md` instead of `agent-sources/workspace/skills/creating-skills/SKILL.md`
+
+## Remaining Execution Strategy
+
+The rest of `VU-1156` should be treated as a true clean break, not a compatibility patch. The execution order for the remaining work is:
+
+1. Implement the app-owned Promptfoo execution path end to end in Rust plus the Promptfoo sidecar.
+2. Switch the frontend Eval and Description surfaces onto the new `eval_workbench` command surface.
+3. Delete the legacy file-backed eval and description optimization paths once the new flow is active.
+4. Repair tests, docs, `repo-map.json`, and command contracts to describe only the new architecture.
+
+## Parallel Ownership
+
+These are the ownership boundaries for implementation workers in this session:
+
+- **Runtime worker:** `app/promptfoo-sidecar/**`, `app/src-tauri/src/agents/promptfoo_sidecar/**`, `app/src-tauri/src/commands/eval_workbench/**`, `app/src-tauri/src/db/eval_workbench.rs`, `app/src-tauri/src/lib.rs`
+- **Frontend worker:** `app/src/components/workspace/workspace-evals.tsx`, `app/src/components/workspace/workspace-description.tsx`, new `app/src/components/workspace/eval-workbench/**`, `app/src/lib/tauri.ts`, `app/src/lib/tauri-command-types.ts`, `app/src/lib/eval-workbench.ts`
+- **Legacy-removal worker:** `app/src-tauri/src/commands/evals.rs`, `app/src-tauri/src/commands/description/**`, agent/workflow prompt references, stale eval assertions under `tests/evals/**`, docs, `repo-map.json`, `TEST_MAP.md`
+
+Only the sections below that are still pending should drive implementation. Completed scaffold work should be refined in place, not rebuilt from scratch.
+
+---
+
 ## File Structure
 
 | File | Responsibility |

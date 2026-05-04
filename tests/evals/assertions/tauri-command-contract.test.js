@@ -20,7 +20,6 @@ const vu1140Commands = [
   "cancel_refine_turn",
   "cancel_agent_run",
   "cancel_workflow_step",
-  "answer_refine_question",
   "send_refine_message",
   "finalize_refine_run",
   "clean_benchmark_snapshot",
@@ -159,6 +158,35 @@ test("wrapper commands use invokeCommand unless explicitly allowlisted", () => {
   );
 
   assert.deepEqual(undocumentedCommands, []);
+});
+
+test("published Eval Workbench command surface omits legacy and no-op commands", () => {
+  const apiSource = read("docs/design/backend-design/api.md");
+
+  for (const command of [
+    "list_eval_prompt_sets",
+    "save_eval_prompt_set",
+    "delete_eval_prompt_set",
+    "run_eval_workbench",
+    "list_eval_runs",
+    "read_eval_run",
+    "suggest_description_candidates",
+    "apply_description_candidate",
+    "build_refine_improvement_brief",
+  ]) {
+    assert.ok(apiSource.includes(`| \`${command}\` |`));
+  }
+
+  for (const staleCommand of [
+    "cancel_eval_workbench_run",
+    "run_optimization_loop",
+    "save_eval_queries",
+    "load_eval_queries",
+    "start_generate_desc_eval_queries",
+    "materialize_eval_benchmark",
+  ]) {
+    assert.equal(apiSource.includes(`| \`${staleCommand}\` |`), false);
+  }
 });
 
 test("invokeUnsafe call expressions are rejected outside documented exceptions", () => {

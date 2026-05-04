@@ -5,6 +5,7 @@ import path from "path";
 // Resolve paths relative to the app directory.
 // __dirname is src/__tests__/lib, so go up 3 levels to reach app/.
 const APP_ROOT = path.resolve(__dirname, "../../..");
+const REPO_ROOT = path.resolve(APP_ROOT, "..");
 const MOCK_ROOT = path.join(APP_ROOT, "sidecar/mock-templates/outputs");
 const FIXTURE_ROOT = path.join(APP_ROOT, "e2e/fixtures/agent-responses");
 
@@ -87,6 +88,23 @@ describe("Canonical format: anti-pattern checks (all markdown files)", () => {
       expect(content).not.toMatch(/\[MUST ANSWER\]/);
     });
   }
+});
+
+describe("Canonical format: skill generation prompt contract", () => {
+  const promptPath = path.join(
+    REPO_ROOT,
+    "agent-sources/prompts/skill-generation.txt",
+  );
+  const prompt = readFile(promptPath);
+
+  it("keeps durable eval artifacts owned by the app Eval Workbench", () => {
+    expect(prompt).not.toContain("evals/evals.json");
+    expect(prompt).not.toContain("pending-eval.json");
+    expect(prompt).not.toContain("write-evals");
+    expect(prompt).not.toContain("eval ideas");
+    expect(prompt).not.toContain("suggest-eval-ideas");
+    expect(prompt).not.toContain("description optimization");
+  });
 });
 
 // ---------------------------------------------------------------------------

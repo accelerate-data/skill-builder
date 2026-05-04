@@ -13,15 +13,15 @@ artifact changes, run and update the matching package.
 | `skill-content-researcher-answer-evaluator` | Gate verdict | Rewrite | Covers OpenHands `skill-creator` answer-evaluator gate answer classification and `gate_decision` JSON. |
 | `skill-content-researcher-detailed-research` | Detailed research merge | Rewrite | Covers OpenHands `skill-creator` step 1 `workflow.detailed_research` additive merge behavior. |
 | `skill-content-researcher-confirm-decisions` | Decisions output | Rewrite | Covers OpenHands `skill-creator` step 2 decision confirmation analysis and canonical decisions JSON. |
-| `skill-creator-generate-skill` | Generated skill output | Rewrite | Covers OpenHands `skill-creator` step 3 `workflow.skill_generation` using the `creating-skills` skill, `{skill_output_dir}/SKILL.md`, references, generated evals, fresh-context verification, `version_bump: "1.0.0"`, and no benchmark execution. |
+| `skill-creator-generate-skill` | Generated skill output | Rewrite | Covers OpenHands `skill-creator` step 3 `workflow.skill_generation` using the runtime `creating-skills` skill, `{skill_output_dir}/SKILL.md`, references, fresh-context verification, `version_bump: "1.0.0"`, and no generation-owned eval or trigger-description artifacts. |
 | `skill-creator-rewrite-skill` | Refine rewrite | Add | Covers the rewrite agent contract used by refine sessions. |
 | `skill-creator-grader` | Eval grading | Add | Covers strict grading and `grading.json` output used by app eval runs. |
 | `workspace-test-evaluator-prompt` | Skill tester plan comparison | Add | Replaces the stale bundled-skill meta eval with the app-used tester evaluator prompt behavior. |
 | `workspace-workflow-step-prompt` | Workflow prompt shell | Add | Covers app-injected workflow paths and one-shot constraints. |
 | `workspace-refine-initial-prompt` | Refine prompt shell | Add | Covers refine routing, eval-failure triage, and `AskUserQuestion` handoff. |
 | `workspace-eval-initial-prompt` | Eval loop prompt | Add | Covers executor/grader orchestration and structured eval-loop output. |
-| `workspace-eval-generator-system-prompt` | Eval generator prompt | Add | Covers pending eval JSON generation from realistic skill-test user intent. |
-| `workspace-description-evals-generator-prompt` | Description query generation | Add | Covers trigger-query generation for description optimization. |
+| `workspace-eval-generator-system-prompt` | Eval generator prompt | Add | Covers draft Eval Workbench case JSON generation from realistic skill-test user intent. |
+| `workspace-description-evals-generator-prompt` | Description query generation | Add | Covers trigger-prompt set generation for the Eval Workbench description-candidate flow. |
 | `workspace-skill-suggestions-prompt` | Skill field suggestions | Add | Covers the create-skill form suggestion JSON returned by the Rust prompt. |
 | `scope-advisor` | Skill scope review prompt | Rewrite | Covers current Rust prompt behavior for focused, too-broad, name, description, context, and non-English cases. |
 

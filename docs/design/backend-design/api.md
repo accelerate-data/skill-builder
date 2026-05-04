@@ -173,16 +173,19 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 | `import_marketplace_plugin_to_library` | Import an entire marketplace plugin into the Skills Library |
 | `check_marketplace_updates` | Check for available updates to installed marketplace plugins |
 
-## Description Optimization
+## Eval Workbench
 
 | Command | Description |
 |---|---|
-| `start_generate_desc_evals` | Generate trigger eval queries for a skill description |
-| `load_eval_queries` | Load persisted eval queries for a skill |
-| `save_eval_queries` | Persist eval queries to disk |
-| `run_optimization_loop` | Run the Rust-native description optimization loop |
-| `cancel_description_optimization` | Stop a running optimization loop |
-| `apply_description` | Write the best candidate description to SKILL.md frontmatter |
+| `list_eval_prompt_sets` | List app-owned prompt sets for a skill and mode |
+| `save_eval_prompt_set` | Create or update an app-owned prompt set |
+| `delete_eval_prompt_set` | Delete an app-owned prompt set |
+| `run_eval_workbench` | Run the Promptfoo-backed Eval Workbench for a saved prompt set |
+| `list_eval_runs` | List saved Eval Workbench runs for a skill and mode |
+| `read_eval_run` | Read one saved Eval Workbench run with results and candidates |
+| `suggest_description_candidates` | Generate trigger-description candidates from a trigger prompt set |
+| `apply_description_candidate` | Apply a generated description candidate to SKILL.md frontmatter |
+| `build_refine_improvement_brief` | Build a Refine-ready improvement brief from a saved workbench run |
 
 ## Feedback & Testing
 

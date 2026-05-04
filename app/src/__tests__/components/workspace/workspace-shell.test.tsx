@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SkillSummary } from "@/lib/types";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
@@ -79,11 +79,35 @@ vi.mock("@/lib/tauri", () => ({
   listSkills: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("@/lib/description-opt-running-state", () => ({
-  setDescriptionOptRunning: vi.fn(),
-  getDescriptionOptRunning: vi.fn().mockReturnValue(false),
-  subscribeDescriptionOptRunning: vi.fn().mockReturnValue(() => {}),
-}));
+const mockListEvalPromptSets = vi.fn();
+const mockListEvalRuns = vi.fn();
+const mockReadEvalRun = vi.fn();
+const mockRunEvalWorkbench = vi.fn();
+const mockSaveEvalPromptSet = vi.fn();
+const mockSuggestDescriptionCandidates = vi.fn();
+const mockApplyDescriptionCandidate = vi.fn();
+const mockBuildRefineImprovementBrief = vi.fn();
+
+vi.mock("@/lib/eval-workbench", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/eval-workbench")>(
+    "@/lib/eval-workbench",
+  );
+
+  return {
+    ...actual,
+    listEvalPromptSets: (...args: unknown[]) => mockListEvalPromptSets(...args),
+    saveEvalPromptSet: (...args: unknown[]) => mockSaveEvalPromptSet(...args),
+    listEvalRuns: (...args: unknown[]) => mockListEvalRuns(...args),
+    readEvalRun: (...args: unknown[]) => mockReadEvalRun(...args),
+    runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
+    suggestDescriptionCandidates: (...args: unknown[]) =>
+      mockSuggestDescriptionCandidates(...args),
+    applyDescriptionCandidate: (...args: unknown[]) =>
+      mockApplyDescriptionCandidate(...args),
+    buildRefineImprovementBrief: (...args: unknown[]) =>
+      mockBuildRefineImprovementBrief(...args),
+  };
+});
 
 vi.mock("@/lib/agent-results", () => ({
   extractStructuredResultPayload: vi.fn().mockReturnValue(null),
@@ -91,18 +115,6 @@ vi.mock("@/lib/agent-results", () => ({
 
 vi.mock("@/components/workspace/workspace-refine", () => ({
   WorkspaceRefine: () => <div data-testid="workspace-refine" />,
-}));
-
-vi.mock("@/components/workspace/workspace-evals", () => ({
-  WorkspaceEvals: ({ onRunningChange }: { onRunningChange?: (v: boolean) => void }) => (
-    <div data-testid="workspace-evals" onClick={() => onRunningChange?.(true)} />
-  ),
-}));
-
-vi.mock("@/components/workspace/workspace-description", () => ({
-  WorkspaceDescription: ({ onRunningChange }: { onRunningChange?: (v: boolean) => void }) => (
-    <div data-testid="workspace-description" onClick={() => onRunningChange?.(true)} />
-  ),
 }));
 
 vi.mock("@/components/workspace/workspace-overview", () => ({
@@ -128,6 +140,68 @@ vi.mock("@/components/refine/resizable-split-pane", () => ({
 
 import { WorkspaceShell } from "@/components/workspace/workspace-shell";
 
+const performancePromptSet = {
+  id: "prompt-set-performance",
+  pluginSlug: "skills",
+  skillName: "sales-pipeline",
+  mode: "performance" as const,
+  name: "Regression",
+  createdAt: "2026-05-04T00:00:00Z",
+  updatedAt: "2026-05-04T00:00:00Z",
+  cases: [
+    {
+      id: "case-1",
+      prompt: "Forecast next quarter revenue",
+      expected: "Includes assumptions",
+      shouldTrigger: null,
+      assertions: [],
+      sortOrder: 0,
+    },
+  ],
+};
+
+const triggerPromptSet = {
+  id: "prompt-set-trigger",
+  pluginSlug: "skills",
+  skillName: "sales-pipeline",
+  mode: "trigger" as const,
+  name: "Routing checks",
+  createdAt: "2026-05-04T00:00:00Z",
+  updatedAt: "2026-05-04T00:00:00Z",
+  cases: [
+    {
+      id: "case-1",
+      prompt: "Reconcile open customer invoices",
+      expected: null,
+      shouldTrigger: true,
+      assertions: [],
+      sortOrder: 0,
+    },
+  ],
+};
+
+const runSummary = {
+  id: "run-1",
+  promptSetId: "prompt-set-performance",
+  mode: "performance" as const,
+  status: "completed",
+  summary: { passed: 1, total: 1 },
+  createdAt: "2026-05-04T00:00:00Z",
+  completedAt: "2026-05-04T00:05:00Z",
+  results: [],
+  descriptionCandidates: [],
+};
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 const baseBuilderSkill: SkillSummary = {
   name: "sales-pipeline",
   current_step: null,
@@ -152,6 +226,34 @@ const baseBuilderSkill: SkillSummary = {
 };
 
 describe("WorkspaceShell", () => {
+  beforeEach(() => {
+    refineState.isRunning = false;
+    mockListEvalPromptSets.mockReset().mockImplementation((_pluginSlug, _skillName, mode) =>
+      Promise.resolve(mode === "trigger" ? [triggerPromptSet] : [performancePromptSet]),
+    );
+    mockSaveEvalPromptSet.mockReset().mockResolvedValue(performancePromptSet);
+    mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
+    mockReadEvalRun.mockReset().mockResolvedValue(runSummary);
+    mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
+    mockSuggestDescriptionCandidates.mockReset().mockResolvedValue([
+      {
+        id: "candidate-1",
+        runId: "draft-run",
+        label: "Candidate 1",
+        description: "Use when the user needs invoice reconciliation or payment matching",
+        rationale: "Best routing precision",
+        rank: 1,
+      },
+    ]);
+    mockApplyDescriptionCandidate.mockReset().mockResolvedValue({
+      description: "Use when the user needs invoice reconciliation or payment matching",
+    });
+    mockBuildRefineImprovementBrief.mockReset().mockResolvedValue({
+      runId: "run-1",
+      brief: "Improve assumptions handling",
+    });
+  });
+
   it("renders skill name in header", () => {
     render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" />);
 
@@ -162,12 +264,10 @@ describe("WorkspaceShell", () => {
     render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" />);
 
     const overviewTab = screen.getByRole("tab", { name: "Overview" });
-    const evalsTab = screen.getByRole("tab", { name: "Evals" });
-    const descriptionTab = screen.getByRole("tab", { name: "Optimize Description" });
+    const evalWorkbenchTab = screen.getByRole("tab", { name: "Eval Workbench" });
 
     expect(overviewTab).toHaveAttribute("data-state", "active");
-    expect(evalsTab).not.toBeDisabled();
-    expect(descriptionTab).not.toBeDisabled();
+    expect(evalWorkbenchTab).not.toBeDisabled();
   });
 
   it("shows dialog when switching away from Refine while agent is running", async () => {
@@ -242,30 +342,76 @@ describe("WorkspaceShell", () => {
     refineState.isRunning = false;
   });
 
-  it("shows guard dialog when switching away from Description while optimization is running", async () => {
+  it("shows guard dialog when switching away from Eval Workbench while a performance run is active", async () => {
     const user = userEvent.setup();
+    const deferredRun = createDeferred(runSummary);
+    mockRunEvalWorkbench.mockReset().mockReturnValue(deferredRun.promise);
 
     const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="description" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
     );
 
-    // Simulate optimization starting by clicking the mocked WorkspaceDescription
-    // (mock calls onRunningChange(true) on click)
-    const descComponent = screen.getByTestId("workspace-description");
-    await user.click(descComponent);
+    await screen.findByText("Regression");
+    await user.click(screen.getByRole("button", { name: /run prompt set/i }));
+    await waitFor(() => expect(mockRunEvalWorkbench).toHaveBeenCalled());
 
-    // Try switching to Overview
     const overviewTab = Array.from(container.querySelectorAll('[role="tab"]')).find(
       (t) => t.textContent === "Overview",
     );
     await user.click(overviewTab!);
 
-    // Guard dialog should appear
     expect(screen.getByText("Process Running")).toBeInTheDocument();
-
-    // Description tab should still be active
     const activeTab = container.querySelector('[role="tab"][data-state="active"]');
-    expect(activeTab?.textContent).toBe("Optimize Description");
+    expect(activeTab?.textContent).toBe("Eval Workbench");
+
+    deferredRun.resolve(runSummary);
+  });
+
+  it("shows guard dialog when switching away from Eval Workbench while trigger work is active", async () => {
+    const user = userEvent.setup();
+    const deferredCandidates = createDeferred([
+      {
+        id: "candidate-1",
+        runId: "draft-run",
+        label: "Candidate 1",
+        description: "Use when the user needs invoice reconciliation or payment matching",
+        rationale: "Best routing precision",
+        rank: 1,
+      },
+    ]);
+    mockSuggestDescriptionCandidates
+      .mockReset()
+      .mockReturnValue(deferredCandidates.promise);
+
+    const { container } = render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="description" />,
+    );
+
+    await screen.findByText("Routing checks");
+    await user.click(screen.getByRole("button", { name: /generate candidates/i }));
+    await waitFor(() =>
+      expect(mockSuggestDescriptionCandidates).toHaveBeenCalled(),
+    );
+
+    const overviewTab = Array.from(container.querySelectorAll('[role="tab"]')).find(
+      (t) => t.textContent === "Overview",
+    );
+    await user.click(overviewTab!);
+
+    expect(screen.getByText("Process Running")).toBeInTheDocument();
+    const activeTab = container.querySelector('[role="tab"][data-state="active"]');
+    expect(activeTab?.textContent).toBe("Eval Workbench");
+
+    deferredCandidates.resolve([
+      {
+        id: "candidate-1",
+        runId: "draft-run",
+        label: "Candidate 1",
+        description: "Use when the user needs invoice reconciliation or payment matching",
+        rationale: "Best routing precision",
+        rank: 1,
+      },
+    ]);
   });
 
   it("clears skillFiles cache when skill name changes", async () => {

@@ -1,8 +1,5 @@
 /**
- * Shared evals-tab helpers for E2E tests.
- *
- * Mirrors refine-helpers.ts: provides mock overrides and navigation
- * utilities so evals specs share the same foundation.
+ * Shared Eval Workbench performance-mode helpers for E2E tests.
  */
 import type { Page } from "@playwright/test";
 import { waitForAppReady } from "./app-helpers";
@@ -13,7 +10,7 @@ import {
 } from "./test-paths";
 
 /**
- * Common mock overrides for the Evals tab.
+ * Common mock overrides for Eval Workbench.
  * Configures settings and a completed skill in the sidebar.
  */
 export const EVALS_OVERRIDES: Record<string, unknown> = {
@@ -46,8 +43,7 @@ export const EVALS_OVERRIDES: Record<string, unknown> = {
 };
 
 /**
- * Navigate to the Evals tab with test-skill selected.
- * Clicks the skill in the sidebar then switches to the Evals tab.
+ * Navigate to Eval Workbench performance mode with test-skill selected.
  */
 export async function navigateToEvalsTab(
   page: Page,
@@ -65,13 +61,15 @@ export async function navigateToEvalsTab(
   await skillRow.waitFor({ timeout: 10_000 });
   await skillRow.click();
 
-  // Click the Evals tab
-  const evalsTab = page.getByRole("tab", { name: "Evals" });
-  await evalsTab.waitFor({ timeout: 10_000 });
-  await evalsTab.click();
+  const workbenchTab = page.getByRole("tab", { name: "Eval Workbench" });
+  await workbenchTab.waitFor({ timeout: 10_000 });
+  await workbenchTab.click();
 
-  // Wait for the eval list heading
-  await page
-    .getByRole("heading", { name: "Evals" })
-    .waitFor({ timeout: 10_000 });
+  const performanceTab = page.getByRole("tab", { name: "Performance" });
+  await performanceTab.waitFor({ timeout: 10_000 });
+  await performanceTab.click();
+
+  await page.getByRole("heading", { name: "Eval Workbench" }).waitFor({
+    timeout: 10_000,
+  });
 }

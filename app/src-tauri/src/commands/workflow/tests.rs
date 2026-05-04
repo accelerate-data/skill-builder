@@ -772,11 +772,12 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("We are writing the skill named `pipeline-value`."));
     assert!(prompt.contains("Workspace directory: `/tmp/workspace/skills/pipeline-value`"));
     assert!(prompt.contains("Skill output directory: `/tmp/skills/skills/pipeline-value`"));
-    assert!(prompt.contains(
-        "Eval definitions file: `/tmp/workspace/skills/pipeline-value/evals/evals.json`"
-    ));
-    assert!(prompt.contains("If the `evals` directory does not"));
-    assert!(prompt.contains("exist yet, create it before writing `evals.json`."));
+    assert!(!prompt.contains("evals/evals.json"));
+    assert!(!prompt.contains("pending-eval.json"));
+    assert!(!prompt.contains("write-evals"));
+    assert!(!prompt.contains("eval ideas"));
+    assert!(!prompt.contains("suggest-eval-ideas"));
+    assert!(!prompt.contains("description optimization"));
     assert!(prompt.contains("Use the `creating-skills` skill"));
     assert!(prompt.contains("synthesize a generation brief"));
     assert!(prompt.contains("Pass this brief to `creating-skills`"));
@@ -791,6 +792,7 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("run exactly one re-verification"));
     assert!(prompt.contains("Do not invoke a separate validator skill"));
     assert!(prompt.contains("Do not invoke a legacy writer agent"));
+    assert!(prompt.contains("The app Eval Workbench owns durable prompt cases, assertions, runs, and"));
     assert!(prompt.contains("\"version_bump\": \"1.0.0\""));
     assert!(prompt.contains("synthesize-generation-brief"));
     assert!(prompt.contains("fresh-context-verifier-review"));
@@ -1742,7 +1744,7 @@ fn test_materialize_step3_generate_writes_pending_benchmark() {
         "status": "generated",
         "benchmark_path": null,
         "skipped": false,
-        "commit_summary": "Create skill package with SKILL.md, references, and eval definitions",
+        "commit_summary": "Create skill package with SKILL.md and references",
         "version_bump": "1.0.0",
         "call_trace": [
             "read-user-context",
@@ -1752,7 +1754,6 @@ fn test_materialize_step3_generate_writes_pending_benchmark() {
             "use-creating-skills",
             "write-skill",
             "write-references",
-            "write-evals",
             "fresh-context-verifier-review"
         ]
     });

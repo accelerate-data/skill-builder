@@ -3,11 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import SkillDialog from "@/components/skill-dialog";
-import { BenchmarkOverviewCard } from "@/components/workspace/benchmark-overview-card";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getSkillHistory, readLatestBenchmark } from "@/lib/tauri";
+import { getSkillHistory } from "@/lib/tauri";
 import { useSkillStore } from "@/stores/skill-store";
-import type { BenchmarkData, SkillSummary, ImportedSkill, Purpose, SkillCommit, EditableSkill } from "@/lib/types";
+import type { SkillSummary, ImportedSkill, Purpose, SkillCommit, EditableSkill } from "@/lib/types";
 import { PURPOSE_LABELS, toEditableSkill } from "@/lib/types";
 import { useInvalidateSkillQueries } from "@/lib/queries/skills";
 
@@ -51,8 +50,6 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [commits, setCommits] = useState<SkillCommit[]>([]);
   const [showAllCommits, setShowAllCommits] = useState(false);
-  const [benchmarkData, setBenchmarkData] = useState<BenchmarkData | null>(null);
-  const [benchmarkIteration, setBenchmarkIteration] = useState<number | null>(null);
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const latestVersion = useSkillStore((s) => s.latestVersion);
   const invalidateSkillQueries = useInvalidateSkillQueries();
@@ -60,32 +57,6 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
   const isBuilderSkill = "name" in skill;
   const skillName = isBuilderSkill ? skill.name : skill.skill_name;
   const pluginSlug = skill.plugin_slug;
-
-  useEffect(() => {
-    if (!isBuilderSkill || !workspacePath || !skillName) {
-      setBenchmarkData(null);
-      return;
-    }
-    let cancelled = false;
-    readLatestBenchmark(skillName, workspacePath)
-      .then((result) => {
-        if (cancelled) return;
-        if (result) {
-          setBenchmarkData(result.data);
-          setBenchmarkIteration(result.iteration);
-        } else {
-          setBenchmarkData(null);
-          setBenchmarkIteration(null);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.warn("event=benchmark_fetch_failed operation=readLatestBenchmark skill=%s error=%s", skillName, err);
-          setBenchmarkData(null);
-        }
-      });
-    return () => { cancelled = true; };
-  }, [isBuilderSkill, workspacePath, skillName]);
 
   const { created, modified } = getSkillDates(skill);
 
@@ -209,11 +180,6 @@ export function WorkspaceOverview({ skill, skillType, isLoading }: WorkspaceOver
           </div>
         </div>
       </div>
-
-      {/* Benchmark Results card — full width */}
-      {benchmarkData && (
-        <BenchmarkOverviewCard benchmarkData={benchmarkData} iteration={benchmarkIteration} />
-      )}
 
       {/* Version History card */}
       <div className="rounded-lg border bg-card p-4">

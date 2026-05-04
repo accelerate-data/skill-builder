@@ -4,6 +4,7 @@
  * Local React state in workspace-evals is not accessible from layout components.
  */
 let _isRunning = false;
+let _cancelCurrentRun: (() => Promise<void>) | null = null;
 const _listeners = new Set<(v: boolean) => void>();
 
 export function setEvalsRunning(v: boolean): void {
@@ -13,6 +14,16 @@ export function setEvalsRunning(v: boolean): void {
 
 export function getEvalsRunning(): boolean {
   return _isRunning;
+}
+
+export function setEvalsCancelHandler(
+  handler: (() => Promise<void>) | null,
+): void {
+  _cancelCurrentRun = handler;
+}
+
+export async function requestEvalsCancel(): Promise<void> {
+  await _cancelCurrentRun?.();
 }
 
 /** Subscribe to changes. Returns unsubscribe function. */

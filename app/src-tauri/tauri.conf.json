@@ -34,6 +34,9 @@
     },
     "resources": {
       "../sidecar/dist/": "sidecar/dist",
+      "../promptfoo-sidecar/dist/": "promptfoo-sidecar/dist",
+      "../promptfoo-sidecar/package.json": "promptfoo-sidecar/package.json",
+      "../promptfoo-sidecar/node_modules/": "promptfoo-sidecar/node_modules",
       "../../agent-sources/plugins/": "agent-sources/plugins",
       "../../agent-sources/skills/": "agent-sources/skills",
       "../../agent-sources/claude/": "claude",

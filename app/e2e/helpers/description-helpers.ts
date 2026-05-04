@@ -1,11 +1,82 @@
 import type { Page } from "@playwright/test";
 import { reloadWithOverrides } from "./app-helpers";
 import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "./test-paths";
-import {
-  DESCRIPTION_OPTIMIZATION_RESULT,
-  GENERATED_DESCRIPTION_EVAL_QUERIES,
-} from "../fixtures/description-optimization";
-import { emitTauriEvent } from "./agent-simulator";
+
+const TRIGGER_PROMPT_SET = {
+  id: "prompt-set-trigger",
+  pluginSlug: "skills",
+  skillName: "test-skill",
+  mode: "trigger" as const,
+  name: "Routing checks",
+  createdAt: "2026-05-04T00:00:00Z",
+  updatedAt: "2026-05-04T00:00:00Z",
+  cases: [
+    {
+      id: "case-1",
+      prompt: "Reconcile open customer invoices",
+      expected: null,
+      shouldTrigger: true,
+      assertions: [],
+      sortOrder: 0,
+    },
+  ],
+};
+
+const TRIGGER_RUN_SUMMARY = {
+  id: "run-trigger-1",
+  promptSetId: "prompt-set-trigger",
+  mode: "trigger" as const,
+  status: "completed",
+  summary: { passed: 3, total: 4 },
+  createdAt: "2026-05-04T00:00:00Z",
+  completedAt: "2026-05-04T00:05:00Z",
+  results: [],
+  descriptionCandidates: [],
+};
+
+export const TRIGGER_CANDIDATES = [
+  {
+    id: "candidate-1",
+    runId: "draft-run",
+    label: "Candidate 1",
+    description: "Use when the user needs invoice reconciliation or payment matching",
+    rationale: "Best routing precision",
+    rank: 1,
+  },
+  {
+    id: "candidate-2",
+    runId: "draft-run",
+    label: "Candidate 2",
+    description: "Use when reconciling invoice balances and customer payment activity",
+    rationale: "Covers payments but starts broadening into generic billing help",
+    rank: 2,
+  },
+  {
+    id: "candidate-3",
+    runId: "draft-run",
+    label: "Candidate 3",
+    description: "Use for invoice cleanup, credits, and receivables follow-up tasks",
+    rationale: "Adds extra finance operations the baseline skill does not own",
+    rank: 3,
+  },
+] as const;
+
+const TRIGGER_RUN_DETAIL = {
+  ...TRIGGER_RUN_SUMMARY,
+  results: [
+    {
+      id: "result-1",
+      runId: "run-trigger-1",
+      caseId: "case-1",
+      candidateId: "candidate-1",
+      passed: true,
+      score: 1,
+      output: {},
+      reason: "Keeps invoice reconciliation within routing scope",
+    },
+  ],
+  descriptionCandidates: TRIGGER_CANDIDATES,
+};
 
 export const DESCRIPTION_OVERRIDES: Record<string, unknown> = {
   get_settings: {
@@ -45,12 +116,20 @@ export const DESCRIPTION_OVERRIDES: Record<string, unknown> = {
       is_default_plugin: true,
     },
   ],
-  load_eval_queries: [],
-  save_eval_queries: undefined,
-  start_generate_desc_evals: "desc-evals-agent-001",
-  run_optimization_loop: DESCRIPTION_OPTIMIZATION_RESULT,
-  apply_description: "1.0.1",
-  write_desc_opt_log: undefined,
+  list_eval_prompt_sets: [TRIGGER_PROMPT_SET],
+  save_eval_prompt_set: TRIGGER_PROMPT_SET,
+  list_eval_runs: [TRIGGER_RUN_SUMMARY],
+  read_eval_run: TRIGGER_RUN_DETAIL,
+  suggest_description_candidates: TRIGGER_CANDIDATES,
+  run_eval_workbench: TRIGGER_RUN_SUMMARY,
+  apply_description_candidate: {
+    description:
+      "Use when the user needs invoice reconciliation or payment matching",
+  },
+  build_refine_improvement_brief: {
+    runId: "run-trigger-1",
+    brief: "Tighten routing boundaries around invoice reconciliation",
+  },
   get_skill_content_for_refine: [
     {
       path: "SKILL.md",
@@ -70,18 +149,11 @@ export async function navigateToDescriptionTab(
   await skillRow.waitFor({ timeout: 10_000 });
   await skillRow.click();
 
-  const descriptionTab = page.getByRole("tab", {
-    name: "Optimize Description",
-  });
-  await descriptionTab.waitFor({ timeout: 10_000 });
-  await descriptionTab.click();
-}
+  const workbenchTab = page.getByRole("tab", { name: "Eval Workbench" });
+  await workbenchTab.waitFor({ timeout: 10_000 });
+  await workbenchTab.click();
 
-export async function emitGeneratedDescriptionQueries(
-  page: Page,
-): Promise<void> {
-  await emitTauriEvent(page, "description:eval-queries-generated", {
-    skillName: "test-skill",
-    queries: GENERATED_DESCRIPTION_EVAL_QUERIES,
-  });
+  const triggerTab = page.getByRole("tab", { name: "Trigger" });
+  await triggerTab.waitFor({ timeout: 10_000 });
+  await triggerTab.click();
 }

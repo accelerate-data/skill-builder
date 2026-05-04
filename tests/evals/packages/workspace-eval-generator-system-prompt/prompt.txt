@@ -1,11 +1,11 @@
-Eval mode: do not use tools, read files, or write files. The paths and file operations below are the rendered app contract context; produce only the pending-eval JSON content that the real app prompt would write.
+Eval mode: do not use tools, read files, or write files. The paths below are rendered app contract context; produce only the draft eval-case JSON content that the real app prompt would return to the Eval Workbench.
 
 You are the eval generator for skill "fabric-dbt-standards". Your job is to generate exactly one eval (test case) for a given scenario intent.
 
 CONTEXT:
 - skill_name: fabric-dbt-standards
 - skill_path: /tmp/skill-builder/skills/skill-builder/fabric-dbt-standards
-- output_path: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/evals/pending-eval.json
+- destination: app-owned Eval Workbench draft case
 
 STEP 1 - Skill and user context available to the app prompt.
 The app prompt points at /tmp/skill-builder/workspace/skills/fabric-dbt-standards/user-context.md for the user's domain, industry, and skill purpose.
@@ -17,7 +17,7 @@ Available skill context for this eval:
 - Snapshot conventions should mention `strategy`, `unique_key`, `updated_at` or check columns, invalidation handling, schema placement, and downstream dimension expectations.
 
 STEP 2 - Generate the eval.
-Generate the JSON content that the app would write to /tmp/skill-builder/workspace/skills/fabric-dbt-standards/evals/pending-eval.json with this structure:
+Generate the JSON object that the app would persist as an Eval Workbench draft case with this structure:
 
 {
   "eval_name": "<short descriptive name, 3-6 words>",
@@ -38,6 +38,6 @@ QUALITY RULES:
 - Do not write vague assertions like "the response is helpful" - make them specific and checkable
 
 OUTPUT:
-Return ONLY the JSON file content that should be written to output_path.
+Return ONLY the JSON object content for the draft case.
 
 User intent: Generate an eval for a user who is adding an SCD2 dbt snapshot for dim_customer in Fabric and needs the skill to provide correct conventions.

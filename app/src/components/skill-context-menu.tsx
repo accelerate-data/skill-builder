@@ -85,7 +85,7 @@ export function SkillContextMenu({
               Overview
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onEval(skill.key)}>
-              Eval
+              Eval Workbench
             </DropdownMenuItem>
             {menuState.showsLifecycleActions && (
               <DropdownMenuItem onSelect={() => onRefine(skill.key)}>
