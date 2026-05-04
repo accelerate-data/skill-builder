@@ -14,6 +14,7 @@ Use the tables below for cases tooling cannot infer safely.
 | E2E | `cd app && npm run test:e2e` | `app/e2e/` | Free, mocked backend |
 | Rust | `cargo test --manifest-path app/src-tauri/Cargo.toml` | `app/src-tauri/src/` | Free |
 | Sidecar | `cd app/sidecar && npx vitest run` | `app/sidecar/__tests__/` | Free |
+| Promptfoo sidecar | `cd app/promptfoo-sidecar && npm test` | `app/promptfoo-sidecar/src/__tests__/` | Free |
 | Agent structural | `cd app && npm run test:agents:structural` | `app/agent-tests/` plus `agent-sources/` | Free |
 | Repo map audit | `cd app && npm run test:repo-map` | `repo-map.json`, `scripts/verify-repo-map.mjs` | Free |
 | Eval harness contracts | `cd tests/evals && npm test` | `tests/evals/scripts/`, `tests/evals/assertions/` | Free |
@@ -40,6 +41,7 @@ Use the tables below for cases tooling cannot infer safely.
 | `app/src/**` | `cd app && npm run test:unit` | Prefer `npm run test:changed` for narrower local feedback when appropriate. |
 | `app/src/__tests__/guards/**`, `app/src/lib/tauri-command-types.ts`, `app/src/lib/tauri-command-types.typecheck.ts` | `cd app && npm run test:guard` | Also run affected unit tests. |
 | `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` | Restart `npm run dev` after sidecar changes. OpenHands requests should not run through the Node sidecar. |
+| `app/promptfoo-sidecar/**` | `cd app/promptfoo-sidecar && npm test` | Run `cd tests/evals && npm test` as well when changing JSONL protocol or eval-contract behavior consumed by the repo eval harness. |
 | `agent-sources/plugins/**/agents/*.md`, `agent-sources/workspace/**` | `cd app && npm run test:agents:structural`; run the affected OpenCode eval package or smoke subset | Structural plus live automated eval coverage for changed prompt behavior. |
 | `app/sidecar/mock-templates/**`, `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` | `canonical-format.test.ts` is the canary for format drift. |
 | `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` | Generated command-contract surface. |
@@ -95,10 +97,7 @@ UI-facing, also run the mapped E2E tag.
 | `app/src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow`, `@setup` |
 | `app/src-tauri/src/commands/workflow_lifecycle.rs` | `commands::workflow_lifecycle` | `@workflow` |
 | `app/src-tauri/src/commands/refine/mod.rs` | `commands::refine` | `@refine` |
-| `app/src-tauri/src/commands/description/mod.rs` | `commands::description` | `@description` |
-| `app/src-tauri/src/commands/description/eval.rs` | `commands::description::eval` | `@description` |
-| `app/src-tauri/src/commands/description/loop_runner.rs` | `commands::description::loop_runner` | `@description` |
-| `app/src-tauri/src/commands/description/improve.rs` | `commands::description::improve` | `@description` |
+| `app/src-tauri/src/commands/eval_workbench/mod.rs` | `commands::eval_workbench` | `@evals`, `@description` |
 | `app/src-tauri/src/commands/git.rs` | -- | `@dashboard` |
 | `app/src-tauri/src/commands/lifecycle.rs` | -- | -- |
 | `app/src-tauri/src/commands/feedback.rs` | -- | -- |
@@ -137,11 +136,10 @@ format changes covered across producer, fixture, and parser layers.
 | `@settings` | `app/e2e/settings/settings.spec.ts`, `app/e2e/settings/github-oauth.spec.ts`, `app/e2e/settings/workspace-reconfigure.spec.ts`, `app/e2e/settings/documents.spec.ts` |
 | `@workflow` | `app/e2e/workflow/workflow-smoke.spec.ts`, `app/e2e/workflow/workflow-gate.spec.ts`, `app/e2e/workflow/display-items.spec.ts`, `app/e2e/workflow/file-viewer.spec.ts` |
 | `@refine` | `app/e2e/refine/refine.spec.ts`, `app/e2e/refine/benchmark-snapshot-cleanup.spec.ts` |
-| `@description` | `app/e2e/description/description-optimization.spec.ts` |
+| `@description` | `app/e2e/description/description-workbench.spec.ts` |
 | `@skills` | `app/e2e/skills-library/skills-library.spec.ts`, `app/e2e/github-import/github-import.spec.ts` |
 | `@integration` | `app/e2e/integration/workflow-integration.spec.ts` |
-| `@evals` | `app/e2e/evals/evals.spec.ts` Level 1 browser mock coverage |
-| `@evals-integration` | `app/e2e/evals/evals.spec.ts` Level 2 real sidecar coverage |
+| `@evals` | `app/e2e/evals/evals.spec.ts` Mocked Eval Workbench browser coverage |
 | `@desktop-smoke` | `app/e2e/desktop-smoke/desktop-smoke.spec.ts` |
 
 ## Quick Commands

@@ -1,5 +1,5 @@
 {
-  "description": "Workspace eval-generator system prompt pending-eval JSON output.",
+  "description": "Workspace eval-generator system prompt draft Eval Workbench case JSON output.",
   "metadata": {
     "eval_tier": "standard"
   },
@@ -8,7 +8,7 @@
   ],
   "tests": [
     {
-      "description": "[smoke] eval generator writes pending eval contract",
+      "description": "[smoke] eval generator returns draft Eval Workbench case JSON",
       "assert": [
         {
           "type": "javascript",

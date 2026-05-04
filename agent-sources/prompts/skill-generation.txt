@@ -62,7 +62,7 @@ metadata:
 Draft the skill description carefully as part of generation. It should describe
 when future agents should load the skill, using trigger conditions and exclusion
 boundaries from the confirmed decisions. Do not run a separate description
-optimization phase.
+candidate generation, ranking, or tuning flow here.
 
 Use the verifier prompt bundled inside the `creating-skills` skill for a
 fresh-context verification pass. Give the verifier only the synthesized
@@ -75,8 +75,10 @@ blocking findings in `commit_summary`.
 Do not invoke a separate validator skill.
 Do not invoke a legacy writer agent.
 Do not use the Node or TypeScript sidecar path.
+The app Eval Workbench owns durable prompt cases, assertions, runs, and
+trigger-description candidates after generation.
 Do not run benchmark aggregation, review viewer generation, description
-optimization, blind comparison, commit, tag, or release steps.
+candidate comparison, commit, tag, or release steps.
 
 Return only a raw JSON object with this shape:
 

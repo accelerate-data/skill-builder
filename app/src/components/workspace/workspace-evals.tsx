@@ -1,86 +1,34 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  Pencil,
-  Play,
-  Sparkles,
-  Trash2,
-} from "lucide-react";
-import { useLeaveGuard } from "@/hooks/use-leave-guard";
-import { setEvalsRunning } from "@/lib/eval-running-state";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { useCallback, useEffect, useState } from "react";
+import { AlertTriangle, ArrowRight, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
+import type { ImportedSkill, SkillSummary } from "@/lib/types";
 import {
-  buildEvalGenPrompt,
-  buildEvalPrompt,
-  cleanupSkillSidecar,
-  deleteTestCase,
-  discardPendingEval,
-  createNextIterationDir,
-  listIterations,
-  listTestCases,
-  materializeEvalBenchmark,
-  readIterationResult,
-  readPendingEval,
-  readSkillContextForEvalGen,
-  saveTestCase,
-  startOneShotAgent,
-} from "@/lib/tauri";
-import type {
-  EvalBenchmark,
-  IterationMeta,
-  PendingEval,
-  SkillSummary,
-  ImportedSkill,
-  TestCase,
-} from "@/lib/types";
-import {
-  buildRefineMessage,
-  iterationLabel,
-  pendingToTestCase,
-  suggestEvalPlaceholder,
-  truncatePrompt,
-  workspaceSkillDir,
-} from "@/lib/evals";
-import { getFailedEvalGradingPaths } from "@/lib/eval-run";
-import { useAgentStore } from "@/stores/agent-store";
-import { useSettingsStore } from "@/stores/settings-store";
+  buildRefineImprovementBrief,
+  createDraftPromptSet,
+  getErrorMessage,
+  listEvalPromptSets,
+  listEvalRuns,
+  normalizePromptSet,
+  PERFORMANCE_CANDIDATE_IDS,
+  promptSetToDraft,
+  readEvalRun,
+  runEvalWorkbench,
+  saveEvalPromptSet,
+  type EvalRun,
+  type SaveEvalPromptSet,
+  validatePromptSet,
+} from "@/lib/eval-workbench";
+import { setEvalsRunning } from "@/lib/eval-running-state";
 import { useRefineStore } from "@/stores/refine-store";
-import { requireSettingsModel } from "@/lib/models";
-import { EvalRunBenchmarkCard } from "./eval-run-benchmark-card";
-import { AgentOutputPanel } from "@/components/agent-output-panel";
-import { EvalForm } from "./eval-form";
-import { EvalIntentDialog } from "./eval-intent-dialog";
+import { PromptSetEditor } from "./eval-workbench/prompt-set-editor";
+import { ResultTable } from "./eval-workbench/result-table";
+import { RunHistory } from "./eval-workbench/run-history";
 
 interface WorkspaceEvalsProps {
   skill: SkillSummary | ImportedSkill;
   workspacePath: string | null;
-  /** Called after setting refine pre-fill — navigates the shell to the Refine tab. */
   onNavigateToRefine?: () => void;
-  /** Called when eval run starts/stops so the parent can gate tab switches. */
   onRunningChange?: (running: boolean) => void;
 }
 
@@ -92,695 +40,164 @@ export function WorkspaceEvals({
 }: WorkspaceEvalsProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
   const pluginSlug = skill.plugin_slug;
-  const skillsPath =
-    useSettingsStore((s) => s.skillsPath) ?? workspacePath ?? "";
-  const selectedModel = useSettingsStore((s) => s.modelSettings.model);
 
-  const [evals, setEvals] = useState<TestCase[]>([]);
-  const [iterations, setIterations] = useState<IterationMeta[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [sendingToRefine, setSendingToRefine] = useState(false);
+  const [promptSets, setPromptSets] = useState<Awaited<
+    ReturnType<typeof listEvalPromptSets>
+  >>([]);
+  const [runs, setRuns] = useState<EvalRun[]>([]);
+  const [selectedPromptSetId, setSelectedPromptSetId] = useState<string | null>(
+    null,
+  );
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [selectedRun, setSelectedRun] = useState<EvalRun | null>(null);
+  const [draft, setDraft] = useState<SaveEvalPromptSet>(() =>
+    createDraftPromptSet("performance", pluginSlug, skillName),
+  );
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const isRunning = running;
 
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<TestCase | undefined>(undefined);
-  const [deleteTarget, setDeleteTarget] = useState<TestCase | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  // Eval generation state
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationAgentId, setGenerationAgentId] = useState<string | null>(
-    null,
-  );
-  const [generatedEval, setGeneratedEval] = useState<TestCase | undefined>(
-    undefined,
-  );
-  const [draftIntent, setDraftIntent] = useState("");
-
-  // Intent dialog state
-  const [intentOpen, setIntentOpen] = useState(false);
-  const [evalPlaceholder, setEvalPlaceholder] = useState(
-    "e.g. a user runs a typical workflow end-to-end",
-  );
-
-  // Re-generation state
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [regenAgentId, setRegenAgentId] = useState<string | null>(null);
-
-  // Run selection + execution state (component-local per state-management rules)
-  const [selectedRunIds, setSelectedRunIds] = useState<Set<number>>(new Set());
-  const [runCount, setRunCount] = useState<1 | 3>(1);
-  const [comparisonMode, setComparisonMode] = useState<
-    "with_without_skill" | "current_vs_previous" | undefined
-  >(undefined);
-  const [isRunningEvals, setIsRunningEvals] = useState(false);
-  const [evalRunAgentId, setEvalRunAgentId] = useState<string | null>(null);
-
-  // Benchmark result from the most recent eval run (component-local)
-  const [benchmark, setBenchmark] = useState<EvalBenchmark | null>(null);
-  // analystNotes removed — no longer generated by the eval pipeline
-
-  // Selected iteration history result
-  const [selectedIteration, setSelectedIteration] = useState<number | null>(
-    null,
-  );
-  const [iterationBenchmark, setIterationBenchmark] =
-    useState<EvalBenchmark | null>(null);
-
-  // Params for the current eval run — stored so Rust can materialize the benchmark
-  // after the agent completes (the agent no longer computes the benchmark itself).
-  const evalRunParamsRef = useRef<{
-    iterDir: string;
-    iteration: number;
-    evalIds: number[];
-    runCount: number;
-    comparisonMode?: string;
-  } | null>(null);
-
-  // Agent output panel resize state
-  const [outputPanelHeight, setOutputPanelHeight] = useState(360);
-  const dragStartY = useRef<number | null>(null);
-  const dragStartHeight = useRef<number>(360);
-  const rafId = useRef<number | null>(null);
-
-  // Narrow selectors — only subscribe to the status of each tracked agent.
-  // Avoids re-rendering the entire component on every display-item update,
-  // which was causing scroll-position jumps during eval runs.
-  const generationRunStatus = useAgentStore(
-    (s) => s.runs[generationAgentId ?? ""]?.status ?? null,
-  );
-  const regenRunStatus = useAgentStore(
-    (s) => s.runs[regenAgentId ?? ""]?.status ?? null,
-  );
-  const evalRunStatus = useAgentStore(
-    (s) => s.runs[evalRunAgentId ?? ""]?.status ?? null,
-  );
-  // Notify parent when eval run state changes (for tab-switch gate + module state for skill-switch guard)
   useEffect(() => {
-    onRunningChange?.(isRunningEvals);
-    setEvalsRunning(isRunningEvals);
-    return () => setEvalsRunning(false);
-  }, [isRunningEvals, onRunningChange]);
+    onRunningChange?.(isRunning);
+    setEvalsRunning(isRunning);
+  }, [isRunning, onRunningChange]);
 
-  // Track evalRunAgentId in a ref for unmount cleanup (avoids stale closure)
-  const evalRunAgentIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    evalRunAgentIdRef.current = evalRunAgentId;
-  }, [evalRunAgentId]);
-
-  // Clean up sidecar process if component unmounts during an eval run
-  useEffect(() => {
-    return () => {
-      if (evalRunAgentIdRef.current) {
-        cleanupSkillSidecar(skillName).catch(() => {});
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skillName]);
-
-  // Route-level leave guard: block navigation (settings, skill switch) while evals are running
-  const isRunningRef = useRef(false);
-  useEffect(() => {
-    isRunningRef.current = isRunningEvals;
-  }, [isRunningEvals]);
-  const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
-    shouldBlock: () => isRunningRef.current,
-    onLeave: (proceed) => {
-      cleanupSkillSidecar(skillName).catch(() => {});
-      setIsRunningEvals(false);
-      setEvalRunAgentId(null);
-      proceed();
+  useEffect(
+    () => () => {
+      onRunningChange?.(false);
+      setEvalsRunning(false);
     },
-  });
+    [onRunningChange],
+  );
 
-  // --- Actions ---
-
-  const load = useCallback(async () => {
-    if (!workspacePath) return;
+  const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [cases, iters] = await Promise.all([
-        listTestCases(skillName, workspacePath, pluginSlug),
-        listIterations(skillName, workspacePath, pluginSlug),
+      const [nextPromptSets, nextRuns] = await Promise.all([
+        listEvalPromptSets(pluginSlug, skillName, "performance"),
+        listEvalRuns(pluginSlug, skillName, "performance", 20),
       ]);
-      setEvals(cases.sort((a, b) => a.id - b.id));
-      setIterations(iters);
-    } catch (err) {
-      console.error(
-        "event=load_evals status=failure skill=%s error=%s",
-        skillName,
-        err,
-      );
-      setError(err instanceof Error ? err.message : String(err));
+      setPromptSets(nextPromptSets);
+      setRuns(nextRuns);
+
+      const selectedPromptSet =
+        nextPromptSets.find((promptSet) => promptSet.id === selectedPromptSetId) ??
+        nextPromptSets[0] ??
+        null;
+      if (selectedPromptSet) {
+        setSelectedPromptSetId(selectedPromptSet.id);
+        setDraft(promptSetToDraft(selectedPromptSet));
+      } else {
+        setSelectedPromptSetId(null);
+        setDraft(createDraftPromptSet("performance", pluginSlug, skillName));
+      }
+    } catch (loadError) {
+      setError(getErrorMessage(loadError));
     } finally {
       setLoading(false);
     }
-  }, [skillName, workspacePath, pluginSlug]);
+  }, [pluginSlug, selectedPromptSetId, skillName]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  // Watch primary generation agent for completion / error
-  useEffect(() => {
-    if (!generationAgentId || !generationRunStatus) return;
-
-    if (generationRunStatus === "completed") {
-      void handleGenerationComplete();
-    } else if (
-      generationRunStatus === "error" ||
-      generationRunStatus === "shutdown"
-    ) {
-      console.error(
-        "event=generate_eval status=failure skill=%s agent_id=%s",
-        skillName,
-        generationAgentId,
-      );
-      setIsGenerating(false);
-      setGenerationAgentId(null);
-      setIntentOpen(false);
-      setError("Eval generation failed. Please try again.");
+    if (!workspacePath) {
+      setLoading(false);
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generationRunStatus, generationAgentId]);
+    void refresh();
+  }, [refresh, workspacePath]);
 
-  // Watch re-generation agent for completion / error
-  useEffect(() => {
-    if (!regenAgentId || !regenRunStatus) return;
-
-    if (regenRunStatus === "completed") {
-      void handleRegenComplete();
-    } else if (regenRunStatus === "error" || regenRunStatus === "shutdown") {
-      console.error(
-        "event=regen_eval status=failure skill=%s agent_id=%s",
-        skillName,
-        regenAgentId,
-      );
-      setIsRegenerating(false);
-      setRegenAgentId(null);
-      setError("Re-generation failed. Please try again.");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regenRunStatus, regenAgentId]);
-
-  // Watch eval run agent for terminal state — single trigger for materialization.
-  // When the agent completes, Rust reads grading files and computes the benchmark
-  // deterministically. No dependency on the agent's structured output.
-  useEffect(() => {
-    if (!evalRunAgentId || !evalRunStatus) return;
-    if (
-      evalRunStatus === "completed" ||
-      evalRunStatus === "error" ||
-      evalRunStatus === "shutdown"
-    ) {
-      setIsRunningEvals(false);
-      if (evalRunStatus === "completed") {
-        const params = evalRunParamsRef.current;
-        if (params) {
-          materializeEvalBenchmark(
-            params.iterDir,
-            skillName,
-            workspacePath!,
-            pluginSlug,
-            params.iteration,
-            params.evalIds,
-            params.runCount,
-            params.comparisonMode,
-          )
-            .then((bm) => {
-              setBenchmark(bm as EvalBenchmark);
-              console.log(
-                "event=eval_benchmark_materialized skill=%s iteration=%d avg_pass_rate=%s",
-                skillName,
-                bm.iteration,
-                bm.aggregate_summary?.avg_pass_rate,
-              );
-            })
-            .catch((err) => {
-              console.error(
-                "event=materialize_benchmark_failed skill=%s error=%s",
-                skillName,
-                err,
-              );
-            });
-        }
-        // Refresh iteration list
-        if (workspacePath) {
-          void listIterations(skillName, workspacePath, pluginSlug)
-            .then(setIterations)
-            .catch(() => {});
-        }
-      } else {
-        console.error(
-          "event=eval_run status=failure skill=%s agent_id=%s status=%s",
-          skillName,
-          evalRunAgentId,
-          evalRunStatus,
-        );
-        setEvalRunAgentId(null);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [evalRunStatus, evalRunAgentId]);
-
-  async function handleOpenIntentDialog() {
-    if (!workspacePath || isGenerating || isRegenerating) return;
+  async function handleSelectRun(runId: string) {
+    setActionError(null);
+    setSelectedRunId(runId);
     try {
-      const ctx = await readSkillContextForEvalGen(
-        skillName,
-        workspacePath,
-        pluginSlug,
-      );
-      setEvalPlaceholder(suggestEvalPlaceholder(ctx.skill_content));
-    } catch {
-      // Open with default placeholder if context read fails
-    }
-    setIntentOpen(true);
-  }
-
-  async function handleGenerateEval(userIntent: string) {
-    if (!workspacePath) return;
-    setIsGenerating(true);
-    setDraftIntent(userIntent);
-    setError(null);
-    try {
-      const skillPath = workspaceSkillDir(skillsPath, pluginSlug, skillName);
-      const outputPath = `${workspaceSkillDir(workspacePath, pluginSlug, skillName)}/evals/pending-eval.json`;
-      const skillWorkspace = workspaceSkillDir(
-        workspacePath,
-        pluginSlug,
-        skillName,
-      );
-      const userContextFile = `${skillWorkspace}/user-context.md`;
-      const [genSystemPrompt, genUserPrompt] = await buildEvalGenPrompt(
-        skillName,
-        skillPath,
-        outputPath,
-        userIntent,
-        userContextFile,
-      );
-      const agentId = crypto.randomUUID();
-      const model = requireSettingsModel(selectedModel);
-      const cwd = skillWorkspace;
-
-      await startOneShotAgent(
-        agentId,
-        genUserPrompt,
-        model,
-        cwd,
-        ["Read", "Glob", "Write"],
-        10,
-        undefined,
-        "eval-generator",
-        "generate-eval",
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        `synthetic:evals:${skillName}`,
-        "test",
-        genSystemPrompt,
-        pluginSlug,
-      );
-
-      useAgentStore
-        .getState()
-        .registerRun(
-          agentId,
-          model,
-          skillName,
-          "test",
-          `synthetic:evals:${skillName}`,
-        );
-
-      setGenerationAgentId(agentId);
-      console.log(
-        "event=generate_eval status=started skill=%s agent_id=%s intent=%s",
-        skillName,
-        agentId,
-        userIntent,
-      );
-    } catch (err) {
-      console.error(
-        "event=generate_eval status=failure skill=%s error=%s",
-        skillName,
-        err,
-      );
-      setIsGenerating(false);
-      setError(err instanceof Error ? err.message : String(err));
+      const run = await readEvalRun(runId);
+      setSelectedRun(run);
+    } catch (runError) {
+      setActionError(getErrorMessage(runError));
     }
   }
 
-  async function handleGenerationComplete() {
-    if (!workspacePath) return;
-    try {
-      const pending: PendingEval = await readPendingEval(
-        skillName,
-        workspacePath,
-        pluginSlug,
-      );
-      setGeneratedEval(pendingToTestCase(pending));
-      setIntentOpen(false);
-      setFormOpen(true);
-      console.log(
-        "event=generate_eval status=completed skill=%s eval_name=%s",
-        skillName,
-        pending.eval_name,
-      );
-    } catch (err) {
-      console.error(
-        "event=generate_eval status=read_failure skill=%s error=%s",
-        skillName,
-        err,
-      );
-      setIntentOpen(false);
-      setError(
-        "Generation succeeded but could not read the result. Please try again.",
-      );
-    } finally {
-      setIsGenerating(false);
-      setGenerationAgentId(null);
-    }
-  }
-
-  async function handleRegenerate(newIntent: string) {
-    if (!workspacePath || isRegenerating) return;
-    setIsRegenerating(true);
-    setDraftIntent(newIntent);
-    setError(null);
-    try {
-      // Discard existing pending-eval.json so the agent can create it fresh
-      // (Write tool requires the file not to exist, or to have been read first in the same session)
-      await discardPendingEval(skillName, workspacePath, pluginSlug);
-      const skillPath = workspaceSkillDir(skillsPath, pluginSlug, skillName);
-      const skillWorkspace = workspaceSkillDir(
-        workspacePath,
-        pluginSlug,
-        skillName,
-      );
-      const outputPath = `${skillWorkspace}/evals/pending-eval.json`;
-      const regenUserContextFile = `${skillWorkspace}/user-context.md`;
-      const [regenSystemPrompt, regenUserPrompt] = await buildEvalGenPrompt(
-        skillName,
-        skillPath,
-        outputPath,
-        newIntent,
-        regenUserContextFile,
-      );
-      const agentId = crypto.randomUUID();
-      const model = requireSettingsModel(selectedModel);
-      const cwd = skillWorkspace;
-
-      await startOneShotAgent(
-        agentId,
-        regenUserPrompt,
-        model,
-        cwd,
-        ["Read", "Glob", "Write"],
-        10,
-        undefined,
-        "eval-generator",
-        "regen-eval",
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        `synthetic:evals:${skillName}`,
-        "test",
-        regenSystemPrompt,
-        pluginSlug,
-      );
-
-      useAgentStore
-        .getState()
-        .registerRun(
-          agentId,
-          model,
-          skillName,
-          "test",
-          `synthetic:evals:${skillName}`,
-        );
-
-      setRegenAgentId(agentId);
-      console.log(
-        "event=regen_eval status=started skill=%s agent_id=%s intent=%s",
-        skillName,
-        agentId,
-        newIntent,
-      );
-    } catch (err) {
-      console.error(
-        "event=regen_eval status=failure skill=%s error=%s",
-        skillName,
-        err,
-      );
-      setIsRegenerating(false);
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  async function handleRegenComplete() {
-    if (!workspacePath) return;
-    try {
-      const pending: PendingEval = await readPendingEval(
-        skillName,
-        workspacePath,
-        pluginSlug,
-      );
-      setGeneratedEval(pendingToTestCase(pending));
-      console.log(
-        "event=regen_eval status=completed skill=%s eval_name=%s",
-        skillName,
-        pending.eval_name,
-      );
-    } catch (err) {
-      console.error(
-        "event=regen_eval status=read_failure skill=%s error=%s",
-        skillName,
-        err,
-      );
-      setError(
-        "Re-generation succeeded but could not read the result. Please try again.",
-      );
-    } finally {
-      setIsRegenerating(false);
-      setRegenAgentId(null);
-    }
-  }
-
-  function openEdit(tc: TestCase) {
-    setEditTarget(tc);
-    setGeneratedEval(undefined);
-    setFormOpen(true);
-  }
-
-  function handleFormClose() {
-    setFormOpen(false);
-    if (generatedEval && workspacePath) {
-      void discardPendingEval(skillName, workspacePath, pluginSlug).catch(
-        () => {},
-      );
-    }
-    setGeneratedEval(undefined);
-    setEditTarget(undefined);
-  }
-
-  async function handleSave(tc: TestCase) {
-    if (!workspacePath) return;
-    await saveTestCase(skillName, workspacePath, pluginSlug, tc);
-    if (generatedEval && tc.id === 0) {
-      await discardPendingEval(skillName, workspacePath, pluginSlug).catch(
-        () => {},
-      );
-    }
-    console.log(
-      "event=save_eval status=success skill=%s id=%s",
-      skillName,
-      tc.id,
-    );
-    await load();
-  }
-
-  async function handleDelete() {
-    if (!deleteTarget || !workspacePath) return;
-    setDeleting(true);
-    try {
-      await deleteTestCase(
-        skillName,
-        workspacePath,
-        pluginSlug,
-        deleteTarget.id,
-      );
-      console.log(
-        "event=delete_eval status=success skill=%s id=%s",
-        skillName,
-        deleteTarget.id,
-      );
-      setDeleteTarget(null);
-      await load();
-    } catch (err) {
-      console.error(
-        "event=delete_eval status=failure skill=%s id=%s error=%s",
-        skillName,
-        deleteTarget.id,
-        err,
-      );
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  function handleToggleRunId(id: number) {
-    setSelectedRunIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function handleToggleAllRun() {
-    if (selectedRunIds.size === evals.length && evals.length > 0) {
-      setSelectedRunIds(new Set());
-    } else {
-      setSelectedRunIds(new Set(evals.map((e) => e.id)));
-    }
-  }
-
-  async function handleRunSelected() {
-    if (!workspacePath || selectedRunIds.size === 0 || isRunningEvals) return;
-    const evalIds = [...selectedRunIds].sort((a, b) => a - b);
-    let model: string;
-    try {
-      model = requireSettingsModel(selectedModel);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+  async function handleSavePromptSet() {
+    const validationError = validatePromptSet(draft);
+    if (validationError) {
+      setActionError(validationError);
       return;
     }
 
-    setIsRunningEvals(true);
-    setBenchmark(null);
-    // analystNotes removed
-
+    setSaving(true);
+    setActionError(null);
     try {
-      const agentId = crypto.randomUUID();
-      // Create the iteration directory in Rust before the agent starts.
-      // This is the source of truth — the agent writes into a pre-existing directory
-      // and cannot accidentally reuse an existing iteration.
-      const [iterNum, iterDir] = await createNextIterationDir(
-        skillName,
-        workspacePath!,
-        pluginSlug,
-      );
-      evalRunParamsRef.current = {
-        iterDir,
-        iteration: iterNum,
-        evalIds,
-        runCount,
-        comparisonMode,
-      };
-      const skillPath = workspaceSkillDir(skillsPath, pluginSlug, skillName);
-      const [evalSystemPrompt, evalUserPrompt] = await buildEvalPrompt(
-        skillName,
-        pluginSlug,
-        workspacePath!,
-        skillPath,
-        evalIds,
-        runCount,
-        iterNum,
-        iterDir,
-        comparisonMode,
-      );
-
-      await startOneShotAgent(
-        agentId,
-        evalUserPrompt,
-        model,
-        workspacePath,
-        ["Read", "Write", "Glob", "Agent"],
-        undefined, // maxTurns — let agent decide
-        undefined,
-        skillName,
-        "evaluate-skill",
-        "evaluate-skill", // standalone agent — derive_required_plugins loads skill-creator plugin
-        undefined,
-        undefined,
-        undefined,
-        `synthetic:evals:${skillName}`,
-        "test",
-        evalSystemPrompt,
-        pluginSlug,
-      );
-
-      useAgentStore
-        .getState()
-        .registerRun(
-          agentId,
-          model,
-          skillName,
-          "test",
-          `synthetic:evals:${skillName}`,
-        );
-
-      setEvalRunAgentId(agentId);
-      console.log(
-        "event=eval_run status=started skill=%s agent_id=%s eval_ids=%s run_count=%d",
-        skillName,
-        agentId,
-        JSON.stringify(evalIds),
-        runCount,
-      );
-    } catch (err) {
-      console.error(
-        "event=eval_run status=start_failure skill=%s error=%s",
-        skillName,
-        err,
-      );
-      setIsRunningEvals(false);
+      const saved = await saveEvalPromptSet(normalizePromptSet(draft));
+      setSelectedPromptSetId(saved.id);
+      setDraft(promptSetToDraft(saved));
+      await refresh();
+    } catch (saveError) {
+      setActionError(getErrorMessage(saveError));
+    } finally {
+      setSaving(false);
     }
   }
 
-  const [pendingRefine, setPendingRefine] = useState<EvalBenchmark | null>(
-    null,
-  );
-
-  function handleRefine(bm: EvalBenchmark) {
-    const failedPaths = getFailedEvalGradingPaths(bm);
-    if (failedPaths.length === 0) return;
-    if (isRunningEvals) {
-      setPendingRefine(bm);
+  async function handleRunPromptSet() {
+    if (!draft.id) {
+      setActionError("Save the prompt set before running it.");
       return;
     }
-    useRefineStore
-      .getState()
-      .setPendingInitialMessage(buildRefineMessage(failedPaths));
-    onNavigateToRefine?.();
-    console.log(
-      "event=eval_refine_navigate skill=%s iteration=%d failed_evals=%d",
-      skillName,
-      bm.iteration,
-      failedPaths.length,
-    );
+
+    setRunning(true);
+    setActionError(null);
+    try {
+      const run = await runEvalWorkbench({
+        promptSetId: draft.id,
+        candidateIds: PERFORMANCE_CANDIDATE_IDS,
+      });
+      setRuns((currentRuns) => [
+        run,
+        ...currentRuns.filter((currentRun) => currentRun.id !== run.id),
+      ]);
+      await handleSelectRun(run.id);
+    } catch (runError) {
+      setActionError(getErrorMessage(runError));
+    } finally {
+      setRunning(false);
+    }
   }
 
-  function handleRefineLeave() {
-    if (!pendingRefine) return;
-    cleanupSkillSidecar(skillName).catch(() => {});
-    setIsRunningEvals(false);
-    setEvalRunAgentId(null);
-    const failedPaths = getFailedEvalGradingPaths(pendingRefine);
-    useRefineStore
-      .getState()
-      .setPendingInitialMessage(buildRefineMessage(failedPaths));
-    setPendingRefine(null);
-    onNavigateToRefine?.();
+  async function handleSendToRefine() {
+    if (!selectedRunId) {
+      return;
+    }
+
+    setSendingToRefine(true);
+    setActionError(null);
+    try {
+      const brief = await buildRefineImprovementBrief(selectedRunId);
+      useRefineStore.getState().setPendingInitialMessage(brief.brief);
+      onNavigateToRefine?.();
+    } catch (briefError) {
+      setActionError(getErrorMessage(briefError));
+    } finally {
+      setSendingToRefine(false);
+    }
+  }
+
+  if (!workspacePath) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Configure a workspace before using Eval Workbench.
+      </div>
+    );
   }
 
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Loading evals…
+        Loading Eval Workbench…
       </div>
     );
   }
@@ -789,640 +206,104 @@ export function WorkspaceEvals({
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3">
         <p className="text-sm text-destructive">{error}</p>
-        <Button variant="outline" size="sm" onClick={load}>
+        <Button variant="outline" size="sm" onClick={() => void refresh()}>
           Retry
         </Button>
       </div>
     );
   }
 
-  const latestIteration = iterations[0]?.iteration ?? 0;
-  const allRunSelected =
-    evals.length > 0 && selectedRunIds.size === evals.length;
-  const someRunSelected = selectedRunIds.size > 0 && !allRunSelected;
-
   return (
     <div className="flex flex-col gap-6">
-      {/* Evals section */}
-      <section>
-        <div className="mb-3 flex items-center justify-between">
+      <section className="rounded-lg border bg-card p-4">
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-base font-semibold tracking-tight">Evals</h2>
-            <p className="text-xs text-muted-foreground">
-              Managed in{" "}
-              <span className="font-mono">{skillName}/evals/evals.json</span>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-semibold">Eval Workbench</h1>
+              <Badge variant="outline">Performance</Badge>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              App-owned prompt sets and run history for skill output quality.
             </p>
           </div>
           <Button
             size="sm"
-            onClick={handleOpenIntentDialog}
-            disabled={isGenerating || isRegenerating || isRunningEvals}
+            onClick={() => void handleRunPromptSet()}
+            disabled={running}
           >
-            {isGenerating ? (
-              <>
-                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                Generating…
-              </>
-            ) : (
-              <>
-                <Sparkles className="mr-1.5 size-3.5" />
-                Generate eval
-              </>
-            )}
+            <Play className="mr-1 size-3.5" />
+            Run prompt set
           </Button>
         </div>
 
-        {/* Run controls bar — only when evals exist */}
-        {evals.length > 0 && (
-          <div className="mb-3 flex items-center gap-2 px-3">
-            <Checkbox
-              checked={allRunSelected}
-              data-state={someRunSelected ? "indeterminate" : undefined}
-              onCheckedChange={handleToggleAllRun}
-              aria-label="Select all evals to run"
-              disabled={isRunningEvals}
-            />
-            <span className="text-xs text-muted-foreground">
-              {selectedRunIds.size > 0
-                ? `${selectedRunIds.size} selected`
-                : "Select to run"}
-            </span>
-            <div className="ml-auto flex items-center gap-2">
-              {/* Comparison mode toggle */}
-              <div className="inline-flex overflow-hidden rounded-md border">
-                <button
-                  type="button"
-                  className={`px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${!comparisonMode ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
-                  style={
-                    !comparisonMode
-                      ? { background: "var(--color-pacific)" }
-                      : {}
-                  }
-                  onClick={() => setComparisonMode(undefined)}
-                  disabled={isRunningEvals}
-                >
-                  None
-                </button>
-                <button
-                  type="button"
-                  className={`border-l px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${comparisonMode === "with_without_skill" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
-                  style={
-                    comparisonMode === "with_without_skill"
-                      ? { background: "var(--color-pacific)" }
-                      : {}
-                  }
-                  onClick={() => setComparisonMode("with_without_skill")}
-                  disabled={isRunningEvals}
-                >
-                  vs Baseline
-                </button>
-                {/* vs Previous button hidden for now — logic preserved in mock-agent + benchmark card */}
-              </div>
-              {/* Run count toggle */}
-              <div className="inline-flex overflow-hidden rounded-md border">
-                <button
-                  type="button"
-                  className={`px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${runCount === 1 ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
-                  style={
-                    runCount === 1 ? { background: "var(--color-pacific)" } : {}
-                  }
-                  onClick={() => setRunCount(1)}
-                  disabled={isRunningEvals}
-                >
-                  1×
-                </button>
-                <button
-                  type="button"
-                  className={`border-l px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${runCount === 3 ? "text-white" : "text-muted-foreground hover:text-foreground"}`}
-                  style={
-                    runCount === 3 ? { background: "var(--color-pacific)" } : {}
-                  }
-                  onClick={() => setRunCount(3)}
-                  disabled={isRunningEvals}
-                >
-                  3×
-                </button>
-              </div>
+        {promptSets.length > 0 ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {promptSets.map((promptSet) => (
               <Button
+                key={promptSet.id}
+                type="button"
                 size="sm"
-                onClick={() => void handleRunSelected()}
-                disabled={
-                  selectedRunIds.size === 0 || isRunningEvals || isGenerating
+                variant={
+                  selectedPromptSetId === promptSet.id ? "secondary" : "outline"
                 }
+                onClick={() => {
+                  setSelectedPromptSetId(promptSet.id);
+                  setDraft(promptSetToDraft(promptSet));
+                  setActionError(null);
+                }}
               >
-                {isRunningEvals ? (
-                  <>
-                    <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                    Running…
-                  </>
-                ) : (
-                  <>
-                    <Play className="mr-1.5 size-3.5" />
-                    Run selected ({selectedRunIds.size})
-                  </>
-                )}
+                {promptSet.name}
               </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Generation banner */}
-        {isGenerating && (
-          <div
-            className="mb-4 flex items-start gap-3 rounded-lg border px-4 py-3 text-sm"
-            style={{
-              borderColor:
-                "color-mix(in oklch, var(--color-pacific), transparent 70%)",
-              background:
-                "color-mix(in oklch, var(--color-pacific), transparent 92%)",
-            }}
-          >
-            <Sparkles
-              className="mt-0.5 size-4 shrink-0"
-              style={{ color: "var(--color-pacific)" }}
-            />
-            <div>
-              <p
-                className="font-medium"
-                style={{ color: "var(--color-pacific)" }}
-              >
-                Generating eval for &ldquo;{draftIntent || skillName}&rdquo;…
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Reading skill definition and crafting a test scenario.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Eval run progress banner */}
-        {isRunningEvals && (
-          <div
-            data-testid="evals-run-thinking"
-            data-agent-id={evalRunAgentId ?? ""}
-            className="mb-4 flex items-center gap-3 rounded-lg border px-4 py-3 text-sm"
-            style={{
-              borderColor:
-                "color-mix(in oklch, var(--color-pacific), transparent 70%)",
-              background:
-                "color-mix(in oklch, var(--color-pacific), transparent 94%)",
-            }}
-          >
-            <Loader2
-              className="size-4 shrink-0 animate-spin"
-              style={{ color: "var(--color-pacific)" }}
-            />
-            <div className="flex-1 min-w-0">
-              <p
-                className="font-medium"
-                style={{ color: "var(--color-pacific)" }}
-              >
-                Running evals — grading results appear below as they complete
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Agent output panel — visible during and after eval generation */}
-        {generationAgentId && (
-          <div className="mb-4">
-            <AgentOutputPanel agentId={generationAgentId} />
-          </div>
-        )}
-
-        {evals.length === 0 && !isGenerating ? (
-          <EmptyState
-            onGenerate={handleOpenIntentDialog}
-            isGenerating={isGenerating}
-          />
-        ) : (
-          <div className="flex flex-col gap-2">
-            {/* Header row */}
-            <div className="grid grid-cols-[auto_1fr_2fr_auto_auto] items-center gap-4 px-3 pb-1">
-              <span className="size-4 shrink-0" />
-              <span className="flex items-center gap-1.5">
-                <span className="size-3.5 shrink-0" />
-                <span className="text-xs font-medium text-muted-foreground">
-                  Name
-                </span>
-              </span>
-              <span className="text-xs font-medium text-muted-foreground">
-                Prompt
-              </span>
-              <span className="rounded-full px-2 py-0.5 text-xs font-medium invisible">
-                0 assertions
-              </span>
-              <div className="flex items-center gap-1 invisible">
-                <span className="size-7" />
-                <span className="size-7" />
-              </div>
-            </div>
-            <Separator />
-            {evals.map((tc) => (
-              <EvalRow
-                key={tc.id}
-                tc={tc}
-                expanded={expandedId === tc.id}
-                selected={selectedRunIds.has(tc.id)}
-                onToggle={() =>
-                  setExpandedId(expandedId === tc.id ? null : tc.id)
-                }
-                onToggleRun={() => handleToggleRunId(tc.id)}
-                onEdit={() => openEdit(tc)}
-                onDelete={() => setDeleteTarget(tc)}
-                disabled={isRunningEvals}
-              />
             ))}
           </div>
-        )}
+        ) : null}
       </section>
 
-      {/* Agent output panel — visible during and after the eval run */}
-      {evalRunAgentId && (
-        <div className="flex flex-col" style={{ height: outputPanelHeight }}>
-          <div className="min-h-0 flex-1 flex flex-col">
-            <AgentOutputPanel agentId={evalRunAgentId} />
-          </div>
-          {/* Inline Refine CTA when failures detected */}
-          {benchmark?.aggregate_summary.has_failures && (
-            <div className="flex items-center gap-2 border-t px-3 py-2 shrink-0">
-              <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
-              <span className="text-xs font-medium text-destructive">
-                {benchmark.aggregate_summary.total_failed} assertion failure
-                {benchmark.aggregate_summary.total_failed !== 1 ? "s" : ""}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="ml-auto h-7 text-xs text-destructive border-destructive/50 hover:bg-destructive/10"
-                onClick={() => void handleRefine(benchmark)}
-              >
-                Refine skill
-              </Button>
-            </div>
-          )}
-          {/* Bottom drag handle */}
-          <div
-            className="h-1.5 w-full cursor-ns-resize rounded-b bg-border hover:bg-muted-foreground/30 transition-colors duration-150 shrink-0"
-            onPointerDown={(e) => {
-              dragStartY.current = e.clientY;
-              dragStartHeight.current = outputPanelHeight;
-              e.currentTarget.setPointerCapture(e.pointerId);
-            }}
-            onPointerMove={(e) => {
-              if (dragStartY.current === null) return;
-              const next = Math.max(
-                160,
-                Math.min(
-                  800,
-                  dragStartHeight.current + (e.clientY - dragStartY.current),
-                ),
-              );
-              if (rafId.current) cancelAnimationFrame(rafId.current);
-              rafId.current = requestAnimationFrame(() =>
-                setOutputPanelHeight(next),
-              );
-            }}
-            onPointerUp={() => {
-              dragStartY.current = null;
-              if (rafId.current) cancelAnimationFrame(rafId.current);
-            }}
-          />
+      {actionError ? (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>{actionError}</span>
         </div>
-      )}
+      ) : null}
 
-      {/* Benchmark result card — shown after evaluate-skill completes */}
-      {benchmark && (
-        <EvalRunBenchmarkCard
-          benchmark={benchmark}
-          onRefine={() => void handleRefine(benchmark)}
-        />
-      )}
-
-      {/* Iteration History section */}
-      {iterations.length > 0 && (
-        <>
-          <Separator />
-          <section>
-            <h2 className="mb-3 text-base font-semibold tracking-tight">
-              Iteration History
-            </h2>
-            <div className="flex flex-col gap-1">
-              {iterations.map((iter) => (
-                <React.Fragment key={iter.iteration}>
-                  <div
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 ${selectedIteration === iter.iteration ? "bg-muted" : "hover:bg-muted/50"}`}
-                    onClick={async () => {
-                      try {
-                        const [bm] = await readIterationResult(
-                          iter.path,
-                          skillName,
-                          workspacePath ?? undefined,
-                          pluginSlug,
-                        );
-                        setIterationBenchmark(bm as EvalBenchmark);
-                        setSelectedIteration(iter.iteration);
-                      } catch (err) {
-                        console.error(
-                          "[workspace-evals] Failed to read iteration result:",
-                          err,
-                        );
-                      }
-                    }}
-                  >
-                    <span className="font-mono text-xs text-muted-foreground">
-                      iteration-{iter.iteration}
-                    </span>
-                    <Badge
-                      variant="secondary"
-                      className="rounded-full px-2 py-0.5 text-xs font-medium"
-                    >
-                      {iterationLabel(iter.iteration, latestIteration)}
-                    </Badge>
-                  </div>
-                  {/* Selected iteration benchmark — inline below the clicked row */}
-                  {iterationBenchmark &&
-                    selectedIteration === iter.iteration && (
-                      <div className="mt-1 mb-1">
-                        <EvalRunBenchmarkCard
-                          benchmark={iterationBenchmark}
-                          onRefine={
-                            selectedIteration === latestIteration
-                              ? () => void handleRefine(iterationBenchmark)
-                              : undefined
-                          }
-                        />
-                      </div>
-                    )}
-                </React.Fragment>
-              ))}
-            </div>
-          </section>
-        </>
-      )}
-
-      {/* Intent dialog */}
-      <EvalIntentDialog
-        open={intentOpen}
-        placeholder={evalPlaceholder}
-        isGenerating={isGenerating}
-        onGenerate={(userIntent) => {
-          void handleGenerateEval(userIntent);
+      <PromptSetEditor
+        draft={draft}
+        onChange={setDraft}
+        onSave={() => void handleSavePromptSet()}
+        onNew={() => {
+          setSelectedPromptSetId(null);
+          setDraft(createDraftPromptSet("performance", pluginSlug, skillName));
+          setActionError(null);
         }}
-        onCancel={() => {
-          if (isGenerating && generationAgentId) {
-            cleanupSkillSidecar(skillName).catch(() => {});
-            setIsGenerating(false);
-            setGenerationAgentId(null);
-          }
-          setIntentOpen(false);
-        }}
+        saveDisabled={saving}
       />
 
-      {/* Add/edit/review form */}
-      <EvalForm
-        open={formOpen}
-        initial={editTarget ?? generatedEval}
-        intent={generatedEval ? draftIntent : undefined}
-        isRegenerating={isRegenerating}
-        onClose={handleFormClose}
-        onSave={handleSave}
-        onRegenerate={(newIntent) => void handleRegenerate(newIntent)}
+      <RunHistory
+        runs={runs}
+        selectedRunId={selectedRunId}
+        onSelectRun={(runId) => void handleSelectRun(runId)}
       />
 
-      {/* Delete confirmation */}
-      <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(o) => {
-          if (!o) setDeleteTarget(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete eval?</AlertDialogTitle>
-            <AlertDialogDescription>
-              &ldquo;{deleteTarget?.eval_name}&rdquo; will be permanently
-              removed from evals.json. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={deleting}>
-              {deleting ? "Deleting…" : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {blockerStatus === "blocked" && (
-        <Dialog
-          open
-          onOpenChange={(open) => {
-            if (!open) handleNavStay();
-          }}
-        >
-          <DialogContent showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>Eval Run In Progress</DialogTitle>
-              <DialogDescription>
-                An eval run is still in progress. Leaving will cancel it.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={handleNavStay}>
-                Stay
-              </Button>
-              <Button variant="destructive" onClick={handleNavLeave}>
-                Leave
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {pendingRefine && (
-        <Dialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setPendingRefine(null);
-          }}
-        >
-          <DialogContent showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>Eval Run In Progress</DialogTitle>
-              <DialogDescription>
-                An eval run is still in progress. Navigating to Refine will
-                cancel it.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setPendingRefine(null)}>
-                Stay
-              </Button>
-              <Button variant="destructive" onClick={handleRefineLeave}>
-                Cancel eval and refine
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-    </div>
-  );
-}
-
-// --- Sub-components ---
-
-function EmptyState({
-  onGenerate,
-  isGenerating,
-}: {
-  onGenerate: () => void;
-  isGenerating: boolean;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed py-12 text-center">
-      <Sparkles className="size-6 text-muted-foreground" />
-      <p className="text-sm font-medium text-muted-foreground">No evals yet</p>
-      <p className="max-w-xs text-xs text-muted-foreground">
-        Generate your first eval to define what &ldquo;success&rdquo; looks like
-        for this skill.
-      </p>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={onGenerate}
-        disabled={isGenerating}
-      >
-        <Sparkles className="mr-1.5 size-3.5" />
-        Generate your first eval
-      </Button>
-    </div>
-  );
-}
-
-interface EvalRowProps {
-  tc: TestCase;
-  expanded: boolean;
-  selected: boolean;
-  onToggle: () => void;
-  onToggleRun: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  disabled?: boolean;
-}
-
-function EvalRow({
-  tc,
-  expanded,
-  selected,
-  onToggle,
-  onToggleRun,
-  onEdit,
-  onDelete,
-  disabled,
-}: EvalRowProps) {
-  return (
-    <div className="rounded-lg border bg-card transition-shadow duration-150 hover:shadow-sm">
-      {/* Summary row */}
-      <div className="grid grid-cols-[auto_1fr_2fr_auto_auto] items-center gap-4 px-3 py-2.5">
-        <Checkbox
-          checked={selected}
-          onCheckedChange={onToggleRun}
-          aria-label={`Select ${tc.eval_name} to run`}
-          disabled={disabled}
-          className="shrink-0"
-        />
-        <button
-          type="button"
-          className="flex items-center gap-1.5 text-left"
-          onClick={onToggle}
-          aria-expanded={expanded}
-        >
-          {expanded ? (
-            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
-          )}
-          <span className="truncate text-sm font-medium">{tc.eval_name}</span>
-        </button>
-        <span className="truncate text-sm text-muted-foreground">
-          {truncatePrompt(tc.prompt) || "—"}
-        </span>
-        <Badge
-          variant="secondary"
-          className="rounded-full px-2 py-0.5 text-xs font-medium"
-        >
-          {tc.expectations.length} assertion
-          {tc.expectations.length !== 1 ? "s" : ""}
-        </Badge>
-        <div className="flex items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            onClick={onEdit}
-            title="Edit eval"
-            aria-label="Edit eval"
-            disabled={disabled}
-          >
-            <Pencil className="size-3.5" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground hover:text-destructive"
-            onClick={onDelete}
-            title="Delete eval"
-            aria-label="Delete eval"
-            disabled={disabled}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Expanded detail */}
-      {expanded && (
-        <div className="border-t px-4 py-3">
-          <div className="flex flex-col gap-3">
-            {tc.slug && (
-              <div>
-                <p className="mb-0.5 text-xs font-medium text-muted-foreground">
-                  Slug
-                </p>
-                <p className="font-mono text-xs">{tc.slug}</p>
-              </div>
-            )}
-            {tc.prompt && (
-              <div>
-                <p className="mb-0.5 text-xs font-medium text-muted-foreground">
-                  Prompt
-                </p>
-                <p className="whitespace-pre-wrap text-sm">{tc.prompt}</p>
-              </div>
-            )}
-            {tc.expectations.length > 0 && (
-              <div>
-                <p className="mb-1 text-xs font-medium text-muted-foreground">
-                  Expectations
-                </p>
-                <ul className="flex flex-col gap-1">
-                  {tc.expectations.map((exp, idx) => (
-                    <li key={idx} className="flex items-start gap-2 text-sm">
-                      <span className="mt-0.5 shrink-0 font-mono text-[11px] text-muted-foreground">
-                        {String(idx + 1).padStart(2, "0")}
-                      </span>
-                      <span>{exp}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+      <section className="rounded-lg border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Run details</h2>
+            <p className="text-xs text-muted-foreground">
+              Review the latest failures, then hand the brief to Refine.
+            </p>
           </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void handleSendToRefine()}
+            disabled={!selectedRunId || sendingToRefine}
+          >
+            Send to Refine
+            <ArrowRight className="ml-1 size-3.5" />
+          </Button>
         </div>
-      )}
+        <ResultTable mode="performance" run={selectedRun} />
+      </section>
     </div>
   );
 }

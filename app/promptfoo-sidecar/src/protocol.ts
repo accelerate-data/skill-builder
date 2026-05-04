@@ -19,6 +19,12 @@ export type EvalCandidate = {
   description?: string;
 };
 
+export type EvalExecution = {
+  caseId: string;
+  candidateId: string;
+  output: unknown;
+};
+
 export type RunEvalRequest = {
   id: string;
   type: "run_eval";
@@ -27,16 +33,7 @@ export type RunEvalRequest = {
   pluginSlug: string;
   candidates: EvalCandidate[];
   cases: EvalCase[];
-};
-
-export type ProviderCallRequest = {
-  id: string;
-  type: "provider_call";
-  mode: EvalMode;
-  skillName: string;
-  pluginSlug: string;
-  candidate?: EvalCandidate;
-  testCase: EvalCase;
+  executions: EvalExecution[];
 };
 
 export type SidecarRequest = RunEvalRequest;
@@ -50,15 +47,8 @@ export type SidecarEvent =
       caseId?: string;
       candidateId?: string;
     }
-  | { id: string; type: "provider_call"; request: ProviderCallRequest }
   | { id: string; type: "result"; result: EvalRunResult }
   | { id: string; type: "error"; message: string };
-
-export type ProviderCallResponse = {
-  id: string;
-  type: "provider_result";
-  output: unknown;
-};
 
 export type EvalCaseResult = {
   caseId: string;
@@ -109,6 +99,10 @@ export function serializeSidecarEvent(event: SidecarEvent): string {
   return `${JSON.stringify(event)}\n`;
 }
 
+export function serializeSidecarRequest(request: SidecarRequest): string {
+  return `${JSON.stringify(request)}\n`;
+}
+
 function validateRunEvalRequest(
   value: Record<string, unknown>,
 ): RunEvalRequest {
@@ -120,6 +114,9 @@ function validateRunEvalRequest(
     validateCandidate,
   );
   const cases = requireArray(value.cases, "cases").map(validateCase);
+  const executions = requireArray(value.executions, "executions").map(
+    validateExecution,
+  );
 
   return {
     id,
@@ -129,6 +126,7 @@ function validateRunEvalRequest(
     pluginSlug,
     candidates,
     cases,
+    executions,
   };
 }
 
@@ -182,6 +180,21 @@ function validateCase(value: unknown, index: number): EvalCase {
   }
 
   return testCase;
+}
+
+function validateExecution(value: unknown, index: number): EvalExecution {
+  if (!isRecord(value)) {
+    throw new Error(`executions[${index}] must be an object`);
+  }
+
+  return {
+    caseId: requireString(value.caseId, `executions[${index}].caseId`),
+    candidateId: requireString(
+      value.candidateId,
+      `executions[${index}].candidateId`,
+    ),
+    output: value.output,
+  };
 }
 
 function validateAssertion(

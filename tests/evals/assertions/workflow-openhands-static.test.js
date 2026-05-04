@@ -60,7 +60,7 @@ test('active workflow prompt surfaces stay OpenHands-native', () => {
 });
 test('deterministic eval packages cover OpenHands workflow agent topology', () => {
   const activeAgentFiles = ['agent-sources/workspace/agents/skill-creator.md'];
-  const activeSkillFiles = ['agent-sources/skills/creating-skills/SKILL.md'];
+  const activeSkillFiles = ['agent-sources/workspace/skills/creating-skills/SKILL.md'];
   for (const relativePath of activeAgentFiles) {
     assert.ok(fs.existsSync(path.join(REPO_ROOT, relativePath)), `${relativePath} must exist`);
   }
@@ -175,7 +175,7 @@ test('step 2 decision prompt normalizes exploratory answers by purpose', () => {
 test('step 3 skill generation has no legacy writer or validator runtime dependency', () => {
   const step3RuntimeEvidence = [
     readRepo('agent-sources/workspace/agents/skill-creator.md'),
-    readRepo('agent-sources/skills/creating-skills/SKILL.md'),
+    readRepo('agent-sources/workspace/skills/creating-skills/SKILL.md'),
     readRepo('agent-sources/prompts/skill-generation.txt'),
     readRepo('app/src-tauri/src/commands/workflow/runtime.rs'),
     readRepo('app/src-tauri/src/commands/workflow/step_config.rs'),
@@ -186,8 +186,8 @@ test('step 3 skill generation has no legacy writer or validator runtime dependen
     'agent_name: "skill-creator"',
     'creating-skills',
     'fresh-context verification',
-    'eval definitions path',
-    'create it before writing the file',
+    'app Eval Workbench owns durable prompt cases, assertions, runs, and',
+    'Do not run benchmark aggregation',
   ]) {
     assert.ok(step3RuntimeEvidence.includes(token), `step 3 runtime evidence must mention ${token}`);
   }
@@ -195,6 +195,10 @@ test('step 3 skill generation has no legacy writer or validator runtime dependen
   for (const token of [
     'tools_for_agent("skill-writer-agent")',
     'one_shot_tools_for_agent("skill-writer-agent")',
+    'evals/evals.json',
+    'pending-eval.json',
+    'write-evals',
+    'description optimization',
   ]) {
     assert.equal(
       step3RuntimeEvidence.includes(token),

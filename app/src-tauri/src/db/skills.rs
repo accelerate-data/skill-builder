@@ -553,6 +553,49 @@ pub fn set_skill_behaviour(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn set_skill_behaviour_in_plugin(
+    conn: &Connection,
+    skill_name: &str,
+    plugin_slug: &str,
+    description: Option<&str>,
+    version: Option<&str>,
+    model: Option<&str>,
+    argument_hint: Option<&str>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
+) -> Result<(), String> {
+    let user_invocable_i: Option<i32> = user_invocable.map(|v| if v { 1 } else { 0 });
+    let disable_model_invocation_i: Option<i32> =
+        disable_model_invocation.map(|v| if v { 1 } else { 0 });
+
+    conn.execute(
+        "UPDATE skills SET
+            description = COALESCE(?3, description),
+            version = COALESCE(?4, version),
+            model = COALESCE(?5, model),
+            argument_hint = COALESCE(?6, argument_hint),
+            user_invocable = COALESCE(?7, user_invocable),
+            disable_model_invocation = COALESCE(?8, disable_model_invocation),
+            updated_at = datetime('now')
+         WHERE name = ?1
+           AND plugin_id = (SELECT id FROM plugins WHERE slug = ?2)",
+        rusqlite::params![
+            skill_name,
+            plugin_slug,
+            description,
+            version,
+            model,
+            argument_hint,
+            user_invocable_i,
+            disable_model_invocation_i,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 // --- Skill Tags ---
 
 pub fn get_tags_for_skills(
@@ -880,5 +923,39 @@ mod tests {
             .expect("query ok")
             .expect("skill should exist in target plugin");
         assert_eq!(master.plugin_slug, target_slug);
+    }
+
+    #[test]
+    fn set_skill_behaviour_in_plugin_only_updates_target_plugin_row() {
+        let conn = create_test_db_for_tests();
+        ensure_default_plugin(&conn).unwrap();
+        let (_, target_slug) = create_plugin(&conn, "target-plugin", "local", None, None).unwrap();
+        upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+        upsert_skill_in_plugin(&conn, "my-skill", "marketplace", "domain", &target_slug).unwrap();
+
+        set_skill_behaviour(&conn, "my-skill", Some("default description"), None, None, None, None, None)
+            .unwrap();
+        set_skill_behaviour_in_plugin(
+            &conn,
+            "my-skill",
+            &target_slug,
+            Some("target description"),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        let default_skill = get_skill_master_in_plugin(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .unwrap();
+        let target_skill = get_skill_master_in_plugin(&conn, "my-skill", &target_slug)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(default_skill.description.as_deref(), Some("default description"));
+        assert_eq!(target_skill.description.as_deref(), Some("target description"));
     }
 }

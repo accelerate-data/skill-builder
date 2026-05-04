@@ -1,86 +1,85 @@
-# Evals
+# Eval Workbench
 
-The **Evals** workspace tab lets you define test scenarios for a skill, run them, review benchmark results, and use failures to start a Refine request.
+The **Evals** workspace tab opens the **Eval Workbench**, the app's current in-app path for testing skill output quality. It stores app-owned prompt sets, run history, and run details for the selected skill. When a run exposes weak output, you can send an improvement brief directly to [Refine](refine.md).
 
-You can reach it from:
+## Open the workbench
 
-- **More actions → Eval** on a skill in the dashboard skill list
-- the **Evals** tab inside the selected skill's workspace shell
-- **Eval** after Step 4 finishes in the workflow
+1. Select a skill in the dashboard.
+2. Open the skill workspace.
+3. Switch to the **Evals** tab.
 
 ## What's on this screen
 
-The top section is **Evals**. It lists saved evals from the selected skill and shows each eval's **Name**, **Prompt**, and assertion count.
+The page has three main sections:
 
-When evals exist, the run controls appear above the list:
+- **Eval Workbench** header with a **Run prompt set** button.
+- **Prompt set** editor where you create and save app-owned evaluation cases.
+- **Run history** and **Run details** for reviewing completed runs and sending feedback to Refine.
 
-- selection checkbox
-- **None** / **vs Baseline**
-- **1×** / **3×**
-- **Run selected (N)**
-
-The lower sections appear after runs:
-
-- live agent output while evals are running
-- benchmark results after a run completes
-- **Iteration History** for previous runs
-
-## Generate an eval
-
-1. Open the skill and switch to **Evals**.
-2. Click **Generate eval**.
-3. In **Generate eval**, answer **What do you want to evaluate?**
-4. Click **Generate**.
-5. Review the generated eval in **Review Generated Eval**.
-6. Edit **Name**, **Prompt**, and **Expectations** if needed.
-7. Click **Add**.
-
-The generation dialog shows **Generating eval...** while the agent reads the skill definition and drafts the scenario. Click **Cancel** to stop before the eval is created.
-
-## Edit or delete an eval
+## Create or update a prompt set
 
 1. Open **Evals**.
-2. Click the pencil button on a row to open **Edit Eval**.
-3. Update **Name**, **Prompt**, or **Expectations**.
-4. Click **Save changes**.
+2. In **Prompt set**, click **New prompt set** if you want a fresh draft.
+3. Enter a **Prompt set name**.
+4. For each case, fill in **Case prompt** and **Expected outcome**.
+5. Click **Add case** to include more cases, or delete a case with the trash button.
+6. Click **Save prompt set**.
 
-To remove an eval, click the trash button, then confirm **Delete** in **Delete eval?**.
+Saved prompt sets appear as buttons near the top of the page. Click a prompt set name to load it back into the editor.
 
-## Run evals
+## Run a prompt set
 
-1. Select one or more evals with the checkboxes.
-2. Choose **None** for a normal run, or **vs Baseline** to compare against a no-skill baseline.
-3. Choose **1×** or **3×**.
-4. Click **Run selected (N)**.
+1. Open **Evals**.
+2. Select the prompt set you want to run.
+3. Click **Run prompt set**.
 
-While the run is active, the button changes to **Running…** and the page shows **Running evals — grading results appear below as they complete**.
+The workbench adds the run to **Run history** and loads its results into **Run details** when the run finishes.
 
-## Review results and refine
+## Review run history and results
 
-After a run completes, the benchmark card summarizes the result. If assertions fail, the page shows **Refine skill**.
+Use **Run history** to inspect prior runs:
 
-Click **Refine skill** to send the failing eval context to the [Refine](refine.md) tab. If the eval run is still active, the app shows **Eval Run In Progress** and asks whether to **Stay** or **Cancel eval and refine**.
+- **View latest run** opens the newest run.
+- **View run** opens any older run.
+- Each row shows the run ID, status, and passed/total summary.
+
+Use **Run details** to inspect case-by-case results:
+
+- **Case** shows the saved case ID.
+- **Target** shows the candidate that was graded.
+- **Score** and **Status** show the recorded result.
+- **Reason** explains why a case failed when the grader returned one.
+
+If no run is selected, the page shows **Select a run to inspect its case results**.
+
+## Send run feedback to Refine
+
+1. Open a completed run from **Run history**.
+2. Review failures in **Run details**.
+3. Click **Send to Refine**.
+
+The workbench builds an improvement brief from that run and opens the [Refine](refine.md) tab with the brief ready to use.
 
 ## What you'll see
 
-- **Empty state** — **No evals yet** with **Generate your first eval**.
-- **Loading** — **Loading evals…** while evals are being read.
-- **Generation running** — **Generating eval for "..."…** and the agent output panel.
-- **Run running** — **Running evals — grading results appear below as they complete**.
-- **Navigation guard** — **Eval Run In Progress** with **Stay** and **Leave** when you try to navigate away during a run.
+- **No workspace** — **Configure a workspace before using Eval Workbench.**
+- **Loading** — **Loading Eval Workbench…**
+- **Load error** — an error message with **Retry**
+- **No runs yet** — **No runs yet.**
+- **No selected run** — **Select a run to inspect its case results.**
+- **No recorded results** — **This run has no recorded case results yet.**
 
 ## Quick reference
 
 | Control | What it does |
 |---|---|
-| **Generate eval** | Opens the intent dialog for a new eval |
-| **Generate your first eval** | Starts eval generation from the empty state |
-| **Name** | Human-readable eval name |
-| **Prompt** | User request the skill should handle |
-| **Expectations** | Assertions the result should satisfy |
-| **Add expectation** | Adds another assertion field |
-| **None** | Runs selected evals without a baseline comparison |
-| **vs Baseline** | Compares skill output against a no-skill baseline |
-| **1×** / **3×** | Controls how many times selected evals run |
-| **Run selected (N)** | Starts the selected eval run |
-| **Refine skill** | Opens Refine with failing eval context |
+| **Run prompt set** | Starts a run for the selected saved prompt set |
+| **New prompt set** | Clears the editor for a new prompt-set draft |
+| **Prompt set name** | Names the saved set of cases |
+| **Case prompt** | The request the skill should answer |
+| **Expected outcome** | The expected response or behavior |
+| **Add case** | Adds another case to the prompt set |
+| **Save prompt set** | Persists the current prompt set |
+| **View latest run** | Opens the newest run in **Run details** |
+| **View run** | Opens an older run in **Run details** |
+| **Send to Refine** | Builds an improvement brief and opens Refine |

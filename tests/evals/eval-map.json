@@ -99,7 +99,7 @@
     "workspace-description-evals-generator-prompt": {
       "config": "packages/workspace-description-evals-generator-prompt/promptfooconfig.json",
       "prompt": "packages/workspace-description-evals-generator-prompt/prompt.txt",
-      "purpose": "Description eval generator prompt behavior."
+      "purpose": "Eval Workbench trigger prompt-set generator prompt behavior."
     },
     "workspace-eval-generator-system-prompt": {
       "config": "packages/workspace-eval-generator-system-prompt/promptfooconfig.json",

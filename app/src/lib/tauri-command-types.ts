@@ -9,39 +9,44 @@ import type {
   DeviceFlowResponse,
   DiscoveryResolutionAction,
   Document,
-  EvalBenchmark,
   GenerateSkillOutput,
   GitHubAuthResult,
   GitHubRepoInfo,
   GitHubUser,
   ImportedSkill,
-  IterationMeta,
   LibraryPlugin,
   MarketplaceImportResult,
   MarketplaceUpdateResult,
   ModelSettings,
   ModelInfo,
-  PendingEval,
   ResearchStepOutput,
   ReconciliationResult,
   RefineFinalizeResult,
   RefineSessionInfo,
   SkillCommit,
-  SkillEvalContext,
   SkillFileContent,
   SkillFileEntry,
   SkillFileMeta,
   SkillMetadataOverride,
   SkillSummary,
   StartupDeps,
-  TestCase,
   UsageByDay,
   UsageByModel,
   UsageByStep,
   UsageSummary,
   WorkflowSessionRecord,
 } from "@/lib/types";
-import type { EvalQuery, OptimizationResult } from "@/lib/description-optimization";
+import type {
+  ApplyDescriptionCandidateResponse,
+  DescriptionCandidate,
+  EvalPromptSet,
+  EvalRun,
+  EvalWorkbenchMode,
+  RefineImprovementBrief,
+  RunEvalWorkbenchRequest,
+  SaveEvalPromptSet,
+  SuggestDescriptionCandidatesRequest,
+} from "@/lib/eval-workbench";
 
 export type NoArgs = Record<string, never>;
 
@@ -165,8 +170,6 @@ type AgentStartArgs = {
   runSource: string | null;
   pluginSlug: string;
 };
-
-type EvalQueryPayload = Pick<EvalQuery, "query" | "should_trigger">;
 
 export interface TauriCommandMap {
   log_frontend: { args: { level: "info" | "warn" | "error" | "debug"; message: string }; result: void };
@@ -444,131 +447,50 @@ export interface TauriCommandMap {
     result: void;
   };
   get_all_tags: { args: NoArgs; result: string[] };
-  run_optimization_loop: {
-    args: {
-      skillName: string;
-      pluginSlug: string;
-      workspacePath: string;
-      model: string;
-      evalQueries: EvalQuery[];
-    };
-    result: OptimizationResult;
-  };
-  cancel_description_optimization: { args: NoArgs; result: void };
-  apply_description: {
-    args: { skillName: string; pluginSlug: string; workspacePath: string; description: string };
-    result: string;
-  };
-  save_eval_queries: {
-    args: {
-      skillName: string;
-      pluginSlug: string;
-      workspacePath: string;
-      evalQueries: EvalQueryPayload[];
-    };
-    result: void;
-  };
-  load_eval_queries: {
-    args: { skillName: string; pluginSlug: string; workspacePath: string };
-    result: EvalQuery[];
-  };
-  start_generate_desc_evals: {
-    args: {
-      agentId: string;
-      skillName: string;
-      pluginSlug: string;
-      workspaceSkillDir: string;
-      model: string;
-      numEvalQueries: number;
-    };
-    result: string;
-  };
-  write_desc_opt_log: {
-    args: { skillName: string; pluginSlug: string; workspacePath: string; message: string };
-    result: void;
-  };
   read_latest_benchmark: {
     args: { skillName: string; workspacePath: string };
     result: LatestBenchmarkResult | null;
   };
-  list_test_cases: {
-    args: { skillName: string; workspacePath: string; pluginSlug: string };
-    result: TestCase[];
+  list_eval_prompt_sets: {
+    args: { pluginSlug: string; skillName: string; mode: EvalWorkbenchMode | null };
+    result: EvalPromptSet[];
   };
-  save_test_case: {
-    args: { skillName: string; workspacePath: string; pluginSlug: string; testCase: TestCase };
-    result: TestCase;
+  save_eval_prompt_set: {
+    args: { promptSet: SaveEvalPromptSet };
+    result: EvalPromptSet;
   };
-  delete_test_case: {
-    args: { skillName: string; workspacePath: string; pluginSlug: string; id: number };
+  delete_eval_prompt_set: {
+    args: { promptSetId: string };
     result: void;
   };
-  list_iterations: {
-    args: { skillName: string; workspacePath: string; pluginSlug: string };
-    result: IterationMeta[];
+  run_eval_workbench: {
+    args: { request: RunEvalWorkbenchRequest };
+    result: EvalRun;
   };
-  create_next_iteration_dir: {
-    args: { skillName: string; workspacePath: string; pluginSlug: string };
-    result: [number, string];
-  };
-  materialize_eval_benchmark: {
+  list_eval_runs: {
     args: {
-      iterDir: string;
-      skillName: string;
-      workspacePath: string;
       pluginSlug: string;
-      iteration: number;
-      evalIds: number[];
-      runCount: number;
-      comparisonMode: string | null;
-    };
-    result: EvalBenchmark;
-  };
-  read_iteration_result: {
-    args: {
-      iterationPath: string;
-      skillName: string | null;
-      workspacePath: string | null;
-      pluginSlug: string | null;
-    };
-    result: [EvalBenchmark, string[]];
-  };
-  read_grading: { args: { gradingPath: string }; result: Record<string, unknown> };
-  read_skill_context_for_eval_gen: {
-    args: { skillName: string; workspacePath: string; pluginSlug: string };
-    result: SkillEvalContext;
-  };
-  read_pending_eval: {
-    args: { skillName: string; workspacePath: string; pluginSlug: string };
-    result: PendingEval;
-  };
-  discard_pending_eval: {
-    args: { skillName: string; workspacePath: string; pluginSlug: string };
-    result: void;
-  };
-  build_eval_prompt: {
-    args: {
       skillName: string;
-      pluginSlug: string;
-      workspacePath: string;
-      skillPath: string;
-      evalIds: number[];
-      runCount: number;
-      iteration: number;
-      iterDir: string;
-      comparisonMode: string | null;
+      mode: EvalWorkbenchMode | null;
+      limit: number | null;
     };
-    result: [string, string];
+    result: EvalRun[];
   };
-  build_eval_gen_prompt: {
-    args: {
-      skillName: string;
-      skillPath: string;
-      outputPath: string;
-      userIntent: string;
-      userContextFile: string;
-    };
-    result: [string, string];
+  read_eval_run: {
+    args: { runId: string };
+    result: EvalRun | null;
+  };
+  suggest_description_candidates: {
+    args: { request: SuggestDescriptionCandidatesRequest };
+    result: DescriptionCandidate[];
+  };
+  apply_description_candidate: {
+    args: { pluginSlug: string; skillName: string; candidateId: string };
+    result: ApplyDescriptionCandidateResponse;
+  };
+  build_refine_improvement_brief: {
+    args: { runId: string };
+    result: RefineImprovementBrief;
   };
   list_documents: { args: NoArgs; result: Document[] };
   list_skills_for_documents: { args: NoArgs; result: SkillIdName[] };

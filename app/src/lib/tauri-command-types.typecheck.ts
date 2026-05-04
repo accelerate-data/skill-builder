@@ -1,9 +1,9 @@
 import { invokeCommand } from "@/lib/tauri";
-import type { EvalQuery } from "@/lib/description-optimization";
+import type { SaveEvalPromptSet } from "@/lib/eval-workbench";
 import type { AppSettings } from "@/lib/types";
 
 declare const settings: AppSettings;
-declare const evalQueries: EvalQuery[];
+declare const promptSet: SaveEvalPromptSet;
 
 void invokeCommand("get_settings", {});
 void invokeCommand("save_settings", { settings });
@@ -102,50 +102,6 @@ void invokeCommand("get_context_file_content", {
   workspacePath: "/tmp/workspace",
 });
 
-void invokeCommand("run_optimization_loop", {
-  skillName: "dbt-analytics",
-  pluginSlug: "skills",
-  workspacePath: "/workspace",
-  model: "claude-sonnet-4-6",
-  evalQueries,
-});
-
-// @ts-expect-error run_optimization_loop requires evalQueries
-void invokeCommand("run_optimization_loop", {
-  skillName: "dbt-analytics",
-  pluginSlug: "skills",
-  workspacePath: "/workspace",
-  model: "claude-sonnet-4-6",
-});
-
-void invokeCommand("save_eval_queries", {
-  skillName: "dbt-analytics",
-  pluginSlug: "skills",
-  workspacePath: "/workspace",
-  // @ts-expect-error save_eval_queries preserves should_trigger in query entries
-  evalQueries: [{ query: "run dbt", shouldTrigger: true }],
-});
-
-void invokeCommand("create_next_iteration_dir", {
-  skillName: "dbt-analytics",
-  workspacePath: "/workspace",
-  pluginSlug: "skills",
-});
-
-// @ts-expect-error create_next_iteration_dir returns [number, string], not string
-const invalidIterationDirResult: Promise<string> = invokeCommand("create_next_iteration_dir", {
-  skillName: "dbt-analytics",
-  workspacePath: "/workspace",
-  pluginSlug: "skills",
-});
-void invalidIterationDirResult;
-
-// @ts-expect-error read_grading returns a record, not an array
-const invalidGradingResult: Promise<unknown[]> = invokeCommand("read_grading", {
-  gradingPath: "/workspace/skill/evals/grading.json",
-});
-void invalidGradingResult;
-
 // @ts-expect-error refine command requires camelCase sessionId
 void invokeCommand("close_refine_session", { session_id: "session-1" });
 
@@ -170,4 +126,40 @@ void invokeCommand("get_skill_history", {
   skillName: "demo",
   pluginSlug: "skills",
   limit: "10",
+});
+
+void invokeCommand("list_eval_prompt_sets", {
+  pluginSlug: "skills",
+  skillName: "demo",
+  mode: "performance",
+});
+
+void invokeCommand("save_eval_prompt_set", { promptSet });
+
+void invokeCommand("run_eval_workbench", {
+  request: {
+    promptSetId: "prompt-set-1",
+    candidateIds: ["current-skill"],
+  },
+});
+
+void invokeCommand("suggest_description_candidates", {
+  request: {
+    promptSetId: "prompt-set-1",
+    baselineDescription: "Route invoice reconciliation requests",
+    candidateCount: 3,
+  },
+});
+
+// @ts-expect-error workbench run request requires candidateIds
+void invokeCommand("run_eval_workbench", {
+  request: {
+    promptSetId: "prompt-set-1",
+  },
+});
+
+// @ts-expect-error apply_description_candidate requires candidateId
+void invokeCommand("apply_description_candidate", {
+  pluginSlug: "skills",
+  skillName: "demo",
 });

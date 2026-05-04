@@ -19,19 +19,20 @@ describe("runtime API contract", () => {
     expect(source).not.toContain("export const answerStreamingRefineQuestion");
   });
 
-  it("keeps non-refine UI surfaces on the one-shot agent API", () => {
-    const nonRefineSources = [
-      "components/feedback-dialog.tsx",
-      "components/workspace/workspace-evals.tsx",
-    ];
+  it("keeps feedback on the one-shot agent API and evals on the workbench API", () => {
+    const feedbackSource = readSource("components/feedback-dialog.tsx");
+    expect(feedbackSource).toContain("startOneShotAgent");
+    expect(feedbackSource).not.toContain("runEvalWorkbench");
 
-    for (const relativePath of nonRefineSources) {
-      const source = readSource(relativePath);
-
-      expect(source, relativePath).toContain("startOneShotAgent");
-      expect(source, relativePath).not.toContain("startAgent(");
-      expect(source, relativePath).not.toContain("sendRefineMessage");
-    }
+    const evalsSource = readSource("components/workspace/workspace-evals.tsx");
+    const descriptionSource = readSource("components/workspace/workspace-description.tsx");
+    expect(evalsSource).toContain("runEvalWorkbench");
+    expect(evalsSource).toContain('from "@/lib/eval-workbench"');
+    expect(evalsSource).not.toContain("startOneShotAgent");
+    expect(evalsSource).not.toContain("sendRefineMessage");
+    expect(evalsSource).not.toContain("cancelEvalWorkbenchRun");
+    expect(descriptionSource).toContain('from "@/lib/eval-workbench"');
+    expect(descriptionSource).not.toContain('from "@/lib/tauri"');
   });
 
   it("keeps refine UI on the streaming refine API", () => {

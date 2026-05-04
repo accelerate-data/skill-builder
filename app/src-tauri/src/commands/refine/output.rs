@@ -126,6 +126,75 @@ pub(crate) fn update_skill_name(content: &str, name: &str) -> Result<String, Str
     Ok(format!("---\n{}{}", new_yaml.join("\n"), body_part))
 }
 
+/// Replace or insert the `description:` field in SKILL.md YAML frontmatter.
+pub(crate) fn update_skill_description(content: &str, description: &str) -> Result<String, String> {
+    let content = content.replace("\r\n", "\n");
+
+    if !content.starts_with("---") {
+        return Err("SKILL.md is missing YAML frontmatter (does not start with ---)".to_string());
+    }
+
+    let after_first = &content[3..];
+    let end_pos = after_first
+        .find("\n---")
+        .ok_or_else(|| "SKILL.md has an unclosed YAML frontmatter block".to_string())?;
+
+    let yaml_block = &after_first[..end_pos];
+    let body_part = &after_first[end_pos..];
+
+    let quoted =
+        crate::commands::imported_skills::frontmatter::yaml_quote_scalar(description);
+    let new_description_line = format!("description: {}", quoted);
+
+    let mut new_yaml: Vec<String> = Vec::new();
+    let mut found_description = false;
+    let mut skip_continuation = false;
+    let mut found_name = false;
+
+    for line in yaml_block.lines() {
+        let trimmed = line.trim();
+        let is_indented = line.starts_with(' ') || line.starts_with('\t');
+
+        if skip_continuation {
+            if is_indented && !trimmed.is_empty() {
+                continue;
+            }
+            skip_continuation = false;
+        }
+
+        if !is_indented && trimmed.starts_with("description:") {
+            let value = trimmed["description:".len()..].trim();
+            if matches!(value, ">" | "|" | ">-" | "|-") {
+                skip_continuation = true;
+            }
+            new_yaml.push(new_description_line.clone());
+            found_description = true;
+            continue;
+        }
+
+        new_yaml.push(line.to_string());
+
+        if !is_indented && trimmed.starts_with("name:") {
+            found_name = true;
+        }
+    }
+
+    if !found_description {
+        if found_name {
+            let pos = new_yaml
+                .iter()
+                .position(|line| line.trim().starts_with("name:"))
+                .map(|index| index + 1)
+                .unwrap_or(0);
+            new_yaml.insert(pos, new_description_line);
+        } else {
+            new_yaml.insert(0, new_description_line);
+        }
+    }
+
+    Ok(format!("---\n{}{}", new_yaml.join("\n"), body_part))
+}
+
 /// Read a file's content from a specific git commit via its tree.
 fn read_file_at_commit(
     repo: &git2::Repository,
@@ -203,7 +272,7 @@ fn restore_protected_frontmatter(
     if desc_changed {
         if let Some(ref original_desc) = original_fm.description {
             content =
-                crate::commands::description::update_skill_description(&content, original_desc)?;
+                update_skill_description(&content, original_desc)?;
         }
     }
 

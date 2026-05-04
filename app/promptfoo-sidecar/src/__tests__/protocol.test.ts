@@ -25,6 +25,13 @@ describe("promptfoo sidecar protocol", () => {
             assertions: [{ type: "equals", value: "true" }],
           },
         ],
+        executions: [
+          {
+            caseId: "case-1",
+            candidateId: "baseline",
+            output: { invokedTargetSkill: true },
+          },
+        ],
       }),
     );
 

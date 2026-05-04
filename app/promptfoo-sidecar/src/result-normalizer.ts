@@ -2,6 +2,12 @@ import type { EvalCaseResult, EvalMode, EvalRunResult } from "./protocol.js";
 
 export type PromptfooLikeResult = {
   vars?: Record<string, unknown>;
+  testCase?: {
+    vars?: Record<string, unknown>;
+  };
+  provider?: {
+    id?: string;
+  };
   success?: boolean;
   score?: number;
   response?: {
@@ -31,9 +37,12 @@ export function normalizePromptfooResults(
 export function normalizePromptfooResult(
   rawResult: PromptfooLikeResult,
 ): EvalCaseResult {
-  const vars = rawResult.vars ?? {};
+  const vars = rawResult.vars ?? rawResult.testCase?.vars ?? {};
   const caseId = readRequiredString(vars.caseId, "caseId");
-  const candidateId = readRequiredString(vars.candidateId, "candidateId");
+  const candidateId = readRequiredString(
+    rawResult.provider?.id ?? vars.candidateId,
+    "candidateId",
+  );
   const score = normalizeScore(rawResult);
   const passed = rawResult.success ?? score >= 1;
 

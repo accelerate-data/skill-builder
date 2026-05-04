@@ -16,9 +16,8 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
-import { cancelRefineTurn, cancelWorkflowStep, cleanupSkillSidecar, cancelDescriptionOptimization } from "@/lib/tauri";
+import { cancelRefineTurn, cancelWorkflowStep, cleanupSkillSidecar } from "@/lib/tauri";
 import { getEvalsRunning, subscribeEvalsRunning } from "@/lib/eval-running-state";
-import { getDescriptionOptRunning, subscribeDescriptionOptRunning } from "@/lib/description-opt-running-state";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
 import {
   Dialog,
@@ -39,9 +38,7 @@ export function AppLayout() {
   const refineRunning = useRefineStore((s) => s.isRunning);
   const [evalsRunningReactive, setEvalsRunningReactive] = useState(getEvalsRunning);
   useEffect(() => subscribeEvalsRunning(setEvalsRunningReactive), []);
-  const [descOptRunningReactive, setDescOptRunningReactive] = useState(getDescriptionOptRunning);
-  useEffect(() => subscribeDescriptionOptRunning(setDescOptRunningReactive), []);
-  const agentRunning = refineRunning || evalsRunningReactive || descOptRunningReactive;
+  const agentRunning = refineRunning || evalsRunningReactive;
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const workspaceInitialTab = useRouterState({
@@ -122,8 +119,7 @@ export function AppLayout() {
       if (name !== selectedWorkspaceSkillName) {
         const refineRunning = useRefineStore.getState().isRunning;
         const evalsRunning = getEvalsRunning();
-        const descOptRunning = getDescriptionOptRunning();
-        if (refineRunning || evalsRunning || descOptRunning) {
+        if (refineRunning || evalsRunning) {
           setPendingSkillSwitch(name);
           pendingSkillSwitchTabRef.current = tab;
           return;
@@ -148,7 +144,6 @@ export function AppLayout() {
       const bareSkillName = parts[parts.length - 1];
       cleanupSkillSidecar(bareSkillName).catch(() => {});
     }
-    cancelDescriptionOptimization().catch(() => {});
     useRefineStore.getState().clearSession();
     useAgentStore.getState().clearRuns();
     toast.info("Agent cancelled — skill switched");

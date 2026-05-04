@@ -15,7 +15,7 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
-import { cleanupSkillSidecar, cancelDescriptionOptimization, getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
+import { cleanupSkillSidecar, getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
 import type { SkillSummary as TauriSkillSummary } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
@@ -58,7 +58,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
       setPendingTab(value);
       return;
     }
-    // Guard: block switching away from Description while optimization is running
+    // Guard: block switching away from Description while workbench generation/comparison is running
     if (activeTab === "description" && value !== "description" && descriptionRunningRef.current) {
       setPendingTab(value);
       return;
@@ -82,16 +82,10 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
 
   const handleTabLeave = useCallback(() => {
     if (pendingTab) {
-      // Clean up sidecar processes when leaving a tab with a running agent
+      // Clean up the persistent skill sidecar when leaving a running performance eval.
       if (activeTab === "evals" && evalsRunningRef.current) {
         cleanupSkillSidecar(skillName).catch((err) =>
           console.error("[workspace-shell] eval sidecar cleanup failed:", err),
-        );
-      }
-      // Kill optimization process when leaving description tab
-      if (activeTab === "description" && descriptionRunningRef.current) {
-        cancelDescriptionOptimization().catch((err) =>
-          console.error("[workspace-shell] description optimization cancel failed:", err),
         );
       }
       setActiveTab(pendingTab);

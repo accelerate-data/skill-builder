@@ -13,8 +13,8 @@ layer; the raw user context, clarification answers, and decision records remain
 source material and should be used when exact wording or examples matter.
 
 Do not use this skill for clarification interviews, detailed research, decision
-confirmation, benchmark aggregation, blind comparison, release tagging, or
-description-only optimization.
+confirmation, benchmark aggregation, blind comparison, release tagging,
+workbench eval authoring, or standalone description-candidate generation.
 
 ## Inputs
 
@@ -62,10 +62,13 @@ The generated skill should include:
 Draft the description carefully as part of generation. Use user phrases,
 workflow context, trigger conditions, exclusions, and expected outputs from the
 confirmed decisions. The description is the primary trigger surface, so avoid a
-generic summary.
+generic summary. Do not generate alternate description candidates or ranking
+artifacts here; the app Eval Workbench owns that follow-on workflow.
 
 Keep reference files focused. Do not create many tiny files when one compact
 reference is easier to use.
+Do not create eval cases, eval suggestions, or trigger-prompt drafts during
+skill generation. Those belong to the app Eval Workbench after the skill exists.
 
 ## Fresh-Context Verification
 

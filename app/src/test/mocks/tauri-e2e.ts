@@ -6,14 +6,60 @@
  * can render without the Rust backend.
  */
 
-import descriptionOptimizationResult from "../../../sidecar/mock-templates/outputs/description-optimization-loop/optimization-result.json";
-
 // E2E root matches test-paths.ts joinE2ePath() output at runtime.
 // Browser mocks can't access os.tmpdir(), so we use a synthetic root
 // that E2E tests override via __TAURI_MOCK_OVERRIDES__ when needed.
 const E2E_ROOT = "/e2e-test";
 const E2E_SKILLS_PATH = `${E2E_ROOT}/skills`;
 const E2E_DEFAULT_SKILLS_PATH = `${E2E_ROOT}/default-skills`;
+
+const defaultPerformancePromptSet = {
+  id: "prompt-set-performance",
+  pluginSlug: "skills",
+  skillName: "test-skill",
+  mode: "performance" as const,
+  name: "Regression",
+  createdAt: "2026-05-04T00:00:00Z",
+  updatedAt: "2026-05-04T00:00:00Z",
+  cases: [
+    {
+      id: "case-1",
+      prompt: "Forecast next quarter revenue for the west region pipeline.",
+      expected: "Calls out assumptions, missing data, and confidence.",
+      shouldTrigger: null,
+      assertions: [],
+      sortOrder: 0,
+    },
+  ],
+};
+
+const defaultPerformanceRunSummary = {
+  id: "run-1",
+  promptSetId: "prompt-set-performance",
+  mode: "performance" as const,
+  status: "completed",
+  summary: { passed: 1, total: 1 },
+  createdAt: "2026-05-04T00:00:00Z",
+  completedAt: "2026-05-04T00:05:00Z",
+  results: [],
+  descriptionCandidates: [],
+};
+
+const defaultPerformanceRunDetail = {
+  ...defaultPerformanceRunSummary,
+  results: [
+    {
+      id: "result-1",
+      runId: "run-1",
+      caseId: "case-1",
+      candidateId: "current-skill",
+      passed: false,
+      score: 0.25,
+      output: {},
+      reason: "Missed assumptions section",
+    },
+  ],
+};
 
 const defaultSettings = {
   model_settings: {
@@ -252,88 +298,21 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
   verify_step_output: true,
   read_latest_benchmark: null,
   "plugin:log|log": undefined,
-  // Evals tab
-  list_test_cases: [
-    {
-      id: 1,
-      eval_name: "Customer onboarding flow",
-      slug: "customer-onboarding-flow",
-      prompt: "Run a typical customer onboarding.",
-      files: [],
-      expectations: ["Should greet user"],
-    },
-    {
-      id: 2,
-      eval_name: "Error handling scenario",
-      slug: "error-handling-scenario",
-      prompt: "Trigger an error path.",
-      files: [],
-      expectations: ["Should return error"],
-    },
-  ],
-  list_iterations: [],
-  create_next_iteration_dir: [1, `${E2E_ROOT}/workspace/test-skill/evals/iterations/iteration-1`],
-  build_eval_prompt: ["mock system prompt for evals", "mock user prompt for evals"],
-  materialize_eval_benchmark: {
-    skill_name: "test-skill",
-    iteration: 1,
-    run_count: 1,
-    eval_ids: [1, 2],
-    runs: [
-      {
-        run_index: 0,
-        evals: [
-          {
-            eval_id: 1,
-            eval_name: "Customer onboarding flow",
-            slug: "customer-onboarding-flow",
-            grading_path: "run-0/eval-1-customer-onboarding-flow/grading.json",
-            summary: { passed: 1, failed: 0, total: 1, pass_rate: 1.0 },
-          },
-          {
-            eval_id: 2,
-            eval_name: "Error handling scenario",
-            slug: "error-handling-scenario",
-            grading_path: "run-0/eval-2-error-handling-scenario/grading.json",
-            summary: { passed: 0, failed: 1, total: 1, pass_rate: 0.0 },
-          },
-        ],
-        run_summary: { passed: 1, failed: 1, total: 2, pass_rate: 0.5 },
-      },
-    ],
-    aggregate_summary: {
-      avg_pass_rate: 0.5,
-      total_passed: 1,
-      total_failed: 1,
-      total_assertions: 2,
-      has_failures: true,
-    },
+  // Eval Workbench
+  list_eval_prompt_sets: [defaultPerformancePromptSet],
+  save_eval_prompt_set: defaultPerformancePromptSet,
+  delete_eval_prompt_set: undefined,
+  list_eval_runs: [defaultPerformanceRunSummary],
+  read_eval_run: defaultPerformanceRunDetail,
+  run_eval_workbench: defaultPerformanceRunSummary,
+  suggest_description_candidates: [],
+  apply_description_candidate: {
+    description: "Use when the user needs invoice reconciliation or payment matching",
   },
-  read_iteration_result: null,
-  save_test_case: {
-    id: 3,
-    eval_name: "New eval",
-    slug: "new-eval",
-    prompt: ".",
-    files: [],
-    expectations: [],
+  build_refine_improvement_brief: {
+    runId: "run-1",
+    brief: "Improve assumptions handling",
   },
-  delete_test_case: undefined,
-  read_skill_context_for_eval_gen: {
-    skill_content: "# Test Skill\n\nDoes something.",
-    existing_evals: [],
-  },
-  read_pending_eval: null,
-  discard_pending_eval: undefined,
-  read_grading: null,
-  // Description optimization
-  load_eval_queries: [],
-  save_eval_queries: undefined,
-  start_generate_desc_evals: "desc-evals-agent-001",
-  run_optimization_loop: descriptionOptimizationResult,
-  apply_description: "1.0.1",
-  cancel_description_optimization: undefined,
-  write_desc_opt_log: undefined,
 };
 
 function normalizeListSkills(value: unknown): unknown {
