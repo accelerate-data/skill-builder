@@ -250,6 +250,7 @@ describe("FeedbackDialog", () => {
 
     await user.click(screen.getByTitle("Send feedback"));
     await user.type(await screen.findByLabelText("Title"), "App crashes");
+    await user.type(screen.getByLabelText("Description"), "Steps to reproduce the crash");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
     await waitFor(() => {
@@ -278,6 +279,7 @@ describe("FeedbackDialog", () => {
 
     await user.click(screen.getByTitle("Send feedback"));
     await user.type(await screen.findByLabelText("Title"), "App crashes");
+    await user.type(screen.getByLabelText("Description"), "Steps to reproduce the crash");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
     await waitFor(() => {
@@ -304,6 +306,7 @@ describe("FeedbackDialog", () => {
 
     await user.click(screen.getByTitle("Send feedback"));
     await user.type(await screen.findByLabelText("Title"), "App crashes");
+    await user.type(screen.getByLabelText("Description"), "Steps to reproduce the crash");
     await user.click(screen.getByRole("button", { name: /Analyze/i }));
 
     await waitFor(() => {

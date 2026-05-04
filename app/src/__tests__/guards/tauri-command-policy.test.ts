@@ -47,11 +47,6 @@ const vu1140Commands = [
   "get_skill_files_at_sha",
   "run_answer_evaluator",
   "materialize_answer_evaluation_output",
-  "get_clarifications_content",
-  "save_clarifications_content",
-  "get_decisions_content",
-  "save_decisions_content",
-  "get_context_file_content",
   "log_gate_decision",
 ] as const;
 
