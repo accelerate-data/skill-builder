@@ -413,7 +413,7 @@ describe("SettingsPage", () => {
     await switchToSection(/Models/i);
 
     // API key field (password input)
-    const apiKeyInput = screen.getByPlaceholderText("sk-ant-...");
+    const apiKeyInput = screen.getByPlaceholderText("Provider API key");
     expect(apiKeyInput).toHaveValue("sk-ant-existing-key");
   });
 
@@ -757,7 +757,7 @@ describe("SettingsPage", () => {
 
     await switchToSection(/Models/i);
 
-    const apiKeyInput = screen.getByPlaceholderText("sk-ant-...");
+    const apiKeyInput = screen.getByPlaceholderText("Provider API key");
     await user.clear(apiKeyInput);
     await user.type(apiKeyInput, "sk-ant-new-key");
     await user.tab(); // blur the input

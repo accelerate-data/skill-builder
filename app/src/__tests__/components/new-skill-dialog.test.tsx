@@ -161,7 +161,7 @@ describe("SkillDialog (create mode)", () => {
     expect(screen.getByLabelText(/^Skill Name/)).toBeInTheDocument();
     expect(screen.getByLabelText(/What are you trying to capture/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^What the skill does/)).toBeInTheDocument();
-    expect(screen.getByLabelText("What Claude needs to know")).toBeInTheDocument();
+    expect(screen.getByLabelText("What the agent needs to know")).toBeInTheDocument();
   });
 
   it("keeps description field enabled in create mode with character count", async () => {

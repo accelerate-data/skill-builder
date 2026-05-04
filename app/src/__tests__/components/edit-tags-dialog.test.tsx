@@ -301,7 +301,7 @@ describe("SkillDialog (edit mode)", () => {
         tagSuggestions={[]}
       />
     );
-    expect(screen.getByLabelText("What Claude needs to know")).toBeInTheDocument();
+    expect(screen.getByLabelText("What the agent needs to know")).toBeInTheDocument();
   });
 
   it("pre-fills context from intake_json", () => {
@@ -319,7 +319,7 @@ describe("SkillDialog (edit mode)", () => {
         tagSuggestions={[]}
       />
     );
-    expect(screen.getByLabelText("What Claude needs to know")).toHaveValue("Custom setup details");
+    expect(screen.getByLabelText("What the agent needs to know")).toHaveValue("Custom setup details");
   });
 
   // --- isLocked prop ---
