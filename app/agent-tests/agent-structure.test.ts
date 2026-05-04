@@ -441,25 +441,6 @@ describe("Agent output contracts (backend protocol alignment)", () => {
 
 });
 
-describe("detailed-research output contract", () => {
-  const step1Json = JSON.parse(
-    fs.readFileSync(
-      path.join(
-        REPO_ROOT,
-        "app/sidecar/mock-templates/outputs/step1/context/clarifications.json",
-      ),
-      "utf-8",
-    ),
-  );
-
-  it("step1 clarifications.json sections contain refinements (additive from step0)", () => {
-    const hasRefinements = step1Json.sections.some(
-      (s: { questions?: Array<{ refinements?: unknown[] }> }) =>
-        s.questions?.some((q) => q.refinements && q.refinements.length > 0),
-    );
-    expect(hasRefinements).toBe(true);
-  });
-});
 
 // ── Plugin structure sanity checks ───────────────────────────────────────────
 

@@ -4,8 +4,6 @@ use super::event_types::{
     AgentEvent, AgentExitPayload, AgentInitError, AgentShutdownPayload, SidecarRunSummary,
 };
 use super::run_persist::persist_run_summary;
-use super::startup_error::SidecarStartupError;
-
 #[derive(Debug)]
 pub(super) enum SidecarMessageAction {
     PersistRunSummary(Box<SidecarRunSummary>),
@@ -265,30 +263,6 @@ pub fn handle_agent_shutdown(app_handle: &tauri::AppHandle, agent_id: &str) {
     };
     if let Err(e) = app_handle.emit("agent-shutdown", &payload) {
         log::warn!("Failed to emit agent-shutdown for {}: {}", agent_id, e);
-    }
-}
-
-/// Emit a structured error event when sidecar startup fails.
-/// The frontend listens for `agent-init-error` to show an actionable dialog.
-#[allow(dead_code)]
-pub fn emit_init_error(app_handle: &tauri::AppHandle, error: &SidecarStartupError) {
-    let payload = AgentInitError {
-        error_type: error.error_type().to_string(),
-        message: error.message(),
-        fix_hint: error.fix_hint(),
-    };
-    log::error!(
-        "Sidecar startup error [{}]: {} | Fix: {}",
-        payload.error_type,
-        payload.message,
-        payload.fix_hint
-    );
-    if let Err(e) = app_handle.emit("agent-init-error", &payload) {
-        log::error!(
-            "Failed to emit agent-init-error [{}]: {}",
-            payload.error_type,
-            e
-        );
     }
 }
 
