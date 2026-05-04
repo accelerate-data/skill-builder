@@ -166,7 +166,7 @@ function assertOpenHandsLlmConfig(raw: unknown): void {
 
 /**
  * Runtime-validate an unknown value into a SidecarConfig.
- * Replaces unsafe `as SidecarConfig` casts in persistent-mode.
+ * Replaces unsafe `as SidecarConfig` casts.
  */
 export function parseSidecarConfig(raw: unknown): SidecarConfig {
   if (typeof raw !== "object" || raw === null) {

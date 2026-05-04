@@ -48,16 +48,9 @@ function relPath(filePath: string): string {
 // Anti-pattern checks (shared across all .md artifacts)
 // ---------------------------------------------------------------------------
 
-describe("Canonical format: anti-pattern checks (all markdown files)", () => {
-  const mdFiles = collectMarkdownFiles();
+const mdFiles = collectMarkdownFiles();
 
-  it("finds markdown files to check (skipped when no mock-templates present)", () => {
-    // mock-templates/ is deleted in the OpenHands runtime; fixture .md files
-    // are the only remaining source. Skip if none exist.
-    if (mdFiles.length === 0) return;
-    expect(mdFiles.length).toBeGreaterThan(0);
-  });
-
+describe.skipIf(mdFiles.length === 0)("Canonical format: anti-pattern checks (all markdown files)", () => {
   for (const file of mdFiles) {
     const rel = relPath(file);
 
@@ -381,15 +374,9 @@ describe("Canonical format: clarifications.json structure", () => {
 // decisions.json structural checks (step2)
 // ---------------------------------------------------------------------------
 
-describe("Canonical format: decisions.json structure", () => {
-  const decisionsFile = path.join(MOCK_ROOT, "step2/context/decisions.json");
+const decisionsFile = path.join(MOCK_ROOT, "step2/context/decisions.json");
 
-  it("decisions.json exists when mock-templates are present", () => {
-    // mock-templates/ deleted in OpenHands runtime branch — skip if absent
-    if (!fs.existsSync(decisionsFile)) return;
-    expect(fs.existsSync(decisionsFile)).toBe(true);
-  });
-
+describe.skipIf(!fs.existsSync(decisionsFile))("Canonical format: decisions.json structure", () => {
   if (fs.existsSync(decisionsFile)) {
     const raw = readFile(decisionsFile);
 
@@ -442,18 +429,12 @@ describe("Canonical format: decisions.json structure", () => {
 // Step 0 clean-break structured-output checks
 // ---------------------------------------------------------------------------
 
-describe("Canonical format: step0 clean-break metadata", () => {
-  const step0ClarificationFiles = [
-    path.join(MOCK_ROOT, "step0/context/clarifications.json"),
-    path.join(MOCK_ROOT, "step0-contradictory/context/clarifications.json"),
-  ].filter((f) => fs.existsSync(f));
+const step0ClarificationFiles = [
+  path.join(MOCK_ROOT, "step0/context/clarifications.json"),
+  path.join(MOCK_ROOT, "step0-contradictory/context/clarifications.json"),
+].filter((f) => fs.existsSync(f));
 
-  it("finds step0 clarification files when mock-templates are present", () => {
-    // mock-templates/ deleted in OpenHands runtime branch — skip if absent
-    if (step0ClarificationFiles.length === 0) return;
-    expect(step0ClarificationFiles.length).toBeGreaterThan(0);
-  });
-
+describe.skipIf(step0ClarificationFiles.length === 0)("Canonical format: step0 clean-break metadata", () => {
   for (const file of step0ClarificationFiles) {
     const rel = relPath(file);
 
@@ -480,18 +461,12 @@ describe("Canonical format: step0 clean-break metadata", () => {
 // answer-evaluation.json structural checks (gate mock)
 // ---------------------------------------------------------------------------
 
-describe("Canonical format: answer-evaluation.json structure", () => {
-  const evalFile = path.join(
-    MOCK_ROOT,
-    "gate-answer-evaluator/answer-evaluation.json",
-  );
+const evalFile = path.join(
+  MOCK_ROOT,
+  "gate-answer-evaluator/answer-evaluation.json",
+);
 
-  it("answer-evaluation.json exists when mock-templates are present", () => {
-    // mock-templates/ deleted in OpenHands runtime branch — skip if absent
-    if (!fs.existsSync(evalFile)) return;
-    expect(fs.existsSync(evalFile)).toBe(true);
-  });
-
+describe.skipIf(!fs.existsSync(evalFile))("Canonical format: answer-evaluation.json structure", () => {
   if (fs.existsSync(evalFile)) {
     const raw = readFile(evalFile);
 
