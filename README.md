@@ -36,7 +36,6 @@ Requires Node.js 18+, a Rust toolchain, and the [Tauri prerequisites](https://v2
 ```bash
 cd app
 npm install
-npm run sidecar:build
 npm run dev
 ```
 
@@ -49,7 +48,7 @@ cd app
 MOCK_AGENTS=true npm run dev
 ```
 
-Mock mode replays bundled JSONL templates, writes mock output files, and advances the workflow without contacting an LLM provider.
+Mock mode returns fixed responses for refine operations without contacting an LLM provider.
 
 ## Development
 

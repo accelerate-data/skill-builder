@@ -26,9 +26,9 @@ Adapter files must not duplicate canonical policy unless they are adding agent-s
 See `repo-map.json` → `commands` for the full command reference. Quick start:
 
 ```bash
-cd app && npm install && npm run sidecar:build
+cd app && npm install
 cd app && npm run dev                    # Dev mode (hot reload)
-cd app && MOCK_AGENTS=true npm run dev   # Mock mode (no API calls, replays bundled templates)
+cd app && MOCK_AGENTS=true npm run dev   # Mock mode (no API calls)
 ```
 
 ## Repo Memory
