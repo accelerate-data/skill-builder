@@ -51,20 +51,15 @@ pub async fn generate_suggestions(
             log::error!("[generate_suggestions] Failed to read settings: {}", e);
             e
         })?;
-        let api_key = match settings.anthropic_api_key {
-            Some(k) => crate::types::SecretString::new(k),
-            None => {
-                log::error!("[generate_suggestions] API key not configured");
-                return Err("API key not configured".to_string());
-            }
-        };
-        (
-            api_key,
-            settings
-                .preferred_model
-                .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| "Model not configured. Select a model in Settings before generating suggestions.".to_string())?,
-        )
+        let llm = crate::db::selected_workflow_llm(&settings).map_err(|e| {
+            log::error!("[generate_suggestions] LLM not configured: {}", e);
+            e
+        })?;
+        let api_key = llm.api_key.ok_or_else(|| {
+            log::error!("[generate_suggestions] API key not configured");
+            "API key not configured".to_string()
+        })?;
+        (api_key, llm.model)
     };
 
     let readable_name = skill_name.replace('-', " ");

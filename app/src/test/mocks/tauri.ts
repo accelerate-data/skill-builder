@@ -4,7 +4,7 @@ import { vi } from "vitest";
 // Default: resolve for fire-and-forget commands; return empty lists for common
 // non-critical initialization/listing commands; undefined for other unknown commands.
 const defaultInvokeImpl = (cmd: string) =>
-  (cmd === "list_models" || cmd === "list_imported_skills" || cmd === "get_skill_history")
+  (cmd === "list_imported_skills" || cmd === "get_skill_history")
       ? Promise.resolve([])
       : undefined;
 export const mockInvoke = vi.fn().mockImplementation(defaultInvokeImpl);

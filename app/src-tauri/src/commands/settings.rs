@@ -1106,7 +1106,7 @@ mod tests {
     fn test_update_dashboard_view_mode_preserves_other_fields() {
         let conn = crate::db::create_test_db_for_tests();
         let mut initial = crate::types::AppSettings::default();
-        initial.preferred_model = Some("claude-opus-4".to_string());
+        initial.industry = Some("finance".to_string());
         initial.github_user_login = Some("user".to_string());
         crate::db::write_settings(&conn, &initial).unwrap();
 
@@ -1115,7 +1115,7 @@ mod tests {
         crate::db::write_settings(&conn, &settings).unwrap();
 
         let result = crate::db::read_settings(&conn).unwrap();
-        assert_eq!(result.preferred_model.as_deref(), Some("claude-opus-4"));
+        assert_eq!(result.industry.as_deref(), Some("finance"));
         assert_eq!(result.github_user_login.as_deref(), Some("user"));
         assert_eq!(result.dashboard_view_mode.as_deref(), Some("grid"));
     }
@@ -1173,7 +1173,7 @@ mod tests {
     fn test_update_github_identity_preserves_non_auth_fields() {
         let conn = crate::db::create_test_db_for_tests();
         let mut initial = crate::types::AppSettings::default();
-        initial.preferred_model = Some("claude-sonnet-4".to_string());
+        initial.industry = Some("retail".to_string());
         initial.skills_path = Some("/skills".to_string());
         crate::db::write_settings(&conn, &initial).unwrap();
 
@@ -1184,7 +1184,7 @@ mod tests {
         crate::db::write_settings(&conn, &settings).unwrap();
 
         let result = crate::db::read_settings(&conn).unwrap();
-        assert_eq!(result.preferred_model.as_deref(), Some("claude-sonnet-4"));
+        assert_eq!(result.industry.as_deref(), Some("retail"));
         assert_eq!(result.skills_path.as_deref(), Some("/skills"));
         assert_eq!(result.github_user_login.as_deref(), Some("bob"));
     }
@@ -1204,7 +1204,7 @@ mod tests {
         // Simulate update_user_settings — reads old, preserves backend fields
         let old = crate::db::read_settings(&conn).unwrap();
         let mut new_settings = crate::types::AppSettings::default();
-        new_settings.preferred_model = Some("claude-opus-4".to_string());
+        new_settings.industry = Some("finance".to_string());
         // Apply guard (same as update_user_settings)
         new_settings.splash_shown = old.splash_shown;
         new_settings.github_oauth_token = old.github_oauth_token.clone();
@@ -1224,7 +1224,7 @@ mod tests {
         );
         assert_eq!(result.github_user_login.as_deref(), Some("dev"));
         assert!(result.marketplace_initialized);
-        assert_eq!(result.preferred_model.as_deref(), Some("claude-opus-4"));
+        assert_eq!(result.industry.as_deref(), Some("finance"));
     }
 
     #[test]
@@ -1239,7 +1239,7 @@ mod tests {
 
         let mut new_settings = crate::types::AppSettings::default();
         new_settings.skills_path = Some("/tmp/Skills/Skills/".to_string());
-        new_settings.preferred_model = Some("claude-opus-4".to_string());
+        new_settings.industry = Some("healthcare".to_string());
 
         persist_settings(&conn, new_settings, "settings-test").unwrap();
 
@@ -1252,7 +1252,7 @@ mod tests {
         );
         assert_eq!(result.github_user_login.as_deref(), Some("dev"));
         assert!(result.marketplace_initialized);
-        assert_eq!(result.preferred_model.as_deref(), Some("claude-opus-4"));
+        assert_eq!(result.industry.as_deref(), Some("healthcare"));
     }
 
     // ===== update_github_identity token-preservation tests =====

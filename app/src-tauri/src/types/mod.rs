@@ -24,13 +24,10 @@ mod tests {
     #[test]
     fn test_app_settings_default() {
         let settings = AppSettings::default();
-        assert!(settings.anthropic_api_key.is_none());
         assert!(settings.workspace_path.is_none());
         assert!(settings.skills_path.is_none());
-        assert!(settings.preferred_model.is_none());
         assert_eq!(settings.log_level, "info");
         assert!(!settings.extended_context);
-        assert!(!settings.extended_thinking);
         assert!(!settings.splash_shown);
         assert!(settings.github_oauth_token.is_none());
         assert!(settings.github_user_login.is_none());
@@ -47,24 +44,8 @@ mod tests {
     #[test]
     fn test_app_settings_serde_roundtrip() {
         let settings = AppSettings {
-            anthropic_api_key: Some("sk-ant-test-key".to_string()),
-            model_settings: ModelSettings::default(),
-            openhands_provider: Some("anthropic".to_string()),
-            openhands_api_key: Some("sk-ant-test-key".to_string()),
-            openhands_model: Some("anthropic/sonnet".to_string()),
-            openhands_base_url: None,
             workspace_path: Some("/home/user/skills".to_string()),
             skills_path: Some("/home/user/output".to_string()),
-            preferred_model: Some("sonnet".to_string()),
-            debug_mode: false,
-            log_level: "info".to_string(),
-            extended_context: false,
-            extended_thinking: true,
-            interleaved_thinking_beta: true,
-            sdk_effort: None,
-            fallback_model: None,
-            refine_prompt_suggestions: true,
-            splash_shown: false,
             github_oauth_token: Some("test-github-token".to_string()),
             github_user_login: Some("testuser".to_string()),
             github_user_avatar: Some("https://avatars.githubusercontent.com/u/12345".to_string()),
@@ -75,20 +56,13 @@ mod tests {
                 source_url: "https://github.com/owner/repo".to_string(),
                 enabled: true,
             }],
-            marketplace_initialized: false,
-            legacy_tags_migrated: false,
-            max_dimensions: 5,
             industry: Some("Financial Services".to_string()),
             function_role: Some("Analytics Engineer".to_string()),
             dashboard_view_mode: Some("grid".to_string()),
-            auto_update: false,
+            ..AppSettings::default()
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
-        assert_eq!(
-            deserialized.anthropic_api_key.as_deref(),
-            Some("sk-ant-test-key")
-        );
         assert_eq!(
             deserialized.workspace_path.as_deref(),
             Some("/home/user/skills")
@@ -97,7 +71,6 @@ mod tests {
             deserialized.skills_path.as_deref(),
             Some("/home/user/output")
         );
-        assert_eq!(deserialized.preferred_model.as_deref(), Some("sonnet"));
         assert_eq!(
             deserialized.marketplace_url.as_deref(),
             Some("https://github.com/my-org/skills")
@@ -119,12 +92,13 @@ mod tests {
 
     #[test]
     fn test_app_settings_deserialize_without_optional_fields() {
-        // Simulates loading settings saved before new OAuth fields existed
+        // Simulates loading settings saved before new fields existed.
+        // Legacy fields (anthropic_api_key, preferred_model, extended_thinking, etc.)
+        // in old JSON blobs are silently dropped by serde on read.
         let json = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","extended_context":false,"splash_shown":false}"#;
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert!(settings.skills_path.is_none());
         assert_eq!(settings.log_level, "info");
-        assert!(!settings.extended_thinking);
         assert!(settings.github_oauth_token.is_none());
         assert!(settings.github_user_login.is_none());
         assert!(settings.github_user_avatar.is_none());
@@ -134,7 +108,7 @@ mod tests {
         assert!(!settings.marketplace_initialized);
 
         // Simulates loading settings that still have the old verbose_logging boolean field
-        let json_old = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","verbose_logging":true,"extended_context":false,"splash_shown":false}"#;
+        let json_old = r#"{"workspace_path":"/w","verbose_logging":true,"extended_context":false,"splash_shown":false}"#;
         let settings_old: AppSettings = serde_json::from_str(json_old).unwrap();
         // Old verbose_logging is ignored; log_level defaults to "info"
         assert_eq!(settings_old.log_level, "info");
@@ -157,8 +131,6 @@ mod tests {
             permission_mode: Some("bypassPermissions".to_string()),
             betas: None,
             thinking: None,
-            fallback_model: None,
-            effort: None,
             output_format: None,
             prompt_suggestions: None,
             path_to_claude_code_executable: None,

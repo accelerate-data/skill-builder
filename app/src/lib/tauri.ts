@@ -36,9 +36,6 @@ export const updateGithubIdentity = (
   token: string | null,
 ) => invokeCommand("update_github_identity", { login, avatar, email, token });
 
-export const testApiKey = (apiKey: string) =>
-  invokeCommand("test_api_key", { apiKey });
-
 export const testModelConnection = (settings: ModelSettings) =>
   invokeCommand("test_model_connection", { settings });
 
@@ -593,9 +590,6 @@ export const importSkillFromFile = (params: {
   })
 
 // --- Additional typed wrappers ---
-
-export const listModels = (apiKey: string) =>
-  invokeCommand("list_models", { apiKey });
 
 export const createSkill = (params: {
   workspacePath: string;

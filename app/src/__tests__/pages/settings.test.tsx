@@ -168,9 +168,7 @@ vi.mock("@/lib/tauri", () => ({
   githubGetUser: vi.fn(() => Promise.resolve(null)),
   githubLogout: vi.fn(),
   updateUserSettings: vi.fn(() => Promise.resolve(undefined)),
-  listModels: vi.fn(() => Promise.resolve([])),
   updateGithubIdentity: vi.fn(() => Promise.resolve(undefined)),
-  testApiKey: vi.fn(() => Promise.resolve(true)),
   testModelConnection: vi.fn(() => Promise.resolve(true)),
   setLogLevel: vi.fn(() => Promise.resolve(undefined)),
 }));
@@ -248,7 +246,6 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
     get_settings: settings,
     save_settings: undefined,
     update_user_settings: undefined,
-    test_api_key: true,
     get_log_file_path: "/tmp/com.vibedata.skill-builder/skill-builder.log",
     set_log_level: undefined,
   });

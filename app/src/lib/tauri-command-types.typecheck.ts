@@ -20,9 +20,6 @@ void invokeCommand("get_settingz", {});
 // @ts-expect-error VU-1138 command names must be declared in TauriCommandMap
 void invokeCommand("delete_skills", { workspacePath: "/tmp/skills", name: "demo-skill" });
 
-// @ts-expect-error argument names must match the command contract
-void invokeCommand("test_api_key", { api_key: "sk-ant-test" });
-
 // @ts-expect-error VU-1138 argument names must match the command contract
 void invokeCommand("delete_skill", { workspace_path: "/tmp/skills", name: "demo-skill" });
 

@@ -267,8 +267,6 @@ mod tests {
             permission_mode: None,
             betas: None,
             thinking: None,
-            fallback_model: None,
-            effort: None,
             output_format: Some(serde_json::json!({
                 "type": "json_schema",
                 "schema": {"type": "object"}

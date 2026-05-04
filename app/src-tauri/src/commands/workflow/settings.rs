@@ -275,36 +275,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn read_workflow_settings_ignores_legacy_anthropic_preferred_model() {
-        let mut app_settings = AppSettings::default();
-        app_settings.skills_path = Some("/tmp/skills".to_string());
-        app_settings.anthropic_api_key = Some("sk-legacy".to_string());
-        app_settings.preferred_model = Some("claude-sonnet-4-6".to_string());
-
-        let err = match workflow_settings_for(app_settings) {
-            Ok(_) => panic!("expected legacy settings to be ignored"),
-            Err(err) => err,
-        };
-
-        assert!(err.contains("Select a model in Settings"), "{err}");
-    }
-
-    #[test]
-    fn read_workflow_settings_ignores_legacy_openhands_fields() {
-        let app_settings = AppSettings {
-            skills_path: Some("/tmp/skills".to_string()),
-            openhands_provider: Some("openai".to_string()),
-            openhands_model: Some("openai/gpt-4o".to_string()),
-            openhands_api_key: Some("sk-legacy-openhands".to_string()),
-            ..AppSettings::default()
-        };
-
-        let err = match workflow_settings_for(app_settings) {
-            Ok(_) => panic!("expected legacy OpenHands settings to be ignored"),
-            Err(err) => err,
-        };
-
-        assert!(err.contains("Select a model in Settings"), "{err}");
-    }
 }

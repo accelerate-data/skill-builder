@@ -5,13 +5,10 @@ import type { DisplayItem } from "@/lib/display-types";
 
 export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
   return {
-    anthropic_api_key: null,
     workspace_path: null,
     skills_path: null,
-    preferred_model: null,
     log_level: "info",
     extended_context: false,
-    extended_thinking: false,
     splash_shown: false,
     github_oauth_token: null,
     github_user_login: null,
