@@ -141,7 +141,6 @@ format changes covered across producer, fixture, and parser layers.
 | `@description` | `app/e2e/description/description-workbench.spec.ts` Mocked Trigger-mode browser coverage inside Eval Workbench |
 | `@skills` | `app/e2e/skills-library/skills-library.spec.ts`, `app/e2e/github-import/github-import.spec.ts` |
 | `@evals` | `app/e2e/evals/evals.spec.ts` Mocked Performance-mode browser coverage inside Eval Workbench |
-| `@desktop-smoke` | `app/e2e/desktop-smoke/desktop-smoke.spec.ts` |
 
 ## Quick Commands
 
