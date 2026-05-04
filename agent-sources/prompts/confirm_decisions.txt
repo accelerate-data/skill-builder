@@ -12,9 +12,6 @@ risks, and validation implications.
 
 We are writing the skill {{skill_name}}.
 Task kind: workflow.confirm_decisions
-Workspace directory: {{workspace_dir}}
-
-All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
 
 {{user_context_block}}
 
@@ -57,7 +54,7 @@ Purpose-aware decision normalization:
   preferences, or exploratory wording. Convert those answers into build-ready
   operating decisions for the selected skill purpose instead of preserving raw
   research phrasing.
-- Infer the selected purpose from user-context.md and clarifications.json. If
+- Infer the selected purpose from the user context and clarifications record above. If
   the purpose is ambiguous, infer the most likely purpose from the requested
   skill outcome and note the ambiguity in an implication.
 - For a business-process purpose, normalize source/export/file delivery answers
@@ -89,7 +86,7 @@ Mandatory user-editable decisions:
 - Always include a decision for: What should this skill enable the assistant to do?
 - Always include a decision for: When should this skill trigger? (what user phrases/contexts)
 - Set both decisions' status field to "needs-review" so the user can directly edit or confirm them.
-- If either question is missing from clarifications, infer a best-effort draft from user-context.md and answered questions in clarifications.json and still emit the decision as "needs-review".
+- If either question is missing from clarifications, infer a best-effort draft from the user context and clarifications record above and still emit the decision as "needs-review".
 - These decisions define the SKILL frontmatter description inputs when the skill is written. Keep them concise, editable, and grounded in user context.
 - For the trigger decision, include concrete trigger contexts so downstream description drafting can avoid undertriggering.
 - For the trigger decision, include an implication note that explicitly says this decision will be used to create the skill description and that the description should follow skill-writing best practices.

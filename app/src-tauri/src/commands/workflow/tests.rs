@@ -237,7 +237,11 @@ fn research_prompt_renders_app_owned_openhands_task_context() {
     assert!(!prompt.contains("What should this skill enable Claude to do?"));
     assert!(!prompt.contains("Claude Code"));
     assert!(prompt.contains("We are writing the skill lead-conversion."));
-    assert!(prompt.contains("/tmp/workspace/skills/lead-conversion"));
+    // Workspace dir removed from step 0 prompt — user context is inlined, agent does not write
+    assert!(
+        !prompt.contains("Workspace directory:"),
+        "step 0 prompt must not expose workspace dir since context is inlined"
+    );
     assert!(
         !prompt.contains("User context file:"),
         "step 0 prompt must not have 'User context file:' instruction"
@@ -371,7 +375,11 @@ fn detailed_research_prompt_renders_clean_break_task_context() {
     assert!(prompt.contains("Use parallel research via"));
     assert!(prompt.contains("otherwise research inline"));
     assert!(prompt.contains("We are writing the skill pipeline-value."));
-    assert!(prompt.contains("/tmp/workspace/skills/pipeline-value"));
+    // Workspace dir removed from step 1 prompt — all context is inlined, agent does not write
+    assert!(
+        !prompt.contains("Workspace directory:"),
+        "step 1 prompt must not expose workspace dir since context is inlined"
+    );
     // VU-1157: workspace-relative file path lines are no longer in the prompt; context is inlined
     assert!(
         !prompt.contains("User context file:"),
@@ -700,7 +708,11 @@ fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("actionable by the skill-writing step"));
     assert!(prompt.contains("We are writing the skill lead-conversion."));
     assert!(prompt.contains("Task kind: workflow.confirm_decisions"));
-    assert!(prompt.contains("/tmp/workspace/skills/lead-conversion"));
+    // Workspace dir removed from step 2 prompt — all context is inlined, agent does not write
+    assert!(
+        !prompt.contains("Workspace directory:"),
+        "step 2 prompt must not expose workspace dir since context is inlined"
+    );
     // VU-1157: workspace-relative file path lines are no longer in prompt; context is inlined
     assert!(
         !prompt.contains("User context file:"),
@@ -2023,10 +2035,7 @@ fn test_build_prompt_all_three_paths() {
     assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/skills/my-skill"));
     assert!(prompt.contains("This skill output directory is the configured Settings Skills Folder target for the shipped skill"));
     assert!(prompt.contains("shipped skill files must be written only to the skill output directory, never to the workspace directory or a workspace skill/ subdirectory"));
-    assert!(prompt.contains("The user context file is at: /home/user/.vibedata/skill-builder/skills/my-skill/user-context.md"));
-    assert!(prompt.contains(
-        "The context directory is: /home/user/.vibedata/skill-builder/skills/my-skill/context"
-    ));
+    assert!(prompt.contains("User context, clarifications, and answer evaluation verdicts are provided inline"));
 }
 
 #[test]
@@ -2040,8 +2049,8 @@ fn test_build_prompt_with_skill_type() {
         created_at: None,
         step_id: 1,
     });
-    // Purpose is now in user-context.md, read by the agent
-    assert!(prompt.contains("user-context.md"));
+    // User context is provided inline; prompt instructs agent not to read it from disk
+    assert!(prompt.contains("User context, clarifications, and answer evaluation verdicts are provided inline"));
 }
 
 #[test]
@@ -2745,11 +2754,11 @@ fn test_format_user_context_partial_intake() {
 }
 
 // --- build_prompt user context integration tests ---
-// User context fields (industry, intake, behaviour) are now in user-context.md,
-// not inlined in the prompt. These tests verify the prompt references the file.
+// User context is now inlined into the step prompt; the system prompt explicitly
+// tells the agent not to read it from disk.
 
 #[test]
-fn test_build_prompt_includes_user_context_md_instruction() {
+fn test_build_prompt_includes_inline_context_instruction() {
     let ws = std::env::temp_dir().join("ws");
     let skills = std::env::temp_dir().join("skills");
     let prompt = build_prompt(&PromptParams {
@@ -2761,7 +2770,7 @@ fn test_build_prompt_includes_user_context_md_instruction() {
         created_at: None,
         step_id: 1,
     });
-    assert!(prompt.contains("user-context.md"));
+    assert!(prompt.contains("User context, clarifications, and answer evaluation verdicts are provided inline"));
     assert!(prompt.contains("test-skill"));
 }
 

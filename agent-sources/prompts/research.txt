@@ -4,10 +4,7 @@ Use the `researching-skill-requirements` skill to decide which clarification
 questions matter.
 
 We are writing the skill {{skill_name}}.
-Workspace directory: {{workspace_dir}}
 Maximum research dimensions before scope warning: {{max_dimensions}}
-
-All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
 
 {{user_context_block}}
 
