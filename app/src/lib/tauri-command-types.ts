@@ -46,7 +46,6 @@ import type {
   SaveEvalPromptSet,
   SuggestDescriptionCandidatesRequest,
 } from "@/lib/eval-workbench";
-import type { EvalQuery, OptimizationResult } from "@/lib/description-optimization";
 import type {
   ClarificationVerdictUpdate,
   ClarificationsDto,
