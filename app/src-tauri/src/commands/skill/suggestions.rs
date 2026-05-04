@@ -20,7 +20,7 @@ const ALL_FIELDS: [&str; 8] = [
     "audience",
     "challenges",
     "unique_setup",
-    "claude_mistakes",
+    "agent_mistakes",
     "context_questions",
 ];
 
@@ -32,7 +32,7 @@ pub struct FieldSuggestions {
     pub challenges: String,
     pub scope: String,
     pub unique_setup: String,
-    pub claude_mistakes: String,
+    pub agent_mistakes: String,
     pub context_questions: String,
 }
 
@@ -272,8 +272,8 @@ Max 2 sentences. Topic: {}.>\"",
             "\"unique_setup\": \"<2-3 short bullet points starting with • on separate lines describing what makes a typical {} setup for {} different from standard implementations>\"",
             purpose, readable_name
         )),
-        "claude_mistakes" => Some(format!(
-            "\"claude_mistakes\": \"<2-3 short bullet points starting with • on separate lines describing what the assistant gets wrong when working with {} in the {} domain>\"",
+        "agent_mistakes" => Some(format!(
+            "\"agent_mistakes\": \"<2-3 short bullet points starting with • on separate lines describing what the assistant gets wrong when working with {} in the {} domain>\"",
             readable_name, purpose
         )),
         "context_questions" => {
@@ -473,7 +473,7 @@ fn parse_suggestions_value(
         challenges: field("challenges"),
         scope: field("scope"),
         unique_setup: field("unique_setup"),
-        claude_mistakes: field("claude_mistakes"),
+        agent_mistakes: field("agent_mistakes"),
         context_questions: field("context_questions"),
     })
 }
@@ -495,7 +495,7 @@ mod tests {
             Some("Fragmented health signals"),
             &[
                 "description".to_string(),
-                "claude_mistakes".to_string(),
+                "agent_mistakes".to_string(),
                 "context_questions".to_string(),
             ],
         );
@@ -503,7 +503,7 @@ mod tests {
         assert!(prompt.contains("forecasting churned customers"));
         assert!(!prompt.contains("Claude"));
         assert!(!prompt.contains("Claude Code"));
-        assert!(prompt.contains("\"claude_mistakes\""));
+        assert!(prompt.contains("\"agent_mistakes\""));
         assert!(prompt.contains("assistant gets wrong"));
         assert!(prompt.contains("assistant usually miss"));
     }
@@ -529,7 +529,7 @@ mod tests {
                 output_cost_per_token: None,
                 usage_id: Some("workflow".to_string()),
             },
-            requested_fields: vec!["description".to_string(), "claude_mistakes".to_string()],
+            requested_fields: vec!["description".to_string(), "agent_mistakes".to_string()],
         })
         .unwrap();
 
@@ -549,7 +549,7 @@ mod tests {
         assert!(json["outputFormat"]["schema"]["required"]
             .as_array()
             .unwrap()
-            .contains(&serde_json::json!("claude_mistakes")));
+            .contains(&serde_json::json!("agent_mistakes")));
     }
 
     #[test]
@@ -559,7 +559,7 @@ mod tests {
             "status": "completed",
             "structured_output": {
                 "description": "Forecasts churn risk for customer success teams.",
-                "claude_mistakes": "• Misses company-specific health score cutoffs",
+                "agent_mistakes": "• Misses company-specific health score cutoffs",
                 "context_questions": "• Health score logic\n• Renewal risk triggers"
             }
         });
@@ -568,7 +568,7 @@ mod tests {
             &state,
             &[
                 "description".to_string(),
-                "claude_mistakes".to_string(),
+                "agent_mistakes".to_string(),
                 "context_questions".to_string(),
             ],
         )
@@ -579,7 +579,7 @@ mod tests {
             "Forecasts churn risk for customer success teams."
         );
         assert_eq!(
-            result.claude_mistakes,
+            result.agent_mistakes,
             "• Misses company-specific health score cutoffs"
         );
         assert_eq!(
@@ -594,20 +594,20 @@ mod tests {
         let state = serde_json::json!({
             "type": "conversation_state",
             "status": "completed",
-            "result_text": r#"{"description":"Forecasts churn risk.","claude_mistakes":"• Misses company standards"}"#
+            "result_text": r#"{"description":"Forecasts churn risk.","agent_mistakes":"• Misses company standards"}"#
         });
 
         let result = parse_suggestions_from_conversation_state(
             &state,
             &[
                 "description".to_string(),
-                "claude_mistakes".to_string(),
+                "agent_mistakes".to_string(),
             ],
         )
         .unwrap();
 
         assert_eq!(result.description, "Forecasts churn risk.");
-        assert_eq!(result.claude_mistakes, "• Misses company standards");
+        assert_eq!(result.agent_mistakes, "• Misses company standards");
     }
 
     #[test]
