@@ -54,12 +54,8 @@ export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
   read_file: {
     [skillContextPath(E2E_SKILLS_PATH, "test-skill", "research-plan.md")]:
       "# Research Results\n\nAnalysis complete.",
-    [skillContextPath(E2E_SKILLS_PATH, "test-skill", "clarifications.json")]:
-      '{"version":"1","metadata":{"title":"Test","question_count":1,"section_count":1,"refinement_count":0,"must_answer_count":0,"priority_questions":[]},"sections":[],"notes":[]}',
     [skillContextPath(E2E_WORKSPACE_PATH, "test-skill", "research-plan.md")]:
       "# Research Results\n\nAnalysis complete.",
-    [skillContextPath(E2E_WORKSPACE_PATH, "test-skill", "clarifications.json")]:
-      '{"version":"1","metadata":{"title":"Test","question_count":1,"section_count":1,"refinement_count":0,"must_answer_count":0,"priority_questions":[]},"sections":[],"notes":[]}',
     "*": "",
   },
   get_artifact_content: null,
@@ -71,6 +67,37 @@ export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
   release_lock: undefined,
   preview_step_reset: [],
   get_step_agent_runs: [],
+  get_clarifications: {
+    skill_id: "test-skill",
+    version: "1",
+    refinement_count: 0,
+    must_answer_count: 0,
+    question_count: 1,
+    section_count: 1,
+    title: "Clarifications",
+    created_at: 0,
+    updated_at: 0,
+    sections: [
+      { section_id: 1, ordinal: 0, title: "General" },
+    ],
+    questions: [
+      {
+        question_id: "Q1",
+        section_id: 1,
+        parent_question_id: null,
+        ordinal: 0,
+        title: "Primary focus",
+        text: "What should this skill enable the agent to do?",
+        must_answer: false,
+        answer_choice: null,
+        answer_text: null,
+        choices: [],
+        refinements: [],
+      },
+    ],
+    notes: [],
+  },
+  get_decisions: null,
 };
 
 /**
