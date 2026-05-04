@@ -86,8 +86,8 @@ pub fn get_log_file_path(app: &tauri::AppHandle) -> Result<String, String> {
         .ok_or_else(|| "Log file path contains invalid UTF-8".to_string())
 }
 
-/// Delete `.jsonl` transcript files older than today from all `{skill}/logs/`
-/// directories under the workspace path.
+/// Delete `.jsonl` transcript files older than today from all
+/// `{workspace}/{plugin}/{skill}/logs/` directories under the workspace path.
 ///
 /// Called early in the startup sequence (inside `.setup()`) after the workspace
 /// path is known. Errors are non-fatal: each failure is logged as a warning
@@ -105,7 +105,7 @@ pub fn prune_transcript_files(workspace_path: &str) {
     let mut pruned: u32 = 0;
     let mut skills_affected: u32 = 0;
 
-    let entries = match std::fs::read_dir(workspace) {
+    let plugin_entries = match std::fs::read_dir(workspace) {
         Ok(e) => e,
         Err(e) => {
             log::warn!("Transcript pruning: failed to read workspace dir: {}", e);
@@ -113,85 +113,108 @@ pub fn prune_transcript_files(workspace_path: &str) {
         }
     };
 
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-
-        let logs_dir = path.join("logs");
-        if !logs_dir.is_dir() {
+    for plugin_entry in plugin_entries.flatten() {
+        let plugin_path = plugin_entry.path();
+        if !plugin_path.is_dir() {
             continue;
         }
 
-        let mut skill_pruned: u32 = 0;
-
-        let log_entries = match std::fs::read_dir(&logs_dir) {
+        let skill_entries = match std::fs::read_dir(&plugin_path) {
             Ok(e) => e,
             Err(e) => {
                 log::warn!(
-                    "Transcript pruning: failed to read logs dir for '{}': {}",
-                    name_str,
+                    "Transcript pruning: failed to read plugin dir '{}': {}",
+                    plugin_path.display(),
                     e
                 );
                 continue;
             }
         };
 
-        for log_entry in log_entries.flatten() {
-            let log_path = log_entry.path();
-
-            // Only target .jsonl files
-            if log_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+        for skill_entry in skill_entries.flatten() {
+            let skill_path = skill_entry.path();
+            if !skill_path.is_dir() {
                 continue;
             }
 
-            // Check modification time
-            let metadata = match std::fs::metadata(&log_path) {
-                Ok(m) => m,
+            let logs_dir = skill_path.join("logs");
+            if !logs_dir.is_dir() {
+                continue;
+            }
+
+            let skill_label = format!(
+                "{}/{}",
+                plugin_entry.file_name().to_string_lossy(),
+                skill_entry.file_name().to_string_lossy()
+            );
+
+            let mut skill_pruned: u32 = 0;
+
+            let log_entries = match std::fs::read_dir(&logs_dir) {
+                Ok(e) => e,
                 Err(e) => {
                     log::warn!(
-                        "Transcript pruning: failed to read metadata for '{}': {}",
-                        log_path.display(),
+                        "Transcript pruning: failed to read logs dir for '{}': {}",
+                        skill_label,
                         e
                     );
                     continue;
                 }
             };
 
-            let modified = match metadata.modified() {
-                Ok(t) => t,
-                Err(e) => {
-                    log::warn!(
-                        "Transcript pruning: failed to get mtime for '{}': {}",
-                        log_path.display(),
-                        e
-                    );
+            for log_entry in log_entries.flatten() {
+                let log_path = log_entry.path();
+
+                // Only target .jsonl files
+                if log_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
                     continue;
                 }
-            };
 
-            let modified_date: chrono::NaiveDate =
-                chrono::DateTime::<Local>::from(modified).date_naive();
+                // Check modification time
+                let metadata = match std::fs::metadata(&log_path) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        log::warn!(
+                            "Transcript pruning: failed to read metadata for '{}': {}",
+                            log_path.display(),
+                            e
+                        );
+                        continue;
+                    }
+                };
 
-            if modified_date < today {
-                if let Err(e) = std::fs::remove_file(&log_path) {
-                    log::warn!(
-                        "Transcript pruning: failed to delete '{}': {}",
-                        log_path.display(),
-                        e
-                    );
-                } else {
-                    skill_pruned += 1;
+                let modified = match metadata.modified() {
+                    Ok(t) => t,
+                    Err(e) => {
+                        log::warn!(
+                            "Transcript pruning: failed to get mtime for '{}': {}",
+                            log_path.display(),
+                            e
+                        );
+                        continue;
+                    }
+                };
+
+                let modified_date: chrono::NaiveDate =
+                    chrono::DateTime::<Local>::from(modified).date_naive();
+
+                if modified_date < today {
+                    if let Err(e) = std::fs::remove_file(&log_path) {
+                        log::warn!(
+                            "Transcript pruning: failed to delete '{}': {}",
+                            log_path.display(),
+                            e
+                        );
+                    } else {
+                        skill_pruned += 1;
+                    }
                 }
             }
-        }
 
-        if skill_pruned > 0 {
-            pruned += skill_pruned;
-            skills_affected += 1;
+            if skill_pruned > 0 {
+                pruned += skill_pruned;
+                skills_affected += 1;
+            }
         }
     }
 
@@ -207,14 +230,16 @@ pub fn prune_transcript_files(workspace_path: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
     use std::fs;
     use std::path::Path;
     use tempfile::tempdir;
 
-    /// Helper: create a `.jsonl` file inside `{workspace}/{skill}/logs/` with
+    /// Helper: create a `.jsonl` file inside
+    /// `{workspace}/{plugin}/{skill}/logs/` with
     /// the given name and set its modification time to `days_ago` days in the past.
-    fn create_jsonl(workspace: &Path, skill: &str, filename: &str, days_ago: i64) {
-        let logs_dir = workspace.join(skill).join("logs");
+    fn create_jsonl(workspace: &Path, plugin: &str, skill: &str, filename: &str, days_ago: i64) {
+        let logs_dir = workspace.join(plugin).join(skill).join("logs");
         fs::create_dir_all(&logs_dir).unwrap();
         let file_path = logs_dir.join(filename);
         fs::write(&file_path, r#"{"type":"test"}"#).unwrap();
@@ -234,13 +259,28 @@ mod tests {
         let workspace = tmp.path();
 
         // Old file (2 days ago) should be pruned
-        create_jsonl(workspace, "my-skill", "step0-research-2025-01-01.jsonl", 2);
+        create_jsonl(
+            workspace,
+            DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+            "step0-research-2025-01-01.jsonl",
+            2,
+        );
         // Today's file should be kept
-        create_jsonl(workspace, "my-skill", "step0-research-today.jsonl", 0);
+        create_jsonl(
+            workspace,
+            DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+            "step0-research-today.jsonl",
+            0,
+        );
 
         prune_transcript_files(workspace.to_str().unwrap());
 
-        let logs_dir = workspace.join("my-skill").join("logs");
+        let logs_dir = workspace
+            .join(DEFAULT_PLUGIN_SLUG)
+            .join("my-skill")
+            .join("logs");
         assert!(
             !logs_dir.join("step0-research-2025-01-01.jsonl").exists(),
             "Old JSONL file should be pruned"
@@ -257,7 +297,10 @@ mod tests {
         let workspace = tmp.path();
 
         // Create an old .log file (not .jsonl) — should NOT be deleted
-        let logs_dir = workspace.join("my-skill").join("logs");
+        let logs_dir = workspace
+            .join(DEFAULT_PLUGIN_SLUG)
+            .join("my-skill")
+            .join("logs");
         fs::create_dir_all(&logs_dir).unwrap();
         fs::write(logs_dir.join("step0.log"), "old log").unwrap();
 
@@ -277,18 +320,17 @@ mod tests {
     }
 
     #[test]
-    fn test_prune_legacy_claude_dirs_are_not_special_cased() {
+    fn test_prune_uses_nested_plugin_skill_layout() {
         let tmp = tempdir().unwrap();
         let workspace = tmp.path();
 
-        // Legacy .claude workspace dirs should no longer be preserved by log pruning.
-        let claude_logs = workspace.join(".claude").join("logs");
-        fs::create_dir_all(&claude_logs).unwrap();
-        fs::write(claude_logs.join("old.jsonl"), "{}").unwrap();
+        let nested_logs = workspace.join("analytics").join("forecast-skill").join("logs");
+        fs::create_dir_all(&nested_logs).unwrap();
+        fs::write(nested_logs.join("old.jsonl"), "{}").unwrap();
         let past = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 86400);
         let file = fs::File::options()
             .write(true)
-            .open(claude_logs.join("old.jsonl"))
+            .open(nested_logs.join("old.jsonl"))
             .unwrap();
         file.set_times(fs::FileTimes::new().set_accessed(past).set_modified(past))
             .unwrap();
@@ -296,8 +338,8 @@ mod tests {
         prune_transcript_files(workspace.to_str().unwrap());
 
         assert!(
-            !claude_logs.join("old.jsonl").exists(),
-            "Legacy .claude logs should no longer be skipped by pruning"
+            !nested_logs.join("old.jsonl").exists(),
+            "Nested plugin/skill transcript logs should be pruned"
         );
     }
 
@@ -306,26 +348,36 @@ mod tests {
         let tmp = tempdir().unwrap();
         let workspace = tmp.path();
 
-        create_jsonl(workspace, "skill-a", "old.jsonl", 3);
-        create_jsonl(workspace, "skill-b", "old.jsonl", 5);
-        create_jsonl(workspace, "skill-b", "today.jsonl", 0);
+        create_jsonl(workspace, "analytics", "skill-a", "old.jsonl", 3);
+        create_jsonl(workspace, "analytics", "skill-b", "old.jsonl", 5);
+        create_jsonl(workspace, "analytics", "skill-b", "today.jsonl", 0);
+        create_jsonl(workspace, "engineering", "skill-c", "old.jsonl", 4);
 
         prune_transcript_files(workspace.to_str().unwrap());
 
         assert!(!workspace
+            .join("analytics")
             .join("skill-a")
             .join("logs")
             .join("old.jsonl")
             .exists());
         assert!(!workspace
+            .join("analytics")
             .join("skill-b")
             .join("logs")
             .join("old.jsonl")
             .exists());
         assert!(workspace
+            .join("analytics")
             .join("skill-b")
             .join("logs")
             .join("today.jsonl")
+            .exists());
+        assert!(!workspace
+            .join("engineering")
+            .join("skill-c")
+            .join("logs")
+            .join("old.jsonl")
             .exists());
     }
 
@@ -347,8 +399,14 @@ mod tests {
         let tmp = tempdir().unwrap();
         let workspace = tmp.path();
 
-        // Skill directory exists but has no logs/ subdirectory
-        fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+        // Plugin/skill directory exists but has no logs/ subdirectory
+        fs::create_dir_all(
+            workspace
+                .join(DEFAULT_PLUGIN_SLUG)
+                .join("my-skill")
+                .join("context"),
+        )
+        .unwrap();
 
         prune_transcript_files(workspace.to_str().unwrap());
         // Should complete without error
