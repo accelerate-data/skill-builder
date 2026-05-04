@@ -36,10 +36,6 @@ pub struct SidecarConfig {
     pub betas: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<serde_json::Value>,
-    #[serde(rename = "fallbackModel", skip_serializing_if = "Option::is_none")]
-    pub fallback_model: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub effort: Option<String>,
     #[serde(rename = "outputFormat", skip_serializing_if = "Option::is_none")]
     pub output_format: Option<serde_json::Value>,
     #[serde(rename = "promptSuggestions", skip_serializing_if = "Option::is_none")]
@@ -114,8 +110,6 @@ impl std::fmt::Debug for SidecarConfig {
             .field("permission_mode", &self.permission_mode)
             .field("betas", &self.betas)
             .field("thinking", &self.thinking)
-            .field("fallback_model", &self.fallback_model)
-            .field("effort", &self.effort)
             .field("output_format", &self.output_format)
             .field("prompt_suggestions", &self.prompt_suggestions)
             .field("agent_name", &self.agent_name)
@@ -169,8 +163,6 @@ pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> 
         permission_mode: None,
         betas: None,
         thinking: None,
-        fallback_model: None,
-        effort: None,
         output_format: params.output_format,
         prompt_suggestions: None,
         path_to_claude_code_executable: None,
@@ -284,8 +276,6 @@ mod tests {
             permission_mode: Some("bypassPermissions".to_string()),
             betas: None,
             thinking: None,
-            fallback_model: None,
-            effort: None,
             output_format: None,
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
@@ -344,8 +334,6 @@ mod tests {
                 "type": "enabled",
                 "budgetTokens": 32000
             })),
-            fallback_model: None,
-            effort: None,
             output_format: None,
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
@@ -392,8 +380,6 @@ mod tests {
             permission_mode: None,
             betas: None,
             thinking: None,
-            fallback_model: None,
-            effort: None,
             output_format: None,
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
@@ -443,8 +429,6 @@ mod tests {
             permission_mode: None,
             betas: None,
             thinking: None,
-            fallback_model: None,
-            effort: None,
             output_format: None,
             prompt_suggestions: None,
             path_to_claude_code_executable: None,
@@ -511,8 +495,6 @@ mod tests {
             permission_mode: None,
             betas: None,
             thinking: None,
-            fallback_model: None,
-            effort: None,
             output_format: None,
             prompt_suggestions: None,
             path_to_claude_code_executable: None,

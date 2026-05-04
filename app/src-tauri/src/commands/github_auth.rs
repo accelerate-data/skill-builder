@@ -321,7 +321,7 @@ mod tests {
     fn test_github_logout_leaves_other_settings_intact() {
         let conn = create_test_db_for_tests();
         let mut settings = crate::db::read_settings(&conn).unwrap();
-        settings.anthropic_api_key = Some("sk-ant-test-key".to_string());
+        settings.industry = Some("finance".to_string());
         settings.github_oauth_token = Some("test-oauth-token".to_string());
         settings.github_user_login = Some("octocat".to_string());
         crate::db::write_settings(&conn, &settings).unwrap();
@@ -329,7 +329,7 @@ mod tests {
         github_logout_impl(&conn).unwrap();
 
         let after = crate::db::read_settings(&conn).unwrap();
-        assert_eq!(after.anthropic_api_key.as_deref(), Some("sk-ant-test-key"));
+        assert_eq!(after.industry.as_deref(), Some("finance"));
         assert!(after.github_oauth_token.is_none());
     }
 

@@ -18,7 +18,6 @@ import type {
   MarketplaceImportResult,
   MarketplaceUpdateResult,
   ModelSettings,
-  ModelInfo,
   ResearchStepOutput,
   ReconciliationResult,
   RefineFinalizeResult,
@@ -165,11 +164,9 @@ export interface TauriCommandMap {
     };
     result: void;
   };
-  test_api_key: { args: { apiKey: string }; result: boolean };
   test_model_connection: { args: { settings: ModelSettings }; result: boolean };
   get_data_dir: { args: NoArgs; result: string };
   get_default_skills_path: { args: NoArgs; result: string };
-  list_models: { args: { apiKey: string }; result: ModelInfo[] };
   set_log_level: { args: { level: string }; result: void };
   check_startup_deps: { args: NoArgs; result: StartupDeps };
   reconcile_startup: { args: NoArgs | { apply: true }; result: ReconciliationResult };

@@ -368,21 +368,11 @@ fn validate_model_numbers(settings: &ModelSettings) -> Result<(), String> {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AppSettings {
-    pub anthropic_api_key: Option<String>,
     #[serde(default)]
     pub model_settings: ModelSettings,
-    #[serde(default)]
-    pub openhands_provider: Option<String>,
-    #[serde(default)]
-    pub openhands_api_key: Option<String>,
-    #[serde(default)]
-    pub openhands_model: Option<String>,
-    #[serde(default)]
-    pub openhands_base_url: Option<String>,
     pub workspace_path: Option<String>,
     #[serde(default)]
     pub skills_path: Option<String>,
-    pub preferred_model: Option<String>,
     #[serde(default)]
     pub debug_mode: bool,
     /// One of "error", "warn", "info", "debug". Defaults to "info".
@@ -390,14 +380,6 @@ pub struct AppSettings {
     pub log_level: String,
     #[serde(default)]
     pub extended_context: bool,
-    #[serde(default)]
-    pub extended_thinking: bool,
-    #[serde(default = "default_true")]
-    pub interleaved_thinking_beta: bool,
-    #[serde(default)]
-    pub sdk_effort: Option<String>,
-    #[serde(default)]
-    pub fallback_model: Option<String>,
     #[serde(default = "default_true")]
     pub refine_prompt_suggestions: bool,
     #[serde(default)]
@@ -437,22 +419,12 @@ pub struct AppSettings {
 impl std::fmt::Debug for AppSettings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppSettings")
-            .field("anthropic_api_key", &"[REDACTED]")
             .field("model_settings", &self.model_settings)
-            .field("openhands_provider", &self.openhands_provider)
-            .field("openhands_api_key", &"[REDACTED]")
-            .field("openhands_model", &self.openhands_model)
-            .field("openhands_base_url", &self.openhands_base_url)
             .field("workspace_path", &self.workspace_path)
             .field("skills_path", &self.skills_path)
-            .field("preferred_model", &self.preferred_model)
             .field("debug_mode", &self.debug_mode)
             .field("log_level", &self.log_level)
             .field("extended_context", &self.extended_context)
-            .field("extended_thinking", &self.extended_thinking)
-            .field("interleaved_thinking_beta", &self.interleaved_thinking_beta)
-            .field("sdk_effort", &self.sdk_effort)
-            .field("fallback_model", &self.fallback_model)
             .field("refine_prompt_suggestions", &self.refine_prompt_suggestions)
             .field("splash_shown", &self.splash_shown)
             .field("github_oauth_token", &"[REDACTED]")
@@ -475,22 +447,12 @@ impl std::fmt::Debug for AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            anthropic_api_key: None,
             model_settings: ModelSettings::default(),
-            openhands_provider: None,
-            openhands_api_key: None,
-            openhands_model: None,
-            openhands_base_url: None,
             workspace_path: None,
             skills_path: None,
-            preferred_model: None,
             debug_mode: false,
             log_level: "info".to_string(),
             extended_context: false,
-            extended_thinking: false,
-            interleaved_thinking_beta: true,
-            sdk_effort: None,
-            fallback_model: None,
             refine_prompt_suggestions: true,
             splash_shown: false,
             github_oauth_token: None,

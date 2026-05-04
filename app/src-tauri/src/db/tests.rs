@@ -10,50 +10,20 @@ fn create_test_db() -> Connection {
 fn test_read_default_settings() {
     let conn = create_test_db();
     let settings = read_settings(&conn).unwrap();
-    assert!(settings.anthropic_api_key.is_none());
     assert!(settings.workspace_path.is_none());
+    assert!(settings.skills_path.is_none());
 }
 
 #[test]
 fn test_write_and_read_settings() {
     let conn = create_test_db();
     let settings = AppSettings {
-        anthropic_api_key: Some("sk-test-key".to_string()),
-        model_settings: ModelSettings::default(),
-        openhands_provider: Some("anthropic".to_string()),
-        openhands_api_key: Some("sk-test-key".to_string()),
-        openhands_model: Some("anthropic/sonnet".to_string()),
-        openhands_base_url: None,
         workspace_path: Some("/home/user/skills".to_string()),
-        skills_path: None,
-        preferred_model: Some("sonnet".to_string()),
-        debug_mode: false,
-        log_level: "info".to_string(),
-        extended_context: false,
-        extended_thinking: false,
-        interleaved_thinking_beta: true,
-        sdk_effort: None,
-        fallback_model: None,
-        refine_prompt_suggestions: true,
-        splash_shown: false,
-        github_oauth_token: None,
-        github_user_login: None,
-        github_user_avatar: None,
-        github_user_email: None,
-        marketplace_url: None,
-        marketplace_registries: vec![],
-        marketplace_initialized: false,
-        legacy_tags_migrated: false,
-        max_dimensions: 5,
-        industry: None,
-        function_role: None,
-        dashboard_view_mode: None,
-        auto_update: false,
+        ..AppSettings::default()
     };
     write_settings(&conn, &settings).unwrap();
 
     let loaded = read_settings(&conn).unwrap();
-    assert_eq!(loaded.anthropic_api_key.as_deref(), Some("sk-test-key"));
     assert_eq!(loaded.workspace_path.as_deref(), Some("/home/user/skills"));
 }
 
@@ -61,37 +31,9 @@ fn test_write_and_read_settings() {
 fn test_write_and_read_settings_with_skills_path() {
     let conn = create_test_db();
     let settings = AppSettings {
-        anthropic_api_key: Some("sk-test".to_string()),
-        model_settings: ModelSettings::default(),
-        openhands_provider: Some("anthropic".to_string()),
-        openhands_api_key: Some("sk-test".to_string()),
-        openhands_model: None,
-        openhands_base_url: None,
         workspace_path: Some("/workspace".to_string()),
         skills_path: Some("/home/user/my-skills".to_string()),
-        preferred_model: None,
-        debug_mode: false,
-        log_level: "info".to_string(),
-        extended_context: false,
-        extended_thinking: false,
-        interleaved_thinking_beta: true,
-        sdk_effort: None,
-        fallback_model: None,
-        refine_prompt_suggestions: true,
-        splash_shown: false,
-        github_oauth_token: None,
-        github_user_login: None,
-        github_user_avatar: None,
-        github_user_email: None,
-        marketplace_url: None,
-        marketplace_registries: vec![],
-        marketplace_initialized: false,
-        legacy_tags_migrated: false,
-        max_dimensions: 5,
-        industry: None,
-        function_role: None,
-        dashboard_view_mode: None,
-        auto_update: false,
+        ..AppSettings::default()
     };
     write_settings(&conn, &settings).unwrap();
 
@@ -103,78 +45,21 @@ fn test_write_and_read_settings_with_skills_path() {
 fn test_overwrite_settings() {
     let conn = create_test_db();
     let v1 = AppSettings {
-        anthropic_api_key: Some("key-1".to_string()),
-        model_settings: ModelSettings::default(),
-        openhands_provider: Some("anthropic".to_string()),
-        openhands_api_key: Some("key-1".to_string()),
-        openhands_model: None,
-        openhands_base_url: None,
         workspace_path: None,
-        skills_path: None,
-        preferred_model: None,
-        debug_mode: false,
-        log_level: "info".to_string(),
-        extended_context: false,
-        extended_thinking: false,
-        interleaved_thinking_beta: true,
-        sdk_effort: None,
-        fallback_model: None,
-        refine_prompt_suggestions: true,
-        splash_shown: false,
-        github_oauth_token: None,
-        github_user_login: None,
-        github_user_avatar: None,
-        github_user_email: None,
-        marketplace_url: None,
-        marketplace_registries: vec![],
-        marketplace_initialized: false,
-        legacy_tags_migrated: false,
-        max_dimensions: 5,
-        industry: None,
-        function_role: None,
-        dashboard_view_mode: None,
-        auto_update: false,
+        ..AppSettings::default()
     };
     write_settings(&conn, &v1).unwrap();
 
     let v2 = AppSettings {
-        anthropic_api_key: Some("key-2".to_string()),
-        model_settings: ModelSettings::default(),
-        openhands_provider: Some("anthropic".to_string()),
-        openhands_api_key: Some("key-2".to_string()),
-        openhands_model: Some("anthropic/opus".to_string()),
-        openhands_base_url: None,
         workspace_path: Some("/new/path".to_string()),
-        skills_path: None,
-        preferred_model: Some("opus".to_string()),
-        debug_mode: false,
-        log_level: "info".to_string(),
-        extended_context: false,
-        extended_thinking: false,
-        interleaved_thinking_beta: true,
-        sdk_effort: None,
-        fallback_model: None,
-        refine_prompt_suggestions: true,
-        splash_shown: false,
-        github_oauth_token: None,
-        github_user_login: None,
-        github_user_avatar: None,
-        github_user_email: None,
-        marketplace_url: None,
-        marketplace_registries: vec![],
-        marketplace_initialized: false,
-        legacy_tags_migrated: false,
-        max_dimensions: 5,
-        industry: None,
-        function_role: None,
-        dashboard_view_mode: None,
-        auto_update: false,
+        industry: Some("tech".to_string()),
+        ..AppSettings::default()
     };
     write_settings(&conn, &v2).unwrap();
 
     let loaded = read_settings(&conn).unwrap();
-    assert_eq!(loaded.anthropic_api_key.as_deref(), Some("key-2"));
     assert_eq!(loaded.workspace_path.as_deref(), Some("/new/path"));
+    assert_eq!(loaded.industry.as_deref(), Some("tech"));
 }
 
 #[test]
@@ -184,11 +69,14 @@ fn test_migration_is_idempotent() {
     run_migrations(&conn).unwrap();
 
     let settings = read_settings(&conn).unwrap();
-    assert!(settings.anthropic_api_key.is_none());
+    assert!(settings.workspace_path.is_none());
 }
 
 #[test]
 fn test_openhands_settings_migration_does_not_backfill_legacy_model() {
+    // Migration 43 is a no-op reserved slot. Verify that legacy JSON blobs with
+    // anthropic_api_key / preferred_model are silently dropped and model_settings
+    // is not backfilled.
     let conn = Connection::open_in_memory().unwrap();
     ensure_migration_table(&conn).unwrap();
     run_migrations(&conn).unwrap();
@@ -201,10 +89,8 @@ fn test_openhands_settings_migration_does_not_backfill_legacy_model() {
     run_openhands_settings_migration(&conn).unwrap();
 
     let settings = read_settings(&conn).unwrap();
+    // Legacy fields silently dropped; model_settings not backfilled
     assert!(settings.model_settings.model.is_none());
-    assert!(settings.openhands_provider.is_none());
-    assert!(settings.openhands_model.is_none());
-    assert_eq!(settings.anthropic_api_key.as_deref(), Some("sk-legacy"));
 }
 
 #[test]

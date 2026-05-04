@@ -269,8 +269,6 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
   add_document_folder: [],
   update_document: { id: 1, name: "doc", source_type: "url", source_url: "https://example.com", file_path: "", scope: "all", skill_ids: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
   delete_document: undefined,
-  // Models (available from API key)
-  list_models: [],
   // Usage
   get_usage_summary: { total_cost: 0, total_runs: 0, avg_cost_per_run: 0 },
   get_recent_workflow_sessions: [],

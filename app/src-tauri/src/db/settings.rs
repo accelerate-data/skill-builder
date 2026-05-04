@@ -119,22 +119,16 @@ mod tests {
     fn test_write_settings_partial_update_preserves_other_fields() {
         let conn = create_test_db_for_tests();
 
-        // Write settings with an API key set.
+        // Write settings with a skills path set.
         let mut initial = make_settings(Some("/ws"), None);
-        initial.anthropic_api_key = Some("sk-test-key".to_string());
         write_settings(&conn, &initial).unwrap();
 
-        // Overwrite with settings that clear the API key but set a skills path.
+        // Overwrite with settings that set a skills path.
         let mut update = make_settings(Some("/ws"), Some("/skills"));
-        update.anthropic_api_key = None;
         write_settings(&conn, &update).unwrap();
 
         let read_back = read_settings(&conn).unwrap();
         assert_eq!(read_back.skills_path.as_deref(), Some("/skills"));
-        assert!(
-            read_back.anthropic_api_key.is_none(),
-            "cleared field should be None after update"
-        );
 
         // No duplicate rows.
         let row_count: i64 = conn
@@ -145,27 +139,6 @@ mod tests {
             )
             .unwrap();
         assert_eq!(row_count, 1);
-    }
-
-    #[test]
-    fn selected_workflow_llm_ignores_legacy_fields() {
-        let settings = AppSettings {
-            anthropic_api_key: Some("sk-legacy".to_string()),
-            preferred_model: Some("claude-sonnet-4-6".to_string()),
-            openhands_provider: Some("anthropic".to_string()),
-            openhands_api_key: Some("sk-openhands".to_string()),
-            openhands_model: Some("anthropic/claude-sonnet-4-6".to_string()),
-            openhands_base_url: Some("https://legacy.example.com".to_string()),
-            extended_thinking: true,
-            interleaved_thinking_beta: true,
-            sdk_effort: Some("high".to_string()),
-            fallback_model: Some("claude-fallback".to_string()),
-            skills_path: Some("/tmp/skills".to_string()),
-            ..AppSettings::default()
-        };
-
-        let err = selected_workflow_llm(&settings).unwrap_err();
-        assert!(err.contains("Select a model in Settings"), "{err}");
     }
 
     #[test]
