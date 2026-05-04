@@ -163,6 +163,25 @@ describe("Tauri command policy", () => {
     expect(unsafeWrappers).toEqual([]);
   });
 
+  it("keeps AskUserQuestion vestige commands off the wrapper and command types (VU-1155)", () => {
+    // The OpenHands SDK ships no AskUserQuestion equivalent. The bring-it-back
+    // work is tracked separately as VU-1158. Until that lands, neither
+    // command may appear in the typed wrapper or the command-type map —
+    // otherwise a future PR can quietly re-introduce dead state.
+    const wrapperSource = fs.readFileSync(tauriWrapperPath, "utf8");
+    const typeSource = fs.readFileSync(tauriCommandTypesPath, "utf8");
+
+    for (const forbidden of [
+      "answer_refine_question",
+      "answer_workflow_step_question",
+      "answerRefineQuestion",
+      "answerWorkflowStepQuestion",
+    ]) {
+      expect(wrapperSource).not.toContain(forbidden);
+      expect(typeSource).not.toContain(forbidden);
+    }
+  });
+
   it("catches aliased raw invoke and aliased invokeUnsafe calls", () => {
     withTempSource(
       {

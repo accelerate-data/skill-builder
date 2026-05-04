@@ -175,9 +175,16 @@ impl OpenHandsServerClient {
         &self,
         conversation_id: &str,
     ) -> Result<Vec<serde_json::Value>, reqwest::Error> {
+        // Hard cap on pages so a buggy server cursor that never returns
+        // null cannot hang the WS-attach phase. 10 pages × 100 events =
+        // 1000 events, far above what the SDK emits between
+        // POST /api/conversations and WS subscribe (typically 2 — the
+        // SystemPromptEvent + initial user MessageEvent). If we ever hit
+        // the cap the warning makes it visible without breaking the run.
+        const MAX_BACKFILL_PAGES: usize = 10;
         let mut events = Vec::new();
         let mut page_id: Option<String> = None;
-        loop {
+        for page in 0..MAX_BACKFILL_PAGES {
             let response = self
                 .http
                 .execute(self.build_search_events_request(
@@ -198,7 +205,13 @@ impl OpenHandsServerClient {
                 .and_then(|value| value.as_str())
                 .map(str::to_string);
             if page_id.is_none() {
-                break;
+                return Ok(events);
+            }
+            if page + 1 == MAX_BACKFILL_PAGES {
+                log::warn!(
+                    "[openhands-agent-server] event backfill hit MAX_BACKFILL_PAGES={MAX_BACKFILL_PAGES}; \
+                     stopping pagination — server returned non-null next_page_id beyond expected range"
+                );
             }
         }
         Ok(events)
