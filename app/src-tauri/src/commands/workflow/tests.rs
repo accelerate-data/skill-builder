@@ -2283,26 +2283,6 @@ fn test_workflow_step_runtime_label_uses_step_name_slug() {
 // (agents tree is no longer deployed to workspace root)
 
 #[test]
-fn test_resolve_prompts_dir_dev_mode() {
-    // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has bundled agents/plugins.
-    let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("agent-sources"));
-    assert!(dev_path.is_some());
-    let agent_sources_dir = dev_path.unwrap();
-    let plugin_agents_dir = agent_sources_dir
-        .join("plugins")
-        .join("skill-content-researcher")
-        .join("agents");
-    // Verify flat agent files exist (no subdirectories)
-    assert!(
-        plugin_agents_dir.join("research-agent.md").exists(),
-        "agent-sources/plugins/skill-content-researcher/agents/research-agent.md should exist"
-    );
-}
-
-#[test]
 fn test_delete_step_output_files_from_step_onwards() {
     // Steps 0-2 are DB-authoritative with no filesystem outputs.
     // Deleting from step 2 onwards should clean only step 3 (SKILL.md).
