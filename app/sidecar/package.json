@@ -5,11 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.js",
-    "dev": "node --loader ts-node/esm agent-runner.ts",
     "test": "vitest run"
-  },
-  "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.126"
   },
   "devDependencies": {
     "@types/node": "^22",
@@ -18,7 +14,6 @@
     "vitest": "^4.0.18"
   },
   "overrides": {
-    "@anthropic-ai/sdk": ">=0.91.1",
     "rollup": "^4.59.0"
   }
 }

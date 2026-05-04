@@ -1,12 +1,6 @@
 import { createInterface, type Interface } from "node:readline";
 import { type SidecarConfig, parseSidecarConfig } from "./config.js";
-import { StreamSession } from "./stream-session.js";
-import {
-  ClaudeRuntime,
-  toOneShotRunRequest,
-} from "./runtime/claude-runtime.js";
-import { createRecordRuntimeSink } from "./runtime/sink.js";
-import { OPENHANDS_AGENT_SERVER_ONLY_ERROR } from "./openhands-rejection.js";
+import { runMockAgent } from "./mock-agent.js";
 
 /** Incoming request envelope: run an agent. */
 interface AgentRequest {
@@ -31,55 +25,12 @@ interface CancelRequest {
   request_id: string;
 }
 
-/** Start a streaming session (first message). */
-interface StreamStartRequest {
-  type: "stream_start";
-  request_id: string;
-  session_id: string;
-  config: SidecarConfig;
-}
-
-/** Push a follow-up message into an active streaming session. */
-interface StreamMessageRequest {
-  type: "stream_message";
-  request_id: string;
-  session_id: string;
-  user_message: string;
-}
-
-/** Resolve a pending AskUserQuestion callback in a streaming session. */
-interface StreamQuestionAnswerRequest {
-  type: "stream_question_answer";
-  request_id: string;
-  session_id: string;
-  tool_use_id: string;
-  questions: unknown;
-  answers: Record<string, unknown>;
-}
-
-/** Interrupt the current turn without closing the session. */
-interface StreamCancelRequest {
-  type: "stream_cancel";
-  session_id: string;
-}
-
-/** Close a streaming session. */
-interface StreamEndRequest {
-  type: "stream_end";
-  session_id: string;
-}
-
 /** Union of all valid incoming messages. */
 type IncomingMessage =
   | AgentRequest
   | ShutdownRequest
   | PingRequest
-  | CancelRequest
-  | StreamStartRequest
-  | StreamMessageRequest
-  | StreamQuestionAnswerRequest
-  | StreamCancelRequest
-  | StreamEndRequest;
+  | CancelRequest;
 
 /**
  * Write a single JSON line to stdout.
@@ -134,66 +85,6 @@ export function parseIncomingMessage(line: string): IncomingMessage | null {
     }
   }
 
-  if (obj.type === "stream_start") {
-    if (typeof obj.request_id !== "string" || !obj.request_id) return null;
-    if (typeof obj.session_id !== "string" || !obj.session_id) return null;
-    if (typeof obj.config !== "object" || obj.config === null) return null;
-    try {
-      return {
-        type: "stream_start",
-        request_id: obj.request_id,
-        session_id: obj.session_id,
-        config: parseSidecarConfig(obj.config),
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  if (obj.type === "stream_message") {
-    if (typeof obj.request_id !== "string" || !obj.request_id) return null;
-    if (typeof obj.session_id !== "string" || !obj.session_id) return null;
-    if (typeof obj.user_message !== "string") return null;
-    return {
-      type: "stream_message",
-      request_id: obj.request_id,
-      session_id: obj.session_id,
-      user_message: obj.user_message,
-    };
-  }
-
-  if (obj.type === "stream_question_answer") {
-    if (typeof obj.request_id !== "string" || !obj.request_id) return null;
-    if (typeof obj.session_id !== "string" || !obj.session_id) return null;
-    if (typeof obj.tool_use_id !== "string" || !obj.tool_use_id) return null;
-    if (!Array.isArray(obj.questions)) return null;
-    if (typeof obj.answers !== "object" || obj.answers === null) return null;
-    return {
-      type: "stream_question_answer",
-      request_id: obj.request_id,
-      session_id: obj.session_id,
-      tool_use_id: obj.tool_use_id,
-      questions: obj.questions,
-      answers: obj.answers as Record<string, unknown>,
-    };
-  }
-
-  if (obj.type === "stream_cancel") {
-    if (typeof obj.session_id !== "string" || !obj.session_id) return null;
-    return {
-      type: "stream_cancel",
-      session_id: obj.session_id,
-    };
-  }
-
-  if (obj.type === "stream_end") {
-    if (typeof obj.session_id !== "string" || !obj.session_id) return null;
-    return {
-      type: "stream_end",
-      session_id: obj.session_id,
-    };
-  }
-
   return null;
 }
 
@@ -207,12 +98,16 @@ export function wrapWithRequestId(
   return { request_id: requestId, ...message };
 }
 
+const MOCK_ONLY_ERROR =
+  "Claude Agent SDK has been removed. The Node sidecar only handles MOCK_AGENTS=true runs; all real agent requests must use the Rust-managed OpenHands Agent Server runtime.";
+
 /**
  * Run the sidecar in persistent mode.
  *
  * - Emits `{"type":"sidecar_ready"}` on startup
  * - Reads stdin line-by-line for `agent_request` and `shutdown` messages
- * - Each `agent_request` runs the SDK and streams responses with `request_id` prefix
+ * - Each `agent_request` with MOCK_AGENTS=true runs the mock agent and streams responses
+ * - All non-mock requests return an error — real execution must use the OpenHands server
  * - `shutdown` causes a clean exit
  * - stdin close (pipe broken) causes a clean exit
  *
@@ -225,7 +120,7 @@ export async function runPersistent(
 ): Promise<void> {
   // Signal readiness
   writeLine({ type: "sidecar_ready" });
-  process.stderr.write("[sidecar] Persistent mode ready\n");
+  process.stderr.write("[sidecar] Persistent mode ready (mock-only)\n");
 
   const rl: Interface = createInterface({
     input,
@@ -233,14 +128,9 @@ export async function runPersistent(
   });
 
   // Track in-flight requests so we can wait for them before shutdown.
-  // Also track the current request's AbortController and ID so we can cancel
-  // a stuck request when a new one arrives or Rust sends a cancel message.
   const inFlight = new Set<Promise<void>>();
   let currentAbort: AbortController | null = null;
   let currentRequestId: string | null = null;
-
-  // Active streaming sessions (refine chat uses these for multi-turn conversations)
-  const activeSessions = new Map<string, StreamSession>();
 
   for await (const line of rl) {
     const message = parseIncomingMessage(line);
@@ -248,8 +138,7 @@ export async function runPersistent(
     if (!message) {
       // Attempt to salvage a request_id from the raw JSON even though validation
       // failed, so Rust can associate the error with an in-flight request and
-      // clean up pending state. If the line is not even parseable JSON, log to
-      // stderr and skip — emitting a keyless error would leave the request stuck.
+      // clean up pending state.
       let rawRequestId: string | undefined;
       try {
         const raw = JSON.parse(line.trim()) as Record<string, unknown>;
@@ -282,17 +171,6 @@ export async function runPersistent(
       if (inFlight.size > 0) {
         await Promise.allSettled(inFlight);
       }
-      // Wait for active streaming sessions to finish so their final
-      // run_result events are emitted before the process exits.
-      if (activeSessions.size > 0) {
-        const sessionDrains = Array.from(activeSessions.values()).map(
-          (s) => s.queryDone,
-        );
-        process.stderr.write(
-          `[sidecar] Draining ${sessionDrains.length} active stream session(s)\n`,
-        );
-        await Promise.allSettled(sessionDrains);
-      }
       rl.close();
       exitFn(0);
       return;
@@ -302,196 +180,35 @@ export async function runPersistent(
       process.stderr.write(
         `[sidecar] Cancel request for ${message.request_id}\n`,
       );
-      // Rust sends cancel when a request times out.
-      // Abort the matching in-flight request so the SDK stops waiting.
       if (currentAbort && currentRequestId === message.request_id) {
         currentAbort.abort();
       }
       continue;
     }
 
-    if (message.type === "stream_start") {
-      const { request_id, session_id, config } = message;
-      process.stderr.write(
-        `[sidecar] Stream start: session=${session_id} request=${request_id}\n`,
-      );
-
-      if (config.mode === "one-shot") {
-        writeLine(
-          wrapWithRequestId(request_id, {
-            type: "error",
-            message: "stream_start requires streaming mode",
-          }),
-        );
-        continue;
-      }
-
-      if (activeSessions.has(session_id)) {
-        writeLine(
-          wrapWithRequestId(request_id, {
-            type: "error",
-            message: `Stream session '${session_id}' already exists`,
-          }),
-        );
-        continue;
-      }
-
-      if (config.runtimeProvider === "openhands") {
-        writeLine(
-          wrapWithRequestId(request_id, {
-            type: "error",
-            message: OPENHANDS_AGENT_SERVER_ONLY_ERROR,
-          }),
-        );
-        continue;
-      }
-
-      const session = new StreamSession(
-        session_id,
-        request_id,
-        config,
-        (reqId, msg) => {
-          writeLine(wrapWithRequestId(reqId, msg));
-        },
-      );
-      activeSessions.set(session_id, session);
-      continue;
-    }
-
-    if (message.type === "stream_message") {
-      const { request_id, session_id, user_message } = message;
-      process.stderr.write(
-        `[sidecar] Stream message: session=${session_id} request=${request_id}\n`,
-      );
-
-      const session = activeSessions.get(session_id);
-      if (!session) {
-        writeLine(
-          wrapWithRequestId(request_id, {
-            type: "error",
-            message: `No stream session found for '${session_id}'`,
-          }),
-        );
-        continue;
-      }
-
-      try {
-        session.pushMessage(request_id, user_message);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        writeLine(
-          wrapWithRequestId(request_id, {
-            type: "error",
-            message: errorMessage,
-          }),
-        );
-      }
-      continue;
-    }
-
-    if (message.type === "stream_question_answer") {
-      const { request_id, session_id, tool_use_id, questions, answers } =
-        message;
-      process.stderr.write(
-        `[sidecar] Stream question answer: session=${session_id} request=${request_id} tool=${tool_use_id}\n`,
-      );
-
-      const session = activeSessions.get(session_id);
-      if (!session) {
-        writeLine(
-          wrapWithRequestId(request_id, {
-            type: "error",
-            message: `No stream session found for '${session_id}'`,
-          }),
-        );
-        continue;
-      }
-
-      try {
-        session.answerQuestion(
-          request_id,
-          tool_use_id,
-          questions as never,
-          answers,
-        );
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        writeLine(
-          wrapWithRequestId(request_id, {
-            type: "error",
-            message: errorMessage,
-          }),
-        );
-      }
-      continue;
-    }
-
-    if (message.type === "stream_cancel") {
-      const { session_id } = message;
-      process.stderr.write(
-        `[sidecar] Stream cancel (interrupt): session=${session_id}\n`,
-      );
-
-      const session = activeSessions.get(session_id);
-      if (session) {
-        session.cancelTurn();
-        // Session stays in activeSessions — next pushMessage() will resume.
-      }
-      continue;
-    }
-
-    if (message.type === "stream_end") {
-      const { session_id } = message;
-      process.stderr.write(`[sidecar] Stream end: session=${session_id}\n`);
-
-      const session = activeSessions.get(session_id);
-      if (session) {
-        session.close();
-        activeSessions.delete(session_id);
-      }
-      continue;
-    }
-
     if (message.type === "agent_request") {
-      // If a previous request is still in-flight (e.g., SDK hanging on API),
-      // abort it before starting the new one.
+      // If a previous request is still in-flight, abort it before starting the new one.
       if (inFlight.size > 0 && currentAbort) {
         currentAbort.abort();
-        // Aborted request tears down asynchronously via its own .finally()
-        // handler which removes it from inFlight. No need to await here —
-        // the readline loop continues and routes by request_id.
       }
 
       const { request_id, config } = message;
       process.stderr.write(`[sidecar] Agent request: ${request_id}\n`);
 
-      if (config.mode === "streaming") {
-        writeLine(
-          wrapWithRequestId(request_id, {
-            type: "error",
-            message: "agent_request requires one-shot mode",
-          }),
-        );
-        continue;
-      }
-
       const abortController = new AbortController();
       currentAbort = abortController;
       currentRequestId = request_id;
 
-      // Run the agent request without blocking the readline loop.
-      // This lets ping/shutdown messages be processed while the agent runs.
-      const runtime = new ClaudeRuntime();
       const requestPromise = (async () => {
         try {
-          if (config.runtimeProvider === "openhands") {
-            throw new Error(OPENHANDS_AGENT_SERVER_ONLY_ERROR);
+          if (process.env.MOCK_AGENTS !== "true") {
+            // Non-mock requests cannot be handled by the sidecar after Claude SDK removal.
+            throw new Error(MOCK_ONLY_ERROR);
           }
-          await runtime.runOnce(
-            toOneShotRunRequest({ ...config, mode: "one-shot" }),
-            createRecordRuntimeSink((msg) => {
-              writeLine(wrapWithRequestId(request_id, msg));
-            }),
+          process.stderr.write("[sidecar] Mock agent mode\n");
+          await runMockAgent(
+            config,
+            (message) => writeLine(wrapWithRequestId(request_id, message)),
             abortController.signal,
           );
         } catch (err) {
@@ -503,8 +220,6 @@ export async function runPersistent(
             }),
           );
         } finally {
-          // Signal to Rust that this request is fully complete and the sidecar
-          // is ready for the next one.
           writeLine(
             wrapWithRequestId(request_id, { type: "request_complete" }),
           );
