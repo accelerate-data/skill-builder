@@ -1,6 +1,34 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 
+// Mock useClarifications — Research and DetailedResearch steps use TanStack Query
+const mockUseClarifications = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/queries/clarifications", () => ({
+  useClarifications: mockUseClarifications,
+}));
+
+// ClarificationsDto matching the clarificationsJson fixture (sections + notes)
+const mockClarDto = {
+  skill_id: "my-skill",
+  version: "1",
+  refinement_count: 0,
+  must_answer_count: 0,
+  question_count: 2,
+  section_count: 2,
+  title: "Clarifications",
+  sections: [
+    { section_id: 1, ordinal: 0, title: "Section One" },
+    { section_id: 2, ordinal: 1, title: "Section Two" },
+  ],
+  questions: [
+    { question_id: "Q1", section_id: 1, parent_question_id: null, ordinal: 0, title: "Question One", text: "Question one text", must_answer: false, answer_choice: null, answer_text: null, choices: [], refinements: [] },
+    { question_id: "Q2", section_id: 2, parent_question_id: null, ordinal: 0, title: "Question Two", text: "Question two text", must_answer: false, answer_choice: null, answer_text: null, choices: [], refinements: [] },
+  ],
+  notes: [
+    { ordinal: 0, note_type: "general", title: "Context", body: "Important research note." },
+  ],
+};
+
 const mockGetStepAgentRuns = vi.fn();
 const mockReadFile = vi.fn();
 const mockListSkillFiles = vi.fn();
@@ -86,6 +114,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetStepAgentRuns.mockResolvedValue([]);
   mockListSkillFiles.mockResolvedValue([]);
+  mockUseClarifications.mockReturnValue({ data: mockClarDto, isLoading: false, isError: false });
   mockReadFile.mockImplementation((path: string) => {
     if (path.includes("research-plan.md")) return Promise.resolve(researchPlanMd);
     if (path.includes("clarifications.json")) return Promise.resolve(clarificationsJson);
