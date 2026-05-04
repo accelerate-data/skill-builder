@@ -1774,10 +1774,9 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
 }
 
 // TC-09: `graceful_shutdown` non-timeout path cannot be tested directly because
-// it requires `tauri::State<SidecarPool>`, `tauri::State<Db>`, `tauri::State<InstanceInfo>`,
-// and a `tauri::AppHandle` — none of which are constructible in unit tests. The timeout
-// path calls `process::exit` which is also impractical to test. This limitation is documented.
-// The sidecar shutdown logic is covered by persistent-mode.test.ts integration tests instead.
+// it requires `tauri::State<Db>`, `tauri::State<InstanceInfo>`, and a `tauri::AppHandle`
+// — none of which are constructible in unit tests. The timeout path calls `process::exit`
+// which is also impractical to test. This limitation is documented.
 
 // ===== sync_user_context_file tests =====
 

@@ -87,7 +87,7 @@ pub struct RefineSession {
 }
 
 /// Manages active refine sessions. Registered as Tauri managed state.
-/// Follows the same `Mutex<HashMap>` pattern as `SidecarPool`.
+/// Keyed by agent_id, using a `Mutex<HashMap>`.
 ///
 /// ## Concurrency rule
 /// Only one refine session per skill_name is allowed at a time.
