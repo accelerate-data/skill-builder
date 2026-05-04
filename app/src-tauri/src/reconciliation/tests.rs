@@ -117,6 +117,35 @@ fn test_db_consistency_reset_no_clarifications() {
     assert_eq!(run.status, "pending", "status should remain pending");
 }
 
+#[test]
+fn test_db_consistency_reset_no_decisions() {
+    // A skill at current_step=3 with clarifications present but no decisions row.
+    // The decisions check (current_step >= 3) must fire and reset to step 0.
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    crate::db::save_workflow_run(&conn, "stale-skill", 3, "pending", "domain").unwrap();
+    insert_stub_clarifications(&conn, "stale-skill");
+    // Deliberately NO insert_stub_decisions — simulates pre-VU-1157 state.
+
+    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    assert!(
+        result.notifications.iter().any(|n| n.contains("stale-skill") && n.contains("re-run required")),
+        "expected reset notification, got: {:?}",
+        result.notifications
+    );
+
+    let run = crate::db::get_workflow_run(&conn, "stale-skill")
+        .unwrap()
+        .unwrap();
+    assert_eq!(run.current_step, 0, "current_step should have been reset to 0");
+    assert_eq!(run.status, "pending", "status should remain pending");
+}
+
 // --- Scenario 2: DB step ahead of disk ---
 
 #[test]
