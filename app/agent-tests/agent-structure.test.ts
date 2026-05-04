@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
-import { AGENTS_DIR, PLUGINS_DIR, REPO_ROOT } from "./helpers";
+import { AGENTS_DIR, REPO_ROOT } from "./helpers";
 
 /** Top-level agents deployed to .claude/agents/ */
 const EXPECTED_AGENTS: string[] = [];
@@ -12,43 +12,28 @@ const WORKSPACE_AGENTS_DIR = path.join(
   "agents",
 );
 
-/** Plugin-hosted agents: agent name → plugin path relative to PLUGINS_DIR */
-const PLUGIN_AGENTS: Record<string, string> = {
-  "research-agent": "skill-content-researcher/agents/research-agent.md",
-  "rewrite-skill": "skill-creator/agents/rewrite-skill.md",
-  grader: "skill-creator/agents/grader.md",
-};
-
 const OPENHANDS_WORKFLOW_AGENTS = ["skill-creator"] as const;
 const OPENHANDS_WORKFLOW_SKILLS = ["creating-skills"] as const;
 
 const OBSOLETE_WORKFLOW_AGENT_PATHS = [
-  "skill-content-researcher/agents/skill-builder.md",
-  "skill-content-researcher/agents/detailed-research.md",
-  "skill-content-researcher/agents/confirm-decisions.md",
-  "skill-content-researcher/agents/answer-evaluator.md",
   "skill-creator/agents/generate-skill.md",
 ] as const;
 
 const AGENT_SKILL_ROOTS = [
   path.join(REPO_ROOT, "agent-sources", "skills"),
   path.join(REPO_ROOT, "agent-sources", "workspace", "skills"),
-  path.join(PLUGINS_DIR, "skill-content-researcher", "skills"),
-  path.join(PLUGINS_DIR, "skill-creator", "skills"),
 ] as const;
 
-/** Resolve the .md file path for any agent (top-level or plugin). */
+/** Resolve the .md file path for any agent (top-level or workspace workflow). */
 function resolveAgentPath(agentName: string): string {
   if ((OPENHANDS_WORKFLOW_AGENTS as readonly string[]).includes(agentName)) {
     return path.join(WORKSPACE_AGENTS_DIR, `${agentName}.md`);
   }
-  const pluginRelPath = PLUGIN_AGENTS[agentName];
-  if (pluginRelPath) return path.join(PLUGINS_DIR, pluginRelPath);
   return path.join(AGENTS_DIR, `${agentName}.md`);
 }
 
-/** All agent names (top-level + plugin). */
-const ALL_AGENTS = [...EXPECTED_AGENTS, ...Object.keys(PLUGIN_AGENTS)];
+/** All agent names (top-level only; plugin agents have been removed). */
+const ALL_AGENTS = [...EXPECTED_AGENTS];
 
 function frontmatter(filePath: string): Record<string, string> {
   const content = fs.readFileSync(filePath, "utf8");
@@ -62,10 +47,6 @@ function frontmatter(filePath: string): Record<string, string> {
     if (key && rest.length) fm[key.trim()] = rest.join(":").trim();
   });
   return fm;
-}
-
-function fileContent(agentName: string): string {
-  return fs.readFileSync(resolveAgentPath(agentName), "utf8");
 }
 
 function frontmatterBlock(filePath: string): string {
@@ -114,14 +95,6 @@ describe("agent files", () => {
     expect(fm.model).toBeUndefined();
   });
 
-  it.each(Object.keys(PLUGIN_AGENTS))(
-    "does not pin model in bundled agent frontmatter: %s",
-    (agent) => {
-      const fm = frontmatter(resolveAgentPath(agent));
-      expect(fm.model).toBeUndefined();
-    },
-  );
-
   it.each(OPENHANDS_WORKFLOW_AGENTS)(
     "OpenHands workflow agent has file-agent frontmatter: %s",
     (agent) => {
@@ -139,9 +112,10 @@ describe("agent files", () => {
     const missing = OPENHANDS_WORKFLOW_AGENTS.filter(
       (agent) => !fs.existsSync(resolveAgentPath(agent)),
     );
-    const obsolete = OBSOLETE_WORKFLOW_AGENT_PATHS.filter((relPath) =>
-      fs.existsSync(path.join(PLUGINS_DIR, relPath)),
-    );
+    const obsolete = OBSOLETE_WORKFLOW_AGENT_PATHS.filter((relPath) => {
+      const pluginsDir = path.join(REPO_ROOT, "agent-sources", "plugins");
+      return fs.existsSync(path.join(pluginsDir, relPath));
+    });
 
     expect(missing).toEqual([]);
     expect(obsolete).toEqual([]);
@@ -243,14 +217,21 @@ describe("canonical format compliance", () => {
     ["**Question**: label", /\*\*Question\*\*[:\*]/],
   ];
 
-  it.each(
-    ALL_AGENTS.flatMap((agent) =>
-      antiPatterns.map(([label, pattern]) => [agent, label, pattern] as const),
-    ),
-  )("%s: no %s", (agent, _label, pattern) => {
-    const content = fs.readFileSync(resolveAgentPath(agent), "utf8");
-    expect(content).not.toMatch(pattern);
-  });
+  const cases = ALL_AGENTS.flatMap((agent) =>
+    antiPatterns.map(([label, pattern]) => [agent, label, pattern] as const),
+  );
+
+  if (cases.length === 0) {
+    it("no agents to check (suite intentionally empty)", () => {
+      // ALL_AGENTS is empty — no top-level or plugin agents registered.
+      expect(true).toBe(true);
+    });
+  } else {
+    it.each(cases)("%s: no %s", (agent, _label, pattern) => {
+      const content = fs.readFileSync(resolveAgentPath(agent), "utf8");
+      expect(content).not.toMatch(pattern);
+    });
+  }
 });
 
 // ── Read-directive compliance ───────────────────────────────────────────────
@@ -360,20 +341,6 @@ describe("Research scope guard contract prompts", () => {
     expect(content).toMatch(/Follow the current\s+step prompt for the exact output shape/i);
     expect(content).not.toMatch(/dimensions_selected": 0/);
   });
-
-  it("research-agent refinement pass preserves original questions and canonical metadata", () => {
-    const content = fileContent("research-agent");
-    expect(content).toMatch(/strictly additive/i);
-    expect(content).toMatch(
-      /do \*\*not\*\* delete any existing `sections\[\]\.questions\[\]` item/i,
-    );
-    expect(content).toMatch(
-      /every original top-level question ID captured before merge must still exist after merge/i,
-    );
-    expect(content).toMatch(/metadata\.priority_questions/);
-    expect(content).toMatch(/metadata\.duplicates_removed/);
-    expect(content).toMatch(/remove transient fields/i);
-  });
 });
 
 // ── Agent output contracts (backend protocol alignment) ──────────────────────
@@ -385,16 +352,8 @@ describe("Research scope guard contract prompts", () => {
 //   - materialize_answer_evaluation_output_value() → answer-evaluator path
 
 describe("Agent output contracts (backend protocol alignment)", () => {
-  it("research-agent returns initial and refinement research payloads", () => {
-    const content = fileContent("research-agent");
-    expect(content).toMatch(/answer-evaluation\.json/);
-    expect(content).toMatch(/"status": "research_complete"/);
-    expect(content).toMatch(/"research_output"/);
-    expect(content).toMatch(/"refinements"/);
-  });
-
   it("skill-creator generation phase routes through creating-skills", () => {
-    const agentContent = fileContent("skill-creator");
+    const agentContent = fs.readFileSync(resolveAgentPath("skill-creator"), "utf8");
     const skillContent = fs.readFileSync(
       path.join(
         REPO_ROOT,
@@ -421,12 +380,6 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(agentContent).not.toMatch(/^\s+-\s+answer-evaluator\s*$/m);
   });
 
-  it("rewrite-skill returns rewritten status", () => {
-    const content = fs.readFileSync(resolveAgentPath("rewrite-skill"), "utf8");
-    expect(content).toMatch(/status.*rewritten/);
-    expect(content).toMatch(/call_trace/);
-  });
-
   it("answer-evaluator returns verdict enum and per_question array", () => {
     const content = fs.readFileSync(
       path.join(REPO_ROOT, "agent-sources", "prompts", "answer-evaluator.txt"),
@@ -438,32 +391,12 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/"answered_count"/);
     expect(content).toMatch(/Do not invoke\s+an answer-evaluator skill/i);
   });
-
 });
 
 
-// ── Plugin structure sanity checks ───────────────────────────────────────────
+// ── Active workflow prompt sanity check ─────────────────────────────────────
 
-describe("skill-content-researcher plugin structure", () => {
-  const pluginRoot = path.join(
-    REPO_ROOT,
-    "agent-sources",
-    "plugins",
-    "skill-content-researcher",
-  );
-
-  it("embedded legacy research skill is internal-only (not user-invocable)", () => {
-    const researchPath = path.join(
-      pluginRoot,
-      "skills",
-      "research",
-      "SKILL.md",
-    );
-    const fm = frontmatter(researchPath);
-    expect(fm.name).toBe("research");
-    expect(fm.user_invocable).toBe("false");
-  });
-
+describe("active workflow prompts avoid Claude routing mechanics", () => {
   it("active workflow prompts avoid Claude routing mechanics", () => {
     const skillCreatorSkillPath = path.join(
       REPO_ROOT,
@@ -473,17 +406,7 @@ describe("skill-content-researcher plugin structure", () => {
       "creating-skills",
       "SKILL.md",
     );
-    const legacyPluginSkillCreatorPath = path.join(
-      REPO_ROOT,
-      "agent-sources",
-      "plugins",
-      "skill-creator",
-      "skills",
-      "skill-creator",
-      "SKILL.md",
-    );
     const activeFiles = [
-      resolveAgentPath("research-agent"),
       path.join(REPO_ROOT, "agent-sources", "prompts", "answer-evaluator.txt"),
       path.join(
         REPO_ROOT,
@@ -494,7 +417,6 @@ describe("skill-content-researcher plugin structure", () => {
         "SKILL.md",
       ),
       skillCreatorSkillPath,
-      legacyPluginSkillCreatorPath,
     ];
     const forbiddenPatterns: Array<[string, RegExp]> = [
       ["Claude Code routing", /Claude Code/i],
@@ -512,64 +434,5 @@ describe("skill-content-researcher plugin structure", () => {
     });
 
     expect(failures).toEqual([]);
-  });
-});
-
-describe("skill-creator plugin structure", () => {
-  const pluginRoot = path.join(
-    REPO_ROOT,
-    "agent-sources",
-    "plugins",
-    "skill-creator",
-  );
-
-  it("skill-creator SKILL.md references bundled scripts and eval viewer via relative paths", () => {
-    const skillPath = path.join(
-      pluginRoot,
-      "skills",
-      "skill-creator",
-      "SKILL.md",
-    );
-    const content = fs.readFileSync(skillPath, "utf8");
-
-    // Aggregation + optimization scripts via uv under scripts/
-    expect(content).toMatch(/uv run scripts\/aggregate_benchmark\.py/);
-    expect(content).toMatch(/uv run scripts\/run_loop\.py/);
-    // Eval viewer launched via generate_review.py (relative or with skill-creator-path placeholder)
-    expect(content).toMatch(/generate_review\.py/);
-  });
-
-  it("skill-creator freezes eval expectations at creation time", () => {
-    const skillPath = path.join(
-      pluginRoot,
-      "skills",
-      "skill-creator",
-      "SKILL.md",
-    );
-    const schemaPath = path.join(
-      pluginRoot,
-      "skills",
-      "skill-creator",
-      "references",
-      "schemas.md",
-    );
-    const content = fs.readFileSync(skillPath, "utf8");
-    const schemaContent = fs.readFileSync(schemaPath, "utf8");
-    expect(content).toMatch(
-      /Write the quantitative assertions at the same time as the prompts/i,
-    );
-    expect(content).toMatch(
-      /treat those fields and those assertions as fixed/i,
-    );
-    expect(content).toMatch(/deterministic `slug`/i);
-    expect(content).toMatch(
-      /Do not rewrite the saved prompt-set payload or `eval_metadata\.json` during the run/i,
-    );
-    expect(content).toMatch(/eval_name[\s\S]*slug[\s\S]*(?:expectations|assertions)/i);
-    expect(schemaContent).toMatch(/evals\[\]\.eval_name/);
-    expect(schemaContent).toMatch(/evals\[\]\.slug/);
-    expect(schemaContent).toMatch(
-      /written at eval creation time and frozen for subsequent benchmark iterations/i,
-    );
   });
 });
