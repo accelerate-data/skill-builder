@@ -678,11 +678,16 @@ fn test_skill_name_validation_rejects_traversal() {
     assert!(validate_skill_name("").is_err());
 }
 
-// ===== user context file tests =====
+// ===== user context tests =====
+//
+// VU-1157 moved `format_user_context` from `commands::workflow::user_context`
+// to `commands::workflow::prompt`. The helper still produces the same
+// inline-only markdown block; the file-based `write_user_context_file` was
+// removed entirely.
 
 #[test]
-fn test_user_context_written_to_file() {
-    let ctx = crate::commands::workflow::user_context::format_user_context(
+fn test_user_context_inline_block_built_from_fields() {
+    let ctx = crate::commands::workflow::prompt::format_user_context(
         None,
         &[],
         None,
@@ -707,8 +712,8 @@ fn test_user_context_written_to_file() {
 }
 
 #[test]
-fn test_no_user_context_when_fields_empty() {
-    let ctx = crate::commands::workflow::user_context::format_user_context(
+fn test_user_context_inline_block_empty_when_fields_empty() {
+    let ctx = crate::commands::workflow::prompt::format_user_context(
         None,
         &[],
         None,

@@ -10,7 +10,6 @@ pub mod prompt;
 pub mod runtime;
 pub mod settings;
 pub mod step_config;
-pub mod user_context;
 
 // Re-export items used by callers outside this module via `commands::workflow::*`.
 
@@ -28,9 +27,6 @@ pub(crate) use claude_md::rebuild_claude_md;
 
 // evaluation
 pub(crate) use evaluation::get_step_output_files;
-
-// user_context
-pub(crate) use user_context::write_user_context_file;
 
 // ── LLM output coercion helpers ─────────────────────────────────────────────
 // LLMs occasionally drift on JSON types: numbers as strings, strings as numbers,
