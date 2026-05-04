@@ -1050,7 +1050,7 @@ pub fn check_skill_customized(
         let workspace_root_ok = settings
             .workspace_path
             .as_ref()
-            .is_some_and(|wp| is_under_root(&Path::new(wp).join(".claude").join("skills")));
+            .is_some_and(|wp| is_under_root(Path::new(wp)));
         let skills_path_ok = settings
             .skills_path
             .as_ref()

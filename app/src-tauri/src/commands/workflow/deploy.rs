@@ -63,12 +63,6 @@ fn compute_dir_sha(roots: &[&Path]) -> Result<String, String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-/// Public wrapper for `resolve_prompt_source_dirs` — used by `workspace.rs`
-/// to pass the bundled CLAUDE.md path into `rebuild_claude_md`.
-pub fn resolve_prompt_source_dirs_public(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf) {
-    resolve_prompt_source_dirs(app_handle)
-}
-
 /// Resolve the path to a bundled agent-sources subdirectory.
 /// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/{subdir}/`.
 /// In production: Tauri resource directory `agent-sources/{subdir}/`.
@@ -98,12 +92,9 @@ pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
     resolve_bundled_agent_sources_subdir(app_handle, "skills")
 }
 
-/// Resolve source paths for OpenHands agents from the app handle.
-/// Returns `(agents_dir, claude_md)` as owned PathBufs. `agents_dir` may be
-/// empty if not found (caller should check `.is_dir()` before using).
-/// `claude_md` is always an empty `PathBuf` — `agent-sources/claude/` was
-/// removed; callers that check `claude_md.is_file()` will no-op correctly.
-pub(crate) fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf) {
+/// Resolve the bundled OpenHands workspace agent source directory from the app handle.
+/// Returns an empty path when no bundled agents directory exists.
+pub(crate) fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> PathBuf {
     use tauri::Manager;
 
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -115,7 +106,7 @@ pub(crate) fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (Path
         .as_ref()
         .map(|r| r.join("agent-sources").join("workspace").join("agents"));
 
-    let agents_dir = match agents_src {
+    match agents_src {
         Some(ref p) if p.is_dir() => p.clone(),
         _ => {
             let resource = app_handle
@@ -129,9 +120,7 @@ pub(crate) fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (Path
                 PathBuf::new()
             }
         }
-    };
-
-    (agents_dir, PathBuf::new())
+    }
 }
 
 fn resolve_workspace_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
@@ -165,7 +154,7 @@ fn resolve_workspace_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
 
 /// Remove a workspace from the session cache so the next
 /// `ensure_workspace_prompts*` call will re-deploy OpenHands agent sources.
-/// Used by `clear_workspace` after deleting `.claude/`.
+/// Used by `clear_workspace` after removing legacy artifacts or `.agents/`.
 pub fn invalidate_workspace_cache(workspace_path: &str) {
     let mut cache = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
     cache.remove(workspace_path);
@@ -189,7 +178,7 @@ pub async fn ensure_workspace_prompts(
 ) -> Result<(), String> {
     // Extract paths from AppHandle before moving into the blocking closure
     // (AppHandle is !Send so it cannot cross the spawn_blocking boundary)
-    let (agents_dir, _) = resolve_prompt_source_dirs(app_handle);
+    let agents_dir = resolve_prompt_source_dirs(app_handle);
     let workspace_skills_dir = resolve_workspace_skills_dir(app_handle);
 
     if !agents_dir.is_dir() && !workspace_skills_dir.is_dir() {
@@ -316,7 +305,7 @@ pub fn ensure_workspace_prompts_sync(
     app_handle: &tauri::AppHandle,
     workspace_path: &str,
 ) -> Result<(), String> {
-    let (agents_dir, _) = resolve_prompt_source_dirs(app_handle);
+    let agents_dir = resolve_prompt_source_dirs(app_handle);
     let workspace_skills_dir = resolve_workspace_skills_dir(app_handle);
 
     if !agents_dir.is_dir() && !workspace_skills_dir.is_dir() {
@@ -329,7 +318,7 @@ pub fn ensure_workspace_prompts_sync(
 /// Re-deploy only the bundled workflow agents/skills under `.agents/`,
 /// preserving other workspace contents.
 pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> Result<(), String> {
-    let (agents_dir, _) = resolve_prompt_source_dirs(app_handle);
+    let agents_dir = resolve_prompt_source_dirs(app_handle);
     let workspace_skills_dir = resolve_workspace_skills_dir(app_handle);
     if agents_dir.is_dir() || workspace_skills_dir.is_dir() {
         copy_workspace_sources_to_openhands_layout(

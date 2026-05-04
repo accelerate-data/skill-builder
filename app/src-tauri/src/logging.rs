@@ -105,9 +105,6 @@ pub fn prune_transcript_files(workspace_path: &str) {
     let mut pruned: u32 = 0;
     let mut skills_affected: u32 = 0;
 
-    // Infrastructure directories to skip (all live under .claude/)
-    const SKIP_DIRS: &[&str] = &[".claude"];
-
     let entries = match std::fs::read_dir(workspace) {
         Ok(e) => e,
         Err(e) => {
@@ -123,9 +120,6 @@ pub fn prune_transcript_files(workspace_path: &str) {
         }
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        if SKIP_DIRS.contains(&name_str.as_ref()) {
-            continue;
-        }
 
         let logs_dir = path.join("logs");
         if !logs_dir.is_dir() {
@@ -283,20 +277,27 @@ mod tests {
     }
 
     #[test]
-    fn test_prune_skips_infrastructure_dirs() {
+    fn test_prune_legacy_claude_dirs_are_not_special_cased() {
         let tmp = tempdir().unwrap();
         let workspace = tmp.path();
 
-        // Create a logs/ dir inside .claude/ infrastructure directory (should be skipped)
+        // Legacy .claude workspace dirs should no longer be preserved by log pruning.
         let claude_logs = workspace.join(".claude").join("logs");
         fs::create_dir_all(&claude_logs).unwrap();
         fs::write(claude_logs.join("old.jsonl"), "{}").unwrap();
+        let past = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 86400);
+        let file = fs::File::options()
+            .write(true)
+            .open(claude_logs.join("old.jsonl"))
+            .unwrap();
+        file.set_times(fs::FileTimes::new().set_accessed(past).set_modified(past))
+            .unwrap();
 
         prune_transcript_files(workspace.to_str().unwrap());
 
         assert!(
-            claude_logs.join("old.jsonl").exists(),
-            "Files in infrastructure dirs should not be touched"
+            !claude_logs.join("old.jsonl").exists(),
+            "Legacy .claude logs should no longer be skipped by pruning"
         );
     }
 

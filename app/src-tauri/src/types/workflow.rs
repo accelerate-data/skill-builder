@@ -17,12 +17,12 @@ pub struct StepConfig {
     pub allowed_tools: Vec<String>,
     pub max_turns: u32,
     /// Canonical agent name passed to the SDK.
-    /// For top-level `.claude/agents/` agents this matches the frontmatter `name:` field.
+    /// For workspace `.agents/agents/` entries this matches the frontmatter `name:` field.
     /// For plugin-hosted agents this is `plugin-name:agent-name`; the SDK discovers the agent
     /// from the plugin's `agents/` dir.
     pub agent_name: String,
     /// Plugins required for this step. Each entry is a plugin directory name
-    /// (e.g. `"skill-creator"`) deployed under `.claude/plugins/`.
+    /// (e.g. `"skill-creator"`) resolved through the plugin marketplace.
     pub required_plugins: Vec<String>,
 }
 

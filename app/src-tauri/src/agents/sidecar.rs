@@ -17,8 +17,8 @@ pub struct SidecarConfig {
     pub model_base_url: Option<String>,
     #[serde(rename = "apiKey")]
     pub api_key: SecretString,
-    /// Workspace root directory (`{data_dir}/workspace`). Used for plugin
-    /// discovery (`.claude/plugins/`) and SDK settings sources.
+    /// Workspace root directory (`{data_dir}/workspace`). Used for workspace
+    /// scratch data and `.agents/` deployment.
     #[serde(rename = "workspaceRootDir")]
     pub workspace_root_dir: String,
     /// OpenHands local workspace for this run. Existing-skill workflows use the

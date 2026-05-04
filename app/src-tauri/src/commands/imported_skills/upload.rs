@@ -46,7 +46,6 @@ pub fn import_skill_from_file(
     argument_hint: Option<String>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
-    app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
     log::info!("[import_skill_from_file] name={}", name);
@@ -87,14 +86,6 @@ pub fn import_skill_from_file(
         &workspace_path,
         preferred_author.as_deref(),
     )?;
-    let (_, claude_md_src) = crate::commands::workflow::resolve_prompt_source_dirs_public(&app);
-    if claude_md_src.is_file() && !workspace_path.is_empty() {
-        if let Err(e) =
-            crate::commands::workflow::rebuild_claude_md(&claude_md_src, &workspace_path)
-        {
-            log::warn!("[import_skill_from_file] rebuild_claude_md failed: {}", e);
-        }
-    }
     Ok(skill_id)
 }
 
