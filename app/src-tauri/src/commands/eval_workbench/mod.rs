@@ -37,7 +37,7 @@ use std::sync::{Arc, Mutex};
 const DEFAULT_DESCRIPTION_CANDIDATE_COUNT: u32 = 3;
 const CURRENT_SKILL_CANDIDATE_ID: &str = "current-skill";
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct EvalWorkbenchRunManager(Arc<Mutex<HashMap<String, EvalWorkbenchRunState>>>);
 
 #[derive(Default, Clone)]
@@ -303,7 +303,29 @@ fn read_owned_description_candidate(
     Ok(candidate)
 }
 
-fn extract_completed_openhands_state<'a>(state: &'a serde_json::Value) -> Result<&'a serde_json::Value, String> {
+fn write_skill_description_to_disk(
+    db: &Db,
+    plugin_slug: &str,
+    skill_name: &str,
+    description: &str,
+) -> Result<(PathBuf, String), String> {
+    let skills_path = resolve_skills_path(db)?;
+    let skill_md_path = crate::skill_paths::resolve_skill_dir(
+        Path::new(&skills_path),
+        plugin_slug,
+        skill_name,
+    )
+    .join("SKILL.md");
+    let current_content = std::fs::read_to_string(&skill_md_path)
+        .map_err(|error| format!("Failed to read SKILL.md: {error}"))?;
+    let updated_content =
+        crate::commands::refine::output::update_skill_description(&current_content, description)?;
+    std::fs::write(&skill_md_path, updated_content)
+        .map_err(|error| format!("Failed to write SKILL.md: {error}"))?;
+    Ok((skill_md_path, current_content))
+}
+
+fn extract_completed_openhands_state(state: &serde_json::Value) -> Result<&serde_json::Value, String> {
     if state.get("type").and_then(|value| value.as_str()) != Some("conversation_state") {
         return Err("OpenHands eval result was not a conversation_state".to_string());
     }
@@ -892,12 +914,7 @@ async fn generate_description_candidates(
 }
 
 async fn build_completed_eval_run_with_deps<FExec, FExecFut, FEval, FEvalFut>(
-    runs: &EvalWorkbenchRunManager,
-    run_id: String,
-    prompt_set: EvalPromptSet,
-    sidecar_candidates: Vec<SidecarEvalCandidate>,
-    sidecar_cases: Vec<EvalCase>,
-    persisted_candidates: Vec<crate::db::DescriptionCandidate>,
+    context: EvalRunBuildContext,
     execute_cases: FExec,
     evaluate_run: FEval,
  ) -> Result<NewEvalRun, String>
@@ -909,13 +926,16 @@ where
         Output = Result<crate::agents::promptfoo_sidecar::protocol::EvalRunResult, String>,
     >,
 {
-    let executions = execute_cases(
-        prompt_set.clone(),
-        sidecar_cases.clone(),
-        sidecar_candidates.clone(),
-    )
-    .await?;
-    ensure_eval_workbench_not_cancelled(runs, &run_id)?;
+    let EvalRunBuildContext {
+        runs,
+        run_id,
+        prompt_set,
+        sidecar_candidates,
+        sidecar_cases,
+        persisted_candidates,
+    } = context;
+    let executions = execute_cases(prompt_set.clone(), sidecar_cases.clone(), sidecar_candidates.clone()).await?;
+    ensure_eval_workbench_not_cancelled(&runs, &run_id)?;
     let (persisted_candidates, candidate_id_map) =
         clone_persisted_candidates_for_completed_run(&persisted_candidates);
     let sidecar_request = RunEvalRequest::new(
@@ -928,7 +948,7 @@ where
         executions,
     );
     let result = evaluate_run(sidecar_request).await?;
-    ensure_eval_workbench_not_cancelled(runs, &run_id)?;
+    ensure_eval_workbench_not_cancelled(&runs, &run_id)?;
 
     Ok(NewEvalRun {
         id: Some(run_id),
@@ -955,6 +975,15 @@ where
             .collect(),
         description_candidates: persisted_candidates,
     })
+}
+
+struct EvalRunBuildContext {
+    runs: EvalWorkbenchRunManager,
+    run_id: String,
+    prompt_set: EvalPromptSet,
+    sidecar_candidates: Vec<SidecarEvalCandidate>,
+    sidecar_cases: Vec<EvalCase>,
+    persisted_candidates: Vec<crate::db::DescriptionCandidate>,
 }
 
 async fn execute_performance_cases(
@@ -1206,12 +1235,14 @@ pub async fn run_eval_workbench(
     let run_id_for_execute = run_id.clone();
     let run_manager_for_execute = EvalWorkbenchRunManager(runs.0.clone());
     let completed_run_result = build_completed_eval_run_with_deps(
-        &runs,
-        run_id.clone(),
-        prompt_set,
-        sidecar_candidates,
-        sidecar_cases,
-        persisted_candidates,
+        EvalRunBuildContext {
+            runs: run_manager_for_execute.clone(),
+            run_id: run_id.clone(),
+            prompt_set,
+            sidecar_candidates,
+            sidecar_cases,
+            persisted_candidates,
+        },
         |prompt_set, sidecar_cases, sidecar_candidates| async move {
             match prompt_set.mode {
                 EvalWorkbenchMode::Performance => {
@@ -1351,25 +1382,35 @@ pub fn apply_description_candidate(
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
     validate_id("Candidate id", &candidate_id)?;
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let candidate = read_owned_description_candidate(
-        &conn,
-        &candidate_id,
-        &plugin_slug,
-        &skill_name,
-        None,
-    )?;
-    set_skill_behaviour_in_plugin(
-        &conn,
-        &skill_name,
-        &plugin_slug,
-        Some(&candidate.description),
-        None,
-        None,
-        None,
-        None,
-        None,
-    )?;
+    let candidate = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        read_owned_description_candidate(
+            &conn,
+            &candidate_id,
+            &plugin_slug,
+            &skill_name,
+            None,
+        )?
+    };
+    let (skill_md_path, previous_content) =
+        write_skill_description_to_disk(&db, &plugin_slug, &skill_name, &candidate.description)?;
+    if let Err(error) = (|| -> Result<(), String> {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        set_skill_behaviour_in_plugin(
+            &conn,
+            &skill_name,
+            &plugin_slug,
+            Some(&candidate.description),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+    })() {
+        let _ = std::fs::write(&skill_md_path, previous_content);
+        return Err(error);
+    }
     log::info!(
         "[apply_description_candidate] skill={} plugin={} candidate={}",
         skill_name,

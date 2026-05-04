@@ -428,7 +428,7 @@ describe("WorkspaceDescription", () => {
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
         runId: expect.any(String),
         promptSetId: "prompt-set-trigger",
-        candidateIds: ["current-skill", "candidate-1", "candidate-2"],
+        candidateIds: ["candidate-1", "candidate-2"],
       }),
     );
 
@@ -513,7 +513,7 @@ describe("WorkspaceDescription", () => {
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
         runId: expect.any(String),
         promptSetId: "prompt-set-trigger",
-        candidateIds: ["current-skill", "candidate-1", "candidate-2"],
+        candidateIds: ["candidate-1", "candidate-2"],
       }),
     );
 

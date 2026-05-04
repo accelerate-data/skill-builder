@@ -14,7 +14,7 @@ export type PromptfooLikeResult = {
     output?: unknown;
     text?: string;
   };
-  failureReason?: string;
+  failureReason?: string | number;
   namedScores?: Record<string, number>;
 };
 
@@ -52,7 +52,11 @@ export function normalizePromptfooResult(
     passed,
     score,
     output: rawResult.response?.output ?? rawResult.response?.text ?? null,
-    ...(rawResult.failureReason ? { reason: rawResult.failureReason } : {}),
+    ...(rawResult.failureReason !== undefined &&
+    rawResult.failureReason !== null &&
+    String(rawResult.failureReason).length > 0
+      ? { reason: String(rawResult.failureReason) }
+      : {}),
   };
 }
 

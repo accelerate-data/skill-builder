@@ -96,9 +96,8 @@ async function handleRunEvalRequest(
     prompts: ["{{prompt}}"],
     providers,
     tests,
-    evaluateOptions: {
-      maxConcurrency: 1,
-    },
+  }, {
+    maxConcurrency: 1,
   });
 
   writeEvent(output, {
