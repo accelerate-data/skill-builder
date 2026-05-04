@@ -1,5 +1,5 @@
 use std::net::TcpListener;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -9,6 +9,33 @@ pub const OPENHANDS_AGENT_SERVER_PACKAGE: &str = "openhands-agent-server==1.19.1
 pub const OPENHANDS_TOOLS_PACKAGE: &str = "openhands-tools==1.19.1";
 pub const OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES: &[&str] = &["libtmux"];
 const CACHED_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// Path to the uv binary bundled with the app, if present.
+/// `None` (outer) means not yet initialized.
+/// `Some(None)` means initialized but no bundled binary found — fall back to system uvx.
+/// `Some(Some(path))` means the bundled binary is at `path`.
+static BUNDLED_UV_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+/// Call once at app startup from the Tauri setup hook.
+/// Checks for a `uv` (or `uv.exe` on Windows) binary in `resource_dir` and
+/// stores the path so `python_module_command_parts` can use it instead of
+/// requiring a system-installed `uvx`.
+pub fn init_bundled_uv_path(resource_dir: &Path) {
+    let uv_name = if cfg!(windows) { "uv.exe" } else { "uv" };
+    let candidate = resource_dir.join(uv_name);
+    if candidate.is_file() {
+        log::info!(
+            "[openhands-agent-server] using bundled uv at {}",
+            candidate.display()
+        );
+        let _ = BUNDLED_UV_PATH.set(Some(candidate));
+    } else {
+        log::info!(
+            "[openhands-agent-server] no bundled uv found in resource dir; falling back to system uvx"
+        );
+        let _ = BUNDLED_UV_PATH.set(None);
+    }
+}
 
 /// Resolve the absolute path the OpenHands SDK should persist conversation
 /// state and per-event JSON to. Used at Agent Server spawn time as the
@@ -100,19 +127,27 @@ impl OpenHandsServerCommand {
 }
 
 fn python_module_command_parts() -> (String, Vec<String>) {
-    (
-        "uvx".to_string(),
-        vec![
-            "--from".to_string(),
-            OPENHANDS_AGENT_SERVER_PACKAGE.to_string(),
-            "--with".to_string(),
-            OPENHANDS_TOOLS_PACKAGE.to_string(),
-            "--with".to_string(),
-            "libtmux".to_string(),
-            "python".to_string(),
-            "-m".to_string(),
-        ],
-    )
+    let package_args = vec![
+        "--from".to_string(),
+        OPENHANDS_AGENT_SERVER_PACKAGE.to_string(),
+        "--with".to_string(),
+        OPENHANDS_TOOLS_PACKAGE.to_string(),
+        "--with".to_string(),
+        "libtmux".to_string(),
+        "python".to_string(),
+        "-m".to_string(),
+    ];
+
+    // Use bundled uv when available (set by init_bundled_uv_path at startup).
+    // OnceLock::get() returns None when not yet initialized (e.g. unit tests),
+    // which correctly falls through to the system-uvx path.
+    if let Some(Some(uv_path)) = BUNDLED_UV_PATH.get() {
+        let mut args = vec!["tool".to_string(), "run".to_string()];
+        args.extend(package_args);
+        return (uv_path.to_string_lossy().into_owned(), args);
+    }
+
+    ("uvx".to_string(), package_args)
 }
 
 #[derive(Debug)]

@@ -271,6 +271,22 @@ pub fn run() {
 
             log::info!("Skill Builder starting up");
 
+            // Resolve bundled uv binary for the OpenHands agent server.
+            // Falls back to system uvx when the binary is not present (dev builds).
+            match app.path().resource_dir() {
+                Ok(resource_dir) => {
+                    crate::agents::openhands_server::process::init_bundled_uv_path(&resource_dir);
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[startup] could not resolve resource_dir for bundled uv: {e}; will use system uvx"
+                    );
+                    crate::agents::openhands_server::process::init_bundled_uv_path(
+                        std::path::Path::new(""),
+                    );
+                }
+            }
+
             // Initialize workspace directory and deploy bundled prompts
             let db_state = app.state::<db::Db>();
             let handle = app.handle().clone();

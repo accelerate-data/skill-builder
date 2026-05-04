@@ -85,6 +85,36 @@ jobs:
           node -e "const fs=require('fs'); const f='package.json'; const c=JSON.parse(fs.readFileSync(f,'utf8')); c.version=process.env.RELEASE_VERSION; fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n');"
           sed -i.bak "s/^version = \".*\"/version = \"${RELEASE_VERSION}\"/" src-tauri/Cargo.toml && rm -f src-tauri/Cargo.toml.bak
 
+      - name: Download uv binary (macOS)
+        if: matrix.os == 'macos-latest'
+        env:
+          UV_VERSION: "0.5.0"
+        run: |
+          curl -fsSL \
+            "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-aarch64-apple-darwin.tar.gz" \
+            -o uv.tar.gz
+          mkdir uv-bin
+          tar xzf uv.tar.gz -C uv-bin
+          UV_BIN=$(find uv-bin -name "uv" -not -name "uvx" -type f | head -1)
+          chmod +x "$UV_BIN"
+          echo "UV_BIN=$UV_BIN" >> "$GITHUB_ENV"
+          rm uv.tar.gz
+
+      - name: Download uv binary (Windows)
+        if: matrix.os == 'windows-latest'
+        env:
+          UV_VERSION: "0.5.0"
+        shell: bash
+        run: |
+          curl -fsSL \
+            "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-pc-windows-msvc.zip" \
+            -o uv.zip
+          mkdir uv-bin
+          7z x uv.zip -ouv-bin -y
+          UV_BIN=$(find uv-bin -name "uv.exe" -type f | head -1)
+          echo "UV_BIN=$UV_BIN" >> "$GITHUB_ENV"
+          rm uv.zip
+
       - name: Build Tauri app (macOS)
         if: matrix.os == 'macos-latest'
         working-directory: app
@@ -104,6 +134,11 @@ jobs:
           STAGE="SkillBuilder-v${VERSION}-macos"
           mkdir -p "$STAGE"
           cp -R "app/src-tauri/target/release/bundle/macos/Skill Builder.app" "$STAGE/"
+
+          # Inject bundled uv into the app bundle so users don't need uv pre-installed
+          cp "$UV_BIN" "$STAGE/Skill Builder.app/Contents/Resources/uv"
+          chmod +x "$STAGE/Skill Builder.app/Contents/Resources/uv"
+
           cat > "$STAGE/run.sh" << 'SCRIPT'
           #!/bin/bash
           DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -135,6 +170,9 @@ jobs:
           mkdir -p "$STAGE/agent-sources" "$STAGE/workspace"
           cp -r "agent-sources/skills" "$STAGE/agent-sources/skills"
           cp -r "agent-sources/workspace/." "$STAGE/workspace/"
+
+          # Include bundled uv so users don't need uv pre-installed
+          cp "$UV_BIN" "$STAGE/uv.exe"
 
           node scripts/ci/verify-release-stage.mjs "$STAGE" windows
 

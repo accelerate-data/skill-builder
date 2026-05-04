@@ -23,6 +23,9 @@ docs/.vitepress/dist/
 app/src-tauri/resources/node/*
 !app/src-tauri/resources/node/.gitkeep
 
+# uv binary download staging dir (CI only)
+uv-bin/
+
 # Claude Code — ignore local config, track committed skills
 .claude/worktrees/
 
