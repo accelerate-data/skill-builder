@@ -244,7 +244,13 @@ fn test_workflow_steps_use_native_openhands_dispatch() {
 
 #[test]
 fn research_prompt_renders_app_owned_openhands_task_context() {
-    let prompt = build_step0_prompt("lead-conversion", "/tmp/workspace", DEFAULT_PLUGIN_SLUG, 4);
+    let prompt = build_step0_prompt(
+        "lead-conversion",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        4,
+        "",
+    );
 
     assert!(prompt.contains("You are in Step 0: Research"));
     assert!(prompt.contains("Goal: discover the minimum decisions"));
@@ -264,10 +270,15 @@ fn research_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("otherwise research inline"));
     assert!(prompt.contains("We are writing the skill lead-conversion."));
     assert!(prompt.contains("/tmp/workspace/skills/lead-conversion"));
+    // VU-1157: workspace-relative file path lines are no longer in the prompt; context is inlined
     assert!(
-        prompt.contains("User context file: /tmp/workspace/skills/lead-conversion/user-context.md")
+        !prompt.contains("User context file:"),
+        "step 0 prompt must not have 'User context file:' instruction"
     );
-    assert!(prompt.contains("Context directory: /tmp/workspace/skills/lead-conversion/context"));
+    assert!(
+        !prompt.contains("Context directory:"),
+        "step 0 prompt must not have 'Context directory:' instruction"
+    );
     assert!(prompt.contains("Maximum research dimensions before scope warning: 4"));
     assert!(prompt.contains("\"research_output\": {"));
     assert!(prompt.contains("\"sections\": []"));
@@ -300,6 +311,23 @@ fn research_prompt_renders_app_owned_openhands_task_context() {
         !prompt.contains("research-agent"),
         "step 0 prompt should route through skill-creator, not research-agent"
     );
+}
+
+#[test]
+fn research_prompt_includes_user_context_block_when_provided() {
+    let user_ctx = "## User Context\n\n### Skill\n**Name**: lead-conversion\n**Author**: octocat";
+    let prompt = build_step0_prompt(
+        "lead-conversion",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        4,
+        user_ctx,
+    );
+    assert!(
+        prompt.contains("## User Context"),
+        "step 0 prompt should include injected user context block"
+    );
+    assert!(prompt.contains("**Name**: lead-conversion"));
 }
 
 #[test]
@@ -349,11 +377,17 @@ fn research_sidecar_config_uses_skill_creator_openhands_contract() {
 
 #[test]
 fn detailed_research_prompt_renders_clean_break_task_context() {
-    let prompt = build_step1_prompt("pipeline-value", "/tmp/workspace", DEFAULT_PLUGIN_SLUG);
+    let prompt = build_step1_prompt(
+        "pipeline-value",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        "",
+        "{}",
+        "No evaluation verdicts available. Treat all answers as unevaluated.",
+    );
 
     assert!(prompt.contains("You are in Step 1: Detailed Research"));
     assert!(prompt.contains("Goal: repair the clarification set"));
-    assert!(prompt.contains("Reasoning focus: use answer-evaluation.json"));
     assert!(prompt.contains("missing, vague"));
     assert!(prompt.contains("Do not reopen settled areas"));
     assert!(prompt.contains("## Capture Intent"));
@@ -371,15 +405,27 @@ fn detailed_research_prompt_renders_clean_break_task_context() {
     assert!(prompt.contains("otherwise research inline"));
     assert!(prompt.contains("We are writing the skill pipeline-value."));
     assert!(prompt.contains("/tmp/workspace/skills/pipeline-value"));
+    // VU-1157: workspace-relative file path lines are no longer in the prompt; context is inlined
     assert!(
-        prompt.contains("User context file: /tmp/workspace/skills/pipeline-value/user-context.md")
+        !prompt.contains("User context file:"),
+        "step 1 prompt must not have 'User context file:' instruction"
     );
-    assert!(prompt.contains(
-        "Answer evaluation file: /tmp/workspace/skills/pipeline-value/answer-evaluation.json"
-    ));
-    assert!(prompt.contains(
-        "Clarifications file: /tmp/workspace/skills/pipeline-value/context/clarifications.json"
-    ));
+    assert!(
+        !prompt.contains("Answer evaluation file:"),
+        "step 1 prompt must not have 'Answer evaluation file:' instruction"
+    );
+    assert!(
+        !prompt.contains("Clarifications file:"),
+        "step 1 prompt must not have 'Clarifications file:' instruction"
+    );
+    assert!(
+        !prompt.contains("Context directory:"),
+        "step 1 prompt must not have 'Context directory:' instruction"
+    );
+    // Inline context placeholders are resolved
+    assert!(prompt.contains("## Current Clarifications"));
+    assert!(prompt.contains("## Answer Evaluation Verdicts"));
+    assert!(prompt.contains("No evaluation verdicts available"));
     assert!(prompt.contains("detailed-research output"));
     assert!(prompt.contains("DetailedResearchOutput"));
     assert!(prompt.contains(".agents/skills/shared/output-schemas/step-1-detailed-research.json"));
@@ -703,7 +749,8 @@ fn test_workflow_output_format_is_set_for_json_contract_workflow_steps() {
 
 #[test]
 fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
-    let prompt = build_step2_prompt("lead-conversion", "/tmp/workspace", DEFAULT_PLUGIN_SLUG);
+    let prompt =
+        build_step2_prompt("lead-conversion", "/tmp/workspace", DEFAULT_PLUGIN_SLUG, "", "{}");
 
     assert!(prompt.contains("You are in Step 2: Confirm Decisions"));
     assert!(prompt.contains("Goal: convert clarified user intent"));
@@ -712,10 +759,21 @@ fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("We are writing the skill lead-conversion."));
     assert!(prompt.contains("Task kind: workflow.confirm_decisions"));
     assert!(prompt.contains("/tmp/workspace/skills/lead-conversion"));
+    // VU-1157: workspace-relative file path lines are no longer in prompt; context is inlined
     assert!(
-        prompt.contains("User context file: /tmp/workspace/skills/lead-conversion/user-context.md")
+        !prompt.contains("User context file:"),
+        "step 2 prompt must not have 'User context file:' instruction"
     );
-    assert!(prompt.contains("Context directory: /tmp/workspace/skills/lead-conversion/context"));
+    assert!(
+        !prompt.contains("Clarifications file:"),
+        "step 2 prompt must not have 'Clarifications file:' instruction"
+    );
+    assert!(
+        !prompt.contains("Context directory:"),
+        "step 2 prompt must not have 'Context directory:' instruction"
+    );
+    // Inline context section must be present
+    assert!(prompt.contains("## Clarifications Record"));
     assert!(prompt.contains("The user has already answered clarification questions"));
     assert!(prompt.contains("canonical set of decisions"));
     assert!(prompt.contains("downstream skill-writing implications"));
@@ -775,6 +833,9 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
         "/tmp/skills",
         Some("octocat"),
         Some("2026-05-01T12:00:00Z"),
+        "",
+        "{}",
+        "{}",
     );
 
     assert!(prompt.contains("workflow.skill_generation"));
@@ -787,16 +848,27 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
     assert!(!prompt.contains("eval ideas"));
     assert!(!prompt.contains("suggest-eval-ideas"));
     assert!(!prompt.contains("description optimization"));
+    assert!(
+        !prompt.contains("Eval definitions file:"),
+        "step 3 prompt must not have 'Eval definitions file:' named-path instruction"
+    );
     assert!(prompt.contains("Use the `creating-skills` skill"));
     assert!(prompt.contains("synthesize a generation brief"));
     assert!(prompt.contains("Pass this brief to `creating-skills`"));
-    assert!(prompt.contains("keep the raw contents of `user-context.md`, `decisions.json`, and"));
+    // VU-1157: user-context.md file read instruction removed; context inlined
+    assert!(
+        !prompt.contains("Read these workspace files as source material:"),
+        "step 3 prompt must not have 'Read these workspace files' instruction"
+    );
+    // Inline context sections are present
+    assert!(prompt.contains("## Decisions Record"));
+    assert!(prompt.contains("## Clarifications Record (supporting detail)"));
     assert!(prompt.contains("Do not reduce the"));
     assert!(prompt.contains("handoff to only the summary brief"));
     assert!(prompt.contains("metadata:"));
     assert!(prompt.contains("  version: \"1.0.0\""));
-    assert!(prompt.contains("context/decisions.json"));
-    assert!(prompt.contains("context/clarifications.json"));
+    assert!(prompt.contains("decisions.json"));
+    assert!(prompt.contains("clarifications.json"));
     assert!(prompt.contains("fresh-context verification"));
     assert!(prompt.contains("run exactly one re-verification"));
     assert!(prompt.contains("Do not invoke a separate validator skill"));
@@ -2189,6 +2261,7 @@ fn test_build_step0_prompt_uses_openhands_native_research_routing() {
         "/home/user/.vibedata/skill-builder",
         DEFAULT_PLUGIN_SLUG,
         4,
+        "",
     );
 
     assert!(prompt.contains("We are writing the skill my-skill."));

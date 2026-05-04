@@ -3,12 +3,6 @@ use crate::db::Db;
 use super::guards::validate_decisions_exist_inner;
 
 /// Shared settings extracted from the DB, used by `run_workflow_step`.
-///
-/// VU-1157 dropped the `write_user_context_file` call site that consumed the
-/// skill-metadata fields below. They remain populated in the struct because
-/// Task 5 will inline `format_user_context` into prompt rendering, which
-/// reads exactly these fields. The `dead_code` allow is transitional.
-#[allow(dead_code)]
 pub(crate) struct WorkflowSettings {
     pub plugin_slug: String,
     pub skills_path: String,

@@ -12,7 +12,7 @@ questions matter. The skill carries the purpose-specific research lenses for
 business process, source customization, data engineering, and platform
 standards.
 
-When user-context.md names concrete platform or source-system concepts, preserve
+When the user context names concrete platform or source-system concepts, preserve
 those terms in the clarification questions. For data engineering standards,
 questions should cover the relevant modeling, reconciliation, data quality,
 dbt, dlt, Fabric Lakehouse, and deployment standards. For source-system
@@ -28,7 +28,7 @@ future skill.
 
 ## Capture Intent
 
-Start by understanding the user's intent from user-context.md and any supplied
+Start by understanding the user's intent from the user context provided above and any supplied
 reference documents. The user may need to fill gaps, and should confirm before
 proceeding to the next workflow step.
 
@@ -55,11 +55,11 @@ prepared with context that reduces the burden on the user.
 
 We are writing the skill {{skill_name}}.
 Workspace directory: {{workspace_dir}}
-User context file: {{workspace_dir}}/user-context.md
-Context directory: {{workspace_dir}}/context
 Maximum research dimensions before scope warning: {{max_dimensions}}
 
 All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
+
+{{user_context_block}}
 
 Research must run as one inline flow and return only final output.
 Do not emit intermediate JSON, markdown summaries, dimensions_selected,
@@ -67,10 +67,10 @@ research_plan, research_lens, dimension_scores, selected_dimensions,
 topic_relevance, dimensions_evaluated, or consolidation handoff text.
 
 Do not inspect old logs or previous run transcripts as research input. Use only
-user-context.md, user-provided reference documents, current context artifacts,
+the user context provided above, any reference documents already listed there,
 and external documentation when useful.
 
-Do not trigger the scope guard merely because user-context.md is detailed. In
+Do not trigger the scope guard merely because the user context is detailed. In
 Step 0, produce clarification questions unless the context is missing,
 placeholder-only, unrelated to reusable skill behavior, or already explicitly
 answers the core intent, trigger, output, test, edge-case, and purpose-specific

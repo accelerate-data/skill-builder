@@ -14,8 +14,8 @@ questions for general completeness or curiosity.
 
 ## Capture Intent
 
-Use the existing clarification record, answer-evaluation.json, user-context.md,
-and any supplied reference documents to check whether the workflow has enough
+Use the existing clarification record, the answer evaluation verdicts above, the user context
+provided above, and any supplied reference documents to check whether the workflow has enough
 intent to proceed. The user may need to fill gaps, and should confirm before
 proceeding to the next workflow step.
 
@@ -42,16 +42,23 @@ prepared with context that reduces the burden on the user.
 
 We are writing the skill {{skill_name}}.
 Workspace directory: {{workspace_dir}}
-User context file: {{workspace_dir}}/user-context.md
-Answer evaluation file: {{workspace_dir}}/answer-evaluation.json
-Clarifications file: {{workspace_dir}}/context/clarifications.json
-Context directory: {{workspace_dir}}/context
 
 All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
 
-Read user-context.md, answer-evaluation.json, and context/clarifications.json.
-Read every existing section, question, answer_text, choices, recommendation, and refinement in context/clarifications.json. Use the human's current responses together with answer-evaluation.json to decide what is still missing.
-Use answer-evaluation.json as the source of truth for which answers are clear, vague, missing, contradictory, or need refinement. Do not reclassify those verdicts.
+{{user_context_block}}
+
+## Current Clarifications
+
+The full clarification record is provided below. Use it as your source of truth for existing sections, questions, answers, and refinements.
+
+{{clarifications_json}}
+
+## Answer Evaluation Verdicts
+
+{{answer_verdicts_block}}
+
+Read every existing section, question, answer_text, choices, recommendation, and refinement in the clarifications record above. Use the human's current responses together with the answer evaluation verdicts above to decide what is still missing.
+Use the answer evaluation verdicts above as the source of truth for which answers are clear, vague, missing, contradictory, or need refinement. Do not reclassify those verdicts.
 
 Before returning, read `.agents/skills/shared/output-schemas/step-1-detailed-research.json` and ensure the final detailed-research output follows that structural schema. Use `.agents/skills/shared/schemas.md` for semantic invariants such as counts, required fields, and question shape.
 
