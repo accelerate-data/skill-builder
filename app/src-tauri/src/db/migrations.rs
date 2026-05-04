@@ -47,6 +47,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (42, run_performance_indexes_migration),
     (43, run_openhands_settings_migration),
     (44, run_eval_workbench_migration),
+    (45, run_workflow_artifact_tables_migration),
 ];
 
 pub(super) fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -2030,5 +2031,139 @@ pub(super) fn run_plugin_upgrade_locked_migration(
         )?;
         log::info!("migration 39: added upgrade_locked column to plugins");
     }
+    Ok(())
+}
+
+/// Migration 44: workflow artifact tables for clarifications and decisions (VU-1157).
+///
+/// Creates seven tables that hold the canonical, fully normalized state for
+/// workflow artifacts: clarifications (1:1 per skill) with sections, questions,
+/// choices, and notes; decisions (1:1 per skill) with items.
+///
+/// All child tables are keyed by `skill_id TEXT` and CASCADE on delete from
+/// their parent. `clarification_questions` self-references via
+/// `parent_question_id` for refinements.
+///
+/// Booleans are INTEGER 0/1 (existing convention). Timestamps are unix-ms
+/// INTEGER. Tri-state booleans (`scope_recommendation`) accept NULL/0/1.
+/// Enum columns (`eval_verdict`, `decision_items.status`,
+/// `clarification_questions.answer_verdict`,
+/// `decisions.contradictory_inputs_state`) are stored as TEXT and validated at
+/// the unpack boundary in higher-level code.
+pub(super) fn run_workflow_artifact_tables_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    // Note: the parent rows (`clarifications`, `decisions`) do not declare an
+    // FK to `skills`. The `skills` table's only UNIQUE keys are `id`
+    // (INTEGER PK) and `(plugin_id, name)`; there is no UNIQUE on `name` alone
+    // since the plugin-ownership migration. Per the repo data-integrity rule,
+    // the application is responsible for cleaning up artifacts when a skill is
+    // deleted — see `delete_clarifications` / `delete_decisions`.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS clarifications (
+            skill_id                  TEXT PRIMARY KEY,
+            version                   TEXT NOT NULL,
+            refinement_count          INTEGER NOT NULL DEFAULT 0,
+            must_answer_count         INTEGER NOT NULL DEFAULT 0,
+            question_count            INTEGER NOT NULL DEFAULT 0,
+            section_count             INTEGER NOT NULL DEFAULT 0,
+            title                     TEXT NOT NULL,
+            scope_recommendation      INTEGER,
+            scope_reason              TEXT,
+            scope_next_action         TEXT,
+            error_code                TEXT,
+            error_message             TEXT,
+            warning_code              TEXT,
+            warning_message           TEXT,
+            eval_verdict              TEXT,
+            eval_reasoning            TEXT,
+            eval_at                   INTEGER,
+            eval_answered_count       INTEGER,
+            eval_empty_count          INTEGER,
+            eval_vague_count          INTEGER,
+            eval_contradictory_count  INTEGER,
+            created_at                INTEGER NOT NULL,
+            updated_at                INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS clarification_sections (
+            skill_id    TEXT NOT NULL REFERENCES clarifications(skill_id) ON DELETE CASCADE,
+            section_id  INTEGER NOT NULL,
+            ordinal     INTEGER NOT NULL,
+            title       TEXT NOT NULL,
+            description TEXT,
+            PRIMARY KEY (skill_id, section_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS clarification_questions (
+            skill_id              TEXT NOT NULL REFERENCES clarifications(skill_id) ON DELETE CASCADE,
+            question_id           TEXT NOT NULL,
+            section_id            INTEGER NOT NULL,
+            parent_question_id    TEXT,
+            ordinal               INTEGER NOT NULL,
+            title                 TEXT NOT NULL,
+            text                  TEXT NOT NULL,
+            must_answer           INTEGER NOT NULL DEFAULT 0,
+            answer_choice         TEXT,
+            answer_text           TEXT,
+            recommendation        TEXT,
+            answer_verdict        TEXT,
+            answer_verdict_reason TEXT,
+            PRIMARY KEY (skill_id, question_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS clarification_choices (
+            skill_id    TEXT NOT NULL REFERENCES clarifications(skill_id) ON DELETE CASCADE,
+            question_id TEXT NOT NULL,
+            choice_id   TEXT NOT NULL,
+            ordinal     INTEGER NOT NULL,
+            text        TEXT NOT NULL,
+            is_other    INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (skill_id, question_id, choice_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS clarification_notes (
+            note_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+            skill_id TEXT NOT NULL REFERENCES clarifications(skill_id) ON DELETE CASCADE,
+            ordinal  INTEGER NOT NULL,
+            type     TEXT NOT NULL,
+            title    TEXT NOT NULL,
+            body     TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS decisions (
+            skill_id                   TEXT PRIMARY KEY,
+            version                    TEXT NOT NULL,
+            round                      INTEGER NOT NULL DEFAULT 0,
+            decision_count             INTEGER NOT NULL DEFAULT 0,
+            conflicts_resolved         INTEGER NOT NULL DEFAULT 0,
+            contradictory_inputs_state TEXT,
+            scope_recommendation       INTEGER,
+            created_at                 INTEGER NOT NULL,
+            updated_at                 INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS decision_items (
+            skill_id          TEXT NOT NULL REFERENCES decisions(skill_id) ON DELETE CASCADE,
+            decision_id       TEXT NOT NULL,
+            ordinal           INTEGER NOT NULL,
+            title             TEXT NOT NULL,
+            original_question TEXT NOT NULL,
+            decision          TEXT NOT NULL,
+            implication       TEXT NOT NULL,
+            status            TEXT NOT NULL,
+            PRIMARY KEY (skill_id, decision_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_clarification_questions_parent
+            ON clarification_questions(skill_id, parent_question_id);
+        CREATE INDEX IF NOT EXISTS idx_clarification_questions_section
+            ON clarification_questions(skill_id, section_id);
+        CREATE INDEX IF NOT EXISTS idx_clarification_choices_question
+            ON clarification_choices(skill_id, question_id);
+        CREATE INDEX IF NOT EXISTS idx_decision_items_skill
+            ON decision_items(skill_id);",
+    )?;
+    log::info!("migration 44: created workflow artifact tables (clarifications + decisions)");
     Ok(())
 }

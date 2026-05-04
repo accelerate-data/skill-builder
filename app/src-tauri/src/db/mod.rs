@@ -12,6 +12,7 @@ pub mod settings;
 pub mod skills;
 pub mod usage;
 pub mod workflow;
+pub mod workflow_artifacts;
 
 pub use documents::*;
 pub use eval_workbench::*;
