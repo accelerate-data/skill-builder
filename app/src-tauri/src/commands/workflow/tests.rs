@@ -3427,3 +3427,464 @@ fn test_format_user_context_includes_intake_json_context() {
 
 // VU-1157: write_user_context_file deleted; the formatter is exercised by
 // the format_user_context tests above.
+
+// ---------------------------------------------------------------------------
+// Materialization round-trip tests (VU-1157 Task 10)
+// ---------------------------------------------------------------------------
+
+mod materialization {
+    use super::*;
+    use crate::commands::workflow::guards;
+
+    fn clarifications_fixture() -> serde_json::Value {
+        serde_json::json!({
+            "version": "1",
+            "metadata": {
+                "title": "Lead Conversion Skill",
+                "question_count": 4,
+                "section_count": 2,
+                "refinement_count": 0,
+                "must_answer_count": 2,
+                "priority_questions": []
+            },
+            "sections": [
+                {
+                    "id": 1,
+                    "title": "Intent and Trigger",
+                    "questions": [
+                        {
+                            "id": "Q1",
+                            "title": "Primary use case",
+                            "text": "What is the primary use case for this skill?",
+                            "must_answer": true,
+                            "recommendation": "A",
+                            "choices": [
+                                {"id": "A", "text": "Lead scoring and routing", "is_other": false},
+                                {"id": "B", "text": "Pipeline forecasting", "is_other": false},
+                                {"id": "C", "text": "Other", "is_other": true}
+                            ],
+                            "refinements": []
+                        },
+                        {
+                            "id": "Q2",
+                            "title": "Trigger conditions",
+                            "text": "When should this skill activate?",
+                            "must_answer": true,
+                            "choices": [
+                                {"id": "A", "text": "On inbound lead arrival", "is_other": false},
+                                {"id": "B", "text": "On CRM status change", "is_other": false},
+                                {"id": "C", "text": "Other", "is_other": true}
+                            ],
+                            "refinements": []
+                        }
+                    ]
+                },
+                {
+                    "id": 2,
+                    "title": "Output Format",
+                    "questions": [
+                        {
+                            "id": "Q3",
+                            "title": "Output format",
+                            "text": "What output format is expected?",
+                            "must_answer": false,
+                            "choices": [
+                                {"id": "A", "text": "Structured JSON", "is_other": false},
+                                {"id": "B", "text": "Free text summary", "is_other": false},
+                                {"id": "C", "text": "Other", "is_other": true}
+                            ],
+                            "refinements": []
+                        },
+                        {
+                            "id": "Q4",
+                            "title": "Target audience",
+                            "text": "Who consumes this skill output?",
+                            "must_answer": false,
+                            "choices": [
+                                {"id": "A", "text": "Sales reps", "is_other": false},
+                                {"id": "B", "text": "Marketing ops", "is_other": false},
+                                {"id": "C", "text": "Other", "is_other": true}
+                            ],
+                            "refinements": []
+                        }
+                    ]
+                }
+            ],
+            "notes": []
+        })
+    }
+
+    #[test]
+    fn step0_full_roundtrip() {
+        let db = db_with_seeded_skill("rt-step0");
+        let json = serde_json::json!({
+            "status": "research_complete",
+            "question_count": 4,
+            "research_output": clarifications_fixture()
+        });
+
+        materialize_workflow_step_output_value(&db, "rt-step0", 0, &json).unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let record = crate::db::workflow_artifacts::read_clarifications(&conn, "rt-step0")
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.refinement_count, 0);
+        assert_eq!(record.sections[0].title, "Intent and Trigger");
+        let ids: Vec<&str> = record.questions.iter().map(|q| q.question_id.as_str()).collect();
+        assert!(ids.contains(&"Q1"));
+        assert!(ids.contains(&"Q2"));
+        assert!(ids.contains(&"Q3"));
+        assert!(ids.contains(&"Q4"));
+    }
+
+    #[test]
+    fn step1_with_refinement_count() {
+        let db = db_with_seeded_skill("rt-step1");
+        let json = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 2,
+            "section_count": 2,
+            "clarifications_json": clarifications_fixture()
+        });
+
+        materialize_workflow_step_output_value(&db, "rt-step1", 1, &json).unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let record = crate::db::workflow_artifacts::read_clarifications(&conn, "rt-step1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.refinement_count, 2);
+    }
+
+    #[test]
+    fn step0_then_step1_overwrites() {
+        let db = db_with_seeded_skill("rt-overwrite");
+
+        let step0 = serde_json::json!({
+            "status": "research_complete",
+            "question_count": 4,
+            "research_output": clarifications_fixture()
+        });
+        materialize_workflow_step_output_value(&db, "rt-overwrite", 0, &step0).unwrap();
+
+        let step1 = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 3,
+            "section_count": 2,
+            "clarifications_json": clarifications_fixture()
+        });
+        materialize_workflow_step_output_value(&db, "rt-overwrite", 1, &step1).unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let record = crate::db::workflow_artifacts::read_clarifications(&conn, "rt-overwrite")
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.refinement_count, 3);
+    }
+
+    #[test]
+    fn step2_full_roundtrip() {
+        let db = db_with_seeded_skill("rt-step2");
+        let json = serde_json::json!({
+            "version": "1",
+            "metadata": {
+                "decision_count": 3,
+                "conflicts_resolved": 1,
+                "round": 1
+            },
+            "decisions": [
+                {
+                    "id": "D1",
+                    "title": "Primary integration method",
+                    "original_question": "How should the skill integrate with the CRM?",
+                    "decision": "Use REST API with OAuth",
+                    "implication": "Requires OAuth credentials in config",
+                    "status": "resolved"
+                },
+                {
+                    "id": "D2",
+                    "title": "Output format",
+                    "original_question": "What format should responses use?",
+                    "decision": "Return structured JSON",
+                    "implication": "Consumers must parse JSON",
+                    "status": "needs-review"
+                },
+                {
+                    "id": "D3",
+                    "title": "Fallback behavior",
+                    "original_question": "What happens on API failure?",
+                    "decision": "Return cached result if available",
+                    "implication": "Cache TTL must be configured",
+                    "status": "resolved"
+                }
+            ]
+        });
+
+        materialize_workflow_step_output_value(&db, "rt-step2", 2, &json).unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let record = crate::db::workflow_artifacts::read_decisions(&conn, "rt-step2")
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.version, "1");
+        assert!(record.items.iter().any(|i| i.status == "needs-review"));
+        let resolved = record.items.iter().find(|i| i.decision_id == "D1").unwrap();
+        assert_eq!(resolved.title, "Primary integration method");
+    }
+
+    #[test]
+    fn step2_contradictory_inputs_active_true() {
+        let db = db_with_seeded_skill("rt-ci-true");
+        let json = serde_json::json!({
+            "version": "1",
+            "metadata": {
+                "decision_count": 1,
+                "conflicts_resolved": 0,
+                "round": 1,
+                "contradictory_inputs": true
+            },
+            "decisions": [{
+                "id": "D1",
+                "title": "Approach",
+                "original_question": "Which approach?",
+                "decision": "Use A",
+                "implication": "Requires A",
+                "status": "resolved"
+            }]
+        });
+
+        materialize_workflow_step_output_value(&db, "rt-ci-true", 2, &json).unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let record = crate::db::workflow_artifacts::read_decisions(&conn, "rt-ci-true")
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.contradictory_inputs_state.as_deref(), Some("active"));
+    }
+
+    #[test]
+    fn step2_contradictory_inputs_active_false() {
+        let db = db_with_seeded_skill("rt-ci-false");
+        let json = serde_json::json!({
+            "version": "1",
+            "metadata": {
+                "decision_count": 1,
+                "conflicts_resolved": 0,
+                "round": 1,
+                "contradictory_inputs": false
+            },
+            "decisions": [{
+                "id": "D1",
+                "title": "Approach",
+                "original_question": "Which approach?",
+                "decision": "Use B",
+                "implication": "Requires B",
+                "status": "resolved"
+            }]
+        });
+
+        materialize_workflow_step_output_value(&db, "rt-ci-false", 2, &json).unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let record = crate::db::workflow_artifacts::read_decisions(&conn, "rt-ci-false")
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.contradictory_inputs_state.as_deref(), Some("inactive"));
+    }
+
+    #[test]
+    fn step2_contradictory_inputs_revised_string() {
+        // The agent emits "revised" as the Revised string variant. The DB
+        // validator accepts only "inactive", "active", or "revised" — a free-form
+        // sentence would be rejected by validate_contradictory_inputs_state.
+        let db = db_with_seeded_skill("rt-ci-revised");
+        let json = serde_json::json!({
+            "version": "1",
+            "metadata": {
+                "decision_count": 1,
+                "conflicts_resolved": 1,
+                "round": 2,
+                "contradictory_inputs": "revised"
+            },
+            "decisions": [{
+                "id": "D1",
+                "title": "Approach",
+                "original_question": "Which approach?",
+                "decision": "Use approach X",
+                "implication": "Team aligned on X",
+                "status": "conflict-resolved"
+            }]
+        });
+
+        materialize_workflow_step_output_value(&db, "rt-ci-revised", 2, &json).unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let record = crate::db::workflow_artifacts::read_decisions(&conn, "rt-ci-revised")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            record.contradictory_inputs_state.as_deref(),
+            Some("revised")
+        );
+    }
+
+    #[test]
+    fn scope_recommendation_guard_reads_db() {
+        let db = db_with_seeded_skill("rt-scope-guard");
+        // scope_recommendation is Option<bool>; true = scope guard should fire
+        let json = serde_json::json!({
+            "status": "research_complete",
+            "question_count": 4,
+            "research_output": {
+                "version": "1",
+                "metadata": {
+                    "title": "Scope Test",
+                    "question_count": 4,
+                    "section_count": 2,
+                    "refinement_count": 0,
+                    "must_answer_count": 2,
+                    "priority_questions": [],
+                    "scope_recommendation": true
+                },
+                "sections": [],
+                "notes": []
+            }
+        });
+
+        materialize_workflow_step_output_value(&db, "rt-scope-guard", 0, &json).unwrap();
+
+        let conn = db.0.lock().unwrap();
+        assert!(guards::check_scope_recommendation_db(&conn, "rt-scope-guard"));
+    }
+
+    #[test]
+    fn decisions_needs_review_guard_reads_db() {
+        let db = db_with_seeded_skill("rt-dec-guard");
+        let json = serde_json::json!({
+            "version": "1",
+            "metadata": {
+                "decision_count": 2,
+                "conflicts_resolved": 0,
+                "round": 1
+            },
+            "decisions": [
+                {
+                    "id": "D1",
+                    "title": "Contested direction",
+                    "original_question": "Should we use REST or GraphQL?",
+                    "decision": "Unclear — both options raised",
+                    "implication": "Must resolve before implementation",
+                    "status": "needs-review"
+                },
+                {
+                    "id": "D2",
+                    "title": "Auth method",
+                    "original_question": "Which auth method?",
+                    "decision": "OAuth 2.0",
+                    "implication": "Requires token rotation setup",
+                    "status": "resolved"
+                }
+            ]
+        });
+
+        materialize_workflow_step_output_value(&db, "rt-dec-guard", 2, &json).unwrap();
+
+        let conn = db.0.lock().unwrap();
+        assert!(guards::check_decisions_guard_db(&conn, "rt-dec-guard"));
+    }
+
+    #[test]
+    fn dropped_fields_not_stored() {
+        let db = db_with_seeded_skill("rt-dropped");
+        let json = serde_json::json!({
+            "status": "research_complete",
+            "question_count": 4,
+            "research_output": {
+                "version": "1",
+                "metadata": {
+                    "title": "Dropped Fields Test",
+                    "question_count": 4,
+                    "section_count": 2,
+                    "refinement_count": 0,
+                    "must_answer_count": 2,
+                    "priority_questions": ["Q1", "Q4"],
+                    "duplicates_removed": 2
+                },
+                "sections": [
+                    {
+                        "id": 1,
+                        "title": "Section One",
+                        "questions": [
+                            {
+                                "id": "Q1",
+                                "title": "First question",
+                                "text": "What is the primary intent?",
+                                "must_answer": true,
+                                "recommendation": "A",
+                                "choices": [
+                                    {"id": "A", "text": "Intent A", "is_other": false},
+                                    {"id": "B", "text": "Other", "is_other": true}
+                                ],
+                                "refinements": []
+                            },
+                            {
+                                "id": "Q2",
+                                "title": "Second question",
+                                "text": "What is the trigger?",
+                                "must_answer": true,
+                                "choices": [
+                                    {"id": "A", "text": "On event", "is_other": false},
+                                    {"id": "B", "text": "Other", "is_other": true}
+                                ],
+                                "refinements": []
+                            }
+                        ]
+                    },
+                    {
+                        "id": 2,
+                        "title": "Section Two",
+                        "questions": [
+                            {
+                                "id": "Q3",
+                                "title": "Third question",
+                                "text": "What output format?",
+                                "must_answer": false,
+                                "choices": [
+                                    {"id": "A", "text": "JSON", "is_other": false},
+                                    {"id": "B", "text": "Other", "is_other": true}
+                                ],
+                                "refinements": []
+                            },
+                            {
+                                "id": "Q4",
+                                "title": "Fourth question",
+                                "text": "Who is the audience?",
+                                "must_answer": false,
+                                "choices": [
+                                    {"id": "A", "text": "Engineers", "is_other": false},
+                                    {"id": "B", "text": "Other", "is_other": true}
+                                ],
+                                "refinements": []
+                            }
+                        ]
+                    }
+                ],
+                "notes": []
+            }
+        });
+
+        materialize_workflow_step_output_value(&db, "rt-dropped", 0, &json).unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let record = crate::db::workflow_artifacts::read_clarifications(&conn, "rt-dropped")
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.question_count, 4);
+        let ids: Vec<&str> = record.questions.iter().map(|q| q.question_id.as_str()).collect();
+        assert!(ids.contains(&"Q1"));
+        assert!(ids.contains(&"Q2"));
+        assert!(ids.contains(&"Q3"));
+        assert!(ids.contains(&"Q4"));
+    }
+}
