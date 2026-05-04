@@ -115,7 +115,7 @@ jobs:
           open -n "$DIR/Skill Builder.app"
           SCRIPT
           chmod +x "$STAGE/run.sh"
-          node scripts/verify-release-stage.mjs "$STAGE" macos
+          node scripts/ci/verify-release-stage.mjs "$STAGE" macos
           zip -r "${STAGE}.zip" "$STAGE"
 
       - name: Package Windows release
@@ -141,7 +141,7 @@ jobs:
           cp -r "agent-sources/skills" "$STAGE/agent-sources/skills"
           cp -r "agent-sources/workspace/." "$STAGE/workspace/"
 
-          node scripts/verify-release-stage.mjs "$STAGE" windows
+          node scripts/ci/verify-release-stage.mjs "$STAGE" windows
 
           7z a "${STAGE}.zip" "$STAGE"
 

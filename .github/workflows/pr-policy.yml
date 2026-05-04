@@ -27,7 +27,7 @@ jobs:
               - 'docs/.vitepress/**'
               - 'docs/package.json'
               - 'docs/package-lock.json'
-              - 'scripts/check-help-docs.mjs'
+              - 'scripts/ci/check-help-docs.mjs'
               - 'app/src/lib/help-urls.ts'
 
       - name: Setup Node.js
@@ -45,7 +45,7 @@ jobs:
 
       - name: Check help documentation links
         if: steps.changes.outputs.docs == 'true'
-        run: node scripts/check-help-docs.mjs
+        run: node scripts/ci/check-help-docs.mjs
 
       - name: Build user-guide site
         if: steps.changes.outputs.docs == 'true'
@@ -183,11 +183,11 @@ jobs:
         with:
           filters: |
             scripts:
-              - 'scripts/*.mjs'
+              - 'scripts/ci/*.mjs'
 
       - name: Run script tests
         if: steps.changes.outputs.scripts == 'true'
-        run: node --test scripts/*.test.mjs
+        run: node --test scripts/ci/*.test.mjs
 
       - name: Skip (no script changes)
         if: steps.changes.outputs.scripts != 'true'

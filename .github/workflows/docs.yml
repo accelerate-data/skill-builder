@@ -37,7 +37,7 @@ jobs:
         working-directory: docs
 
       - name: Check help documentation links
-        run: node scripts/check-help-docs.mjs
+        run: node scripts/ci/check-help-docs.mjs
 
       - name: Build
         run: npm run build
