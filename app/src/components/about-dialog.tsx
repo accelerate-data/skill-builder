@@ -61,16 +61,7 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
 
         <div className="flex flex-col gap-3 pb-2 text-center text-sm text-muted-foreground">
           <p>
-            Build domain-specific Claude skills with AI-powered multi-agent
-            workflows. Create domain knowledge packages that help data and
-            analytics engineers build silver and gold layer models.
-          </p>
-
-          <p>
-            Powered by{" "}
-            <ExternalLink href="https://anthropic.com/claude">Claude</ExternalLink>
-            {" "}from{" "}
-            <ExternalLink href="https://anthropic.com">Anthropic</ExternalLink>
+            Build domain-specific AI skills with multi-agent workflows. Create domain knowledge packages that help data and analytics engineers build silver and gold layer models.
           </p>
 
           <Separator />
@@ -101,7 +92,7 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
             <p>
               Built with{" "}
               <ExternalLink href="https://v2.tauri.app">Tauri</ExternalLink>,{" "}
-              <ExternalLink href="https://docs.anthropic.com/en/docs/agents/claude-agent-sdk">Claude Agent SDK</ExternalLink>,{" "}
+              <ExternalLink href="https://www.all-hands.dev">OpenHands</ExternalLink>,{" "}
               and{" "}
               <ExternalLink href="https://react.dev">React</ExternalLink>
             </p>

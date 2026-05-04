@@ -89,7 +89,7 @@ export type SkillDialogProps = SkillDialogCreateProps | SkillDialogEditProps
 
 const STEP_DESCRIPTIONS = {
   create: {
-    1: "Name your skill, choose its purpose, and describe what Claude needs to know.",
+    1: "Name your skill, choose its purpose, and describe what the agent needs to know.",
     2: "Configure skill behaviour (optional -- defaults are fine).",
   },
   edit: {
@@ -467,10 +467,10 @@ export default function SkillDialog(props: SkillDialogProps) {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="context-questions">What Claude needs to know</Label>
+                  <Label htmlFor="context-questions">What the agent needs to know</Label>
                   <Textarea
                     id="context-questions"
-                    placeholder="What makes your setup unique? What does Claude usually miss?"
+                    placeholder="What makes your setup unique? What should the agent know?"
                     value={contextQuestions}
                     onChange={(e) => setContextQuestions(e.target.value)}
                     disabled={submitting || isLocked}
@@ -523,7 +523,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   <div className="flex flex-col gap-0.5">
                     <span className="text-sm font-medium">Disable Model Invocation</span>
                     <span className="text-xs text-muted-foreground">
-                      Prevent Claude from automatically invoking this skill
+                      Prevent the agent from automatically invoking this skill
                     </span>
                   </div>
                   <Switch
