@@ -156,7 +156,7 @@ describe("SkillDialog (edit mode)", () => {
     expect(screen.getByLabelText(/^What the skill does/)).toBeDisabled();
     expect(screen.getByLabelText(/What are you trying to capture/)).toBeDisabled();
     expect(screen.getByLabelText("Tag input")).toBeDisabled();
-    expect(screen.getByLabelText("What Claude needs to know")).toHaveValue("Original context");
+    expect(screen.getByLabelText("What the agent needs to know")).toHaveValue("Original context");
     expect(screen.getByText("Use the Eval Workbench tab to update this")).toBeInTheDocument();
   });
 

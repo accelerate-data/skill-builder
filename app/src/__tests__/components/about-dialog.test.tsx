@@ -39,12 +39,6 @@ describe("AboutDialog", () => {
     expect(imgs[1]).toHaveAttribute("src", "/icon-light-256.png");
   });
 
-  it("shows Powered by Claude from Anthropic", () => {
-    render(<AboutDialog open={true} onOpenChange={vi.fn()} />);
-    expect(screen.getByText("Claude")).toBeInTheDocument();
-    expect(screen.getByText("Anthropic")).toBeInTheDocument();
-  });
-
   it("shows disclaimer text", () => {
     render(<AboutDialog open={true} onOpenChange={vi.fn()} />);
     expect(screen.getByText(/Experimental Software/)).toBeInTheDocument();
@@ -61,6 +55,6 @@ describe("AboutDialog", () => {
     render(<AboutDialog open={true} onOpenChange={vi.fn()} />);
     expect(screen.getByText("Tauri")).toBeInTheDocument();
     expect(screen.getByText("React")).toBeInTheDocument();
-    expect(screen.getByText("Claude Agent SDK")).toBeInTheDocument();
+    expect(screen.getByText("OpenHands")).toBeInTheDocument();
   });
 });
