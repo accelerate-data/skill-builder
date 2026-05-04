@@ -190,15 +190,14 @@ the rendered text as the explicit user message.
 ```markdown
 ---
 name: skill-creator
-description: >
-  Executes Skill Builder skill creation tasks, including scope review,
-  research, answer evaluation, decision confirmation, and skill generation.
+description: OpenHands-native worker for one-shot and conversational skill-building tasks.
 tools:
   - file_editor
   - terminal
+  - browser_tool_set
 skills:
-  - research
-  - skill-creator
+  - creating-skills
+  - researching-skill-requirements
 ---
 ```
 
@@ -214,11 +213,11 @@ the workspace.
 | File | Task kind | Purpose |
 |---|---|---|
 | `scope-review.txt` | `scope_review` | Reviews whether a proposed skill is too broad, vague, or focused and returns split recommendations. |
-| `research.txt` | `research` | Produces initial clarification questions using the `research` AgentSkill. |
-| `research-refinement.txt` | `research_refinement` | Refines clarification questions using answer-evaluation results. |
-| `answer-evaluation.txt` | `answer_evaluation` | Evaluates answer quality and writes `answer-evaluation.json`. |
-| `decision-confirmation.txt` | `decision_confirmation` | Produces `decisions.json` from approved research and answers. |
-| `skill-generation.txt` | `skill_generation` | Uses the `skill-creator` AgentSkill to write `SKILL.md` and base evals. |
+| `research.txt` | `research` | Produces initial clarification questions using the `researching-skill-requirements` AgentSkill. |
+| `detailed-research.txt` | `research_refinement` | Refines clarification questions using answer-evaluation results. |
+| `answer-evaluator.txt` | `answer_evaluation` | Evaluates answer quality and writes `answer-evaluation.json`. |
+| `confirm_decisions.txt` | `decision_confirmation` | Produces `decisions.json` from approved research and answers. |
+| `skill-generation.txt` | `skill_generation` | Uses the `creating-skills` AgentSkill to write `SKILL.md` and base evals. |
 | `skill-creator-user-suffix.txt` | all messages | Provides a no-op per-message suffix for future stable invariants. |
 
 ### Deleted agents
@@ -227,15 +226,15 @@ the workspace.
 |---|---|
 | `skill-content-researcher/agents/skill-builder.md` | Router — eliminated, top-level agent is `skill-creator` and task routing moves to app-owned request metadata |
 | `skill-content-researcher/agents/research-orchestrator` (implicit) | Converted into `research.txt` prompt and inline research instructions |
-| `skill-content-researcher/agents/detailed-research.md` | Converted into `research-refinement.txt` prompt using the same research skill |
-| `skill-content-researcher/agents/confirm-decisions.md` | Converted into `decision-confirmation.txt` prompt |
+| `skill-content-researcher/agents/detailed-research.md` | Converted into `detailed-research.txt` prompt using the same research skill |
+| `skill-content-researcher/agents/confirm-decisions.md` | Converted into `confirm_decisions.txt` prompt |
 | `skill-creator/agents/generate-skill.md` | Converted into `skill-generation.txt` prompt |
 
 ## Skill Model
 
 Skills follow the AgentSkills standard and live in `.agents/skills/*/SKILL.md`. The `SKILL.md` format is unchanged — existing files are already compliant.
 
-### `research/SKILL.md`
+### `researching-skill-requirements/SKILL.md`
 
 The parallel sub-agent sections (step 6 of the current skill) are replaced with inline sequential dimension research:
 
@@ -252,7 +251,7 @@ All merge, deduplication, absolute-path-passing, and sub-agent wait logic is rem
 
 For the refinement pass (step 1), the same skill is used with the `answer-evaluation.json` verdicts already read into context. The skill generates refinement questions inline for non-clear items per section.
 
-### `skill-creator/SKILL.md`
+### `creating-skills/SKILL.md`
 
 Used by the `skill_generation` one-shot task in step 3. Writes `SKILL.md` and base evals from `decisions.json` and `clarifications.json`. No structural change to the skill's output contract.
 
@@ -287,11 +286,11 @@ top-level agents.
 | Operation | Task kind | Prompt template | Skills | Output file |
 |---|---|---|---|---|
 | Scope validate | `scope_review` | `scope-review.txt` | none | returned JSON only |
-| Step 0 | `research` | `research.txt` | `research` | `context/clarifications.json` |
-| Answer eval | `answer_evaluation` | `answer-evaluation.txt` | none | `answer-evaluation.json` |
-| Step 1 | `research_refinement` | `research-refinement.txt` | `research` | `context/clarifications.json` refined |
-| Step 2 | `decision_confirmation` | `decision-confirmation.txt` | none | `context/decisions.json` |
-| Step 3 | `skill_generation` | `skill-generation.txt` | `skill-creator` | `SKILL.md` + base evals |
+| Step 0 | `research` | `research.txt` | `researching-skill-requirements` | `context/clarifications.json` |
+| Answer eval | `answer_evaluation` | `answer-evaluator.txt` | none | `answer-evaluation.json` |
+| Step 1 | `research_refinement` | `detailed-research.txt` | `researching-skill-requirements` | `context/clarifications.json` refined |
+| Step 2 | `decision_confirmation` | `confirm_decisions.txt` | none | `context/decisions.json` |
+| Step 3 | `skill_generation` | `skill-generation.txt` | `creating-skills` | `SKILL.md` + base evals |
 
 ## Multi-Model Support
 
@@ -375,7 +374,7 @@ Refine streaming remains broken until a custom `AskUserQuestion` tool is impleme
 | `.claude/plugins/` output layout | Replaced by `.agents/` |
 | `plugin.json` and `.claude-plugin/` | Not needed by OpenHands |
 | `skill-builder.md` agent | Router — step routing moves to `step_config.rs` |
-| `confirm-decisions.md` agent | Converted into `decision-confirmation.txt` prompt |
+| `confirm-decisions.md` agent | Converted into `confirm_decisions.txt` prompt |
 | `generate-skill.md` agent | Converted into `skill-generation.txt` prompt |
 | Parallel sub-agent spawning instructions | Replaced by inline sequential execution |
 | Sub-agent merge and deduplication logic | Not needed with inline execution |
@@ -393,8 +392,8 @@ Refine streaming remains broken until a custom `AskUserQuestion` tool is impleme
 | `agent-sources/workspace/skills/` | File-based AgentSkills copied into `.agents/skills/` |
 | `agent-sources/prompts/` | App-owned prompt templates compiled/rendered by code |
 | `agent-sources/claude/` | Legacy Claude adapter templates for non-migrated rebuild paths; not part of OpenHands runtime |
-| `agent-sources/plugins/skill-content-researcher/skills/research/SKILL.md` | Inline research — sub-agent sections removed |
-| `agent-sources/plugins/skill-creator/skills/skill-creator/SKILL.md` | Skill writer — no structural change |
+| `agent-sources/workspace/skills/researching-skill-requirements/SKILL.md` | Inline research AgentSkill deployed into `.agents/skills/` |
+| `agent-sources/workspace/skills/creating-skills/SKILL.md` | Skill writer AgentSkill deployed into `.agents/skills/` |
 | `docs/design/agent-runtime-boundary/README.md` | Runtime boundary contract (prerequisite) |
 | `docs/design/openhands-sdk-runner/README.md` | OpenHands SDK invocation contract |
 

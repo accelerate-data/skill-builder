@@ -3,9 +3,10 @@
 | Directory | What it covers |
 |---|---|
 | [agent-specs/](agent-specs/README.md) | Agent layer architecture: workflow steps, artifact contracts, infrastructure files, storage layout |
-| [agent-runtime-boundary/](agent-runtime-boundary/README.md) | Agent runtime boundary: one-shot runs, streaming sessions, runtime adapters, and OpenHands migration shape |
+| [agent-runtime-boundary/](agent-runtime-boundary/README.md) | **Superseded.** Agent runtime boundary: one-shot runs, streaming sessions, runtime adapters, and OpenHands migration shape. Active design: `openhands-agent-server-runtime/`. |
 | [openhands-agent-server-runtime/](openhands-agent-server-runtime/README.md) | OpenHands Agent Server runtime: Rust-managed local server process, REST/WebSocket calls, workspace ownership, event normalization, and clean-break deletion plan |
-| [openhands-sdk-runner/](openhands-sdk-runner/README.md) | OpenHands SDK runner invocation contract: one `skill-creator` agent, prompt loading, AgentSkills, tools, conversations, and progress events |
+| [openhands-native-migration/](openhands-native-migration/README.md) | Umbrella OpenHands migration design: agent topology, prompt ownership, `.agents/**` workspace layout, tool mapping, and what is removed |
+| [openhands-sdk-runner/](openhands-sdk-runner/README.md) | **Historical.** OpenHands SDK stdin/stdout runner contract superseded by Agent Server. Retain for context on agent/skill/prompt design intent. |
 | [workflow-research-clean-break/](workflow-research-clean-break/README.md) | Workflow research clean break: one inline research flow, internal scope and candidate scoring, and final clarifications-only output |
 | [workflow-detailed-research-clean-break/](workflow-detailed-research-clean-break/README.md) | Workflow detailed research clean break: app-owned step 1 prompt, `skill-creator` routing, and additive sections/questions/refinements |
 | [creating-skills-generator-verifier/](creating-skills-generator-verifier/README.md) | Creating skills generator-verifier: runtime `creating-skills` guidance under `agent-sources/workspace/skills`, app-owned workflow context loading, and fresh-context validation |
@@ -20,7 +21,7 @@
 | [../user-guide/](../user-guide/) | User-facing docs site (VitePress). Source markdown; deployed to GitHub Pages via `docs.yml`. Route → docs URL map: `app/src/lib/help-urls.ts` |
 | [branding/](branding/ad-brand.md) | Brand and visual identity |
 | [release/](release/README.md) | Release pipeline: CI/CD workflows, desktop app build, credentials |
-| [sdk-agent-options/](sdk-agent-options/README.md) | Claude Agent SDK option wiring: source trace for each option from UI/backend/hardcoded paths |
+
 | [agent-unit-test-suite/](agent-unit-test-suite/README.md) | Agent test stack and Promptfoo scenario operations: maintenance, single-scenario runs, and autonomous agent test policy |
 | [shared-eval-harness/](shared-eval-harness/README.md) | Shared Promptfoo/OpenCode eval harness: framework boundary, runtime state model, package contract, and extraction path |
 | [eval-workbench-promptfoo-sidecar/](eval-workbench-promptfoo-sidecar/README.md) | App-owned Eval Workbench and Promptfoo sidecar: the current user-facing eval path for prompt sets, run history, description candidate ranking, and Refine handoff |

@@ -607,7 +607,7 @@ Workflow agent runs require `ready` or `verified`. They never fallback to legacy
 |---|---|
 | `docs/design/openhands-native-migration/README.md` | Refines the migration's model-settings portion into a clean-break OpenHands `LLM` contract. |
 | `docs/design/agent-runtime-boundary/README.md` | Provides the runtime boundary this model settings contract feeds. |
-| `docs/design/sdk-agent-options/README.md` | Superseded for workflow model settings; remains historical source tracing for Claude SDK options until removed. |
+
 | `docs/design/agent-specs/storage.md` | Defines the existing DB/workspace/skills-path boundary. This design preserves DB settings as source of truth and maps workspace to OpenHands `Conversation.workspace`. |
 
 ## Key Source Files

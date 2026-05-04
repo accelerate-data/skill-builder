@@ -1,6 +1,11 @@
 # Agent Runtime Boundary
 
-> **Status:** Draft
+> **Status:** Superseded. The one-shot and streaming contracts, event
+> semantics, and workspace/LLM ownership rules described here are now
+> implemented and documented in
+> `docs/design/openhands-agent-server-runtime/README.md`. The Claude adapter
+> path (`ClaudeRuntime`, `StreamSession`, `options.ts`) is dead code targeted
+> for deletion in VU-1145. Retain this document as historical context only.
 
 ## Overview
 
@@ -333,7 +338,7 @@ created -> active -> closed
 
 | Spec | Relationship |
 |---|---|
-| `docs/design/sdk-agent-options/README.md` | Describes current Claude SDK option wiring that should move behind the Claude adapter. |
+
 | `docs/design/backend-design/agent-event-contracts.md` | Defines the app-facing event contract that runtime adapters should preserve. |
 | `docs/design/agent-specs/README.md` | Describes workflow step and artifact contracts that runtime migration should not change. |
 | `docs/design/write-eval-test-refine-loop/README.md` | Contains flows that should explicitly choose one-shot or streaming runtime mode. |
