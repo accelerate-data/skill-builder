@@ -6,6 +6,7 @@ use super::helpers::copy_dir_recursive;
 use crate::skill_paths::{resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
 
 const WORKFLOW_INTERNAL_SKILLS: &[&str] = &["research"];
+const BUNDLED_WORKSPACE_MARKER: &str = ".skill-builder-bundled";
 
 fn is_workflow_internal_skill(skill_name: &str) -> bool {
     WORKFLOW_INTERNAL_SKILLS.contains(&skill_name)
@@ -77,9 +78,8 @@ pub(crate) fn purge_stale_bundled_skills(
                     .ok()
                     .and_then(|c| parse_frontmatter_full(&c).name)
                     .unwrap_or_else(|| dir_name.clone());
-                if !current_names.contains(&skill_name) {
-                    // Check if this might be a user-imported skill — skip if it is
-                    // (bundled skills have a specific ID pattern; we only purge if the dir existed before)
+                let bundled_marker = path.join(BUNDLED_WORKSPACE_MARKER);
+                if bundled_marker.is_file() && !current_names.contains(&skill_name) {
                     log::info!(
                         "purge_stale_bundled_skills: removing stale skill dir '{}'",
                         dir_name
@@ -178,6 +178,8 @@ pub(crate) fn seed_bundled_skills(
 
         copy_dir_recursive(&entry_path, &dest_dir)
             .map_err(|e| format!("Failed to copy bundled skill '{}': {}", skill_name, e))?;
+        fs::write(dest_dir.join(BUNDLED_WORKSPACE_MARKER), "")
+            .map_err(|e| format!("Failed to write bundled skill marker '{}': {}", skill_name, e))?;
 
         log::info!(
             "seed_bundled_skills: seeded '{}' (version={} model={} user_invocable={} disable_model_invocation={})",
@@ -194,7 +196,7 @@ pub(crate) fn seed_bundled_skills(
 
 #[cfg(test)]
 mod tests {
-    use super::{purge_stale_bundled_skills, seed_bundled_skills};
+    use super::{purge_stale_bundled_skills, seed_bundled_skills, BUNDLED_WORKSPACE_MARKER};
     use crate::skill_paths::{resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
 
     #[test]
@@ -260,6 +262,7 @@ mod tests {
             "---\nname: stale-skill\ndescription: Remove me\n---\n# Body\n",
         )
         .unwrap();
+        std::fs::write(stale_workspace_dir.join(BUNDLED_WORKSPACE_MARKER), "").unwrap();
 
         purge_stale_bundled_skills(
             workspace.path().to_str().unwrap(),
@@ -271,6 +274,39 @@ mod tests {
         assert!(
             !stale_workspace_dir.exists(),
             "stale bundled skill mirror should be removed from canonical workspace layout"
+        );
+    }
+
+    #[test]
+    fn purge_stale_bundled_skills_preserves_custom_workspace_skill_dirs() {
+        let workspace = tempfile::tempdir().unwrap();
+        let bundled = tempfile::tempdir().unwrap();
+        let bundled_skill_dir = bundled.path().join("kept-skill");
+        std::fs::create_dir_all(&bundled_skill_dir).unwrap();
+        std::fs::write(
+            bundled_skill_dir.join("SKILL.md"),
+            "---\nname: kept-skill\ndescription: Keep me\n---\n# Body\n",
+        )
+        .unwrap();
+
+        let custom_workspace_dir =
+            resolve_workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "custom-skill");
+        std::fs::create_dir_all(&custom_workspace_dir).unwrap();
+        std::fs::write(
+            custom_workspace_dir.join("SKILL.md"),
+            "---\nname: custom-skill\ndescription: User authored\n---\n# Body\n",
+        )
+        .unwrap();
+
+        purge_stale_bundled_skills(
+            workspace.path().to_str().unwrap(),
+            bundled.path(),
+        )
+        .unwrap();
+
+        assert!(
+            custom_workspace_dir.exists(),
+            "non-bundled user/custom workspace skills must not be deleted during bundled purge"
         );
     }
 }

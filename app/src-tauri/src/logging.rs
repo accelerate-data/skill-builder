@@ -189,7 +189,8 @@ pub fn prune_transcript_files(workspace_path: &str) {
         }
 
         let legacy_logs_dir = plugin_path.join("logs");
-        if legacy_logs_dir.is_dir() {
+        let legacy_skill_root = plugin_path.join("SKILL.md").is_file();
+        if legacy_skill_root && legacy_logs_dir.is_dir() {
             let skill_label = plugin_entry.file_name().to_string_lossy().to_string();
             let skill_pruned = prune_logs_dir(&legacy_logs_dir, &skill_label, today);
             if skill_pruned > 0 {
@@ -274,7 +275,14 @@ mod tests {
     /// Helper: create a `.jsonl` file inside the legacy flat layout
     /// `{workspace}/{skill}/logs/`.
     fn create_flat_jsonl(workspace: &Path, skill: &str, filename: &str, days_ago: i64) {
-        let logs_dir = workspace.join(skill).join("logs");
+        let skill_dir = workspace.join(skill);
+        let logs_dir = skill_dir.join("logs");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            format!("---\nname: {skill}\ndescription: Legacy skill\n---\n# Body\n"),
+        )
+        .unwrap();
         fs::create_dir_all(&logs_dir).unwrap();
         let file_path = logs_dir.join(filename);
         fs::write(&file_path, r#"{"type":"test"}"#).unwrap();
@@ -396,6 +404,30 @@ mod tests {
         assert!(
             logs_dir.join("today.jsonl").exists(),
             "Current-day logs should still be retained in the legacy flat layout"
+        );
+    }
+
+    #[test]
+    fn test_prune_nested_skill_named_logs() {
+        let tmp = tempdir().unwrap();
+        let workspace = tmp.path();
+
+        let nested_logs = workspace.join("analytics").join("logs").join("logs");
+        fs::create_dir_all(&nested_logs).unwrap();
+        fs::write(nested_logs.join("old.jsonl"), "{}").unwrap();
+        let past = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 86400);
+        let file = fs::File::options()
+            .write(true)
+            .open(nested_logs.join("old.jsonl"))
+            .unwrap();
+        file.set_times(fs::FileTimes::new().set_accessed(past).set_modified(past))
+            .unwrap();
+
+        prune_transcript_files(workspace.to_str().unwrap());
+
+        assert!(
+            !nested_logs.join("old.jsonl").exists(),
+            "a nested skill literally named 'logs' should still have its transcript files pruned"
         );
     }
 
