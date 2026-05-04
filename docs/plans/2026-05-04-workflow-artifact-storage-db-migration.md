@@ -359,9 +359,17 @@ Each test calls `materialize_workflow_step_output_value(&db, skill_id, step_id, 
   - In `tests.rs` (or `deploy.rs` `#[cfg(test)]` block): delete the test cases that exclusively exercise the deleted functions. Do not delete tests that also exercise live production paths.
 - [ ] `commands/workflow/step_config.rs` — `thinking_budget_for_step`, `build_betas`, `validate_clarifications_json`. All `#[allow(dead_code)]`, all test-only callers. These were Claude-SDK thinking-budget helpers; OpenHands dispatch does not use them. Delete the functions and their test cases in `tests.rs`.
 
-**Pre-built hooks in `workflow_artifacts.rs` — wire up or document:**
+**Pre-built hooks in `workflow_artifacts.rs` — stale annotations and one real gap:**
 
-- [ ] For each `#[allow(dead_code)]` function in `workflow_artifacts.rs` that has a comment like "Wired up in a later VU-1157 task": either wire it up now (call it from the appropriate command handler or cleanup path) or replace the comment with an explicit `// TODO(VU-XXXX): wire up when <feature> lands` naming the follow-up issue. Do not leave anonymous "later task" comments — they rot.
+Six items carry `#[allow(dead_code)]` with "later VU-1157 task" comments. Four are already live; two are a real gap. Decisions:
+
+- [ ] Lines 155, 174, 294, 627 (`opt_bool_to_int`, `upsert_clarifications`, `insert_question_recursive`, `upsert_decisions`): these are already called from `output_format.rs` and test helpers — the annotations are stale. Remove the four `#[allow(dead_code)]` attributes and their comments. No logic changes needed.
+- [ ] Lines 591, 745 (`delete_clarifications`, `delete_decisions`): genuinely not called. Wire them both into `commands/skill/crud.rs::delete_skill_db_records_inner` — call them at the top of that function before the workflow-run / imported-skill branch, since artifact rows are keyed by skill name and must be purged on any skill deletion:
+  ```rust
+  crate::db::workflow_artifacts::delete_clarifications(conn, name).map_err(|e| e.to_string())?;
+  crate::db::workflow_artifacts::delete_decisions(conn, name).map_err(|e| e.to_string())?;
+  ```
+  Then remove the `#[allow(dead_code)]` attributes from both functions. Add a test in `db/tests.rs` confirming that artifact rows are gone after `delete_skill_db_records_inner` runs.
 
 **Validation:**
 
