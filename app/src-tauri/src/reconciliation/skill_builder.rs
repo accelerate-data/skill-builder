@@ -40,6 +40,51 @@ pub(crate) fn reconcile_skill_builder(
         }
     }
 
+    // DB consistency reset: skills that were in-progress when VU-1157 merged have
+    // current_step > 0 but no rows in the clarifications/decisions tables — their
+    // data only ever existed in the now-dead workspace JSON files. Reset them to
+    // step 0 so the user can re-run from the beginning.
+    if let Some(early_run) = crate::db::get_workflow_run(conn, name)? {
+        if early_run.status != "completed" && early_run.current_step > 0 {
+            let mut did_consistency_reset = false;
+
+            if early_run.current_step >= 1 {
+                let has_clarifications = db_artifacts::read_clarifications(conn, name)
+                    .map_err(|e| e.to_string())?
+                    .is_some();
+                if !has_clarifications {
+                    log::info!(
+                        "[reconcile] '{}': resetting step {} → 0 (no DB artifacts for completed phase)",
+                        name, early_run.current_step
+                    );
+                    crate::db::save_workflow_run(conn, name, 0, "pending", &early_run.purpose)?;
+                    notifications.push(format!(
+                        "'{}' was reset to step 1 (DB artifact data missing — re-run required)",
+                        name
+                    ));
+                    did_consistency_reset = true;
+                }
+            }
+
+            if !did_consistency_reset && early_run.current_step >= 3 {
+                let has_decisions = db_artifacts::read_decisions(conn, name)
+                    .map_err(|e| e.to_string())?
+                    .is_some();
+                if !has_decisions {
+                    log::info!(
+                        "[reconcile] '{}': resetting step {} → 0 (no DB artifacts for completed phase)",
+                        name, early_run.current_step
+                    );
+                    crate::db::save_workflow_run(conn, name, 0, "pending", &early_run.purpose)?;
+                    notifications.push(format!(
+                        "'{}' was reset to step 1 (DB artifact data missing — re-run required)",
+                        name
+                    ));
+                }
+            }
+        }
+    }
+
     // Look up workflow_runs row
     let maybe_run = crate::db::get_workflow_run(conn, name)?;
 
