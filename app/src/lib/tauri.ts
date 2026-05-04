@@ -487,27 +487,13 @@ export const cancelAgentRun = (skillName: string, agentId: string) =>
 export const cancelWorkflowStep = (agentId: string) =>
   invokeCommand("cancel_workflow_step", { agentId })
 
-export const answerStreamingRefineQuestion = (
-  sessionId: string,
-  agentId: string,
-  toolUseId: string,
-  questions: unknown,
-  answers: Record<string, unknown>,
-) => invokeCommand("answer_refine_question", {
-  sessionId,
-  agentId,
-  toolUseId,
-  questions,
-  answers,
-})
-
-export const sendStreamingRefineMessage = (
+export const sendRefineMessage = (
   sessionId: string,
   userMessage: string,
   workspacePath: string,
   pluginSlug: string,
   targetFiles?: string[],
-) => invokeCommand("send_refine_message", { sessionId, userMessage, pluginSlug, workspacePath, targetFiles: targetFiles ?? null, command: null })
+) => invokeCommand("send_refine_message", { sessionId, userMessage, pluginSlug, workspacePath, targetFiles: targetFiles ?? null })
 
 export const finalizeRefineRun = (
   skillName: string,

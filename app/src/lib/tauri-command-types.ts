@@ -355,16 +355,6 @@ export interface TauriCommandMap {
   cancel_refine_turn: { args: { sessionId: string }; result: void };
   cancel_agent_run: { args: { skillName: string; agentId: string }; result: void };
   cancel_workflow_step: { args: { agentId: string }; result: void };
-  answer_refine_question: {
-    args: {
-      sessionId: string;
-      agentId: string;
-      toolUseId: string;
-      questions: unknown;
-      answers: Record<string, unknown>;
-    };
-    result: void;
-  };
   send_refine_message: {
     args: {
       sessionId: string;
@@ -372,7 +362,6 @@ export interface TauriCommandMap {
       pluginSlug: string;
       workspacePath: string;
       targetFiles: string[] | null;
-      command: null;
     };
     result: string;
   };

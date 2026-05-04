@@ -77,9 +77,8 @@ export function getDisplayStatus(
 
 export function getAgentActivityCount(run: {
   displayItems: unknown[];
-  conversationEvents?: unknown[];
 }): number {
-  return run.displayItems.length + (run.conversationEvents?.length ?? 0);
+  return run.displayItems.length;
 }
 
 export function AgentStatusHeader({

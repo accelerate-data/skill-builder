@@ -15,6 +15,7 @@ pub fn normalize_server_event(
         "event_class": raw
             .get("event_class")
             .or_else(|| raw.get("eventClass"))
+            .or_else(|| raw.get("kind"))
             .and_then(|value| value.as_str())
             .unwrap_or_else(|| raw.get("type").and_then(|value| value.as_str()).unwrap_or("event")),
         "event": raw,
@@ -146,6 +147,24 @@ mod tests {
         assert_eq!(normalized["conversation_id"], "conversation-1");
         assert_eq!(normalized["event_class"], "MessageEvent");
         assert_eq!(normalized["event"], raw);
+    }
+
+    #[test]
+    fn falls_back_to_kind_when_event_class_missing() {
+        // OpenHands SDK emits raw events with `kind` as the discriminator,
+        // not `event_class`. The normalizer must recognize `kind` so the
+        // frontend's projection sees the actual event class instead of
+        // falling through to "Unknown OpenHands event".
+        let raw = serde_json::json!({
+            "kind": "ActionEvent",
+            "source": "agent",
+            "tool_name": "file_editor",
+            "tool_call_id": "call_abc",
+        });
+
+        let normalized = normalize_server_event("agent-1", "conversation-1", &raw);
+
+        assert_eq!(normalized["event_class"], "ActionEvent");
     }
 
     #[test]

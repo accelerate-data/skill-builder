@@ -76,6 +76,13 @@ struct OpenHandsConversationTask {
     websocket_url: String,
     session_api_key: String,
     summary_context: OpenHandsRunSummaryContext,
+    /// True when this task is the first attached subscriber to the
+    /// conversation (turn 1 of one-shot or refine). The SDK persists
+    /// SystemPromptEvent + the initial user MessageEvent during conversation
+    /// creation, before our WebSocket attaches, so the live stream alone
+    /// misses those frames. When true the task drains the REST event log
+    /// before reading WS so the chat shows them.
+    backfill_existing_events: bool,
 }
 
 pub async fn dispatch_openhands_one_shot(
@@ -123,6 +130,7 @@ pub async fn dispatch_openhands_one_shot(
             websocket_url,
             session_api_key,
             summary_context,
+            backfill_existing_events: true,
         };
         let result = run_conversation_task(task, cancel_rx).await;
         unregister_cancel(&agent_for_task);
@@ -276,6 +284,142 @@ async fn run_conversation_task(
     }
 }
 
+/// Refine variant of `run_conversation_task` — identical except it does NOT
+/// delete the conversation when the run finishes. The conversation stays alive
+/// for the next turn.
+async fn run_refine_conversation_task(
+    task: OpenHandsConversationTask,
+    mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
+) -> Result<(), String> {
+    let result = run_conversation_task_inner(&task, &mut cancel_rx).await;
+    if result.is_err() {
+        let _ = task.client.pause_conversation(&task.conversation_id).await;
+    }
+    result
+}
+
+/// Dispatch a refine turn against the OpenHands Agent Server.
+///
+/// On turn 1 (`conversation_id` is `None`) creates a new conversation seeded
+/// with `config.prompt` as the initial message. On turn N (`conversation_id`
+/// is `Some`) sends `config.prompt` as a follow-up `SendMessageRequest` event
+/// and re-runs the existing conversation. Returns the conversation_id that
+/// the caller must persist for subsequent turns.
+///
+/// The conversation is NOT deleted when the run completes. The caller owns
+/// deletion via `close_openhands_refine_session`.
+pub async fn dispatch_openhands_refine_turn(
+    app: &tauri::AppHandle,
+    agent_id: &str,
+    config: SidecarConfig,
+    conversation_id: Option<String>,
+    transcript_log_dir: Option<&str>,
+) -> Result<String, String> {
+    let _persistence_path =
+        create_openhands_persistence_dir(agent_id, &config, transcript_log_dir)?;
+    let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
+
+    let server = ensure_agent_server(Duration::from_secs(60)).await?;
+    let client = OpenHandsServerClient::new(
+        server
+            .base_url()
+            .parse()
+            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
+        Some(server.session_api_key.clone()),
+    );
+
+    let config_event = redact_openhands_config_for_log(&config, server.port);
+    super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
+
+    let is_first_turn = conversation_id.is_none();
+    let conversation_id = match conversation_id {
+        Some(existing) => {
+            let event = serde_json::to_value(types::SendMessageRequest {
+                role: "user".to_string(),
+                content: vec![types::TextContent {
+                    content_type: "text".to_string(),
+                    text: request.prompt.clone(),
+                }],
+                run: false,
+            })
+            .map_err(|e| format!("Failed to serialize refine event: {e}"))?;
+            client
+                .send_event(&existing, event)
+                .await
+                .map_err(|e| format!("Failed to send refine event to OpenHands conversation: {e}"))?;
+            existing
+        }
+        None => {
+            let start_request = StartConversationRequest::from_one_shot(&request);
+            let conversation = client
+                .create_conversation(&start_request)
+                .await
+                .map_err(|e| format!("Failed to create OpenHands refine conversation: {e}"))?;
+            extract_conversation_id(&conversation)?
+        }
+    };
+
+    let summary_context = OpenHandsRunSummaryContext::new(&request, &conversation_id);
+    let websocket_url = server.websocket_url(&conversation_id);
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    register_cancel(agent_id, cancel_tx)?;
+
+    let app_for_task = app.clone();
+    let agent_for_task = agent_id.to_string();
+    let conversation_id_clone = conversation_id.clone();
+    let session_api_key = server.session_api_key.clone();
+    tokio::spawn(async move {
+        let task = OpenHandsConversationTask {
+            app: app_for_task.clone(),
+            agent_id: agent_for_task.clone(),
+            client,
+            conversation_id: conversation_id_clone,
+            websocket_url,
+            session_api_key,
+            summary_context,
+            backfill_existing_events: is_first_turn,
+        };
+        let result = run_refine_conversation_task(task, cancel_rx).await;
+        unregister_cancel(&agent_for_task);
+        if let Err(error) = result {
+            super::events::handle_sidecar_exit_with_detail(
+                &app_for_task,
+                &agent_for_task,
+                false,
+                Some(error),
+            );
+        }
+    });
+
+    Ok(conversation_id)
+}
+
+/// Best-effort delete of an OpenHands refine conversation.
+///
+/// Errors are logged and swallowed — the server will eventually GC abandoned
+/// conversations, so a transient failure here is not fatal.
+pub async fn close_openhands_refine_session(conversation_id: &str) -> Result<(), String> {
+    let server = ensure_agent_server(Duration::from_secs(60))
+        .await
+        .map_err(|e| format!("OpenHands Agent Server not available: {e}"))?;
+    let client = OpenHandsServerClient::new(
+        server
+            .base_url()
+            .parse()
+            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
+        Some(server.session_api_key.clone()),
+    );
+    if let Err(e) = client.delete_conversation(conversation_id).await {
+        log::warn!(
+            "[close_openhands_refine_session] failed to delete conversation {}: {}",
+            conversation_id,
+            e
+        );
+    }
+    Ok(())
+}
+
 async fn run_conversation_task_inner(
     task: &OpenHandsConversationTask,
     cancel_rx: &mut tokio::sync::oneshot::Receiver<()>,
@@ -296,14 +440,66 @@ async fn run_conversation_task_inner(
         .await
         .map_err(|e| format!("Failed to authenticate OpenHands Agent Server socket: {e}"))?;
 
-    task.client
-        .run_conversation(&task.conversation_id)
-        .await
-        .map_err(|e| format!("Failed to run OpenHands Agent Server conversation: {e}"))?;
-
+    // The SDK emits SystemPromptEvent + the initial user MessageEvent during
+    // POST /api/conversations, before this WS attaches. On a fresh conversation
+    // backfill them via REST so the chat shows system_prompt and task_sent
+    // rows. Multi-turn refine turns N+1 already saw prior turns and use the
+    // live WS only — backfilling there would replay the whole history.
+    let mut seen_event_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     let mut terminal_state: Option<serde_json::Value> = None;
+    if task.backfill_existing_events {
+        match task.client.list_all_events(&task.conversation_id).await {
+            Ok(events) => {
+                for raw in events {
+                    if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
+                        if !seen_event_ids.insert(id.to_string()) {
+                            continue;
+                        }
+                    }
+                    let normalized =
+                        normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
+                    if normalized
+                        .get("type")
+                        .and_then(|value| value.as_str())
+                        == Some("conversation_state")
+                    {
+                        terminal_state = Some(normalized);
+                        continue;
+                    }
+                    super::events::handle_sidecar_message(
+                        &task.app,
+                        &task.agent_id,
+                        &normalized.to_string(),
+                    );
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "[openhands-agent-server:{}] event backfill failed (live WS only): {}",
+                    task.agent_id,
+                    e
+                );
+            }
+        }
+    }
+
     let mut cancel_pending = false;
-    loop {
+    // If REST backfill drained a terminal `conversation_state`, the
+    // conversation is already finished on the server. Skip the redundant
+    // /run POST and the WS read loop — fall straight through to the
+    // terminal-state handling below. Without this short-circuit a
+    // completed-on-disk conversation would issue a duplicate /run, and an
+    // error/cancelled-on-disk conversation would re-emit lifecycle events
+    // we've already projected.
+    if terminal_state.is_none() {
+        task.client
+            .run_conversation(&task.conversation_id)
+            .await
+            .map_err(|e| format!("Failed to run OpenHands Agent Server conversation: {e}"))?;
+    }
+
+    while terminal_state.is_none() {
         tokio::select! {
             _ = &mut *cancel_rx, if !cancel_pending => {
                 task.client
@@ -338,6 +534,11 @@ async fn run_conversation_task_inner(
                         continue;
                     }
                 };
+                if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
+                    if !seen_event_ids.insert(id.to_string()) {
+                        continue;
+                    }
+                }
                 let normalized = normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
                 let is_terminal = normalized
                     .get("type")
@@ -364,6 +565,7 @@ async fn run_conversation_task_inner(
             .await?
         }
         Some(state) => state,
+        None if cancel_pending => build_cancelled_state(&task.agent_id, &task.conversation_id),
         None => build_socket_closed_state(&task.agent_id, &task.conversation_id),
     };
 
@@ -405,6 +607,24 @@ fn build_socket_closed_state(agent_id: &str, conversation_id: &str) -> serde_jso
         "status": "error",
         "timestamp": chrono::Utc::now().timestamp_millis(),
         "error_detail": "OpenHands Agent Server socket closed before terminal conversation_state",
+        "result_text": null,
+        "structured_output": null,
+    })
+}
+
+/// Build a synthetic `cancelled` terminal state when the user cancelled and
+/// the WebSocket closed without a follow-up `PauseEvent`. Without this the
+/// loop falls through to `build_socket_closed_state` and surfaces the cancel
+/// as `status: "error"`, which is wrong — the user explicitly cancelled.
+fn build_cancelled_state(agent_id: &str, conversation_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "type": "conversation_state",
+        "runtime": "openhands",
+        "agent_id": agent_id,
+        "conversation_id": conversation_id,
+        "status": "cancelled",
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+        "error_detail": "User cancelled before the server emitted a PauseEvent",
         "result_text": null,
         "structured_output": null,
     })
@@ -735,6 +955,49 @@ mod tests {
             .and_then(|v| v.as_str())
             .unwrap()
             .contains("socket closed before terminal conversation_state"));
+    }
+
+    #[test]
+    fn socket_close_after_user_cancel_surfaces_as_cancelled_not_error() {
+        // The cancel-after-pause race: the user cancelled, we issued
+        // pause_conversation, but the WS closed without a follow-up
+        // PauseEvent. Without this fallback the user would see the cancel
+        // surface as `status: "error"` — which is a UX regression on a
+        // user-driven cancel.
+        let state = build_cancelled_state("agent-1", "conversation-1");
+
+        assert_eq!(
+            state.get("type").and_then(|v| v.as_str()),
+            Some("conversation_state")
+        );
+        assert_eq!(
+            state.get("status").and_then(|v| v.as_str()),
+            Some("cancelled")
+        );
+        assert!(state
+            .get("error_detail")
+            .and_then(|v| v.as_str())
+            .unwrap()
+            .contains("cancelled"));
+    }
+
+    #[test]
+    fn seen_event_ids_dedupe_drops_duplicate_ids_across_rest_and_ws() {
+        // Cross-source dedupe is the whole point of `seen_event_ids`. Its
+        // contract is small: insert returns false → drop. Pin it with a
+        // direct assertion so a refactor that swaps `HashSet` for a
+        // looser collection (or skips the insert!=false guard) trips the
+        // build before the SystemPromptEvent / initial MessageEvent
+        // re-renders twice.
+        let mut seen_event_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+
+        // First arrival via REST backfill — must be processed.
+        assert!(seen_event_ids.insert("event-00000".to_string()));
+        // Same id replayed via WS — must be dropped.
+        assert!(!seen_event_ids.insert("event-00000".to_string()));
+        // A different id must still be processed.
+        assert!(seen_event_ids.insert("event-00001".to_string()));
     }
 
     #[test]

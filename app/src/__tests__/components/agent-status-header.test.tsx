@@ -237,20 +237,20 @@ describe("getDisplayStatus", () => {
 });
 
 describe("getAgentActivityCount", () => {
-  it("counts OpenHands conversation events as activity", () => {
+  it("counts displayItems as activity", () => {
+    expect(
+      getAgentActivityCount({
+        displayItems: [{}, {}, {}],
+      }),
+    ).toBe(3);
+  });
+
+  it("returns 0 when there are no displayItems", () => {
     expect(
       getAgentActivityCount({
         displayItems: [],
-        conversationEvents: [
-          {
-            type: "conversation_event",
-            eventClass: "SystemPromptEvent",
-            event: {},
-            timestamp: Date.now(),
-          },
-        ],
       }),
-    ).toBe(1);
+    ).toBe(0);
   });
 });
 

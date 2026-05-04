@@ -34,7 +34,6 @@ impl OpenHandsServerClient {
         .build()
     }
 
-    #[allow(dead_code)]
     pub fn build_send_event_request(
         &self,
         conversation_id: &str,
@@ -73,6 +72,32 @@ impl OpenHandsServerClient {
             &format!("api/conversations/{conversation_id}/agent_final_response"),
         )
         .build()
+    }
+
+    pub fn build_search_events_request(
+        &self,
+        conversation_id: &str,
+        page_id: Option<&str>,
+        limit: u32,
+    ) -> Result<Request, reqwest::Error> {
+        let limit = limit.clamp(1, 100);
+        let path = format!("api/conversations/{conversation_id}/events/search");
+        let mut url = self
+            .base_url
+            .join(&path)
+            .expect("static OpenHands Agent Server API path should be valid");
+        {
+            let mut pairs = url.query_pairs_mut();
+            pairs.append_pair("limit", &limit.to_string());
+            if let Some(page_id) = page_id {
+                pairs.append_pair("page_id", page_id);
+            }
+        }
+        let mut builder = self.http.request(Method::GET, url);
+        if let Some(token) = &self.session_api_key {
+            builder = builder.header("X-Session-API-Key", token);
+        }
+        builder.build()
     }
 
     pub async fn create_conversation(
@@ -115,6 +140,18 @@ impl OpenHandsServerClient {
         Ok(())
     }
 
+    pub async fn send_event(
+        &self,
+        conversation_id: &str,
+        event: serde_json::Value,
+    ) -> Result<(), reqwest::Error> {
+        self.http
+            .execute(self.build_send_event_request(conversation_id, event)?)
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
     pub async fn agent_final_response(
         &self,
         conversation_id: &str,
@@ -125,6 +162,59 @@ impl OpenHandsServerClient {
             .error_for_status()?
             .json()
             .await
+    }
+
+    /// Fetch every persisted event for the conversation in chronological order.
+    ///
+    /// The SDK emits SystemPromptEvent and the initial user MessageEvent during
+    /// POST /api/conversations — before the WebSocket subscriber attaches — so
+    /// the live stream alone misses those frames. This drains the REST page
+    /// cursor so callers can backfill them deterministically before consuming
+    /// the WebSocket.
+    pub async fn list_all_events(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Vec<serde_json::Value>, reqwest::Error> {
+        // Hard cap on pages so a buggy server cursor that never returns
+        // null cannot hang the WS-attach phase. 10 pages × 100 events =
+        // 1000 events, far above what the SDK emits between
+        // POST /api/conversations and WS subscribe (typically 2 — the
+        // SystemPromptEvent + initial user MessageEvent). If we ever hit
+        // the cap the warning makes it visible without breaking the run.
+        const MAX_BACKFILL_PAGES: usize = 10;
+        let mut events = Vec::new();
+        let mut page_id: Option<String> = None;
+        for page in 0..MAX_BACKFILL_PAGES {
+            let response = self
+                .http
+                .execute(self.build_search_events_request(
+                    conversation_id,
+                    page_id.as_deref(),
+                    100,
+                )?)
+                .await?
+                .error_for_status()?
+                .json::<serde_json::Value>()
+                .await?;
+            if let Some(items) = response.get("items").and_then(|value| value.as_array()) {
+                events.reserve(items.len());
+                events.extend(items.iter().cloned());
+            }
+            page_id = response
+                .get("next_page_id")
+                .and_then(|value| value.as_str())
+                .map(str::to_string);
+            if page_id.is_none() {
+                return Ok(events);
+            }
+            if page + 1 == MAX_BACKFILL_PAGES {
+                log::warn!(
+                    "[openhands-agent-server] event backfill hit MAX_BACKFILL_PAGES={MAX_BACKFILL_PAGES}; \
+                     stopping pagination — server returned non-null next_page_id beyond expected range"
+                );
+            }
+        }
+        Ok(events)
     }
 
     fn request(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
@@ -313,5 +403,73 @@ mod tests {
                 .path(),
             "/api/conversations/abc/agent_final_response"
         );
+    }
+
+    #[test]
+    fn default_tool_set_includes_search_and_subagent_spawn() {
+        let mut config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
+        config.allowed_tools = None;
+        let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();
+        let payload = StartConversationRequest::from_one_shot(&request);
+        let json = serde_json::to_value(payload).unwrap();
+
+        let names: Vec<String> = json["agent"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap().to_string())
+            .collect();
+
+        for expected in [
+            "file_editor",
+            "glob",
+            "grep",
+            "task_tool_set",
+            "task_tracker",
+            "terminal",
+        ] {
+            assert!(
+                names.iter().any(|n| n == expected),
+                "expected `{expected}` in default tool set, got {names:?}"
+            );
+        }
+
+        // Built-in tools must only resolve names in BUILT_IN_TOOL_CLASSES;
+        // DelegateTool was removed because the SDK rejects it (and it's
+        // deprecated). InvokeSkillTool auto-attaches via agent_context.
+        let defaults: Vec<String> = json["agent"]["include_default_tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(defaults, vec!["FinishTool", "ThinkTool"]);
+    }
+
+    #[test]
+    fn search_events_request_includes_pagination_query() {
+        let client = OpenHandsServerClient::new(
+            "http://127.0.0.1:43210".parse().unwrap(),
+            Some("session-key".to_string()),
+        );
+
+        let first = client.build_search_events_request("conv-1", None, 100).unwrap();
+        assert_eq!(first.method(), reqwest::Method::GET);
+        assert_eq!(first.url().path(), "/api/conversations/conv-1/events/search");
+        assert_eq!(first.url().query(), Some("limit=100"));
+        assert_eq!(
+            first
+                .headers()
+                .get("X-Session-API-Key")
+                .and_then(|value| value.to_str().ok()),
+            Some("session-key")
+        );
+
+        let next = client
+            .build_search_events_request("conv-1", Some("page-2"), 50)
+            .unwrap();
+        let query = next.url().query().unwrap_or_default();
+        assert!(query.contains("limit=50"), "query was {query}");
+        assert!(query.contains("page_id=page-2"), "query was {query}");
     }
 }

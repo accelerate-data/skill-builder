@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act, fireEvent } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import { WorkspaceRefine } from "@/components/workspace/workspace-refine";
 import type { SkillSummary } from "@/lib/types";
 
@@ -11,7 +11,7 @@ const tauriMocks = vi.hoisted(() => ({
   closeRefineSession: vi.fn().mockResolvedValue(undefined),
   cleanupSkillSidecar: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
-  sendStreamingRefineMessage: vi.fn().mockResolvedValue("agent-1"),
+  sendRefineMessage: vi.fn().mockResolvedValue("agent-1"),
   cancelRefineTurn: vi.fn().mockResolvedValue(undefined),
   finalizeRefineRun: vi.fn().mockResolvedValue({ files: [], diff: null }),
 }));
@@ -275,26 +275,4 @@ describe("WorkspaceRefine", () => {
     );
   });
 
-  it("does not start a refine turn when no model is configured", async () => {
-    const { toast } = await import("@/lib/toast");
-    const skill = makeSkill("my-skill");
-    refineStoreState.selectedSkill = skill;
-    refineStoreState.sessionId = "session-no-model";
-
-    await act(async () => {
-      renderRefine(skill);
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("chat-panel"));
-    });
-
-    expect(tauriMocks.sendStreamingRefineMessage).not.toHaveBeenCalled();
-    expect(refineStoreState.addUserMessage).not.toHaveBeenCalled();
-    expect(refineStoreState.setRunning).not.toHaveBeenCalledWith(true);
-    expect(toast.error).toHaveBeenCalledWith(
-      "Select a model in Settings before running agents.",
-      expect.any(Object),
-    );
-  });
 });

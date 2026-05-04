@@ -31,7 +31,6 @@ const { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapt
     setRunning: vi.fn(),
     setGateLoading: vi.fn(),
     clearInitializing: vi.fn(),
-    clearPendingQuestion: vi.fn(),
     clearRuntimeError: vi.fn(),
     updateStepStatus: vi.fn(),
   };
@@ -83,7 +82,6 @@ let mockWorkflowState = {
   setRunning: vi.fn(),
   setGateLoading: vi.fn(),
   clearInitializing: vi.fn(),
-  clearPendingQuestion: vi.fn(),
   clearRuntimeError: vi.fn(),
   updateStepStatus: vi.fn(),
 };
@@ -106,7 +104,6 @@ describe("useWorkflowSession", () => {
       setRunning: vi.fn(),
       setGateLoading: vi.fn(),
       clearInitializing: vi.fn(),
-      clearPendingQuestion: vi.fn(),
       clearRuntimeError: vi.fn(),
       updateStepStatus: vi.fn(),
     };

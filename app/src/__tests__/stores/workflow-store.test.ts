@@ -460,4 +460,18 @@ describe("useWorkflowStore", () => {
       expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
     });
   });
+
+  describe("AskUserQuestion vestige guard (VU-1155)", () => {
+    // The pendingQuestion / WorkflowStepQuestion plumbing was removed in
+    // VU-1155 because the OpenHands runtime has no AskUserQuestion. Restoring
+    // the capability is tracked in VU-1158 — when it lands it should use the
+    // refine-store RefineMessage{role:"question"} shape, not this store.
+    // Until then, accidentally re-adding any of these keys must trip a test.
+    it("does not expose pendingQuestion / setPendingQuestion / clearPendingQuestion", () => {
+      const state = useWorkflowStore.getState() as Record<string, unknown>;
+      expect(state.pendingQuestion).toBeUndefined();
+      expect(state.setPendingQuestion).toBeUndefined();
+      expect(state.clearPendingQuestion).toBeUndefined();
+    });
+  });
 });

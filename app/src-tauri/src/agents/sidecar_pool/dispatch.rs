@@ -913,6 +913,7 @@ impl SidecarPool {
     }
 
     /// Resolve a pending AskUserQuestion callback inside an active streaming session.
+    #[allow(dead_code)]
     pub async fn send_stream_question_answer(
         &self,
         skill_name: &str,
@@ -951,6 +952,7 @@ impl SidecarPool {
     /// Interrupt the current turn without closing the session.
     /// The sidecar aborts the AbortController; the next stream_message
     /// resumes the conversation via the SDK's `resume` option.
+    #[allow(dead_code)]
     pub async fn send_stream_cancel(
         &self,
         skill_name: &str,
@@ -997,6 +999,7 @@ impl SidecarPool {
     }
 
     /// Close a streaming session.
+    #[allow(dead_code)]
     pub async fn send_stream_end(&self, skill_name: &str, session_id: &str) -> Result<(), String> {
         let message = serde_json::json!({
             "type": "stream_end",
