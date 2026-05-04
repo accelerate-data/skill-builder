@@ -25,6 +25,11 @@ updates:
     schedule:
       interval: weekly
 
+  - package-ecosystem: pip
+    directory: /app/src-tauri
+    schedule:
+      interval: weekly
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
