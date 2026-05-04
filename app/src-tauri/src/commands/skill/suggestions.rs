@@ -106,7 +106,10 @@ pub async fn generate_suggestions(
     .await
     .inspect_err(|e| log::error!("[generate_suggestions] OpenHands request failed: {}", e))?;
 
-    parse_suggestions_from_conversation_state(&run.conversation_state)
+    parse_suggestions_from_conversation_state(
+        &run.conversation_state,
+        &requested_fields,
+    )
 }
 
 fn requested_fields(fields: Option<&[String]>) -> Result<Vec<String>, String> {
@@ -334,13 +337,14 @@ pub(crate) fn build_suggestions_runtime_config(
 
 fn parse_suggestions_from_conversation_state(
     state: &serde_json::Value,
+    requested_fields: &[String],
 ) -> Result<FieldSuggestions, String> {
     if state.get("type").and_then(|value| value.as_str()) != Some("conversation_state") {
         return Err("Suggestions result was not an OpenHands conversation_state".to_string());
     }
 
     match state.get("status").and_then(|value| value.as_str()) {
-        Some("completed") => parse_completed_suggestions_output(state),
+        Some("completed") => parse_completed_suggestions_output(state, requested_fields),
         Some("error") | Some("cancelled") => Err(state
             .get("error_detail")
             .or_else(|| state.get("errorDetail"))
@@ -356,13 +360,16 @@ fn parse_suggestions_from_conversation_state(
     }
 }
 
-fn parse_completed_suggestions_output(state: &serde_json::Value) -> Result<FieldSuggestions, String> {
+fn parse_completed_suggestions_output(
+    state: &serde_json::Value,
+    requested_fields: &[String],
+) -> Result<FieldSuggestions, String> {
     if let Some(structured_output) = state
         .get("structured_output")
         .or_else(|| state.get("structuredOutput"))
         .filter(|value| value.is_object())
     {
-        return parse_suggestions_value(structured_output);
+        return parse_suggestions_value(structured_output, requested_fields);
     }
 
     let Some(result_text) = state
@@ -374,11 +381,14 @@ fn parse_completed_suggestions_output(state: &serde_json::Value) -> Result<Field
         return Err("Suggestions completed without parseable output".to_string());
     };
 
-    parse_suggestions_result_text(result_text)
+    parse_suggestions_result_text(result_text, requested_fields)
         .map_err(|e| format!("Suggestions completed without parseable output: {}", e))
 }
 
-fn parse_suggestions_result_text(text: &str) -> Result<FieldSuggestions, String> {
+fn parse_suggestions_result_text(
+    text: &str,
+    requested_fields: &[String],
+) -> Result<FieldSuggestions, String> {
     let cleaned = text.trim();
     let cleaned = cleaned
         .strip_prefix("```json")
@@ -391,13 +401,17 @@ fn parse_suggestions_result_text(text: &str) -> Result<FieldSuggestions, String>
         format!("Failed to parse result: {}", e)
     })?;
 
-    parse_suggestions_value(&parsed)
+    parse_suggestions_value(&parsed, requested_fields)
 }
 
-fn parse_suggestions_value(parsed: &serde_json::Value) -> Result<FieldSuggestions, String> {
+fn parse_suggestions_value(
+    parsed: &serde_json::Value,
+    requested_fields: &[String],
+) -> Result<FieldSuggestions, String> {
     let object = parsed
         .as_object()
         .ok_or_else(|| "Suggestions output must be a JSON object".to_string())?;
+    let requested_fields = validate_requested_fields(requested_fields)?;
 
     let mut saw_known_field = false;
     let mut saw_non_empty_value = false;
@@ -406,6 +420,12 @@ fn parse_suggestions_value(parsed: &serde_json::Value) -> Result<FieldSuggestion
         if !ALL_FIELDS.contains(&key.as_str()) {
             return Err(format!(
                 "Suggestions output contained unknown suggestion field '{}'",
+                key
+            ));
+        }
+        if !requested_fields.iter().any(|field| field == key) {
+            return Err(format!(
+                "Suggestions output contained field '{}' that was not requested",
                 key
             ));
         }
@@ -532,7 +552,15 @@ mod tests {
             }
         });
 
-        let result = parse_suggestions_from_conversation_state(&state).unwrap();
+        let result = parse_suggestions_from_conversation_state(
+            &state,
+            &[
+                "description".to_string(),
+                "claude_mistakes".to_string(),
+                "context_questions".to_string(),
+            ],
+        )
+        .unwrap();
 
         assert_eq!(
             result.description,
@@ -557,7 +585,14 @@ mod tests {
             "result_text": r#"{"description":"Forecasts churn risk.","claude_mistakes":"• Misses company standards"}"#
         });
 
-        let result = parse_suggestions_from_conversation_state(&state).unwrap();
+        let result = parse_suggestions_from_conversation_state(
+            &state,
+            &[
+                "description".to_string(),
+                "claude_mistakes".to_string(),
+            ],
+        )
+        .unwrap();
 
         assert_eq!(result.description, "Forecasts churn risk.");
         assert_eq!(result.claude_mistakes, "• Misses company standards");
@@ -597,7 +632,14 @@ mod tests {
             }
         });
 
-        let error = parse_suggestions_from_conversation_state(&state).unwrap_err();
+        let error = parse_suggestions_from_conversation_state(
+            &state,
+            &ALL_FIELDS
+                .iter()
+                .map(|field| (*field).to_string())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap_err();
         assert!(error.contains("unknown suggestion field"));
     }
 
@@ -611,7 +653,14 @@ mod tests {
             }
         });
 
-        let error = parse_suggestions_from_conversation_state(&state).unwrap_err();
+        let error = parse_suggestions_from_conversation_state(
+            &state,
+            &ALL_FIELDS
+                .iter()
+                .map(|field| (*field).to_string())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap_err();
         assert!(error.contains("must be a string"));
     }
 
@@ -623,7 +672,14 @@ mod tests {
             "structured_output": {}
         });
 
-        let error = parse_suggestions_from_conversation_state(&state).unwrap_err();
+        let error = parse_suggestions_from_conversation_state(
+            &state,
+            &ALL_FIELDS
+                .iter()
+                .map(|field| (*field).to_string())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap_err();
         assert!(error.contains("no recognized suggestion fields"));
     }
 
@@ -635,7 +691,30 @@ mod tests {
             "result_text": r#"{"description":42}"#
         });
 
-        let error = parse_suggestions_from_conversation_state(&state).unwrap_err();
+        let error = parse_suggestions_from_conversation_state(
+            &state,
+            &ALL_FIELDS
+                .iter()
+                .map(|field| (*field).to_string())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap_err();
         assert!(error.contains("must be a string"));
+    }
+
+    #[test]
+    fn rejects_result_text_fields_outside_requested_subset() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": r#"{"domain":"Revenue ops"}"#
+        });
+
+        let error = parse_suggestions_from_conversation_state(
+            &state,
+            &["description".to_string()],
+        )
+        .unwrap_err();
+        assert!(error.contains("not requested"));
     }
 }
