@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
@@ -21,8 +21,12 @@ vi.mock("@/components/skill-dialog", () => ({
   ),
 }));
 
+vi.mock("@/components/workspace/benchmark-overview-card", () => ({
+  BenchmarkOverviewCard: () => <div data-testid="benchmark-overview-card" />,
+}));
+
 import { WorkspaceOverview } from "@/components/workspace/workspace-overview";
-import { getSkillHistory } from "@/lib/tauri";
+import { getSkillHistory, readLatestBenchmark } from "@/lib/tauri";
 
 const baseSkill: SkillSummary = {
   name: "sales-pipeline",
@@ -153,5 +157,31 @@ describe("WorkspaceOverview", () => {
     expect(screen.getByText("generated skill")).toBeInTheDocument();
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
     expect(screen.queryByRole("button", { name: /compare/i })).not.toBeInTheDocument();
+  });
+
+  it("does not load or render legacy benchmark overview artifacts", async () => {
+    vi.mocked(readLatestBenchmark).mockResolvedValueOnce({
+      iteration: 7,
+      data: { legacy: true },
+    });
+
+    render(
+      <WorkspaceOverview
+        skill={baseSkill}
+        skillType="builder"
+      />,
+    );
+
+    await waitFor(() =>
+      expect(getSkillHistory).toHaveBeenCalledWith(
+        "/workspace",
+        "sales-pipeline",
+        "skills",
+        50,
+      ),
+    );
+
+    expect(readLatestBenchmark).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("benchmark-overview-card")).not.toBeInTheDocument();
   });
 });

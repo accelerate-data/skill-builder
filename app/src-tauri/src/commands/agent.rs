@@ -310,10 +310,5 @@ mod tests {
         assert!(
             output_format_for_agent("my-skill", Some("skill-creator:generate-skill")).is_none()
         );
-        assert!(output_format_for_agent(
-            "my-skill",
-            Some("skill-creator:generate-skill-description-evals")
-        )
-        .is_none());
     }
 }

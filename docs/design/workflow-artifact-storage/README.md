@@ -16,6 +16,10 @@ VU-1157 moves those artifacts into SQLite as canonical normalized state. The wor
 
 This is a clean-break refactor. No dual-write, no file fallback, no startup reconciliation, no legacy backfill. Skill Builder is in dev — we are not protecting any workspaces in flight.
 
+Generation-owned eval files and description-tuning files are not part of the
+clean-break storage model. Step 3 should not materialize `evals/evals.json`,
+`pending-eval.json`, or description-candidate artifacts in the workspace.
+
 ## Scope
 
 **In scope**
@@ -68,6 +72,7 @@ This is a clean-break refactor. No dual-write, no file fallback, no startup reco
 
 Per-artifact normalized tables. JSON is the wire format only; rows are typed.
 
+### Workspace is runtime scratch
 ### Workspace is runtime scratch
 
 ```text

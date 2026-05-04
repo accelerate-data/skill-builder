@@ -142,7 +142,8 @@ pub fn clean_step_output(
                     &skill_output_dir.join(format!("{}.skill", skill_name)),
                 );
             }
-            // Legacy eval artifacts in workspace (eval-review.html is inside evals/).
+            // Remove legacy workspace eval folders without treating any file name there
+            // as part of the current step 3 contract.
             remove_dir_logged(LABEL, &skill_dir.join("evals"));
         }
         _ => {
@@ -311,7 +312,7 @@ mod tests {
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
         std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
-        std::fs::write(skill_dir.join("evals/evals.json"), "{}").unwrap();
+        std::fs::write(skill_dir.join("evals/eval-review.html"), "<html>").unwrap();
 
         // Delete from step 0 onwards
         delete_step_output_files(workspace, "my-skill", SLUG, 0, skills_path);
@@ -359,10 +360,9 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        // Create legacy workspace eval artifacts (eval-review.html is inside evals/).
+        // Create a legacy workspace eval folder.
         let skill_dir = tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
-        std::fs::write(skill_dir.join("evals/evals.json"), "{}").unwrap();
         std::fs::write(skill_dir.join("evals/eval-review.html"), "<html>").unwrap();
 
         // Create skill output dir with SKILL.md in canonical plugin layout
@@ -472,10 +472,10 @@ mod tests {
         std::fs::write(output_dir.join("references/bar.md"), "ref").unwrap();
         std::fs::write(output_dir.join("my-skill.skill"), "zip").unwrap();
 
-        // Legacy eval artifacts in plugin-organised workspace.
+        // Legacy eval folder in plugin-organised workspace.
         let skill_dir = tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
-        std::fs::write(skill_dir.join("evals/evals.json"), "{}").unwrap();
+        std::fs::write(skill_dir.join("evals/legacy-case.json"), "{}").unwrap();
 
         let files = list_step_output_files(workspace, "my-skill", SLUG, 3, skills_path);
 
@@ -591,10 +591,10 @@ mod tests {
         std::fs::write(output_dir.join("references/data-model.md"), "ref").unwrap();
         std::fs::write(output_dir.join("my-skill.skill"), "zip").unwrap();
 
-        // Legacy eval artifacts (eval-review.html is inside evals/).
+        // Legacy eval folder content.
         let skill_dir = tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(skill_dir.join("evals/workspace")).unwrap();
-        std::fs::write(skill_dir.join("evals/evals.json"), "{}").unwrap();
+        std::fs::write(skill_dir.join("evals/workspace/results.json"), "{}").unwrap();
         std::fs::write(skill_dir.join("evals/eval-review.html"), "<html>").unwrap();
 
         // Re-running step 3 should delete all step 3 artifacts

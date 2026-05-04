@@ -11,9 +11,9 @@ requirements and decisions without carrying the full legacy
 The existing plugin skill at
 `agent-sources/plugins/skill-creator/skills/skill-creator/SKILL.md` remains
 unchanged. It is broad legacy guidance that includes creation, eval review,
-improvement loops, blind comparison, and description optimization. The clean
+improvement loops, blind comparison, and trigger-description candidate work. The clean
 break path should copy only the skill-writing guidance that belongs in step 3
-into a new focused skill under `agent-sources/skills`.
+into a focused runtime skill under `agent-sources/workspace/skills`.
 
 The new skill should be a creation-time authoring helper for the single
 OpenHands `skill-creator` agent. The app-owned step 3 prompt reads workflow
@@ -25,7 +25,7 @@ app Eval Workbench after generation, not by step 3.
 
 **Covers**
 
-- Creating a focused copied skill under `agent-sources/skills`.
+- Creating a focused runtime skill under `agent-sources/workspace/skills`.
 - How workflow step 3 passes already-loaded clarification and decision context
   into skill creation.
 - The Generator-Verifier loop that validates generated artifacts in fresh
@@ -39,20 +39,20 @@ app Eval Workbench after generation, not by step 3.
 - Running evals, aggregating benchmarks, or opening review viewers.
 - Iterative skill improvement after user feedback.
 - Blind comparison.
-- Standalone description optimization.
+- Standalone trigger-description candidate generation or ranking.
 - Changing workflow step 0, step 1, or step 2 behavior.
 
 ## Key Decisions
 
 | Decision | Rationale |
 |---|---|
-| Copy into `agent-sources/skills`, do not mutate the plugin skill. | The legacy plugin remains available for existing plugin paths, while the OpenHands clean-break workflow gets a narrow, auditable creation primitive. |
+| Copy into `agent-sources/workspace/skills`, do not mutate the plugin skill. | The legacy plugin remains available for plugin-specific flows, while the OpenHands clean-break workflow gets a narrow, auditable creation primitive deployed with the runtime workspace. |
 | Name the focused skill `creating-skills`. | The skill uses gerund naming and describes the action it teaches: writing new skills from confirmed requirements. |
 | Keep workflow JSON loading in the step 3 prompt. | `clarifications.json`, `decisions.json`, and `user-context.md` are workflow artifacts. The prompt knows their exact paths and should read them before generation. The skill should receive the synthesized requirements, not rediscover workflow state. |
 | Use the same OpenHands `skill-creator` agent. | Clean-break workflow routing varies task prompts and skills, not top-level agent identities. |
-| Fold description quality into generation. | Trigger description quality is part of writing a usable skill. It should be handled while drafting `SKILL.md`, not by a separate optimization phase. |
+| Fold description quality into generation. | Trigger description quality is part of writing a usable skill. It should be handled while drafting `SKILL.md`, not by a separate candidate-generation flow. |
 | Keep validation in the copied skill through a Generator-Verifier loop. | Fresh-context validation catches leakage, missing files, and weak descriptions before the workflow materializes the generated skill. |
-| Keep eval creation out of step 3. | Step 3 should not create generation-owned eval artifacts or semi-structured eval suggestions. The app Eval Workbench owns durable prompt cases, assertions, runs, and history after generation. |
+| Keep eval creation out of step 3. | Step 3 should not create generation-owned eval artifacts or semi-structured eval suggestions. The app Eval Workbench owns durable prompt cases, assertions, runs, and trigger-description candidates after generation. |
 
 ## Target Runtime Shape
 
@@ -103,7 +103,7 @@ not expose workflow artifacts in the shipped skill content.
 The copied skill should live at:
 
 ```text
-agent-sources/skills/creating-skills/SKILL.md
+agent-sources/workspace/skills/creating-skills/SKILL.md
 ```
 
 Its frontmatter should describe when to use it, not the workflow step:
@@ -135,8 +135,9 @@ The skill should generate:
 It should not create `evals/evals.json`, iteration folders, review HTML, or
 Promptfoo config files during skill generation. It should also avoid prompt
 cases, assertion ideas, trigger/non-trigger eval examples, or manual eval
-criteria. Eval creation is an explicit app Eval Workbench workflow after the
-skill exists.
+criteria. It should not generate alternate descriptions or ranking notes either.
+Eval creation and trigger-description experiments are explicit app Eval
+Workbench workflows after the skill exists.
 
 ## Generator-Verifier Loop
 
@@ -175,7 +176,7 @@ The verifier should check:
   leak into shipped skill instructions.
 - No eval definitions, eval suggestions, iteration folders, Promptfoo configs,
   eval execution, benchmark aggregation, review viewer, commit, tag, blind
-  comparison, or description optimization artifact was created.
+  comparison, or trigger-description candidate artifact was created.
 
 ## Output And Failure Behavior
 
@@ -207,7 +208,7 @@ not be silently accepted.
 | Path | Role |
 |---|---|
 | `agent-sources/plugins/skill-creator/skills/skill-creator/SKILL.md` | Legacy source material. Keep unchanged. |
-| `agent-sources/skills/creating-skills/SKILL.md` | New focused copied skill. |
+| `agent-sources/workspace/skills/creating-skills/SKILL.md` | Focused runtime skill deployed into the OpenHands workspace. |
 | `agent-sources/workspace/agents/skill-creator.md` | Shared OpenHands agent identity and workflow overview. |
 | `agent-sources/plugins/skill-creator/agents/skill-writer-agent.md` | Current legacy step 2/3 agent instructions to replace or bypass in the clean-break step 3 path. |
 | `agent-sources/prompts/**` | App-owned workflow prompts. Step 3 generation prompt should live here in the clean-break path. |
@@ -219,6 +220,5 @@ not be silently accepted.
 - Whether the existing step 3 output schema needs a first-class
   `validation_findings` field, or whether unresolved verifier findings should
   remain terminal errors.
-- Whether `agent-sources/skills/**` is already part of the startup deployment
-  path for workspace `.agents/skills/**`, or whether the implementation needs
-  to add that source directory to deployment.
+- Whether the verifier result should surface richer machine-readable findings
+  than the current skipped/result summary.

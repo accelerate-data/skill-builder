@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, TestCase, DiscoveryResolutionAction, ModelSettings } from "@/lib/types";
-import type { EvalQuery } from "@/lib/description-optimization";
+import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, DiscoveryResolutionAction, ModelSettings } from "@/lib/types";
 import type { TauriCommandInvocation, TauriCommandResult } from "@/lib/tauri-command-types";
 
 export const invokeCommand = <Invocation extends TauriCommandInvocation>(
@@ -669,73 +668,6 @@ export const checkStartupDeps = () =>
 export const getAllTags = () =>
   invokeCommand("get_all_tags", {});
 
-// --- Description Optimization ---
-
-export const runOptimizationLoop = (
-  skillName: string,
-  pluginSlug: string,
-  workspacePath: string,
-  model: string,
-  evalQueries: EvalQuery[],
-) => invokeCommand("run_optimization_loop", { skillName, pluginSlug, workspacePath, model, evalQueries });
-
-export const cancelDescriptionOptimization = () =>
-  invokeCommand("cancel_description_optimization", {});
-
-export const applyDescription = (
-  skillName: string,
-  pluginSlug: string,
-  workspacePath: string,
-  description: string,
-) => invokeCommand("apply_description", { skillName, pluginSlug, workspacePath, description });
-
-export const saveEvalQueries = (
-  skillName: string,
-  pluginSlug: string,
-  workspacePath: string,
-  evalQueries: EvalQuery[],
-) =>
-  invokeCommand("save_eval_queries", {
-    skillName,
-    pluginSlug,
-    workspacePath,
-    evalQueries: evalQueries.map(({ query, should_trigger }) => ({ query, should_trigger })),
-  });
-
-export const loadEvalQueries = (
-  skillName: string,
-  pluginSlug: string,
-  workspacePath: string,
-) => invokeCommand("load_eval_queries", { skillName, pluginSlug, workspacePath });
-
-/** Start the generate-skill-description-evals agent.
- * Rust intercepts the run_result (step_id=-12), persists queries to
- * {skills_path}/{plugin_slug}/{skill_name}/description-evals.json, then emits
- * "description:eval-queries-generated" with { skillName, queries }.
- */
-export const startGenerateDescEvalQueries = (
-  agentId: string,
-  skillName: string,
-  pluginSlug: string,
-  workspaceSkillDir: string,
-  model: string,
-  numEvalQueries: number,
-) => invokeCommand("start_generate_desc_evals", {
-  agentId,
-  skillName,
-  pluginSlug,
-  workspaceSkillDir,
-  model,
-  numEvalQueries,
-});
-
-export const writeDescOptLog = (
-  skillName: string,
-  pluginSlug: string,
-  workspacePath: string,
-  message: string,
-) => invokeCommand("write_desc_opt_log", { skillName, pluginSlug, workspacePath, message });
-
 // --- Benchmark ---
 
 export interface LatestBenchmarkResult {
@@ -748,103 +680,6 @@ export const readLatestBenchmark = (skillName: string, workspacePath: string) =>
     "read_latest_benchmark",
     { skillName, workspacePath },
   );
-
-// --- Test case management (Evals tab) ---
-
-export const listTestCases = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeCommand("list_test_cases", { skillName, workspacePath, pluginSlug });
-
-export const saveTestCase = (skillName: string, workspacePath: string, pluginSlug: string, testCase: TestCase) =>
-  invokeCommand("save_test_case", { skillName, workspacePath, pluginSlug, testCase });
-
-export const deleteTestCase = (skillName: string, workspacePath: string, pluginSlug: string, id: number) =>
-  invokeCommand("delete_test_case", { skillName, workspacePath, pluginSlug, id });
-
-export const listIterations = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeCommand("list_iterations", { skillName, workspacePath, pluginSlug });
-
-export const createNextIterationDir = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeCommand("create_next_iteration_dir", { skillName, workspacePath, pluginSlug });
-
-export const materializeEvalBenchmark = (
-  iterDir: string,
-  skillName: string,
-  workspacePath: string,
-  pluginSlug: string,
-  iteration: number,
-  evalIds: number[],
-  runCount: number,
-  comparisonMode?: string,
-) =>
-  invokeCommand("materialize_eval_benchmark", {
-    iterDir,
-    skillName,
-    workspacePath,
-    pluginSlug,
-    iteration,
-    evalIds,
-    runCount,
-    comparisonMode: comparisonMode ?? null,
-  });
-
-export const readIterationResult = (iterationPath: string, skillName?: string, workspacePath?: string, pluginSlug?: string) =>
-  invokeCommand("read_iteration_result", {
-    iterationPath,
-    skillName: skillName ?? null,
-    workspacePath: workspacePath ?? null,
-    pluginSlug: pluginSlug ?? null,
-  });
-
-export const readGrading = (gradingPath: string) =>
-  invokeCommand("read_grading", { gradingPath });
-
-export const readSkillContextForEvalGen = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeCommand("read_skill_context_for_eval_gen", { skillName, workspacePath, pluginSlug });
-
-export const readPendingEval = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeCommand("read_pending_eval", { skillName, workspacePath, pluginSlug });
-
-export const discardPendingEval = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeCommand("discard_pending_eval", { skillName, workspacePath, pluginSlug });
-
-export const buildEvalPrompt = (
-  skillName: string,
-  pluginSlug: string,
-  workspacePath: string,
-  skillPath: string,
-  evalIds: number[],
-  runCount: number,
-  iteration: number,
-  iterDir: string,
-  comparisonMode?: string,
-) =>
-  invokeCommand("build_eval_prompt", {
-    skillName,
-    pluginSlug,
-    workspacePath,
-    skillPath,
-    evalIds,
-    runCount,
-    iteration,
-    iterDir,
-    comparisonMode: comparisonMode ?? null,
-  });
-
-export const buildEvalGenPrompt = (
-  skillName: string,
-  skillPath: string,
-  outputPath: string,
-  userIntent: string,
-  userContextFile: string,
-) =>
-  invokeCommand("build_eval_gen_prompt", {
-    skillName,
-    skillPath,
-    outputPath,
-    userIntent,
-    userContextFile,
-  });
-
 
 // --- Documents ---
 

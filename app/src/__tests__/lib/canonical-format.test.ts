@@ -99,9 +99,11 @@ describe("Canonical format: skill generation prompt contract", () => {
 
   it("keeps durable eval artifacts owned by the app Eval Workbench", () => {
     expect(prompt).not.toContain("evals/evals.json");
+    expect(prompt).not.toContain("pending-eval.json");
     expect(prompt).not.toContain("write-evals");
     expect(prompt).not.toContain("eval ideas");
     expect(prompt).not.toContain("suggest-eval-ideas");
+    expect(prompt).not.toContain("description optimization");
   });
 });
 

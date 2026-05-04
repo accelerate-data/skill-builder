@@ -236,6 +236,7 @@ pub async fn spawn_sidecar(
 }
 
 /// Public accessor for startup dependency checks.
+#[allow(dead_code)]
 pub fn resolve_sdk_cli_path_public(app_handle: &tauri::AppHandle) -> Result<String, String> {
     resolve_sdk_cli_path(app_handle)
 }
