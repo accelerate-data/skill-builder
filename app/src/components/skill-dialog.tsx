@@ -410,7 +410,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="description">
                     What the skill does <span className="text-destructive">*</span>
-                    {isEdit && <LockedIcon message="Use the Optimize Description tab to update this" />}
+                    {isEdit && <LockedIcon message="Use the Eval Workbench tab to update this" />}
                   </Label>
                   <Textarea
                     id="description"
@@ -422,7 +422,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   />
                   <p className="text-xs text-muted-foreground">
                     {isEdit
-                      ? "Use the Optimize Description tab to update this"
+                      ? "Use the Eval Workbench tab to update this"
                       : `How the AI agent decides when to activate this skill (${description.length}/1024)`}
                   </p>
                   <ScopeAdvisor

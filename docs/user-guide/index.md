@@ -58,8 +58,8 @@ Two important areas are embedded inside those surfaces rather than being standal
 
 - [Plugins](plugins.md) explains how skills are grouped into plugins.
 - [Refine](refine.md) is a workspace tab on the dashboard for builder skills.
-- [Evals](test.md) is a workspace tab for creating and running skill evals.
-- [Optimize Description](optimize-description.md) is a workspace tab for tuning when a skill should trigger.
+- [Eval Workbench](test.md) is a workspace tab with performance and trigger modes for testing skill behavior.
+- [Trigger Mode](optimize-description.md) explains the trigger-specific mode inside Eval Workbench.
 - [Documents](documents.md) lives in **Settings → Documents**.
 - [Usage](usage.md) lives in **Settings → Usage**.
 

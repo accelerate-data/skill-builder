@@ -5,7 +5,9 @@ use crate::agents::promptfoo_sidecar::protocol::{
     EvalAssertion, EvalAssertionType, EvalCandidate as SidecarEvalCandidate, EvalCase,
     EvalExecution, EvalMode as SidecarEvalMode, RunEvalRequest,
 };
-use crate::agents::openhands_server::{run_openhands_one_shot, OpenHandsOneShotRunParams};
+use crate::agents::openhands_server::{
+    cancel_openhands_one_shots_with_prefix, run_openhands_one_shot, OpenHandsOneShotRunParams,
+};
 use crate::agents::sidecar::{build_openhands_one_shot_config, OpenHandsOneShotConfigParams};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::commands::refine::{content::get_skill_content_inner_for_plugin, resolve_skills_path};
@@ -26,12 +28,32 @@ pub use types::{
     SuggestDescriptionCandidatesRequest,
 };
 use serde_json::Value;
-use std::collections::HashSet;
+use tauri::Emitter;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 const DEFAULT_DESCRIPTION_CANDIDATE_COUNT: u32 = 3;
 const CURRENT_SKILL_CANDIDATE_ID: &str = "current-skill";
+
+#[derive(Default)]
+pub struct EvalWorkbenchRunManager(Arc<Mutex<HashMap<String, EvalWorkbenchRunState>>>);
+
+#[derive(Default, Clone)]
+struct EvalWorkbenchRunState {
+    cancelled: bool,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EvalWorkbenchProgressEvent {
+    run_id: String,
+    phase: String,
+    completed: u32,
+    total: u32,
+    message: String,
+}
 
 fn validate_plugin_slug(plugin_slug: &str) -> Result<(), String> {
     if plugin_slug.trim().is_empty() {
@@ -90,6 +112,67 @@ fn validate_id(label: &str, value: &str) -> Result<(), String> {
         return Err(format!("{label} contains invalid path characters"));
     }
     Ok(())
+}
+
+fn register_eval_workbench_run(
+    runs: &EvalWorkbenchRunManager,
+    run_id: &str,
+) -> Result<(), String> {
+    let mut guard = runs.0.lock().map_err(|e| e.to_string())?;
+    guard.insert(run_id.to_string(), EvalWorkbenchRunState::default());
+    Ok(())
+}
+
+fn eval_workbench_agent_prefix(run_id: &str) -> String {
+    format!("eval-workbench-{run_id}")
+}
+
+fn finish_eval_workbench_run(runs: &EvalWorkbenchRunManager, run_id: &str) {
+    if let Ok(mut guard) = runs.0.lock() {
+        guard.remove(run_id);
+    }
+}
+
+fn cancel_eval_workbench_run_inner(
+    runs: &EvalWorkbenchRunManager,
+    run_id: &str,
+) -> Result<(), String> {
+    let mut guard = runs.0.lock().map_err(|e| e.to_string())?;
+    let state = guard
+        .get_mut(run_id)
+        .ok_or_else(|| "Eval Workbench run not found".to_string())?;
+    state.cancelled = true;
+    let _ = cancel_openhands_one_shots_with_prefix(&eval_workbench_agent_prefix(run_id));
+    Ok(())
+}
+
+fn ensure_eval_workbench_not_cancelled(
+    runs: &EvalWorkbenchRunManager,
+    run_id: &str,
+) -> Result<(), String> {
+    let guard = runs.0.lock().map_err(|e| e.to_string())?;
+    if guard.get(run_id).is_some_and(|state| state.cancelled) {
+        return Err("Eval Workbench run cancelled".to_string());
+    }
+    Ok(())
+}
+
+fn emit_eval_workbench_progress(
+    app: &tauri::AppHandle,
+    run_id: &str,
+    phase: &str,
+    completed: u32,
+    total: u32,
+    message: impl Into<String>,
+) {
+    let payload = EvalWorkbenchProgressEvent {
+        run_id: run_id.to_string(),
+        phase: phase.to_string(),
+        completed,
+        total,
+        message: message.into(),
+    };
+    let _ = app.emit("eval-workbench-progress", &payload);
 }
 
 fn to_sidecar_mode(mode: EvalWorkbenchMode) -> SidecarEvalMode {
@@ -809,6 +892,8 @@ async fn generate_description_candidates(
 }
 
 async fn build_completed_eval_run_with_deps<FExec, FExecFut, FEval, FEvalFut>(
+    runs: &EvalWorkbenchRunManager,
+    run_id: String,
     prompt_set: EvalPromptSet,
     sidecar_candidates: Vec<SidecarEvalCandidate>,
     sidecar_cases: Vec<EvalCase>,
@@ -830,10 +915,11 @@ where
         sidecar_candidates.clone(),
     )
     .await?;
+    ensure_eval_workbench_not_cancelled(runs, &run_id)?;
     let (persisted_candidates, candidate_id_map) =
         clone_persisted_candidates_for_completed_run(&persisted_candidates);
     let sidecar_request = RunEvalRequest::new(
-        format!("run-{}", uuid::Uuid::new_v4()),
+        run_id.clone(),
         to_sidecar_mode(prompt_set.mode),
         prompt_set.skill_name.clone(),
         prompt_set.plugin_slug.clone(),
@@ -842,9 +928,10 @@ where
         executions,
     );
     let result = evaluate_run(sidecar_request).await?;
+    ensure_eval_workbench_not_cancelled(runs, &run_id)?;
 
     Ok(NewEvalRun {
-        id: None,
+        id: Some(run_id),
         prompt_set_id: prompt_set.id,
         mode: prompt_set.mode,
         status: "completed".to_string(),
@@ -872,23 +959,32 @@ where
 
 async fn execute_performance_cases(
     app: &tauri::AppHandle,
+    run_id: &str,
+    runs: &EvalWorkbenchRunManager,
     prompt_set: &EvalPromptSet,
     cases: &[EvalCase],
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
 ) -> Result<Vec<EvalExecution>, String> {
     let mut executions = Vec::with_capacity(cases.len());
+    let total = cases.len() as u32;
 
-    for test_case in cases {
+    for (index, test_case) in cases.iter().enumerate() {
+        ensure_eval_workbench_not_cancelled(runs, run_id)?;
         let config = build_performance_sidecar_config(prompt_set, &test_case.prompt, runtime_ctx);
         let run = run_openhands_one_shot(
             app,
             OpenHandsOneShotRunParams {
-                agent_id_prefix: format!("{}-eval", prompt_set.skill_name),
+                agent_id_prefix: format!(
+                    "{}-performance-{}",
+                    eval_workbench_agent_prefix(run_id),
+                    prompt_set.skill_name
+                ),
                 config,
                 timeout: std::time::Duration::from_secs(90),
             },
         )
         .await?;
+        ensure_eval_workbench_not_cancelled(runs, run_id)?;
         let response_text = parse_openhands_response_text(&run.conversation_state)?;
         executions.push(EvalExecution {
             case_id: test_case.id.clone(),
@@ -898,6 +994,14 @@ async fn execute_performance_cases(
                 "mode": "performance",
             }),
         });
+        emit_eval_workbench_progress(
+            app,
+            run_id,
+            "performance",
+            (index + 1) as u32,
+            total,
+            format!("Completed performance case {}", test_case.id),
+        );
     }
 
     Ok(executions)
@@ -905,6 +1009,8 @@ async fn execute_performance_cases(
 
 async fn execute_trigger_cases(
     app: &tauri::AppHandle,
+    run_id: &str,
+    runs: &EvalWorkbenchRunManager,
     prompt_set: &EvalPromptSet,
     cases: &[EvalCase],
     candidates: &[SidecarEvalCandidate],
@@ -915,47 +1021,75 @@ async fn execute_trigger_cases(
         .join(format!("trigger-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&temp_root).map_err(|e| e.to_string())?;
 
-    let mut executions = Vec::with_capacity(cases.len() * candidates.len());
-    for candidate in candidates {
-        let candidate_dir = temp_root.join(&candidate.id);
-        for test_case in cases {
-            let trigger_marker = format!(
-                "__EVAL_WORKBENCH_TRIGGER__{}__{}__",
-                candidate.id, test_case.id
-            );
-            write_trigger_stub_skill(
-                &candidate_dir,
-                &prompt_set.skill_name,
-                candidate.description.as_deref().unwrap_or(""),
-                &trigger_marker,
-            )?;
+    let result = async {
+        let mut executions = Vec::with_capacity(cases.len() * candidates.len());
+        let total = (cases.len() * candidates.len()) as u32;
+        let mut completed = 0u32;
+        for candidate in candidates {
+            let candidate_dir = temp_root.join(&candidate.id);
+            for test_case in cases {
+                ensure_eval_workbench_not_cancelled(runs, run_id)?;
+                let trigger_marker = format!(
+                    "__EVAL_WORKBENCH_TRIGGER__{}__{}__",
+                    candidate.id, test_case.id
+                );
+                write_trigger_stub_skill(
+                    &candidate_dir,
+                    &prompt_set.skill_name,
+                    candidate.description.as_deref().unwrap_or(""),
+                    &trigger_marker,
+                )?;
 
-            let config =
-                build_trigger_sidecar_config(prompt_set, &test_case.prompt, runtime_ctx, &candidate_dir);
-            let run = run_openhands_one_shot(
-                app,
-                OpenHandsOneShotRunParams {
-                    agent_id_prefix: format!("{}-trigger", prompt_set.skill_name),
-                    config,
-                    timeout: std::time::Duration::from_secs(60),
-                },
-            )
-            .await?;
-            let response_text = parse_openhands_response_text(&run.conversation_state)?;
-            executions.push(EvalExecution {
-                case_id: test_case.id.clone(),
-                candidate_id: candidate.id.clone(),
-                output: serde_json::json!({
-                    "mode": "trigger",
-                    "invokedTargetSkill": response_text.contains(&trigger_marker),
-                    "responseText": response_text,
-                }),
-            });
+                let config = build_trigger_sidecar_config(
+                    prompt_set,
+                    &test_case.prompt,
+                    runtime_ctx,
+                    &candidate_dir,
+                );
+                let run = run_openhands_one_shot(
+                    app,
+                    OpenHandsOneShotRunParams {
+                        agent_id_prefix: format!(
+                            "{}-trigger-{}",
+                            eval_workbench_agent_prefix(run_id),
+                            prompt_set.skill_name
+                        ),
+                        config,
+                        timeout: std::time::Duration::from_secs(60),
+                    },
+                )
+                .await?;
+                ensure_eval_workbench_not_cancelled(runs, run_id)?;
+                let response_text = parse_openhands_response_text(&run.conversation_state)?;
+                executions.push(EvalExecution {
+                    case_id: test_case.id.clone(),
+                    candidate_id: candidate.id.clone(),
+                    output: serde_json::json!({
+                        "mode": "trigger",
+                        "invokedTargetSkill": response_text.contains(&trigger_marker),
+                        "responseText": response_text,
+                    }),
+                });
+                completed += 1;
+                emit_eval_workbench_progress(
+                    app,
+                    run_id,
+                    "trigger",
+                    completed,
+                    total,
+                    format!(
+                        "Completed trigger case {} for {}",
+                        test_case.id, candidate.label
+                    ),
+                );
+            }
         }
+        Ok(executions)
     }
+    .await;
 
     let _ = std::fs::remove_dir_all(&temp_root);
-    Ok(executions)
+    result
 }
 
 #[tauri::command]
@@ -997,7 +1131,9 @@ pub async fn run_eval_workbench(
     app: tauri::AppHandle,
     request: RunEvalWorkbenchRequest,
     db: tauri::State<'_, Db>,
+    runs: tauri::State<'_, EvalWorkbenchRunManager>,
 ) -> Result<EvalRun, String> {
+    validate_id("Run id", &request.run_id)?;
     validate_id("Prompt set id", &request.prompt_set_id)?;
     {
         if request.candidate_ids.iter().any(|id| id.trim().is_empty()) {
@@ -1005,7 +1141,9 @@ pub async fn run_eval_workbench(
         }
     }
 
-    let (prompt_set, sidecar_candidates, sidecar_cases, persisted_candidates) = {
+    register_eval_workbench_run(&runs, &request.run_id)?;
+
+    let preparation = || -> Result<_, String> {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let prompt_set = db_read_eval_prompt_set(&conn, &request.prompt_set_id)?
             .ok_or_else(|| "Prompt set not found".to_string())?;
@@ -1032,14 +1170,44 @@ pub async fn run_eval_workbench(
         };
         let sidecar_cases = to_sidecar_cases(&prompt_set)?;
 
-        (prompt_set, sidecar_candidates, sidecar_cases, persisted_candidates)
+        Ok((prompt_set, sidecar_candidates, sidecar_cases, persisted_candidates))
     };
+    let (prompt_set, sidecar_candidates, sidecar_cases, persisted_candidates) =
+        match preparation() {
+            Ok(values) => values,
+            Err(error) => {
+                finish_eval_workbench_run(&runs, &request.run_id);
+                return Err(error);
+            }
+        };
 
-    let runtime_ctx = read_initialized_runtime_context(&db)?;
-    ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
+    let run_id = request.run_id.clone();
+    let runtime_ctx = match read_initialized_runtime_context(&db) {
+        Ok(runtime_ctx) => runtime_ctx,
+        Err(error) => {
+            finish_eval_workbench_run(&runs, &run_id);
+            return Err(error);
+        }
+    };
+    if let Err(error) = ensure_eval_workbench_not_cancelled(&runs, &run_id) {
+        finish_eval_workbench_run(&runs, &run_id);
+        return Err(error);
+    }
+    if let Err(error) = ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await {
+        finish_eval_workbench_run(&runs, &run_id);
+        return Err(error);
+    }
+    if let Err(error) = ensure_eval_workbench_not_cancelled(&runs, &run_id) {
+        finish_eval_workbench_run(&runs, &run_id);
+        return Err(error);
+    }
     let app_for_execute = app.clone();
     let app_for_eval = app.clone();
-    let completed_run = build_completed_eval_run_with_deps(
+    let run_id_for_execute = run_id.clone();
+    let run_manager_for_execute = EvalWorkbenchRunManager(runs.0.clone());
+    let completed_run_result = build_completed_eval_run_with_deps(
+        &runs,
+        run_id.clone(),
         prompt_set,
         sidecar_candidates,
         sidecar_cases,
@@ -1049,6 +1217,8 @@ pub async fn run_eval_workbench(
                 EvalWorkbenchMode::Performance => {
                     execute_performance_cases(
                         &app_for_execute,
+                        &run_id_for_execute,
+                        &run_manager_for_execute,
                         &prompt_set,
                         &sidecar_cases,
                         &runtime_ctx,
@@ -1058,6 +1228,8 @@ pub async fn run_eval_workbench(
                 EvalWorkbenchMode::Trigger => {
                     execute_trigger_cases(
                         &app_for_execute,
+                        &run_id_for_execute,
+                        &run_manager_for_execute,
                         &prompt_set,
                         &sidecar_cases,
                         &sidecar_candidates,
@@ -1069,10 +1241,28 @@ pub async fn run_eval_workbench(
         },
         |sidecar_request| async move { run_promptfoo_eval(&app_for_eval, &sidecar_request).await },
     )
-    .await?;
+    .await;
+    let completed_run = match completed_run_result {
+        Ok(run) => run,
+        Err(error) => {
+            finish_eval_workbench_run(&runs, &run_id);
+            return Err(error);
+        }
+    };
 
     let mut conn = db.0.lock().map_err(|e| e.to_string())?;
-    db_record_eval_run(&mut conn, completed_run)
+    let result = db_record_eval_run(&mut conn, completed_run);
+    finish_eval_workbench_run(&runs, &run_id);
+    result
+}
+
+#[tauri::command]
+pub fn cancel_eval_workbench_run(
+    run_id: String,
+    runs: tauri::State<'_, EvalWorkbenchRunManager>,
+) -> Result<(), String> {
+    validate_id("Run id", &run_id)?;
+    cancel_eval_workbench_run_inner(&runs, &run_id)
 }
 
 #[tauri::command]
@@ -1242,6 +1432,7 @@ pub async fn build_refine_improvement_brief(
     })
 }
 
+#[cfg(test)]
 fn build_refine_improvement_brief_inner(run: &EvalRun) -> String {
     let failed = run.results.iter().filter(|result| !result.passed).count();
     let total = run.results.len();

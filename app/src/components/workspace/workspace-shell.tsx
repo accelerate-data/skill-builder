@@ -20,8 +20,7 @@ import type { SkillSummary as TauriSkillSummary } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
-import { WorkspaceEvals } from "./workspace-evals";
-import { WorkspaceDescription } from "./workspace-description";
+import { WorkspaceEvalWorkbench } from "./workspace-eval-workbench";
 import type { SkillSummary, ImportedSkill, EditableSkill } from "@/lib/types";
 import { toEditableSkill } from "@/lib/types";
 import { patchBuilderSkillQueryData, useBuilderSkillsQuery } from "@/lib/queries/skills";
@@ -32,38 +31,41 @@ interface WorkspaceShellProps {
   initialTab?: string;
 }
 
+function normalizeWorkspaceTab(tab?: string | null): "overview" | "refine" | "evals" {
+  if (tab === "refine") {
+    return "refine";
+  }
+  if (tab === "evals" || tab === "description") {
+    return "evals";
+  }
+  return "overview";
+}
+
 export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellProps) {
-  const [activeTab, setActiveTab] = useState(initialTab ?? "overview");
-  const [pendingTab, setPendingTab] = useState<string | null>(null);
-  const evalsRunningRef = useRef(false);
-  const descriptionRunningRef = useRef(false);
+  const [activeTab, setActiveTab] = useState(() => normalizeWorkspaceTab(initialTab));
+  const [pendingTab, setPendingTab] = useState<"overview" | "refine" | "evals" | null>(null);
+  const workbenchRunningRef = useRef(false);
   const queryClient = useQueryClient();
 
-  // Sync tab when a navigation sets initialTab (e.g. "Refine" from the More menu)
   useEffect(() => {
-    if (initialTab) setActiveTab(initialTab);
+    setActiveTab(normalizeWorkspaceTab(initialTab));
   }, [initialTab]);
 
   const handleTabChange = useCallback((value: string) => {
+    const nextTab = normalizeWorkspaceTab(value);
     // Guard: block switching away from Refine while agent is running
-    if (activeTab === "refine" && value !== "refine") {
+    if (activeTab === "refine" && nextTab !== "refine") {
       const refineRunning = useRefineStore.getState().isRunning;
       if (refineRunning) {
-        setPendingTab(value);
+        setPendingTab(nextTab);
         return;
       }
     }
-    // Guard: block switching away from Evals while eval run is in progress
-    if (activeTab === "evals" && value !== "evals" && evalsRunningRef.current) {
-      setPendingTab(value);
+    if (activeTab === "evals" && nextTab !== "evals" && workbenchRunningRef.current) {
+      setPendingTab(nextTab);
       return;
     }
-    // Guard: block switching away from Description while workbench generation/comparison is running
-    if (activeTab === "description" && value !== "description" && descriptionRunningRef.current) {
-      setPendingTab(value);
-      return;
-    }
-    setActiveTab(value);
+    setActiveTab(nextTab);
   }, [activeTab]);
 
   const skillName = "name" in skill ? skill.name : skill.skill_name;
@@ -82,10 +84,9 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
 
   const handleTabLeave = useCallback(() => {
     if (pendingTab) {
-      // Clean up the persistent skill sidecar when leaving a running performance eval.
-      if (activeTab === "evals" && evalsRunningRef.current) {
+      if (activeTab === "evals" && workbenchRunningRef.current) {
         cleanupSkillSidecar(skillName).catch((err) =>
-          console.error("[workspace-shell] eval sidecar cleanup failed:", err),
+          console.error("[workspace-shell] eval workbench sidecar cleanup failed:", err),
         );
       }
       setActiveTab(pendingTab);
@@ -204,10 +205,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
           <TabsList variant="line" className="shrink-0 border-b px-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="refine">Refine</TabsTrigger>
-            <TabsTrigger value="evals">Evals</TabsTrigger>
-            <TabsTrigger value="description">
-              Optimize Description
-            </TabsTrigger>
+            <TabsTrigger value="evals">Eval Workbench</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="flex-1 overflow-y-auto p-6">
@@ -224,22 +222,19 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
             />
           </TabsContent>
 
-          <TabsContent value="evals" className="flex-1 overflow-y-auto p-6">
-            <WorkspaceEvals
+          <TabsContent value="evals" className="min-h-0 flex-1 overflow-hidden">
+            <WorkspaceEvalWorkbench
               key={"name" in skill ? skill.name : skill.skill_name}
               skill={skill}
               workspacePath={workspacePath}
+              initialMode={initialTab === "description" ? "trigger" : "performance"}
               onNavigateToRefine={() => setActiveTab("refine")}
-              onRunningChange={(running) => { evalsRunningRef.current = running; }}
-            />
-          </TabsContent>
-
-          <TabsContent value="description" className="flex-1 overflow-y-auto p-6">
-            <WorkspaceDescription
-              skill={"name" in skill ? skill as SkillSummary : { ...(skill as ImportedSkill), name: (skill as ImportedSkill).skill_name } as unknown as SkillSummary}
-              workspacePath={workspacePath ?? ""}
-              onRunningChange={(running) => { descriptionRunningRef.current = running; }}
-              onApply={(desc, ver) => void handleDescriptionApply(desc, ver)}
+              onRunningChange={(running) => {
+                workbenchRunningRef.current = running;
+              }}
+              onApplyDescription={(desc, ver) =>
+                void handleDescriptionApply(desc, ver)
+              }
             />
           </TabsContent>
         </Tabs>

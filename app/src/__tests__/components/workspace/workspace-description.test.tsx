@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SkillSummary } from "@/lib/types";
+import {
+  mockListen,
+  resetTauriMocks,
+} from "@/test/mocks/tauri";
 
 const mockListEvalPromptSets = vi.fn();
 const mockSaveEvalPromptSet = vi.fn();
@@ -9,10 +13,14 @@ const mockListEvalRuns = vi.fn();
 const mockReadEvalRun = vi.fn();
 const mockSuggestDescriptionCandidates = vi.fn();
 const mockRunEvalWorkbench = vi.fn();
+const mockCancelEvalWorkbenchRun = vi.fn();
 const mockApplyDescriptionCandidate = vi.fn();
 const mockBuildRefineImprovementBrief = vi.fn();
 
 const setPendingInitialMessage = vi.fn();
+let progressListener:
+  | ((event: { payload: { runId: string; phase: string; completed: number; total: number; message: string } }) => void)
+  | null = null;
 
 vi.mock("@/stores/refine-store", () => ({
   useRefineStore: {
@@ -36,6 +44,8 @@ vi.mock("@/lib/eval-workbench", async () => {
     suggestDescriptionCandidates: (...args: unknown[]) =>
       mockSuggestDescriptionCandidates(...args),
     runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
+    cancelEvalWorkbenchRun: (...args: unknown[]) =>
+      mockCancelEvalWorkbenchRun(...args),
     applyDescriptionCandidate: (...args: unknown[]) =>
       mockApplyDescriptionCandidate(...args),
     buildRefineImprovementBrief: (...args: unknown[]) =>
@@ -224,6 +234,14 @@ function createDeferred<T>() {
 
 describe("WorkspaceDescription", () => {
   beforeEach(() => {
+    resetTauriMocks();
+    progressListener = null;
+    mockListen.mockImplementation((eventName, callback) => {
+      if (eventName === "eval-workbench-progress") {
+        progressListener = callback as typeof progressListener;
+      }
+      return Promise.resolve(() => {});
+    });
     mockListEvalPromptSets.mockReset().mockResolvedValue([triggerPromptSet]);
     mockSaveEvalPromptSet.mockReset().mockResolvedValue(triggerPromptSet);
     mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
@@ -249,6 +267,7 @@ describe("WorkspaceDescription", () => {
       },
     ]);
     mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
+    mockCancelEvalWorkbenchRun.mockReset().mockResolvedValue(undefined);
     mockApplyDescriptionCandidate.mockReset().mockResolvedValue({
       description:
         "Use when the user needs invoice reconciliation or payment matching",
@@ -407,6 +426,7 @@ describe("WorkspaceDescription", () => {
 
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
+        runId: expect.any(String),
         promptSetId: "prompt-set-trigger",
         candidateIds: ["current-skill", "candidate-1", "candidate-2"],
       }),
@@ -474,6 +494,55 @@ describe("WorkspaceDescription", () => {
 
     await waitFor(() =>
       expect(onRunningChange).toHaveBeenLastCalledWith(false),
+    );
+  });
+
+  it("shows progress and cancels an active trigger comparison", async () => {
+    const user = userEvent.setup();
+    const deferredRun = createDeferred(runSummary);
+    mockRunEvalWorkbench.mockReset().mockReturnValue(deferredRun.promise);
+
+    render(<WorkspaceDescription skill={skill} workspacePath="/workspace" />);
+
+    await screen.findByText("Routing checks");
+    await user.click(screen.getByRole("button", { name: /generate candidates/i }));
+    await screen.findByText(/invoice reconciliation or payment matching/i);
+    await user.click(screen.getByRole("button", { name: /run comparison/i }));
+
+    await waitFor(() =>
+      expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
+        runId: expect.any(String),
+        promptSetId: "prompt-set-trigger",
+        candidateIds: ["current-skill", "candidate-1", "candidate-2"],
+      }),
+    );
+
+    const [{ runId }] = mockRunEvalWorkbench.mock.calls.at(-1) as [
+      { runId: string },
+    ];
+    progressListener?.({
+      payload: {
+        runId,
+        phase: "trigger",
+        completed: 2,
+        total: 6,
+        message: "Comparing candidate 1",
+      },
+    });
+
+    expect(
+      await screen.findByText("Comparing candidate 1 (2/6)"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() =>
+      expect(mockCancelEvalWorkbenchRun).toHaveBeenCalledWith(runId),
+    );
+
+    deferredRun.resolve(runSummary);
+    await waitFor(() =>
+      expect(screen.queryByText("Comparing candidate 1 (2/6)")).not.toBeInTheDocument(),
     );
   });
 });

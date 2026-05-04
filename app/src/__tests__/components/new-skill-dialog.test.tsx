@@ -174,7 +174,7 @@ describe("SkillDialog (create mode)", () => {
     await user.type(descField, "Test description");
     expect(descField).toHaveValue("Test description");
     expect(screen.getByText(/16\/1024/)).toBeInTheDocument();
-    expect(screen.queryByText("Use the Optimize Description tab to update this")).not.toBeInTheDocument();
+    expect(screen.queryByText("Use the Eval Workbench tab to update this")).not.toBeInTheDocument();
   });
 
   it("enforces kebab-case on skill name input", async () => {

@@ -28,7 +28,7 @@ The action bar can show:
 
 | Button | What it does |
 |---|---|
-| **Eval** | Opens the workspace **Evals** tab for this skill |
+| **Eval** | Opens the workspace **Eval Workbench** tab for this skill |
 | **Done** | Returns to the [Dashboard](../dashboard.md) |
 
-Use **Evals** to create scenarios, run selected evals, review benchmark results, and send failures to Refine. See [Evals](../test.md).
+Use **Eval Workbench** to create performance scenarios, compare trigger descriptions, review results, and send failures to Refine. See [Eval Workbench](../test.md).

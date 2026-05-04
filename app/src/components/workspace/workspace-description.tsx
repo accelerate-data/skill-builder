@@ -1,5 +1,6 @@
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, Sparkles, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -7,8 +8,10 @@ import {
   buildTriggerCandidateIds,
   buildTriggerComparisonEntries,
   buildRefineImprovementBrief,
+  cancelEvalWorkbenchRun,
   createDraftPromptSet,
   DEFAULT_DESCRIPTION_CANDIDATE_COUNT,
+  type EvalWorkbenchProgressEvent,
   getErrorMessage,
   getRecommendedCandidate,
   getRunCandidateIds,
@@ -62,6 +65,10 @@ export function WorkspaceDescription({
   );
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedRun, setSelectedRun] = useState<EvalRun | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<EvalWorkbenchProgressEvent | null>(
+    null,
+  );
   const [draft, setDraft] = useState<SaveEvalPromptSet>(() =>
     createDraftPromptSet("trigger", skill.plugin_slug, skill.name),
   );
@@ -110,6 +117,23 @@ export function WorkspaceDescription({
     },
     [onRunningChange],
   );
+
+  useEffect(() => {
+    const unlisten = listen<EvalWorkbenchProgressEvent>(
+      "eval-workbench-progress",
+      (event) => {
+        const payload = event.payload;
+        if (!activeRunId || payload.runId !== activeRunId) {
+          return;
+        }
+        setProgress(payload);
+      },
+    );
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [activeRunId]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -221,10 +245,14 @@ export function WorkspaceDescription({
       return;
     }
 
+    const runId = crypto.randomUUID();
     setRunning(true);
     setActionError(null);
+    setActiveRunId(runId);
+    setProgress(null);
     try {
       const run = await runEvalWorkbench({
+        runId,
         promptSetId: draft.id,
         candidateIds,
       });
@@ -237,6 +265,20 @@ export function WorkspaceDescription({
       setActionError(getErrorMessage(runError));
     } finally {
       setRunning(false);
+      setActiveRunId(null);
+      setProgress(null);
+    }
+  }
+
+  async function handleCancelRun() {
+    if (!activeRunId) {
+      return;
+    }
+
+    try {
+      await cancelEvalWorkbenchRun(activeRunId);
+    } catch (cancelError) {
+      setActionError(getErrorMessage(cancelError));
     }
   }
 
@@ -331,8 +373,19 @@ export function WorkspaceDescription({
             >
               Run comparison
             </Button>
+            {running && activeRunId ? (
+              <Button size="sm" variant="outline" onClick={() => void handleCancelRun()}>
+                <Square className="mr-1 size-3.5" />
+                Cancel
+              </Button>
+            ) : null}
           </div>
         </div>
+        {running && progress ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            {progress.message} ({progress.completed}/{progress.total})
+          </p>
+        ) : null}
 
         {promptSets.length > 0 ? (
           <div className="mt-4 flex flex-wrap gap-2">

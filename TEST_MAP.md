@@ -136,10 +136,10 @@ format changes covered across producer, fixture, and parser layers.
 | `@settings` | `app/e2e/settings/settings.spec.ts`, `app/e2e/settings/github-oauth.spec.ts`, `app/e2e/settings/workspace-reconfigure.spec.ts`, `app/e2e/settings/documents.spec.ts` |
 | `@workflow` | `app/e2e/workflow/workflow-smoke.spec.ts`, `app/e2e/workflow/workflow-gate.spec.ts`, `app/e2e/workflow/display-items.spec.ts`, `app/e2e/workflow/file-viewer.spec.ts` |
 | `@refine` | `app/e2e/refine/refine.spec.ts`, `app/e2e/refine/benchmark-snapshot-cleanup.spec.ts` |
-| `@description` | `app/e2e/description/description-workbench.spec.ts` |
+| `@description` | `app/e2e/description/description-workbench.spec.ts` Mocked Trigger-mode browser coverage inside Eval Workbench |
 | `@skills` | `app/e2e/skills-library/skills-library.spec.ts`, `app/e2e/github-import/github-import.spec.ts` |
 | `@integration` | `app/e2e/integration/workflow-integration.spec.ts` |
-| `@evals` | `app/e2e/evals/evals.spec.ts` Mocked Eval Workbench browser coverage |
+| `@evals` | `app/e2e/evals/evals.spec.ts` Mocked Performance-mode browser coverage inside Eval Workbench |
 | `@desktop-smoke` | `app/e2e/desktop-smoke/desktop-smoke.spec.ts` |
 
 ## Quick Commands

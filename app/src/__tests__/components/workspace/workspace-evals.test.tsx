@@ -2,15 +2,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SkillSummary } from "@/lib/types";
+import {
+  mockListen,
+  resetTauriMocks,
+} from "@/test/mocks/tauri";
 
 const mockListEvalPromptSets = vi.fn();
 const mockSaveEvalPromptSet = vi.fn();
 const mockListEvalRuns = vi.fn();
 const mockReadEvalRun = vi.fn();
 const mockRunEvalWorkbench = vi.fn();
+const mockCancelEvalWorkbenchRun = vi.fn();
 const mockBuildRefineImprovementBrief = vi.fn();
 
 const setPendingInitialMessage = vi.fn();
+let progressListener:
+  | ((event: { payload: { runId: string; phase: string; completed: number; total: number; message: string } }) => void)
+  | null = null;
 
 vi.mock("@/stores/refine-store", () => ({
   useRefineStore: {
@@ -32,6 +40,8 @@ vi.mock("@/lib/eval-workbench", async () => {
     listEvalRuns: (...args: unknown[]) => mockListEvalRuns(...args),
     readEvalRun: (...args: unknown[]) => mockReadEvalRun(...args),
     runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
+    cancelEvalWorkbenchRun: (...args: unknown[]) =>
+      mockCancelEvalWorkbenchRun(...args),
     buildRefineImprovementBrief: (...args: unknown[]) =>
       mockBuildRefineImprovementBrief(...args),
   };
@@ -122,11 +132,20 @@ function createDeferred<T>() {
 
 describe("WorkspaceEvals", () => {
   beforeEach(() => {
+    resetTauriMocks();
+    progressListener = null;
+    mockListen.mockImplementation((eventName, callback) => {
+      if (eventName === "eval-workbench-progress") {
+        progressListener = callback as typeof progressListener;
+      }
+      return Promise.resolve(() => {});
+    });
     mockListEvalPromptSets.mockReset().mockResolvedValue([performancePromptSet]);
     mockSaveEvalPromptSet.mockReset().mockResolvedValue(performancePromptSet);
     mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
     mockReadEvalRun.mockReset().mockResolvedValue(runDetail);
     mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
+    mockCancelEvalWorkbenchRun.mockReset().mockResolvedValue(undefined);
     mockBuildRefineImprovementBrief.mockReset().mockResolvedValue({
       runId: "run-1",
       brief: "Improve assumptions handling",
@@ -228,6 +247,7 @@ describe("WorkspaceEvals", () => {
 
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
+        runId: expect.any(String),
         promptSetId: "prompt-set-performance",
         candidateIds: ["current-skill"],
       }),
@@ -238,6 +258,53 @@ describe("WorkspaceEvals", () => {
 
     await waitFor(() =>
       expect(onRunningChange).toHaveBeenLastCalledWith(false),
+    );
+  });
+
+  it("shows progress and cancels the active workbench run", async () => {
+    const user = userEvent.setup();
+    const deferredRun = createDeferred(runSummary);
+    mockRunEvalWorkbench.mockReset().mockReturnValue(deferredRun.promise);
+
+    render(<WorkspaceEvals skill={skill} workspacePath="/workspace" />);
+
+    await screen.findByText("Regression");
+    await user.click(screen.getByRole("button", { name: /run prompt set/i }));
+
+    await waitFor(() =>
+      expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
+        runId: expect.any(String),
+        promptSetId: "prompt-set-performance",
+        candidateIds: ["current-skill"],
+      }),
+    );
+
+    const [{ runId }] = mockRunEvalWorkbench.mock.calls.at(-1) as [
+      { runId: string },
+    ];
+    progressListener?.({
+      payload: {
+        runId,
+        phase: "performance",
+        completed: 1,
+        total: 3,
+        message: "Running case 1 of 3",
+      },
+    });
+
+    expect(
+      await screen.findByText("Running case 1 of 3 (1/3)"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() =>
+      expect(mockCancelEvalWorkbenchRun).toHaveBeenCalledWith(runId),
+    );
+
+    deferredRun.resolve(runSummary);
+    await waitFor(() =>
+      expect(screen.queryByText("Running case 1 of 3 (1/3)")).not.toBeInTheDocument(),
     );
   });
 });

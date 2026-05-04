@@ -603,7 +603,7 @@ export interface AnswerEvaluationOutput {
   per_question: PerQuestionEntry[]
 }
 
-// --- Test case management (Evals tab) ---
+// --- Test case management (Eval Workbench) ---
 
 export interface TestCase {
   id: number
