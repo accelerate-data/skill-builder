@@ -67,10 +67,6 @@ pub struct SidecarConfig {
     /// Run source: "workflow", "refine", or "test".
     #[serde(rename = "runSource", skip_serializing_if = "Option::is_none")]
     pub run_source: Option<String>,
-    /// Base log directory for native runtime logs. OpenHands uses this as the
-    /// parent for its SDK `persistenceDir`.
-    #[serde(rename = "transcriptLogDir", skip_serializing_if = "Option::is_none")]
-    pub transcript_log_dir: Option<String>,
     /// OpenHands-native persistence directory for the SDK conversation event log.
     #[serde(rename = "persistenceDir", skip_serializing_if = "Option::is_none")]
     pub persistence_dir: Option<String>,
@@ -171,7 +167,6 @@ pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> 
         usage_session_id: None,
         run_source: params.run_source,
         plugin_slug: params.plugin_slug,
-        transcript_log_dir: None,
         persistence_dir: None,
         runtime_provider: Some("openhands".to_string()),
         task_kind: params.task_kind,
@@ -212,7 +207,6 @@ mod tests {
             usage_session_id: None,
             run_source: None,
             plugin_slug: "skills".to_string(),
-            transcript_log_dir: None,
             persistence_dir: None,
             runtime_provider: None,
             task_kind: None,
@@ -269,7 +263,6 @@ mod tests {
             usage_session_id: None,
             run_source: None,
             plugin_slug: "skills".to_string(),
-            transcript_log_dir: None,
             persistence_dir: None,
             runtime_provider: None,
             task_kind: None,
@@ -314,7 +307,6 @@ mod tests {
             usage_session_id: None,
             run_source: None,
             plugin_slug: "skills".to_string(),
-            transcript_log_dir: None,
             persistence_dir: None,
             runtime_provider: None,
             task_kind: None,
@@ -362,7 +354,6 @@ mod tests {
             usage_session_id: None,
             run_source: None,
             plugin_slug: "skills".to_string(),
-            transcript_log_dir: None,
             persistence_dir: None,
             runtime_provider: None,
             task_kind: None,
@@ -419,7 +410,6 @@ mod tests {
             usage_session_id: None,
             run_source: None,
             plugin_slug: "skills".to_string(),
-            transcript_log_dir: None,
             persistence_dir: None,
             runtime_provider: Some("openhands".to_string()),
             task_kind: Some("scope_review".to_string()),

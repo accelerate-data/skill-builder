@@ -333,8 +333,8 @@ pub(crate) fn create_skill_filesystem_inner(
         }
     }
 
-    // Create plugin-organised workspace dir and context subdir.
-    fs::create_dir_all(workspace_skill_dir.join("context")).map_err(|e| e.to_string())?;
+    // Create plugin-organised workspace dir.
+    fs::create_dir_all(&workspace_skill_dir).map_err(|e| e.to_string())?;
 
     if let Some(sp) = skills_path {
         // Skill output (SKILL.md, references/) lives in skills_path, plugin-organised.
@@ -634,4 +634,31 @@ pub(crate) fn delete_skill_db_records_inner(
     conn.execute_batch("RELEASE delete_skill")
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn create_skill_filesystem_inner_does_not_create_context_subdir() {
+        let workspace = tempfile::tempdir().unwrap();
+        let workspace_str = workspace.path().to_str().unwrap();
+
+        // No skills_path provided — only workspace dir is created.
+        create_skill_filesystem_inner(workspace_str, "my-new-skill", None).unwrap();
+
+        let skill_dir = crate::skill_paths::workspace_skill_dir(
+            workspace.path(),
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "my-new-skill",
+        );
+
+        assert!(skill_dir.is_dir(), "workspace skill dir should be created");
+        assert!(
+            !skill_dir.join("context").exists(),
+            "context/ subdir must NOT be created"
+        );
+    }
 }

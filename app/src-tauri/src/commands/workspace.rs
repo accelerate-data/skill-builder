@@ -57,6 +57,53 @@ fn migrate_workspace_layout(workspace_path: &str) {
     if root_claude_md.is_file() && nested_claude_md.is_file() {
         let _ = fs::remove_file(&nested_claude_md);
     }
+
+    // VU-1157 aftermath: remove stale per-skill JSON artifacts that were
+    // written before context data moved to SQLite, and clean up the dead
+    // logs/ dirs created by the removed create_openhands_persistence_dir
+    // function (per-run dirs were never written to).
+    // Walk: {workspace}/{plugin}/{skill}/
+    let Ok(plugin_entries) = fs::read_dir(base) else {
+        return;
+    };
+    for plugin_entry in plugin_entries.flatten() {
+        let plugin_path = plugin_entry.path();
+        if !plugin_path.is_dir() {
+            continue;
+        }
+        let Ok(skill_entries) = fs::read_dir(&plugin_path) else {
+            continue;
+        };
+        for skill_entry in skill_entries.flatten() {
+            let skill_dir = skill_entry.path();
+            if !skill_dir.is_dir() {
+                continue;
+            }
+            // Remove stale VU-1157 context files.
+            for name in &[
+                "context/clarifications.json",
+                "context/decisions.json",
+                "context/benchmark-meta.json",
+                "user-context.md",
+                "answer-evaluation.json",
+                "gate-result.json",
+            ] {
+                let _ = fs::remove_file(skill_dir.join(name));
+            }
+            // Remove context/ dir only if now empty.
+            let _ = fs::remove_dir(skill_dir.join("context"));
+            // Remove empty per-run dirs under logs/, then logs/ itself.
+            let logs_dir = skill_dir.join("logs");
+            if logs_dir.is_dir() {
+                if let Ok(run_entries) = fs::read_dir(&logs_dir) {
+                    for run_entry in run_entries.flatten() {
+                        let _ = fs::remove_dir(run_entry.path());
+                    }
+                }
+                let _ = fs::remove_dir(&logs_dir);
+            }
+        }
+    }
 }
 
 // migrate_context_from_skills_path and move_context_files were removed in VU-1157.
@@ -586,6 +633,126 @@ mod tests {
         // Both should be discoverable
         let locations = crate::skill_paths::enumerate_skill_locations(root).unwrap();
         assert_eq!(locations.len(), 2);
+    }
+
+    // --- migrate_workspace_layout stale-artifact cleanup tests ---
+
+    #[test]
+    fn test_migrate_workspace_layout_cleans_stale_files() {
+        let workspace = tempfile::tempdir().unwrap();
+        let skill_dir = workspace
+            .path()
+            .join("some-plugin")
+            .join("some-skill");
+
+        // Write stale VU-1157 context files.
+        fs::create_dir_all(skill_dir.join("context")).unwrap();
+        fs::write(
+            skill_dir.join("context/clarifications.json"),
+            "{}",
+        )
+        .unwrap();
+        fs::write(
+            skill_dir.join("context/decisions.json"),
+            "{}",
+        )
+        .unwrap();
+        fs::write(skill_dir.join("user-context.md"), "# ctx").unwrap();
+        fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
+        fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
+
+        // Write an unrelated file inside context/ — should survive.
+        fs::write(
+            skill_dir.join("context/something-else.txt"),
+            "keep me",
+        )
+        .unwrap();
+
+        // Create an empty logs/ dir (simulating dead persistence dirs).
+        fs::create_dir_all(skill_dir.join("logs")).unwrap();
+
+        migrate_workspace_layout(workspace.path().to_str().unwrap());
+
+        // Stale files must be gone.
+        assert!(
+            !skill_dir.join("context/clarifications.json").exists(),
+            "clarifications.json should be removed"
+        );
+        assert!(
+            !skill_dir.join("context/decisions.json").exists(),
+            "decisions.json should be removed"
+        );
+        assert!(
+            !skill_dir.join("user-context.md").exists(),
+            "user-context.md should be removed"
+        );
+        assert!(
+            !skill_dir.join("answer-evaluation.json").exists(),
+            "answer-evaluation.json should be removed"
+        );
+        assert!(
+            !skill_dir.join("gate-result.json").exists(),
+            "gate-result.json should be removed"
+        );
+
+        // context/ dir must survive because something-else.txt is still inside.
+        assert!(
+            skill_dir.join("context").is_dir(),
+            "context/ must survive when it still has other content"
+        );
+        assert!(
+            skill_dir.join("context/something-else.txt").exists(),
+            "unrelated file in context/ must survive"
+        );
+
+        // Empty logs/ dir must be removed.
+        assert!(
+            !skill_dir.join("logs").exists(),
+            "empty logs/ dir should be removed"
+        );
+    }
+
+    #[test]
+    fn test_migrate_workspace_layout_removes_context_dir_when_empty() {
+        let workspace = tempfile::tempdir().unwrap();
+        let skill_dir = workspace
+            .path()
+            .join("some-plugin")
+            .join("some-skill");
+
+        fs::create_dir_all(skill_dir.join("context")).unwrap();
+        fs::write(
+            skill_dir.join("context/clarifications.json"),
+            "{}",
+        )
+        .unwrap();
+
+        migrate_workspace_layout(workspace.path().to_str().unwrap());
+
+        assert!(
+            !skill_dir.join("context").exists(),
+            "context/ dir should be removed when empty after stale file deletion"
+        );
+    }
+
+    #[test]
+    fn test_migrate_workspace_layout_removes_empty_log_run_dirs() {
+        let workspace = tempfile::tempdir().unwrap();
+        let skill_dir = workspace
+            .path()
+            .join("some-plugin")
+            .join("some-skill");
+
+        // Simulate dead per-run log dirs.
+        fs::create_dir_all(skill_dir.join("logs/agent-xyz-2024-01-01T00-00-00")).unwrap();
+        fs::create_dir_all(skill_dir.join("logs/agent-abc-2024-01-02T00-00-00")).unwrap();
+
+        migrate_workspace_layout(workspace.path().to_str().unwrap());
+
+        assert!(
+            !skill_dir.join("logs").exists(),
+            "logs/ dir should be removed after emptying per-run subdirs"
+        );
     }
 
     #[test]

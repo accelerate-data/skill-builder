@@ -199,12 +199,6 @@ fn build_skill_creator_workflow_sidecar_config(
             plugin_slug: plugin_slug.to_string(),
         });
     config.workflow_session_id = workflow_session_id;
-    config.transcript_log_dir = Some(
-        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
-            .join("logs")
-            .to_string_lossy()
-            .into_owned(),
-    );
     config
 }
 
@@ -221,31 +215,22 @@ pub(crate) fn build_answer_evaluator_sidecar_config(
             .to_string_lossy()
             .replace('\\', "/");
 
-    let mut config =
-        crate::agents::sidecar::build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
-            prompt: prompt.to_string(),
-            llm,
-            workspace_root_dir,
-            workspace_run_dir,
-            agent_name: "skill-creator".to_string(),
-            task_kind: Some("workflow.answer_evaluator".to_string()),
-            user_message_suffix: None,
-            allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(
-            ),
-            max_turns: 20,
-            output_format: Some(answer_evaluator_output_format()),
-            skill_name: None,
-            step_id: None,
-            run_source: Some("gate-eval".to_string()),
-            plugin_slug: plugin_slug.to_string(),
-        });
-    config.transcript_log_dir = Some(
-        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
-            .join("logs")
-            .to_string_lossy()
-            .into_owned(),
-    );
-    config
+    crate::agents::sidecar::build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+        prompt: prompt.to_string(),
+        llm,
+        workspace_root_dir,
+        workspace_run_dir,
+        agent_name: "skill-creator".to_string(),
+        task_kind: Some("workflow.answer_evaluator".to_string()),
+        user_message_suffix: None,
+        allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(),
+        max_turns: 20,
+        output_format: Some(answer_evaluator_output_format()),
+        skill_name: None,
+        step_id: None,
+        run_source: Some("gate-eval".to_string()),
+        plugin_slug: plugin_slug.to_string(),
+    })
 }
 
 const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
@@ -550,15 +535,12 @@ async fn run_workflow_step_inner(
         );
     }
 
-    let transcript_log_dir = config.transcript_log_dir.clone();
     let start_result = openhands_server::dispatch_openhands_one_shot(
         app,
         &agent_id,
         config,
-        transcript_log_dir.as_deref(),
     )
-    .await
-    .map(|_| ());
+    .await;
 
     start_result.map_err(|e| {
         log::error!(
@@ -794,8 +776,6 @@ pub async fn run_answer_evaluator(
         config.workspace_skill_dir,
     );
 
-    let transcript_log_dir = config.transcript_log_dir.clone();
-
     // Register before dispatch so cancellation can route to the native OpenHands
     // runner even if the user cancels immediately after the command returns.
     {
@@ -812,10 +792,8 @@ pub async fn run_answer_evaluator(
         &app,
         &agent_id,
         config,
-        transcript_log_dir.as_deref(),
     )
     .await
-    .map(|_| ())
     .map_err(|e| {
         log::error!(
             "[run_answer_evaluator] Failed to start one-shot request for agent={}: {}",
