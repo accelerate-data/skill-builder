@@ -132,7 +132,7 @@ Live OpenCode evals are normal automated validation. Choose the smallest useful 
 - **PR title format:** `VU-XXX: short description`
 - **PR body link:** `Fixes VU-XXX`
 - **Linear project:** All issues created for this repository must be created under **Skill Builder**.
-- **Worktrees:** Use `./scripts/worktree.sh <branch-name>` as the canonical maintainer workflow for creating or attaching a repo worktree and bootstrapping it. It preserves the full branch name under `../worktrees/<branchName>` and symlinks each worktree's `tests/evals/.promptfoo` back to the source checkout so Promptfoo history/database state stays out of feature worktrees.
+- **Worktrees:** Use `./scripts/worktree.sh <branch-name>` as the canonical maintainer workflow for creating or attaching a repo worktree and bootstrapping it. It creates the worktree under `../worktrees/<branchName>`, symlinks `.env` from the repo root, and installs `app/` npm dependencies. Eval dependencies are managed by the eval framework when evals run.
 
   ```bash
   ./scripts/worktree.sh feature/<branch-name>
