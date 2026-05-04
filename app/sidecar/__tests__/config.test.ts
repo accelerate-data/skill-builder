@@ -88,7 +88,6 @@ describe("parseSidecarConfig", () => {
       workspaceRootDir: TEST_CWD,
       workspaceSkillDir: TEST_CWD,
       pluginSlug: "demo",
-      runtimeProvider: "openhands",
       mode: "one-shot",
       agentName: "skill-creator",
       taskKind: "scope_review",
@@ -112,7 +111,6 @@ describe("parseSidecarConfig", () => {
       workspaceRootDir: TEST_CWD,
       workspaceSkillDir: TEST_CWD,
       pluginSlug: "demo",
-      runtimeProvider: "openhands",
       llm: {
         model: "claude-sonnet-4-5",
       },
@@ -264,23 +262,8 @@ describe("parseSidecarConfig", () => {
     ).toThrow("thinking.budgetTokens must be a number");
   });
 
-  it("accepts openhands as a valid runtimeProvider", () => {
-    const baseConfig = {
-      prompt: "hello",
-      apiKey: "key",
-      workspaceRootDir: TEST_CWD,
-      workspaceSkillDir: TEST_CWD,
-    };
-    expect(
-      parseSidecarConfig({
-        ...baseConfig,
-        runtimeProvider: "openhands",
-      }).runtimeProvider,
-    ).toBe("openhands");
-  });
-
   it("validates openhands llm fields", () => {
-    const baseConfig = { prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, runtimeProvider: "openhands" };
+    const baseConfig = { prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD };
     expect(() => parseSidecarConfig({ ...baseConfig, llm: { apiKey: "sk-test" } })).toThrow(
       "Invalid SidecarConfig: llm.model must be a string",
     );
@@ -289,13 +272,6 @@ describe("parseSidecarConfig", () => {
     );
     expect(() => parseSidecarConfig({ ...baseConfig, llm: { model: "claude-sonnet-4-5", reasoningEffort: "max" } })).toThrow(
       "Invalid SidecarConfig: llm.reasoningEffort must be one of auto, low, medium, high",
-    );
-  });
-
-  it("throws when runtimeProvider is invalid", () => {
-    const baseConfig = { prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD };
-    expect(() => parseSidecarConfig({ ...baseConfig, runtimeProvider: "bad" })).toThrow(
-      "Invalid SidecarConfig: runtimeProvider must be one of claude, openhands",
     );
   });
 
@@ -360,7 +336,6 @@ describe("redactConfig", () => {
       apiKey: "sk-secret-key",
       workspaceRootDir: TEST_CWD,
       workspaceSkillDir: TEST_CWD,
-      runtimeProvider: "openhands",
       llm: {
         model: "claude-sonnet-4-5",
         apiKey: "sk-llm-secret",

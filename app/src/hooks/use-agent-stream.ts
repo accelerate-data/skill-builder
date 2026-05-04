@@ -61,8 +61,8 @@ interface AgentInitErrorPayload {
 
 /** Map sidecar system event subtypes to user-facing progress messages. */
 const INIT_PROGRESS_MESSAGES: Record<string, string> = {
-  init_start: "Loading SDK modules...",
-  sdk_ready: "Connecting to API...",
+  init_start: "Loading runtime modules...",
+  runtime_ready: "Connecting to API...",
 };
 
 // Module-level singleton subscription.  We subscribe eagerly at import time

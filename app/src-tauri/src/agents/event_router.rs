@@ -477,7 +477,7 @@ mod tests {
             "type": "agent_event",
             "event": {
                 "type": "init_progress",
-                "stage": "sdk_ready"
+                "stage": "runtime_ready"
             },
             "timestamp": 99_u64
         });
@@ -492,7 +492,7 @@ mod tests {
                 assert_eq!(event_name, "agent-init-progress");
                 assert_eq!(payload["agent_id"], "agent-2");
                 assert_eq!(payload["timestamp"], 99);
-                assert_eq!(payload["stage"], "sdk_ready");
+                assert_eq!(payload["stage"], "runtime_ready");
             }
             other => panic!("expected frontend event action, got {:?}", other),
         }

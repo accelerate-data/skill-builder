@@ -386,7 +386,6 @@ mod tests {
         });
 
         let json = serde_json::to_value(&config).unwrap();
-        assert_eq!(json["runtimeProvider"], "openhands");
         assert_eq!(json["mode"], "one-shot");
         assert_eq!(json["agentName"], "skill-creator");
         assert_eq!(json["taskKind"], "scope_review");

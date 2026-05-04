@@ -89,7 +89,7 @@ pub struct SessionExhaustedEvent {
 #[serde(rename_all = "snake_case")]
 pub enum InitProgressStage {
     InitStart,
-    SdkReady,
+    RuntimeReady,
 }
 
 /// Initialization progress event.
@@ -355,12 +355,12 @@ mod tests {
 
     #[test]
     fn test_tagged_union_init_progress() {
-        let json = r#"{"type": "init_progress", "stage": "sdk_ready"}"#;
+        let json = r#"{"type": "init_progress", "stage": "runtime_ready"}"#;
         let event: AgentEvent = serde_json::from_str(json).expect("deserialize");
         match event {
             AgentEvent::InitProgress(e) => match e.stage {
-                InitProgressStage::SdkReady => {}
-                other => panic!("expected SdkReady, got {:?}", other),
+                InitProgressStage::RuntimeReady => {}
+                other => panic!("expected RuntimeReady, got {:?}", other),
             },
             other => panic!("expected InitProgress, got {:?}", other),
         }
@@ -380,7 +380,7 @@ mod tests {
     fn test_init_progress_stage_snake_case() {
         let cases = vec![
             (InitProgressStage::InitStart, "\"init_start\""),
-            (InitProgressStage::SdkReady, "\"sdk_ready\""),
+            (InitProgressStage::RuntimeReady, "\"runtime_ready\""),
         ];
         for (stage, expected) in cases {
             let json = serde_json::to_string(&stage).expect("serialize");

@@ -662,11 +662,11 @@ describe("initAgentStream", () => {
     });
 
     expect(useWorkflowStore.getState().initProgressMessage).toBe(
-      "Loading SDK modules...",
+      "Loading runtime modules...",
     );
   });
 
-  it("updates progress message on sdk_ready event", async () => {
+  it("updates progress message on runtime_ready event", async () => {
     useWorkflowStore.getState().setInitializing();
     await initAgentStream();
 
@@ -674,7 +674,7 @@ describe("initAgentStream", () => {
       payload: {
         agent_id: "agent-1",
         type: "init_progress",
-        stage: "sdk_ready",
+        stage: "runtime_ready",
         timestamp: Date.now(),
       },
     });
@@ -734,7 +734,7 @@ describe("initAgentStream", () => {
       },
     });
     expect(useWorkflowStore.getState().initProgressMessage).toBe(
-      "Loading SDK modules...",
+      "Loading runtime modules...",
     );
 
     // First agent message clears initializing
@@ -776,15 +776,15 @@ describe("initAgentStream", () => {
       },
     });
     expect(useWorkflowStore.getState().initProgressMessage).toBe(
-      "Loading SDK modules...",
+      "Loading runtime modules...",
     );
 
-    // Stage 2: sdk_ready
+    // Stage 2: runtime_ready
     listeners["agent-init-progress"]({
       payload: {
         agent_id: "agent-1",
         type: "init_progress",
-        stage: "sdk_ready",
+        stage: "runtime_ready",
         timestamp: Date.now(),
       },
     });

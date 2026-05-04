@@ -283,7 +283,6 @@ mod tests {
             run_source: Some("workflow".to_string()),
             persistence_dir: None,
             plugin_slug: "default".to_string(),
-            runtime_provider: Some("openhands".to_string()),
             task_kind: Some("workflow".to_string()),
             user_message_suffix: Some("Stay in scope.".to_string()),
         }
