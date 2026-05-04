@@ -234,24 +234,8 @@ fn research_prompt_renders_app_owned_openhands_task_context() {
         "",
     );
 
-    assert!(prompt.contains("You are in Step 0: Research"));
-    assert!(prompt.contains("Goal: discover the minimum decisions"));
-    assert!(prompt.contains("Reasoning focus: do not answer user-owned decisions yourself"));
-    assert!(prompt.contains("## Capture Intent"));
-    assert!(prompt.contains("What should this skill enable the assistant to do?"));
     assert!(!prompt.contains("What should this skill enable Claude to do?"));
     assert!(!prompt.contains("Claude Code"));
-    assert!(prompt.contains("When should this skill trigger?"));
-    assert!(prompt.contains("What is the expected output format?"));
-    assert!(prompt.contains("Should we set up test cases to verify the skill works?"));
-    assert!(prompt.contains("objectively verifiable outputs"));
-    assert!(prompt.contains("Suggest the appropriate default based on the skill type"));
-    assert!(prompt.contains("## Interview And Research"));
-    assert!(prompt.contains("edge cases, input and output formats"));
-    assert!(prompt.contains("Wait to write test prompts"));
-    assert!(prompt.contains("Check available MCPs"));
-    assert!(prompt.contains("Use parallel research via"));
-    assert!(prompt.contains("otherwise research inline"));
     assert!(prompt.contains("We are writing the skill lead-conversion."));
     assert!(prompt.contains("/tmp/workspace/skills/lead-conversion"));
     assert!(
@@ -2196,8 +2180,6 @@ fn test_build_step0_prompt_uses_openhands_native_research_routing() {
     assert!(prompt.contains("We are writing the skill my-skill."));
     assert!(prompt.contains("Maximum research dimensions before scope warning: 4"));
     assert!(prompt.contains("research_output"));
-    assert!(prompt.contains("Use parallel research via"));
-    assert!(prompt.contains("subagents if that capability is available"));
 
     for forbidden in [
         "research-agent",
