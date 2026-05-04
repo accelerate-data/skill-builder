@@ -88,12 +88,6 @@ void invokeCommand("resolve_discovery", {
   pluginSlug: null,
 });
 
-// @ts-expect-error get_context_file_content requires a context fileName
-void invokeCommand("get_context_file_content", {
-  skillName: "demo",
-  workspacePath: "/tmp/workspace",
-});
-
 // @ts-expect-error refine command requires camelCase sessionId
 void invokeCommand("close_refine_session", { session_id: "session-1" });
 
