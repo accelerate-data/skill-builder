@@ -49,11 +49,11 @@ export interface RunAgentOptions {
   skillName?: string;
   stepId?: number;
   runSource?: string;
-  /** For evaluate-skill: absolute path to the workspace root (parsed as workspace_path: in prompt). */
+  /** For iteration-aware mock runs: absolute path to the workspace root. */
   workspacePath?: string;
-  /** For evaluate-skill: eval IDs to include in the prompt (parsed as eval_ids: in prompt). */
+  /** For iteration-aware mock runs: eval IDs to include in the prompt. */
   evalIds?: number[];
-  /** For evaluate-skill: absolute path to the iteration directory (parsed as iter_dir: in prompt). */
+  /** For iteration-aware mock runs: absolute path to the iteration directory. */
   iterDir?: string;
   /** OpenHands workflow task kind used by mock routing. */
   taskKind?: string;
@@ -157,7 +157,7 @@ async function sendAgentRequest(
     `Task: ${agentName} for skill "${skillName}".`,
   ];
 
-  // evaluate-skill: append key-value pairs the mock-agent parses for grading file paths.
+  // Append key-value pairs that iteration-aware mock routes may parse.
   if (workspacePath !== undefined) lines.push(`workspace_path: ${workspacePath}`);
   if (evalIds !== undefined) lines.push(`eval_ids: ${JSON.stringify(evalIds)}`);
   if (iterDir !== undefined) lines.push(`iter_dir: ${iterDir}`);

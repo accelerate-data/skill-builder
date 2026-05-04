@@ -56,8 +56,6 @@ export function resolveStepTemplate(
   }
 
   if (!agentName) {
-    // Description optimization eval-query generator: one-shot outputFormat path.
-    if (config?.stepId === -12) return "description-evals-generator";
     // Eval generator: invoked without a plugin agentName; identified by skillName.
     if (
       config?.skillName === "skill-evals-generator" ||
@@ -90,9 +88,6 @@ export function resolveStepTemplate(
   if (agentName === "skill-creator:generate-skill")
     return "step3-generate-skill";
   if (agentName === "skill-creator:rewrite-skill") return "rewrite-skill";
-  if (agentName === "skill-creator:grader" || agentName === "evaluate-skill")
-    return "evaluate-skill";
-
   // Research orchestrator (plugin-qualified) and all sub-agents spawned by the research skill
   if (
     agentName === "skill-content-researcher:research-orchestrator" ||
@@ -131,7 +126,6 @@ function getOutputDir(stepTemplate: string): string {
         ? "gate-answer-evaluator-contradictory"
         : "gate-answer-evaluator",
     "eval-generator": "eval-generator",
-    "evaluate-skill": "benchmark",
   };
   return stepMap[stepTemplate] || "";
 }
@@ -257,7 +251,7 @@ export async function runMockAgent(
     return;
   }
 
-  // 1. Write mock output files to disk (returns iteration number for evaluate-skill)
+  // 1. Write mock output files to disk when the selected template owns artifacts.
   const mockIterationNumber = await writeMockOutputFiles(stepTemplate, config);
 
   // 2. Stream JSONL template messages
@@ -388,7 +382,7 @@ export async function runMockAgent(
  * Copy mock output files from the bundled templates into the workspace
  * so that `verify_step_output` finds them and the workflow can advance.
  *
- * Returns the iteration number used for evaluate-skill (or undefined for other steps).
+ * Returns an iteration number when the template encodes iteration-specific output.
  */
 export async function writeMockOutputFiles(
   stepTemplate: string,
@@ -419,31 +413,9 @@ export async function writeMockOutputFiles(
     destRoot =
       paths.skillOutputDir ?? paths.skillDir ?? config.workspaceSkillDir;
   } else if (stepTemplate === "eval-generator") {
-    // Eval generator: pending-eval.json goes to {skills_path}/{skill}/evals/
-    // Extract the evals directory from the absolute path embedded in the prompt.
+    // Eval generator writes a draft eval payload to the prompt-specified path.
     const match = config.prompt?.match(/`([^`]+)\/pending-eval\.json`/);
     destRoot = match ? match[1] : config.workspaceSkillDir;
-  } else if (stepTemplate === "evaluate-skill") {
-    // Evaluate-skill: grading files go into the iteration directory created by Rust.
-    // Extract iter_dir from the prompt — it already contains the plugin-aware path.
-    // iter_dir = {skillWorkspace}/evals/iterations/iteration-{N}/
-    // destRoot  = three dirname() calls up → {skillWorkspace}
-    // iter_dir lives in the SYSTEM prompt (key-value block), not the user prompt
-    const iterMatch = (config.systemPrompt ?? config.prompt)?.match(
-      /iter_dir:\s*(.+)/,
-    );
-    const iterDir = iterMatch?.[1]?.trim();
-    if (iterDir) {
-      destRoot = path.dirname(path.dirname(path.dirname(iterDir)));
-      const iterNum =
-        parseInt(path.basename(iterDir).replace("iteration-", ""), 10) || 1;
-      const rewriteFrom = iterNum !== 1 ? "iteration-1" : null;
-      const rewriteTo = iterNum !== 1 ? `iteration-${iterNum}` : null;
-      await copyDirRecursive(srcDir, destRoot, rewriteFrom, rewriteTo);
-      return iterNum;
-    }
-    // Fallback: iter_dir not found in prompt — skip file copy.
-    return 1;
   } else {
     // Steps 0, 1, 2: context files go under the skill directory.
     // The mock template has outputs/{stepN}/context/... so we strip the
@@ -611,7 +583,6 @@ export async function buildStructuredMockResult(
         "use-creating-skills",
         "write-skill",
         "write-references",
-        "write-evals",
         "fresh-context-verifier-review",
       ],
     };
@@ -637,56 +608,6 @@ export async function buildStructuredMockResult(
         : "gate-answer-evaluator";
     return readJsonIfExists(
       path.join(outputsRoot, dir, "answer-evaluation.json"),
-    );
-  }
-
-  if (stepTemplate === "evaluate-skill") {
-    // The benchmark is computed by Rust from grading files — the agent only
-    // signals completion. Mock grading files are already copied by writeMockOutputFiles.
-    const iterNum = mockIterationNumber ?? 1;
-
-    // Write mock analyst-notes.json to the iteration directory so Rust can read it.
-    const iterMatch = (config?.systemPrompt ?? config?.prompt)?.match(
-      /iter_dir:\s*(.+)/,
-    );
-    const iterDir = iterMatch?.[1]?.trim();
-    if (iterDir) {
-      const analystNotes = [
-        "Eval 3 (snapshot SCD2): with-skill scores 75% vs 50% without \u2014 the skill adds correct target_schema but misses NULL handling in check columns.",
-        "Eval 4 (incremental model): with-skill scores 50% vs 25% without \u2014 incremental strategy is correct but is_incremental() guard and directory convention are missing.",
-        "The skill provides +25% improvement on aggregate pass rate (62.5% vs 37.5%) but still has significant gaps.",
-      ];
-      await fs.mkdir(iterDir, { recursive: true });
-      await fs.writeFile(
-        path.join(iterDir, "analyst-notes.json"),
-        JSON.stringify(analystNotes, null, 2),
-        "utf-8",
-      );
-    }
-
-    return {
-      type: "complete",
-      iteration: iterNum,
-    };
-  }
-
-  if (stepTemplate === "description-evals-generator") {
-    return readJsonIfExists(
-      path.join(
-        outputsRoot,
-        "description-evals-generator",
-        "description-evals-result.json",
-      ),
-    );
-  }
-
-  if (stepTemplate === "description-optimization-loop") {
-    return readJsonIfExists(
-      path.join(
-        outputsRoot,
-        "description-optimization-loop",
-        "optimization-result.json",
-      ),
     );
   }
 

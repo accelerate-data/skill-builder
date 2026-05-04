@@ -19,9 +19,7 @@ artifact changes, run and update the matching package.
 | `workspace-test-evaluator-prompt` | Skill tester plan comparison | Add | Replaces the stale bundled-skill meta eval with the app-used tester evaluator prompt behavior. |
 | `workspace-workflow-step-prompt` | Workflow prompt shell | Add | Covers app-injected workflow paths and one-shot constraints. |
 | `workspace-refine-initial-prompt` | Refine prompt shell | Add | Covers refine routing, eval-failure triage, and `AskUserQuestion` handoff. |
-| `workspace-eval-initial-prompt` | Eval loop prompt | Add | Covers executor/grader orchestration and structured eval-loop output. |
 | `workspace-eval-generator-system-prompt` | Eval generator prompt | Add | Covers draft Eval Workbench case JSON generation from realistic skill-test user intent. |
-| `workspace-description-evals-generator-prompt` | Description query generation | Add | Covers trigger-prompt set generation for the Eval Workbench description-candidate flow. |
 | `workspace-skill-suggestions-prompt` | Skill field suggestions | Add | Covers the create-skill form suggestion JSON returned by the Rust prompt. |
 | `scope-advisor` | Skill scope review prompt | Rewrite | Covers current Rust prompt behavior for focused, too-broad, name, description, context, and non-English cases. |
 
@@ -45,9 +43,7 @@ The regression subset is the full package list:
 - `npm run eval:workspace-test-evaluator-prompt`
 - `npm run eval:workspace-workflow-step-prompt`
 - `npm run eval:workspace-refine-initial-prompt`
-- `npm run eval:workspace-eval-initial-prompt`
 - `npm run eval:workspace-eval-generator-system-prompt`
-- `npm run eval:workspace-description-evals-generator-prompt`
 - `npm run eval:workspace-skill-suggestions-prompt`
 - `npm run eval:scope-advisor`
 
