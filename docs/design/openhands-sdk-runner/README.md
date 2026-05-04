@@ -139,6 +139,12 @@ Current Rust boundaries:
 
 ## Source And Runtime Layout
 
+> **Note:** Skill and prompt names below reflect the original design intent.
+> The implemented names differ: skills are `creating-skills` and
+> `researching-skill-requirements`; prompts are `detailed-research.txt`,
+> `answer-evaluator.txt`, and `confirm_decisions.txt`. The Agent Server runtime
+> design is authoritative.
+
 Source layout:
 
 ```text
