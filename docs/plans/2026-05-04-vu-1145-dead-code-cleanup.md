@@ -172,6 +172,110 @@ Verify in `tauri.conf.json`:
 
 ---
 
+## Task: Workspace Scratch Dir Cleanup (VU-1157 Aftermath + Dead logs/ Chain)
+
+**Context:** Two related problems leave the workspace scratch dir cluttered with dead files:
+
+1. **VU-1157 stale artifacts.** VU-1157 stopped writing `context/clarifications.json`, `context/decisions.json`, `user-context.md`, `answer-evaluation.json`, and `gate-result.json` but never added startup cleanup for existing copies. `crud.rs` also still creates an empty `context/` on skill creation.
+
+2. **Dead `logs/` chain.** `create_openhands_persistence_dir` creates `logs/{agent_id}-{timestamp}/` dirs every run but nothing ever writes into them — the `PathBuf` it returns is always discarded (`.map(|_| ())` or `let _persistence_path = ...`). The `transcript_dir` field on `OpenHandsOneShotRun` is set but never read by any caller. The entire `transcript_log_dir` field on `SidecarConfig` and all the places that set it exist only to feed this dead function.
+
+**Files to modify:**
+- `app/src-tauri/src/commands/workspace.rs`
+- `app/src-tauri/src/commands/skill/crud.rs`
+- `app/src-tauri/src/agents/openhands_server/mod.rs`
+- `app/src-tauri/src/commands/workflow/runtime.rs`
+- `app/src-tauri/src/commands/refine/mod.rs`
+- `app/src-tauri/src/agents/sidecar.rs`
+- `app/src-tauri/src/types/mod.rs`
+- `app/src-tauri/src/agents/openhands_server/client.rs`
+
+---
+
+### Part A — Delete the dead `logs/` persistence chain
+
+- [ ] `openhands_server/mod.rs` — delete `create_openhands_persistence_dir` (the function around line 770).
+- [ ] `openhands_server/mod.rs` — in `dispatch_openhands_one_shot`: remove the `transcript_log_dir: Option<&str>` parameter and the `create_openhands_persistence_dir` call; change the return type from `Result<PathBuf, String>` to `Result<(), String>` and return `Ok(())`.
+- [ ] `openhands_server/mod.rs` — in `dispatch_openhands_refine_turn`: remove the `transcript_log_dir: Option<&str>` parameter and the `let _persistence_path = create_openhands_persistence_dir(...)` call.
+- [ ] `openhands_server/mod.rs` — in `run_openhands_one_shot`: remove `let log_dir = ...` and `let log_dir_str = ...` (lines ~159-160); update the `dispatch_openhands_one_shot` call to drop the log dir argument; remove `transcript_dir: persistence_dir` from the `OpenHandsOneShotRun` return value.
+- [ ] `openhands_server/mod.rs` — remove `pub transcript_dir: PathBuf` field from `OpenHandsOneShotRun` struct.
+- [ ] `runtime.rs` — remove the two `config.transcript_log_dir = Some(...)` assignments (lines ~202-207 and ~242-247); remove the two `let transcript_log_dir = config.transcript_log_dir.clone();` locals and the `transcript_log_dir.as_deref()` arguments passed to `dispatch_openhands_one_shot`.
+- [ ] `refine/mod.rs` — remove `let log_dir = format!("{workspace_skill_dir_str}/logs");` and `config.transcript_log_dir = Some(log_dir.clone());`; update the `dispatch_openhands_refine_turn` call to drop the `Some(&log_dir)` argument.
+- [ ] `sidecar.rs` — remove `pub transcript_log_dir: Option<String>` field from `SidecarConfig`; remove all `transcript_log_dir: None` defaults in the struct constructors in this file.
+- [ ] `types/mod.rs` — remove `transcript_log_dir: None` from the `SidecarConfig` default/constructor there.
+- [ ] `client.rs` — remove `transcript_log_dir: None` from the `SidecarConfig` construction there.
+
+---
+
+### Part B — Stop creating `context/` on new skills
+
+- [ ] `crud.rs` — in `create_skill_filesystem_inner` (around line 337), change:
+  ```rust
+  // Create plugin-organised workspace dir and context subdir.
+  fs::create_dir_all(workspace_skill_dir.join("context")).map_err(|e| e.to_string())?;
+  ```
+  to:
+  ```rust
+  fs::create_dir_all(&workspace_skill_dir).map_err(|e| e.to_string())?;
+  ```
+
+---
+
+### Part C — Startup sweep for stale workspace artifacts
+
+- [ ] `workspace.rs` — in `migrate_workspace_layout`, after the existing cleanup blocks, add a two-level walk over `{workspace}/{plugin_slug}/{skill_name}/` dirs. All removals are best-effort and non-fatal (use the existing pattern: `if path.is_X() { let _ = fs::remove_X(&path); }`). For each skill dir:
+  - Delete these files if they exist: `context/clarifications.json`, `context/decisions.json`, `context/benchmark-meta.json`, `user-context.md`, `answer-evaluation.json`, `gate-result.json`.
+  - Remove `context/` with `fs::remove_dir` (not `remove_dir_all`) if it is empty after the above.
+  - Remove any empty `logs/{name}/` subdirectories left by the dead persistence chain (iterate one level into `logs/`, try `fs::remove_dir` on each entry). Then try `fs::remove_dir` on `logs/` itself.
+  - Add a comment explaining the VU-1157 and dead-logs-chain origin so a future reader knows when to drop these rules.
+
+---
+
+### Part D — Tests and validation
+
+- [ ] Add a unit test in `workspace.rs` `#[cfg(test)]` confirming `migrate_workspace_layout` removes the stale VU-1157 files and empty `logs/` dirs, and leaves unrelated files untouched.
+- [ ] Add a unit test confirming `create_skill_filesystem_inner` no longer creates a `context/` subdir.
+- [ ] `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` — clean.
+- [ ] `cargo test --manifest-path app/src-tauri/Cargo.toml` — all tests pass.
+- [ ] Commit: `fix: remove dead transcript-log chain and clean up stale workspace artifacts on startup`
+
+---
+
+## Task: DB Consistency Reset for Pre-VU-1157 In-Progress Skills
+
+**Context:** Skills that were in-progress when VU-1157 merged have `workflow_runs.current_step > 0` but no rows in the `clarifications` or `decisions` DB tables — their artifact data only ever existed in the now-dead workspace JSON files. The app will never read those files again. These skills are stuck: the UI thinks they have progress, the DB has no data backing that claim. **Do not attempt to parse the JSON files and reconstruct DB rows** — just reset the step to 0 so the user re-runs from the beginning.
+
+The reset belongs in `reconcile_skill_builder` in `app/src-tauri/src/reconciliation/skill_builder.rs`, immediately after the existing stale `in_progress` step fix. It runs once at startup per affected skill and is idempotent (a skill already at step 0 skips the check).
+
+**Files to modify:**
+- `app/src-tauri/src/reconciliation/skill_builder.rs`
+
+**Reset rules (incomplete skills only — skip if `status == "completed"`):**
+
+| Condition | Action |
+|---|---|
+| `current_step >= 1` AND `read_clarifications(conn, name)` returns `Ok(None)` | Reset `current_step` → 0, `status` → `"pending"` |
+| `current_step >= 3` AND `read_decisions(conn, name)` returns `Ok(None)` | Reset `current_step` → 0, `status` → `"pending"` |
+
+Both conditions are checked independently; if the first resets to 0 the second is effectively a no-op.
+
+**What to change:**
+
+- [ ] In `reconcile_skill_builder`, after the stale `in_progress` step reset loop and before the `get_workflow_run` lookup, add a consistency check that:
+  1. Reads `workflow_runs` for the skill to get `current_step` and `status`.
+  2. Skips if status is `"completed"`.
+  3. Checks clarifications if `current_step >= 1`; resets via `crate::db::save_workflow_run(conn, name, 0, "pending", purpose)` if missing.
+  4. Checks decisions if `current_step >= 3`; resets the same way if missing.
+  5. Logs an `info!` for each reset: `"[reconcile] '{}': resetting step {} → 0 (no DB artifacts for completed phase)"`.
+  6. Pushes a notification string (same format as the existing stale-step notification).
+
+- [ ] Add a test in `app/src-tauri/src/reconciliation/tests.rs`: create a skill with `current_step = 2` and no clarifications row; run reconciliation; assert `current_step` is reset to 0.
+
+- [ ] `cargo test --manifest-path app/src-tauri/Cargo.toml` — all tests pass.
+- [ ] Commit: `fix: reset in-progress skills with no DB artifact rows to step 0 on startup`
+
+---
+
 ## Validation Gates
 
 Before marking cleanup complete:
