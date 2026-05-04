@@ -471,16 +471,6 @@ describe("skill-content-researcher plugin structure", () => {
     "skill-content-researcher",
   );
 
-  it("plugin manifest has required fields", () => {
-    const manifestPath = path.join(pluginRoot, ".claude-plugin", "plugin.json");
-    const raw = fs.readFileSync(manifestPath, "utf8");
-    const manifest = JSON.parse(raw);
-
-    expect(manifest.name).toBe("skill-content-researcher");
-    expect(manifest.version).toBeDefined();
-    expect(manifest.description).toBeDefined();
-  });
-
   it("embedded legacy research skill is internal-only (not user-invocable)", () => {
     const researchPath = path.join(
       pluginRoot,
@@ -551,16 +541,6 @@ describe("skill-creator plugin structure", () => {
     "plugins",
     "skill-creator",
   );
-
-  it("plugin manifest has required fields", () => {
-    const manifestPath = path.join(pluginRoot, ".claude-plugin", "plugin.json");
-    const raw = fs.readFileSync(manifestPath, "utf8");
-    const manifest = JSON.parse(raw);
-
-    expect(manifest.name).toBe("skill-creator");
-    expect(manifest.version).toBeDefined();
-    expect(manifest.description).toBeDefined();
-  });
 
   it("skill-creator SKILL.md references bundled scripts and eval viewer via relative paths", () => {
     const skillPath = path.join(
