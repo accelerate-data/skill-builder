@@ -98,9 +98,11 @@ pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
     resolve_bundled_agent_sources_subdir(app_handle, "skills")
 }
 
-/// Resolve source paths for OpenHands agents and the legacy Claude template from the app handle.
-/// Returns `(agents_dir, claude_md)` as owned PathBufs. Either may be empty
-/// if not found (caller should check `.is_dir()` / `.is_file()` before using).
+/// Resolve source paths for OpenHands agents from the app handle.
+/// Returns `(agents_dir, claude_md)` as owned PathBufs. `agents_dir` may be
+/// empty if not found (caller should check `.is_dir()` before using).
+/// `claude_md` is always an empty `PathBuf` — `agent-sources/claude/` was
+/// removed; callers that check `claude_md.is_file()` will no-op correctly.
 pub(crate) fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf) {
     use tauri::Manager;
 
@@ -112,9 +114,6 @@ pub(crate) fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (Path
     let agents_src = repo_root
         .as_ref()
         .map(|r| r.join("agent-sources").join("workspace").join("agents"));
-    let claude_md_src = repo_root
-        .as_ref()
-        .map(|r| r.join("agent-sources").join("claude").join("CLAUDE.md"));
 
     let agents_dir = match agents_src {
         Some(ref p) if p.is_dir() => p.clone(),
@@ -132,23 +131,7 @@ pub(crate) fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (Path
         }
     };
 
-    let claude_md = match claude_md_src {
-        Some(ref p) if p.is_file() => p.clone(),
-        _ => {
-            let resource = app_handle
-                .path()
-                .resource_dir()
-                .map(|r| r.join("claude").join("CLAUDE.md"))
-                .unwrap_or_default();
-            if resource.is_file() {
-                resource
-            } else {
-                PathBuf::new()
-            }
-        }
-    };
-
-    (agents_dir, claude_md)
+    (agents_dir, PathBuf::new())
 }
 
 fn resolve_workspace_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
@@ -247,10 +230,10 @@ pub async fn ensure_workspace_prompts(
 ) -> Result<(), String> {
     // Extract paths from AppHandle before moving into the blocking closure
     // (AppHandle is !Send so it cannot cross the spawn_blocking boundary)
-    let (agents_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
+    let (agents_dir, _) = resolve_prompt_source_dirs(app_handle);
     let workspace_skills_dir = resolve_workspace_skills_dir(app_handle);
 
-    if !agents_dir.is_dir() && !claude_md.is_file() && !workspace_skills_dir.is_dir() {
+    if !agents_dir.is_dir() && !workspace_skills_dir.is_dir() {
         return Ok(()); // No sources found anywhere — skip silently
     }
 
@@ -368,17 +351,14 @@ pub(crate) fn ensure_workspace_prompts_inner(
 
 /// Synchronous inner copy logic shared by async and sync entry points.
 /// Workflow agents use OpenHands' `.agents/` layout under the workspace root and
-/// each workspace skill directory. Workspace `CLAUDE.md` and Claude plugin
-/// manifests are maintained by non-workflow import/marketplace paths.
+/// each workspace skill directory.
 ///
-/// This wrapper preserves its historical signature so existing tests and
-/// callers compile unchanged; it now routes through the SHA-gated two-tier
-/// deploy so cache invariants stay consistent across entry points.
+/// Routes through the SHA-gated two-tier deploy so cache invariants stay
+/// consistent across entry points.
 #[allow(dead_code)]
 pub(crate) fn copy_prompts_sync(
     agents_dir: &Path,
     workspace_skills_dir: &Path,
-    _claude_md: &Path,
     workspace_path: &str,
 ) -> Result<(), String> {
     if agents_dir.is_dir() || workspace_skills_dir.is_dir() {
@@ -395,10 +375,10 @@ pub fn ensure_workspace_prompts_sync(
     app_handle: &tauri::AppHandle,
     workspace_path: &str,
 ) -> Result<(), String> {
-    let (agents_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
+    let (agents_dir, _) = resolve_prompt_source_dirs(app_handle);
     let workspace_skills_dir = resolve_workspace_skills_dir(app_handle);
 
-    if !agents_dir.is_dir() && !claude_md.is_file() && !workspace_skills_dir.is_dir() {
+    if !agents_dir.is_dir() && !workspace_skills_dir.is_dir() {
         return Ok(());
     }
 

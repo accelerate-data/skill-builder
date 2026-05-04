@@ -346,12 +346,6 @@ describe("parsePromptPaths (inline)", () => {
  */
 const AGENTS_WITHOUT_MOCK = new Set<string>([
   "skill-creator:grader",
-  "vd-agent:analyst",
-  "vd-agent:design-firmer",
-  "vd-agent:dq-test-generator",
-  "vd-agent:model-builder",
-  "vd-agent:test-generator",
-  "vd-agent:validator",
 ]);
 
 /** Collect all plugin-qualified agent names from agent-sources/plugins/{name}/agents/{name}.md */
