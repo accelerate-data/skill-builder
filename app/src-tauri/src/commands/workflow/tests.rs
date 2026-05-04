@@ -238,7 +238,9 @@ fn research_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("Goal: discover the minimum decisions"));
     assert!(prompt.contains("Reasoning focus: do not answer user-owned decisions yourself"));
     assert!(prompt.contains("## Capture Intent"));
-    assert!(prompt.contains("What should this skill enable Claude to do?"));
+    assert!(prompt.contains("What should this skill enable the assistant to do?"));
+    assert!(!prompt.contains("What should this skill enable Claude to do?"));
+    assert!(!prompt.contains("Claude Code"));
     assert!(prompt.contains("When should this skill trigger?"));
     assert!(prompt.contains("What is the expected output format?"));
     assert!(prompt.contains("Should we set up test cases to verify the skill works?"));
