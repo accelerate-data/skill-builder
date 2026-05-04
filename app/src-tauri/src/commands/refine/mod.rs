@@ -255,16 +255,6 @@ pub async fn send_refine_message(
 
     ensure_skill_workspace_dir(&runtime_ctx.workspace_path, &resolved_plugin_slug, &skill_name);
 
-    if conversation_id.is_none() {
-        write_refine_user_context(
-            &db,
-            &runtime_ctx.workspace_path,
-            &resolved_plugin_slug,
-            &skill_name,
-            &skill_output_dir,
-        )?;
-    }
-
     let target_files_slice = target_files.as_deref();
     let prompt = if conversation_id.is_some() {
         build_followup_prompt_with_output_dir(&user_message, &skill_output_dir, target_files_slice)
@@ -330,66 +320,6 @@ pub async fn send_refine_message(
     }
 
     Ok(agent_id)
-}
-
-/// Reproduce the user-context bundle that `load_refine_runtime_settings`
-/// previously assembled. Reads workflow run row, SKILL.md frontmatter, and
-/// settings, then writes `{workspace}/{plugin}/{skill}/user-context.md`.
-fn write_refine_user_context(
-    db: &Db,
-    workspace_path: &str,
-    plugin_slug: &str,
-    skill_name: &str,
-    skill_output_dir: &Path,
-) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = db::read_settings(&conn)?;
-    let settings_author = settings
-        .github_user_email
-        .clone()
-        .or(settings.github_user_login.clone());
-    let run_row = db::get_workflow_run(&conn, skill_name).ok().flatten();
-    let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-    let frontmatter = std::fs::read_to_string(skill_output_dir.join("SKILL.md"))
-        .ok()
-        .map(|content| crate::commands::imported_skills::parse_frontmatter_full(&content))
-        .unwrap_or_default();
-    let is_imported = run_row.is_none();
-    let purpose = if is_imported {
-        frontmatter.description.clone()
-    } else {
-        run_row.as_ref().map(|r| r.purpose.clone())
-    };
-    let author_for_context = if is_imported {
-        frontmatter.author.clone()
-    } else {
-        frontmatter
-            .author
-            .or_else(|| run_row.as_ref().and_then(|r| r.author_login.clone()))
-            .or(settings_author)
-    };
-
-    drop(conn);
-
-    crate::commands::workflow::write_user_context_file(
-        workspace_path,
-        plugin_slug,
-        skill_name,
-        &[],
-        author_for_context.as_deref(),
-        settings.industry.as_deref(),
-        settings.function_role.as_deref(),
-        intake_json.as_deref(),
-        None,
-        purpose.as_deref(),
-        frontmatter.version.as_deref(),
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
-    Ok(())
 }
 
 // ─── close_refine_session ────────────────────────────────────────────────────
