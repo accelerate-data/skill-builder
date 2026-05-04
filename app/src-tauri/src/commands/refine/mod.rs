@@ -188,9 +188,9 @@ pub async fn start_refine_session(
 
 /// Send a user message to the refine agent and stream responses back.
 ///
-/// Turn 1 (session has no conversation_id): writes user-context.md, creates a
-/// new OpenHands conversation seeded with the full refine prompt, runs it,
-/// and stores the conversation_id on the session.
+/// Turn 1 (session has no conversation_id): creates a new OpenHands
+/// conversation seeded with the full refine prompt, runs it, and stores
+/// the conversation_id on the session.
 ///
 /// Turn N (session has a conversation_id): appends the user message as a
 /// follow-up event and re-runs the existing conversation.

@@ -756,6 +756,31 @@ mod tests {
     }
 
     #[test]
+    fn test_migrate_workspace_layout_preserves_nonempty_log_run_dirs() {
+        let workspace = tempfile::tempdir().unwrap();
+        let skill_dir = workspace
+            .path()
+            .join("some-plugin")
+            .join("some-skill");
+
+        // A per-run dir with content should survive — remove_dir is non-recursive.
+        let run_dir = skill_dir.join("logs/agent-xyz-2024-01-01T00-00-00");
+        fs::create_dir_all(&run_dir).unwrap();
+        fs::write(run_dir.join("run.jsonl"), "{}").unwrap();
+
+        migrate_workspace_layout(workspace.path().to_str().unwrap());
+
+        assert!(
+            run_dir.exists(),
+            "non-empty per-run log dir should survive migration"
+        );
+        assert!(
+            skill_dir.join("logs").exists(),
+            "logs/ parent should survive when a run dir has content"
+        );
+    }
+
+    #[test]
     fn test_migrate_marketplace_nested_already_canonical() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
