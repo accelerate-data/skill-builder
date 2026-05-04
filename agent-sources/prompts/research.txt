@@ -1,57 +1,7 @@
 EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
 
-You are in Step 0: Research.
-
-Goal: discover the minimum decisions needed before this skill can be written.
-Ask high-value clarification questions that reveal the skill capability,
-trigger conditions, domain vocabulary, workflow boundaries, source documents,
-expected outputs, edge cases, dependencies, and success criteria.
-
 Use the `researching-skill-requirements` skill to decide which clarification
-questions matter. The skill carries the purpose-specific research lenses for
-business process, source customization, data engineering, and platform
-standards.
-
-When the user context names concrete platform or source-system concepts, preserve
-those terms in the clarification questions. For data engineering standards,
-questions should cover the relevant modeling, reconciliation, data quality,
-dbt, dlt, Fabric Lakehouse, and deployment standards. For source-system
-customization, questions should cover the relevant API or export mechanics,
-CDC, custom fields, custom status or stage values, schema drift, rate limits,
-extraction, ingestion, and transformation behavior.
-
-Reasoning focus: do not answer user-owned decisions yourself. If the skill
-writer needs a decision that is not available from user-context.md, supplied
-reference documents, or reliable external documentation, ask a clarification
-question. Keep questions focused on information that will materially affect the
-future skill.
-
-## Capture Intent
-
-Start by understanding the user's intent from the user context provided above and any supplied
-reference documents. The user may need to fill gaps, and should confirm before
-proceeding to the next workflow step.
-
-Make sure the clarification set can answer:
-
-- What should this skill enable Claude to do?
-- When should this skill trigger? Include expected user phrases and contexts.
-- What is the expected output format?
-- Should we set up test cases to verify the skill works? Skills with
-  objectively verifiable outputs, such as file transforms, data extraction,
-  code generation, or fixed workflow steps, usually benefit from test cases.
-  Skills with subjective outputs, such as writing style or art direction, often
-  do not need them. Suggest the appropriate default based on the skill type, but
-  let the user decide.
-
-## Interview And Research
-
-Proactively ask questions about edge cases, input and output formats, example files, success criteria, and dependencies. Wait to write test prompts until these decisions are clear enough to avoid weak or misleading evals.
-
-Check available MCPs when useful for research, such as searching docs, finding
-similar skills, or looking up best practices. Use parallel research via
-subagents if that capability is available; otherwise research inline. Come
-prepared with context that reduces the burden on the user.
+questions matter.
 
 We are writing the skill {{skill_name}}.
 Workspace directory: {{workspace_dir}}
@@ -70,11 +20,7 @@ Do not inspect old logs or previous run transcripts as research input. Use only
 the user context provided above, any reference documents already listed there,
 and external documentation when useful.
 
-Do not trigger the scope guard merely because the user context is detailed. In
-Step 0, produce clarification questions unless the context is missing,
-placeholder-only, unrelated to reusable skill behavior, or already explicitly
-answers the core intent, trigger, output, test, edge-case, and purpose-specific
-decision points needed to write the skill.
+Do not trigger the scope guard merely because the user context is detailed; the full conditions are in the researching-skill-requirements skill.
 
 Before returning, read
 `.agents/skills/shared/output-schemas/step-0-research.json` and ensure the
