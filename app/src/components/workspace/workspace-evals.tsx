@@ -22,7 +22,10 @@ import {
   type SaveEvalPromptSet,
   validatePromptSet,
 } from "@/lib/eval-workbench";
-import { setEvalsRunning } from "@/lib/eval-running-state";
+import {
+  setEvalsCancelHandler,
+  setEvalsRunning,
+} from "@/lib/eval-running-state";
 import { useRefineStore } from "@/stores/refine-store";
 import { PromptSetEditor } from "./eval-workbench/prompt-set-editor";
 import { ResultTable } from "./eval-workbench/result-table";
@@ -73,10 +76,25 @@ export function WorkspaceEvals({
     setEvalsRunning(isRunning);
   }, [isRunning, onRunningChange]);
 
+  useEffect(() => {
+    if (!activeRunId) {
+      setEvalsCancelHandler(null);
+      return;
+    }
+
+    setEvalsCancelHandler(async () => {
+      await cancelEvalWorkbenchRun(activeRunId);
+    });
+    return () => {
+      setEvalsCancelHandler(null);
+    };
+  }, [activeRunId]);
+
   useEffect(
     () => () => {
       onRunningChange?.(false);
       setEvalsRunning(false);
+      setEvalsCancelHandler(null);
     },
     [onRunningChange],
   );

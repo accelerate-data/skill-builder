@@ -28,7 +28,10 @@ import {
   type SaveEvalPromptSet,
   validatePromptSet,
 } from "@/lib/eval-workbench";
-import { setEvalsRunning } from "@/lib/eval-running-state";
+import {
+  setEvalsCancelHandler,
+  setEvalsRunning,
+} from "@/lib/eval-running-state";
 import type { SkillSummary } from "@/lib/types";
 import { useRefineStore } from "@/stores/refine-store";
 import { CandidateCards } from "./eval-workbench/candidate-cards";
@@ -110,10 +113,25 @@ export function WorkspaceDescription({
     setEvalsRunning(isRunning);
   }, [isRunning, onRunningChange]);
 
+  useEffect(() => {
+    if (!activeRunId) {
+      setEvalsCancelHandler(null);
+      return;
+    }
+
+    setEvalsCancelHandler(async () => {
+      await cancelEvalWorkbenchRun(activeRunId);
+    });
+    return () => {
+      setEvalsCancelHandler(null);
+    };
+  }, [activeRunId]);
+
   useEffect(
     () => () => {
       onRunningChange?.(false);
       setEvalsRunning(false);
+      setEvalsCancelHandler(null);
     },
     [onRunningChange],
   );

@@ -471,17 +471,14 @@ export function buildTriggerCandidateIds(
     return [];
   }
 
-  return [
-    CURRENT_SKILL_CANDIDATE_ID,
-    ...candidates
-      .map((candidate) => candidate.id)
-      .filter((candidateId, index, candidateIds) => {
-        return (
-          candidateId !== CURRENT_SKILL_CANDIDATE_ID &&
-          candidateIds.indexOf(candidateId) === index
-        );
-      }),
-  ];
+  return candidates
+    .map((candidate) => candidate.id)
+    .filter((candidateId, index, candidateIds) => {
+      return (
+        candidateId !== CURRENT_SKILL_CANDIDATE_ID &&
+        candidateIds.indexOf(candidateId) === index
+      );
+    });
 }
 
 export function getRunCandidateIds(run: EvalRun | null): string[] {
@@ -492,7 +489,7 @@ export function getRunCandidateIds(run: EvalRun | null): string[] {
   if (run.mode === "trigger") {
     const resultCandidateIds = Array.from(
       new Set(run.results.map((result) => result.candidateId)),
-    );
+    ).filter((candidateId) => candidateId !== CURRENT_SKILL_CANDIDATE_ID);
     if (resultCandidateIds.length > 0) {
       return resultCandidateIds;
     }

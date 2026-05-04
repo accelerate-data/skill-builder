@@ -26,14 +26,15 @@ export function WorkspaceEvalWorkbench({
   );
   const [performanceRunning, setPerformanceRunning] = useState(false);
   const [triggerRunning, setTriggerRunning] = useState(false);
+  const isRunning = performanceRunning || triggerRunning;
 
   useEffect(() => {
     setActiveMode(initialMode);
   }, [initialMode]);
 
   useEffect(() => {
-    onRunningChange?.(performanceRunning || triggerRunning);
-  }, [onRunningChange, performanceRunning, triggerRunning]);
+    onRunningChange?.(isRunning);
+  }, [isRunning, onRunningChange]);
 
   const triggerSkill =
     "name" in skill
@@ -46,9 +47,12 @@ export function WorkspaceEvalWorkbench({
   return (
     <Tabs
       value={activeMode}
-      onValueChange={(value) =>
-        setActiveMode(value === "trigger" ? "trigger" : "performance")
-      }
+      onValueChange={(value) => {
+        if (isRunning) {
+          return;
+        }
+        setActiveMode(value === "trigger" ? "trigger" : "performance");
+      }}
       className="flex h-full flex-col gap-4"
     >
       <div className="px-6 pt-6">

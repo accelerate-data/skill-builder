@@ -15,7 +15,8 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
-import { cleanupSkillSidecar, getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
+import { requestEvalsCancel } from "@/lib/eval-running-state";
+import { getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
 import type { SkillSummary as TauriSkillSummary } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
@@ -82,17 +83,20 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
     setPendingTab(null);
   }, []);
 
-  const handleTabLeave = useCallback(() => {
+  const handleTabLeave = useCallback(async () => {
     if (pendingTab) {
       if (activeTab === "evals" && workbenchRunningRef.current) {
-        cleanupSkillSidecar(skillName).catch((err) =>
-          console.error("[workspace-shell] eval workbench sidecar cleanup failed:", err),
-        );
+        try {
+          await requestEvalsCancel();
+        } catch (err) {
+          console.error("[workspace-shell] eval workbench cancellation failed:", err);
+          return;
+        }
       }
       setActiveTab(pendingTab);
       setPendingTab(null);
     }
-  }, [pendingTab, activeTab, skillName]);
+  }, [pendingTab, activeTab]);
   const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const isBuilderSkill = "name" in skill;
   const workspacePath = useSettingsStore((s) => s.workspacePath);
@@ -255,7 +259,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
               <Button variant="outline" onClick={handleTabStay}>
                 Stay
               </Button>
-              <Button variant="destructive" onClick={handleTabLeave}>
+              <Button variant="destructive" onClick={() => void handleTabLeave()}>
                 Leave
               </Button>
             </DialogFooter>
