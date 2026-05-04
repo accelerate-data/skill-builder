@@ -94,7 +94,6 @@ const mockResponses: Record<string, unknown> = {
     all_ok: true,
     checks: [
       { code: "node_runtime", name: "Node.js", ok: true, detail: "v20.11.0 (system)" },
-      { code: "agent_sidecar_bundle", name: "Agent sidecar", ok: true, detail: "sidecar/dist/agent-runner.js" },
       { code: "openhands_agent_server", name: "OpenHands Agent Server", ok: true, detail: "python3 -m openhands.agent_server" },
       { code: "git_binary", name: "Git", ok: true, detail: "git version 2.50.1" },
     ],

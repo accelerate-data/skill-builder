@@ -1,4 +1,4 @@
-use crate::agents::{node_resolver, sidecar_path};
+use crate::agents::node_resolver;
 use crate::types::{DepStatus, NodeStatus, StartupDeps};
 
 fn dep_ok(code: &str, name: &str, detail: String) -> DepStatus {
@@ -97,24 +97,11 @@ pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, St
     };
     checks.push(node);
 
-    // 2. Sidecar (agent-runner.js)
-    let sidecar = match sidecar_path::resolve_sidecar_path_public(&app) {
-        Ok(path) => dep_ok("agent_sidecar_bundle", "Agent sidecar", path),
-        Err(e) => dep_fail(
-            "agent_sidecar_bundle",
-            "missing_dependency",
-            "Agent sidecar",
-            e,
-            "From the repository root run: `cd app && npm run sidecar:build`, then restart Skill Builder.",
-        ),
-    };
-    checks.push(sidecar);
-
-    // 3. OpenHands Agent Server Python package.
+    // 2. OpenHands Agent Server Python package.
     let agent_server = check_openhands_agent_server_available().await;
     checks.push(agent_server);
 
-    // 4. Git (required by agent runtime for version control operations)
+    // 3. Git (required by agent runtime for version control operations)
     //    Windows: also validates git-bash for shell-compatible tool execution.
     let git_check = check_git_available().await;
     checks.push(git_check);

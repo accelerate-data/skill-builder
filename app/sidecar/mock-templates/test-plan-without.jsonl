@@ -1,4 +1,0 @@
-{"type":"system","subtype":"init_start","timestamp":0}
-{"type":"system","subtype":"sdk_ready","timestamp":0}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll help you add data quality checks to your dbt model and set up incremental loading for late-arriving records.\n\n## Plan\n\n1. Add not_null and unique tests on customer_id in schema.yml.\n\n2. Add accepted_values test on the status column for common values like active and inactive.\n\n3. Configure the model as incremental using updated_at as the watermark column.\n\n## Files\n\n- ✎ models/silver/customer.sql — add incremental config\n- ✎ models/silver/schema.yml — add basic DQ tests"}]},"timestamp":0}
-{"type":"result","subtype":"success","result":"Plan completed","is_error":false,"duration_ms":1800,"duration_api_ms":1500,"num_turns":1,"total_cost_usd":0.002,"usage":{"input_tokens":400,"output_tokens":200}}

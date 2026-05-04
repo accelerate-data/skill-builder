@@ -13,7 +13,6 @@
     "tauri": "tauri",
     "codegen": "cargo run --manifest-path src-tauri/Cargo.toml --bin codegen",
     "sidecar:install": "cd sidecar && npm install",
-    "sidecar:build": "cd sidecar && npm ci && npm run build",
     "promptfoo-sidecar:install": "cd promptfoo-sidecar && npm install",
     "promptfoo-sidecar:build": "cd promptfoo-sidecar && npm ci && npm run build",
     "postinstall": "cd sidecar && npm install && cd ../promptfoo-sidecar && npm install",
