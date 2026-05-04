@@ -1,4 +1,4 @@
-use crate::agents::{node_resolver as sidecar_pool, sidecar_path};
+use crate::agents::{node_resolver, sidecar_path};
 use crate::types::{DepStatus, NodeStatus, StartupDeps};
 
 fn dep_ok(code: &str, name: &str, detail: String) -> DepStatus {
@@ -32,7 +32,7 @@ fn dep_fail(
 #[tauri::command]
 pub async fn check_node(app: tauri::AppHandle) -> Result<NodeStatus, String> {
     log::info!("[check_node]");
-    match sidecar_pool::resolve_node_binary(&app).await {
+    match node_resolver::resolve_node_binary(&app).await {
         Ok(resolution) => {
             let meets_minimum = resolution.meets_minimum;
             let error = if !meets_minimum {
@@ -70,7 +70,7 @@ pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, St
     let mut checks = Vec::new();
 
     // 1. Node.js
-    let node = match sidecar_pool::resolve_node_binary(&app).await {
+    let node = match node_resolver::resolve_node_binary(&app).await {
         Ok(res) if res.meets_minimum => dep_ok(
             "node_runtime",
             "Node.js",
@@ -142,7 +142,7 @@ async fn check_git_available() -> DepStatus {
     #[cfg(target_os = "windows")]
     {
         // On Windows, also need git-bash for the SDK's Bash tool
-        match (git_version, sidecar_pool::find_git_bash()) {
+        match (git_version, node_resolver::find_git_bash()) {
             (Some(ver), Some(bash_path)) => dep_ok(
                 "git_binary",
                 "Git",
