@@ -557,9 +557,7 @@ pub async fn run_workflow_step(
         &workspace_path,
     )?;
 
-    // Cancel any stale one-shot workflow requests for this skill before starting
-    // a new step. OpenHands uses the direct Rust runner registry; legacy steps
-    // fall back to sidecar cancellation.
+    // Cancel any stale one-shot workflow requests for this skill before starting a new step.
     let stale_runs: Vec<String> = {
         let map = runs.0.lock().map_err(|e| e.to_string())?;
         map.iter()
