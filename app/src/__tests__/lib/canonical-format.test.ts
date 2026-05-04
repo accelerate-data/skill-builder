@@ -104,13 +104,12 @@ describe("Canonical format: skill generation prompt contract", () => {
 });
 
 // ---------------------------------------------------------------------------
-// clarifications.json structural checks (step0 + step1 + review-content.json)
+// clarifications.json structural checks (step0 + step1)
 // ---------------------------------------------------------------------------
 
 const clarificationFiles = [
   path.join(MOCK_ROOT, "step0/context/clarifications.json"),
   path.join(MOCK_ROOT, "step1/context/clarifications.json"),
-  path.join(FIXTURE_ROOT, "review-content.json"),
 ].filter((f) => fs.existsSync(f));
 
 describe.skipIf(clarificationFiles.length === 0)("Canonical format: clarifications.json structure", () => {

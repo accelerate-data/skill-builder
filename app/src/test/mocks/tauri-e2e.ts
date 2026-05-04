@@ -103,29 +103,8 @@ const mockResponses: Record<string, unknown> = {
   delete_skill: undefined,
   update_skill_tags: undefined,
   get_all_tags: [],
-  parse_clarifications: {
-    sections: [
-      {
-        heading: "Domain Concepts",
-        questions: [
-          {
-            id: "Q1",
-            title: "Primary focus",
-            question: "What is the primary focus area for this skill?",
-            choices: [
-              { letter: "a", text: "Sales forecasting", rationale: "predict future revenue" },
-              { letter: "b", text: "Pipeline management", rationale: "track deal progression" },
-              { letter: "c", text: "Other (please specify)", rationale: "" },
-            ],
-            recommendation: "b — most actionable for day-to-day work",
-            answer: null,
-          },
-        ],
-      },
-    ],
-  },
-  save_clarification_answers: undefined,
-  save_clarifications_content: undefined,
+  get_clarifications: null,
+  get_decisions: null,
   read_file: "",
   check_workspace_path: true,
   check_marketplace_updates: { library: [], workspace: [], registry_name: null, registry_names: [] },
@@ -385,49 +364,6 @@ function resolveReadFileMock(
   return value;
 }
 
-function resolveContextFilePathCandidates(
-  args?: Record<string, unknown>,
-  skillsPathOverride?: string | null,
-): string[] {
-  const skillName = typeof args?.skillName === "string" ? args.skillName : "";
-  const workspacePath = typeof args?.workspacePath === "string" ? args.workspacePath : "";
-  const fileName = typeof args?.fileName === "string" ? args.fileName : "";
-
-  const requestedFile = fileName || "clarifications.json";
-  const skillsPath = skillsPathOverride ?? defaultSettings.skills_path;
-
-  const candidates: string[] = [];
-  if (skillsPath && skillName) {
-    candidates.push(`${skillsPath}/${skillName}/context/${requestedFile}`);
-  }
-  if (workspacePath && skillName) {
-    candidates.push(`${workspacePath}/${skillName}/context/${requestedFile}`);
-  }
-  return candidates;
-}
-
-function resolveContextFileCommand(
-  cmd: string,
-  args: Record<string, unknown> | undefined,
-  readFileSource: unknown,
-  skillsPathOverride?: string | null,
-): unknown {
-  const fileName = cmd === "get_clarifications_content"
-    ? "clarifications.json"
-    : cmd === "get_decisions_content"
-      ? "decisions.json"
-      : (typeof args?.fileName === "string" ? args.fileName : "");
-
-  const candidates = resolveContextFilePathCandidates({ ...(args ?? {}), fileName }, skillsPathOverride);
-  for (const candidate of candidates) {
-    const resolved = resolveReadFileMock(readFileSource, { filePath: candidate, path: candidate });
-    if (typeof resolved === "string") return resolved;
-  }
-
-  // Fall back to wildcard/opaque read_file behavior.
-  return resolveReadFileMock(readFileSource, args);
-}
-
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   // Optional invoke tracking: tests set __TAURI_TRACK_INVOKES__ to a command list,
   // and calls are recorded in __TAURI_TRACKED_INVOKES__ for later assertions.
@@ -456,25 +392,6 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
     }
     if (val instanceof Error) throw val;
     return val as T;
-  }
-
-  if (
-    cmd === "get_clarifications_content"
-    || cmd === "get_decisions_content"
-    || cmd === "get_context_file_content"
-  ) {
-    const skillsPathOverride =
-      overrides
-      && typeof overrides.get_settings === "object"
-      && overrides.get_settings !== null
-      && !Array.isArray(overrides.get_settings)
-      && typeof (overrides.get_settings as Record<string, unknown>).skills_path === "string"
-      ? (overrides.get_settings as Record<string, unknown>).skills_path as string
-      : null;
-    const readSource = overrides && "read_file" in overrides
-      ? overrides.read_file
-      : mockResponses.read_file;
-    return resolveContextFileCommand(cmd, args, readSource, skillsPathOverride) as T;
   }
 
   if (cmd in mockResponses) {
