@@ -15,11 +15,6 @@ import {
   navigateToWorkflow,
   navigateToWorkflowUpdateMode,
 } from "../helpers/workflow-helpers";
-import {
-  E2E_SKILLS_PATH,
-  E2E_WORKSPACE_PATH,
-  skillContextPath,
-} from "../helpers/test-paths";
 
 // --- Override presets ---
 
@@ -346,21 +341,6 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
   // update mode, runs to completion, and displays DecisionsSummaryCard.
   // ---------------------------------------------------------------------------
   test("step 2 (Confirm Decisions) shows completion UI after agent finishes", async ({ page }) => {
-    const DECISIONS_JSON = JSON.stringify({
-      version: "1",
-      metadata: { decision_count: 1, conflicts_resolved: 0, round: 1 },
-      decisions: [
-        {
-          id: "D1",
-          title: "Primary framework",
-          original_question: "Which framework should the skill target?",
-          decision: "React with TypeScript",
-          implication: "All examples use React + TS patterns",
-          status: "resolved",
-        },
-      ],
-    });
-
     const step2Overrides: Record<string, unknown> = {
       ...WORKFLOW_OVERRIDES,
       get_workflow_state: {
@@ -371,10 +351,26 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
         ],
       },
       materialize_workflow_step_output: undefined,
-      read_file: {
-        ...WORKFLOW_OVERRIDES.read_file as Record<string, string>,
-        [skillContextPath(E2E_SKILLS_PATH, "test-skill", "decisions.json")]: DECISIONS_JSON,
-        [skillContextPath(E2E_WORKSPACE_PATH, "test-skill", "decisions.json")]: DECISIONS_JSON,
+      get_decisions: {
+        skill_id: "test-skill",
+        version: "1",
+        round: 1,
+        decision_count: 1,
+        conflicts_resolved: 0,
+        contradictory_inputs_state: null,
+        created_at: 0,
+        updated_at: 0,
+        items: [
+          {
+            decision_id: "D1",
+            ordinal: 0,
+            title: "Primary framework",
+            original_question: "Which framework should the skill target?",
+            decision: "React with TypeScript",
+            implication: "All examples use React + TS patterns",
+            status: "resolved",
+          },
+        ],
       },
     };
 
