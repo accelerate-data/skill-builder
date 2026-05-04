@@ -4,9 +4,9 @@ This document defines the JSON schemas used by skill-creator.
 
 ---
 
-## evals.json
+## Eval prompt set payload
 
-Defines the evals for a skill. Located at `evals/evals.json` within the skill directory. This file is finalized before the first benchmark iteration runs and then treated as the frozen source of truth for later iterations.
+Defines the evals for a skill. The app persists this payload for the Eval Workbench prompt set before the first benchmark iteration runs and then treats it as the frozen source of truth for later iterations.
 
 ```json
 {

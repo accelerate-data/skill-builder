@@ -638,7 +638,7 @@ export interface SkillEvalContext {
   existing_evals: TestCase[]
 }
 
-// --- Eval run (evaluate-skill agent output) ---
+// --- Eval Workbench run output ---
 
 /** Per-eval summary within one benchmark run. */
 export interface EvalRunEvalSummary {
@@ -664,7 +664,7 @@ export interface EvalAggregateSummary {
   has_failures: boolean
 }
 
-/** Full benchmark.json produced by the evaluate-skill agent. */
+/** Full benchmark.json-style aggregate produced by the Eval Workbench runtime. */
 export interface EvalBenchmark {
   skill_name: string
   comparison_mode?: "with_skill_only" | "with_without_skill" | "current_vs_previous"
@@ -679,7 +679,7 @@ export interface EvalBenchmark {
   baseline_aggregate_summary?: EvalAggregateSummary
 }
 
-/** structuredOutput emitted by evaluate-skill when the full pipeline completes.
+/** Structured run summary emitted when the full Eval Workbench pipeline completes.
  *  The benchmark is computed by Rust from grading files — not carried in this event.
  *  SDK enforces this shape via output_format_for_agent.
  */

@@ -96,20 +96,10 @@
       "prompt": "packages/skill-creator-rewrite-skill/prompt.txt",
       "purpose": "Rewrite-skill agent prompt behavior."
     },
-    "workspace-description-evals-generator-prompt": {
-      "config": "packages/workspace-description-evals-generator-prompt/promptfooconfig.json",
-      "prompt": "packages/workspace-description-evals-generator-prompt/prompt.txt",
-      "purpose": "Eval Workbench trigger prompt-set generator prompt behavior."
-    },
     "workspace-eval-generator-system-prompt": {
       "config": "packages/workspace-eval-generator-system-prompt/promptfooconfig.json",
       "prompt": "packages/workspace-eval-generator-system-prompt/prompt.txt",
       "purpose": "Workspace eval generator system prompt behavior."
-    },
-    "workspace-eval-initial-prompt": {
-      "config": "packages/workspace-eval-initial-prompt/promptfooconfig.json",
-      "prompt": "packages/workspace-eval-initial-prompt/prompt.txt",
-      "purpose": "Workspace eval initial prompt behavior."
     },
     "workspace-refine-initial-prompt": {
       "config": "packages/workspace-refine-initial-prompt/promptfooconfig.json",

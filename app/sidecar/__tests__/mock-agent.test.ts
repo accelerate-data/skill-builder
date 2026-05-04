@@ -173,12 +173,6 @@ describe("resolveStepTemplate", () => {
     ).toBe("eval-generator");
   });
 
-  it("maps description optimization eval-query generation to its structured mock template", () => {
-    expect(
-      resolveStepTemplate(undefined, { skillName: "test-skill", stepId: -12 }),
-    ).toBe("description-evals-generator");
-  });
-
   it("returns null for undefined agentName without runSource=test", () => {
     expect(
       resolveStepTemplate(undefined, { runSource: "workflow" }),
@@ -314,8 +308,7 @@ describe("parsePromptPaths", () => {
   it("extracts backticked step3 prompt paths from app-owned labels", () => {
     const prompt =
       "Workspace directory: `/tmp/workspace/skills/pipeline-value`\n" +
-      "Skill output directory: `/tmp/skills/skills/pipeline-value`\n" +
-      "Eval definitions file: `/tmp/workspace/skills/pipeline-value/evals/evals.json`\n";
+      "Skill output directory: `/tmp/skills/skills/pipeline-value`\n";
 
     const paths = parsePromptPaths(prompt);
 
@@ -352,6 +345,7 @@ describe("parsePromptPaths (inline)", () => {
  * resolveStepTemplate() — don't just add it here.
  */
 const AGENTS_WITHOUT_MOCK = new Set<string>([
+  "skill-creator:grader",
   "vd-agent:analyst",
   "vd-agent:design-firmer",
   "vd-agent:dq-test-generator",
@@ -564,35 +558,6 @@ describe("buildStructuredMockResult", () => {
     expect(Array.isArray(payload.per_question)).toBe(true);
   });
 
-  it("returns structured payload for description eval-query generation", async () => {
-    const result = await buildStructuredMockResult(
-      "description-evals-generator",
-    );
-    expect(result).not.toBeNull();
-    const payload = result as Record<string, unknown>;
-    expect(payload.status).toBe("generated");
-    expect(Array.isArray(payload.queries)).toBe(true);
-    const queries = payload.queries as Array<Record<string, unknown>>;
-    expect(queries.length).toBeGreaterThan(0);
-    expect(queries.every((query) => typeof query.query === "string")).toBe(
-      true,
-    );
-    expect(
-      queries.every((query) => typeof query.should_trigger === "boolean"),
-    ).toBe(true);
-  });
-
-  it("returns structured payload for description optimization loop", async () => {
-    const result = await buildStructuredMockResult(
-      "description-optimization-loop",
-    );
-    expect(result).not.toBeNull();
-    const payload = result as Record<string, unknown>;
-    expect(payload.iterations_run).toBe(2);
-    expect(typeof payload.best_description).toBe("string");
-    expect(Array.isArray(payload.history)).toBe(true);
-  });
-
   it("returns canonical structured payload for step3-generate-skill", async () => {
     const result = await buildStructuredMockResult("step3-generate-skill");
     expect(result).not.toBeNull();
@@ -609,7 +574,6 @@ describe("buildStructuredMockResult", () => {
       "use-creating-skills",
       "write-skill",
       "write-references",
-      "write-evals",
       "fresh-context-verifier-review",
     ]);
   });

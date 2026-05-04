@@ -237,27 +237,6 @@ describe("StreamSession — mock streaming mode", () => {
     }, { timeout: 3000 });
   });
 
-  it("emits structured run_result for description eval-query generation", async () => {
-    const { messages, done, onMessage } = collectUntil(isRunResult);
-
-    new StreamSession("sess-desc-evals", "req-desc-evals", baseConfig({
-      skillName: "test-skill",
-      stepId: -12,
-      runSource: "workflow",
-      pluginSlug: "skills",
-    }), onMessage);
-    await done;
-
-    const runResult = messages.find(isRunResult);
-    const event = runResult?.event as Record<string, unknown>;
-    expect(event.status).toBe("completed");
-    expect(event.stepId).toBe(-12);
-    expect(event.resultText).toBeDefined();
-    expect(JSON.parse(event.resultText as string)).toMatchObject({
-      status: "generated",
-      queries: expect.any(Array),
-    });
-  });
 });
 
 // TS-03: pushMessage queue draining — message pushed before generator parks

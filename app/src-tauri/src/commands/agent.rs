@@ -2,21 +2,9 @@ use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 
-/// Derive `setting_sources` for a given agent name.
-///
-/// The evaluate-skill agent must only see skills from its parent plugin
-/// (skill-creator). Workspace-level skills (e.g. `skill-test`) are loaded
-/// via `settingSources: ['project']` and must be suppressed for this agent.
-/// Passing `Some(vec![])` prevents workspace skill loading while the plugin
-/// itself is still loaded via the `plugins` SDK option.
-///
-/// All other agents receive `None`, which causes the sidecar to fall back to
-/// its default of `['project']`.
 fn derive_setting_sources(agent_name: Option<&str>) -> Option<Vec<String>> {
-    match agent_name {
-        Some(n) if n == "evaluate-skill" || n.ends_with(":evaluate-skill") => Some(vec![]),
-        _ => None,
-    }
+    let _ = agent_name;
+    None
 }
 
 /// Derive required plugins from the agent name.
@@ -25,10 +13,6 @@ fn derive_setting_sources(agent_name: Option<&str>) -> Option<Vec<String>> {
 /// must be in `required_plugins` so the sidecar discovers and loads it,
 /// allowing the SDK to resolve the agent's .md spec and sibling agents.
 fn derive_required_plugins(agent_name: Option<&str>) -> Vec<String> {
-    // evaluate-skill needs both plugins: skill-creator (grader) + vd-agent (executor)
-    if matches!(agent_name, Some(n) if n == "evaluate-skill" || n.ends_with(":evaluate-skill")) {
-        return vec!["skill-creator".to_string(), "vd-agent".to_string()];
-    }
     // Plugin-scoped agents (e.g. "skill-creator:generate-skill") derive their plugin name.
     if let Some(plugins) = agent_name
         .and_then(|n| n.split_once(':'))
@@ -64,25 +48,6 @@ pub(crate) fn output_format_for_agent(
                     }
                 },
                 "additionalProperties": true
-            }
-        }));
-    }
-
-    if matches!(_agent_name, Some("evaluate-skill")) {
-        return Some(serde_json::json!({
-            "type": "json_schema",
-            "schema": {
-                "type": "object",
-                "required": ["status", "iteration", "results"],
-                "properties": {
-                    "status": { "type": "string", "enum": ["complete"] },
-                    "iteration": { "type": "integer" },
-                    "results": {
-                        "type": "array",
-                        "items": { "type": "string" }
-                    }
-                },
-                "additionalProperties": false
             }
         }));
     }
@@ -225,10 +190,6 @@ mod tests {
     #[test]
     fn plugin_scoped_agent_derives_plugin_name() {
         assert_eq!(
-            derive_required_plugins(Some("skill-creator:evaluate-skill")),
-            vec!["skill-creator", "vd-agent"]
-        );
-        assert_eq!(
             derive_required_plugins(Some("skill-creator:generate-skill")),
             vec!["skill-creator"]
         );
@@ -242,22 +203,6 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_skill_agent_has_empty_setting_sources() {
-        // evaluate-skill must never load workspace skills (skill-test contaminates runs)
-        // Both standalone and plugin-scoped forms must match.
-        assert_eq!(
-            derive_setting_sources(Some("evaluate-skill")),
-            Some(vec![]),
-            "standalone evaluate-skill must have empty settingSources"
-        );
-        assert_eq!(
-            derive_setting_sources(Some("skill-creator:evaluate-skill")),
-            Some(vec![]),
-            "plugin-scoped evaluate-skill must have empty settingSources"
-        );
-    }
-
-    #[test]
     fn other_agents_get_default_setting_sources() {
         assert_eq!(derive_setting_sources(None), None);
         assert_eq!(derive_setting_sources(Some("generate-skill")), None);
@@ -265,34 +210,7 @@ mod tests {
             derive_setting_sources(Some("skill-creator:generate-skill")),
             None
         );
-        assert_eq!(
-            derive_setting_sources(Some("skill-creator:analyze-skill")),
-            None
-        );
-    }
-
-    #[test]
-    fn evaluate_skill_setting_sources_cannot_be_made_non_empty() {
-        let sources = derive_setting_sources(Some("evaluate-skill")).unwrap();
-        assert!(
-            sources.is_empty(),
-            "settingSources for evaluate-skill must be an empty vec, not {:?}",
-            sources
-        );
-    }
-
-    #[test]
-    fn evaluate_skill_derives_both_plugins() {
-        assert_eq!(
-            derive_required_plugins(Some("evaluate-skill")),
-            vec!["skill-creator", "vd-agent"],
-            "standalone evaluate-skill must load skill-creator and vd-agent plugins"
-        );
-        assert_eq!(
-            derive_required_plugins(Some("skill-creator:evaluate-skill")),
-            vec!["skill-creator", "vd-agent"],
-            "plugin-scoped evaluate-skill must load skill-creator and vd-agent plugins"
-        );
+        assert_eq!(derive_setting_sources(Some("skill-creator:analyze-skill")), None);
     }
 
     #[test]
@@ -307,8 +225,6 @@ mod tests {
         assert!(output_format_for_agent("my-skill", Some("test-plan-with")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-plan-without")).is_none());
         assert!(output_format_for_agent("my-skill", Some("test-evaluator")).is_none());
-        assert!(
-            output_format_for_agent("my-skill", Some("skill-creator:generate-skill")).is_none()
-        );
+        assert!(output_format_for_agent("my-skill", Some("skill-creator:generate-skill")).is_none());
     }
 }
