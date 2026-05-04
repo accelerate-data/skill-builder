@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { clarificationsDtoToFile } from "@/lib/clarifications-types";
@@ -18,7 +18,7 @@ export function DetailedResearchStepComplete(props: Props) {
     onClarificationsChange, onClarificationsContinue, onReset, saveStatus, evaluating,
   } = props;
 
-  const { data: clarDto, isLoading } = useClarifications(skillName ?? null);
+  const { data: clarDto, isLoading, isError } = useClarifications(skillName ?? null);
 
   if (isLoading) {
     return (
@@ -28,7 +28,17 @@ export function DetailedResearchStepComplete(props: Props) {
     );
   }
 
-  if (!clarDto) return null;
+  if (isError || !clarDto) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
+        <AlertTriangle className="size-8 text-destructive/50" />
+        <div className="text-center">
+          <p className="font-medium text-destructive">Clarifications not found in database</p>
+          <p className="mt-1 text-sm">Re-run the Detailed Research step to regenerate.</p>
+        </div>
+      </div>
+    );
+  }
 
   const clarData = clarificationsDtoToFile(clarDto);
 

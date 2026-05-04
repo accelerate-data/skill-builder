@@ -115,7 +115,9 @@ function dtoToQuestion(q: ClarificationQuestionDto): Question {
     answer_verdict: q.answer_verdict ?? undefined,
     answer_verdict_reason: q.answer_verdict_reason ?? undefined,
     choices: q.choices.map(dtoToChoice),
-    refinements: (q.refinements ?? []).map(dtoToQuestion),
+    refinements: (q.refinements ?? [])
+      .sort((a, b) => a.ordinal - b.ordinal)
+      .map(dtoToQuestion),
   };
 }
 
@@ -149,9 +151,9 @@ export function clarificationsDtoToFile(dto: ClarificationsDto): ClarificationsF
       section_count: dto.section_count,
       refinement_count: dto.refinement_count,
       must_answer_count: dto.must_answer_count,
-      scope_recommendation: dto.scope_recommendation ?? undefined,
-      scope_reason: dto.scope_reason ?? undefined,
-      scope_next_action: dto.scope_next_action ?? undefined,
+      scope_recommendation: dto.scope_recommendation ?? null,
+      scope_reason: dto.scope_reason ?? null,
+      scope_next_action: dto.scope_next_action ?? null,
       priority_questions: [],
     },
     sections,

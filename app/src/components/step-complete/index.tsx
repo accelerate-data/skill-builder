@@ -22,7 +22,6 @@ interface WorkflowStepCompleteProps {
   isLastStep?: boolean;
   reviewMode?: boolean;
   skillName?: string;
-  workspacePath?: string;
   skillsPath?: string | null;
   clarificationsEditable?: boolean;
   clarificationsData?: ClarificationsFile | null;
@@ -47,7 +46,6 @@ export function WorkflowStepComplete({
   isLastStep = false,
   reviewMode,
   skillName,
-  workspacePath,
   skillsPath,
   clarificationsEditable,
   clarificationsData,
@@ -108,7 +106,7 @@ export function WorkflowStepComplete({
 
   // --- Step 2: Decisions ---
   if (stepId === 2) {
-    return <DecisionsStepComplete {...baseProps} skillName={skillName} workspacePath={workspacePath} />;
+    return <DecisionsStepComplete {...baseProps} skillName={skillName} />;
   }
 
   // --- Default: File viewer ---

@@ -5,15 +5,21 @@ import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { useDecisions } from "@/lib/queries/decisions";
 import { StepActionBar } from "./step-action-bar";
 import type { StepCompleteBaseProps } from "./step-complete-types";
-import type { DecisionsDto, DecisionsOutput, DecisionStatus } from "@/generated/contracts";
+import type { DecisionsDto, DecisionsOutput, DecisionStatus, ContradictoryInputs } from "@/generated/contracts";
 
 function decisionsDtoToString(dto: DecisionsDto): string {
+  const contradictoryInputs: ContradictoryInputs | undefined =
+    dto.contradictory_inputs_state === "active" ? true :
+    dto.contradictory_inputs_state === "inactive" ? false :
+    dto.contradictory_inputs_state ?? undefined;
+
   const output: DecisionsOutput = {
     version: dto.version,
     metadata: {
       decision_count: dto.decision_count,
       conflicts_resolved: dto.conflicts_resolved,
       round: dto.round,
+      contradictory_inputs: contradictoryInputs,
     },
     decisions: dto.items.map((item) => ({
       id: item.decision_id,
@@ -29,7 +35,6 @@ function decisionsDtoToString(dto: DecisionsDto): string {
 
 type Props = StepCompleteBaseProps & {
   skillName?: string;
-  workspacePath?: string;
 };
 
 export function DecisionsStepComplete(props: Props) {

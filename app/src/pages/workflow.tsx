@@ -313,7 +313,6 @@ export default function WorkflowPage() {
         nextStepLabel={nextStepLabel}
         reviewMode={reviewMode}
         skillName={skillName}
-        workspacePath={workspacePath ?? undefined}
         skillsPath={skillsPath}
         clarificationsEditable={!!stepConfig?.clarificationsEditable && !reviewMode}
         clarificationsData={clarificationsData}
