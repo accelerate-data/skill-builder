@@ -530,12 +530,6 @@ export const materializeAnswerEvaluationOutput = (
 });
 
 
-export const getContextFileContent = (
-  skillName: string,
-  workspacePath: string,
-  fileName: string,
-) => invokeCommand("get_context_file_content", { skillName, workspacePath, fileName });
-
 export const logGateDecision = (
   skillName: string,
   verdict: string,

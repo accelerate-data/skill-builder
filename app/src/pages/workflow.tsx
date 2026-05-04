@@ -192,7 +192,6 @@ export default function WorkflowPage() {
   // 1. Persistence — initializes hydrated state, tracks error artifacts
   const { errorHasArtifacts } = useWorkflowPersistence({
     skillName,
-    workspacePath,
     skillsPath,
     stepConfig,
     currentStep,

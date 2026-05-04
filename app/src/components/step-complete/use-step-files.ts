@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import {
   readFile,
   listSkillFiles,
-  getContextFileContent,
 } from "@/lib/tauri";
 
 /**
@@ -11,7 +10,6 @@ import {
  */
 export function useStepFiles(
   skillName: string | undefined,
-  workspacePath: string | undefined,
   skillsPath: string | null | undefined,
   outputFiles: string[],
 ) {
@@ -79,26 +77,14 @@ export function useStepFiles(
             ? relativePath.slice("skill/".length)
             : relativePath;
 
-          if (relativePath.startsWith("context/") && workspacePath) {
+          // Use the absolute path from the listing (correct plugin-slug layout).
+          // Fall back to a direct readFile only if the listing didn't include this file.
+          const absPath = absPathMap.get(skillsRelative);
+          if (absPath) {
             try {
-              content = await getContextFileContent(
-                skillName,
-                workspacePath,
-                relativePath.slice("context/".length),
-              );
+              content = await readFile(absPath);
             } catch {
-              // not found in workspace context
-            }
-          } else {
-            // Use the absolute path from the listing (correct plugin-slug layout).
-            // Fall back to a direct readFile only if the listing didn't include this file.
-            const absPath = absPathMap.get(skillsRelative);
-            if (absPath) {
-              try {
-                content = await readFile(absPath);
-              } catch {
-                // not found at absolute path
-              }
+              // not found at absolute path
             }
           }
 
@@ -116,7 +102,7 @@ export function useStepFiles(
     })();
 
     return () => { cancelled = true; };
-  }, [skillName, workspacePath, skillsPath, outputFiles]);
+  }, [skillName, skillsPath, outputFiles]);
 
   return { fileContents, resolvedFiles, selectedFile, setSelectedFile, loadingFiles };
 }

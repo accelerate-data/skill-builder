@@ -74,7 +74,7 @@ export function WorkflowStepComplete({
   }, [skillName, stepId]);
 
   const { fileContents, resolvedFiles, selectedFile, setSelectedFile, loadingFiles } =
-    useStepFiles(skillName, workspacePath, skillsPath, outputFiles);
+    useStepFiles(skillName, skillsPath, outputFiles);
 
   // --- Loading ---
   if (loadingFiles) {

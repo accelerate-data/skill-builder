@@ -6,7 +6,6 @@ import {
   getDisabledSteps,
   saveWorkflowState,
   readFile,
-  getContextFileContent,
 } from "@/lib/tauri";
 import { invalidateSkillDataAfterWorkflow } from "@/lib/queries/agent-stream-cache";
 import { joinPath } from "@/lib/path-utils";
@@ -14,8 +13,6 @@ import { joinPath } from "@/lib/path-utils";
 interface UseWorkflowPersistenceOptions {
   /** Skill name from route params */
   skillName: string;
-  /** Workspace path from settings */
-  workspacePath: string | null;
   /** Skills directory path from settings */
   skillsPath: string | null;
   /** Current step configuration for output file paths */
@@ -34,7 +31,6 @@ interface UseWorkflowPersistenceOptions {
 
 export function useWorkflowPersistence({
   skillName,
-  workspacePath,
   skillsPath,
   stepConfig,
   currentStep,
@@ -136,28 +132,20 @@ export function useWorkflowPersistence({
 
     if (stepStatus === "error" && skillName) {
       const firstOutput = stepConfig?.outputFiles?.[0];
-      if (firstOutput) {
-        if (firstOutput.startsWith("context/") && workspacePath) {
-          getContextFileContent(skillName, workspacePath, firstOutput.slice("context/".length))
-            .then((content) => setErrorHasArtifacts(!!content))
-            .catch(() => setErrorHasArtifacts(false));
-        } else if (skillsPath) {
-          const skillsRelative = firstOutput.startsWith("skill/")
-            ? firstOutput.slice("skill/".length)
-            : firstOutput;
-          readFile(joinPath(skillsPath, skillName, skillsRelative))
-            .then((content) => setErrorHasArtifacts(!!content))
-            .catch(() => setErrorHasArtifacts(false));
-        } else {
-          setErrorHasArtifacts(false);
-        }
+      if (firstOutput && skillsPath) {
+        const skillsRelative = firstOutput.startsWith("skill/")
+          ? firstOutput.slice("skill/".length)
+          : firstOutput;
+        readFile(joinPath(skillsPath, skillName, skillsRelative))
+          .then((content) => setErrorHasArtifacts(!!content))
+          .catch(() => setErrorHasArtifacts(false));
       } else {
         setErrorHasArtifacts(false);
       }
     } else {
       setErrorHasArtifacts(false);
     }
-  }, [currentStep, steps, skillsPath, workspacePath, skillName, stepConfig?.outputFiles]);
+  }, [currentStep, steps, skillsPath, skillName, stepConfig?.outputFiles]);
 
   // Debounced SQLite persistence — saves workflow state at most once per 300ms
   useEffect(() => {
@@ -201,7 +189,7 @@ export function useWorkflowPersistence({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [steps, currentStep, skillName, purpose, hydrated, workspacePath]);
+  }, [steps, currentStep, skillName, purpose, hydrated]);
 
   return {
     errorHasArtifacts,
