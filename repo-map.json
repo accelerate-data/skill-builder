@@ -37,17 +37,12 @@
         "app/src-tauri/tauri.conf.json",
         "app/src-tauri/Cargo.toml"
       ],
-      "notes": "Bundles frontend (Vite), Rust backend, sidecar dist, and agent-sources as app resources. Identifier: com.vibedata.skill-builder. CSP allows Anthropic API + GitHub API. Dev port: DEV_PORT (default 1420), HMR on DEV_PORT+1."
+      "notes": "Bundles frontend (Vite), Rust backend, promptfoo-sidecar dist, and agent-sources as app resources. Identifier: com.vibedata.skill-builder. CSP allows Anthropic API + GitHub API. Dev port: DEV_PORT (default 1420), HMR on DEV_PORT+1."
     },
     {
       "name": "Vite 8",
       "config_files": ["app/vite.config.ts", "app/tsconfig.json"],
       "notes": "React + Tailwind plugin. Path alias `@/` → `./src/`. E2E mock path alias via TAURI_E2E env var."
-    },
-    {
-      "name": "esbuild (sidecar)",
-      "config_files": ["app/sidecar/build.js"],
-      "notes": "Compiles TypeScript sidecar to `app/sidecar/dist/` for Tauri bundling. No hot-reload — restart `npm run dev` after editing sidecar source."
     },
     {
       "name": "tsc (Promptfoo sidecar)",
@@ -93,7 +88,7 @@
     {
       "name": "Skill Builder Desktop",
       "type": "Tauri v2 desktop app",
-      "description": "Desktop workflow for creating domain-specific Claude Code-compatible skills. React frontend + Rust backend + Node.js agent sidecar.",
+      "description": "Desktop workflow for creating domain-specific Claude Code-compatible skills. React frontend + Rust backend + OpenHands agent runtime.",
       "identifier": "com.vibedata.skill-builder"
     }
   ],
@@ -101,8 +96,6 @@
     "frontend": "app/src/main.tsx",
     "rust_backend": "app/src-tauri/src/main.rs",
     "rust_lib": "app/src-tauri/src/lib.rs",
-    "sidecar": "app/sidecar/agent-runner.ts",
-    "sidecar_build": "app/sidecar/build.js",
     "promptfoo_sidecar": "app/promptfoo-sidecar/src/runner.ts"
   },
   "modules": {
@@ -128,7 +121,7 @@
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
-      "description": "Tauri command handlers. Flat files: api_validation, feedback, files, git, github_auth, lifecycle, mod, node, reconciliation, settings, sidecar_lifecycle, test_utils, usage, workflow_artifacts, workflow_lifecycle, workflow_session, workspace. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, guards, prompt, runtime, evaluation, settings, tests, clarifications, decisions, answer_evaluation), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands, updates), skill/ (crud, export, metadata, suggestions, scope_review, tests), refine/ (content, diff, output, protocol, tests), documents/ (list_documents, list_skills_for_documents, add_document_file, add_document_url, add_document_folder, update_document, delete_document), eval_workbench/ (Promptfoo-backed workbench prompt-set, run, description-candidate, and refine-brief commands), description/ (mod.rs: run_optimization_loop/cancel/apply_description/eval-query persistence commands; loop_runner.rs: iterative improve→eval→gate loop; eval.rs: parallel sidecar-pool eval with per-run isolated workspaces; improve.rs: Claude API description improvement)"
+      "description": "Tauri command handlers. Flat files: api_validation, feedback, files, git, github_auth, lifecycle, mod, node, reconciliation, settings, sidecar_lifecycle, test_utils, usage, workflow_artifacts, workflow_lifecycle, workflow_session, workspace. Sub-module directories: workflow/ (step_config, deploy, claude_md, output_format, guards, prompt, runtime, evaluation, settings, tests, clarifications, decisions, answer_evaluation), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands, updates), skill/ (crud, export, metadata, suggestions, scope_review, tests), refine/ (content, diff, output, protocol, tests), documents/ (list_documents, list_skills_for_documents, add_document_file, add_document_url, add_document_folder, update_document, delete_document), eval_workbench/ (Promptfoo-backed workbench prompt-set, run, description-candidate, and refine-brief commands), description/ (mod.rs: run_optimization_loop/cancel/apply_description/eval-query persistence commands; loop_runner.rs: iterative improve→eval→gate loop; eval.rs: parallel eval with per-run isolated workspaces; improve.rs: Claude API description improvement)"
     },
     "rust_db": {
       "path": "app/src-tauri/src/db/",
@@ -136,11 +129,7 @@
     },
     "rust_agents": {
       "path": "app/src-tauri/src/agents/",
-      "description": "Agent runtime. Files: openhands_server/ (Rust-managed local OpenHands Agent Server process, REST client, WebSocket event stream, one-shot facade), promptfoo_sidecar/ (embedded Promptfoo sidecar path resolver and JSONL protocol scaffold), startup_error.rs (SidecarStartupError enum + terminal status helpers; used by event_router for startup error emission), events.rs (re-export facade for handle_sidecar_message and handle_sidecar_exit_with_detail), event_router.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), event_types.rs (shared Tauri event payload types), sidecar.rs (sidecar config builders for OpenHands one-shot), sidecar_path.rs (resolves sidecar binary path), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
-    },
-    "sidecar_runner": {
-      "path": "app/sidecar/agent-runner.ts",
-      "description": "Entry point: reads stdin JSON config, starts persistent sidecar mode, streams JSONL events to stdout"
+      "description": "Agent runtime. Files: openhands_server/ (Rust-managed local OpenHands Agent Server process, REST client, WebSocket event stream, one-shot facade), promptfoo_sidecar/ (embedded Promptfoo sidecar path resolver and JSONL protocol scaffold), events.rs (re-export facade for handle_sidecar_message and handle_sidecar_exit_with_detail), event_router.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), event_types.rs (shared Tauri event payload types), run_persist.rs (run result persistence helpers), sidecar.rs (sidecar config builders for OpenHands one-shot), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
     },
     "sidecar_events": {
       "path": "app/sidecar/agent-events.ts",
@@ -148,19 +137,11 @@
     },
     "sidecar_core": {
       "path": "app/sidecar/",
-      "description": "Supporting sidecar modules: persistent-mode.ts (message demultiplexer — MOCK_AGENTS=true only; all real agent requests go through the Rust OpenHands Agent Server), message-processor.ts (transforms JSONL messages into DisplayItems and AgentEvents), message-classifier.ts (classifies JSONL message types), run-metadata-accumulator.ts (accumulates run-level metadata), tool-summaries.ts (context-aware tool call summaries), display-types.ts (DisplayItem types), config.ts (sidecar config validation), error-labels.ts (user-facing error strings), shutdown.ts (graceful shutdown handler)"
-    },
-    "sidecar_mock": {
-      "path": "app/sidecar/mock-agent.ts",
-      "description": "Mock mode: replays bundled templates with no API calls. Activated via MOCK_AGENTS=true."
+      "description": "Supporting sidecar modules: display-types.ts (DisplayItem types), config.ts (sidecar config validation), error-labels.ts (user-facing error strings), shutdown.ts (graceful shutdown handler). The OpenHands runtime runs through the Rust-managed Agent Server; the Node sidecar is used only for the Promptfoo evaluation path."
     },
     "agent_prompts": {
-      "path": "agent-sources/plugins/*/agents/",
-      "description": "Plugin-hosted agent prompts include rewrite-skill under agent-sources/plugins/skill-creator/agents/ and legacy researcher/evaluator agents under agent-sources/plugins/skill-content-researcher/agents/. App-owned workflow prompt templates live under agent-sources/prompts/. OpenHands runtime skills for the clean-break workflow live under agent-sources/workspace/skills/ and are deployed into .agents/skills."
-    },
-    "agent_plugins": {
-      "path": "agent-sources/plugins/",
-      "description": "Plugin definitions: skill-content-researcher, skill-creator"
+      "path": "agent-sources/workspace/skills/",
+      "description": "App-owned workflow prompt templates live under agent-sources/prompts/. OpenHands runtime skills for the workflow live under agent-sources/workspace/skills/ and are deployed into .agents/skills."
     },
     "workspace_instructions": {
       "path": "agent-sources/workspace/",
@@ -197,13 +178,12 @@
     "app/src/test/": "Frontend test infrastructure: setup.ts (Vitest global setup), fixtures.ts (test data factories), mocks/ (Tauri invoke mocks, store mocks, router mocks). Distinguished from app/src/__tests__/ which contains the actual test files.",
     "app/src/__tests__/": "Frontend unit/integration tests, mirroring src/ structure: components/, guards/, hooks/, lib/, pages/, stores/",
     "app/src-tauri/src/": "Rust backend runtime (Tauri commands, DB, agents, types, reconciliation, support modules)",
-    "app/sidecar/": "Node.js/TypeScript agent sidecar (JSONL protocol, Claude runtime adapter, mock mode; OpenHands runs through Rust-managed Agent Server)",
+    "app/sidecar/": "Node.js/TypeScript sidecar modules (JSONL protocol, config, error labels, shutdown; used for Promptfoo evaluation path — OpenHands runs through Rust-managed Agent Server)",
     "app/sidecar/__tests__/": "Sidecar unit tests (one test file per sidecar module)",
     "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, description, evals, settings, usage, skill-tester, skills-library, integration, desktop-smoke, helpers, setup. The description/ and evals/ specs cover the two modes of the unified Eval Workbench surface.",
     "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains eval-map.json for coding-agent navigation, bin/ad-evals.js shared CLI, scripts/framework/ reusable harness modules, suite-owned tier config, OpenCode provider config, package-level eval configs, deterministic harness tests, static assertions for code contracts including shared Tauri command policy analysis, runtime-exported Promptfoo state ignores, one-scenario-per-package smoke, and live model regression commands.",
     "agent-sources/workspace/": "OpenHands runtime workspace sources only: agents/ is copied to .agents/agents and skills/ is copied to .agents/skills during startup/runtime deployment.",
     "agent-sources/prompts/": "App-owned prompt templates compiled/rendered by Rust and sent as explicit task messages; not copied into the OpenHands runtime workspace.",
-    "agent-sources/plugins/": "Plugin definitions: skill-content-researcher, skill-creator",
     "docs/design/": "Architecture decision records and design specs: agent-specs, backend-design, startup-recon, workflow-state, clarifications-rendering, skill-tester, skills-marketplace, shared-eval-harness, and more. Primary reference for non-obvious design decisions.",
     "docs/plans/": "Implementation plans and execution notes. Not published end-user help content.",
     "docs/user-guide/": "VitePress user documentation, deployed via docs.yml to GitHub Pages",
@@ -215,14 +195,13 @@
   },
   "dependencies_internal": {
     "frontend → rust": "Via Tauri IPC (`invoke()` from @tauri-apps/api/core)",
-    "rust → sidecar": "Node.js child process, stdin/stdout JSONL protocol",
-    "sidecar → agent runtime": "Via runtime/claude-runtime.ts using @anthropic-ai/claude-agent-sdk for Claude runs. OpenHands runs through the Rust-managed Agent Server path, not the Node sidecar",
+    "rust → promptfoo sidecar (eval path)": "Node.js child process, stdin/stdout JSONL protocol — used for Promptfoo evaluation runs only",
     "frontend → sidecar_events": "Typed via agent-events.ts contract, received as Tauri events",
     "rust → promptfoo sidecar": "Node.js child process, stdin/stdout JSONL protocol; Rust owns OpenHands execution and persistence while the sidecar owns Promptfoo orchestration."
   },
   "dependencies_external": {
     "runtime": {
-      "anthropic": "@anthropic-ai/claude-agent-sdk (agent invocation)",
+      "anthropic": "OpenHands Agent Server (agent invocation, Rust-managed)",
       "tauri": "@tauri-apps/api v2 (IPC, events, opener, log)",
       "react": "React 19 + TanStack Router",
       "ui": "shadcn/ui + Tailwind CSS 4 + Lucide React",
@@ -234,14 +213,14 @@
       "vitest": "Vitest (unit + structural agent tests)",
       "playwright": "Playwright (E2E)",
       "promptfoo": "Promptfoo (agent smoke and regression tests)",
-      "esbuild": "esbuild (sidecar compilation)",
+      "esbuild": "esbuild (promptfoo sidecar compilation)",
       "markdownlint": "markdownlint-cli (all .md files)"
     }
   },
   "commands": {
-    "install": "cd app && npm install && npm run sidecar:build && npm run promptfoo-sidecar:build",
+    "install": "cd app && npm install && npm run promptfoo-sidecar:build",
     "dev": "cd app && npm run dev",
-    "dev_mock": "cd app && MOCK_AGENTS=true npm run dev",
+    "dev_mock": "cd app && npm run dev  # MOCK_AGENTS=true no longer supported; OpenHands runs through Rust-managed Agent Server",
     "dev_frontend_only": "cd app && npm run dev:frontend",
     "build": "cd app && npm run build",
     "test_unit": "cd app && npm run test:unit",
@@ -265,7 +244,6 @@
     "cargo_check": "cargo check --manifest-path app/src-tauri/Cargo.toml",
     "lint_md": "markdownlint <file>",
     "lint_agent_docs": "bash app/scripts/lint-agent-docs.sh",
-    "sidecar_build": "cd app && npm run sidecar:build",
     "promptfoo_sidecar_build": "cd app && npm run promptfoo-sidecar:build",
     "promptfoo_sidecar_test": "cd app/promptfoo-sidecar && npm test"
   },
@@ -301,7 +279,7 @@
     "db_location": "Database is at Tauri app_data_dir()/skill-builder.db. macOS: ~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db",
     "migrations": "DB migrations are code-only in db/migrations.rs NUMBERED_MIGRATIONS constant — no separate migration files directory.",
     "workspace_path": "Workspace: <app_local_data_dir>/workspace (not user-configurable). Resolved from Tauri app_local_data_dir() by resolve_workspace_path() in commands/workspace.rs. Legacy ~/.vibedata/ path is cleaned up automatically on startup.",
-    "mock_mode": "MOCK_AGENTS=true replays bundled templates in app/sidecar/mock-templates/ with no API calls.",
+    "mock_mode": "MOCK_AGENTS=true is no longer supported — the Node sidecar mock chain has been removed. OpenHands runs through the Rust-managed Agent Server.",
     "agent_tests_changed": "When agents/*.md or agent-sources/workspace/** changes, run `cd app && npm run test:agents:structural` before reporting completion.",
     "sdk_limitations": "See AGENTS.md Gotchas — SDK has no team tools (no TeamCreate/TaskCreate/SendMessage). Use the Task tool for sub-agents; multiple Task calls in the same turn run in parallel.",
     "pre_commit_checks": "See AGENTS.md Issue Management for the full pre-commit checklist (markdownlint, tsc, cargo check, lint-agent-docs).",

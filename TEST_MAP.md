@@ -43,8 +43,8 @@ Use the tables below for cases tooling cannot infer safely.
 | `app/src/__tests__/guards/**`, `app/src/lib/tauri-command-types.ts`, `app/src/lib/tauri-command-types.typecheck.ts` | `cd app && npm run test:guard` | Also run affected unit tests. |
 | `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` | Restart `npm run dev` after sidecar changes. OpenHands requests should not run through the Node sidecar. |
 | `app/promptfoo-sidecar/**` | `cd app/promptfoo-sidecar && npm test` | Run `cd tests/evals && npm test` as well when changing JSONL protocol or eval-contract behavior consumed by the repo eval harness. |
-| `agent-sources/plugins/**/agents/*.md`, `agent-sources/workspace/**` | `cd app && npm run test:agents:structural`; run the affected OpenCode eval package or smoke subset | Structural plus live automated eval coverage for changed prompt behavior. |
-| `app/sidecar/mock-templates/**`, `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` | `canonical-format.test.ts` is the canary for format drift. |
+| `agent-sources/workspace/**` | `cd app && npm run test:agents:structural`; run the affected OpenCode eval package or smoke subset | Structural plus live automated eval coverage for changed prompt behavior. |
+| `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` | `canonical-format.test.ts` is the canary for format drift. |
 | `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` | Generated command-contract surface. |
 | `app/src-tauri/src/**` | Use the Rust map below | Add the mapped E2E tag when the command is UI-facing. |
 | `tests/evals/**` | `cd tests/evals && npm test`; run affected `npm run eval:<package>` scripts when behavior changes | Live eval scripts are automated OpenCode checks and may be run as normal validation. |
@@ -109,7 +109,6 @@ UI-facing, also run the mapped E2E tag.
 | `app/src-tauri/src/commands/node.rs` | `commands::node` | -- |
 | `app/src-tauri/src/agents/openhands_server/` | `agents::openhands_server` | `@workflow` |
 | `app/src-tauri/src/agents/sidecar.rs` | `agents::sidecar` | `@workflow` |
-| `app/src-tauri/src/agents/sidecar_pool/mod.rs` | `agents::sidecar_pool` | `@workflow` |
 | `app/src-tauri/src/db/mod.rs` | `db` | -- |
 | `app/src-tauri/src/types/mod.rs` | `types` | -- |
 | `app/src-tauri/src/cleanup.rs` | `cleanup` | -- |
@@ -125,9 +124,7 @@ format changes covered across producer, fixture, and parser layers.
 
 | Source | Consumer or risk | Compliance test |
 |---|---|---|
-| `agent-sources/plugins/**/agents/*.md` | Agent artifact anti-patterns and structural rules | `cd app && npm run test:agents:structural` |
-| `app/sidecar/mock-templates/outputs/*/context/*.md` | Markdown artifact format drift | `cd app && npm run test:unit` (`canonical-format.test.ts`) |
-| `app/sidecar/mock-templates/outputs/gate-*/context/*.json` | `answer-evaluation.json` schema drift | `cd app && npm run test:unit` (`canonical-format.test.ts`) |
+| `agent-sources/workspace/**/agents/*.md` | Agent artifact anti-patterns and structural rules | `cd app && npm run test:agents:structural` |
 | `app/e2e/fixtures/agent-responses/*.md` | E2E fixture format drift | `cd app && npm run test:unit` (`canonical-format.test.ts`) |
 | `app/src-tauri/src/commands/workflow/guards.rs` | Scope recommendation and decisions guard parser behavior | `cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow::guards` |
 | `app/src/components/decisions-summary-card.tsx` (`parseDecisions`) | Decision heading and frontmatter parser behavior | `cd app && npm run test:unit -- decisions-summary-card.test.tsx` |
@@ -143,7 +140,6 @@ format changes covered across producer, fixture, and parser layers.
 | `@refine` | `app/e2e/refine/refine.spec.ts`, `app/e2e/refine/benchmark-snapshot-cleanup.spec.ts` |
 | `@description` | `app/e2e/description/description-workbench.spec.ts` Mocked Trigger-mode browser coverage inside Eval Workbench |
 | `@skills` | `app/e2e/skills-library/skills-library.spec.ts`, `app/e2e/github-import/github-import.spec.ts` |
-| `@integration` | `app/e2e/integration/workflow-integration.spec.ts` |
 | `@evals` | `app/e2e/evals/evals.spec.ts` Mocked Performance-mode browser coverage inside Eval Workbench |
 | `@desktop-smoke` | `app/e2e/desktop-smoke/desktop-smoke.spec.ts` |
 
