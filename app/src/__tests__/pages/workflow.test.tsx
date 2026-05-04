@@ -3,7 +3,7 @@ import { screen, act, waitFor } from "@testing-library/react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { mockListen, resetTauriMocks } from "@/test/mocks/tauri";
+import { mockListen, mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
 
 // Mock TanStack Router — useBlocker returns idle state by default
@@ -59,6 +59,7 @@ vi.mock("@/lib/tauri", () => ({
   getContextFileContent: vi.fn(() => Promise.resolve(null)),
   listSkills: vi.fn().mockResolvedValue([]),
   logFrontend: vi.fn(),
+  invokeCommand: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock ClarificationsEditor — renders a simple div with testid and
@@ -114,6 +115,7 @@ import {
   getContextFileContent,
   navigateBackToStepDb,
   verifyStepOutput,
+  invokeCommand,
 } from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { WorkflowStepComplete } from "@/components/step-complete";
@@ -3555,7 +3557,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     expect(useWorkflowStore.getState().gateLoading).toBe(false);
   });
 
-  it("buildGateFeedbackNotes maps actionable verdict types with reasons", async () => {
+  it("gate verdict updates: persists actionable per-question verdicts to DB", async () => {
     const evaluation = {
       verdict: "mixed",
       answered_count: 0,
@@ -3572,16 +3574,13 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       ],
     };
 
-    const jsonData = makeClarificationsJson();
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
       if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
     });
+    vi.mocked(invokeCommand).mockResolvedValue(undefined);
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-all-verdicts");
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -3606,29 +3605,25 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       useAgentStore.getState().completeRun("gate-all-verdicts", true);
     });
 
+    // Gate should persist verdicts via invokeCommand("update_clarification_verdicts")
     await waitFor(() => {
-      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+      const calls = vi.mocked(invokeCommand).mock.calls;
+      expect(calls.some(([cmd]) => cmd === "update_clarification_verdicts")).toBe(true);
     });
 
-    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
-      ([path]) => path === "/test/skills/test-skill/context/clarifications.json",
+    const verdictCall = vi.mocked(invokeCommand).mock.calls.find(
+      ([cmd]) => cmd === "update_clarification_verdicts",
     );
-    expect(writeCalls.length).toBeGreaterThan(0);
-    const serialized = writeCalls[writeCalls.length - 1][1];
-    const parsed = JSON.parse(serialized);
-    const notes = parsed.answer_evaluator_notes as Array<{ type: string; title: string; body: string }>;
+    const updates = (verdictCall?.[1] as { skillId: string; updates: Array<{ question_id: string; verdict: string; reason: string | null }> })?.updates;
 
-    // Actionable verdict types with custom reasons
-    expect(notes.some((n) => n.title === "Vague answer: Q1" && n.body === "Too general.")).toBe(true);
-    expect(notes.some((n) => n.title === "Not answered: Q3" && n.body === "Skipped entirely.")).toBe(true);
-    expect(notes.some((n) => n.title === "Needs refinement: Q4" && n.body === "Needs more constraints.")).toBe(true);
-    expect(notes.some((n) => n.title === "Contradictory answer: Q5" && n.body.includes("Conflicts with Q1."))).toBe(true);
-
-    // All should have type "answer_feedback"
-    expect(notes.every((n) => n.type === "answer_feedback")).toBe(true);
+    expect(updates).toBeDefined();
+    expect(updates.some((u) => u.question_id === "Q1" && u.verdict === "vague" && u.reason === "Too general.")).toBe(true);
+    expect(updates.some((u) => u.question_id === "Q3" && u.verdict === "not_answered" && u.reason === "Skipped entirely.")).toBe(true);
+    expect(updates.some((u) => u.question_id === "Q4" && u.verdict === "needs_refinement" && u.reason === "Needs more constraints.")).toBe(true);
+    expect(updates.some((u) => u.question_id === "Q5" && u.verdict === "contradictory" && u.reason === "Conflicts with Q1.")).toBe(true);
   });
 
-  it("buildGateFeedbackNotes uses fallback messages when no reason is provided", async () => {
+  it("gate verdict updates: persists null reason when no reason is provided", async () => {
     const evaluation = {
       verdict: "mixed",
       answered_count: 0,
@@ -3638,22 +3633,18 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       total_count: 3,
       reasoning: "Multiple issues.",
       per_question: [
-        { question_id: "Q1", verdict: "vague" },
-        { question_id: "Q3", verdict: "not_answered" },
-        { question_id: "Q4", verdict: "needs_refinement" },
+        { question_id: "Q1", verdict: "vague", reason: null },
+        { question_id: "Q3", verdict: "not_answered", reason: null },
       ],
     };
 
-    const jsonData = makeClarificationsJson();
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
       if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
     });
+    vi.mocked(invokeCommand).mockResolvedValue(undefined);
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-no-reason");
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -3679,23 +3670,20 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
 
     await waitFor(() => {
-      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+      const calls = vi.mocked(invokeCommand).mock.calls;
+      expect(calls.some(([cmd]) => cmd === "update_clarification_verdicts")).toBe(true);
     });
 
-    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
-      ([path]) => path === "/test/skills/test-skill/context/clarifications.json",
+    const verdictCall = vi.mocked(invokeCommand).mock.calls.find(
+      ([cmd]) => cmd === "update_clarification_verdicts",
     );
-    const serialized = writeCalls[writeCalls.length - 1][1];
-    const parsed = JSON.parse(serialized);
-    const notes = parsed.answer_evaluator_notes as Array<{ title: string; body: string }>;
+    const updates = (verdictCall?.[1] as { skillId: string; updates: Array<{ question_id: string; verdict: string; reason: string | null }> })?.updates;
 
-    // Fallback messages
-    expect(notes.some((n) => n.title === "Vague answer: Q1" && n.body === "Answer is too general and needs specific details.")).toBe(true);
-    expect(notes.some((n) => n.title === "Not answered: Q3" && n.body.includes("still unanswered"))).toBe(true);
-    expect(notes.some((n) => n.title === "Needs refinement: Q4" && n.body.includes("more concrete detail"))).toBe(true);
+    expect(updates.some((u) => u.question_id === "Q1" && u.verdict === "vague" && u.reason === null)).toBe(true);
+    expect(updates.some((u) => u.question_id === "Q3" && u.verdict === "not_answered" && u.reason === null)).toBe(true);
   });
 
-  it("buildGateFeedbackNotes excludes clear verdicts from notes", async () => {
+  it("gate verdict updates: skips invokeCommand when all verdicts are clear (empty per_question)", async () => {
     const evaluation = {
       verdict: "sufficient",
       answered_count: 2,
@@ -3705,21 +3693,18 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       total_count: 2,
       reasoning: "All good.",
       per_question: [
-        { question_id: "Q1", verdict: "clear" },
-        { question_id: "Q2", verdict: "clear" },
+        { question_id: "Q1", verdict: "clear", reason: null },
+        { question_id: "Q2", verdict: "clear", reason: null },
       ],
     };
 
-    const jsonData = makeClarificationsJson();
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
       if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
     });
+    vi.mocked(invokeCommand).mockResolvedValue(undefined);
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-all-clear");
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -3744,18 +3729,16 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       useAgentStore.getState().completeRun("gate-all-clear", true);
     });
 
+    // Gate advances (sufficient verdict, gate_decision = run_research)
     await waitFor(() => {
-      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
     });
 
-    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
-      ([path]) => path === "/test/skills/test-skill/context/clarifications.json",
+    // No verdicts to persist — update_clarification_verdicts should NOT be called
+    const verdictCalls = vi.mocked(invokeCommand).mock.calls.filter(
+      ([cmd]) => cmd === "update_clarification_verdicts",
     );
-    const serialized = writeCalls[writeCalls.length - 1][1];
-    const parsed = JSON.parse(serialized);
-
-    // No feedback notes for "clear" verdicts
-    expect(parsed.answer_evaluator_notes).toEqual([]);
+    expect(verdictCalls).toHaveLength(0);
   });
 });
 

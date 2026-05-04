@@ -3,27 +3,27 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useWorkflowAutosave } from "@/hooks/use-workflow-autosave";
 
 vi.mock("@/lib/tauri", () => ({
-  getClarificationsContent: vi.fn(),
-  saveClarificationsContent: vi.fn(() => Promise.resolve()),
-  readFile: vi.fn(() => Promise.reject("not found")),
-}));
-
-vi.mock("@/lib/clarifications-types", () => ({
-  parseClarifications: vi.fn((raw: string | null) => {
-    if (!raw) return null;
-    try { return JSON.parse(raw); } catch { return null; }
-  }),
+  invokeCommand: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("@/lib/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
 
-import { getClarificationsContent, saveClarificationsContent } from "@/lib/tauri";
+import { invokeCommand } from "@/lib/tauri";
+
+const makeSection = (questions = []) => ({ id: "s1", title: "Section 1", questions });
+const makeQuestion = (overrides = {}) => ({
+  id: "q1",
+  text: "Test question",
+  answer_choice: null,
+  answer_text: null,
+  refinements: [],
+  ...overrides,
+});
 
 describe("useWorkflowAutosave", () => {
   const defaultOptions = {
-    workspacePath: "/workspace",
     skillName: "test-skill",
     clarificationsEditable: true,
     currentStepStatus: "completed",
@@ -38,127 +38,174 @@ describe("useWorkflowAutosave", () => {
     vi.useRealTimers();
   });
 
-  it("loads clarifications on completed editable step", async () => {
+  it("syncs clarificationsData from dbClarificationsData on completed editable step", async () => {
     vi.useRealTimers();
-    const rawContent = JSON.stringify({ questions: [] });
-    vi.mocked(getClarificationsContent).mockResolvedValue(rawContent);
+    const dbData = { sections: [makeSection([makeQuestion()])] };
 
-    renderHook(() => useWorkflowAutosave(defaultOptions));
+    const { result } = renderHook(() =>
+      useWorkflowAutosave({ ...defaultOptions, dbClarificationsData: dbData })
+    );
 
     await waitFor(() => {
-      expect(getClarificationsContent).toHaveBeenCalledWith("test-skill", "/workspace");
+      expect(result.current.clarificationsData).toEqual(dbData);
     });
   });
 
-  it("does not load when step is not completed", async () => {
+  it("does not sync when step is not completed", async () => {
     vi.useRealTimers();
-    renderHook(() =>
-      useWorkflowAutosave({ ...defaultOptions, currentStepStatus: "pending" })
+    const dbData = { sections: [makeSection([makeQuestion()])] };
+
+    const { result } = renderHook(() =>
+      useWorkflowAutosave({
+        ...defaultOptions,
+        currentStepStatus: "pending",
+        dbClarificationsData: dbData,
+      })
     );
 
     await new Promise((r) => setTimeout(r, 10));
-    expect(getClarificationsContent).not.toHaveBeenCalled();
+    expect(result.current.clarificationsData).toBeNull();
   });
 
-  it("handleClarificationsChange sets editorDirty", () => {
+  it("does not sync when clarificationsEditable is false", async () => {
+    vi.useRealTimers();
+    const dbData = { sections: [makeSection([makeQuestion()])] };
+
     const { result } = renderHook(() =>
-      useWorkflowAutosave({ ...defaultOptions, currentStepStatus: "pending" })
+      useWorkflowAutosave({
+        ...defaultOptions,
+        clarificationsEditable: false,
+        dbClarificationsData: dbData,
+      })
     );
 
-    expect(result.current.editorDirty).toBe(false);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(result.current.clarificationsData).toBeNull();
+  });
 
+  it("handleClarificationsChange sets editorDirty and calls invokeCommand for changed answers", async () => {
+    vi.useRealTimers();
+    const q = makeQuestion({ id: "q1", answer_choice: null, answer_text: null });
+    const dbData = { sections: [makeSection([q])] };
+
+    const { result } = renderHook(() =>
+      useWorkflowAutosave({ ...defaultOptions, dbClarificationsData: dbData })
+    );
+
+    // Wait for initial DB sync
+    await waitFor(() => expect(result.current.clarificationsData).not.toBeNull());
+
+    const updated = { sections: [makeSection([{ ...q, answer_choice: "A" }])] };
     act(() => {
-      result.current.handleClarificationsChange({ questions: [] } as any);
+      result.current.handleClarificationsChange(updated);
     });
 
     expect(result.current.editorDirty).toBe(true);
-    expect(result.current.saveStatus).toBe("dirty");
+    await waitFor(() => {
+      expect(invokeCommand).toHaveBeenCalledWith("update_clarification_answer", {
+        skillId: "test-skill",
+        questionId: "q1",
+        answerChoice: "A",
+        answerText: null,
+      });
+    });
   });
 
-  it("handleSave persists content and resets status", async () => {
+  it("handleClarificationsChange does not call invokeCommand when nothing changed", async () => {
     vi.useRealTimers();
-    vi.mocked(saveClarificationsContent).mockResolvedValue(undefined);
+    const q = makeQuestion({ id: "q1", answer_choice: "B", answer_text: null });
+    const dbData = { sections: [makeSection([q])] };
 
     const { result } = renderHook(() =>
-      useWorkflowAutosave({ ...defaultOptions, currentStepStatus: "pending" })
+      useWorkflowAutosave({ ...defaultOptions, dbClarificationsData: dbData })
     );
 
+    await waitFor(() => expect(result.current.clarificationsData).not.toBeNull());
+
+    // Same answer — no change
     act(() => {
-      result.current.handleClarificationsChange({ questions: [{ id: "q1", text: "test" }] } as any);
+      result.current.handleClarificationsChange({ sections: [makeSection([{ ...q }])] });
     });
 
-    await act(async () => {
-      await result.current.handleSave();
-    });
-
-    expect(saveClarificationsContent).toHaveBeenCalled();
-    expect(result.current.editorDirty).toBe(false);
-    expect(result.current.saveStatus).toBe("saved");
+    expect(invokeCommand).not.toHaveBeenCalled();
   });
 
-  it("autosave fires after 1500ms of inactivity", async () => {
-    vi.mocked(saveClarificationsContent).mockResolvedValue(undefined);
+  it("sets saveStatus to saved after successful persist", async () => {
+    vi.useRealTimers();
+    vi.mocked(invokeCommand).mockResolvedValue(undefined);
 
-    const { result } = renderHook(() => useWorkflowAutosave(defaultOptions));
+    const q = makeQuestion({ id: "q1", answer_choice: null });
+    const dbData = { sections: [makeSection([q])] };
+
+    const { result } = renderHook(() =>
+      useWorkflowAutosave({ ...defaultOptions, dbClarificationsData: dbData })
+    );
+
+    await waitFor(() => expect(result.current.clarificationsData).not.toBeNull());
 
     act(() => {
-      result.current.handleClarificationsChange({ questions: [] } as any);
+      result.current.handleClarificationsChange({
+        sections: [makeSection([{ ...q, answer_choice: "A" }])],
+      });
     });
 
-    expect(saveClarificationsContent).not.toHaveBeenCalled();
-
-    await act(async () => {
-      vi.advanceTimersByTime(1500);
+    await waitFor(() => {
+      expect(result.current.saveStatus).toBe("saved");
     });
-
-    expect(saveClarificationsContent).toHaveBeenCalled();
   });
 
-  it("save failure shows error toast and reverts saveStatus to dirty", async () => {
+  it("sets saveStatus to dirty and toasts on persist failure", async () => {
     vi.useRealTimers();
     const saveError = new Error("disk full");
-    vi.mocked(saveClarificationsContent).mockRejectedValue(saveError);
+    vi.mocked(invokeCommand).mockRejectedValue(saveError);
+
+    const q = makeQuestion({ id: "q1", answer_choice: null });
+    const dbData = { sections: [makeSection([q])] };
 
     const { result } = renderHook(() =>
-      useWorkflowAutosave({ ...defaultOptions, currentStepStatus: "pending" })
+      useWorkflowAutosave({ ...defaultOptions, dbClarificationsData: dbData })
     );
 
-    act(() => {
-      result.current.handleClarificationsChange({ questions: [] } as any);
-    });
+    await waitFor(() => expect(result.current.clarificationsData).not.toBeNull());
 
-    await act(async () => {
-      await result.current.handleSave();
+    act(() => {
+      result.current.handleClarificationsChange({
+        sections: [makeSection([{ ...q, answer_choice: "A" }])],
+      });
     });
 
     const { toast } = await import("@/lib/toast");
-    expect(vi.mocked(toast.error)).toHaveBeenCalled();
-    expect(result.current.editorDirty).toBe(true);
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalled();
+    });
     expect(result.current.saveStatus).toBe("dirty");
   });
 
-  it("debounce resets when edits arrive before 1500ms — only one save call", async () => {
-    vi.mocked(saveClarificationsContent).mockResolvedValue(undefined);
-
+  it("handleSave returns true when no unsaved changes exist", async () => {
+    vi.useRealTimers();
     const { result } = renderHook(() => useWorkflowAutosave(defaultOptions));
 
-    // First edit
-    act(() => { result.current.handleClarificationsChange({ questions: [] } as any); });
+    let saveResult: boolean | undefined;
+    await act(async () => {
+      saveResult = await result.current.handleSave();
+    });
 
-    // Advance 800ms — debounce not yet fired
-    await act(async () => { vi.advanceTimersByTime(800); });
-    expect(saveClarificationsContent).not.toHaveBeenCalled();
+    expect(saveResult).toBe(true);
+    expect(invokeCommand).not.toHaveBeenCalled();
+  });
 
-    // Second edit resets the debounce
-    act(() => { result.current.handleClarificationsChange({ questions: [{ id: "q1" }] } as any); });
+  it("handleSave returns false when clarificationsEditable is false", async () => {
+    vi.useRealTimers();
+    const { result } = renderHook(() =>
+      useWorkflowAutosave({ ...defaultOptions, clarificationsEditable: false })
+    );
 
-    // Advance another 800ms — still under 1500ms from the second edit
-    await act(async () => { vi.advanceTimersByTime(800); });
-    expect(saveClarificationsContent).not.toHaveBeenCalled();
+    let saveResult: boolean | undefined;
+    await act(async () => {
+      saveResult = await result.current.handleSave();
+    });
 
-    // Advance the remaining 700ms to complete the 1500ms window from the second edit
-    await act(async () => { vi.advanceTimersByTime(700); });
-    expect(saveClarificationsContent).toHaveBeenCalledTimes(1);
+    expect(saveResult).toBe(false);
   });
 
   it("updateClarificationsState updates data without marking dirty", () => {
@@ -166,12 +213,39 @@ describe("useWorkflowAutosave", () => {
       useWorkflowAutosave({ ...defaultOptions, currentStepStatus: "pending" })
     );
 
+    const newData = { sections: [makeSection([makeQuestion({ id: "q1", text: "updated" })])] };
     act(() => {
-      result.current.updateClarificationsState({ questions: [{ id: "q1", text: "updated" }] } as any, '{"questions":[]}');
+      result.current.updateClarificationsState(newData);
     });
 
     expect(result.current.editorDirty).toBe(false);
     expect(result.current.saveStatus).toBe("idle");
-    expect(result.current.clarificationsData).toEqual({ questions: [{ id: "q1", text: "updated" }] });
+    expect(result.current.clarificationsData).toEqual(newData);
+  });
+
+  it("does not overwrite in-flight edits when dbClarificationsData updates", async () => {
+    vi.useRealTimers();
+    const q = makeQuestion({ id: "q1", answer_choice: null });
+    const dbData1 = { sections: [makeSection([q])] };
+    let dbData = dbData1;
+
+    const { result, rerender } = renderHook(() =>
+      useWorkflowAutosave({ ...defaultOptions, dbClarificationsData: dbData })
+    );
+
+    await waitFor(() => expect(result.current.clarificationsData).not.toBeNull());
+
+    // Make a local edit (marks hasUnsavedChanges)
+    const editedData = { sections: [makeSection([{ ...q, answer_choice: "A" }])] };
+    act(() => {
+      result.current.handleClarificationsChange(editedData);
+    });
+
+    // DB query returns new data — but in-flight edits should not be overwritten
+    dbData = { sections: [makeSection([{ ...q, answer_choice: "B" }])] };
+    rerender();
+
+    // Local state should still reflect user's edit, not the DB update
+    expect(result.current.clarificationsData?.sections[0].questions[0].answer_choice).toBe("A");
   });
 });

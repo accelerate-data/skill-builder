@@ -1,25 +1,23 @@
 import { useCallback, useRef } from "react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
-import type { ClarificationsFile } from "@/lib/clarifications-types";
 import type { AnswerEvaluation } from "@/lib/tauri";
 import {
   runAnswerEvaluator,
   materializeAnswerEvaluationOutput,
   logGateDecision,
   readFile,
-  getClarificationsContent,
-  saveClarificationsContent,
+  invokeCommand,
   writeFile,
 } from "@/lib/tauri";
 import { requireSettingsModel } from "@/lib/models";
 import { joinPath } from "@/lib/path-utils";
-import { parseClarifications } from "@/lib/clarifications-types";
-import { buildGateFeedbackNotes } from "@/lib/gate-feedback";
 import { toast } from "@/lib/toast";
 import { workspaceSkillDir } from "@/lib/evals";
 import pluginPaths from "../../plugin-paths.json";
 import { useSettingsStore } from "@/stores/settings-store";
+import { appQueryClient } from "@/lib/query-client";
+import { queryKeys } from "@/lib/queries/query-keys";
 
 export interface UseWorkflowGateOptions {
   skillName: string;
@@ -27,8 +25,6 @@ export interface UseWorkflowGateOptions {
   workspacePath: string | null;
   currentStep: number;
   purpose: string | null;
-  clarificationsData: ClarificationsFile | null;
-  onClarificationsUpdated?: (data: ClarificationsFile, content: string) => void;
   /** Called after gate completes to advance the workflow */
   advanceToNextStep: () => void;
 }
@@ -59,8 +55,6 @@ export function useWorkflowGate({
   workspacePath,
   currentStep,
   purpose,
-  clarificationsData: _clarificationsData,
-  onClarificationsUpdated,
   advanceToNextStep,
 }: UseWorkflowGateOptions): UseWorkflowGateReturn {
   const updateStepStatus = useWorkflowStore((s) => s.updateStepStatus);
@@ -157,32 +151,28 @@ export function useWorkflowGate({
           return;
         }
 
-        if (workspacePath) {
-          try {
-            const clarificationsRaw = await getClarificationsContent(
-              skillName,
-              workspacePath,
-            );
-            const parsed = parseClarifications(clarificationsRaw);
-            if (parsed) {
-              const next: ClarificationsFile = {
-                ...parsed,
-                answer_evaluator_notes: buildGateFeedbackNotes(evaluation),
-              };
-              const serialized = JSON.stringify(next, null, 2);
-              await saveClarificationsContent(
-                skillName,
-                workspacePath,
-                serialized,
-              );
-              onClarificationsUpdated?.(next, serialized);
-            }
-          } catch (err) {
-            console.warn(
-              "[workflow] Could not update clarifications notes from gate evaluation:",
-              err,
-            );
+        // Persist per-question verdicts to the DB and invalidate the query cache
+        // so the clarifications editor reflects the evaluator feedback.
+        try {
+          const updates = (evaluation.per_question ?? []).map((q) => ({
+            question_id: q.question_id,
+            verdict: q.verdict ?? null,
+            reason: q.reason ?? null,
+          }));
+          if (updates.length > 0) {
+            await invokeCommand("update_clarification_verdicts", {
+              skillId: skillName,
+              updates,
+            });
           }
+          appQueryClient.invalidateQueries({
+            queryKey: queryKeys.clarifications.bySkill(skillName),
+          });
+        } catch (err) {
+          console.warn(
+            "[workflow] Could not persist clarification verdicts from gate evaluation:",
+            err,
+          );
         }
 
         const gateDecision = evaluation.gate_decision ?? "run_research";
@@ -226,21 +216,8 @@ export function useWorkflowGate({
             useWorkflowStore.getState().currentStep,
             "completed",
           );
-          // Refresh clarifications so the feedback notes are visible to the user.
-          if (workspacePath) {
-            getClarificationsContent(skillName, workspacePath)
-              .then((content) => {
-                const parsed = parseClarifications(content ?? null);
-                if (parsed) {
-                  onClarificationsUpdated?.(parsed, content ?? "");
-                }
-              })
-              .catch(() => {
-                console.warn(
-                  "[use-workflow-gate] Could not refresh clarifications after revise decision",
-                );
-              });
-          }
+          // The query cache was already invalidated above; the clarifications editor
+          // will re-fetch from the DB automatically via useClarifications.
         } else {
           // "run_research" or unrecognized — advance to step 1.
           updateStepStatus(
@@ -264,7 +241,6 @@ export function useWorkflowGate({
       setGateLoading,
       updateStepStatus,
       advanceToNextStep,
-      onClarificationsUpdated,
     ],
   );
 

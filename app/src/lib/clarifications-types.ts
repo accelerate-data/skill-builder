@@ -10,7 +10,6 @@ export type {
   ClarificationsWarning,
   ClarificationsError,
   Section,
-  Question,
   Choice,
   Note,
 } from "@/generated/contracts";
@@ -19,9 +18,18 @@ export type {
 import type {
   ClarificationsFile,
   Section,
-  Question,
   Note,
 } from "@/generated/contracts";
+import type { Question as BaseQuestion } from "@/generated/contracts";
+
+/**
+ * Extended Question type that includes per-question verdict fields
+ * populated by the answer-evaluator gate (stored in the DB, not notes).
+ */
+export type Question = BaseQuestion & {
+  answer_verdict?: string | null;
+  answer_verdict_reason?: string | null;
+};
 
 /** Extract the recommended choice ID from a recommendation string.
  *  Handles both the current format ("B") and legacy format ("B — rationale text"). */

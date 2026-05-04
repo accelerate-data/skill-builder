@@ -36,4 +36,12 @@ export const queryKeys = {
     all: ["auth"] as const,
     githubUser: ["auth", "github-user"] as const,
   },
+  clarifications: {
+    all: ["clarifications"] as const,
+    bySkill: (skillId: string) => ["clarifications", skillId] as const,
+  },
+  decisions: {
+    all: ["decisions"] as const,
+    bySkill: (skillId: string) => ["decisions", skillId] as const,
+  },
 };
