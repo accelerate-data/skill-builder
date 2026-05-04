@@ -180,7 +180,7 @@ test.describe("Description Workbench", { tag: "@description" }, () => {
     expect(runCalls[0]?.args).toMatchObject({
       request: {
         promptSetId: "prompt-set-trigger",
-        candidateIds: ["current-skill", ...TRIGGER_CANDIDATES.map(({ id }) => id)],
+        candidateIds: TRIGGER_CANDIDATES.map(({ id }) => id),
       },
     });
 
