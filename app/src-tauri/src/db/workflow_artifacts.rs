@@ -18,12 +18,11 @@
 //! `contradictory_inputs_state`) are TEXT and validated at the unpack
 //! boundary in higher-level code, not at the column.
 
-// Task 1 of VU-1157 lays the schema and CRUD; Task 2+ wire these up to Tauri
-// commands and the workflow runtime. Until those callers land in the same PR,
-// the lib crate sees these symbols as unused. Tests exercise every entry
-// point; once the wire-up tasks merge, this allow becomes redundant.
-#![allow(dead_code)]
-
+// Task 2 of VU-1157 wires `read_*`, `update_question_answer`, and
+// `update_question_verdicts` to Tauri commands. The remaining items
+// (`upsert_*`, `delete_*`) only have callers from the post-step persistence
+// hooks landing in later migration tasks; allow them per-item until then so
+// the rest of the module surfaces unused-warnings naturally.
 use rusqlite::{Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 
@@ -153,6 +152,7 @@ pub struct DecisionItem {
 // Helpers
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)] // Used by upsert_* callers landing in later VU-1157 tasks.
 fn opt_bool_to_int(v: Option<bool>) -> Option<i64> {
     v.map(|b| if b { 1 } else { 0 })
 }
@@ -171,6 +171,7 @@ fn opt_int_to_bool(v: Option<i64>) -> Option<bool> {
 /// The children are deleted before re-insert (idempotent replace) to avoid
 /// constraint conflicts when the agent emits a different question/section
 /// shape between runs.
+#[allow(dead_code)] // Wired up by the workflow runtime persistence hooks in a later VU-1157 task.
 pub fn upsert_clarifications(
     tx: &Transaction<'_>,
     record: &ClarificationsRecord,
@@ -290,6 +291,7 @@ pub fn upsert_clarifications(
     Ok(())
 }
 
+#[allow(dead_code)] // Recursive helper for upsert_clarifications.
 fn insert_question_recursive(
     tx: &Transaction<'_>,
     skill_id: &str,
@@ -586,6 +588,7 @@ pub fn update_question_answer(
 }
 
 /// Delete clarifications and all child rows for a skill. Idempotent.
+#[allow(dead_code)] // Wired up by reset/reconciliation hooks in a later VU-1157 task.
 pub fn delete_clarifications(
     conn: &Connection,
     skill_id: &str,
@@ -621,6 +624,7 @@ pub fn delete_clarifications(
 // ---------------------------------------------------------------------------
 
 /// Atomically replace the decisions record (and all its items) for a skill.
+#[allow(dead_code)] // Wired up by the workflow runtime persistence hooks in a later VU-1157 task.
 pub fn upsert_decisions(
     tx: &Transaction<'_>,
     record: &DecisionsRecord,
@@ -738,6 +742,7 @@ pub fn read_decisions(
 }
 
 /// Delete decisions and all child items for a skill. Idempotent.
+#[allow(dead_code)] // Wired up by reset/reconciliation hooks in a later VU-1157 task.
 pub fn delete_decisions(conn: &Connection, skill_id: &str) -> Result<(), rusqlite::Error> {
     conn.execute(
         "DELETE FROM decision_items WHERE skill_id = ?1",

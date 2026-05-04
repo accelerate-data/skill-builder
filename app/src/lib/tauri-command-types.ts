@@ -46,6 +46,12 @@ import type {
   SaveEvalPromptSet,
   SuggestDescriptionCandidatesRequest,
 } from "@/lib/eval-workbench";
+import type { EvalQuery, OptimizationResult } from "@/lib/description-optimization";
+import type {
+  ClarificationVerdictUpdate,
+  ClarificationsDto,
+  DecisionsDto,
+} from "@/generated/contracts";
 
 export type NoArgs = Record<string, never>;
 
@@ -383,6 +389,22 @@ export interface TauriCommandMap {
     args: { skillName: string; workspacePath: string; content: string };
     result: void;
   };
+  // VU-1157: typed Tauri commands backed by SQLite workflow_artifacts tables.
+  get_clarifications: { args: { skillId: string }; result: ClarificationsDto | null };
+  update_clarification_answer: {
+    args: {
+      skillId: string;
+      questionId: string;
+      answerChoice: string | null;
+      answerText: string | null;
+    };
+    result: void;
+  };
+  update_clarification_verdicts: {
+    args: { skillId: string; updates: ClarificationVerdictUpdate[] };
+    result: void;
+  };
+  get_decisions: { args: { skillId: string }; result: DecisionsDto | null };
   get_context_file_content: {
     args: { skillName: string; workspacePath: string; fileName: string };
     result: string;

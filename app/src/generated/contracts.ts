@@ -39,6 +39,74 @@ export type AnswerEvaluationOutput = { verdict: string; answered_count?: number;
  */
 export type Choice = { id: string; text: string; is_other: boolean }
 
+export type ClarificationChoiceDto = { choice_id: string; ordinal: number; text: string; is_other: boolean }
+
+export type ClarificationNoteDto = { 
+/**
+ * Auto-assigned by SQLite on insert; populated by the read path.
+ */
+note_id?: number | null; ordinal: number; note_type: string; title: string; body: string }
+
+/**
+ * Question DTO. Recursive via `refinements`.
+ */
+export type ClarificationQuestionDto = { question_id: string; section_id: number; 
+/**
+ * `Some(parent_id)` for refinements, `None` for top-level questions.
+ */
+parent_question_id?: string | null; ordinal: number; title: string; text: string; must_answer: boolean; answer_choice?: string | null; answer_text?: string | null; recommendation?: string | null; 
+/**
+ * Allowed values: `"clear" | "vague" | "not_answered" | "needs_refinement"
+ * | "contradictory"`. Validated at the command boundary.
+ */
+answer_verdict?: string | null; answer_verdict_reason?: string | null; choices: ClarificationChoiceDto[]; refinements: ClarificationQuestionDto[] }
+
+export type ClarificationSectionDto = { section_id: number; ordinal: number; title: string; description?: string | null }
+
+/**
+ * Per-question verdict update payload accepted by
+ * `update_clarification_verdicts`. `None` for `verdict` or `reason` clears
+ * the corresponding column. `verdict` is validated against the allowed
+ * answer-verdict set at the command boundary.
+ */
+export type ClarificationVerdictUpdate = { question_id: string; verdict?: string | null; reason?: string | null }
+
+/**
+ * Full clarifications artifact for a skill.
+ * 
+ * Mirrors `db::workflow_artifacts::ClarificationsRecord`. Children
+ * (`sections`, `questions`, `notes`) are reconstructed by the read path;
+ * refinements are nested inside each `ClarificationQuestionDto.refinements`.
+ */
+export type ClarificationsDto = { skill_id: string; version: string; refinement_count: number; must_answer_count: number; question_count: number; section_count: number; title: string; 
+/**
+ * Tri-state: `None` = unset, `Some(false)` = not recommended,
+ * `Some(true)` = recommended.
+ */
+scope_recommendation?: boolean | null; scope_reason?: string | null; scope_next_action?: string | null; error_code?: string | null; error_message?: string | null; warning_code?: string | null; warning_message?: string | null; 
+/**
+ * Allowed values: `"sufficient" | "insufficient"`. Validated at the
+ * command boundary, stored as TEXT.
+ */
+eval_verdict?: string | null; eval_reasoning?: string | null; 
+/**
+ * Unix-ms timestamp.
+ */
+eval_at?: number | null; eval_answered_count?: number | null; eval_empty_count?: number | null; eval_vague_count?: number | null; eval_contradictory_count?: number | null; 
+/**
+ * Unix-ms timestamp.
+ */
+created_at: number; 
+/**
+ * Unix-ms timestamp.
+ */
+updated_at: number; sections: ClarificationSectionDto[]; 
+/**
+ * Top-level questions only. Refinements live under each question's
+ * `refinements` field.
+ */
+questions: ClarificationQuestionDto[]; notes: ClarificationNoteDto[] }
+
 /**
  * Error attached to metadata.
  */
@@ -79,10 +147,36 @@ export type ContradictoryInputs = boolean | string
  */
 export type Decision = { id: string; title: string; original_question: string; decision: string; implication: string; status: DecisionStatus }
 
+export type DecisionItemDto = { decision_id: string; ordinal: number; title: string; original_question: string; decision: string; implication: string; 
+/**
+ * Allowed values: `"resolved" | "conflict-resolved" | "needs-review" |
+ * "revised"`.
+ */
+status: string }
+
 /**
  * Status of a single decision.
  */
 export type DecisionStatus = "resolved" | "conflict-resolved" | "needs-review" | "revised"
+
+/**
+ * Full decisions artifact for a skill. Mirrors
+ * `db::workflow_artifacts::DecisionsRecord`.
+ */
+export type DecisionsDto = { skill_id: string; version: string; round: number; decision_count: number; conflicts_resolved: number; 
+/**
+ * Allowed values: `"inactive" | "active" | "revised"`. Validated upstream
+ * of writes; the read path returns whatever is in the column.
+ */
+contradictory_inputs_state?: string | null; scope_recommendation?: boolean | null; 
+/**
+ * Unix-ms timestamp.
+ */
+created_at: number; 
+/**
+ * Unix-ms timestamp.
+ */
+updated_at: number; items: DecisionItemDto[] }
 
 /**
  * Top-level metadata block for a decisions file.

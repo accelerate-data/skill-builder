@@ -1,4 +1,7 @@
+pub mod answer_evaluation;
+pub mod clarifications;
 pub mod claude_md;
+pub mod decisions;
 pub mod deploy;
 pub mod evaluation;
 pub mod guards;
