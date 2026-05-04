@@ -98,16 +98,16 @@ describe("AgentInitializingIndicator", () => {
     expect(svg).toBeInTheDocument();
   });
 
-  it("shows 'Loading SDK modules...' progress message", () => {
+  it("shows 'Loading runtime modules...' progress message", () => {
     useWorkflowStore.setState({
       isInitializing: true,
       initStartTime: Date.now(),
-      initProgressMessage: "Loading SDK modules...",
+      initProgressMessage: "Loading runtime modules...",
     });
     render(<AgentInitializingIndicator />);
 
     expect(screen.getByTestId("init-progress-message").textContent).toBe(
-      "Loading SDK modules...",
+      "Loading runtime modules...",
     );
   });
 
@@ -134,14 +134,14 @@ describe("AgentInitializingIndicator", () => {
 
     // Simulate init_start event updating the store
     act(() => {
-      useWorkflowStore.getState().setInitProgressMessage("Loading SDK modules...");
+      useWorkflowStore.getState().setInitProgressMessage("Loading runtime modules...");
     });
 
     expect(screen.getByTestId("init-progress-message").textContent).toBe(
-      "Loading SDK modules...",
+      "Loading runtime modules...",
     );
 
-    // Simulate sdk_ready event
+    // Simulate runtime_ready event
     act(() => {
       useWorkflowStore.getState().setInitProgressMessage("Connecting to API...");
     });

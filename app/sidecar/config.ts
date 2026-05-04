@@ -25,9 +25,9 @@ export interface SidecarConfig {
   llm?: OpenHandsLlmConfig;
   agentName?: string;
   apiKey: string;
-  /** Workspace root directory ({data_dir}/workspace). Used for plugin discovery and SDK settings. */
+  /** Workspace root directory ({data_dir}/workspace). */
   workspaceRootDir: string;
-  /** Skill-scoped workspace directory ({workspace}/{plugin_slug}/{skill_name}). Used as SDK cwd. */
+  /** Skill-scoped workspace directory ({workspace}/{plugin_slug}/{skill_name}). */
   workspaceSkillDir: string;
   requiredPlugins?: string[];
   allowedTools?: string[];
@@ -56,9 +56,6 @@ export interface SidecarConfig {
   /** Plugin slug for the skill (from plugin-paths.json: {root}/{plugin_slug}/{skill_name}).
    * Threaded through to run_result so persistence handlers can resolve the correct skill dir. */
   pluginSlug: string;
-  /** Runtime backend tag. Accepted for schema compatibility; the mock sidecar
-   * ignores it — all real requests must use the OpenHands Agent Server. */
-  runtimeProvider?: "claude" | "openhands";
 }
 
 // --- Validation helpers ---------------------------------------------------
@@ -195,7 +192,6 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   assertOptStringIn(c, "mode", ["one-shot", "streaming"]);
   assertOptStringIn(c, "permissionMode", ["default", "acceptEdits", "bypassPermissions", "plan"]);
   assertOptStringIn(c, "runSource", ["workflow", "refine", "test", "gate-eval"]);
-  assertOptStringIn(c, "runtimeProvider", ["claude", "openhands"]);
   if (c.llm !== undefined) {
     assertOpenHandsLlmConfig(c.llm);
   }

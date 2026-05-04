@@ -153,6 +153,7 @@ fn validate_requested_fields(fields: &[String]) -> Result<Vec<String>, String> {
     Ok(normalized)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_suggestions_prompt(
     skill_name: &str,
     purpose: &str,
@@ -533,7 +534,6 @@ mod tests {
         .unwrap();
 
         let json = serde_json::to_value(&config).unwrap();
-        assert_eq!(json["runtimeProvider"], "openhands");
         assert_eq!(json["mode"], "one-shot");
         assert_eq!(json["agentName"], "skill-creator");
         assert_eq!(json["taskKind"], "skill_suggestions");

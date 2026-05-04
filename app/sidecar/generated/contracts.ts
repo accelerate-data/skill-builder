@@ -217,7 +217,7 @@ export type InitProgressEvent = { stage: InitProgressStage }
 /**
  * Progress stage during agent initialization.
  */
-export type InitProgressStage = "init_start" | "sdk_ready"
+export type InitProgressStage = "init_start" | "runtime_ready"
 
 /**
  * Per-model token usage breakdown.

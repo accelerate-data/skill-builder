@@ -74,10 +74,6 @@ pub struct SidecarConfig {
     /// Threaded through terminal lifecycle events so persistence handlers can resolve the correct skill dir.
     #[serde(rename = "pluginSlug")]
     pub plugin_slug: String,
-    /// Runtime backend tag. Accepted for schema compatibility; the mock sidecar
-    /// ignores it — all real requests must use the OpenHands Agent Server.
-    #[serde(rename = "runtimeProvider", skip_serializing_if = "Option::is_none")]
-    pub runtime_provider: Option<String>,
     /// Task discriminator for a shared runtime agent.
     #[serde(rename = "taskKind", skip_serializing_if = "Option::is_none")]
     pub task_kind: Option<String>,
@@ -107,7 +103,6 @@ impl std::fmt::Debug for SidecarConfig {
             .field("agent_name", &self.agent_name)
             .field("required_plugins", &self.required_plugins)
             .field("setting_sources", &self.setting_sources)
-            .field("runtime_provider", &self.runtime_provider)
             .field("task_kind", &self.task_kind)
             .field(
                 "user_message_suffix",
@@ -168,7 +163,6 @@ pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> 
         run_source: params.run_source,
         plugin_slug: params.plugin_slug,
         persistence_dir: None,
-        runtime_provider: Some("openhands".to_string()),
         task_kind: params.task_kind,
         user_message_suffix: params.user_message_suffix,
     }
@@ -208,7 +202,6 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             persistence_dir: None,
-            runtime_provider: None,
             task_kind: None,
             user_message_suffix: None,
         };
@@ -264,7 +257,6 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             persistence_dir: None,
-            runtime_provider: None,
             task_kind: None,
             user_message_suffix: None,
         };
@@ -308,7 +300,6 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             persistence_dir: None,
-            runtime_provider: None,
             task_kind: None,
             user_message_suffix: None,
         };
@@ -355,7 +346,6 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             persistence_dir: None,
-            runtime_provider: None,
             task_kind: None,
             user_message_suffix: None,
         };
@@ -411,7 +401,6 @@ mod tests {
             run_source: None,
             plugin_slug: "skills".to_string(),
             persistence_dir: None,
-            runtime_provider: Some("openhands".to_string()),
             task_kind: Some("scope_review".to_string()),
             user_message_suffix: Some(
                 "Follow the current user message exactly. Do not infer a different task than the one stated in the message.".to_string(),

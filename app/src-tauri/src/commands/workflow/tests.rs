@@ -324,7 +324,6 @@ fn research_sidecar_config_uses_skill_creator_openhands_contract() {
         Some("session-1".to_string()),
     );
 
-    assert_eq!(config.runtime_provider.as_deref(), Some("openhands"));
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
     assert_eq!(config.task_kind.as_deref(), Some("workflow.research"));
     assert_eq!(config.mode.as_deref(), Some("one-shot"));
@@ -437,7 +436,6 @@ fn detailed_research_sidecar_config_uses_skill_creator_openhands_contract() {
         Some("session-1".to_string()),
     );
 
-    assert_eq!(config.runtime_provider.as_deref(), Some("openhands"));
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
     assert_eq!(
         config.task_kind.as_deref(),
@@ -501,7 +499,6 @@ fn answer_evaluator_sidecar_config_uses_skill_creator_openhands_contract() {
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
-    assert_eq!(config.runtime_provider.as_deref(), Some("openhands"));
     assert_eq!(config.run_source.as_deref(), Some("gate-eval"));
     assert_eq!(config.output_format, Some(answer_evaluator_output_format()));
     assert_eq!(
@@ -758,7 +755,6 @@ fn confirm_decisions_sidecar_config_uses_skill_creator_openhands_contract() {
         Some("session-1".to_string()),
     );
 
-    assert_eq!(config.runtime_provider.as_deref(), Some("openhands"));
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
     assert_eq!(
         config.task_kind.as_deref(),
@@ -854,7 +850,6 @@ fn skill_generation_sidecar_config_uses_skill_creator_openhands_contract() {
         Some("session-1".to_string()),
     );
 
-    assert_eq!(config.runtime_provider.as_deref(), Some("openhands"));
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
     assert_eq!(
         config.task_kind.as_deref(),

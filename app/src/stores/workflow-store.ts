@@ -22,7 +22,7 @@ interface WorkflowState {
   workflowSessionId: string | null;
   isInitializing: boolean;
   initStartTime: number | null;
-  /** Granular progress message shown during initialization (e.g. "Loading SDK modules..."). */
+  /** Granular progress message shown during initialization (e.g. "Loading runtime modules..."). */
   initProgressMessage: string | null;
   hydrated: boolean;
   /** Step IDs that are disabled due to scope recommendation (too broad). */
