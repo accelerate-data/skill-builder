@@ -56,6 +56,18 @@ function prepareEnvironment(paths, { fsImpl = fs, env = process.env } = {}) {
   Object.assign(env, buildHarnessEnv({ baseEnv: env, paths }));
 }
 
+function ensureDependencies(evalRoot, { spawn = spawnSync, fsImpl = fs, logger = console } = {}) {
+  if (fsImpl.existsSync(require('node:path').join(evalRoot, 'node_modules'))) return;
+  logger.log('eval: node_modules not found — running npm ci');
+  const result = spawn('npm', ['ci', '--no-audit', '--no-fund'], {
+    cwd: evalRoot,
+    stdio: 'inherit',
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`npm ci failed in ${evalRoot} — run it manually to diagnose.`);
+  }
+}
+
 function run(
   argv = process.argv.slice(2),
   {
@@ -66,6 +78,7 @@ function run(
     fsImpl = fs,
     env = process.env,
     logger = console,
+    ensureDeps = ensureDependencies,
   } = {},
 ) {
   const [command = 'help', ...rest] = argv;
@@ -75,6 +88,7 @@ function run(
   }
 
   const paths = resolvePaths();
+  ensureDeps(paths.evalRoot, { spawn, fsImpl, logger });
   prepareEnvironment(paths, { fsImpl, env });
 
   if (command === 'doctor') {
@@ -137,6 +151,7 @@ if (require.main === module) {
 
 module.exports = {
   buildPromptfooArgs,
+  ensureDependencies,
   prepareEnvironment,
   run,
 };
