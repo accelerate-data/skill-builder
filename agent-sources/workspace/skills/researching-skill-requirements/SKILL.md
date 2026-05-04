@@ -20,7 +20,7 @@ Start by understanding the user's intent from the available workflow context, th
 
 Make sure the clarification record can answer:
 
-- What should this skill enable Claude to do?
+- What should this skill enable the agent to do?
 - When should this skill trigger, including expected user phrases and contexts?
 - What input files, systems, tools, documents, or examples should it inspect?
 - What output format, artifact contract, schema, naming, or handoff should it produce?
@@ -83,7 +83,7 @@ Come prepared with context. A good question should show enough understanding tha
 
 Good candidate questions clarify one of these:
 
-- Capability: what the skill should enable Claude to do.
+- Capability: what the skill should enable the agent to do.
 - Triggering: when future agents should load the skill.
 - Inputs: files, systems, documents, tools, schemas, or examples to inspect.
 - Outputs: format, artifact location, schema, naming, or downstream handoff.
