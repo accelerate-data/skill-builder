@@ -15,6 +15,7 @@ import {
   navigateToWorkflow,
   navigateToWorkflowUpdateMode,
 } from "../helpers/workflow-helpers";
+import { E2E_SKILLS_PATH } from "../helpers/test-paths";
 
 // --- Override presets ---
 
