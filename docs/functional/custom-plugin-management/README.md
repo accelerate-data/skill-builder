@@ -17,7 +17,7 @@ FSA. Typically a consultant, data engineer, or solutions architect building skil
 
 ## Trigger
 
-The actor decides to create a new skill tailored to a plugin's domain, or resumes work on an existing plugin to refine, evaluate, or distribute a skill already in progress.
+The actor decides to create a new skill tailored to a plugin's domain, or resumes work on an existing plugin to refine, evaluate, or distribute a skill already in progress. The actor may also enter this flow upon receiving a skill gap recommendation from the `ctx-context-retro-agent` flow in Studio.
 
 ## Phases
 
@@ -86,30 +86,31 @@ Once the remote repository is populated, a Studio administrator can independentl
 
 ## Inputs
 
-| Input | Source |
-|---|---|
-| Plugin name and slug | Actor, at plugin creation |
-| Remote repository URL | Actor, on plugin settings |
-| Skill name and intake context | Actor, at skill creation |
-| Reference documents | Actor, uploaded files or URLs |
-| Clarification answers | Actor, during Steps 0–1 |
-| Decision confirmations | Actor, at Step 2 |
-| Eval prompt set | Actor, in Eval Workbench |
-| GitHub credentials | App settings (shared with marketplace import) |
+| Input | Source | System |
+|---|---|---|
+| Plugin name and slug | Actor, at plugin creation | Skill Builder (UI) |
+| Remote repository URL | Actor, on plugin settings | Skill Builder (UI) |
+| Skill name and intake context | Actor, at skill creation | Skill Builder (UI) |
+| Reference documents | Actor, uploaded files or URLs | Skill Builder (UI) |
+| Clarification answers | Actor, during Steps 0–1 | Skill Builder (UI) |
+| Decision confirmations | Actor, at Step 2 | Skill Builder (UI) |
+| Eval prompt set | Actor, in Eval Workbench | Skill Builder (UI) |
+| GitHub credentials | App settings (shared with marketplace import) | Skill Builder (UI) |
 
 ## Outputs
 
-| Output | Destination |
-|---|---|
-| Clarification question set | Stored per skill; displayed for actor review |
-| Build decisions | Stored per skill; passed to skill generation |
-| Generated `SKILL.md` | Written to skills repository under plugin slug |
-| Eval run results | Stored per skill in local database |
-| Optimised description | Applied to `SKILL.md` on actor confirmation |
-| `.skill` archive | Downloaded to actor-chosen path |
-| Published plugin | Written to remote GitHub repository |
+| Output | Destination | System |
+|---|---|---|
+| Clarification question set | Stored per skill; displayed for actor review | Skill Builder (DB) |
+| Build decisions | Stored per skill; passed to skill generation | Skill Builder (DB) |
+| Generated `SKILL.md` | Written to skills repository under plugin slug | Local Filesystem |
+| Eval run results | Stored per skill in local database | Skill Builder (DB) |
+| Optimised description | Applied to `SKILL.md` on actor confirmation | Local Filesystem |
+| `.skill` archive | Downloaded to actor-chosen path | Local Filesystem |
+| Published plugin | Written to remote GitHub repository | Remote repo |
 
 ## Cross-refs
 
 - `github-import` — reading marketplace plugins from remote GitHub repositories; the complement to plugin publish.
 - Studio Marketplace settings — where Studio administrators register remote repository URLs as skill sources (out of scope for Skill Builder).
+- `ctx-context-retro-agent` (Studio) — surfaces skill gap recommendations to CDO persona; can trigger entry into this flow.
