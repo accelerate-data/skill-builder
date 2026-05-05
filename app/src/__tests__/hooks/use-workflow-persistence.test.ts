@@ -169,6 +169,25 @@ describe("useWorkflowPersistence", () => {
     }, { timeout: 500 });
   });
 
+  it("restores currentStep from savedCurrentStep even when no steps are completed", async () => {
+    // Regression: user at Step 2, closes and reopens — was resetting to Step 0.
+    vi.mocked(getWorkflowState).mockResolvedValue({
+      run: { purpose: null, current_step: 2, status: "pending" },
+      steps: [
+        { step_id: 0, status: "pending" },
+        { step_id: 1, status: "pending" },
+        { step_id: 2, status: "pending" },
+      ],
+    });
+
+    renderHook(() => useWorkflowPersistence(defaultOptions));
+
+    await waitFor(() => {
+      expect(mockLoadWorkflowState).toHaveBeenCalledWith([], 2);
+    });
+    expect(mockSetHydrated).not.toHaveBeenCalled();
+  });
+
   it("calls setReviewMode(false) in finally block when autoStart=true, even if getWorkflowState rejects", async () => {
     vi.mocked(getWorkflowState).mockRejectedValue(new Error("DB error"));
 
