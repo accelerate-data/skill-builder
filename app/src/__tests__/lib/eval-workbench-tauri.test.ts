@@ -6,7 +6,6 @@ import {
   deleteScenario,
   listEvalRuns,
   listScenarios,
-  loadScenario,
   readEvalRun,
   runEvalWorkbench,
   saveScenario,
@@ -28,16 +27,6 @@ describe("Eval Workbench Tauri wrappers", () => {
     });
   });
 
-  it("loads a single scenario through the typed workbench contract", async () => {
-    await loadScenario("skills", "forecast-skill", "Regression");
-
-    expect(mockInvoke).toHaveBeenCalledWith("load_scenario", {
-      pluginSlug: "skills",
-      skillName: "forecast-skill",
-      scenarioName: "Regression",
-    });
-  });
-
   it("saves scenarios through the typed workbench contract", async () => {
     await saveScenario("skills", "forecast-skill", {
       name: "Regression",
@@ -56,7 +45,6 @@ describe("Eval Workbench Tauri wrappers", () => {
     expect(mockInvoke).toHaveBeenCalledWith("save_scenario", {
       pluginSlug: "skills",
       skillName: "forecast-skill",
-      originalName: null,
       scenario: {
         name: "Regression",
         tags: ["performance"],

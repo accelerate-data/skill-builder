@@ -181,7 +181,6 @@ describe("WorkspaceEvals", () => {
       tags: ["performance"],
       cases: [
         {
-          id: "case-2",
           prompt: "Summarize pipeline risk",
           expectedOutcome: "Lists top blockers",
           shouldTrigger: null,
@@ -257,46 +256,6 @@ describe("WorkspaceEvals", () => {
       "Improve assumptions handling",
     );
     expect(onNavigateToRefine).toHaveBeenCalled();
-  });
-
-  it("creates generated scenarios without rename semantics", async () => {
-    const user = userEvent.setup();
-    const onSaveScenario = vi.fn().mockResolvedValue(performanceScenario);
-    mockGenerateScenarios.mockResolvedValue([
-      {
-        name: "Generated Scenario",
-        tags: ["performance"],
-        cases: [
-          {
-            id: "case-generated",
-            prompt: "Forecast churn risk",
-            expectedOutcome: "Highlights churn drivers",
-            shouldTrigger: null,
-            assertions: [],
-          },
-        ],
-      },
-    ]);
-
-    render(
-      <WorkspaceEvals
-        skill={skill}
-        workspacePath="/workspace"
-        scenario={performanceScenario}
-        onStartNewScenario={vi.fn()}
-        onSaveScenario={onSaveScenario}
-      />,
-    );
-
-    await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /generate scenarios/i }));
-
-    await waitFor(() =>
-      expect(onSaveScenario).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "Generated Scenario" }),
-        { originalName: null },
-      ),
-    );
   });
 
   it("publishes real running state while a scenario run is active", async () => {

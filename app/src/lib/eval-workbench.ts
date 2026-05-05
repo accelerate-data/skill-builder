@@ -22,10 +22,9 @@ export interface Scenario {
   cases: ScenarioCase[];
 }
 
-export interface ScenarioSummary {
-  name: string;
-  tags: ScenarioTag[];
-}
+export type ScenarioDto = Scenario;
+export type SaveScenarioCase = ScenarioCase;
+export type SaveScenario = Scenario;
 
 export type ScenarioDto = Scenario;
 export type ScenarioListItem = ScenarioSummary;
@@ -121,29 +120,11 @@ export interface TriggerComparisonEntry {
 export const listScenarios = (pluginSlug: string, skillName: string) =>
   invokeCommand("list_scenarios", { pluginSlug, skillName });
 
-export const loadScenario = (
-  pluginSlug: string,
-  skillName: string,
-  scenarioName: string,
-) =>
-  invokeCommand("load_scenario", {
-    pluginSlug,
-    skillName,
-    scenarioName,
-  });
-
 export const saveScenario = (
   pluginSlug: string,
   skillName: string,
   scenario: SaveScenario,
-  originalName?: string | null,
-) =>
-  invokeCommand("save_scenario", {
-    pluginSlug,
-    skillName,
-    scenario,
-    originalName: originalName ?? null,
-  });
+) => invokeCommand("save_scenario", { pluginSlug, skillName, scenario });
 
 export const deleteScenario = (
   pluginSlug: string,
@@ -227,13 +208,13 @@ export function createDraftScenario(
 }
 
 export function scenarioSupportsMode(
-  scenario: Pick<ScenarioSummary, "tags">,
+  scenario: Pick<Scenario, "tags">,
   mode: EvalWorkbenchMode,
 ): boolean {
   return scenario.tags.includes("both") || scenario.tags.includes(mode);
 }
 
-export function scenarioToDraft(scenario: ScenarioDto): SaveScenario {
+export function scenarioToDraft(scenario: Scenario): SaveScenario {
   return {
     name: scenario.name,
     tags: [...scenario.tags],
@@ -286,10 +267,7 @@ export function validateScenario(
       return "Assertions must be an array.";
     }
     if (scenarioSupportsMode(draft, "performance")) {
-      if (
-        !(caseItem.expectedOutcome ?? "").trim() &&
-        caseItem.assertions.length === 0
-      ) {
+      if (!(caseItem.expectedOutcome ?? "").trim() && caseItem.assertions.length === 0) {
         return "Performance cases need an expected outcome or at least one assertion.";
       }
     }

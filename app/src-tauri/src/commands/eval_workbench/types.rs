@@ -82,25 +82,44 @@ pub struct EvalRun {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ScenarioAssertionDto {
+    #[serde(rename = "type")]
+    pub assertion_type: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScenarioCaseDto {
+    pub id: String,
+    pub prompt: String,
+    pub expected_outcome: Option<String>,
+    pub should_trigger: Option<bool>,
+    pub assertions: Vec<ScenarioAssertionDto>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScenarioDto {
+    pub name: String,
+    pub tags: Vec<String>,
+    pub cases: Vec<ScenarioCaseDto>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RunEvalWorkbenchRequest {
     pub run_id: String,
-    #[serde(default)]
-    pub prompt_set_id: Option<String>,
     pub plugin_slug: String,
     pub skill_name: String,
     pub scenario_name: String,
     pub mode: EvalWorkbenchMode,
-    #[serde(default)]
-    pub candidates: Vec<DescriptionCandidate>,
-    #[serde(default)]
     pub candidate_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SuggestDescriptionCandidatesRequest {
-    #[serde(default)]
-    pub prompt_set_id: Option<String>,
     pub plugin_slug: String,
     pub skill_name: String,
     pub scenario_name: String,

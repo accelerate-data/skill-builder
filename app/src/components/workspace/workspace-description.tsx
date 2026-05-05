@@ -44,12 +44,8 @@ interface WorkspaceDescriptionProps {
   skill: SkillSummary;
   workspacePath: string;
   scenario: ScenarioDto | null;
-  scenarioLoading?: boolean;
   onStartNewScenario: () => void;
-  onSaveScenario: (
-    scenario: ScenarioDto,
-    options?: { originalName?: string | null },
-  ) => Promise<ScenarioDto>;
+  onSaveScenario: (scenario: ScenarioDto) => Promise<ScenarioDto>;
   saveScenarioPending?: boolean;
   onRunningChange?: (running: boolean) => void;
   onApply?: (newDescription: string, newVersion: string) => void;
@@ -60,7 +56,6 @@ export function WorkspaceDescription({
   skill,
   workspacePath,
   scenario,
-  scenarioLoading = false,
   onStartNewScenario,
   onSaveScenario,
   saveScenarioPending = false,
@@ -91,18 +86,10 @@ export function WorkspaceDescription({
   const isRunning = generatingCandidates || running;
 
   useEffect(() => {
-    if (scenario) {
-      setDraft(scenarioToDraft(scenario));
-      setCandidates([]);
-      setActionError(null);
-      return;
-    }
-    if (!scenarioLoading) {
-      setDraft(createDraftScenario("trigger"));
-      setCandidates([]);
-      setActionError(null);
-    }
-  }, [scenario, scenarioLoading]);
+    setDraft(scenario ? scenarioToDraft(scenario) : createDraftScenario("trigger"));
+    setCandidates([]);
+    setActionError(null);
+  }, [scenario]);
 
   const baselineDescription = skill.description ?? "";
   const activeScenarioCases = scenario?.cases ?? [];
@@ -455,7 +442,7 @@ export function WorkspaceDescription({
           setCandidates([]);
           setActionError(null);
         }}
-        saveDisabled={saveScenarioPending || scenarioLoading}
+        saveDisabled={saveScenarioPending}
       />
 
       <section className="rounded-lg border bg-card p-4">

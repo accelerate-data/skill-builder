@@ -17,10 +17,10 @@ import {
   generateScenarios,
   getErrorMessage,
   listEvalRuns,
-  normalizeScenario,
   PERFORMANCE_CANDIDATE_IDS,
   readEvalRun,
   runEvalWorkbench,
+  normalizeScenario,
   scenarioToDraft,
   suggestAssertions,
   validateScenario,
@@ -39,12 +39,8 @@ interface WorkspaceEvalsProps {
   skill: SkillSummary | ImportedSkill;
   workspacePath: string | null;
   scenario: ScenarioDto | null;
-  scenarioLoading?: boolean;
   onStartNewScenario: () => void;
-  onSaveScenario: (
-    scenario: ScenarioDto,
-    options?: { originalName?: string | null },
-  ) => Promise<ScenarioDto>;
+  onSaveScenario: (scenario: ScenarioDto) => Promise<ScenarioDto>;
   saveScenarioPending?: boolean;
   onNavigateToRefine?: () => void;
   onRunningChange?: (running: boolean) => void;
@@ -54,7 +50,6 @@ export function WorkspaceEvals({
   skill,
   workspacePath,
   scenario,
-  scenarioLoading = false,
   onStartNewScenario,
   onSaveScenario,
   saveScenarioPending = false,
@@ -82,16 +77,9 @@ export function WorkspaceEvals({
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (scenario) {
-      setDraft(scenarioToDraft(scenario));
-      setActionError(null);
-      return;
-    }
-    if (!scenarioLoading) {
-      setDraft(createDraftScenario("performance"));
-      setActionError(null);
-    }
-  }, [scenario, scenarioLoading]);
+    setDraft(scenario ? scenarioToDraft(scenario) : createDraftScenario("performance"));
+    setActionError(null);
+  }, [scenario]);
 
   useEffect(() => {
     onRunningChange?.(running);
@@ -192,7 +180,7 @@ export function WorkspaceEvals({
     try {
       const generated = await generateScenarios(pluginSlug, skillName);
       for (const nextScenario of generated) {
-        await onSaveScenario(nextScenario, { originalName: null });
+        await onSaveScenario(nextScenario);
       }
     } catch (generationError) {
       setActionError(getErrorMessage(generationError));
@@ -336,7 +324,7 @@ export function WorkspaceEvals({
               <Badge variant="outline">Performance</Badge>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Git-backed scenarios and local Promptfoo-backed history for skill output quality.
+              Git-backed scenarios and run history for skill output quality.
             </p>
           </div>
           <div className="flex gap-2">
@@ -391,7 +379,7 @@ export function WorkspaceEvals({
         }}
         onSuggestAssertions={(caseIndex) => void handleSuggestAssertions(caseIndex)}
         suggestingAssertionsCaseIndex={suggestingAssertionsCaseIndex}
-        saveDisabled={saveScenarioPending || scenarioLoading}
+        saveDisabled={saveScenarioPending}
       />
 
       <RunHistory

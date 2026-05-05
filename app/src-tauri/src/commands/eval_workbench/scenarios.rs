@@ -3,9 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::db::EvalWorkbenchMode;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScenarioTag {
     Performance,
@@ -14,53 +12,38 @@ pub enum ScenarioTag {
 }
 
 impl ScenarioTag {
-    pub fn matches_mode(&self, mode: EvalWorkbenchMode) -> bool {
+    pub fn matches_mode(&self, mode: crate::db::EvalWorkbenchMode) -> bool {
         matches!(
             (self, mode),
             (Self::Both, _)
-                | (Self::Performance, EvalWorkbenchMode::Performance)
-                | (Self::Trigger, EvalWorkbenchMode::Trigger)
+                | (Self::Performance, crate::db::EvalWorkbenchMode::Performance)
+                | (Self::Trigger, crate::db::EvalWorkbenchMode::Trigger)
         )
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScenarioAssertion {
     #[serde(rename = "type")]
     pub assertion_type: String,
     pub value: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScenarioCase {
     pub id: String,
     pub prompt: String,
-    #[serde(default)]
     pub expected_outcome: Option<String>,
-    #[serde(default)]
     pub should_trigger: Option<bool>,
     #[serde(default)]
     pub assertions: Vec<ScenarioAssertion>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scenario {
     pub name: String,
-    #[serde(default)]
     pub tags: Vec<ScenarioTag>,
-    #[serde(default)]
     pub cases: Vec<ScenarioCase>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct SaveScenario {
-    pub original_name: Option<String>,
-    #[serde(flatten)]
-    pub scenario: Scenario,
 }
 
 pub fn validate_scenario_name(name: &str) -> Result<(), String> {
@@ -93,10 +76,7 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
             return Err("Scenario case id contains invalid path characters".to_string());
         }
         if case.prompt.trim().is_empty() {
-            return Err(format!(
-                "Scenario case '{}' prompt cannot be empty",
-                case.id
-            ));
+            return Err(format!("Scenario case '{}' prompt cannot be empty", case.id));
         }
     }
 
@@ -119,49 +99,15 @@ pub fn slugify_scenario_name(name: &str) -> String {
     slug.trim_matches('-').to_string()
 }
 
-pub fn scenario_file_name(scenario_name: &str) -> String {
-    let slug = slugify_scenario_name(scenario_name);
-    format!("{}.yaml", if slug.is_empty() { "scenario" } else { &slug })
-}
-
 pub fn scenario_file_path(eval_dir: &Path, scenario_name: &str) -> PathBuf {
-    eval_dir.join(scenario_file_name(scenario_name))
-}
-
-fn read_scenario_name_from_path(path: &Path) -> Result<Option<String>, String> {
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    read_scenario_file(path).map(|scenario| Some(scenario.name))
-}
-
-pub fn ensure_scenario_target_available(
-    eval_dir: &Path,
-    scenario_name: &str,
-    original_name: Option<&str>,
-) -> Result<(), String> {
-    let target = scenario_file_path(eval_dir, scenario_name);
-    let Some(existing_name) = read_scenario_name_from_path(&target)? else {
-        return Ok(());
-    };
-
-    let original_name = original_name.map(str::trim);
-    if existing_name == scenario_name || Some(existing_name.as_str()) == original_name {
-        return Ok(());
-    }
-
-    Err(format!(
-        "Scenario name '{}' conflicts with existing scenario '{}'",
-        scenario_name, existing_name
-    ))
+    eval_dir.join(format!("{}.yaml", slugify_scenario_name(scenario_name)))
 }
 
 pub fn read_scenario_file(path: &Path) -> Result<Scenario, String> {
     let content = fs::read_to_string(path)
-        .map_err(|error| format!("Failed to read {}: {error}", path.display()))?;
-    let scenario = serde_yaml::from_str(&content)
-        .map_err(|error| format!("Failed to parse {}: {error}", path.display()))?;
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+    let scenario: Scenario = serde_yaml::from_str(&content)
+        .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))?;
     validate_scenario(&scenario)?;
     Ok(scenario)
 }
@@ -169,18 +115,12 @@ pub fn read_scenario_file(path: &Path) -> Result<Scenario, String> {
 pub fn write_scenario_file(path: &Path, scenario: &Scenario) -> Result<(), String> {
     validate_scenario(scenario)?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            format!(
-                "Failed to create scenario directory {}: {error}",
-                parent.display()
-            )
-        })?;
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;
     }
-
     let content = serde_yaml::to_string(scenario)
-        .map_err(|error| format!("Failed to serialize scenario {}: {error}", scenario.name))?;
-    fs::write(path, content)
-        .map_err(|error| format!("Failed to write scenario file {}: {error}", path.display()))
+        .map_err(|e| format!("Failed to serialize scenario: {}", e))?;
+    fs::write(path, content).map_err(|e| format!("Failed to write {}: {}", path.display(), e))
 }
 
 pub fn list_scenarios(eval_dir: &Path) -> Result<Vec<Scenario>, String> {
@@ -190,77 +130,47 @@ pub fn list_scenarios(eval_dir: &Path) -> Result<Vec<Scenario>, String> {
 
     let mut scenarios = Vec::new();
     for entry in fs::read_dir(eval_dir)
-        .map_err(|error| format!("Failed to read eval dir {}: {error}", eval_dir.display()))?
+        .map_err(|e| format!("Failed to read eval dir {}: {}", eval_dir.display(), e))?
     {
-        let entry = entry.map_err(|error| format!("Failed to read eval dir entry: {error}"))?;
+        let entry = entry.map_err(|e| format!("Failed to read eval dir entry: {}", e))?;
         let path = entry.path();
-        if path.extension().and_then(|value| value.to_str()) != Some("yaml") {
+        if !path.is_file() {
             continue;
         }
-        if path.file_name().and_then(|value| value.to_str()) == Some("promptfooconfig.yaml") {
+        if !matches!(
+            path.extension().and_then(|value| value.to_str()),
+            Some("yaml") | Some("yml")
+        ) {
+            continue;
+        }
+        if path.file_stem().and_then(|value| value.to_str()) == Some("promptfooconfig") {
             continue;
         }
         scenarios.push(read_scenario_file(&path)?);
     }
 
-    scenarios.sort_by(|left, right| left.name.cmp(&right.name));
+    scenarios.sort_by(|left, right| {
+        left.name
+            .to_ascii_lowercase()
+            .cmp(&right.name.to_ascii_lowercase())
+            .then_with(|| left.name.cmp(&right.name))
+    });
     Ok(scenarios)
 }
 
 pub fn delete_scenario_file(eval_dir: &Path, scenario_name: &str) -> Result<(), String> {
     validate_scenario_name(scenario_name)?;
     let path = scenario_file_path(eval_dir, scenario_name);
-    if !path.exists() {
-        return Ok(());
+    if path.exists() {
+        fs::remove_file(&path)
+            .map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
     }
-
-    fs::remove_file(&path)
-        .map_err(|error| format!("Failed to delete scenario {}: {error}", path.display()))
-}
-
-pub fn rename_scenario_file(
-    eval_dir: &Path,
-    original_name: &str,
-    next_name: &str,
-) -> Result<(), String> {
-    if original_name == next_name {
-        return Ok(());
-    }
-
-    let source = scenario_file_path(eval_dir, original_name);
-    if !source.exists() {
-        return Ok(());
-    }
-
-    let target = scenario_file_path(eval_dir, next_name);
-    if source == target {
-        return Ok(());
-    }
-    if target.exists() {
-        let existing_name = read_scenario_name_from_path(&target)?
-            .unwrap_or_else(|| next_name.to_string());
-        return Err(format!(
-            "Scenario name '{}' conflicts with existing scenario '{}'",
-            next_name, existing_name
-        ));
-    }
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Failed to prepare {}: {error}", parent.display()))?;
-    }
-    fs::rename(&source, &target).map_err(|error| {
-        format!(
-            "Failed to rename scenario file {} -> {}: {error}",
-            source.display(),
-            target.display()
-        )
-    })
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
 
     fn sample_scenario() -> Scenario {
         Scenario {
@@ -281,34 +191,38 @@ mod tests {
 
     #[test]
     fn round_trips_yaml() {
-        let tmp = tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("regression.yaml");
         let scenario = sample_scenario();
-
         write_scenario_file(&path, &scenario).unwrap();
-
         let loaded = read_scenario_file(&path).unwrap();
         assert_eq!(loaded, scenario);
     }
 
     #[test]
-    fn lists_yaml_scenarios_and_skips_promptfoo_config() {
-        let tmp = tempdir().unwrap();
+    fn lists_yaml_scenarios_only() {
+        let tmp = tempfile::tempdir().unwrap();
         write_scenario_file(&tmp.path().join("a.yaml"), &sample_scenario()).unwrap();
         write_scenario_file(&tmp.path().join("b.yaml"), &sample_scenario()).unwrap();
-        fs::write(tmp.path().join("promptfooconfig.yaml"), "tests: []").unwrap();
-
+        fs::write(tmp.path().join("promptfooconfig.yaml"), "ignore: true").unwrap();
         let scenarios = list_scenarios(tmp.path()).unwrap();
-
         assert_eq!(scenarios.len(), 2);
     }
 
     #[test]
-    fn slugifies_scenario_names() {
-        assert_eq!(
-            slugify_scenario_name("Revenue Regression"),
-            "revenue-regression"
-        );
+    fn slugifies_scenario_name() {
+        assert_eq!(slugify_scenario_name("Happy Path"), "happy-path");
+    }
+
+    #[test]
+    fn deletes_slugified_scenario_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = scenario_file_path(tmp.path(), "Revenue Regression");
+        write_scenario_file(&path, &sample_scenario()).unwrap();
+
+        delete_scenario_file(tmp.path(), "Revenue Regression").unwrap();
+
+        assert!(!path.exists());
     }
 
     #[test]
@@ -319,44 +233,5 @@ mod tests {
         let error = validate_scenario(&scenario).unwrap_err();
 
         assert!(error.contains("must not be combined"));
-    }
-
-    #[test]
-    fn rejects_slug_collision_with_existing_scenario() {
-        let tmp = tempdir().unwrap();
-        let mut existing = sample_scenario();
-        existing.name = "Revenue Regression".into();
-        write_scenario_file(
-            &scenario_file_path(tmp.path(), &existing.name),
-            &existing,
-        )
-        .unwrap();
-
-        let error = ensure_scenario_target_available(
-            tmp.path(),
-            "Revenue-Regression",
-            None,
-        )
-        .unwrap_err();
-
-        assert!(error.contains("conflicts with existing scenario"));
-    }
-
-    #[test]
-    fn keeps_same_file_when_rename_slug_is_unchanged() {
-        let tmp = tempdir().unwrap();
-        let mut scenario = sample_scenario();
-        scenario.name = "Revenue Regression".into();
-        let path = scenario_file_path(tmp.path(), &scenario.name);
-        write_scenario_file(&path, &scenario).unwrap();
-
-        rename_scenario_file(
-            tmp.path(),
-            "Revenue Regression",
-            "Revenue-Regression",
-        )
-        .unwrap();
-
-        assert!(path.exists());
     }
 }

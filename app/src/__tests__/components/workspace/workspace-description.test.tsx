@@ -423,26 +423,25 @@ describe("WorkspaceDescription", () => {
 
   it("runs trigger comparison against the baseline plus candidates and recommends the best eval result", async () => {
     const user = userEvent.setup();
-    const scenarioWithNegativeCase = {
-      ...triggerScenario,
-      cases: [
-        ...triggerScenario.cases,
-        {
-          id: "case-2",
-          prompt: "Clean up old billing notes",
-          expectedOutcome: null,
-          shouldTrigger: false,
-          assertions: [],
-        },
-      ],
-    };
     mockReadEvalRun.mockResolvedValue(runDetailWithBaselineComparison);
 
     render(
       <WorkspaceDescription
         skill={skill}
         workspacePath="/workspace"
-        scenario={scenarioWithNegativeCase}
+        scenario={{
+          ...triggerScenario,
+          cases: [
+            ...triggerScenario.cases,
+            {
+              id: "case-2",
+              prompt: "Clean up old billing notes",
+              expectedOutcome: null,
+              shouldTrigger: false,
+              assertions: [],
+            },
+          ],
+        }}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
       />,
