@@ -123,7 +123,7 @@ export async function simulateAgentRun(
 
   const wait = (ms: number) => page.waitForTimeout(ms);
 
-  // 1. Init progress: init_start
+  // 1. Emit init_start stage
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
     stage: "init_start",
@@ -131,7 +131,7 @@ export async function simulateAgentRun(
   } satisfies AgentInitProgressPayload);
   await wait(delays);
 
-  // 2. Init progress: runtime_ready
+  // 2. Emit runtime_ready stage
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
     stage: "runtime_ready",
@@ -224,10 +224,11 @@ interface SimulateDisplayItemRunOptions {
 
 /**
  * Simulate a complete agent run using explicit DisplayItem payloads:
- * 1. agent-init-progress (init_start, runtime_ready)
- * 2. N agent-message events (type=display_item)
- * 3. agent-message (type=result) — pass-through for usage tracking
- * 4. agent-exit (success=true)
+ * 1. agent-init-progress (init_start)
+ * 2. agent-init-progress (runtime_ready)
+ * 3. N agent-message events (type=display_item)
+ * 4. agent-message (type=result) — pass-through for usage tracking
+ * 5. agent-exit (success=true)
  */
 export async function simulateAgentRunWithDisplayItems(
   page: Page,
@@ -242,7 +243,7 @@ export async function simulateAgentRunWithDisplayItems(
 
   const wait = (ms: number) => page.waitForTimeout(ms);
 
-  // Init progress
+  // 1. Emit init_start stage
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
     stage: "init_start",
@@ -250,6 +251,7 @@ export async function simulateAgentRunWithDisplayItems(
   } satisfies AgentInitProgressPayload);
   await wait(delays);
 
+  // 2. Emit runtime_ready stage
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
     stage: "runtime_ready",
@@ -289,7 +291,8 @@ export async function simulateAgentRunWithDisplayItems(
 
 /**
  * Simulate an agent that initializes but then exits with an error.
- * Emits the init sequence followed by agent-exit with success=false.
+ * Emits agent-init-progress (init_start), then agent-init-progress
+ * (runtime_ready), then agent-exit with success=false.
  */
 export async function simulateAgentError(
   page: Page,
@@ -298,7 +301,7 @@ export async function simulateAgentError(
   const delays = 50;
   const wait = (ms: number) => page.waitForTimeout(ms);
 
-  // Init sequence
+  // 1. Emit init_start stage
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
     stage: "init_start",
@@ -306,6 +309,7 @@ export async function simulateAgentError(
   } satisfies AgentInitProgressPayload);
   await wait(delays);
 
+  // 2. Emit runtime_ready stage
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
     stage: "runtime_ready",
