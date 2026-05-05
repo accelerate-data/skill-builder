@@ -590,25 +590,18 @@ pub(crate) fn delete_skill_filesystem_inner(
 }
 
 fn post_delete_skill_filesystem_inner(name: &str, skills_path: Option<&str>, plugin_slug: &str) {
-    // Auto-commit: record the deletion in git
     if let Some(sp) = skills_path {
-        // Regenerate marketplace manifests
         if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
             log::warn!("Manifest regeneration failed after delete: {}", e);
         }
-        // Note: for delete, the skill_dir no longer exists on disk; commit at the skills root
-        // so that the removal of the skill dir is recorded in the root repo (if any).
-        // Per-skill repos are gone with the directory, so we commit at the sp root.
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(Path::new(sp), plugin_slug, name);
-        let commit_path = if skill_dir.exists() {
-            skill_dir
-        } else {
-            Path::new(sp).to_path_buf()
-        };
+        // Per-skill repo is gone with the directory — nothing to commit.
+        let skill_dir = crate::skill_paths::resolve_skill_dir(Path::new(sp), plugin_slug, name);
+        if !skill_dir.exists() {
+            return;
+        }
         let msg = format!("{}: deleted", name);
-        if let Err(e) = crate::git::commit_all(&commit_path, &msg) {
-            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        if let Err(e) = crate::git::commit_all(&skill_dir, &msg) {
+            log::warn!("[post_delete_skill_filesystem_inner] git commit failed ({}): {:?}", msg, e);
         }
     }
 }
