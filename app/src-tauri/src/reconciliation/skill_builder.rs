@@ -266,14 +266,13 @@ pub(crate) fn reconcile_skill_builder(
             run.current_step + 1
         ));
     } else {
-        // Scenario 8: Steps 0-2 are DB-authoritative; no SKILL.md expected.
-        // Also reset any spuriously completed steps — DB may claim step 0 is
-        // completed but disk artifacts are gone (e.g. user deleted files).
+        // Scenario 8: current_step < 3, no SKILL.md on disk.
+        // Steps 0-2 are fully DB-authoritative — their completion status lives in
+        // workflow_steps, not on disk. Nothing to do; trust the DB.
         log::debug!(
-            "[reconcile] '{}': skill_source=skill-builder, action=reset_steps (no SKILL.md, step={})",
+            "[reconcile] '{}': skill_source=skill-builder, action=none (steps 0-2 are DB-authoritative, step={})",
             name, run.current_step
         );
-        crate::db::reset_workflow_steps_from(conn, name, 0)?;
     }
 
     // Warn if a completed skill is missing its skills_path output
