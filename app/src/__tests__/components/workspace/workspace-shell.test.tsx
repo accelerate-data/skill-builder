@@ -79,6 +79,7 @@ vi.mock("@/lib/tauri", () => ({
 }));
 
 const mockUseScenarios = vi.fn();
+const mockUseScenario = vi.fn();
 const mockUseSaveScenario = vi.fn();
 const mockListEvalRuns = vi.fn();
 const mockReadEvalRun = vi.fn();
@@ -89,6 +90,7 @@ const mockBuildRefineImprovementBrief = vi.fn();
 
 vi.mock("@/lib/queries/eval-scenarios", () => ({
   useScenarios: (...args: unknown[]) => mockUseScenarios(...args),
+  useScenario: (...args: unknown[]) => mockUseScenario(...args),
   useSaveScenario: (...args: unknown[]) => mockUseSaveScenario(...args),
 }));
 
@@ -154,6 +156,11 @@ const performanceScenario = {
       assertions: [],
     },
   ],
+};
+
+const performanceScenarioSummary = {
+  name: "Regression",
+  tags: ["performance"] as const,
 };
 
 const triggerScenario = {
@@ -243,11 +250,24 @@ describe("WorkspaceShell", () => {
   beforeEach(() => {
     refineState.isRunning = false;
     mockUseScenarios.mockReset().mockReturnValue({
-      data: [performanceScenario, triggerScenario],
+      data: [performanceScenarioSummary, triggerScenarioSummary],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
     });
+    mockUseScenario.mockReset().mockImplementation(
+      (skillName: string | null, pluginSlug: string, scenarioName: string | null) => ({
+        data:
+          skillName && pluginSlug && scenarioName === performanceScenario.name
+            ? performanceScenario
+            : skillName && pluginSlug && scenarioName === triggerScenario.name
+              ? triggerScenario
+              : null,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      }),
+    );
     mockUseSaveScenario.mockReset().mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue(performanceScenario),
       isPending: false,
@@ -476,6 +496,10 @@ describe("WorkspaceShell", () => {
 
     await user.click(screen.getByRole("tab", { name: "Trigger" }));
     expect(await screen.findByDisplayValue("Confirms invoice reconciliation steps")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Core workflow coverage" })).toHaveAttribute(
+      "data-variant",
+      "secondary",
+    );
     expect(mockUseScenario).toHaveBeenLastCalledWith(
       "sales-pipeline",
       "skills",
@@ -485,6 +509,26 @@ describe("WorkspaceShell", () => {
 
   it("falls back to the first visible scenario when the selected one does not support the next tab", async () => {
     const user = userEvent.setup();
+
+    mockUseScenarios.mockReset().mockReturnValue({
+      data: [performanceScenarioSummary, triggerScenarioSummary],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockUseScenario.mockReset().mockImplementation(
+      (_skillName: string | null, _pluginSlug: string, scenarioName: string | null) => ({
+        data:
+          scenarioName === performanceScenario.name
+            ? performanceScenario
+            : scenarioName === triggerScenario.name
+              ? triggerScenario
+              : null,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      }),
+    );
 
     render(
       <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,

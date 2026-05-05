@@ -122,6 +122,12 @@ void invokeCommand("list_scenarios", {
   skillName: "demo",
 });
 
+void invokeCommand("load_scenario", {
+  pluginSlug: "skills",
+  skillName: "demo",
+  scenarioName: "Regression",
+});
+
 void invokeCommand("save_scenario", {
   pluginSlug: "skills",
   skillName: "demo",

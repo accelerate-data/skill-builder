@@ -22,7 +22,13 @@ export interface Scenario {
   cases: ScenarioCase[];
 }
 
+export interface ScenarioSummary {
+  name: string;
+  tags: ScenarioTag[];
+}
+
 export type ScenarioDto = Scenario;
+export type ScenarioListItem = ScenarioSummary;
 export type SaveScenarioCase = ScenarioCase;
 export type SaveScenario = Scenario;
 
@@ -119,6 +125,17 @@ export interface TriggerComparisonEntry {
 
 export const listScenarios = (pluginSlug: string, skillName: string) =>
   invokeCommand("list_scenarios", { pluginSlug, skillName });
+
+export const loadScenario = (
+  pluginSlug: string,
+  skillName: string,
+  scenarioName: string,
+) =>
+  invokeCommand("load_scenario", {
+    pluginSlug,
+    skillName,
+    scenarioName,
+  });
 
 export const saveScenario = (
   pluginSlug: string,

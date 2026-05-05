@@ -1,18 +1,44 @@
 # Eval Workbench Scenarios Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Redesign the Eval Workbench to use git-backed scenario YAML files in `{plugin}/evals/{skill_name}/`, rename "Prompt set" to "Scenario", share scenarios between Performance and Trigger tabs via mode tags, and add LLM assistance for scenario and assertion generation.
+**Goal:** Redesign Eval Workbench so authored eval assets live on disk as git-backed scenario YAML files under `{plugin}/evals/{skill_name}/`, while run history is owned by app-side Promptfoo persisted state under `<data_dir>/promptfoo`. The app must not maintain a second eval identity or reconcile authored scenarios against app-owned history tables.
 
-**Prerequisite:** `docs/plans/2026-05-05-plugin-folder-structure.md` must be merged first. This plan assumes the canonical skill path is `{skills_dir}/{plugin_name}/skills/{skill_name}` and that the `eval_dir` template can be added as a sibling.
+**Prerequisite:** `docs/plans/2026-05-05-plugin-folder-structure.md` must be merged first. This plan assumes the canonical skill path is `{skills_dir}/{plugin_name}/skills/{skill_name}` and that the eval path can be added as a sibling.
 
-**Architecture:** Scenario YAML files are the source of truth. Tauri commands read/write YAML directly from the user's plugin directory. The active run-history path is the app-owned Promptfoo state under `<data_dir>/promptfoo`, while legacy prompt-set tables remain only for compatibility. Promptfoo config is generated in-memory from scenario files before each run. Scenario and assertion generation both use the app-owned OpenHands one-shot path.
+**Architecture:**
 
-**Tech Stack:** Rust / serde_yaml / Tauri / React / TanStack Query / Promptfoo sidecar. New Tauri commands for scenario CRUD. Frontend renames and tag UI. One-shot generation prompts are app-owned.
+- Scenario YAML files are the source of truth for authored eval content: scenario name, mode tags, cases, prompts, expected outcomes, and assertions.
+- Eval Workbench run history uses app-side Promptfoo persisted state under `<data_dir>/promptfoo`.
+- The app reads and writes scenario files directly from disk.
+- The app does not mirror scenarios into its own SQLite tables.
+- If a scenario folder is deleted from disk, those scenarios disappear from the app.
+- On another machine, authored scenarios appear after git sync, but prior run history does not unless that machine also has the same app-side Promptfoo state.
+- Promptfoo config is generated from scenario files at run time.
+- Trigger description candidates are app-local operational state keyed by scenario identity, not by `prompt_set_id`.
+- Repo engineering evals under `tests/evals` remain separate and must not be reused as the Eval Workbench history store.
+- This plan assumes a dev-only branch and removes prompt-set-era compatibility instead of preserving a legacy path.
 
-**Design doc:** `docs/design/eval-workbench-scenarios/README.md`
+**Tech Stack:** Rust / serde_yaml / Tauri / React / TanStack Query / Promptfoo persisted history. New Tauri commands for file-based scenario CRUD and file-based run preparation. Frontend renames and shared tag UI. LLM scenario and assertion generation remain one-shot generation flows, but they emit scenario content that is saved to disk.
 
----
+**Design docs:** `docs/design/eval-workbench-scenarios/README.md`, `docs/design/eval-workbench-scenarios-remediation/README.md`
+
+## Source Traceability
+
+- Functional spec: `not_applicable`
+- Design docs: `docs/design/eval-workbench-scenarios/README.md`
+- Implementation plan: `docs/plans/2026-05-05-eval-workbench-scenarios.md`
+
+## Decisions
+
+- Keep authored eval content on disk only.
+- Treat Eval Workbench Promptfoo history as app-local and machine-specific by design.
+- Remove app-owned eval identity coupling such as `prompt_set_id` mirrors.
+- Do not add reconciliation between authored scenarios and app-owned run tables.
+- Do not preserve legacy prompt-set compatibility in the active scenario path.
+- Key scenario-owned operational state by `(plugin_slug, skill_name, scenario_name)`.
+- Keep repo source-code eval tooling under `tests/evals` separate from app functionality.
+- If the current issue text still assumes app-owned eval history, update the issue to match this implementation plan before completion.
 
 ## Completion Audit (2026-05-05)
 
@@ -66,659 +92,249 @@ those requirements directly.
 | `app/plugin-paths.json` | Add `eval_dir` template |
 | `app/src-tauri/src/skill_paths.rs` | Add `resolve_eval_dir()` helper |
 | `app/src-tauri/Cargo.toml` | Add `serde_yaml` dependency |
-| `app/src-tauri/src/commands/eval_workbench/scenarios.rs` | New: CRUD commands for scenario files |
-| `app/src-tauri/src/commands/eval_workbench/mod.rs` | Register new commands; update run command to accept scenario name + mode |
-| `app/src-tauri/src/lib.rs` | Register new Tauri commands |
-| `app/src/lib/eval-workbench.ts` | Add scenario types; add `invokeCommand` wrappers for new commands |
-| `app/src/lib/tauri-command-types.ts` | Add new command type entries |
-| `app/src/lib/queries/eval-scenarios.ts` | New: TanStack Query hooks for scenario list/read/write |
-| `app/src/components/workspace/workspace-eval-workbench.tsx` | Wire scenario selector; pass tags to sub-tabs |
-| `app/src/components/workspace/workspace-evals.tsx` | Consume scenario type; rename prompt set UI labels |
-| `app/src/components/workspace/workspace-description.tsx` | Consume scenario type; show `both`-tagged scenarios |
-| `agent-sources/workspace/agents/scenario-generator.md` | New: one-shot agent for LLM scenario generation |
+| `app/src-tauri/src/commands/eval_workbench/scenarios.rs` | File-based scenario types and helpers |
+| `app/src-tauri/src/commands/eval_workbench/mod.rs` | File-based scenario CRUD, scenario-detail load, run preparation from disk, Promptfoo-history reads, candidate ownership rewrite |
+| `app/src-tauri/src/lib.rs` | Register Tauri commands |
+| `app/src-tauri/src/commands/settings.rs` or app path helpers | Resolve `<data_dir>/promptfoo` for app-side Promptfoo state |
+| `app/src-tauri/src/db/eval_workbench.rs` | Remove prompt-set-era active paths; keep only minimal app-local operational metadata if still needed |
+| `app/src/lib/eval-workbench.ts` | Scenario types and command wrappers |
+| `app/src/lib/tauri-command-types.ts` | Typed command entries |
+| `app/src/lib/queries/eval-scenarios.ts` | Query hooks for scenario list/read/write |
+| `app/src/components/workspace/workspace-eval-workbench.tsx` | Shared scenario selector across modes |
+| `app/src/components/workspace/workspace-evals.tsx` | Performance scenario editing and running |
+| `app/src/components/workspace/workspace-description.tsx` | Trigger scenario editing and running |
+| `app/src/__tests__/components/workspace/**` | UI coverage for shared scenario behavior |
+| `app/e2e/evals/evals.spec.ts` | Mocked browser coverage for performance mode |
+| `app/e2e/description/description-workbench.spec.ts` | Mocked browser coverage for trigger mode |
 
----
+## Task 1: Clean up the existing hybrid implementation first
 
-### Task 1: Add `eval_dir` to `plugin-paths.json` and Rust helper
+**Why first:** The current branch mixes file-backed scenarios with app-DB-backed prompt-set mirrors and an incomplete frontend/Tauri contract. Fix the compile/command break immediately, then remove the hybrid model before extending or tightening the feature.
+
+**Files:**
+
+- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- Modify: `app/src-tauri/src/db/eval_workbench.rs`
+- Modify: `app/src-tauri/src/db/migrations.rs`
+- Modify: any Eval Workbench Promptfoo history access helpers
+- Modify: `app/src/components/workspace/workspace-eval-workbench.tsx`
+- Modify: `app/src/components/workspace/workspace-evals.tsx`
+- Modify: `app/src/components/workspace/workspace-description.tsx`
+
+- [ ] Fix the current compile break by either removing `scenarioLoading` from call sites or adding it to the relevant component props and loading-state handling.
+- [ ] Implement and register `load_scenario` as a real file-backed Tauri command before deeper cleanup.
+- [ ] Remove scenario mirroring into app SQLite prompt-set tables.
+- [ ] Remove run-time dependence on mirrored `eval_prompt_sets` rows and `prompt_set_id`.
+- [ ] Remove delete / retag behavior that can wipe or hide historical results through app-DB coupling.
+- [ ] Remove stale app-owned prompt-set paths rather than isolating a legacy compatibility layer.
+- [ ] Identify any remaining Prompt Set era assumptions in the command layer and either delete them or rewrite them around file-backed scenarios plus Promptfoo-local history.
+- [ ] Ensure this cleanup does not touch the separate `tests/evals` engineering harness storage model.
+- [ ] Land this cleanup before further feature work or contract tightening.
+
+## Task 2: Establish file-based scenario storage
 
 **Files:**
 
 - Modify: `app/plugin-paths.json`
 - Modify: `app/src-tauri/src/skill_paths.rs`
-
-- [ ] **Step 1: Write failing test**
-
-In `app/src-tauri/src/skill_paths.rs` tests:
-
-```rust
-#[test]
-fn test_resolve_eval_dir() {
-    let root = Path::new("/users/alice/my-plugins");
-    let dir = resolve_eval_dir(root, "superpowers", "analyzing-bookings");
-    assert_eq!(
-        dir,
-        Path::new("/users/alice/my-plugins/superpowers/evals/analyzing-bookings")
-    );
-}
-```
-
-- [ ] **Step 2: Run test — verify it fails**
-
-```bash
-cd app && cargo test --manifest-path src-tauri/Cargo.toml test_resolve_eval_dir 2>&1 | grep -E "FAILED|ok|error"
-```
-
-Expected: compile error (function doesn't exist).
-
-- [ ] **Step 3: Add `eval_dir` to `plugin-paths.json`**
-
-```json
-{
-  "eval_dir": "{root}/{plugin_slug}/evals/{skill_name}"
-}
-```
-
-Add `eval_dir` to the `PluginPaths` struct and add the resolver function in `skill_paths.rs`:
-
-```rust
-// In PluginPaths struct:
-pub eval_dir: String,
-
-// New function:
-pub fn resolve_eval_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    resolve_path_template(
-        &paths().eval_dir,
-        &[
-            ("root", &root.to_string_lossy()),
-            ("plugin_slug", plugin_slug),
-            ("skill_name", skill_name),
-        ],
-    )
-}
-```
-
-- [ ] **Step 4: Run test — verify it passes**
-
-```bash
-cd app && cargo test --manifest-path src-tauri/Cargo.toml test_resolve_eval_dir 2>&1 | grep -E "FAILED|ok"
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add app/plugin-paths.json app/src-tauri/src/skill_paths.rs
-git commit -m "feat: add eval_dir template and resolve_eval_dir helper"
-```
-
----
-
-### Task 2: Define scenario types and file read/write in Rust
-
-**Files:**
-
-- Create: `app/src-tauri/src/commands/eval_workbench/scenarios.rs`
 - Modify: `app/src-tauri/Cargo.toml`
+- Create / modify: `app/src-tauri/src/commands/eval_workbench/scenarios.rs`
 
-- [ ] **Step 1: Add `serde_yaml` to Cargo.toml**
+- [X] Add `eval_dir` to `plugin-paths.json` as `{root}/{plugin_slug}/evals/{skill_name}`.
+- [X] Add `resolve_eval_dir()` to `skill_paths.rs`.
+- [X] Add `serde_yaml` to `Cargo.toml`.
+- [X] Define scenario types in `scenarios.rs`:
+  - `Scenario`
+  - `ScenarioTag`
+  - `ScenarioCase`
+  - `ScenarioAssertion`
+- [X] Implement file helpers:
+  - `list_scenarios`
+  - `read_scenario_file`
+  - `write_scenario_file`
+  - `delete_scenario_file`
+  - `scenario_file_path`
+  - validation helpers
+- [ ] Add a summary/detail split:
+  - scenario summaries for `list_scenarios`
+  - full scenario payloads for `load_scenario`
+- [X] Add Rust helper tests for:
+  - round-trip YAML
+  - file listing
+  - slugging
+  - delete behavior
+  - invalid tags / invalid names
 
-```toml
-[dependencies]
-serde_yaml = "0.9"
-```
-
-- [ ] **Step 2: Write failing tests**
-
-In a new test module at the bottom of `scenarios.rs`:
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-
-    fn sample_scenario() -> Scenario {
-        Scenario {
-            name: "Regression".into(),
-            tags: vec![ScenarioTag::Performance, ScenarioTag::Trigger],
-            cases: vec![ScenarioCase {
-                id: "case-1".into(),
-                prompt: "Show me Q3 booking trends".into(),
-                expected_outcome: Some("Regional breakdown with trend direction".into()),
-                should_trigger: Some(true),
-                assertions: vec![],
-            }],
-        }
-    }
-
-    #[test]
-    fn test_round_trip_yaml() {
-        let tmp = tempdir().unwrap();
-        let path = tmp.path().join("regression.yaml");
-        let scenario = sample_scenario();
-        write_scenario_file(&path, &scenario).unwrap();
-        let loaded = read_scenario_file(&path).unwrap();
-        assert_eq!(loaded.name, "Regression");
-        assert_eq!(loaded.cases.len(), 1);
-        assert_eq!(loaded.tags, vec![ScenarioTag::Performance, ScenarioTag::Trigger]);
-    }
-
-    #[test]
-    fn test_list_scenarios_returns_all_yaml_files() {
-        let tmp = tempdir().unwrap();
-        write_scenario_file(&tmp.path().join("a.yaml"), &sample_scenario()).unwrap();
-        write_scenario_file(&tmp.path().join("b.yaml"), &sample_scenario()).unwrap();
-        let scenarios = list_scenarios(tmp.path()).unwrap();
-        assert_eq!(scenarios.len(), 2);
-    }
-}
-```
-
-- [ ] **Step 3: Run tests — verify compile error**
-
-```bash
-cd app && cargo test --manifest-path src-tauri/Cargo.toml scenarios 2>&1 | grep -E "error|FAILED"
-```
-
-- [ ] **Step 4: Implement the types and file helpers**
-
-Create `app/src-tauri/src/commands/eval_workbench/scenarios.rs`:
-
-```rust
-use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
-use std::fs;
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ScenarioTag {
-    Performance,
-    Trigger,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScenarioAssertion {
-    #[serde(rename = "type")]
-    pub assertion_type: String,
-    pub value: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScenarioCase {
-    pub id: String,
-    pub prompt: String,
-    pub expected_outcome: Option<String>,
-    pub should_trigger: Option<bool>,
-    #[serde(default)]
-    pub assertions: Vec<ScenarioAssertion>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Scenario {
-    pub name: String,
-    pub tags: Vec<ScenarioTag>,
-    pub cases: Vec<ScenarioCase>,
-}
-
-pub fn read_scenario_file(path: &Path) -> Result<Scenario, String> {
-    let content = fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-    serde_yaml::from_str(&content)
-        .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))
-}
-
-pub fn write_scenario_file(path: &Path, scenario: &Scenario) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
-    }
-    let content = serde_yaml::to_string(scenario)
-        .map_err(|e| format!("Failed to serialize scenario: {}", e))?;
-    fs::write(path, content)
-        .map_err(|e| format!("Failed to write {}: {}", path.display(), e))
-}
-
-pub fn list_scenarios(eval_dir: &Path) -> Result<Vec<Scenario>, String> {
-    if !eval_dir.exists() {
-        return Ok(vec![]);
-    }
-    let mut scenarios = Vec::new();
-    for entry in fs::read_dir(eval_dir)
-        .map_err(|e| format!("Failed to read eval dir: {}", e))?
-    {
-        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("yaml")
-            && path.file_name().and_then(|n| n.to_str()) != Some("promptfooconfig.yaml")
-        {
-            scenarios.push(read_scenario_file(&path)?);
-        }
-    }
-    scenarios.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(scenarios)
-}
-
-pub fn delete_scenario_file(eval_dir: &Path, scenario_name: &str) -> Result<(), String> {
-    let filename = format!("{}.yaml", scenario_name.to_lowercase().replace(' ', "-"));
-    let path = eval_dir.join(&filename);
-    if path.exists() {
-        fs::remove_file(&path).map_err(|e| format!("Failed to delete {}: {}", path.display(), e))
-    } else {
-        Ok(())
-    }
-}
-
-pub fn scenario_file_path(eval_dir: &Path, scenario_name: &str) -> PathBuf {
-    let filename = format!("{}.yaml", scenario_name.to_lowercase().replace(' ', "-"));
-    eval_dir.join(filename)
-}
-```
-
-- [ ] **Step 5: Run tests — verify they pass**
-
-```bash
-cd app && cargo test --manifest-path src-tauri/Cargo.toml scenarios 2>&1 | grep -E "FAILED|ok"
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add app/src-tauri/Cargo.toml app/src-tauri/src/commands/eval_workbench/scenarios.rs
-git commit -m "feat: scenario YAML types and file read/write helpers"
-```
-
----
-
-### Task 3: Tauri commands for scenario CRUD
+## Task 3: Make Tauri scenario commands purely file-based
 
 **Files:**
 
 - Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
 - Modify: `app/src-tauri/src/lib.rs`
+- Modify: `app/src/lib/eval-workbench.ts`
 - Modify: `app/src/lib/tauri-command-types.ts`
-- Modify: `app/src/lib/tauri.ts` (add invokeCommand wrappers)
+- Modify: `app/src/lib/tauri-command-types.typecheck.ts`
+- Create / modify: `app/src/lib/queries/eval-scenarios.ts`
 
-- [ ] **Step 1: Write failing TypeScript test**
+- [ ] Expose file-based commands:
+  - `list_scenarios`
+  - `load_scenario`
+  - `save_scenario`
+  - `delete_scenario`
+- [ ] Ensure `save_scenario` writes only YAML to disk.
+- [ ] If rename support is needed, make it a file rename operation, not a second saved identity.
+- [ ] Remove any scenario mirroring into app SQLite tables.
+- [ ] Remove any command requirement that a scenario must first exist in app SQLite before it can run.
+- [ ] Update frontend wrappers and query hooks to use the file-based commands only.
+- [ ] Add command-surface tests for scenario CRUD behavior, including real `load_scenario` registration.
 
-In `app/src/__tests__/lib/` add `eval-scenarios.test.ts`:
-
-```typescript
-import { describe, it, expect, vi } from "vitest";
-import { invokeCommand } from "@/lib/tauri";
-
-vi.mock("@/lib/tauri");
-
-it("list_scenarios command is typed", () => {
-  expect(() =>
-    vi.mocked(invokeCommand).mockResolvedValue([])
-  ).not.toThrow();
-});
-```
-
-- [ ] **Step 2: Add Rust Tauri commands**
-
-In `app/src-tauri/src/commands/eval_workbench/mod.rs`, add:
-
-```rust
-#[tauri::command]
-pub async fn list_scenarios(
-    skill_name: String,
-    plugin_slug: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<scenarios::Scenario>, String> {
-    let skills_path = state.resolve_skills_path()?;
-    let eval_dir = skill_paths::resolve_eval_dir(&skills_path, &plugin_slug, &skill_name);
-    scenarios::list_scenarios(&eval_dir)
-}
-
-#[tauri::command]
-pub async fn save_scenario(
-    skill_name: String,
-    plugin_slug: String,
-    scenario: scenarios::Scenario,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    let skills_path = state.resolve_skills_path()?;
-    let eval_dir = skill_paths::resolve_eval_dir(&skills_path, &plugin_slug, &skill_name);
-    let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
-    scenarios::write_scenario_file(&path, &scenario)
-}
-
-#[tauri::command]
-pub async fn delete_scenario(
-    skill_name: String,
-    plugin_slug: String,
-    scenario_name: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    let skills_path = state.resolve_skills_path()?;
-    let eval_dir = skill_paths::resolve_eval_dir(&skills_path, &plugin_slug, &skill_name);
-    scenarios::delete_scenario_file(&eval_dir, &scenario_name)
-}
-```
-
-Register in `app/src-tauri/src/lib.rs` alongside existing eval_workbench commands.
-
-- [ ] **Step 3: Add TypeScript command types**
-
-In `app/src/lib/tauri-command-types.ts`:
-
-```typescript
-list_scenarios: {
-  args: { skillName: string; pluginSlug: string };
-  result: ScenarioDto[];
-};
-save_scenario: {
-  args: { skillName: string; pluginSlug: string; scenario: ScenarioDto };
-  result: void;
-};
-delete_scenario: {
-  args: { skillName: string; pluginSlug: string; scenarioName: string };
-  result: void;
-};
-```
-
-- [ ] **Step 4: Add TypeScript types to `eval-workbench.ts`**
-
-```typescript
-export type ScenarioTag = "performance" | "trigger";
-
-export interface ScenarioAssertionDto {
-  assertion_type: string;
-  value: string;
-}
-
-export interface ScenarioCaseDto {
-  id: string;
-  prompt: string;
-  expected_outcome?: string | null;
-  should_trigger?: boolean | null;
-  assertions: ScenarioAssertionDto[];
-}
-
-export interface ScenarioDto {
-  name: string;
-  tags: ScenarioTag[];
-  cases: ScenarioCaseDto[];
-}
-```
-
-- [ ] **Step 5: Run typecheck**
-
-```bash
-cd app && npx tsc --noEmit 2>&1 | head -20
-```
-
-- [ ] **Step 6: Run cargo build**
-
-```bash
-cd app && cargo build --manifest-path src-tauri/Cargo.toml 2>&1 | grep -E "^error" | head -10
-```
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add app/src-tauri/src/commands/eval_workbench/ app/src-tauri/src/lib.rs app/src/lib/tauri-command-types.ts app/src/lib/eval-workbench.ts
-git commit -m "feat: Tauri commands for scenario CRUD (list, save, delete)"
-```
-
----
-
-### Task 4: Frontend — rename labels, add tags, shared scenario pool
+## Task 4: Run Eval Workbench directly from scenario files
 
 **Files:**
 
-- Create: `app/src/lib/queries/eval-scenarios.ts`
+- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- Modify: any helper modules that build Promptfoo input
+
+- [ ] Change run preparation so both Performance and Trigger modes read the selected scenario YAML from disk.
+- [ ] Filter cases by scenario tags and selected mode.
+- [ ] Generate Promptfoo input in memory from the file-backed scenario.
+- [ ] Remove any dependency on mirrored `eval_prompt_sets` rows or `prompt_set_id` lookups for active runs.
+- [ ] Ensure a git-synced scenario can run on a fresh app DB with no resave step.
+- [ ] Key active runtime lookups by `(plugin_slug, skill_name, scenario_name)` rather than prompt-set ids.
+- [ ] Add Rust tests for:
+  - running a disk-backed scenario with a fresh DB
+  - rejecting a scenario for the wrong mode
+  - loading the right case set for `performance`, `trigger`, and `both`
+
+## Task 5: Treat Promptfoo state as the run-history system
+
+**Files:**
+
+- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- Modify: any Promptfoo history access helpers used by Eval Workbench
+- Modify or remove: app DB-backed eval history code paths
+- Modify: app data-dir path helpers as needed to resolve `<data_dir>/promptfoo`
+
+- [ ] Stop using app SQLite as the authoritative eval run-history store for Eval Workbench.
+- [ ] Read run history from app-side Promptfoo persisted state under `<data_dir>/promptfoo`.
+- [ ] Make the app resilient to empty local Promptfoo history:
+  - scenarios still load from disk
+  - history simply appears empty on that machine
+- [ ] Ensure deleting a scenario from disk removes authored visibility only; it must not trigger app-owned run-history deletion logic.
+- [ ] Update any UI copy that previously implied run history follows the scenario across machines.
+- [ ] Remove or bypass app-owned schema assumptions such as `eval_runs.prompt_set_id` for this flow.
+- [ ] If Promptfoo persisted state alone cannot recover the existing `EvalRun` frontend contract, add only the minimum run-metadata adapter keyed by run id and scenario identity.
+- [ ] Keep this state path separate from repo engineering eval state under `tests/evals`.
+
+## Task 6: Update the shared workbench UI around scenarios
+
+**Files:**
+
 - Modify: `app/src/components/workspace/workspace-eval-workbench.tsx`
 - Modify: `app/src/components/workspace/workspace-evals.tsx`
 - Modify: `app/src/components/workspace/workspace-description.tsx`
+- Modify: `app/src/components/workspace/eval-workbench/prompt-set-editor.tsx`
 
-- [ ] **Step 1: Write failing component test**
+- [X] Rename user-facing "Prompt Set" language to "Scenario".
+- [X] Keep one shared scenario list for Performance and Trigger, filtered by tag.
+- [X] Allow authors to mark scenarios as:
+  - `performance`
+  - `trigger`
+  - `both`
+- [X] Ensure the selected scenario survives tab switches where valid and falls back safely when not valid.
+- [X] Ensure deleting the eval folder from disk results in no scenarios being shown after refresh.
+- [ ] Keep creation/editing UI aligned with the accepted product behavior; if the issue text still says "modal" but the chosen UX is inline, update the issue before completion.
 
-In `app/src/__tests__/components/workspace-eval-workbench.test.tsx` (create if absent), add:
-
-```typescript
-it("shows 'New Scenario' button, not 'New prompt set'", async () => {
-  render(<WorkspaceEvalWorkbench skillName="test-skill" pluginSlug="default" />);
-  expect(await screen.findByText("New Scenario")).toBeInTheDocument();
-  expect(screen.queryByText("New prompt set")).not.toBeInTheDocument();
-});
-```
-
-- [ ] **Step 2: Create TanStack Query hooks**
-
-Create `app/src/lib/queries/eval-scenarios.ts`:
-
-```typescript
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { invokeCommand } from "@/lib/tauri";
-import type { ScenarioDto } from "@/lib/eval-workbench";
-
-export const evalScenarioKeys = {
-  list: (skillName: string, pluginSlug: string) =>
-    ["eval-scenarios", skillName, pluginSlug] as const,
-};
-
-export function useScenarios(skillName: string | null, pluginSlug: string) {
-  return useQuery({
-    queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug),
-    queryFn: () =>
-      invokeCommand("list_scenarios", { skillName: skillName!, pluginSlug }),
-    enabled: !!skillName,
-  });
-}
-
-export function useSaveScenario(skillName: string | null, pluginSlug: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (scenario: ScenarioDto) =>
-      invokeCommand("save_scenario", { skillName: skillName!, pluginSlug, scenario }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug) });
-    },
-  });
-}
-
-export function useDeleteScenario(skillName: string | null, pluginSlug: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (scenarioName: string) =>
-      invokeCommand("delete_scenario", { skillName: skillName!, pluginSlug, scenarioName }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug) });
-    },
-  });
-}
-```
-
-- [ ] **Step 3: Update `workspace-eval-workbench.tsx`**
-
-Add a scenario selector at the top of the component. When Performance tab is active, show only scenarios tagged `"performance"` or `"both"`. When Trigger tab is active, show only `"trigger"` or `"both"`. The selected scenario is passed down to `WorkspaceEvals` and `WorkspaceDescription`.
-
-Replace the "New prompt set" button with "New Scenario". Replace "Prompt set" section heading with "Scenarios".
-
-- [ ] **Step 4: Rename labels throughout**
-
-In `workspace-evals.tsx` and `workspace-description.tsx`, do a mechanical rename:
-
-- `"New prompt set"` → `"New Scenario"`
-- `"Prompt set name"` → `"Scenario name"`
-- `"Save prompt set"` → `"Save scenario"`
-- `"Case prompt"` → `"User prompt"`
-- `"Run prompt set"` → `"Run scenario"`
-
-Also add the tag selector (`performance`, `trigger`, `both`) when creating or editing a scenario.
-
-- [ ] **Step 5: Add `should_trigger` field to cases in Performance/Trigger split**
-
-A case in a `both`-tagged scenario shows two additional fields: `Expected outcome` (for performance mode) and a `Should trigger` toggle (for trigger mode). Cases in performance-only scenarios show only `Expected outcome`. Cases in trigger-only scenarios show only `Should trigger`.
-
-- [ ] **Step 6: Run integration tests**
-
-```bash
-cd app && npm run test:integration 2>&1 | grep -E "FAILED|Tests "
-```
-
-Fix any broken snapshot or label assertion.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add app/src/lib/queries/eval-scenarios.ts app/src/components/workspace/
-git commit -m "feat: shared scenario pool with mode tags, rename Prompt set → Scenario"
-```
-
----
-
-### Task 5: LLM scenario generation agent
+## Task 7: Keep LLM generation file-first
 
 **Files:**
 
-- Create: `agent-sources/workspace/agents/scenario-generator.md`
-- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs` (new `generate_scenarios` command)
-- Modify: frontend to add "Generate scenarios" button
+- Modify: `app/src/components/workspace/workspace-evals.tsx`
+- Modify: `app/src/components/workspace/eval-workbench/prompt-set-editor.tsx`
+- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
 
-- [ ] **Step 1: Write the agent prompt**
+- [X] Keep "Generate scenarios" as a one-shot generation flow that reads the skill folder and returns scenario content.
+- [X] Save generated scenarios as YAML files through the same file-based save path as manual edits.
+- [X] Keep "Suggest assertions" as a per-case generation flow that updates the scenario draft and persists to disk on save.
+- [ ] Enforce any required output bounds in code, not just in prompt text:
+  - scenarios: 3 to 5 generated items if that remains the contract
+  - assertions: 1 to 3 generated items if that remains the contract
+- [ ] If the accepted product behavior is "generate scenario DTOs and then save to YAML", record that clearly in Linear and the design doc.
+- [ ] Do not route generation flows through prompt-set-era save or ownership helpers.
 
-Create `agent-sources/workspace/agents/scenario-generator.md`:
-
-```markdown
----
-name: scenario-generator
-description: Generates eval scenarios for a skill by reading its definition files
-model: sonnet
-output_schema:
-  type: object
-  properties:
-    scenarios:
-      type: array
-      items:
-        type: object
-        properties:
-          name: { type: string }
-          tags: { type: array, items: { type: string, enum: [performance, trigger] } }
-          cases:
-            type: array
-            items:
-              type: object
-              properties:
-                id: { type: string }
-                prompt: { type: string }
-                expected_outcome: { type: string }
-                should_trigger: { type: boolean }
----
-
-You generate realistic eval scenarios for a skill based on its definition.
-
-You will be given the path to a skill folder. Read SKILL.md and any supporting
-context (clarifications, decisions) to understand what the skill does, what
-inputs it expects, and what good output looks like.
-
-Generate 3–5 named scenarios as structured output. Each scenario must have:
-- A descriptive `name` (e.g., "Happy Path", "Edge Cases", "Negative Cases")
-- `tags`: `["both"]` for core use cases, `["performance"]` for output quality cases,
-  `["trigger"]` for selection boundary cases
-- 2–4 `cases`, each with:
-  - `id`: kebab-case unique identifier
-  - `prompt`: a realistic user request that someone would type
-  - `expected_outcome`: what a good skill response should contain or accomplish
-    (omit for trigger-only cases)
-  - `should_trigger`: true for prompts the skill should handle, false for
-    out-of-scope prompts (omit for performance-only cases)
-
-Focus on variety: happy paths, edge inputs, and at least one negative (should_trigger: false) case.
-```
-
-- [ ] **Step 2: Add `generate_scenarios` Tauri command**
-
-In `eval_workbench/mod.rs`:
-
-```rust
-#[tauri::command]
-pub async fn generate_scenarios(
-    skill_name: String,
-    plugin_slug: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
-    // Launch scenario-generator agent with the skill directory path as context.
-    // Returns agent_id; frontend watches for completion via agent events.
-    let settings = state.load_settings()?;
-    let skills_path = settings.skills_path.ok_or("Skills path not set")?;
-    let skill_dir = skill_paths::resolve_skill_dir(
-        Path::new(&skills_path), &plugin_slug, &skill_name
-    );
-    // Pass skill_dir to the scenario-generator agent as the working context
-    run_scenario_generator_agent(&skill_dir, &state).await
-}
-```
-
-- [ ] **Step 3: Add "Generate scenarios" button to the frontend**
-
-In the scenario section of `workspace-eval-workbench.tsx`, add a "Generate scenarios" button alongside "New Scenario". Clicking it invokes `generate_scenarios` and shows a loading state. On completion, the structured output is parsed and saved via `save_scenario` for each generated scenario, then the scenario list is refreshed.
-
-- [ ] **Step 4: Run structural agent tests**
-
-```bash
-cd app && npm run test:agents:structural 2>&1 | grep -E "FAILED|PASS"
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add agent-sources/workspace/agents/scenario-generator.md app/src-tauri/src/commands/eval_workbench/mod.rs app/src/components/workspace/
-git commit -m "feat: LLM scenario generation agent and Generate scenarios button"
-```
-
----
-
-### Task 6: LLM assertion generation
+## Task 8: Retarget trigger candidate persistence around scenario identity
 
 **Files:**
 
-- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs` (new `suggest_assertions` command)
-- Modify: `app/src/components/workspace/workspace-evals.tsx` (per-case "Suggest assertions" action)
+- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- Modify: `app/src-tauri/src/db/eval_workbench.rs`
+- Modify: candidate/history helper code used by `apply_description_candidate` and `build_refine_improvement_brief`
 
-- [ ] **Step 1: Add `suggest_assertions` Tauri command**
+- [ ] Store trigger description candidates as app-local operational metadata keyed by scenario identity, not `prompt_set_id`.
+- [ ] Update candidate generation, comparison, apply, and refine-brief flows to validate `(plugin_slug, skill_name, scenario_name)`.
+- [ ] Ensure this store does not duplicate authored scenario cases, tags, or assertions.
+- [ ] Add tests that prove candidates remain valid across scenario reloads and on a fresh DB.
 
-This is a cheap one-shot call (not a full agent run). Add to `eval_workbench/mod.rs`:
+## Task 9: Remove stale app-DB coupling from the implementation contract
 
-```rust
-#[tauri::command]
-pub async fn suggest_assertions(
-    prompt: String,
-    expected_outcome: String,
-    model: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<SuggestedAssertion>, String> {
-    // One-shot LLM call: given a user prompt and expected outcome,
-    // return 1–3 promptfoo assertion expressions.
-    // Uses the same one-shot infrastructure as generate_description_candidates.
-    suggest_assertions_inner(prompt, expected_outcome, model, &state).await
-}
-```
+**Files:**
 
-The system prompt instructs the LLM to return an array of `{ type, value }` assertion objects appropriate for the expected behavior (llm-rubric for qualitative, contains for key terms, javascript for structural checks).
+- Modify: `docs/design/eval-workbench-scenarios/README.md`
+- Modify: `docs/design/eval-workbench-scenarios-remediation/README.md` if implementation details sharpen further
+- Modify: Linear issue `VU-1161` if needed
 
-- [ ] **Step 2: Add per-case "Suggest assertions" button**
+- [ ] Update the design doc to state explicitly:
+  - authored scenarios live on disk
+  - Eval Workbench Promptfoo history is app-local under `<data_dir>/promptfoo`
+  - the app does not reconcile scenario identity against its own DB
+  - trigger candidate ownership is scenario-scoped operational metadata
+  - repo eval tooling under `tests/evals` is separate from app functionality
+- [ ] Update acceptance criteria if they still require app-owned `scenario_name` run history instead of Promptfoo-owned history.
+- [ ] Remove any plan or issue language that implies a second app-owned source of truth for eval identity.
 
-In `workspace-evals.tsx`, add a small "Suggest" button next to the assertions section of each case. When clicked, calls `suggest_assertions` with the case's current prompt and expected_outcome. The response populates the assertions list for review.
+## Task 10: Verification
 
-- [ ] **Step 3: Run typecheck and tests**
-
-```bash
-cd app && npx tsc --noEmit && npm run test:integration 2>&1 | grep -E "FAILED|Tests "
-```
-
-- [ ] **Step 4: Update design doc index**
-
-In `docs/design/README.md`, add:
-
-```markdown
-| [eval-workbench-scenarios/](eval-workbench-scenarios/README.md) | Eval Workbench v2: git-backed scenario files, shared Performance/Trigger pool, LLM generation |
-```
-
-- [ ] **Step 5: Commit**
+- [ ] Run:
 
 ```bash
-git add app/src-tauri/src/commands/eval_workbench/ app/src/components/workspace/ docs/design/README.md
-git commit -m "feat: LLM assertion suggestion per eval case"
+cd app && npx tsc --noEmit
+cd app && cargo test --manifest-path src-tauri/Cargo.toml commands::eval_workbench
+cd app && npx vitest run src/__tests__/lib/eval-workbench-tauri.test.ts
+cd app && npm run test:unit
+cd app && bash tests/run.sh e2e --tag @evals
+cd app && bash tests/run.sh e2e --tag @description
 ```
+
+- [ ] Add focused tests for the critical regressions:
+  - the current compile break stays fixed
+  - `load_scenario` is implemented and registered for the real command surface
+  - fresh DB plus existing YAML scenarios can run without resave
+  - deleting or retagging scenarios does not corrupt local run-history access
+  - renaming a scenario behaves as a rename, not a duplicate
+  - shared scenario selection behaves correctly across tabs
+  - trigger candidates remain scoped to scenario identity without `prompt_set_id`
+- [ ] Run any additional changed-area tests required by `TEST_MAP.md`.
+
+## Checkpoints
+
+- [ ] Checkpoint 1: hybrid DB/disk coupling is removed.
+- [ ] Checkpoint 2: file-based scenario CRUD is complete and tested.
+- [ ] Checkpoint 3: run preparation no longer depends on app-owned prompt-set mirrors.
+- [ ] Checkpoint 4: Promptfoo history is the only run-history source used by Eval Workbench.
+- [ ] Checkpoint 5: trigger candidates are scoped by scenario identity, not prompt-set identity.
+- [ ] Checkpoint 6: UI flows and mapped E2E coverage pass.
+- [ ] Checkpoint 7: design docs and Linear contract match the implementation.
+
+## Manual Checks
+
+- [ ] Verify that a scenario committed to git appears on a second checkout without any app-DB migration step.
+- [ ] Verify that the second checkout shows no prior run history until it runs Promptfoo locally under that app's `<data_dir>/promptfoo`.
+- [ ] Verify that deleting the scenario file from disk removes it from the app after refresh.
+- [ ] Verify that repo engineering eval runs under `tests/evals` do not appear in the app history view.
+
+## Out of Scope
+
+- Shared cross-machine Promptfoo history sync
+- Multi-skill or cross-plugin scenario reuse
+- Promptfoo bundling changes
+- Reworking unrelated trigger-description optimization flows

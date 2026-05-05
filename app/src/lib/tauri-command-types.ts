@@ -42,6 +42,7 @@ import type {
   EvalWorkbenchMode,
   RefineImprovementBrief,
   RunEvalWorkbenchRequest,
+  ScenarioListItem,
   ScenarioDto,
   SuggestAssertionsRequest,
   SuggestDescriptionCandidatesRequest,
@@ -447,7 +448,11 @@ export interface TauriCommandMap {
   };
   list_scenarios: {
     args: { pluginSlug: string; skillName: string };
-    result: ScenarioDto[];
+    result: ScenarioListItem[];
+  };
+  load_scenario: {
+    args: { pluginSlug: string; skillName: string; scenarioName: string };
+    result: ScenarioDto | null;
   };
   save_scenario: {
     args: { pluginSlug: string; skillName: string; scenario: ScenarioDto };

@@ -9,7 +9,11 @@ import {
   getErrorMessage,
   scenarioSupportsMode,
 } from "@/lib/eval-workbench";
-import { useSaveScenario, useScenarios } from "@/lib/queries/eval-scenarios";
+import {
+  useSaveScenario,
+  useScenario,
+  useScenarios,
+} from "@/lib/queries/eval-scenarios";
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
 import { WorkspaceDescription } from "./workspace-description";
 import { WorkspaceEvals } from "./workspace-evals";
@@ -47,9 +51,12 @@ export function WorkspaceEvalWorkbench({
   const visibleScenarios = scenarios.filter((scenario) =>
     scenarioSupportsMode(scenario, activeMode),
   );
-  const selectedScenario =
-    visibleScenarios.find((scenario) => scenario.name === selectedScenarioName) ??
-    null;
+  const selectedScenarioQuery = useScenario(
+    skillName,
+    pluginSlug,
+    selectedScenarioName,
+  );
+  const selectedScenario = selectedScenarioQuery.data ?? null;
 
   useEffect(() => {
     setActiveMode(initialMode);
@@ -163,6 +170,27 @@ export function WorkspaceEvalWorkbench({
               </p>
             )
           ) : null}
+
+          {!scenariosQuery.isLoading && !scenariosQuery.error && selectedScenarioName ? (
+            selectedScenarioQuery.isLoading ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Loading scenario…
+              </p>
+            ) : selectedScenarioQuery.error ? (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                <p className="text-sm text-destructive">
+                  {getErrorMessage(selectedScenarioQuery.error)}
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void selectedScenarioQuery.refetch()}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : null
+          ) : null}
         </div>
       </section>
 
@@ -175,6 +203,7 @@ export function WorkspaceEvalWorkbench({
           skill={skill}
           workspacePath={workspacePath}
           scenario={selectedScenario}
+          scenarioLoading={selectedScenarioQuery.isLoading}
           onStartNewScenario={handleStartNewScenario}
           onSaveScenario={handleSaveScenario}
           saveScenarioPending={saveScenarioMutation.isPending}
@@ -192,6 +221,7 @@ export function WorkspaceEvalWorkbench({
           skill={triggerSkill}
           workspacePath={workspacePath ?? ""}
           scenario={selectedScenario}
+          scenarioLoading={selectedScenarioQuery.isLoading}
           onStartNewScenario={handleStartNewScenario}
           onSaveScenario={handleSaveScenario}
           saveScenarioPending={saveScenarioMutation.isPending}
