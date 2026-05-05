@@ -3107,6 +3107,27 @@ mod tests {
     }
 
     #[test]
+    fn list_scenarios_command_ignores_broken_sibling_yaml_for_valid_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let dto = sample_scenario_dto("Regression");
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        std::fs::create_dir_all(&eval_dir).unwrap();
+        scenarios::write_scenario_file(
+            &eval_dir.join("valid-target.yaml"),
+            &scenario_from_dto(dto).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(eval_dir.join("broken-sibling.yaml"), "name: [").unwrap();
+
+        let visible = list_scenarios("skills".into(), "forecast".into(), db_state(&db)).unwrap();
+
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].name, "Regression");
+        assert_eq!(visible[0].tags, vec!["performance".to_string()]);
+    }
+
+    #[test]
     fn save_scenario_command_succeeds_with_broken_sibling_yaml_present() {
         let tmp = tempfile::tempdir().unwrap();
         let db = create_scenario_db(tmp.path());

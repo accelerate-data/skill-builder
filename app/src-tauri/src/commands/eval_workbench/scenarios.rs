@@ -169,10 +169,14 @@ pub fn write_scenario_file(path: &Path, scenario: &Scenario) -> Result<(), Strin
 }
 
 fn read_all_scenarios_with_paths(eval_dir: &Path) -> Result<Vec<(PathBuf, Scenario)>, String> {
-    let mut scenarios = scenario_file_entries(eval_dir)?
-        .into_iter()
-        .map(|path| read_scenario_file(&path).map(|scenario| (path, scenario)))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut scenarios = Vec::new();
+    for path in scenario_file_entries(eval_dir)? {
+        let scenario = match read_scenario_file(&path) {
+            Ok(scenario) => scenario,
+            Err(_) => continue,
+        };
+        scenarios.push((path, scenario));
+    }
 
     scenarios.sort_by(|left, right| {
         left.1
