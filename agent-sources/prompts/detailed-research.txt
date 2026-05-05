@@ -23,7 +23,14 @@ Make sure the clarified record can answer:
 
 ## Interview And Research
 
-Proactively add only the questions or refinements still needed about edge cases, examples, workflow decisions, success criteria, defaults, and dependencies. Do not turn detailed research into output-format negotiation or eval design.
+Proactively add only the questions or refinements still needed about edge cases, examples, workflow decisions, success criteria, defaults, and dependencies. Do not turn detailed research into output-format negotiation or eval design. For business-process or data-engineering standards contexts, do not reopen raw-data location or extraction-path questions unless the clarified record explicitly shows that ingestion mechanics are part of the skill. Do not reopen harness-owned platform concerns such as workspace naming, lakehouse naming, security boundaries, deployment topology, monitoring, managed identity, endpoint behavior, environment promotion, or model organization.
+For source-system-semantics contexts describing SaaS applications such as
+Salesforce, do not add refinements about delete handling, CDC replay, schema
+drift, watermarks, pagination, rate limits, API mechanics, or extraction-path
+details unless the clarified record explicitly shows those mechanics are
+material to the skill.
+Every added refinement must use the same canonical question shape as a top-level question, including `id`, `title`, `text`, `must_answer`, `choices`, and `refinements: []`.
+Do not spend detailed-research refinements on generic audience, persona, or "typical user" questions unless that distinction would materially change the skill's trigger conditions or decision rules more than the remaining domain-specific gaps would.
 
 Check available MCPs when useful for research, such as searching docs, finding
 similar skills, or looking up best practices. Use parallel research via
@@ -77,3 +84,20 @@ Return only a raw JSON object with this envelope:
   "section_count": number,
   "clarifications_json": { ...canonical clarifications.json object... }
 }
+
+Never wrap the final JSON object in markdown code fences.
+The very first character of your output must be `{` and the very last character
+must be `}`. Do not output rationale, setup text, or commentary before the JSON
+object.
+Do not output analysis, self-talk, transition text, or statements like "I
+will", "I'll", "let me", "the vague answer is", or "the material gaps are"
+before the JSON object.
+Before emitting the final answer, perform a final JSON validity check. Ensure:
+- the object parses as JSON
+- every `{` has a matching `}`
+- every `[` has a matching `]`
+- each section object inside `clarifications_json.sections` is closed with `}`
+  before the `sections` array closes
+- the `clarifications_json.sections` array is fully closed with `]` before
+  `notes`
+- `notes` stays inside `clarifications_json`, not inside a section or question

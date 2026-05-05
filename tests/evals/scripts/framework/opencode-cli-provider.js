@@ -61,7 +61,8 @@ class OpenCodeCliProvider {
         },
         signal: callOptions.abortSignal,
       });
-      const trimmedOutput = output.trim();
+      const normalizedOutput = normalizeProviderOutput(output, this.config.format);
+      const trimmedOutput = normalizedOutput.trim();
       if (trimmedOutput) {
         return trimmedOutput;
       }
@@ -81,6 +82,31 @@ function normalizeRetryCount(value) {
   }
 
   return value;
+}
+
+function normalizeProviderOutput(output, format) {
+  if (format !== 'json') {
+    return output;
+  }
+
+  const textParts = [];
+  for (const line of output.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    try {
+      const event = JSON.parse(trimmed);
+      if (event?.type === 'text' && typeof event?.part?.text === 'string') {
+        textParts.push(event.part.text);
+      }
+    } catch {
+      // Ignore malformed lines and let empty-output retry logic handle the result.
+    }
+  }
+
+  return textParts.join('');
 }
 
 function runOpenCode(args, options) {
@@ -128,3 +154,4 @@ function runOpenCode(args, options) {
 
 module.exports = OpenCodeCliProvider;
 module.exports.runOpenCode = runOpenCode;
+module.exports.normalizeProviderOutput = normalizeProviderOutput;

@@ -363,7 +363,7 @@ pub fn format_user_context(
     if let Some(p) = purpose.filter(|s| !s.is_empty()) {
         let label = match p {
             "domain" => "Business process knowledge",
-            "source" => "Source system customizations",
+            "source" => "Source system semantics",
             "data-engineering" => "Organization specific data engineering standards",
             "platform" => "Organization specific Azure or Fabric standards",
             other => other,

@@ -279,7 +279,7 @@ Max 2 sentences. Topic: {}.>\"",
         "context_questions" => {
             let purpose_label = match purpose {
                 "domain" => "Business process knowledge",
-                "source" => "Source system customizations",
+                "source" => "Source system semantics",
                 "data-engineering" => "Organization specific data engineering standards",
                 "platform" => "Organization specific Azure or Fabric standards",
                 _ => purpose,

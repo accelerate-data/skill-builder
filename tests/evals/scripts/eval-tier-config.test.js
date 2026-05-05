@@ -27,7 +27,7 @@ test('loadEvalTierConfig returns required suite tiers and OpenCode agents', () =
   assert.equal(config.runtime.providerId, 'file://scripts/framework/opencode-cli-provider.js');
   assert.equal(config.runtime.opencodeConfig, path.resolve(path.dirname(CONFIG_PATH), '..', 'opencode.json'));
   assert.equal(config.runtime.projectDir, path.resolve(path.dirname(CONFIG_PATH), '..', '..', '..'));
-  assert.equal(config.runtime.format, 'default');
+  assert.equal(config.runtime.format, 'json');
   assert.equal(config.runtime.logLevel, 'ERROR');
   assert.equal(config.runtime.printLogs, false);
   assert.equal(config.runtime.emptyOutputRetries, 1);

@@ -26,7 +26,7 @@ import { useDocumentsQuery } from "@/lib/queries/documents"
 import { renameSkill, updateSkillMetadata, createSkill } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { EditableSkill } from "@/lib/types"
-import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
+import { CREATE_PURPOSES, PURPOSE_LABELS } from "@/lib/types"
 
 // --- Built skill detection ---
 
@@ -447,7 +447,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                       <SelectValue placeholder="Select a purpose..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {PURPOSES.map((p) => (
+                      {CREATE_PURPOSES.map((p) => (
                         <SelectItem key={p} value={p}>{PURPOSE_LABELS[p]}</SelectItem>
                       ))}
                     </SelectContent>

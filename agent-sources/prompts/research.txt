@@ -3,6 +3,21 @@ EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
 Use the `researching-skill-requirements` skill to decide which clarification
 questions matter.
 
+Apply that skill's invariants strictly. Do not ask about output formats,
+artifact contracts, naming conventions, presentation layouts, test cases, eval
+cases, or validation suites. For business-process or data-engineering standards
+contexts, do not ask where raw source data lives or which extraction path loads
+it unless the provided context explicitly makes ingestion mechanics part of the
+skill. Do not ask about harness-owned platform concerns such as workspace
+naming, lakehouse naming, security boundaries, deployment topology, monitoring,
+managed identity, endpoint behavior, environment promotion, or model
+organization.
+For source-system-semantics contexts describing SaaS applications such as
+Salesforce, do not ask about delete handling, CDC replay, schema drift,
+watermarks, pagination, rate limits, API mechanics, or extraction-path details
+unless the user context explicitly says those mechanics materially affect the
+skill.
+
 We are writing the skill {{skill_name}}.
 Maximum research dimensions before scope warning: {{max_dimensions}}
 
@@ -12,6 +27,10 @@ Research must run as one inline flow and return only final output.
 Do not emit intermediate JSON, markdown summaries, dimensions_selected,
 research_plan, research_lens, dimension_scores, selected_dimensions,
 topic_relevance, dimensions_evaluated, or consolidation handoff text.
+Never wrap the final JSON object in markdown code fences.
+Do not output analysis, self-talk, transition text, preambles, or statements
+like "I will", "I'll", "let me", "based on", "the skill", or "the user
+context" before the JSON object.
 
 Do not inspect old logs or previous run transcripts as research input. Use only
 the user context provided above, any reference documents already listed there,
@@ -71,3 +90,10 @@ user has answered the initial questions.
 
 Do not put `sections`, `notes`, or `answer_evaluator_notes` inside
 `research_output.metadata`; they are top-level fields inside `research_output`.
+
+Before emitting the final answer, perform a final JSON validity check. Ensure
+the object parses as JSON, every `{` has a matching `}`, every `[` has a
+matching `]`, and `research_output.sections` is a fully closed array before
+`notes` and `answer_evaluator_notes`.
+The very first character of your output must be `{` and the very last
+character must be `}`.

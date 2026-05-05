@@ -35,8 +35,8 @@ confirmed decisions. The brief must cover:
 - when the generated skill should trigger and when it should not trigger
 - expected input/output behavior, including concrete examples when available
 - confirmed metrics, business rules, calculations, transformation expectations,
-  data quality rules, reporting hierarchies, and platform standards that should
-  become durable skill guidance
+  data quality rules, reporting hierarchies, source-system semantics, and
+  data-engineering standards that should become durable skill guidance
 - the exact output paths above
 - the verification contract below
 

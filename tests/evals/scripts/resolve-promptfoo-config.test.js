@@ -17,7 +17,7 @@ test('resolveConfigFile materializes an opencode provider from metadata.eval_tie
     `file://${path.join(path.dirname(TMP_ROOT), '..', 'scripts', 'framework', 'opencode-cli-provider.js')}`,
   );
   assert.equal(resolved.providers[0].config.agent, 'eval_light');
-  assert.equal(resolved.providers[0].config.format, 'default');
+  assert.equal(resolved.providers[0].config.format, 'json');
   assert.equal(resolved.providers[0].config.log_level, 'ERROR');
   assert.equal(resolved.providers[0].config.print_logs, false);
   assert.equal(resolved.providers[0].config.empty_output_retries, 1);

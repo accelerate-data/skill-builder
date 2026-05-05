@@ -66,15 +66,21 @@ Purpose-aware decision normalization:
   the operating input contract for a business-process skill.
 - For a data-engineering purpose, convert general preferences into concrete
   standards for data modeling, reconciliation, data quality, dbt or dlt usage,
-  Fabric Lakehouse layout, operations, deployment, naming, testing, ownership,
-  and observability.
-- For a source-customization purpose, preserve extraction, API, export, CDC,
-  pagination, rate-limit, authentication, schema drift, and ingestion mechanics
-  when they materially affect ingestion or transformation behavior.
-- For a platform purpose, preserve Fabric or Azure environment constraints,
-  endpoint behavior, authentication, authorization, security boundaries,
-  deployment topology, orchestration, monitoring, networking, and compatibility
-  requirements.
+  Fabric Lakehouse layout, naming conventions, testing expectations,
+  ownership, and observability. Do not turn harness-owned concerns such as
+  model organization, workspace naming, or lakehouse naming into user-owned
+  decisions.
+- For a source-system-semantics purpose, preserve source business rules,
+  flexfields, custom fields, custom objects, custom statuses or stages,
+  workflows, semantic mappings, and downstream transformation implications.
+  Preserve extraction, API, export, CDC, delete handling, pagination,
+  rate-limit, authentication, schema drift, and ingestion mechanics only when
+  the source is DB-based or legacy, or when the user context explicitly says
+  those mechanics materially affect ingestion or transformation behavior.
+- Do not preserve harness-owned concerns such as workspace naming, lakehouse
+  naming, security boundaries, deployment topology, monitoring, managed
+  identity or access model, endpoint behavior, environment promotion, or model
+  organization as user-editable skill decisions.
 - Negative example for a business-process skill: "The skill accepts Salesforce
   CSV exports."
 - Positive example for a business-process skill: "The skill assumes Salesforce
@@ -93,8 +99,8 @@ Mandatory user-editable decisions:
 
 Purpose-aware implication rules:
 - Keep decisions grounded in the selected purpose and user context.
-- If purpose is "platform", include explicit Lakehouse compatibility implications when technical choices depend on endpoint behavior.
-- For other purposes, include Lakehouse implications only when they materially change architecture, risk, or validation outcomes.
+- Include Lakehouse implications only when they materially change architecture,
+  risk, transformation behavior, or validation outcomes.
 - Prefer implications that map to implementable artifacts such as model grain, layer placement, tests, constraints, and source-system behavior.
 
 Build the decisions JSON from scratch every time. It is a clean snapshot, not a log.
@@ -142,3 +148,8 @@ Canonical output requirements:
 - decision_count equals the number of decision objects.
 - conflicts_resolved equals the number of decisions with status "conflict-resolved".
 - Do not emit markdown, code fences, summaries, or partial objects.
+- The very first character of your output must be `{` and the very last
+  character must be `}`.
+- Do not output analysis, self-talk, transition text, or statements like "I
+  will", "I'll", "based on", or "the clarifications show" before the JSON
+  object.
