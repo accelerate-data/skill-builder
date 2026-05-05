@@ -950,6 +950,38 @@ fn test_skill_at_step0_no_skill_md_stays_at_step0() {
     assert_eq!(run.status, "pending");
 }
 
+// --- Scenario 8: DB step statuses must not be wiped when current_step < 3 ---
+
+#[test]
+fn test_completed_step_statuses_preserved_after_reconcile() {
+    // Regression: skill at step 1 with step 0 "completed" in workflow_steps.
+    // Scenario 8 (no SKILL.md, current_step < 3) must NOT reset step statuses —
+    // workflow_steps is the DB-authoritative record of which steps are done.
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    crate::db::save_workflow_run(&conn, "my-skill", 1, "pending", "domain").unwrap();
+    crate::db::save_workflow_step(&conn, "my-skill", 0, "completed").unwrap();
+    insert_stub_clarifications(&conn, "my-skill");
+
+    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    let steps = crate::db::get_workflow_steps(&conn, "my-skill").unwrap();
+    let step0 = steps.iter().find(|s| s.step_id == 0)
+        .expect("step 0 should exist in workflow_steps");
+    assert_eq!(
+        step0.status, "completed",
+        "step 0 was reset to '{}' but should remain 'completed' — Scenario 8 must not wipe DB step statuses",
+        step0.status
+    );
+
+    let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+    assert_eq!(run.current_step, 1, "current_step should remain at 1");
+}
+
 // --- Gap 2: Workspace dir recreated for in-progress skill ---
 
 #[test]
