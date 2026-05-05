@@ -2,8 +2,8 @@
   "default_plugin_slug": "skills",
   "skill_dir": "{root}/{plugin_slug}/{skill_name}",
   "workspace_skill_dir": "{workspace}/{plugin_slug}/{skill_name}",
-  "tag_prefix": "{plugin_slug}/{skill_name}/v",
-  "tag_glob": "{plugin_slug}/{skill_name}/*",
+  "tag_prefix": "v",
+  "tag_glob":   "v*",
   "_note": "plugin_slug is always required in skill paths. Never construct {root}/{skill_name} directly. Use skill_paths::resolve_skill_dir(root, plugin_slug, skill_name) in Rust.",
   "_examples": {
     "default_plugin_skill_dir": "C:/users/skill-builder/skills/my-skill",

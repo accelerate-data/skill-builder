@@ -147,7 +147,7 @@ pub fn clean_step_output(
             remove_dir_logged(LABEL, &skill_dir.join("evals"));
             // Remove git version tags so re-running step 3 can create 1.0.0 again.
             if let Err(e) = crate::git::delete_skill_version_tags(
-                Path::new(skills_path),
+                &skill_output_dir,
                 plugin_slug,
                 skill_name,
             ) {
@@ -617,18 +617,18 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        // Set up a git repo at skills_path, write SKILL.md and commit it.
-        crate::git::ensure_repo(skills_tmp.path()).unwrap();
-        let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
-        std::fs::create_dir_all(&output_dir).unwrap();
-        std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
-        crate::git::commit_all(skills_tmp.path(), "my-skill: generated skill").unwrap();
-        crate::git::create_skill_version_tag(skills_tmp.path(), SLUG, "my-skill", "1.0.0").unwrap();
-        assert!(crate::git::skill_has_any_tag(skills_tmp.path(), SLUG, "my-skill").unwrap());
+        // Set up a per-skill git repo, write SKILL.md and commit it.
+        let skill_dir = skills_tmp.path().join(SLUG).join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        crate::git::ensure_repo(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
+        crate::git::commit_all(&skill_dir, "generated skill").unwrap();
+        crate::git::create_skill_version_tag(&skill_dir, SLUG, "my-skill", "1.0.0").unwrap();
+        assert!(crate::git::skill_version_tag_exists(&skill_dir, SLUG, "my-skill", "1.0.0").unwrap());
 
         clean_step_output(workspace, "my-skill", SLUG, 3, skills_path);
 
-        assert!(!crate::git::skill_has_any_tag(skills_tmp.path(), SLUG, "my-skill").unwrap());
+        assert!(!crate::git::skill_version_tag_exists(&skill_dir, SLUG, "my-skill", "1.0.0").unwrap());
     }
 
     #[test]

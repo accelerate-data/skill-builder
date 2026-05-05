@@ -237,11 +237,12 @@ fn restore_protected_frontmatter(
     skill_name: &str,
     pre_run_sha: &str,
 ) -> Result<bool, String> {
-    let repo = git2::Repository::open(Path::new(skills_path))
+    let skill_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
+    let repo = git2::Repository::open(&skill_dir)
         .map_err(|e| format!("Failed to open repo: {}", e))?;
 
-    let relative_path = format!("{}/{}/SKILL.md", plugin_slug, skill_name);
-    let original_content = match read_file_at_commit(&repo, pre_run_sha, &relative_path) {
+    let relative_path = "SKILL.md";
+    let original_content = match read_file_at_commit(&repo, pre_run_sha, relative_path) {
         Ok(content) => content,
         Err(e) => {
             log::warn!(
@@ -286,7 +287,7 @@ fn restore_protected_frontmatter(
         .map_err(|e| format!("Failed to write SKILL.md: {}", e))?;
 
     crate::git::commit_all(
-        Path::new(skills_path),
+        &skill_dir,
         &format!("{}: restore protected frontmatter fields", skill_name),
     )?;
 
@@ -351,7 +352,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
     // Read HEAD for the commit SHA. The rewrite agent is instructed to commit,
     // but finalize also commits scoped skill changes if the agent only edited files.
     let mut commit_sha = {
-        let repo = git2::Repository::open(Path::new(skills_path))
+        let repo = git2::Repository::open(&skill_root)
             .map_err(|e| format!("Failed to open repo: {}", e))?;
         repo.head()
             .ok()
@@ -366,10 +367,8 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
         _ => false,
     };
     if head_unchanged {
-        let relative_skill_path = Path::new(plugin_slug).join(skill_name);
-        match crate::git::commit_path(
-            Path::new(skills_path),
-            &relative_skill_path,
+        match crate::git::commit_all(
+            &skill_root,
             &format!("{}: refine update", skill_name),
         ) {
             Ok(Some(new_sha)) => {
@@ -430,7 +429,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
             ) {
                 Ok(true) => {
                     // Re-read HEAD after fixup commit
-                    git2::Repository::open(Path::new(skills_path))
+                    git2::Repository::open(&skill_root)
                         .ok()
                         .and_then(|repo| {
                             repo.head()
@@ -459,12 +458,12 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
 
     // Tag the new commit with the next patch version.
     {
-        let skills_root = Path::new(skills_path);
-        let current_version = crate::git::latest_skill_semver(skills_root, plugin_slug, skill_name)
-            .unwrap_or_else(|_| "0.0.0".to_string());
+        let current_version =
+            crate::git::latest_skill_semver(&skill_root, plugin_slug, skill_name)
+                .unwrap_or_else(|_| "0.0.0".to_string());
         let new_version = crate::git::bump_patch(&current_version);
         match crate::git::create_skill_version_tag(
-            skills_root,
+            &skill_root,
             plugin_slug,
             skill_name,
             &new_version,
@@ -491,7 +490,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
         let base_sha = if let Some(pre) = pre_run_sha {
             Some(pre.to_string())
         } else {
-            let repo = git2::Repository::open(Path::new(skills_path))
+            let repo = git2::Repository::open(&skill_root)
                 .map_err(|e| format!("Failed to open repo: {}", e))?;
             let commit = repo
                 .find_commit(
@@ -504,7 +503,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
         if let Some(base_sha) = base_sha {
             get_refine_diff_for_commit_range_inner(
                 skill_name,
-                skills_path,
+                skill_root.to_str().unwrap_or(skills_path),
                 plugin_slug,
                 &base_sha,
                 sha,

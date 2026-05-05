@@ -1866,8 +1866,10 @@ fn publish_commit_and_tag_generated_skill_creates_initial_version_tag() {
     )
     .unwrap();
 
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(skills.path(), "skills", "tagged-skill");
     assert!(
-        crate::git::skill_version_tag_exists(skills.path(), "skills", "tagged-skill", "1.0.0")
+        crate::git::skill_version_tag_exists(&skill_dir, "skills", "tagged-skill", "1.0.0")
             .unwrap()
     );
 }
@@ -1935,13 +1937,14 @@ fn publish_commit_and_tag_generated_skill_surfaces_duplicate_tag_error() {
     let published_dir =
         crate::skill_paths::resolve_skill_dir(skills.path(), plugin_slug, skill_name);
     std::fs::create_dir_all(&published_dir).unwrap();
+    crate::git::ensure_repo(&published_dir).unwrap();
     std::fs::write(
         published_dir.join("SKILL.md"),
         "---\nname: tagged-skill\nmetadata:\n  version: 1.0.0\n---\n# Existing\n",
     )
     .unwrap();
-    crate::git::commit_all(skills.path(), "tagged-skill: existing").unwrap();
-    crate::git::create_skill_version_tag(skills.path(), plugin_slug, skill_name, "1.0.0").unwrap();
+    crate::git::commit_all(&published_dir, "existing").unwrap();
+    crate::git::create_skill_version_tag(&published_dir, plugin_slug, skill_name, "1.0.0").unwrap();
 
     let workspace_skill_root = workspace.path().join("skills").join(skill_name);
     let generated_dir = workspace_skill_root.join("skill");
@@ -1963,6 +1966,56 @@ fn publish_commit_and_tag_generated_skill_surfaces_duplicate_tag_error() {
     assert!(
         err.contains("Generated skill version tag failed"),
         "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn step3_reset_and_rerun_does_not_collide_on_version_tag() {
+    // Regression: resetting step 3 and re-running previously failed with
+    // "tag already exists" because all skills shared one git repo. With
+    // per-skill repos, reset deletes only this skill's tag and re-tagging
+    // succeeds.
+    let workspace = tempfile::tempdir().unwrap();
+    let skills = tempfile::tempdir().unwrap();
+    let plugin = "skills";
+    let skill_name = "my-skill";
+    let workspace_skill_root = workspace.path().join(plugin).join(skill_name);
+    let skill_dir = crate::skill_paths::resolve_skill_dir(skills.path(), plugin, skill_name);
+
+    let write_generated = |content: &str| {
+        let generated_dir = workspace_skill_root.join("skill");
+        std::fs::create_dir_all(&generated_dir).unwrap();
+        std::fs::write(
+            generated_dir.join("SKILL.md"),
+            format!("---\nname: {skill_name}\nmetadata:\n  version: 1.0.0\n---\n{content}\n"),
+        )
+        .unwrap();
+    };
+
+    // Step 3 completes for the first time.
+    write_generated("# v1");
+    publish_commit_and_tag_generated_skill(&workspace_skill_root, skills.path(), plugin, skill_name)
+        .expect("first step 3 completion must succeed");
+    assert!(
+        crate::git::skill_version_tag_exists(&skill_dir, plugin, skill_name, "1.0.0").unwrap(),
+        "v1.0.0 tag must exist after first completion"
+    );
+
+    // User resets step 3 — cleanup deletes version tags in the per-skill repo.
+    crate::git::delete_skill_version_tags(&skill_dir, plugin, skill_name)
+        .expect("tag deletion must succeed");
+    assert!(
+        !crate::git::skill_version_tag_exists(&skill_dir, plugin, skill_name, "1.0.0").unwrap(),
+        "v1.0.0 tag must be gone after reset"
+    );
+
+    // Step 3 re-runs and produces new output.
+    write_generated("# v1 regenerated");
+    publish_commit_and_tag_generated_skill(&workspace_skill_root, skills.path(), plugin, skill_name)
+        .expect("step 3 re-run must not fail with 'tag already exists'");
+    assert!(
+        crate::git::skill_version_tag_exists(&skill_dir, plugin, skill_name, "1.0.0").unwrap(),
+        "v1.0.0 tag must exist after re-run"
     );
 }
 

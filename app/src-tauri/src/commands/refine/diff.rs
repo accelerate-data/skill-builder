@@ -120,13 +120,13 @@ pub(crate) fn get_refine_diff_inner(
 }
 
 pub(crate) fn get_refine_diff_for_commit_range_inner(
-    skill_name: &str,
+    _skill_name: &str,
     skills_path: &str,
-    plugin_slug: &str,
+    _plugin_slug: &str,
     from_sha: &str,
     to_sha: &str,
 ) -> Result<RefineDiff, String> {
-    use git2::{DiffFormat, DiffOptions, Oid, Repository};
+    use git2::{DiffFormat, Oid, Repository};
 
     let repo_path = Path::new(skills_path);
     let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
@@ -147,12 +147,8 @@ pub(crate) fn get_refine_diff_for_commit_range_inner(
         .tree()
         .map_err(|e| format!("Failed to get tree for {}: {}", to_sha, e))?;
 
-    let prefix = format!("{}/{}/", plugin_slug, skill_name);
-    let mut opts = DiffOptions::new();
-    opts.pathspec(&prefix);
-
     let diff = repo
-        .diff_tree_to_tree(Some(&from_tree), Some(&to_tree), Some(&mut opts))
+        .diff_tree_to_tree(Some(&from_tree), Some(&to_tree), None)
         .map_err(|e| format!("Failed to compute diff: {}", e))?;
 
     let mut file_map: HashMap<String, RefineFileDiff> = HashMap::new();

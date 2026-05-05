@@ -346,10 +346,8 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
         if let Err(e) = crate::marketplace_manifest::write_marketplace_json(skills_root) {
             log::warn!("[delete_plugin] manifest update failed: {}", e);
         }
-        let msg = format!("{}: delete plugin", plugin_slug);
-        if let Err(e) = crate::git::commit_all(skills_root, &msg) {
-            log::warn!("[delete_plugin] git commit failed: {}", e);
-        }
+        // Per-skill repos are deleted with the plugin directory; no root commit needed.
+        log::info!("[delete_plugin] removed plugin dir '{}'; per-skill repos removed with it", plugin_slug);
     }
 
     Ok(())
@@ -393,10 +391,8 @@ pub fn create_plugin_from_skills(
             None,
         )?;
         crate::marketplace_manifest::write_marketplace_json(skills_root)?;
-        let msg = format!("{}: create plugin", plugin_slug);
-        if let Err(e) = crate::git::commit_all(skills_root, &msg) {
-            log::warn!("Git auto-commit failed ({}): {}", msg, e);
-        }
+        // Plugin scaffold (plugin.json) does not have its own git repo.
+        log::info!("[create_plugin_from_skills] created plugin scaffold for '{}' (no root git commit needed)", plugin_slug);
     }
 
     for skill_key in skill_keys {

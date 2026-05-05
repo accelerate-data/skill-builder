@@ -602,9 +602,16 @@ async fn import_marketplace_entries_to_library(
                     }
                 };
 
+                let skill_dir = crate::skill_paths::resolve_skill_dir(
+                    skills_root,
+                    &plugin_slug,
+                    &skill.skill_name,
+                );
                 if let Err(e) = (|| -> Result<(), String> {
+                    crate::git::ensure_repo(&skill_dir)
+                        .map_err(|e| format!("Failed to init git repo: {}", e))?;
                     if crate::git::skill_version_tag_exists(
-                        skills_root,
+                        &skill_dir,
                         &plugin_slug,
                         &skill.skill_name,
                         &final_version,
@@ -619,11 +626,11 @@ async fn import_marketplace_entries_to_library(
                         ));
                     }
                     crate::git::commit_all(
-                        skills_root,
+                        &skill_dir,
                         &format!("{}: import from marketplace", skill.skill_name),
                     )?;
                     crate::git::create_skill_version_tag(
-                        skills_root,
+                        &skill_dir,
                         &plugin_slug,
                         &skill.skill_name,
                         &final_version,
@@ -949,20 +956,22 @@ pub async fn import_marketplace_plugin_to_library(
             let _ = crate::db::set_imported_skill_content_hash(&conn, skill_name, &hash);
         }
 
-        // Git: commit and tag
+        // Git: commit and tag (per-skill repo at skill_dir)
         if let Err(e) = (|| -> Result<(), String> {
+            crate::git::ensure_repo(skill_dir)
+                .map_err(|e| format!("Failed to init git repo: {}", e))?;
             crate::git::commit_all(
-                skills_root,
+                skill_dir,
                 &format!("{}: import from marketplace", skill_name),
             )?;
             if !crate::git::skill_version_tag_exists(
-                skills_root,
+                skill_dir,
                 &plugin_slug,
                 skill_name,
                 version,
             )? {
                 crate::git::create_skill_version_tag(
-                    skills_root,
+                    skill_dir,
                     &plugin_slug,
                     skill_name,
                     version,
