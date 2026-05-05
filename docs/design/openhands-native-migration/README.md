@@ -59,6 +59,7 @@ The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary
 | Confirm-decisions logic moves into app prompts. | Step 2 and step 3 are both one-shot conversations with `skill-creator`. The rendered task prompt and output schema distinguish decision confirmation from skill generation. |
 | LiteLLM provider strings for multi-model support. | OpenHands routes all LLM calls through LiteLLM. Any provider string (`anthropic/claude-sonnet-4-6`, `openai/gpt-4o`, `google/gemini-2.0-flash`, `ollama/llama3.2`) works without runner changes. Settings adds a provider picker and per-provider API key. |
 | `AGENTS.md` is the always-on context file. | Both Claude Code and OpenHands read `AGENTS.md` natively. No change to the always-on instruction layer. |
+| Default OpenHands system prompt is used; `skill-creator.md` body is not sent as a system prompt override. | The SDK `Agent.system_prompt` field intentionally receives no value. The skill-creator identity and domain guidance come from the two AgentSkills (`creating-skills`, `researching-skill-requirements`) loaded via `agent_context.skills`. Overriding the default system prompt would replace OpenHands' built-in safety, tool, and reasoning instructions with no benefit — the skills carry the task-specific guidance. The SDK docs explicitly warn against overriding unless the agent is being repurposed for a completely different task. |
 | `AskUserQuestion` is not needed for Refine. | Refine uses OpenHands multi-turn conversation: each user message is a `MessageEvent` appended to the event log, not an interrupt. The `AskUserQuestion` custom tool would only be needed if an agent mid-turn needed to ask a question; Refine's design never requires that pattern. See `docs/design/refine-openhands-migration/README.md`. |
 | Workspace, LLM, and agent invocation are backend-owned boundaries. | App startup initializes the workspace and deploys `.agents` artifacts; Rust projects settings into `WorkflowLlmConfig`; product features invoke app agents through one-shot or streaming runtime APIs instead of constructing raw runtime details. |
 
@@ -201,9 +202,9 @@ skills:
 ---
 ```
 
-The body contains shared rules that apply to every task: obey the rendered task
-prompt, respect the output schema, never ask user questions during one-shot
-runs, and write only the files requested by the current task.
+The body contains shared rules that apply to every task: obey the rendered task prompt, respect the output schema, never ask user questions during one-shot runs, and write only the files requested by the current task.
+
+**System prompt policy:** The `skill-creator.md` body is deployed to the workspace for reference but is NOT sent as a custom `system_prompt` override on the `Agent`. The SDK default "You are OpenHands agent, a helpful AI assistant..." system prompt is used as-is. The `Agent.system_prompt` field in `StartConversationRequest` is intentionally left unset. Skill-creator identity is provided through the AgentSkills in `agent_context.skills`, not a system prompt override. The SDK docs warn that overriding this replaces OpenHands' built-in safety and reasoning instructions and is only appropriate for agents repurposed for completely different tasks.
 
 ### App-Owned Prompt Templates
 
