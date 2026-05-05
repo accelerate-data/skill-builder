@@ -57,6 +57,9 @@ export interface DisplayItem {
   toolDurationMs?: number;
   toolSummary?: string;
 
+  // skill (invoke_skill tool calls)
+  skillName?: string;
+
   // subagent (Task tool calls with nested execution)
   subagentDescription?: string;
   subagentType?: string;
@@ -100,4 +103,4 @@ export interface DisplayItemEnvelope {
 // Version tag for structural sync tests
 // ---------------------------------------------------------------------------
 
-export const DISPLAY_TYPES_VERSION = 5;
+export const DISPLAY_TYPES_VERSION = 6;

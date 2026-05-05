@@ -10,7 +10,7 @@ export const SkillItem = memo(function SkillItem({ item }: { item: DisplayItem }
   return (
     <BaseItem
       icon={<Sparkles className="size-3.5" />}
-      label="Skill"
+      label={item.skillName ?? "Skill"}
       summary={description || summary}
       status={item.subagentStatus}
       borderColor="var(--chat-skill-border)"
