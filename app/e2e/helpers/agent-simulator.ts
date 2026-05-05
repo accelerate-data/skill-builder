@@ -103,7 +103,7 @@ interface SimulateAgentRunOptions {
 /**
  * Simulate a complete happy-path agent run using DisplayItems:
  * 1. agent-init-progress (init_start)
- * 2. agent-init-progress (sdk_ready)
+ * 2. agent-init-progress (runtime_ready)
  * 3. N agent-message events (type=display_item, item.type=output)
  * 4. agent-message (type=display_item, item.type=result)
  * 5. agent-message (type=result) — pass-through for usage tracking
@@ -131,10 +131,10 @@ export async function simulateAgentRun(
   } satisfies AgentInitProgressPayload);
   await wait(delays);
 
-  // 2. Init progress: sdk_ready
+  // 2. Init progress: runtime_ready
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    stage: "sdk_ready",
+    stage: "runtime_ready",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
   await wait(delays);
@@ -224,7 +224,7 @@ interface SimulateDisplayItemRunOptions {
 
 /**
  * Simulate a complete agent run using explicit DisplayItem payloads:
- * 1. agent-init-progress (init_start, sdk_ready)
+ * 1. agent-init-progress (init_start, runtime_ready)
  * 2. N agent-message events (type=display_item)
  * 3. agent-message (type=result) — pass-through for usage tracking
  * 4. agent-exit (success=true)
@@ -252,7 +252,7 @@ export async function simulateAgentRunWithDisplayItems(
 
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    stage: "sdk_ready",
+    stage: "runtime_ready",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
   await wait(delays);
@@ -308,7 +308,7 @@ export async function simulateAgentError(
 
   await emitTauriEvent(page, "agent-init-progress", {
     agent_id: agentId,
-    stage: "sdk_ready",
+    stage: "runtime_ready",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
   await wait(delays);
