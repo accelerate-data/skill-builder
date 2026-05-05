@@ -256,8 +256,11 @@ pub(super) fn run_eval_workbench_migration(conn: &Connection) -> Result<(), rusq
 pub(super) fn run_eval_workbench_scenario_identity_migration(
     conn: &Connection,
 ) -> Result<(), rusqlite::Error> {
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS eval_runs_v2 (
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let result = conn.execute_batch(
+        "DROP TABLE IF EXISTS eval_runs_v2;
+
+        CREATE TABLE eval_runs_v2 (
             id TEXT PRIMARY KEY,
             prompt_set_id TEXT REFERENCES eval_prompt_sets(id) ON DELETE CASCADE,
             plugin_slug TEXT NOT NULL,
@@ -295,7 +298,15 @@ pub(super) fn run_eval_workbench_scenario_identity_migration(
             ON eval_runs(plugin_slug, skill_name, mode, created_at);
         CREATE INDEX IF NOT EXISTS idx_eval_runs_scenario_mode_created
             ON eval_runs(plugin_slug, skill_name, scenario_name, mode, created_at);",
-    )
+    );
+
+    match result {
+        Ok(()) => conn.execute_batch("COMMIT"),
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(error)
+        }
+    }
 }
 
 pub(super) fn run_plugin_ownership_migration(conn: &Connection) -> Result<(), rusqlite::Error> {

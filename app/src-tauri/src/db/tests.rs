@@ -198,6 +198,86 @@ fn test_repair_plugin_ownership_schema_recovers_when_migration_38_was_only_marke
 }
 
 #[test]
+fn test_eval_workbench_scenario_identity_migration_recovers_from_stale_eval_runs_v2_table() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    run_migrations(&conn).unwrap();
+    for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+        if version >= 46 {
+            continue;
+        }
+        migrate_fn(&conn).unwrap();
+        super::mark_migration_applied(&conn, version).unwrap();
+    }
+
+    conn.execute(
+        "INSERT INTO eval_prompt_sets (
+            id, plugin_slug, skill_name, mode, name, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+        rusqlite::params![
+            "prompt-set-1",
+            "skills",
+            "forecast",
+            "performance",
+            "Regression",
+            "2026-05-05T00:00:00Z",
+        ],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO eval_runs (
+            id, prompt_set_id, mode, status, summary_json, created_at, completed_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
+        rusqlite::params![
+            "run-1",
+            "prompt-set-1",
+            "performance",
+            "completed",
+            "{}",
+            "2026-05-05T00:00:00Z",
+        ],
+    )
+    .unwrap();
+
+    conn.execute_batch(
+        "CREATE TABLE eval_runs_v2 (
+            id TEXT PRIMARY KEY,
+            prompt_set_id TEXT REFERENCES eval_prompt_sets(id) ON DELETE CASCADE,
+            plugin_slug TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            scenario_name TEXT NOT NULL,
+            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            status TEXT NOT NULL,
+            summary_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            completed_at TEXT
+        );
+        INSERT INTO eval_runs_v2 (
+            id, prompt_set_id, plugin_slug, skill_name, scenario_name, mode, status, summary_json, created_at, completed_at
+        ) VALUES (
+            'run-1', 'prompt-set-1', 'skills', 'forecast', 'Regression', 'performance', 'completed', '{}', '2026-05-05T00:00:00Z', NULL
+        );",
+    )
+    .unwrap();
+
+    run_eval_workbench_scenario_identity_migration(&conn).unwrap();
+
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM eval_runs WHERE id = 'run-1'", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let plugin_slug: String = conn
+        .query_row("SELECT plugin_slug FROM eval_runs WHERE id = 'run-1'", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+
+    assert_eq!(count, 1);
+    assert_eq!(plugin_slug, "skills");
+}
+
+#[test]
 fn test_workflow_run_crud() {
     let conn = create_test_db();
     save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();

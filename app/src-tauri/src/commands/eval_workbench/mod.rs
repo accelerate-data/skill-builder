@@ -230,6 +230,120 @@ fn scenario_case_assertions_json(case: &scenarios::ScenarioCase) -> Value {
     )
 }
 
+fn scenario_prompt_set_snapshot(prompt_set: &EvalPromptSet) -> Value {
+    serde_json::json!({
+        "pluginSlug": prompt_set.plugin_slug,
+        "skillName": prompt_set.skill_name,
+        "scenarioName": prompt_set.name,
+        "mode": prompt_set.mode.as_str(),
+        "cases": prompt_set.cases.iter().map(|case| serde_json::json!({
+            "id": case.id,
+            "prompt": case.prompt,
+            "expected": case.expected,
+            "shouldTrigger": case.should_trigger,
+            "assertions": case.assertions,
+            "sortOrder": case.sort_order,
+        })).collect::<Vec<_>>()
+    })
+}
+
+fn summary_with_prompt_set_snapshot(summary: Value, prompt_set: &EvalPromptSet) -> Value {
+    let mut summary_object = match summary {
+        Value::Object(object) => object,
+        _ => serde_json::Map::new(),
+    };
+    summary_object.insert(
+        "scenarioPromptSetSnapshot".to_string(),
+        scenario_prompt_set_snapshot(prompt_set),
+    );
+    Value::Object(summary_object)
+}
+
+fn prompt_set_from_summary_snapshot(snapshot: &Value) -> Result<EvalPromptSet, String> {
+    let plugin_slug = snapshot
+        .get("pluginSlug")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Scenario prompt-set snapshot missing pluginSlug".to_string())?;
+    let skill_name = snapshot
+        .get("skillName")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Scenario prompt-set snapshot missing skillName".to_string())?;
+    let scenario_name = snapshot
+        .get("scenarioName")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Scenario prompt-set snapshot missing scenarioName".to_string())?;
+    let mode = snapshot
+        .get("mode")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Scenario prompt-set snapshot missing mode".to_string())
+        .and_then(EvalWorkbenchMode::parse)?;
+    let cases = snapshot
+        .get("cases")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Scenario prompt-set snapshot missing cases".to_string())?
+        .iter()
+        .map(|case| {
+            Ok(crate::db::EvalPromptCase {
+                id: case
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "Scenario prompt-set snapshot case missing id".to_string())?
+                    .to_string(),
+                prompt: case
+                    .get("prompt")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "Scenario prompt-set snapshot case missing prompt".to_string())?
+                    .to_string(),
+                expected: case
+                    .get("expected")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                should_trigger: case.get("shouldTrigger").and_then(Value::as_bool),
+                assertions: case
+                    .get("assertions")
+                    .cloned()
+                    .unwrap_or_else(|| Value::Array(vec![])),
+                sort_order: case.get("sortOrder").and_then(Value::as_i64).unwrap_or(0),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    Ok(EvalPromptSet {
+        id: scenario_prompt_set_id(plugin_slug, skill_name, scenario_name, mode),
+        plugin_slug: plugin_slug.to_string(),
+        skill_name: skill_name.to_string(),
+        mode,
+        name: scenario_name.to_string(),
+        cases,
+        created_at: String::new(),
+        updated_at: String::new(),
+    })
+}
+
+fn resolve_prompt_set_for_run(
+    conn: &mut rusqlite::Connection,
+    db: &Db,
+    run: &EvalRun,
+) -> Result<EvalPromptSet, String> {
+    if let Some(prompt_set_id) = run.prompt_set_id.as_deref() {
+        return db_read_eval_prompt_set(conn, prompt_set_id)?
+            .ok_or_else(|| "Eval prompt set not found".to_string());
+    }
+    if let Some(snapshot) = run.summary.get("scenarioPromptSetSnapshot") {
+        return prompt_set_from_summary_snapshot(snapshot);
+    }
+
+    let skills_path = resolve_skills_path(db)?;
+    load_or_create_prompt_set_for_scenario(
+        conn,
+        Path::new(&skills_path),
+        &run.plugin_slug,
+        &run.skill_name,
+        &run.scenario_name,
+        run.mode,
+    )
+}
+
 fn read_scenario(
     skills_path: &Path,
     plugin_slug: &str,
@@ -1354,7 +1468,7 @@ where
         scenario_name: prompt_set.name.clone(),
         mode: prompt_set.mode,
         status: "completed".to_string(),
-        summary: build_run_summary(&result),
+        summary: summary_with_prompt_set_snapshot(build_run_summary(&result), &prompt_set),
         completed_at: Some(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
         results: result
             .results
@@ -2290,7 +2404,10 @@ pub async fn suggest_description_candidates_legacy(
             scenario_name: prompt_set.name.clone(),
             mode: EvalWorkbenchMode::Trigger,
             status: "draft".to_string(),
-            summary: serde_json::json!({ "candidateCount": candidate_count, "status": "draft" }),
+            summary: summary_with_prompt_set_snapshot(
+                serde_json::json!({ "candidateCount": candidate_count, "status": "draft" }),
+                &prompt_set,
+            ),
             completed_at: None,
             results: vec![],
             description_candidates: generated_candidates,
@@ -2355,20 +2472,7 @@ pub async fn build_refine_improvement_brief_legacy(
         let mut conn = db.0.lock().map_err(|e| e.to_string())?;
         let run =
             db_read_eval_run(&conn, &run_id)?.ok_or_else(|| "Eval run not found".to_string())?;
-        let prompt_set = if let Some(prompt_set_id) = run.prompt_set_id.as_deref() {
-            db_read_eval_prompt_set(&conn, prompt_set_id)?
-                .ok_or_else(|| "Eval prompt set not found".to_string())?
-        } else {
-            let skills_path = resolve_skills_path(&db)?;
-            load_or_create_prompt_set_for_scenario(
-                &mut conn,
-                Path::new(&skills_path),
-                &run.plugin_slug,
-                &run.skill_name,
-                &run.scenario_name,
-                run.mode,
-            )?
-        };
+        let prompt_set = resolve_prompt_set_for_run(&mut conn, &db, &run)?;
         let skill_files = if run.mode == EvalWorkbenchMode::Performance {
             let skills_path = resolve_skills_path(&db)?;
             get_skill_content_inner_for_plugin(
@@ -2612,6 +2716,172 @@ mod tests {
         assert_ne!(cloned[0].id.as_deref(), Some("candidate-a"));
         assert_eq!(id_map.get("candidate-a"), cloned[0].id.as_ref());
         assert_eq!(cloned[0].rationale.as_deref(), Some("Tighter boundary"));
+    }
+
+    #[tokio::test]
+    async fn build_completed_eval_run_persists_scenario_snapshot_for_file_backed_runs() {
+        let prompt_set = EvalPromptSet {
+            id: scenario_prompt_set_id(
+                "skills",
+                "forecast",
+                "Regression",
+                EvalWorkbenchMode::Performance,
+            ),
+            plugin_slug: "skills".to_string(),
+            skill_name: "forecast".to_string(),
+            mode: EvalWorkbenchMode::Performance,
+            name: "Regression".to_string(),
+            cases: vec![crate::db::EvalPromptCase {
+                id: "case-1".to_string(),
+                prompt: "Forecast next quarter revenue".to_string(),
+                expected: Some("Includes assumptions".to_string()),
+                should_trigger: None,
+                assertions: serde_json::json!([{ "type": "contains", "value": "assumptions" }]),
+                sort_order: 0,
+            }],
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+        let result = build_completed_eval_run_with_deps(
+            EvalRunBuildContext {
+                runs: EvalWorkbenchRunManager::default(),
+                run_id: "run-1".to_string(),
+                prompt_set,
+                sidecar_candidates: vec![SidecarEvalCandidate {
+                    id: CURRENT_SKILL_CANDIDATE_ID.to_string(),
+                    label: "Current skill".to_string(),
+                    description: Some("Current description".to_string()),
+                }],
+                sidecar_cases: vec![EvalCase {
+                    id: "case-1".to_string(),
+                    prompt: "Forecast next quarter revenue".to_string(),
+                    expected: Some("Includes assumptions".to_string()),
+                    should_trigger: None,
+                    assertions: vec![EvalAssertion {
+                        assertion_type: EvalAssertionType::Contains,
+                        value: serde_json::json!("assumptions"),
+                    }],
+                }],
+                persisted_candidates: vec![],
+            },
+            |_prompt_set, _cases, _candidates| async {
+                Ok(vec![EvalExecution {
+                    case_id: "case-1".to_string(),
+                    candidate_id: CURRENT_SKILL_CANDIDATE_ID.to_string(),
+                    output: serde_json::json!({ "responseText": "Includes assumptions" }),
+                }])
+            },
+            |_request| async {
+                Ok(crate::agents::promptfoo_sidecar::protocol::EvalRunResult {
+                    mode: crate::agents::promptfoo_sidecar::protocol::EvalMode::Performance,
+                    passed: 1,
+                    failed: 0,
+                    total: 1,
+                    results: vec![crate::agents::promptfoo_sidecar::protocol::EvalCaseResult {
+                        case_id: "case-1".to_string(),
+                        candidate_id: CURRENT_SKILL_CANDIDATE_ID.to_string(),
+                        passed: true,
+                        score: 1.0,
+                        output: serde_json::json!({ "responseText": "Includes assumptions" }),
+                        reason: None,
+                    }],
+                })
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.prompt_set_id, None);
+        assert_eq!(
+            result.summary.get("scenarioPromptSetSnapshot"),
+            Some(&serde_json::json!({
+                "pluginSlug": "skills",
+                "skillName": "forecast",
+                "scenarioName": "Regression",
+                "mode": "performance",
+                "cases": [{
+                    "id": "case-1",
+                    "prompt": "Forecast next quarter revenue",
+                    "expected": "Includes assumptions",
+                    "shouldTrigger": null,
+                    "assertions": [{ "type": "contains", "value": "assumptions" }],
+                    "sortOrder": 0
+                }]
+            }))
+        );
+    }
+
+    #[test]
+    fn resolve_prompt_set_for_run_uses_summary_snapshot_after_scenario_file_is_deleted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let prompt_set = EvalPromptSet {
+            id: scenario_prompt_set_id(
+                "skills",
+                "forecast",
+                "Regression",
+                EvalWorkbenchMode::Performance,
+            ),
+            plugin_slug: "skills".to_string(),
+            skill_name: "forecast".to_string(),
+            mode: EvalWorkbenchMode::Performance,
+            name: "Regression".to_string(),
+            cases: vec![crate::db::EvalPromptCase {
+                id: "case-1".to_string(),
+                prompt: "Forecast next quarter revenue".to_string(),
+                expected: Some("Includes assumptions".to_string()),
+                should_trigger: None,
+                assertions: serde_json::json!([{ "type": "contains", "value": "assumptions" }]),
+                sort_order: 0,
+            }],
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        let scenario_path = scenarios::scenario_file_path(&eval_dir, "Regression");
+        scenarios::write_scenario_file(
+            &scenario_path,
+            &scenario_from_dto(sample_scenario_dto("Regression")).unwrap(),
+        )
+        .unwrap();
+
+        {
+            let mut conn = db.0.lock().unwrap();
+            record_eval_run(
+                &mut conn,
+                NewEvalRun {
+                    id: Some("run-1".to_string()),
+                    prompt_set_id: None,
+                    plugin_slug: "skills".to_string(),
+                    skill_name: "forecast".to_string(),
+                    scenario_name: "Regression".to_string(),
+                    mode: EvalWorkbenchMode::Performance,
+                    status: "completed".to_string(),
+                    summary: summary_with_prompt_set_snapshot(
+                        serde_json::json!({ "passRate": 1.0 }),
+                        &prompt_set,
+                    ),
+                    completed_at: None,
+                    results: vec![],
+                    description_candidates: vec![],
+                },
+            )
+            .unwrap();
+        }
+        std::fs::remove_file(&scenario_path).unwrap();
+
+        let mut conn = db.0.lock().unwrap();
+        let run = db_read_eval_run(&conn, "run-1").unwrap().unwrap();
+        let resolved = resolve_prompt_set_for_run(&mut conn, &db, &run).unwrap();
+
+        assert_eq!(resolved.name, "Regression");
+        assert_eq!(resolved.mode, EvalWorkbenchMode::Performance);
+        assert_eq!(resolved.cases.len(), 1);
+        assert_eq!(resolved.cases[0].prompt, "Forecast next quarter revenue");
+        assert_eq!(
+            resolved.cases[0].expected.as_deref(),
+            Some("Includes assumptions")
+        );
     }
 
     #[test]
