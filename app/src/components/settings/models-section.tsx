@@ -175,7 +175,10 @@ export function ModelsSection({
     [catalog],
   );
   const showSelectedProviderFallback =
-    catalogProviders.length > 0 && !selectedProvider && provider !== "custom";
+    catalogProviders.length > 0 &&
+    Boolean(provider) &&
+    !selectedProvider &&
+    provider !== "custom";
   const modelOptions = selectedProvider
     ? getCatalogModelOptions(selectedProvider)
     : [];
@@ -282,7 +285,7 @@ export function ModelsSection({
               }}
             >
               <SelectTrigger id="model-provider" className="w-64">
-                <SelectValue />
+                <SelectValue placeholder="Select a provider" />
               </SelectTrigger>
               <SelectContent>
                 {catalogProviders.length ? (

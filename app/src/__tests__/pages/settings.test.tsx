@@ -95,6 +95,7 @@ const SelectCtx = React.createContext<{
   onValueChange?: (v: string) => void;
   disabled?: boolean;
   idRef: React.MutableRefObject<string | undefined>;
+  placeholderRef: React.MutableRefObject<string | undefined>;
 } | null>(null);
 
 vi.mock("@/components/ui/select", () => ({
@@ -110,18 +111,31 @@ vi.mock("@/components/ui/select", () => ({
     disabled?: boolean;
   }) => {
     const idRef = React.useRef<string | undefined>(undefined);
+    const placeholderRef = React.useRef<string | undefined>(undefined);
     return (
-      <SelectCtx.Provider value={{ value, onValueChange, disabled, idRef }}>
+      <SelectCtx.Provider
+        value={{ value, onValueChange, disabled, idRef, placeholderRef }}
+      >
         {children}
       </SelectCtx.Provider>
     );
   },
-  SelectTrigger: ({ id }: { id?: string; children?: React.ReactNode }) => {
+  SelectTrigger: ({
+    id,
+    children,
+  }: {
+    id?: string;
+    children?: React.ReactNode;
+  }) => {
     const ctx = React.useContext(SelectCtx);
     if (ctx && id) ctx.idRef.current = id;
+    return <>{children}</>;
+  },
+  SelectValue: ({ placeholder }: { placeholder?: string }) => {
+    const ctx = React.useContext(SelectCtx);
+    if (ctx) ctx.placeholderRef.current = placeholder;
     return null;
   },
-  SelectValue: () => null,
   SelectContent: ({ children }: { children: React.ReactNode }) => {
     const ctx = React.useContext(SelectCtx);
     return (
@@ -131,6 +145,11 @@ vi.mock("@/components/ui/select", () => ({
         onChange={(e) => ctx?.onValueChange?.(e.target.value)}
         disabled={ctx?.disabled}
       >
+        {ctx?.placeholderRef.current ? (
+          <option value="" disabled hidden>
+            {ctx.placeholderRef.current}
+          </option>
+        ) : null}
         {children}
       </select>
     );
@@ -574,6 +593,31 @@ describe("SettingsPage", () => {
     expect(
       screen.queryByRole("option", { name: "Claude No Tools" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders Models with an unset provider after the catalog loads", async () => {
+    setupDefaultMocks({ model_settings: null });
+    renderWithQueryClient(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await switchToSection(/Models/i);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("option", { name: "Anthropic" }),
+      ).toBeInTheDocument();
+    });
+
+    const providerSelect = screen.getByRole("combobox", {
+      name: /^Provider$/i,
+    });
+    const emptyValueOptions = providerSelect.querySelectorAll('option[value=""]');
+    expect(emptyValueOptions).toHaveLength(1);
+    expect(emptyValueOptions[0]).toHaveTextContent("Select a provider");
+    expect(screen.getByLabelText(/^Model$/i)).toHaveValue("");
   });
 
   it("shows catalog API key help and selected model details", async () => {

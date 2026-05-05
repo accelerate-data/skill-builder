@@ -5,7 +5,7 @@ import { useSettingsStore } from "@/stores/settings-store"
 import { updateUserSettings } from "@/lib/tauri"
 
 const DEFAULT_MODEL_SETTINGS: ModelSettings = {
-  provider: "anthropic",
+  provider: null,
   model: null,
   api_key: null,
   base_url: null,

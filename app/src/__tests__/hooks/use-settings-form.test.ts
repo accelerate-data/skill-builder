@@ -43,6 +43,29 @@ describe("useSettingsForm", () => {
     expect(result.current.logLevel).toBe("debug");
   });
 
+  it("keeps provider, model, and api_key null when store model settings are unset", () => {
+    const { result } = renderHook(() => useSettingsForm());
+
+    expect(result.current.modelSettings.provider).toBeNull();
+    expect(result.current.modelSettings.model).toBeNull();
+    expect(result.current.modelSettings.api_key).toBeNull();
+  });
+
+  it("keeps provider null when saving model settings before choosing a provider", async () => {
+    const { result } = renderHook(() => useSettingsForm());
+
+    await act(async () => {
+      await result.current.saveModelSettings({
+        base_url: "http://localhost:11434",
+      });
+    });
+
+    expect(mocks.updateUserSettings).toHaveBeenCalledTimes(1);
+    const payload = mocks.updateUserSettings.mock.calls[0][0];
+    expect(payload.model_settings.provider).toBeNull();
+    expect(payload.model_settings.base_url).toBe("http://localhost:11434");
+  });
+
   it("autoSave calls updateUserSettings and updates store", async () => {
     const { result } = renderHook(() => useSettingsForm());
 

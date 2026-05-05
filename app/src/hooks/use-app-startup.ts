@@ -33,7 +33,7 @@ export interface UseAppStartupReturn extends StartupState {
 
 export function settingsToStorePatch(s: AppSettings) {
   const modelSettings: ModelSettings = {
-    provider: s.model_settings?.provider ?? "anthropic",
+    provider: s.model_settings?.provider ?? null,
     model: s.model_settings?.model ?? null,
     api_key: s.model_settings?.api_key ?? null,
     base_url: s.model_settings?.base_url ?? null,
