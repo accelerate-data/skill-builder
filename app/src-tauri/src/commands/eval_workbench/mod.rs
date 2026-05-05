@@ -4,14 +4,10 @@ pub mod types;
 use crate::agents::openhands_server::{
     cancel_openhands_one_shots_with_prefix, run_openhands_one_shot, OpenHandsOneShotRunParams,
 };
-use crate::agents::promptfoo_sidecar::process::{
-    list_eval_history as list_promptfoo_eval_history,
-    read_eval_history as read_promptfoo_eval_history, run_eval as run_promptfoo_eval,
-};
+use crate::agents::promptfoo_sidecar::process::run_eval as run_promptfoo_eval;
 use crate::agents::promptfoo_sidecar::protocol::{
     EvalAssertion, EvalAssertionType, EvalCandidate as SidecarEvalCandidate, EvalCase,
-    EvalExecution, EvalHistoryConfig, EvalHistoryEntry, EvalMode as SidecarEvalMode,
-    ListEvalHistoryFilter, ListEvalHistoryRequest, ReadEvalHistoryRequest, RunEvalRequest,
+    EvalExecution, EvalMode as SidecarEvalMode, RunEvalRequest,
 };
 use crate::agents::sidecar::{build_openhands_one_shot_config, OpenHandsOneShotConfigParams};
 use crate::commands::imported_skills::validate_skill_name;
@@ -26,11 +22,6 @@ use crate::db::{
     EvalRun, EvalWorkbenchMode, NewDescriptionCandidate, NewEvalRun, NewEvalRunResult,
     SaveEvalPromptSet,
 };
-pub use types::{
-    ApplyDescriptionCandidateResponse, RefineImprovementBrief, RunEvalWorkbenchRequest,
-    ScenarioAssertionDto, ScenarioCaseDto, ScenarioDto, SuggestAssertionsRequest,
-    SuggestDescriptionCandidatesRequest,
-};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -38,16 +29,20 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 pub use types::{
-    ApplyDescriptionCandidateResponse, DescriptionCandidate, EvalRun as ApiEvalRun,
-    EvalRunResult as ApiEvalRunResult, RefineImprovementBrief, RunEvalWorkbenchRequest,
-    ScenarioAssertionDto, ScenarioCaseDto, ScenarioDto, SuggestAssertionsRequest,
-    SuggestDescriptionCandidatesRequest,
+    ApplyDescriptionCandidateResponse, RefineImprovementBrief, RunEvalWorkbenchRequest,
+    ScenarioAssertionDto, ScenarioCaseDto, ScenarioDto, ScenarioSummaryDto,
+    SuggestAssertionsRequest, SuggestDescriptionCandidatesRequest,
 };
 
 const DEFAULT_DESCRIPTION_CANDIDATE_COUNT: u32 = 3;
 const CURRENT_SKILL_CANDIDATE_ID: &str = "current-skill";
 
-fn scenario_prompt_set_id(plugin_slug: &str, skill_name: &str, scenario_name: &str, mode: EvalWorkbenchMode) -> String {
+fn scenario_prompt_set_id(
+    plugin_slug: &str,
+    skill_name: &str,
+    scenario_name: &str,
+    mode: EvalWorkbenchMode,
+) -> String {
     format!(
         "scenario:{}:{}:{}:{}",
         plugin_slug,
@@ -214,6 +209,13 @@ fn scenario_to_dto(scenario: scenarios::Scenario) -> ScenarioDto {
     }
 }
 
+fn scenario_summary_to_dto(summary: scenarios::ScenarioSummary) -> ScenarioSummaryDto {
+    ScenarioSummaryDto {
+        name: summary.name,
+        tags: scenario_tag_strings(&summary.tags),
+    }
+}
+
 fn scenario_case_assertions_json(case: &scenarios::ScenarioCase) -> Value {
     Value::Array(
         case.assertions
@@ -246,11 +248,7 @@ fn save_prompt_set_mirror_for_scenario(
         .iter()
         .enumerate()
         .map(|(index, case)| crate::db::SaveEvalPromptCase {
-            id: Some(format!(
-                "{}:{}",
-                prompt_set_id,
-                case.id
-            )),
+            id: Some(format!("{}:{}", prompt_set_id, case.id)),
             prompt: case.prompt.clone(),
             expected: if mode == EvalWorkbenchMode::Performance {
                 case.expected_outcome.clone()
@@ -1052,7 +1050,9 @@ fn parse_description_candidate_response(
     })
 }
 
-fn parse_generated_scenarios_response(state: &serde_json::Value) -> Result<Vec<ScenarioDto>, String> {
+fn parse_generated_scenarios_response(
+    state: &serde_json::Value,
+) -> Result<Vec<ScenarioDto>, String> {
     let parsed = parse_openhands_structured_output(state)?;
     let scenarios = parsed
         .get("scenarios")
@@ -1870,13 +1870,31 @@ pub fn list_scenarios(
     plugin_slug: String,
     skill_name: String,
     db: tauri::State<'_, Db>,
-) -> Result<Vec<ScenarioDto>, String> {
+) -> Result<Vec<ScenarioSummaryDto>, String> {
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
     let skills_path = resolve_skills_path(&db)?;
-    let eval_dir = crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
+    let eval_dir =
+        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
     scenarios::list_scenarios(&eval_dir)
-        .map(|items| items.into_iter().map(scenario_to_dto).collect())
+        .map(|items| items.into_iter().map(scenario_summary_to_dto).collect())
+}
+
+#[tauri::command]
+pub fn load_scenario(
+    plugin_slug: String,
+    skill_name: String,
+    scenario_name: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Option<ScenarioDto>, String> {
+    validate_plugin_slug(&plugin_slug)?;
+    validate_skill_name(&skill_name)?;
+    scenarios::validate_scenario_name(&scenario_name)?;
+    let skills_path = resolve_skills_path(&db)?;
+    let eval_dir =
+        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
+    scenarios::load_scenario(&eval_dir, &scenario_name)
+        .map(|scenario| scenario.map(scenario_to_dto))
 }
 
 #[tauri::command]
@@ -1890,7 +1908,8 @@ pub fn save_scenario(
     validate_skill_name(&skill_name)?;
     let scenario = scenario_from_dto(scenario)?;
     let skills_path = resolve_skills_path(&db)?;
-    let eval_dir = crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
+    let eval_dir =
+        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
     let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
     scenarios::write_scenario_file(&path, &scenario)?;
 
@@ -1924,7 +1943,8 @@ pub fn delete_scenario(
     validate_skill_name(&skill_name)?;
     scenarios::validate_scenario_name(&scenario_name)?;
     let skills_path = resolve_skills_path(&db)?;
-    let eval_dir = crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
+    let eval_dir =
+        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
     scenarios::delete_scenario_file(&eval_dir, &scenario_name)?;
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -2094,10 +2114,15 @@ pub async fn run_eval_workbench_legacy(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let prompt_set = db_read_eval_prompt_set(&conn, &prompt_set_id)?
             .ok_or_else(|| "Prompt set not found".to_string())?;
-        if !scenario.tags.iter().any(|tag| tag.matches_mode(request.mode)) {
+        if !scenario
+            .tags
+            .iter()
+            .any(|tag| tag.matches_mode(request.mode))
+        {
             return Err("Scenario is not available for the selected mode".to_string());
         }
-        let sidecar_candidates = load_sidecar_candidates(&conn, &prompt_set, &request.candidate_ids)?;
+        let sidecar_candidates =
+            load_sidecar_candidates(&conn, &prompt_set, &request.candidate_ids)?;
         let persisted_candidates = if prompt_set.mode == EvalWorkbenchMode::Trigger {
             request
                 .candidate_ids

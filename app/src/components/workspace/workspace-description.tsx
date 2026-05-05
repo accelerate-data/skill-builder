@@ -44,6 +44,7 @@ interface WorkspaceDescriptionProps {
   skill: SkillSummary;
   workspacePath: string;
   scenario: ScenarioDto | null;
+  scenarioLoading?: boolean;
   onStartNewScenario: () => void;
   onSaveScenario: (scenario: ScenarioDto) => Promise<ScenarioDto>;
   saveScenarioPending?: boolean;
@@ -56,6 +57,7 @@ export function WorkspaceDescription({
   skill,
   workspacePath,
   scenario,
+  scenarioLoading = false,
   onStartNewScenario,
   onSaveScenario,
   saveScenarioPending = false,
@@ -372,7 +374,7 @@ export function WorkspaceDescription({
               size="sm"
               variant="outline"
               onClick={() => void handleGenerateCandidates()}
-              disabled={generatingCandidates}
+              disabled={scenarioLoading || generatingCandidates}
             >
               <Sparkles className="mr-1 size-3.5" />
               Generate candidates
@@ -380,7 +382,7 @@ export function WorkspaceDescription({
             <Button
               size="sm"
               onClick={() => void handleRunComparison()}
-              disabled={running}
+              disabled={scenarioLoading || running}
             >
               Run comparison
             </Button>
@@ -442,7 +444,7 @@ export function WorkspaceDescription({
           setCandidates([]);
           setActionError(null);
         }}
-        saveDisabled={saveScenarioPending}
+        saveDisabled={scenarioLoading || saveScenarioPending}
       />
 
       <section className="rounded-lg border bg-card p-4">

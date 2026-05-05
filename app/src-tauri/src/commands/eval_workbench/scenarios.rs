@@ -46,6 +46,19 @@ pub struct Scenario {
     pub cases: Vec<ScenarioCase>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScenarioSummary {
+    pub name: String,
+    pub tags: Vec<ScenarioTag>,
+}
+
+fn scenario_summary(scenario: &Scenario) -> ScenarioSummary {
+    ScenarioSummary {
+        name: scenario.name.clone(),
+        tags: scenario.tags.clone(),
+    }
+}
+
 pub fn validate_scenario_name(name: &str) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("Scenario name cannot be empty".to_string());
@@ -76,7 +89,10 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
             return Err("Scenario case id contains invalid path characters".to_string());
         }
         if case.prompt.trim().is_empty() {
-            return Err(format!("Scenario case '{}' prompt cannot be empty", case.id));
+            return Err(format!(
+                "Scenario case '{}' prompt cannot be empty",
+                case.id
+            ));
         }
     }
 
@@ -123,7 +139,7 @@ pub fn write_scenario_file(path: &Path, scenario: &Scenario) -> Result<(), Strin
     fs::write(path, content).map_err(|e| format!("Failed to write {}: {}", path.display(), e))
 }
 
-pub fn list_scenarios(eval_dir: &Path) -> Result<Vec<Scenario>, String> {
+fn read_all_scenarios(eval_dir: &Path) -> Result<Vec<Scenario>, String> {
     if !eval_dir.exists() {
         return Ok(vec![]);
     }
@@ -158,12 +174,41 @@ pub fn list_scenarios(eval_dir: &Path) -> Result<Vec<Scenario>, String> {
     Ok(scenarios)
 }
 
+pub fn list_scenarios(eval_dir: &Path) -> Result<Vec<ScenarioSummary>, String> {
+    read_all_scenarios(eval_dir).map(|items| {
+        items
+            .into_iter()
+            .map(|scenario| scenario_summary(&scenario))
+            .collect()
+    })
+}
+
+pub fn load_scenario(eval_dir: &Path, scenario_name: &str) -> Result<Option<Scenario>, String> {
+    validate_scenario_name(scenario_name)?;
+
+    let yaml_path = scenario_file_path(eval_dir, scenario_name);
+    if yaml_path.exists() {
+        return read_scenario_file(&yaml_path).map(Some);
+    }
+
+    let yml_path = eval_dir.join(format!("{}.yml", slugify_scenario_name(scenario_name)));
+    if yml_path.exists() {
+        return read_scenario_file(&yml_path).map(Some);
+    }
+
+    Ok(None)
+}
+
 pub fn delete_scenario_file(eval_dir: &Path, scenario_name: &str) -> Result<(), String> {
     validate_scenario_name(scenario_name)?;
-    let path = scenario_file_path(eval_dir, scenario_name);
-    if path.exists() {
-        fs::remove_file(&path)
-            .map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
+    for path in [
+        scenario_file_path(eval_dir, scenario_name),
+        eval_dir.join(format!("{}.yml", slugify_scenario_name(scenario_name))),
+    ] {
+        if path.exists() {
+            fs::remove_file(&path)
+                .map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
+        }
     }
     Ok(())
 }
@@ -206,7 +251,40 @@ mod tests {
         write_scenario_file(&tmp.path().join("b.yaml"), &sample_scenario()).unwrap();
         fs::write(tmp.path().join("promptfooconfig.yaml"), "ignore: true").unwrap();
         let scenarios = list_scenarios(tmp.path()).unwrap();
-        assert_eq!(scenarios.len(), 2);
+        assert_eq!(
+            scenarios,
+            vec![
+                ScenarioSummary {
+                    name: "Regression".into(),
+                    tags: vec![ScenarioTag::Both],
+                },
+                ScenarioSummary {
+                    name: "Regression".into(),
+                    tags: vec![ScenarioTag::Both],
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn loads_scenario_by_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let scenario = sample_scenario();
+        let path = scenario_file_path(tmp.path(), &scenario.name);
+        write_scenario_file(&path, &scenario).unwrap();
+
+        let loaded = load_scenario(tmp.path(), &scenario.name).unwrap();
+
+        assert_eq!(loaded, Some(scenario));
+    }
+
+    #[test]
+    fn returns_none_for_missing_scenario() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let loaded = load_scenario(tmp.path(), "Missing").unwrap();
+
+        assert_eq!(loaded, None);
     }
 
     #[test]

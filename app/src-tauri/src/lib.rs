@@ -406,6 +406,7 @@ pub fn run() {
             commands::imported_skills::upload::parse_skill_file,
             commands::imported_skills::upload::import_skill_from_file,
             commands::eval_workbench::list_scenarios,
+            commands::eval_workbench::load_scenario,
             commands::eval_workbench::save_scenario,
             commands::eval_workbench::delete_scenario,
             commands::eval_workbench::generate_scenarios,

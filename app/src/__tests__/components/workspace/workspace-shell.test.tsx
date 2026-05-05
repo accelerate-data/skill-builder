@@ -507,6 +507,51 @@ describe("WorkspaceShell", () => {
     );
   });
 
+  it("disables scenario actions while the selected scenario detail is still loading", async () => {
+    const user = userEvent.setup();
+
+    mockUseScenarios.mockReset().mockReturnValue({
+      data: [
+        performanceScenarioSummary,
+        sharedScenarioSummary,
+        triggerScenarioSummary,
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockUseScenario.mockReset().mockImplementation(
+      (_skillName: string | null, _pluginSlug: string, scenarioName: string | null) => ({
+        data:
+          scenarioName === triggerScenario.name
+            ? triggerScenario
+            : scenarioName
+              ? performanceScenario
+              : null,
+        isLoading: scenarioName === sharedScenario.name,
+        error: null,
+        refetch: vi.fn(),
+      }),
+    );
+
+    render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+    );
+
+    expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Core workflow coverage" }));
+
+    expect(await screen.findByText("Loading scenario…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /generate scenarios/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /run scenario/i })).toBeDisabled();
+
+    await user.click(screen.getByRole("tab", { name: "Trigger" }));
+
+    expect(screen.getByRole("button", { name: /generate candidates/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /run comparison/i })).toBeDisabled();
+  });
+
   it("falls back to the first visible scenario when the selected one does not support the next tab", async () => {
     const user = userEvent.setup();
 

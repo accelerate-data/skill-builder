@@ -39,6 +39,7 @@ interface WorkspaceEvalsProps {
   skill: SkillSummary | ImportedSkill;
   workspacePath: string | null;
   scenario: ScenarioDto | null;
+  scenarioLoading?: boolean;
   onStartNewScenario: () => void;
   onSaveScenario: (scenario: ScenarioDto) => Promise<ScenarioDto>;
   saveScenarioPending?: boolean;
@@ -50,6 +51,7 @@ export function WorkspaceEvals({
   skill,
   workspacePath,
   scenario,
+  scenarioLoading = false,
   onStartNewScenario,
   onSaveScenario,
   saveScenarioPending = false,
@@ -332,7 +334,7 @@ export function WorkspaceEvals({
               size="sm"
               variant="outline"
               onClick={() => void handleGenerateScenarios()}
-              disabled={generating}
+              disabled={scenarioLoading || generating}
             >
               <Sparkles className="mr-1 size-3.5" />
               {generating ? "Generating…" : "Generate scenarios"}
@@ -340,7 +342,7 @@ export function WorkspaceEvals({
             <Button
               size="sm"
               onClick={() => void handleRunScenario()}
-              disabled={running}
+              disabled={scenarioLoading || running}
             >
               <Play className="mr-1 size-3.5" />
               Run scenario
@@ -379,7 +381,7 @@ export function WorkspaceEvals({
         }}
         onSuggestAssertions={(caseIndex) => void handleSuggestAssertions(caseIndex)}
         suggestingAssertionsCaseIndex={suggestingAssertionsCaseIndex}
-        saveDisabled={saveScenarioPending}
+        saveDisabled={scenarioLoading || saveScenarioPending}
       />
 
       <RunHistory

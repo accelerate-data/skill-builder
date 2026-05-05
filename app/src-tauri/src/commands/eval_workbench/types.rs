@@ -108,6 +108,13 @@ pub struct ScenarioDto {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ScenarioSummaryDto {
+    pub name: String,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RunEvalWorkbenchRequest {
     pub run_id: String,
     pub plugin_slug: String,
