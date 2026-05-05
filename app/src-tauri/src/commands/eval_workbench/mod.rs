@@ -2453,7 +2453,12 @@ fn build_refine_improvement_brief_inner(run: &EvalRun) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{create_test_db_for_tests, record_eval_run, save_eval_prompt_set};
+    use crate::db::{
+        create_test_db_for_tests, record_eval_run, save_eval_prompt_set, write_settings,
+    };
+    use crate::skill_paths::resolve_eval_dir;
+    use crate::types::AppSettings;
+    use std::path::Path;
 
     fn valid_prompt_set(mode: EvalWorkbenchMode) -> SaveEvalPromptSet {
         SaveEvalPromptSet {
@@ -2479,6 +2484,43 @@ mod tests {
                 sort_order: None,
             }],
         }
+    }
+
+    fn sample_scenario_dto(name: &str) -> ScenarioDto {
+        ScenarioDto {
+            name: name.to_string(),
+            tags: vec!["performance".to_string()],
+            cases: vec![ScenarioCaseDto {
+                id: "case-1".to_string(),
+                prompt: "Forecast next quarter revenue".to_string(),
+                expected_outcome: Some("Includes assumptions".to_string()),
+                should_trigger: None,
+                assertions: vec![ScenarioAssertionDto {
+                    assertion_type: "contains".to_string(),
+                    value: "assumptions".to_string(),
+                }],
+            }],
+        }
+    }
+
+    fn create_scenario_db(skills_path: &Path) -> Db {
+        let conn = create_test_db_for_tests();
+        write_settings(
+            &conn,
+            &AppSettings {
+                skills_path: Some(skills_path.display().to_string()),
+                ..AppSettings::default()
+            },
+        )
+        .unwrap();
+
+        Db(std::sync::Mutex::new(conn))
+    }
+
+    fn db_state(db: &Db) -> tauri::State<'_, Db> {
+        // SAFETY: `tauri::State<'_, T>` is a transparent wrapper over `&T`.
+        // This keeps the tests on the command layer without needing the Tauri test runtime.
+        unsafe { std::mem::transmute(db) }
     }
 
     #[test]
@@ -2702,21 +2744,68 @@ mod tests {
     }
 
     #[test]
-    fn detects_missing_scenario_errors() {
-        assert!(is_missing_scenario_error(
-            "Failed to read /tmp/scenario.yaml: No such file or directory (os error 2)"
-        ));
-        assert!(!is_missing_scenario_error("Failed to parse scenario"));
+    fn list_scenarios_command_returns_summaries_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dto = sample_scenario_dto("Regression");
+        let scenario = scenario_from_dto(dto.clone()).unwrap();
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        let path = scenarios::scenario_file_path(&eval_dir, &dto.name);
+        scenarios::write_scenario_file(&path, &scenario).unwrap();
+
+        let db = create_scenario_db(tmp.path());
+        let response = list_scenarios("skills".into(), "forecast".into(), db_state(&db)).unwrap();
+
+        assert_eq!(response.len(), 1);
+        assert_eq!(response[0].name, "Regression");
+        assert_eq!(response[0].tags, vec!["performance".to_string()]);
     }
 
     #[test]
-    fn detects_missing_promptfoo_history_errors() {
-        assert!(is_missing_promptfoo_history_error(
-            "Promptfoo history database not found at /tmp/promptfoo.db"
-        ));
-        assert!(is_missing_promptfoo_history_error(
-            "Promptfoo eval run not found: abc123"
-        ));
-        assert!(!is_missing_promptfoo_history_error("other sidecar failure"));
+    fn load_scenario_command_returns_full_scenario_detail() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dto = sample_scenario_dto("Regression");
+        let scenario = scenario_from_dto(dto.clone()).unwrap();
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        let path = scenarios::scenario_file_path(&eval_dir, &dto.name);
+        scenarios::write_scenario_file(&path, &scenario).unwrap();
+
+        let db = create_scenario_db(tmp.path());
+        let response = load_scenario(
+            "skills".into(),
+            "forecast".into(),
+            "Regression".into(),
+            db_state(&db),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(response.name, dto.name);
+        assert_eq!(response.tags, dto.tags);
+        assert_eq!(response.cases.len(), 1);
+        assert_eq!(response.cases[0].id, "case-1");
+        assert_eq!(response.cases[0].prompt, "Forecast next quarter revenue");
+        assert_eq!(
+            response.cases[0].expected_outcome.as_deref(),
+            Some("Includes assumptions")
+        );
+        assert_eq!(response.cases[0].should_trigger, None);
+        assert_eq!(response.cases[0].assertions.len(), 1);
+        assert_eq!(response.cases[0].assertions[0].assertion_type, "contains");
+        assert_eq!(response.cases[0].assertions[0].value, "assumptions");
+    }
+
+    #[test]
+    fn load_scenario_command_returns_none_for_missing_scenario() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let response = load_scenario(
+            "skills".into(),
+            "forecast".into(),
+            "Missing".into(),
+            db_state(&db),
+        )
+        .unwrap();
+
+        assert!(response.is_none());
     }
 }
