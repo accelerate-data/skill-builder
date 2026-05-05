@@ -304,10 +304,6 @@ fn load_or_create_prompt_set_for_scenario(
     }
 
     let prompt_set_id = scenario_prompt_set_id(plugin_slug, skill_name, scenario_name, mode);
-    if let Some(prompt_set) = db_read_eval_prompt_set(conn, &prompt_set_id)? {
-        return Ok(prompt_set);
-    }
-
     save_prompt_set_mirror_for_scenario(conn, &scenario, plugin_slug, skill_name, mode)?;
     db_read_eval_prompt_set(conn, &prompt_set_id)?
         .ok_or_else(|| "Prompt set not found".to_string())
@@ -1935,14 +1931,7 @@ pub fn save_scenario(
         crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
     let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
     scenarios::write_scenario_file(&path, &scenario)?;
-    let yml_path = eval_dir.join(format!(
-        "{}.yml",
-        scenarios::slugify_scenario_name(&scenario.name)
-    ));
-    if yml_path != path && yml_path.exists() {
-        std::fs::remove_file(&yml_path)
-            .map_err(|e| format!("Failed to delete {}: {}", yml_path.display(), e))?;
-    }
+    scenarios::delete_other_scenario_files(&eval_dir, &scenario.name, &path)?;
 
     let mut conn = db.0.lock().map_err(|e| e.to_string())?;
     save_prompt_set_mirror_for_scenario(
@@ -2949,6 +2938,52 @@ mod tests {
     }
 
     #[test]
+    fn load_or_create_prompt_set_for_scenario_refreshes_stale_mirror_from_disk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let original = sample_scenario_dto("Regression");
+        let mut updated = sample_scenario_dto("Regression");
+        updated.cases[0].prompt = "Forecast updated revenue".to_string();
+        updated.cases[0].expected_outcome = Some("Uses latest assumptions".to_string());
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        let path = scenarios::scenario_file_path(&eval_dir, &original.name);
+        scenarios::write_scenario_file(&path, &scenario_from_dto(original).unwrap()).unwrap();
+
+        {
+            let mut conn = db.0.lock().unwrap();
+            let prompt_set = load_or_create_prompt_set_for_scenario(
+                &mut conn,
+                tmp.path(),
+                "skills",
+                "forecast",
+                "Regression",
+                EvalWorkbenchMode::Performance,
+            )
+            .unwrap();
+            assert_eq!(prompt_set.cases[0].prompt, "Forecast next quarter revenue");
+        }
+
+        scenarios::write_scenario_file(&path, &scenario_from_dto(updated).unwrap()).unwrap();
+
+        let mut conn = db.0.lock().unwrap();
+        let prompt_set = load_or_create_prompt_set_for_scenario(
+            &mut conn,
+            tmp.path(),
+            "skills",
+            "forecast",
+            "Regression",
+            EvalWorkbenchMode::Performance,
+        )
+        .unwrap();
+
+        assert_eq!(prompt_set.cases[0].prompt, "Forecast updated revenue");
+        assert_eq!(
+            prompt_set.cases[0].expected.as_deref(),
+            Some("Uses latest assumptions")
+        );
+    }
+
+    #[test]
     fn load_or_create_prompt_set_for_scenario_allows_file_only_trigger_candidate_generation() {
         let tmp = tempfile::tempdir().unwrap();
         let db = create_scenario_db(tmp.path());
@@ -3001,5 +3036,46 @@ mod tests {
         assert!(!yml_path.exists());
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].name, "Regression");
+    }
+
+    #[test]
+    fn load_scenario_command_loads_visible_scenario_even_when_filename_slug_mismatches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let dto = sample_scenario_dto("Regression");
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        std::fs::create_dir_all(&eval_dir).unwrap();
+        let path = eval_dir.join("mismatched-file-name.yaml");
+        scenarios::write_scenario_file(&path, &scenario_from_dto(dto.clone()).unwrap()).unwrap();
+
+        let visible = list_scenarios("skills".into(), "forecast".into(), db_state(&db)).unwrap();
+        let loaded = load_scenario(
+            "skills".into(),
+            "forecast".into(),
+            "Regression".into(),
+            db_state(&db),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].name, "Regression");
+        assert_eq!(loaded.name, "Regression");
+        assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
+    }
+
+    #[test]
+    fn read_scenario_loads_visible_scenario_even_when_filename_slug_mismatches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dto = sample_scenario_dto("Regression");
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        std::fs::create_dir_all(&eval_dir).unwrap();
+        let path = eval_dir.join("manually-renamed.yaml");
+        scenarios::write_scenario_file(&path, &scenario_from_dto(dto).unwrap()).unwrap();
+
+        let loaded = read_scenario(tmp.path(), "skills", "forecast", "Regression").unwrap();
+
+        assert_eq!(loaded.name, "Regression");
+        assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
     }
 }

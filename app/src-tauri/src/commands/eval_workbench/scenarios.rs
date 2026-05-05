@@ -59,6 +59,35 @@ fn scenario_summary(scenario: &Scenario) -> ScenarioSummary {
     }
 }
 
+fn scenario_file_entries(eval_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    if !eval_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(eval_dir)
+        .map_err(|e| format!("Failed to read eval dir {}: {}", eval_dir.display(), e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read eval dir entry: {}", e))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if !matches!(
+            path.extension().and_then(|value| value.to_str()),
+            Some("yaml") | Some("yml")
+        ) {
+            continue;
+        }
+        if path.file_stem().and_then(|value| value.to_str()) == Some("promptfooconfig") {
+            continue;
+        }
+        paths.push(path);
+    }
+    paths.sort();
+    Ok(paths)
+}
+
 pub fn validate_scenario_name(name: &str) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("Scenario name cannot be empty".to_string());
@@ -139,39 +168,26 @@ pub fn write_scenario_file(path: &Path, scenario: &Scenario) -> Result<(), Strin
     fs::write(path, content).map_err(|e| format!("Failed to write {}: {}", path.display(), e))
 }
 
-fn read_all_scenarios(eval_dir: &Path) -> Result<Vec<Scenario>, String> {
-    if !eval_dir.exists() {
-        return Ok(vec![]);
-    }
-
-    let mut scenarios = Vec::new();
-    for entry in fs::read_dir(eval_dir)
-        .map_err(|e| format!("Failed to read eval dir {}: {}", eval_dir.display(), e))?
-    {
-        let entry = entry.map_err(|e| format!("Failed to read eval dir entry: {}", e))?;
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        if !matches!(
-            path.extension().and_then(|value| value.to_str()),
-            Some("yaml") | Some("yml")
-        ) {
-            continue;
-        }
-        if path.file_stem().and_then(|value| value.to_str()) == Some("promptfooconfig") {
-            continue;
-        }
-        scenarios.push(read_scenario_file(&path)?);
-    }
+fn read_all_scenarios_with_paths(eval_dir: &Path) -> Result<Vec<(PathBuf, Scenario)>, String> {
+    let mut scenarios = scenario_file_entries(eval_dir)?
+        .into_iter()
+        .map(|path| read_scenario_file(&path).map(|scenario| (path, scenario)))
+        .collect::<Result<Vec<_>, _>>()?;
 
     scenarios.sort_by(|left, right| {
-        left.name
+        left.1
+            .name
             .to_ascii_lowercase()
-            .cmp(&right.name.to_ascii_lowercase())
-            .then_with(|| left.name.cmp(&right.name))
+            .cmp(&right.1.name.to_ascii_lowercase())
+            .then_with(|| left.1.name.cmp(&right.1.name))
+            .then_with(|| left.0.cmp(&right.0))
     });
     Ok(scenarios)
+}
+
+fn read_all_scenarios(eval_dir: &Path) -> Result<Vec<Scenario>, String> {
+    read_all_scenarios_with_paths(eval_dir)
+        .map(|items| items.into_iter().map(|(_, scenario)| scenario).collect())
 }
 
 pub fn list_scenarios(eval_dir: &Path) -> Result<Vec<ScenarioSummary>, String> {
@@ -185,29 +201,50 @@ pub fn list_scenarios(eval_dir: &Path) -> Result<Vec<ScenarioSummary>, String> {
 
 pub fn load_scenario(eval_dir: &Path, scenario_name: &str) -> Result<Option<Scenario>, String> {
     validate_scenario_name(scenario_name)?;
+    Ok(read_all_scenarios_with_paths(eval_dir)?
+        .into_iter()
+        .find_map(|(_, scenario)| (scenario.name == scenario_name).then_some(scenario)))
+}
 
-    let yaml_path = scenario_file_path(eval_dir, scenario_name);
-    if yaml_path.exists() {
-        return read_scenario_file(&yaml_path).map(Some);
+pub fn delete_other_scenario_files(
+    eval_dir: &Path,
+    scenario_name: &str,
+    keep_path: &Path,
+) -> Result<(), String> {
+    validate_scenario_name(scenario_name)?;
+    for path in scenario_file_entries(eval_dir)? {
+        if path == keep_path {
+            continue;
+        }
+        let scenario = read_scenario_file(&path)?;
+        if scenario.name == scenario_name {
+            fs::remove_file(&path)
+                .map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
+        }
     }
-
-    let yml_path = eval_dir.join(format!("{}.yml", slugify_scenario_name(scenario_name)));
-    if yml_path.exists() {
-        return read_scenario_file(&yml_path).map(Some);
-    }
-
-    Ok(None)
+    Ok(())
 }
 
 pub fn delete_scenario_file(eval_dir: &Path, scenario_name: &str) -> Result<(), String> {
     validate_scenario_name(scenario_name)?;
-    for path in [
-        scenario_file_path(eval_dir, scenario_name),
-        eval_dir.join(format!("{}.yml", slugify_scenario_name(scenario_name))),
-    ] {
-        if path.exists() {
+    let mut deleted = false;
+    for path in scenario_file_entries(eval_dir)? {
+        let scenario = read_scenario_file(&path)?;
+        if scenario.name == scenario_name {
             fs::remove_file(&path)
                 .map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
+            deleted = true;
+        }
+    }
+    if !deleted {
+        for path in [
+            scenario_file_path(eval_dir, scenario_name),
+            eval_dir.join(format!("{}.yml", slugify_scenario_name(scenario_name))),
+        ] {
+            if path.exists() {
+                fs::remove_file(&path)
+                    .map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
+            }
         }
     }
     Ok(())
