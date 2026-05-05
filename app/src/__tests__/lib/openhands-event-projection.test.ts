@@ -109,7 +109,7 @@ describe("projectConversationEvent", () => {
     expect(noSummaryRes.add[0].toolSummary).toBe("Ran command: echo hello");
   });
 
-  it("projects invoke_skill as a pending subagent item", () => {
+  it("projects invoke_skill as a skill item", () => {
     const event = makeEvent("ActionEvent", {
       source: "agent",
       action: { name: "research" },
@@ -120,7 +120,7 @@ describe("projectConversationEvent", () => {
 
     const result = projectConversationEvent(event, {});
     const item = result.add[0];
-    expect(item.type).toBe("subagent");
+    expect(item.type).toBe("skill");
     expect(item.toolSummary).toBe("Using skill: research");
     expect(item.subagentDescription).toBe("Researching pricing");
     expect(item.subagentStatus).toBe("running");

@@ -197,10 +197,10 @@ function projectMessageEvent(
 }
 
 interface ActionLabel {
-  type: "tool_call" | "subagent" | "thinking";
+  type: "tool_call" | "subagent" | "skill" | "thinking";
   toolName: string;
   toolSummary: string;
-  /** Optional subagent description when type is subagent */
+  /** Optional subagent description when type is subagent or skill */
   subagentDescription?: string;
   /** If true, do not project this event (e.g. FinishTool). */
   skip?: boolean;
@@ -296,7 +296,7 @@ function labelForActionEvent(
       (typeof input.name === "string" ? input.name : undefined) ??
       "skill";
     return {
-      type: "subagent",
+      type: "skill",
       toolName: "invoke_skill",
       toolSummary: `Using skill: ${name}`,
       subagentDescription: summary,
@@ -368,6 +368,18 @@ function projectActionEvent(
       toolName: label.toolName,
       toolSummary: label.toolSummary,
       toolStatus: "pending",
+      toolUseId: toolCallId,
+      toolInput,
+      subagentDescription: label.subagentDescription,
+      subagentStatus: "running",
+    };
+  } else if (label.type === "skill") {
+    item = {
+      id,
+      type: "skill",
+      timestamp: event.timestamp,
+      toolName: label.toolName,
+      toolSummary: label.toolSummary,
       toolUseId: toolCallId,
       toolInput,
       subagentDescription: label.subagentDescription,
@@ -463,7 +475,7 @@ function projectObservationEvent(
       toolDurationMs: durationMs,
     };
 
-    // For subagent items (invoke_skill), add subagent-shaped fields too.
+    // For subagent and skill items, add subagent-shaped fields too.
     // We don't know the prior type here, but shallow-merge is harmless if absent.
     patch.subagentStatus = isError ? "error" : "complete";
     const conclusion =

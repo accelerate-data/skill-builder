@@ -167,9 +167,9 @@ describe("openhands-event-projection (fixture-based)", () => {
     );
     expect(taskSent).toHaveLength(1);
 
-    // Exactly one invoke_skill subagent item.
+    // Exactly one invoke_skill skill item.
     const subagents = displayItems.filter(
-      (item) => item.type === "subagent" && item.toolName === "invoke_skill",
+      (item) => item.type === "skill" && item.toolName === "invoke_skill",
     );
     expect(subagents).toHaveLength(1);
 

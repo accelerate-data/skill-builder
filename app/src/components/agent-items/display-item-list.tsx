@@ -5,6 +5,7 @@ import { ThinkingItem } from "./thinking-item";
 import { OutputItem } from "./output-item";
 import { ToolItem } from "./tool-item";
 import { SubagentItem } from "./subagent-item";
+import { SkillItem } from "./skill-item";
 import { ResultItem } from "./result-item";
 import { ErrorItem } from "./error-item";
 import { BareOutput } from "./bare-output";
@@ -28,6 +29,8 @@ const PassthroughRenderer = memo(function PassthroughRenderer({
       return <ToolItem item={item} />;
     case "subagent":
       return <SubagentItem item={item} depth={depth} />;
+    case "skill":
+      return <SkillItem item={item} />;
     case "result":
       return <ResultItem item={item} />;
     case "error":

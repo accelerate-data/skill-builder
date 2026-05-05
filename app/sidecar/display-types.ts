@@ -16,6 +16,7 @@ export type DisplayItemType =
   | "output"
   | "tool_call"
   | "subagent"
+  | "skill"
   | "result"
   | "compact_boundary"
   | "error";
@@ -104,4 +105,4 @@ export interface DisplayItemEnvelope {
 // Version tag for structural sync tests
 // ---------------------------------------------------------------------------
 
-export const DISPLAY_TYPES_VERSION = 4;
+export const DISPLAY_TYPES_VERSION = 5;
